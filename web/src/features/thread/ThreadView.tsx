@@ -19,6 +19,7 @@ import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
+import { GitActions } from "./GitControl";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
@@ -86,6 +87,7 @@ function TopBar({
           {thread.title}
         </h1>
       </div>
+      <GitActions thread={thread} />
       <div className="layout-toggles" role="group" aria-label="Layout">
         <IconButton label="Details" pressed={detailsShown} onClick={onToggleDetails}>
           <Rows3 size={16} aria-hidden />

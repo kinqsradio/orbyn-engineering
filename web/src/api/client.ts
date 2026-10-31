@@ -1,5 +1,8 @@
 import { readToken } from "./token";
 import type {
+  BranchInfo,
+  GitAction,
+  GitActionResult,
   CommitInfo,
   MessageSearch,
   RestoredFile,
@@ -29,6 +32,8 @@ import type {
   QueuedMessage,
   Run,
   ServerInfo,
+  PublishProject,
+  RestorePoint,
   ServerSettings,
   SlashCommand,
   Thread,
@@ -267,6 +272,19 @@ export const api = {
   addCustomEngine: (body: CustomEngine) =>
     request<EngineStatus>("POST", "/api/engines/custom", body),
   removeCustomEngine: (id: string) => request<void>("DELETE", `/api/engines/custom/${q(id)}`),
+
+  gitAction: (threadId: string, body: GitAction) =>
+    request<GitActionResult>("POST", `/api/threads/${q(threadId)}/git/action`, body),
+  branches: (threadId: string, signal?: AbortSignal) =>
+    request<BranchInfo[]>("GET", `/api/threads/${q(threadId)}/branches`, undefined, signal),
+  createBranch: (threadId: string, name: string) =>
+    request<void>("POST", `/api/threads/${q(threadId)}/branches`, { name }),
+  switchBranch: (threadId: string, name: string) =>
+    request<void>("POST", `/api/threads/${q(threadId)}/branches/switch`, { name }),
+  publishProject: (projectId: string, body: PublishProject) =>
+    request<void>("POST", `/api/projects/${q(projectId)}/publish`, body),
+  restoreWorkspace: (threadId: string, runId: string, point: RestorePoint) =>
+    request<void>("POST", `/api/threads/${q(threadId)}/restore`, { run_id: runId, point }),
 
 
 

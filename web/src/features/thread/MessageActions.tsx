@@ -1,8 +1,9 @@
-import { Check, Copy, GitBranch, Pencil } from "lucide-react";
+import { Check, Copy, GitBranch, Pencil, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
 import { navigate, parseRoute } from "../../state/route";
+import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { IconButton } from "../../ui/controls";
@@ -18,6 +19,7 @@ export function MessageActions({ text, runId, role }: { text: string; runId: str
   const [copied, setCopied] = useState(false);
   const [rewinding, setRewinding] = useState(false);
   const [restoreFiles, setRestoreFiles] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const pushToast = useUi((state) => state.pushToast);
   const threadId = openThread();
   const busy = useWorkspace((state) => (threadId ? state.threads[threadId]?.active_run !== null : true));
@@ -53,6 +55,26 @@ export function MessageActions({ text, runId, role }: { text: string; runId: str
         <IconButton label="Fork from this response" onClick={() => void fork()}>
           <GitBranch size={14} aria-hidden />
         </IconButton>
+      ) : null}
+      {role === "assistant" && runId ? (
+        <IconButton label="Restore files to before this response" disabled={busy} onClick={() => setRestoring(true)}>
+          <Undo2 size={14} aria-hidden />
+        </IconButton>
+      ) : null}
+      {restoring ? (
+        <ConfirmDialog
+          title="Restore files?"
+          confirmLabel="Restore files"
+          onClose={() => setRestoring(false)}
+          onConfirm={async () => {
+            if (!threadId || !runId) return;
+            await api.restoreWorkspace(threadId, runId, "start");
+            useThreadLogs.getState().touchDiff(threadId);
+            pushToast("Files restored");
+          }}
+        >
+          <p>The folder goes back to how it was before this turn. What it holds now is saved first, so this can be undone from Git.</p>
+        </ConfirmDialog>
       ) : null}
       {rewinding ? (
         <ConfirmDialog

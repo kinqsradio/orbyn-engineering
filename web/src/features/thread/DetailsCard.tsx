@@ -2,7 +2,6 @@ import {
   Activity,
   Copy,
   FileDiff,
-  GitBranch,
   Monitor,
   SquareTerminal,
   EllipsisVertical,
@@ -22,6 +21,7 @@ import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
+import { BranchRow } from "./GitControl";
 import { OpenInEditor } from "./OpenInEditor";
 import { runningTools } from "./timeline";
 
@@ -196,12 +196,7 @@ export function DetailsCard({
         </div>
       </div>
       <div className="details-section">
-        {branch ? (
-          <div className="detail-row detail-row-static" title={thread.cwd}>
-            <GitBranch size={16} aria-hidden />
-            <span>{branch}</span>
-          </div>
-        ) : null}
+        {branch ? <BranchRow thread={thread} branch={branch} /> : null}
         <ChangesRow threadId={thread.id} />
         <OpenInEditor threadId={thread.id} />
         {compact ? (
