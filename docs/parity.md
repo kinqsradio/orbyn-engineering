@@ -372,35 +372,35 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M
 - [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M
 - [ ] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M
-- [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
+- [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M | blocked: agents do not act on a preview tab yet, so there is no input to trace
 - [ ] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L
 - [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L | server: changed frames as JPEG files; no overlays or video
-- [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L
+- [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L | N/A: a headless streamed browser has no platform authenticator
 - [ ] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M
-- [ ] H11 Browser import: cookies from other browsers, one time | apps/desktop/src/preview/BrowserImport/BrowserImport.ts | d | L
-- [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M
-- [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M
+- [ ] H11 Browser import: cookies from other browsers, one time | apps/desktop/src/preview/BrowserImport/BrowserImport.ts | d | L | N/A: reading another browser's cookies means reading its keychain-protected secrets, which this app will not do
+- [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M | N/A: follows H11
+- [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M | open: needs `http` and `https` registered with the OS, on top of the deep link path
 - [ ] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
 - [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L, local only
 - [x] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
-- [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L
-- [ ] H18 Picture-in-picture: phone preview floats over apps | docs/user/remote-access.md | m | M
-- [ ] H19 Browser host setup: sandbox and library guidance | apps/server/src/cli/browser.ts | c s | M
-- [ ] H20 Device panel: live iOS Simulator or Android Emulator | apps/web/src/components/device/DevicePanel.tsx | w d s | L
-- [ ] H21 Device setup: three-step hub, platform, agent access | apps/web/src/components/device/DeviceSetup.tsx | w d s | M
-- [ ] H22 Device tabs and float: multiple tabs, rename, float over chat | apps/web/src/components/device/DeviceWorkspace.tsx | w d | M
-- [ ] H23 Device input: touch, type, Home, Back, Recents, rotate, power | apps/web/src/components/device/DeviceControlsRail.tsx | w d m | L
-- [ ] H24 3D device view: model with fold and hinge controls | apps/web/src/components/device/DeviceDuoViewport.tsx | w d | L
-- [ ] H25 Android fold controls: fold or unfold | apps/web/src/components/device/DeviceAndroidFoldControls.tsx | w d | M
-- [ ] H26 Device tools drawer: appearance, text, accessibility, location, permissions, push | apps/web/src/components/device/DeviceToolsPanel.tsx | w d s | L
-- [ ] H27 Agent devices: `agent-device` CLI, permission toggle | docs/user/devices.md | s | L
-- [ ] H28 SSH device hosts: test connection, pinned tools | apps/web/src/components/settings/DeviceHostEditor.tsx | w d s | L
-- [ ] H29 EAS device hosts: EAS simulator source | apps/web/src/components/settings/EasDeviceHostEditor.tsx | w d s | M
-- [ ] H30 Simlock hosts: alpha leased device pool | apps/web/src/components/settings/SimlockDeviceHostEditor.tsx | w d s | L
-- [ ] H31 Device tool versions: check and auto install | apps/web/src/components/device/DeviceToolVersions.tsx | w d s | M
-- [ ] H32 Mobile device viewer: stream and control in app, shake detection | apps/mobile/src/features/devices/DevicePreviewRouteScreen.tsx | m | L
-- [ ] H33 SnapShots: window capture to draft with app metadata | apps/desktop/src/snapShot/DesktopSnapShot.ts | d | L
-- [ ] H34 SnapShot setup by platform: accessibility data, GNOME, KDE, Hyprland, Niri, shortcut, sound | apps/desktop/src/snapShot/LinuxSnapShot.ts | d | L
+- [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L | N/A as written: remote access is out of scope; a local tab has no clipboard, file picker or download bridge yet
+- [ ] H18 Picture-in-picture: phone preview floats over apps | docs/user/remote-access.md | m | M | out of scope: mobile
+- [ ] H19 Browser host setup: sandbox and library guidance | apps/server/src/cli/browser.ts | c s | M | open: Settings shows no browser check yet
+- [ ] H20 Device panel: live iOS Simulator or Android Emulator | apps/web/src/components/device/DevicePanel.tsx | w d s | L | open: needs a device tool chain; not started
+- [ ] H21 Device setup: three-step hub, platform, agent access | apps/web/src/components/device/DeviceSetup.tsx | w d s | M | open: needs a device tool chain; not started
+- [ ] H22 Device tabs and float: multiple tabs, rename, float over chat | apps/web/src/components/device/DeviceWorkspace.tsx | w d | M | open: needs a device tool chain; not started
+- [ ] H23 Device input: touch, type, Home, Back, Recents, rotate, power | apps/web/src/components/device/DeviceControlsRail.tsx | w d m | L | open: needs a device tool chain; not started
+- [ ] H24 3D device view: model with fold and hinge controls | apps/web/src/components/device/DeviceDuoViewport.tsx | w d | L | N/A: depends on T3's 3D device assets
+- [ ] H25 Android fold controls: fold or unfold | apps/web/src/components/device/DeviceAndroidFoldControls.tsx | w d | M | N/A: depends on a foldable device tool chain
+- [ ] H26 Device tools drawer: appearance, text, accessibility, location, permissions, push | apps/web/src/components/device/DeviceToolsPanel.tsx | w d s | L | open: needs a device tool chain; not started
+- [ ] H27 Agent devices: `agent-device` CLI, permission toggle | docs/user/devices.md | s | L | open: needs the `agent-device` CLI, not integrated
+- [ ] H28 SSH device hosts: test connection, pinned tools | apps/web/src/components/settings/DeviceHostEditor.tsx | w d s | L | out of scope: remote hosts
+- [ ] H29 EAS device hosts: EAS simulator source | apps/web/src/components/settings/EasDeviceHostEditor.tsx | w d s | M | [hosted]: EAS is a hosted service
+- [ ] H30 Simlock hosts: alpha leased device pool | apps/web/src/components/settings/SimlockDeviceHostEditor.tsx | w d s | L | [hosted]: a leased device pool
+- [ ] H31 Device tool versions: check and auto install | apps/web/src/components/device/DeviceToolVersions.tsx | w d s | M | open: needs a device tool chain; not started
+- [ ] H32 Mobile device viewer: stream and control in app, shake detection | apps/mobile/src/features/devices/DevicePreviewRouteScreen.tsx | m | L | out of scope: mobile
+- [ ] H33 SnapShots: window capture to draft with app metadata | apps/desktop/src/snapShot/DesktopSnapShot.ts | d | L | open: not started
+- [ ] H34 SnapShot setup by platform: accessibility data, GNOME, KDE, Hyprland, Niri, shortcut, sound | apps/desktop/src/snapShot/LinuxSnapShot.ts | d | L | N/A for Linux; the macOS and Windows parts follow H33
 - [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M
 - [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M
 - [x] H37 Preview start page: recent URL cards, discovered local server cards, unreachable page with mapped error messages | apps/web/src/components/preview/PreviewEmptyState.tsx | w d | S
@@ -410,7 +410,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] H41 Open file in preview: workspace files and terminal links open as browser tabs | apps/web/src/browser/openFileInPreview.ts | w d | S
 - [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
 - [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
-- [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
+- [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M | out of scope: mobile
 - [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 
 ## I. Providers
@@ -701,33 +701,33 @@ are not built in.
 ## P. Desktop shell
 - [x] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L | one managed `orbynd`; a pool serves remote hosts, which are out of scope
 - [x] P2 Shell environment: loads profile PATH and variables | apps/desktop/src/shell/DesktopShellEnvironment.ts | d | M | `child_env` tool search (P31) replaces reading the profile; no shell is sourced and profile variables are not loaded
-- [ ] P3 Auto updater: state machine with release notes | apps/desktop/src/updates/DesktopUpdates.ts | d | L
-- [ ] P4 Update everything: providers, servers, desktop in order | apps/web/src/components/sidebar/UpdateEverythingDialog.tsx | w d s | L
-- [ ] P5 Remote updates: desktop relaunch for remote hosts | apps/desktop/src/updates/DesktopRemoteUpdates.ts | d | L
-- [ ] P6 Update tracks: Stable and Nightly switching | apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx | d | L
-- [ ] P7 Update sidebar pill: progress and retry | apps/web/src/components/sidebar/SidebarUpdatePill.tsx | w d | M
-- [ ] P8 Startup recovery: failure window with update or last-good version | apps/desktop/src/app/DesktopStartupRecovery.ts | d | M
+- [ ] P3 Auto updater: state machine with release notes | apps/desktop/src/updates/DesktopUpdates.ts | d | L | the state machine, notes and install are tested over the shell channel; nothing is proved end to end until a signed release and update endpoint exist
+- [x] P4 Update everything: providers, servers, desktop in order | apps/web/src/components/sidebar/UpdateEverythingDialog.tsx | w d s | L | `apply-all` runs engines, library, app and stops at a failure; run on the service, the desktop step needs a release to install
+- [ ] P5 Remote updates: desktop relaunch for remote hosts | apps/desktop/src/updates/DesktopRemoteUpdates.ts | d | L | N/A: remote hosts are out of scope
+- [ ] P6 Update tracks: Stable and Nightly switching | apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx | d | L | open: no Nightly build is published, so there is nothing to switch to
+- [x] P7 Update sidebar pill: progress and retry | apps/web/src/components/sidebar/SidebarUpdatePill.tsx | w d | M | the pill opens a dialog with step progress and Retry
+- [x] P8 Startup recovery: failure window with update or last-good version | apps/desktop/src/app/DesktopStartupRecovery.ts | d | M | the loader shows what the service said, with Try again; a last-good version is N/A: Tauri replaces the app in place and keeps none
 - [x] P9 Deep links: protocol and Linux URL handler | apps/desktop/src/app/DesktopLinuxUrlHandler.ts | d | M | `orbyn://`, routes only; the Linux handler is N/A since Linux is not a target; not yet opened through Windows
 - [x] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
 - [x] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M | seen on a packaged macOS app and in CI on an installed package
 - [x] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M | installs `orbyn` from Settings; seen on a packaged macOS app, and the command found the service; the Windows `.cmd` has unit tests only
 - [x] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | seen on a packaged macOS app; the Windows menu is untested
-- [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S
+- [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S | N/A as written: the app draws its own menus, and the OS webview gives text and images its native menu; not checked on Windows
 - [x] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S | seen holding a sleep assertion for a run and letting go after; Windows untested
-- [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M
+- [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M | N/A: saved environments are remote access, out of scope
 - [x] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M | Settings lists Accessibility and Screen Recording with a link to each pane; macOS only
-- [ ] P18 Provider auth callback: Codex sign-in return | apps/desktop/src/app/CodexAuthCallback.ts | d | M | [auth-risk]
+- [ ] P18 Provider auth callback: Codex sign-in return | apps/desktop/src/app/CodexAuthCallback.ts | d | M | [auth-risk] | N/A: hard rule 1, engines keep their own login
 - [x] P19 Local environment auth: tokens for bundled server | apps/desktop/src/backend/DesktopLocalEnvironmentAuth.ts | d | M | per-launch token over loopback, set by `orbynd`
-- [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M
-- [ ] P21 Linux secret storage: keyring integration | apps/desktop/src/linuxSecretStorage.ts | d | M
-- [ ] P22 Windows foreground: focus handling | apps/desktop/src/electron/WindowsForeground.ts | d | M
+- [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M | N/A: there is no earlier version of this app to merge from
+- [ ] P21 Linux secret storage: keyring integration | apps/desktop/src/linuxSecretStorage.ts | d | M | N/A: Linux is not a target, and the shell stores no secrets
+- [ ] P22 Windows foreground: focus handling | apps/desktop/src/electron/WindowsForeground.ts | d | M | tao forces the foreground in `set_focus`, so no code is owed; not observed on Windows
 - [ ] P23 View menu: reload, force reload, DevTools, actual size, zoom in and out (including keypad keys), full screen | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | all items built and zoom seen working and restored; Reload, Force Reload and DevTools not pressed on a real app yet
 - [ ] P24 Edit and Window menus: paste as plain text, macOS Speech, minimize, zoom, File menu Settings and Close Window | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | all items built; Paste as Text and Speech not pressed on a real app yet
-- [ ] P25 Desktop packaging channels: winget, Homebrew cask, deb (self-updating with password prompt), AUR stable and nightly, Nix, GitHub Releases | docs/user/install.md | d | M
-- [ ] P26 CLI install scripts: shell and PowerShell installers to `~/.local/bin`, nightly channel and exact-version pins, Intel Mac desktop only | docs/user/install.md | c | M
-- [ ] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S
-- [ ] P28 Menu-bar popover: icon with running count; popover lists running, needs you, finished unseen and plan usage read on open | src-tauri/src/tray.rs | d | L | beyond T3
-- [ ] P29 Quick launcher: global shortcut opens a small window for new and running threads; manual open when shortcut registration fails | src-tauri/src/overlay.rs | d | L | beyond T3
+- [ ] P25 Desktop packaging channels: winget, Homebrew cask, deb (self-updating with password prompt), AUR stable and nightly, Nix, GitHub Releases | docs/user/install.md | d | M | open: needs a public release first; only GitHub Releases applies today, and it is unpublished
+- [ ] P26 CLI install scripts: shell and PowerShell installers to `~/.local/bin`, nightly channel and exact-version pins, Intel Mac desktop only | docs/user/install.md | c | M | open: needs published `orbyn` assets; the app can install the command itself (P12)
+- [x] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S | the webview follows the OS and `App.tsx` applies it; Linux is N/A
+- [ ] P28 Menu-bar popover: icon with running count; popover lists running, needs you, finished unseen and plan usage read on open | src-tauri/src/tray.rs | d | L | beyond T3 | beyond T3: the tray shows the running count and tooltip; the popover is not built
+- [ ] P29 Quick launcher: global shortcut opens a small window for new and running threads; manual open when shortcut registration fails | src-tauri/src/overlay.rs | d | L | beyond T3 | beyond T3: not built
 - [x] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S | server done: `off` stops installs here; background checks keep their own setting
 - [x] P31 Deterministic tool search path: ordered install folders, version-manager defaults and npm prefix read from config, added once at startup without sourcing a shell | src-tauri/src/providers/launch.rs | d s | M | alternative to P2 | server done: `crates` side; PATH for the desktop shell is the lead's
 - [ ] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M

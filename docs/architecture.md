@@ -690,6 +690,11 @@ and on macOS Accessibility and Screen Recording, read without prompting. Install
 link in `~/.local/bin` on macOS and a `.cmd` under `%LOCALAPPDATA%\Orbyn\bin` on Windows,
 never touches `PATH`, and neither replaces nor removes a file the app didn't put there.
 
+The service's stderr goes to `orbynd.log` in the app's log folder, new each launch. It is a
+file and not a pipe so the service can still log its own shutdown after the shell dies: a
+write to a dead pipe stops it before it cleans up. When the service stops, the loader
+shows the log's last line with Try again, and threads and runs are kept.
+
 The shell passes no data folder, so `orbynd` and the `orbyn` command agree on it, and it
 sets no `PATH`: `child_env` widens that for every child without sourcing a shell.
 

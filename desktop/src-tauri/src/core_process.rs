@@ -68,6 +68,36 @@ fn sidecar_path() -> Result<PathBuf, String> {
     Ok(dir.join(name))
 }
 
+fn service_log(app: &AppHandle) -> Result<PathBuf, String> {
+    let folder = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| format!("Cannot find the log folder: {error}."))?;
+    std::fs::create_dir_all(&folder)
+        .map_err(|error| format!("Cannot make the log folder: {error}."))?;
+    Ok(folder.join("orbynd.log"))
+}
+
+fn last_line(log: &std::path::Path) -> String {
+    let text = std::fs::read_to_string(log).unwrap_or_default();
+    text.lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// What a person is told, with the service's last words if it had any. Its log lines
+/// carry a timestamp and level, which mean nothing here.
+fn failure_text(status: &str, said: &str) -> String {
+    let said = said.rsplit("  ").next().unwrap_or(said).trim();
+    if said.is_empty() {
+        format!("It ended with {status}.")
+    } else {
+        format!("{said} ({status})")
+    }
+}
+
 impl CoreProcess {
     pub fn start(
         app: &AppHandle,
@@ -78,6 +108,11 @@ impl CoreProcess {
             .path()
             .resource_dir()
             .map_err(|error| format!("Cannot find app resources: {error}."))?;
+        // A file, not a pipe: the service must be able to log its own shutdown after
+        // this process is gone, and a write to a dead pipe would stop it halfway.
+        let log = service_log(app)?;
+        let stderr = std::fs::File::create(&log)
+            .map_err(|error| format!("Cannot write the service log: {error}."))?;
         let mut command = Command::new(sidecar_path()?);
         command
             .arg("serve")
@@ -86,7 +121,8 @@ impl CoreProcess {
             .arg(resources.join("ui"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(stderr)
+            .env("NO_COLOR", "1");
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -107,6 +143,7 @@ impl CoreProcess {
         let stopping = Arc::new(AtomicBool::new(false));
         let watched = child.clone();
         let stop_flag = stopping.clone();
+        let watched_log = log.clone();
         std::thread::spawn(move || {
             let mut lines = BufReader::new(stdout).lines();
             let first = lines.next().and_then(Result::ok).unwrap_or_default();
@@ -127,7 +164,7 @@ impl CoreProcess {
                 std::thread::sleep(Duration::from_millis(200));
             };
             if !stop_flag.load(Ordering::SeqCst) {
-                on_exit(format!("Exit status: {status}."));
+                on_exit(failure_text(&status, &last_line(&watched_log)));
             }
         });
 
@@ -135,7 +172,7 @@ impl CoreProcess {
             .recv_timeout(START_TIMEOUT)
             .map_err(|_| "The local service did not start in time.".to_string())?;
         let ready: Ready = serde_json::from_str(&line)
-            .map_err(|_| "The local service sent an unexpected start message.".to_string())?;
+            .map_err(|_| failure_text("no start message", &last_line(&log)))?;
         let mut app_url = url::Url::parse(&ready.url)
             .map_err(|_| "The local service sent an invalid address.".to_string())?;
         app_url.query_pairs_mut().append_pair("token", &ready.token);
@@ -170,5 +207,23 @@ impl CoreProcess {
                 let _ = child.kill();
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failure_says_what_the_service_said() {
+        assert_eq!(failure_text("exit 1", ""), "It ended with exit 1.");
+        assert_eq!(
+            failure_text("exit 1", "Another service holds this folder."),
+            "Another service holds this folder. (exit 1)"
+        );
+        assert_eq!(
+            failure_text("exit 1", "2026-10-31T20:06:16Z  INFO orbynd: stopping"),
+            "INFO orbynd: stopping (exit 1)"
+        );
     }
 }
