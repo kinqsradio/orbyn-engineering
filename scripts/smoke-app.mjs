@@ -107,8 +107,15 @@ function launch(exe, args = []) {
 function stop(child, tree = false) {
   if (!child.running) return;
   const scope = tree ? ["/T"] : [];
-  if (windows) execFileSync("taskkill", ["/PID", String(child.pid), ...scope, "/F"], { stdio: "ignore" });
-  else child.kill("SIGTERM");
+  if (!windows) {
+    child.kill("SIGTERM");
+    return;
+  }
+  try {
+    execFileSync("taskkill", ["/PID", String(child.pid), ...scope, "/F"], { stdio: "ignore" });
+  } catch {
+    // It went first, and its exit event hasn't run yet.
+  }
 }
 
 async function main() {

@@ -353,6 +353,54 @@ async fn a_handoff_survives_a_failed_run_and_goes_only_with_a_finished_one() {
 }
 
 #[tokio::test]
+async fn a_side_chat_stays_apart_until_brought_back_into_the_next_run() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
+    seed(&dir);
+    run(&service, &thread, "the main work").await;
+    let (code, side) = service
+        .send(
+            &format!("/api/threads/{thread}/fork"),
+            json!({ "side": true }),
+        )
+        .await;
+    assert_eq!(code, 201, "{side}");
+    assert_eq!(side["lifecycle"]["relation"], "side");
+    assert_eq!(
+        side["cwd"],
+        service.json(&format!("/api/threads/{thread}")).await["cwd"]
+    );
+    let side = side["id"].as_str().unwrap().to_owned();
+    let (code, body) = service
+        .send(&format!("/api/threads/{side}/bring-back"), json!({}))
+        .await;
+    assert_eq!(code, 400, "nothing said yet: {body}");
+    run(&service, &side, "a quiet aside").await;
+    run(&service, &thread, "before the bring back").await;
+    let (code, body) = service
+        .send(&format!("/api/threads/{side}/bring-back"), json!({}))
+        .await;
+    assert_eq!(code, 204, "{body}");
+    run(&service, &thread, "after the bring back").await;
+    run(&service, &thread, "and after that").await;
+    let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
+    let turn = |prompt: &str| {
+        log.lines()
+            .filter(|line| line.contains(r#""mode":"codex-turn""#))
+            .find(|line| line.contains(prompt))
+            .unwrap()
+    };
+    assert!(!turn("before the bring back").contains("From a side chat"));
+    assert!(turn("after the bring back").contains("From a side chat"));
+    assert!(turn("after the bring back").contains("a quiet aside"));
+    assert!(
+        !turn("after the bring back").contains("the main work\\n"),
+        "only the aside travels"
+    );
+    assert!(!turn("and after that").contains("From a side chat"));
+}
+
+#[tokio::test]
 async fn fork_shows_the_history_up_to_its_point_and_leaves_the_parent_alone() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, options(&dir, false), "codex").await;

@@ -3,11 +3,13 @@ import {
   CircleCheck,
   CircleDashed,
   Clock,
+  Gauge,
   GitBranch,
   OctagonAlert,
   Pin,
   PinOff,
   Unplug,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -35,20 +37,30 @@ const VERB_BADGE: Record<DropVerb, { label: string; icon: ReactNode }> = {
 function RowStatus({ thread }: { thread: Thread }) {
   const active = thread.active_run;
   const now = useNow(active !== null);
+  const approvals = useWorkspace((state) => state.approvals.data);
   if (active) {
     if (active.state === "awaiting_approval") {
+      const asking = approvals && !approvals.some((approval) => approval.thread_id === thread.id);
       return (
         <span className="row-status tone-warn">
           <span className="status-dot" aria-hidden />
-          Approval
+          {asking ? "Question" : "Approval"}
         </span>
       );
     }
-    const label = active.state === "admitted" ? "Queued" : "Working";
+    const label = active.state === "admitted" ? "Queued" : thread.goal ? "Goal" : "Working";
     return (
       <span className="row-status tone-info">
         <CircleDashed size={14} className="spin" aria-hidden />
         {label} {elapsed(active.started_at, now)}
+      </span>
+    );
+  }
+  if (thread.lifecycle?.limit) {
+    return (
+      <span className="row-status tone-warn">
+        <Gauge size={14} aria-hidden />
+        Limited
       </span>
     );
   }
@@ -174,6 +186,8 @@ export interface RowActions {
   onWake(thread: Thread): void;
   onUnpin(thread: Thread): void;
   onRowFocus(id: string): void;
+  onFiles(thread: Thread, files: File[]): void;
+  onDismissWoke(thread: Thread): void;
 }
 
 export function ThreadRow({
@@ -217,6 +231,7 @@ export function ThreadRow({
   const projectName = thread.scratch ? "No project" : (project?.name ?? "Unknown project");
   const engineName = engine?.name ?? thread.engine;
   const [hover, setHover] = useState<DOMRect | null>(null);
+  const [fileOver, setFileOver] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const lifecycle = thread.lifecycle;
@@ -312,6 +327,22 @@ export function ThreadRow({
     </span>
   );
 
+  const wokeMark = lifecycle?.woke_at ? (
+    <button
+      type="button"
+      className="row-woke"
+      aria-label="Dismiss Woke"
+      title="This thread woke early. Dismiss"
+      onClick={(event) => {
+        event.preventDefault();
+        actions.onDismissWoke(thread);
+      }}
+    >
+      Woke
+      <X size={10} aria-hidden />
+    </button>
+  ) : null;
+
   const pinMark = pinned ? (
     <button
       type="button"
@@ -341,6 +372,19 @@ export function ThreadRow({
       data-dragging={dragging || undefined}
       data-selected={multiSelected || undefined}
       data-highlight={highlighted || undefined}
+      data-file-over={fileOver || undefined}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setFileOver(true);
+      }}
+      onDragLeave={() => setFileOver(false)}
+      onDrop={(event) => {
+        setFileOver(false);
+        if (event.dataTransfer.files.length === 0) return;
+        event.preventDefault();
+        actions.onFiles(thread, [...event.dataTransfer.files]);
+      }}
     >
       <a
         className={compact ? "thread-row thread-row-compact" : "thread-row"}
@@ -372,6 +416,7 @@ export function ThreadRow({
           <>
             <ProjectBadge name={projectName} />
             {title}
+            {wokeMark}
             {pinMark}
             {trailing}
           </>
@@ -380,6 +425,7 @@ export function ThreadRow({
             <span className="thread-row-line">
               <ProjectBadge name={projectName} />
               <span className="thread-row-project">{projectName}</span>
+              {wokeMark}
               {pinMark}
               {trailing}
             </span>

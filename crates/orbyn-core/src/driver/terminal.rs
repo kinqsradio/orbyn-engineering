@@ -44,6 +44,7 @@ impl EngineDriver for TerminalDriver {
                 managed: false,
                 skill_delivery: Vec::new(),
                 goal_control: false,
+                decline_feedback: false,
             },
         }
     }

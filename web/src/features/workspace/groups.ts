@@ -31,7 +31,13 @@ const isSnoozed = (thread: Thread, now: number) => {
  * Where a thread sits, from what the server reports. The open thread stays put
  * while it runs, and a thread waiting on you stays in the list.
  */
-export function sectionOf(thread: Thread, now: number, selectedId: string | null): SidebarSection | null {
+export function sectionOf(
+  thread: Thread,
+  now: number,
+  selectedId: string | null,
+  /** Where the open thread was when you came to it. */
+  held: SidebarSection | null = null,
+): SidebarSection | null {
   const lifecycle = thread.lifecycle;
   if (!lifecycle) {
     if (thread.active_run) return "working";
@@ -39,8 +45,9 @@ export function sectionOf(thread: Thread, now: number, selectedId: string | null
     const age = now - new Date(thread.updated_at).getTime();
     return unresolved || age < DAY_MS ? "active" : "settled";
   }
-  if (lifecycle.archived_at) return null;
-  if (lifecycle.settled_at) return "settled";
+  if (lifecycle.archived_at || lifecycle.relation === "side") return null;
+  // Settling on its own doesn't pull the thread you are in out of the list; leaving lets it go.
+  if (lifecycle.settled_at) return thread.id === selectedId && held === "active" ? "active" : "settled";
   if (isSnoozed(thread, now)) return "snoozed";
   if (lifecycle.pinned_at) return "pinned";
   const needsYou = thread.active_run?.state === "awaiting_approval";
@@ -51,10 +58,11 @@ export function arrangeThreads(
   threads: readonly Thread[],
   now: number,
   selectedId: string | null,
+  held: SidebarSection | null = null,
 ): ThreadSections {
   const sections: ThreadSections = { pinned: [], active: [], working: [], snoozed: [], settled: [] };
   for (const thread of threads) {
-    const section = sectionOf(thread, now, selectedId);
+    const section = sectionOf(thread, now, selectedId, held);
     if (section) sections[section].push(thread);
   }
   sections.pinned.sort(savedOrder);

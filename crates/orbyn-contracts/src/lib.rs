@@ -107,6 +107,25 @@ pub struct ThreadLifecycle {
     pub relation: Option<String>,
     pub permission_mode: PermissionMode,
     pub plan_mode: bool,
+    /// Set when something ended a snooze before its time, until you dismiss it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub woke_at: Option<String>,
+    /// The engine stopped on a usage or rate limit and nothing has run since.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub limit: Option<ThreadLimit>,
+}
+}
+
+wire! {
+pub struct ThreadLimit {
+    pub message: String,
+    pub stopped_at: String,
+    /// When the engine says the allowance returns; `None` if it did not say.
+    pub resets_at: Option<String>,
+    /// When a continuation is scheduled; `None` means it waits for you.
+    pub resume_at: Option<String>,
 }
 }
 
@@ -431,6 +450,9 @@ pub struct ForkThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub title: Option<String>,
+    /// A side chat: allowed while the parent runs, and kept out of the thread list.
+    #[serde(default)]
+    pub side: bool,
 }
 }
 
@@ -1051,6 +1073,14 @@ pub struct UpdateThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub wake: Option<bool>,
+    /// True clears the note that a snooze ended early.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub dismiss_woke: Option<bool>,
+    /// True schedules a continuation for the limit's reset; false cancels it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub resume_at_reset: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub unread: Option<bool>,
@@ -2218,6 +2248,9 @@ pub struct EngineCapabilities {
     /// The engine can pause and resume a goal, not only set and clear it.
     #[serde(default)]
     pub goal_control: bool,
+    /// A denied action can carry your words back to the engine.
+    #[serde(default)]
+    pub decline_feedback: bool,
 }
 }
 
@@ -2614,6 +2647,25 @@ pub struct DecideApproval {
     pub allow: bool,
     /// Also store an allow rule for this exact target.
     pub remember: bool,
+    /// Sent back with a denial, on engines that can hear it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub feedback: Option<String>,
+}
+}
+
+wire_enum! {
+pub enum SteerState {
+    /// Handed to the running turn.
+    Delivered,
+    /// This engine takes no mid-turn input, so the message waits for the next turn.
+    Queued,
+}
+}
+
+wire! {
+pub struct SteerResult {
+    pub state: SteerState,
 }
 }
 

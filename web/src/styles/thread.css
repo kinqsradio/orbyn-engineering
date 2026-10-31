@@ -240,7 +240,7 @@
 .run-status {
   color: var(--color-textSoft);
 }
-.settled-note {
+.end-line {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -961,11 +961,27 @@
   color: var(--color-info);
 }
 .composer-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   height: 48px;
   padding: 0 8px 4px 8px;
+}
+.composer-controls {
+  display: contents;
+}
+/* Folded into the overflow menu, and still what the menu opens from. */
+.composer-controls[data-folded] {
+  position: absolute;
+  right: 44px;
+  bottom: 8px;
+  display: flex;
+  visibility: hidden;
+}
+.end-line-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .composer-left,
 .composer-right {
@@ -2987,4 +3003,25 @@ button.context-meter:hover:not(:disabled) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.model-extra {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.side-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.side-chat-head {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.side-chat .transcript-wrap {
+  flex: 1;
+  min-height: 0;
 }

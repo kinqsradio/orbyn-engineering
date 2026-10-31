@@ -88,7 +88,7 @@ describe("Composer", () => {
     const queue = vi.spyOn(api, "queue").mockResolvedValue([
       { id: "q1", thread_id: "t1", prompt: "also check tests", attachment_ids: [], held: false, created_at: "" },
     ]);
-    const steer = vi.spyOn(api, "steer").mockResolvedValue();
+    const steer = vi.spyOn(api, "steer").mockResolvedValue({ state: "delivered" });
     const remove = vi.spyOn(api, "removeQueued").mockResolvedValue();
     setup({ active_run: { ...run, state: "running" } as Run });
     await userEvent.click(await screen.findByRole("button", { name: /^Add to the running turn/ }));
