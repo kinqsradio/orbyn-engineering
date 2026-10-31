@@ -87,7 +87,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
 | Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
 | Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split and close | Tabs in a top row, reference has a side list; scripts menu not run |
-| Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit | No binary, image or media viewer: no raw file route |
+| Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit, image, video, audio, PDF, font, hex and partial text from the raw route, Save file | Layout own; no office or ZIP view |
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
 | Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward, reload, control, record, start page, Real on headless shell | Back and forward are this panel's own stack; no zoom, devices or profiles |

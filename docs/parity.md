@@ -226,16 +226,16 @@ toward completion.
 - [x] D4 Show ignored files: separate listing | packages/contracts/src/rpc.ts | s | S | server done
 - [x] D5 Edit and save files: save coordination, conflict revision tracking | apps/web/src/components/files/fileSaveCoordinator.ts | w d s | L
 - [x] D6 Source preview: read-only highlighted view | apps/web/src/components/files/ReadOnlySourcePreview.tsx | w d m | M | web done
-- [ ] D7 Large text viewer: worker-backed partial viewing | apps/web/src/components/files/LargeTextViewer.tsx | w d | M
+- [x] D7 Large text viewer: worker-backed partial viewing | apps/web/src/components/files/LargeTextViewer.tsx | w d | M | web done: byte ranges rather than a worker
 - [x] D8 Markdown preview: rendered/raw toggle | apps/web/src/components/files/FileMarkdownPreview.tsx | w d m | S
 - [x] D9 CSV/TSV tables: virtualized delimited view | apps/web/src/components/files/DelimitedTablePreview.tsx | w d m | M
-- [ ] D10 PDF viewer: embedded pages, native on mobile | apps/web/src/components/files/PdfViewer.tsx | w d m | L
+- [x] D10 PDF viewer: embedded pages, native on mobile | apps/web/src/components/files/PdfViewer.tsx | w d m | L | web done: the browser's own PDF view
 - [ ] D11 Office viewer: Open XML documents via worker | apps/web/src/components/files/OfficeViewer.tsx | w d | L
 - [x] D12 Notebook preview: renders notebooks | apps/web/src/components/files/NotebookPreview.tsx | w d | M
 - [x] D13 Mermaid file preview: renders diagram files | apps/web/src/components/files/MermaidViewer.tsx | w d | S
-- [ ] D14 Font viewer: font file samples | apps/web/src/components/files/FontViewer.tsx | w d | M
-- [ ] D15 Binary viewer: hex-style inspection | apps/web/src/components/files/BinaryViewer.tsx | w d | M
-- [ ] D16 Audio/video/image previews: playback and decoded images | apps/web/src/components/files/AudioPreview.tsx | w d m | M
+- [x] D14 Font viewer: font file samples | apps/web/src/components/files/FontViewer.tsx | w d | M | web done
+- [x] D15 Binary viewer: hex-style inspection | apps/web/src/components/files/BinaryViewer.tsx | w d | M | web done
+- [x] D16 Audio/video/image previews: playback and decoded images | apps/web/src/components/files/AudioPreview.tsx | w d m | M | web done
 - [x] D17 HTML file preview: sandboxed render plus source mode | apps/web/src/components/files/BrowserDocumentFrame.tsx | w d m | M
 - [ ] D18 ZIP browsing: up to 50 MB shown as folder list | docs/user/composer.md | w d m | M
 - [ ] D19 File comments: annotations feed review chips | apps/web/src/components/files/fileCommentAnnotations.ts | w d | M

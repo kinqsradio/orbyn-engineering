@@ -73,6 +73,38 @@ test("each panel scrolls alone, past both ends, with the chat parked mid-way", a
 
 });
 
+test("images, binaries and oversized text open from the raw route", async ({ page }) => {
+  const pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  writeFileSync(join(service.repo, "pixel.png"), Buffer.from(pixel, "base64"));
+  writeFileSync(join(service.repo, "blob.bin"), Buffer.from([0, 1, 2, 0x41, 0x42, 0xff]));
+  writeFileSync(join(service.repo, "huge.log"), `start of the log\n${"x".repeat(5_000_000)}`);
+  await longThread(page);
+  await settled(service, threadIdOf(page));
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const open = async (name: string) => {
+    await page.keyboard.press("ControlOrMeta+p");
+    await palette.getByRole("combobox", { name: "Search" }).fill(name);
+    await palette.getByRole("button", { name: new RegExp(name.replace(".", "\\.")) }).first().click();
+  };
+
+  await open("pixel.png");
+  const image = page.getByRole("img", { name: "pixel.png" });
+  await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1);
+  await expect(page.getByRole("link", { name: "Save file" })).toHaveAttribute("href", /download=true/);
+
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await open("blob.bin");
+  await expect(page.getByLabel("Bytes")).toContainText("00 01 02 41 42 ff");
+  await expect(page.getByLabel("Bytes")).toContainText("...AB.");
+
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await open("huge.log");
+  await expect(page.getByLabel("Text", { exact: true })).toContainText("start of the log");
+  await expect(page.getByText(/Showing 65,536 of 5,000,017 bytes/)).toBeVisible();
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(page.getByText(/Showing 131,072 of/)).toBeVisible();
+});
+
 test("the details card and terminal keep the wheel to themselves", async ({ page }) => {
   await longThread(page);
   await settled(service, threadIdOf(page));
