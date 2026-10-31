@@ -168,6 +168,7 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/shell", get(api::shell_status))
         .route("/api/shell/events", get(stream::shell_events))
+        .route("/api/shell/actions", post(api::shell_action))
         .route("/api/updates", get(api::updates))
         .route("/api/updates/events", get(stream::update_events))
         .route("/api/updates/check", post(api::check_updates))
@@ -398,6 +399,38 @@ fn router(state: AppState) -> Router {
         .route(
             "/api/threads/{id}/previews/{tab}",
             axum::routing::delete(preview_routes::close),
+        )
+        .route(
+            "/api/threads/{id}/previews/file",
+            post(preview_routes::open_file),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/view",
+            post(preview_routes::view),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/reload",
+            post(preview_routes::reload),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/clear",
+            post(preview_routes::clear),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/pick",
+            post(preview_routes::pick),
+        )
+        .route(
+            "/api/browser-profiles",
+            get(preview_routes::profiles).post(preview_routes::create_profile),
+        )
+        .route(
+            "/api/browser-profiles/{id}",
+            axum::routing::delete(preview_routes::delete_profile),
+        )
+        .route(
+            "/api/browser-profiles/{id}/clear",
+            post(preview_routes::clear_profile),
         )
         .route(
             "/api/threads/{id}/previews/{tab}/navigate",
@@ -659,6 +692,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         let (core, stop) = (core.clone(), stop.clone());
         tokio::spawn(async move { core.run_lifecycle(stop).await })
     };
+    if args.parent_stdin {
+        let (core, stop) = (core.clone(), stop.clone());
+        tokio::spawn(async move { core.run_shell_activity(stop).await });
+    }
     let shutdown = stop.clone();
     let server = tokio::spawn(async move {
         axum::serve(listener, app)

@@ -9,9 +9,12 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use orbyn_contracts::{LocalServer, PreviewInput, PreviewRecording, PreviewTab};
+use orbyn_contracts::{
+    BrowserProfile, LocalServer, PickedElement, PreviewInput, PreviewRecording, PreviewTab,
+    PreviewView,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
@@ -38,6 +41,31 @@ const SIZES: std::ops::RangeInclusive<u32> = 100..=4096;
 /// How many frame ticks pass between looks at history, about one a second. A link
 /// clicked in the page changes it with nobody telling this side.
 const HISTORY_TICKS: u32 = 5;
+const ZOOMS: std::ops::RangeInclusive<f64> = 0.25..=3.0;
+const PROFILE_NAME_LIMIT: usize = 64;
+/// How many crashes are put right, and over what time.
+const CRASH_LIMIT: usize = 3;
+const CRASH_WINDOW: Duration = Duration::from_secs(30);
+const CRASH_DELAY: Duration = Duration::from_secs(1);
+
+/// Reads the element under a point: its tag, a selector that finds it again, and a
+/// bounded sample of what it holds.
+const PICK_ELEMENT: &str = r"(() => {
+  const el = document.elementFromPoint(__X__, __Y__);
+  if (!el) return null;
+  const path = [];
+  for (let node = el; node && node.nodeType === 1 && path.length < 5; node = node.parentElement) {
+    if (node.id) { path.unshift(`#${CSS.escape(node.id)}`); break; }
+    const same = [...(node.parentElement?.children ?? [])].filter((other) => other.localName === node.localName);
+    path.unshift(same.length > 1 ? `${node.localName}:nth-of-type(${same.indexOf(node) + 1})` : node.localName);
+  }
+  return {
+    tag: el.localName,
+    selector: path.join(' > '),
+    text: (el.innerText ?? '').trim().slice(0, 500),
+    html: el.outerHTML.slice(0, 1000),
+  };
+})()";
 
 struct Recording {
     folder: PathBuf,
@@ -51,6 +79,10 @@ struct Tab {
     recording: Mutex<Option<Recording>>,
     stop: CancellationToken,
     profile: PathBuf,
+    /// A named profile stays when the tab ends.
+    keep_profile: bool,
+    browser: PathBuf,
+    options: LaunchOptions,
 }
 
 #[derive(Default)]
@@ -116,21 +148,91 @@ fn decode_base64(text: &str) -> Vec<u8> {
     out
 }
 
+/// How a tab starts, apart from where it goes.
+#[derive(Clone, Debug, Default)]
+pub struct OpenHow {
+    pub private: bool,
+    pub profile: Option<String>,
+}
+
+/// A `file:` address for an absolute path, with each part escaped.
+fn file_url(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    let escaped: String = text
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' | b':' => {
+                char::from(byte).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect();
+    if escaped.starts_with('/') {
+        format!("file://{escaped}")
+    } else {
+        format!("file:///{escaped}")
+    }
+}
+
+/// Crashes lately, which decide whether and when to try again.
+#[derive(Default)]
+struct Crashes(Vec<Instant>);
+
+impl Crashes {
+    /// How long to wait before starting again, growing each time, or `None` when
+    /// this page keeps crashing and should be left.
+    fn next_delay(&mut self, now: Instant) -> Option<Duration> {
+        self.0.retain(|at| now.duration_since(*at) < CRASH_WINDOW);
+        if self.0.len() >= CRASH_LIMIT {
+            return None;
+        }
+        self.0.push(now);
+        Some(CRASH_DELAY * 2u32.pow(u32::try_from(self.0.len() - 1).unwrap_or(0)))
+    }
+}
+
+/// Starts the browser again on the same profile and page.
+async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
+    let Some(delay) = crashes.next_delay(Instant::now()) else {
+        lock(&tab.info).crashed = true;
+        return;
+    };
+    tokio::time::sleep(delay).await;
+    let view = lock(&tab.info).clone();
+    let started = async {
+        let mut session = BrowserSession::launch(&tab.browser, &tab.profile, tab.options).await?;
+        session
+            .set_view(view.width, view.height, view.zoom, view.mobile)
+            .await?;
+        session.set_appearance(&view.appearance).await?;
+        session.navigate(&view.url).await?;
+        Ok::<_, CoreError>(session)
+    };
+    match started.await {
+        Ok(session) => *tab.session.lock().await = session,
+        Err(error) => tracing::warn!(%error, "could not bring a preview back"),
+    }
+}
+
 /// Polls frames while anyone wants them. A page that did not change sends nothing,
 /// and a tab that stops answering just skips that frame.
 async fn pump(tab: Arc<Tab>) {
     let mut last = Vec::new();
     let mut ticks = tokio::time::interval(FRAME_EVERY);
     let mut since_history = 0;
+    let mut crashes = Crashes::default();
+    let mut watching = 0;
     loop {
         tokio::select! {
             () = tab.stop.cancelled() => {
                 // Dropping the last handle ends the browser; only then is its
                 // profile finished with.
-                let profile = tab.profile.clone();
+                let (profile, keep) = (tab.profile.clone(), tab.keep_profile);
                 drop(tab);
                 tokio::time::sleep(PROFILE_GRACE).await;
-                let _ = std::fs::remove_dir_all(profile);
+                if !keep {
+                    let _ = std::fs::remove_dir_all(profile);
+                }
                 return;
             }
             _ = ticks.tick() => {}
@@ -138,17 +240,34 @@ async fn pump(tab: Arc<Tab>) {
         let recording = lock(&tab.recording)
             .as_ref()
             .map(|rec| (rec.folder.clone(), rec.frames.clone()));
-        if tab.frames.receiver_count() == 0 && recording.is_none() {
+        let viewers = tab.frames.receiver_count();
+        if viewers == 0 && recording.is_none() {
+            watching = 0;
             continue;
         }
+        // A viewer who just joined has no frame yet, even if the page hasn't changed.
+        if viewers > watching {
+            last.clear();
+        }
+        watching = viewers;
         since_history += 1;
         if since_history >= HISTORY_TICKS {
             since_history = 0;
-            if let Ok(history) = tab.session.lock().await.history().await {
+            let mut session = tab.session.lock().await;
+            let history = session.history().await;
+            let title = session.title().await;
+            drop(session);
+            if let Ok(history) = history {
                 tab.note_history(&history);
+            }
+            if let Ok(title) = title {
+                lock(&tab.info).title = title;
             }
         }
         let Ok(frame) = tab.session.lock().await.frame(FRAME_QUALITY).await else {
+            if !tab.session.lock().await.is_alive().await {
+                bring_back(&tab, &mut crashes).await;
+            }
             continue;
         };
         let digest = Sha256::digest(frame.as_bytes()).to_vec();
@@ -226,13 +345,81 @@ impl PreviewManager {
     ) -> Result<PreviewTab> {
         check_size(width, height)?;
         let tab = self.tab(thread_id, id)?;
-        tab.session.lock().await.set_viewport(width, height).await?;
+        let (zoom, mobile) = {
+            let info = lock(&tab.info);
+            (info.zoom, info.mobile)
+        };
+        let mut session = tab.session.lock().await;
+        session.set_view(width, height, zoom, mobile).await?;
+        drop(session);
         {
             let mut info = lock(&tab.info);
             info.width = width;
             info.height = height;
         }
         Ok(tab.view())
+    }
+
+    /// Changes how a page is shown. A value the service won't take changes nothing.
+    pub async fn set_view(
+        &self,
+        thread_id: &str,
+        id: &str,
+        view: &PreviewView,
+    ) -> Result<PreviewTab> {
+        if view.zoom.is_some_and(|zoom| !ZOOMS.contains(&zoom)) {
+            return Err(CoreError::Invalid(format!(
+                "Zoom is {} to {}.",
+                ZOOMS.start(),
+                ZOOMS.end()
+            )));
+        }
+        if let Some(appearance) = &view.appearance
+            && !["system", "light", "dark"].contains(&appearance.as_str())
+        {
+            return Err(CoreError::Invalid("Unknown appearance.".into()));
+        }
+        let tab = self.tab(thread_id, id)?;
+        let current = lock(&tab.info).clone();
+        let zoom = view.zoom.unwrap_or(current.zoom);
+        let mobile = view.mobile.unwrap_or(current.mobile);
+        let appearance = view.appearance.clone().unwrap_or(current.appearance);
+        let mut session = tab.session.lock().await;
+        session
+            .set_view(current.width, current.height, zoom, mobile)
+            .await?;
+        session.set_appearance(&appearance).await?;
+        drop(session);
+        {
+            let mut info = lock(&tab.info);
+            info.zoom = zoom;
+            info.mobile = mobile;
+            info.appearance = appearance;
+        }
+        Ok(tab.view())
+    }
+
+    pub async fn reload(&self, thread_id: &str, id: &str, hard: bool) -> Result<PreviewTab> {
+        let tab = self.tab(thread_id, id)?;
+        tab.session.lock().await.reload(hard).await?;
+        Ok(tab.view())
+    }
+
+    pub async fn clear(&self, thread_id: &str, id: &str, cookies: bool, cache: bool) -> Result<()> {
+        let tab = self.tab(thread_id, id)?;
+        let mut session = tab.session.lock().await;
+        session.clear(cookies, cache).await
+    }
+
+    /// Reads the element at a point in the page, without touching the page.
+    pub async fn pick(&self, thread_id: &str, id: &str, x: f64, y: f64) -> Result<PickedElement> {
+        let tab = self.tab(thread_id, id)?;
+        let zoom = lock(&tab.info).zoom;
+        let expression = PICK_ELEMENT
+            .replace("__X__", &(x / zoom).to_string())
+            .replace("__Y__", &(y / zoom).to_string());
+        let value = tab.session.lock().await.read(&expression).await?;
+        serde_json::from_value(value).map_err(|_| CoreError::NotFound("element".into()))
     }
 
     /// A person's input, which needs them to hold the page, so a watcher cannot
@@ -362,12 +549,43 @@ impl Core {
         url: &str,
         size: (Option<u32>, Option<u32>),
         actor: &str,
+        how: OpenHow,
+    ) -> Result<PreviewTab> {
+        let url = normalize_url(url)?;
+        self.open_page(thread_id, url, size, actor, how).await
+    }
+
+    /// Opens a file from the thread's checkout. Anywhere else reads as not found.
+    pub async fn open_preview_file(
+        &self,
+        thread_id: &str,
+        path: &str,
+        actor: &str,
+    ) -> Result<PreviewTab> {
+        let thread = self.store.thread(thread_id)?;
+        let checkout = crate::util::canonicalize(Path::new(&thread.cwd))?;
+        let file = crate::util::canonicalize(&checkout.join(path))
+            .map_err(|_| CoreError::NotFound("file".into()))?;
+        if !file.starts_with(&checkout) || !file.is_file() {
+            return Err(CoreError::NotFound("file".into()));
+        }
+        let url = file_url(&file);
+        self.open_page(thread_id, url, (None, None), actor, OpenHow::default())
+            .await
+    }
+
+    async fn open_page(
+        &self,
+        thread_id: &str,
+        url: String,
+        size: (Option<u32>, Option<u32>),
+        actor: &str,
+        how: OpenHow,
     ) -> Result<PreviewTab> {
         let thread = self.store.thread(thread_id)?;
         if !self.store.project(&thread.project_id)?.trusted {
             return Err(CoreError::FolderUntrusted);
         }
-        let url = normalize_url(url)?;
         let (width, height) = (
             size.0.unwrap_or(DEFAULT_SIZE.0),
             size.1.unwrap_or(DEFAULT_SIZE.1),
@@ -395,14 +613,29 @@ impl Core {
             detail: Value::Null,
         })?;
         let id = new_id();
-        let profile = self.config.data_dir.join("preview-profiles").join(&id);
+        let profile = match &how.profile {
+            Some(name) => self.claim_profile(name)?,
+            None => self.config.data_dir.join("preview-profiles").join(&id),
+        };
+        let zoom = self
+            .preference("preview_zoom", None)?
+            .as_f64()
+            .filter(|zoom| ZOOMS.contains(zoom))
+            .unwrap_or(1.0);
+        let appearance = self
+            .preference("preview_appearance", None)?
+            .as_str()
+            .unwrap_or("system")
+            .to_owned();
         let options = LaunchOptions {
             headless: true,
             in_process_gpu: self.config.browser_in_process_gpu,
         };
         let mut session = BrowserSession::launch(&browser, &profile, options).await?;
-        session.set_viewport(width, height).await?;
+        session.set_view(width, height, zoom, false).await?;
+        session.set_appearance(&appearance).await?;
         session.navigate(&url).await?;
+        let title = session.title().await.unwrap_or_default();
         let (frames, _) = broadcast::channel(8);
         let tab = Arc::new(Tab {
             info: Mutex::new(PreviewTab {
@@ -416,17 +649,136 @@ impl Core {
                 height,
                 can_go_back: false,
                 can_go_forward: false,
+                title,
+                zoom,
+                appearance,
+                mobile: false,
+                private: how.private,
+                profile: how.profile.clone(),
+                opened_by: if actor.starts_with("engine:") {
+                    "agent".to_owned()
+                } else {
+                    "person".to_owned()
+                },
+                crashed: false,
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
             recording: Mutex::new(None),
             stop: CancellationToken::new(),
             profile,
+            keep_profile: how.profile.is_some(),
+            browser,
+            options,
         });
         lock(&self.previews.tabs).insert(id, tab.clone());
         let view = tab.view();
         tokio::spawn(pump(tab));
         Ok(view)
+    }
+
+    fn profile_folder(&self, id: &str) -> PathBuf {
+        self.config.data_dir.join("browser-profiles").join(id)
+    }
+
+    fn stored_profiles(&self) -> Result<Vec<(String, String)>> {
+        let list = self.preference("preview_profiles", None)?;
+        Ok(list
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|entry| {
+                let text = |key: &str| entry.get(key)?.as_str().map(str::to_owned);
+                Some((text("id")?, text("name")?))
+            })
+            .collect())
+    }
+
+    fn profile_open(&self, id: &str) -> bool {
+        lock(&self.previews.tabs)
+            .values()
+            .any(|tab| lock(&tab.info).profile.as_deref() == Some(id))
+    }
+
+    /// A browser locks its profile, so a named one holds one tab at a time.
+    fn claim_profile(&self, id: &str) -> Result<PathBuf> {
+        if !self.stored_profiles()?.iter().any(|(known, _)| known == id) {
+            return Err(CoreError::NotFound("browser profile".into()));
+        }
+        if self.profile_open(id) {
+            return Err(CoreError::Invalid(
+                "That profile is open in another tab.".into(),
+            ));
+        }
+        Ok(self.profile_folder(id))
+    }
+
+    pub fn browser_profiles(&self) -> Result<Vec<BrowserProfile>> {
+        Ok(self
+            .stored_profiles()?
+            .into_iter()
+            .map(|(id, name)| BrowserProfile {
+                in_use: self.profile_open(&id),
+                id,
+                name,
+            })
+            .collect())
+    }
+
+    fn save_profiles(&self, profiles: &[(String, String)]) -> Result<()> {
+        let list: Vec<Value> = profiles
+            .iter()
+            .map(|(id, name)| json!({ "id": id, "name": name }))
+            .collect();
+        let values =
+            std::collections::BTreeMap::from([("preview_profiles".to_owned(), json!(list))]);
+        self.set_preferences(None, &values)
+    }
+
+    pub fn create_browser_profile(&self, name: &str) -> Result<BrowserProfile> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > PROFILE_NAME_LIMIT {
+            return Err(CoreError::Invalid(format!(
+                "A profile name is 1 to {PROFILE_NAME_LIMIT} characters."
+            )));
+        }
+        let mut profiles = self.stored_profiles()?;
+        let id = new_id();
+        profiles.push((id.clone(), name.to_owned()));
+        self.save_profiles(&profiles)?;
+        Ok(BrowserProfile {
+            id,
+            name: name.to_owned(),
+            in_use: false,
+        })
+    }
+
+    fn release_profile(&self, id: &str) -> Result<()> {
+        if !self.stored_profiles()?.iter().any(|(known, _)| known == id) {
+            return Err(CoreError::NotFound("browser profile".into()));
+        }
+        if self.profile_open(id) {
+            return Err(CoreError::Invalid(
+                "Close the tab using this profile first.".into(),
+            ));
+        }
+        match std::fs::remove_dir_all(self.profile_folder(id)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Empties a profile: cookies, storage and history go, and the name stays.
+    pub fn clear_browser_profile(&self, id: &str) -> Result<()> {
+        self.release_profile(id)
+    }
+
+    pub fn delete_browser_profile(&self, id: &str) -> Result<()> {
+        self.release_profile(id)?;
+        let mut profiles = self.stored_profiles()?;
+        profiles.retain(|(known, _)| known != id);
+        self.save_profiles(&profiles)
     }
 
     pub fn start_preview_recording(&self, thread_id: &str, id: &str) -> Result<()> {
@@ -678,6 +1030,30 @@ mod tests {
         let other = here.join("not-the-checkout");
         assert_eq!(in_folder(std::process::id(), &other), Some(false));
         assert_eq!(in_folder(u32::MAX - 1, &here), None);
+    }
+
+    #[test]
+    fn a_crashing_page_gets_three_growing_tries_in_its_window() {
+        let start = Instant::now();
+        let mut crashes = Crashes::default();
+        assert_eq!(crashes.next_delay(start), Some(Duration::from_secs(1)));
+        assert_eq!(crashes.next_delay(start), Some(Duration::from_secs(2)));
+        assert_eq!(crashes.next_delay(start), Some(Duration::from_secs(4)));
+        assert_eq!(crashes.next_delay(start), None);
+        let later = start + CRASH_WINDOW + Duration::from_secs(1);
+        assert_eq!(crashes.next_delay(later), Some(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn file_addresses_escape_what_a_path_can_hold() {
+        assert_eq!(
+            file_url(Path::new("/a b/c#d.html")),
+            "file:///a%20b/c%23d.html"
+        );
+        assert_eq!(
+            file_url(Path::new(r"C:\work\e.html")).replace("%5C", "/"),
+            "file:///C:/work/e.html"
+        );
     }
 
     #[test]

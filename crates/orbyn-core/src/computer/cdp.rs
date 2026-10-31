@@ -413,6 +413,78 @@ impl BrowserSession {
         .map(|_| ())
     }
 
+    /// Lays the page out `zoom` times larger in the same frame size.
+    pub async fn set_view(
+        &mut self,
+        width: u32,
+        height: u32,
+        zoom: f64,
+        mobile: bool,
+    ) -> Result<()> {
+        self.call(
+            "Emulation.setDeviceMetricsOverride",
+            json!({
+                "width": (f64::from(width) / zoom).round(),
+                "height": (f64::from(height) / zoom).round(),
+                "deviceScaleFactor": zoom,
+                "mobile": mobile,
+            }),
+        )
+        .await?;
+        self.call(
+            "Emulation.setTouchEmulationEnabled",
+            json!({ "enabled": mobile }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// `light` or `dark` for `prefers-color-scheme`; anything else follows the system.
+    pub async fn set_appearance(&mut self, appearance: &str) -> Result<()> {
+        let value = if matches!(appearance, "light" | "dark") {
+            appearance
+        } else {
+            ""
+        };
+        self.call(
+            "Emulation.setEmulatedMedia",
+            json!({ "features": [{ "name": "prefers-color-scheme", "value": value }] }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn reload(&mut self, hard: bool) -> Result<()> {
+        self.call("Page.reload", json!({ "ignoreCache": hard }))
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn clear(&mut self, cookies: bool, cache: bool) -> Result<()> {
+        if cookies {
+            self.call("Network.clearBrowserCookies", json!({})).await?;
+        }
+        if cache {
+            self.call("Network.clearBrowserCache", json!({})).await?;
+        }
+        Ok(())
+    }
+
+    /// The page's title.
+    pub async fn title(&mut self) -> Result<String> {
+        Ok(self
+            .evaluate("document.title")
+            .await?
+            .as_str()
+            .unwrap_or_default()
+            .to_owned())
+    }
+
+    /// Runs a page-side read and hands back its value.
+    pub async fn read(&mut self, expression: &str) -> Result<Value> {
+        self.evaluate(expression).await
+    }
+
     /// A DevTools input call, for a person driving a preview.
     pub async fn input(&mut self, method: &str, params: Value) -> Result<()> {
         self.call(method, params).await.map(|_| ())

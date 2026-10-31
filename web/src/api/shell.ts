@@ -1,8 +1,40 @@
-import { authHeaders } from "./client";
+import { api, authHeaders } from "./client";
 import { SseParser } from "./sse";
-import type { ShellEvent } from "./types";
+import type { ShellAction, ShellEvent } from "./types";
 
 const RETRY_MS = 3000;
+
+let attached = false;
+
+/** True in the desktop app, once the service has said so. */
+export const inDesktopApp = () => attached;
+
+export async function readShellStatus(signal?: AbortSignal) {
+  const status = await api.shell(signal);
+  attached = status.attached;
+  return status;
+}
+
+const changeListeners = new Set<() => void>();
+
+/** Calls back when the shell's facts change. Returns a stop function. */
+export function onShellChange(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => {
+    changeListeners.delete(listener);
+  };
+}
+
+export const shellChanged = () => changeListeners.forEach((listener) => listener());
+
+/** Zoom keys the native menu doesn't catch: the keypad, and Cmd with the shifted `+`. */
+export function zoomKeyAction(event: KeyboardEvent): ShellAction | null {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return null;
+  if (event.code === "NumpadAdd" || event.key === "+") return "zoom_in";
+  if (event.code === "NumpadSubtract") return "zoom_out";
+  if (event.code === "Numpad0") return "zoom_reset";
+  return null;
+}
 
 /**
  * Follows what the desktop shell sends the window. On a plain server nothing ever

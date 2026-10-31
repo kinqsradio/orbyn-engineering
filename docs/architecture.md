@@ -671,6 +671,25 @@ place spelled as a route: `thread/<id>`, `new[/<project>]`, `settings[/<section>
 anything else, and a link that started the app waits in the shell until the service
 runs. A second launch hands its links to the first and exits.
 
+`POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
+path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
+the window, and everything else goes to the windows as a `command`, the same ones keys
+run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
+is kept beside the window state in the app's config folder.
+
+The service owns the rule for running work and sends `activity` when it changes: the
+counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
+The shell applies it. The Dock badge counts only runs waiting on a person, the tray shows
+the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
+`SetThreadExecutionState` on Windows. The display can still sleep and a closed lid still
+sleeps.
+
+The shell reports `shell_facts` at start and whenever its window takes focus, since a
+permission changes in System Settings: the `orbyn` command's path and whether it is there,
+and on macOS Accessibility and Screen Recording, read without prompting. Install puts a
+link in `~/.local/bin` on macOS and a `.cmd` under `%LOCALAPPDATA%\Orbyn\bin` on Windows,
+never touches `PATH`, and neither replaces nor removes a file the app didn't put there.
+
 The shell passes no data folder, so `orbynd` and the `orbyn` command agree on it, and it
 sets no `PATH`: `child_env` widens that for every child without sourcing a shell.
 
@@ -710,6 +729,19 @@ text. Watching gives no control: input needs a person to take the page first.
 Recording keeps the changed frames as numbered JPEG files in
 `<data>/browser-artifacts`, with no video encoder. Agents do not act on a preview tab
 yet, so taking control only guards against a watcher's stray input.
+
+A tab's zoom, appearance and phone layout are set with `/view`. Zoom keeps the frame the
+same size and lays the page out smaller, 0.25 to 3 times. New tabs start from the
+`preview_zoom` and `preview_appearance` settings. A tab with no named profile ends with its
+profile. A named profile lives in `<data>/browser-profiles`, survives restarts, and holds
+one tab at a time because a browser locks its profile folder. A private tab only stays
+out of the UI's history. `/previews/file` opens a file inside the checkout as `file:`,
+which agents and the address bar cannot reach. Picking an element reads it and changes
+nothing, and what it returns comes from the page, so the UI quotes it into the draft for a
+person to read before sending. A browser that dies is started again on the same profile and
+page, up to three times in 30 seconds after 1, 2 and 4 seconds, and then the tab reports
+`crashed`. This only runs while someone watches. `enable_agent_browser_access`, off
+globally or for a project, refuses every `orbyn_preview_*` tool.
 
 Back and forward step through web pages only, so the blank page a browser starts on
 and anything else not `http` or `https` is passed over, and at either end nothing
@@ -859,6 +891,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET, POST /api/storage/cleanup?dry_run=` | Last `CleanupReport`; apply the retention rules |
 | `GET /api/shell` | `ShellStatus` |
 | `GET /api/shell/events` | SSE `ShellEvent`, with events held for the first window |
+| `POST /api/shell/actions` | `ShellRequest` (`202`, `422` with no shell) |
 | `GET /api/updates`, `POST /api/updates/check` | `UpdateStatus`; a check only reads |
 | `GET /api/updates/events` | SSE `UpdateStatus` on each change |
 | `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |
@@ -934,6 +967,10 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
 | `POST .../previews/:tab/history`, `/resize` | `StepPreview`; `ResizePreview`, `400` outside 100 to 4096; both to `PreviewTab` |
 | `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
+| `POST .../previews/file` | `OpenPreviewFile` to `PreviewTab`, inside the checkout |
+| `POST .../previews/:tab/view`, `/reload`, `/clear`, `/pick` | `PreviewView`; `ReloadPreview`; `ClearPreview`; `PickPreview` to `PickedElement` |
+| `GET, POST /api/browser-profiles` | `BrowserProfile[]`; `CreateBrowserProfile` |
+| `DELETE /api/browser-profiles/:id`, `POST .../clear` | Remove, or empty, a profile no tab has open |
 | `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
 | `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |
 | `GET /ws/terminal/:thread_id` | Main PTY: binary in/out, JSON text frame `{cols,rows}` resizes |

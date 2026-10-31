@@ -58,6 +58,10 @@ interface Prefs {
   /** Opens Changes after a large turn. */
   proactivePanels: boolean;
   recentUrls: string[];
+  /** Where a link in a thread opens. */
+  linkTarget: "system" | "in-app";
+  /** Floats the page when an agent opens one and the Browser panel isn't showing. */
+  autoFloatPreview: boolean;
   diffFilesCollapsed: boolean;
   diffIgnoreWhitespace: boolean;
   diffHideTests: boolean;
@@ -176,6 +180,8 @@ const defaults: Prefs = {
   previewSearchEngine: "duckduckgo",
   proactivePanels: false,
   recentUrls: [],
+  linkTarget: "system",
+  autoFloatPreview: false,
   diffFilesCollapsed: false,
   diffIgnoreWhitespace: false,
   diffHideTests: false,
@@ -228,6 +234,12 @@ interface UiState extends Prefs {
   diffReveal: { path: string; nonce: number } | null;
   revealDiff(path: string): void;
   togglePanel(tab: ContextTab): void;
+  /** A page floating over the chat, if any. */
+  previewFloat: { threadId: string; tabId: string } | null;
+  /** A URL waiting for the Browser panel to open it. */
+  previewRequest: string | null;
+  setPreviewFloat(float: { threadId: string; tabId: string } | null): void;
+  showInBrowser(url: string | null): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
   /** Back to the launcher, keeping open surfaces. */
@@ -316,6 +328,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   previewSearchEngine: state.previewSearchEngine,
   proactivePanels: state.proactivePanels,
   recentUrls: state.recentUrls,
+  linkTarget: state.linkTarget,
+  autoFloatPreview: state.autoFloatPreview,
   diffFilesCollapsed: state.diffFilesCollapsed,
   diffIgnoreWhitespace: state.diffIgnoreWhitespace,
   diffHideTests: state.diffHideTests,
@@ -422,6 +436,24 @@ export const useUi = create<UiState>((set, get) => {
         panelOpen: true,
         panelTab: "files",
         openSurfaces: openSurfaces.includes("files") ? openSurfaces : [...openSurfaces, "files"],
+      });
+    },
+    previewFloat: null,
+    previewRequest: null,
+    setPreviewFloat(previewFloat) {
+      set({ previewFloat });
+    },
+    showInBrowser(url) {
+      if (url === null) {
+        set({ previewRequest: null });
+        return;
+      }
+      const { openSurfaces } = get();
+      set({
+        previewRequest: url,
+        panelOpen: true,
+        panelTab: "browser",
+        openSurfaces: openSurfaces.includes("browser") ? openSurfaces : [...openSurfaces, "browser"],
       });
     },
     togglePanel(tab) {

@@ -1,10 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod activity;
 mod core_process;
 mod links;
+mod menu;
+mod shell_state;
+mod system;
 
 use core_process::{CoreProcess, ServiceMessage};
 use links::ServicePort;
+use menu::Zoom;
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
@@ -22,11 +27,11 @@ struct PendingUpdate(Mutex<Option<Update>>);
 /// Links that arrived before the service could take them.
 struct WaitingLinks(Mutex<Vec<String>>);
 
-fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
+pub(crate) fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
-fn reveal(app: &AppHandle) {
+pub(crate) fn reveal(app: &AppHandle) {
     if let Some(window) = main_window(app) {
         let _ = window.show();
         let _ = window.unminimize();
@@ -60,6 +65,8 @@ fn launch_core(app: &AppHandle) {
     let on_message = move |message: ServiceMessage| match message {
         ServiceMessage::CheckAppUpdate => check_for_update(&messages),
         ServiceMessage::InstallAppUpdate => install_update(&messages),
+        ServiceMessage::ShellAction { action } => menu::on_action(&messages, action),
+        ServiceMessage::Activity(now) => activity::apply(&messages, now),
     };
     let on_exit = move |reason: String| {
         watcher.state::<Core>().0.lock().expect("core slot").take();
@@ -74,12 +81,12 @@ fn launch_core(app: &AppHandle) {
             if let Some(window) = main_window(app) {
                 let _ = window.navigate(target);
             }
-            let waiting = std::mem::take(
-                &mut *app.state::<WaitingLinks>().0.lock().expect("link queue"),
-            );
+            let waiting =
+                std::mem::take(&mut *app.state::<WaitingLinks>().0.lock().expect("link queue"));
             for url in waiting {
                 tell_core(app, serde_json::json!({ "type": "open_link", "url": url }));
             }
+            system::report(app);
         }
         Err(error) => {
             drop(slot);
@@ -93,7 +100,7 @@ fn restart_core(app: AppHandle) {
     std::thread::spawn(move || launch_core(&app));
 }
 
-fn tell_core(app: &AppHandle, message: serde_json::Value) {
+pub(crate) fn tell_core(app: &AppHandle, message: serde_json::Value) {
     if let Some(core) = app.state::<Core>().0.lock().expect("core slot").as_ref() {
         core.send(&message);
     }
@@ -125,13 +132,16 @@ fn open_window(app: &AppHandle) -> tauri::Result<()> {
         .clone();
     let navigating = app.clone();
     let opening = app.clone();
-    WebviewWindowBuilder::from_config(app, &config)?
+    let window = WebviewWindowBuilder::from_config(app, &config)?
         .on_navigation(move |url| links::on_navigation(&navigating, url))
         .on_new_window(move |url, _| {
             links::open_outside(&opening, &url);
             NewWindowResponse::Deny
         })
         .build()?;
+    shell_state::load(app);
+    let zoom = *app.state::<Zoom>().0.lock().expect("zoom");
+    window.set_zoom(zoom)?;
     Ok(())
 }
 
@@ -221,7 +231,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Orbyn Engineering", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
-    let mut tray = TrayIconBuilder::new()
+    let mut tray = TrayIconBuilder::with_id(activity::TRAY)
         .tooltip("Orbyn Engineering")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -247,13 +257,19 @@ fn main() {
                 open_link(app, url);
             }
         }))
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Core(Mutex::new(None)))
         .manage(PendingUpdate(Mutex::new(None)))
         .manage(WaitingLinks(Mutex::new(Vec::new())))
         .manage(ServicePort::default())
+        .manage(Zoom::default())
+        .manage(activity::KeepAwake::default())
+        .menu(menu::build)
+        .on_menu_event(menu::on_event)
         .invoke_handler(tauri::generate_handler![restart_core])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -282,18 +298,22 @@ fn main() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|window, event| match event {
             // Closing keeps agents running; Quit in the tray stops them.
-            if let WindowEvent::CloseRequested { api, .. } = event {
+            WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // A permission is granted in System Settings, away from this window.
+            WindowEvent::Focused(true) => system::report(window.app_handle()),
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("build Tauri application");
 
     app.run(|app, event| match event {
         RunEvent::Exit => {
+            app.state::<activity::KeepAwake>().set(false);
             if let Some(core) = app.state::<Core>().0.lock().expect("core slot").take() {
                 core.stop();
             }

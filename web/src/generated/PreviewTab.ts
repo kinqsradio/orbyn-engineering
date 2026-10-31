@@ -4,4 +4,32 @@ export type PreviewTab = { id: string, thread_id: string, url: string,
 /**
  * `human` while a person holds the page, `none` otherwise.
  */
-control: string, recording: boolean, viewers: number, width: number, height: number, can_go_back: boolean, can_go_forward: boolean, };
+control: string, recording: boolean, viewers: number, width: number, height: number, can_go_back: boolean, can_go_forward: boolean, title: string, 
+/**
+ * `1` is actual size.
+ */
+zoom: number, 
+/**
+ * `system`, `light` or `dark`.
+ */
+appearance: string, 
+/**
+ * True emulates a phone: touch, and pages that lay out for one.
+ */
+mobile: boolean, 
+/**
+ * True keeps the page out of recent pages and history.
+ */
+private: boolean, 
+/**
+ * The named profile, or `None` for one that ends with the tab.
+ */
+profile: string | null, 
+/**
+ * `person` or `agent`.
+ */
+opened_by: string, 
+/**
+ * True once the page has crashed too often to bring back.
+ */
+crashed: boolean, };

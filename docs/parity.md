@@ -308,7 +308,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
 - [x] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S | web done
 - [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
-- [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
+- [x] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
 - [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done | web done
@@ -346,7 +346,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [x] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S | web done
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
 - [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done | web done
-- [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
+- [x] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S | server done
 - [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
 
@@ -369,18 +369,18 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 ## H. Browser preview and devices
 - [x] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
 - [x] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
-- [ ] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M
+- [x] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M | zoom and appearance per tab, defaults in `preview_zoom` and `preview_appearance`; the service side ran in a real browser
 - [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M
-- [ ] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M
+- [x] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M | `PreviewFloat`, read-only, seen in a real run
 - [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
-- [ ] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L
+- [x] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L | crosshair in the panel; the element is quoted into the draft; seen in a real run
 - [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L | server: changed frames as JPEG files; no overlays or video
 - [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L
-- [ ] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M
+- [x] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M | named profiles keep their folder and hold one tab at a time, since a browser locks its profile; no Settings page to add one yet, only the API
 - [ ] H11 Browser import: cookies from other browsers, one time | apps/desktop/src/preview/BrowserImport/BrowserImport.ts | d | L
 - [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M
 - [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M
-- [ ] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
+- [x] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
 - [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L, local only
 - [x] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
 - [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L
@@ -401,15 +401,15 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] H32 Mobile device viewer: stream and control in app, shake detection | apps/mobile/src/features/devices/DevicePreviewRouteScreen.tsx | m | L
 - [ ] H33 SnapShots: window capture to draft with app metadata | apps/desktop/src/snapShot/DesktopSnapShot.ts | d | L
 - [ ] H34 SnapShot setup by platform: accessibility data, GNOME, KDE, Hyprland, Niri, shortcut, sound | apps/desktop/src/snapShot/LinuxSnapShot.ts | d | L
-- [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M
-- [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M
+- [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M | hard reload, zoom, appearance, device toolbar, clear cookies and cache done; DevTools, separate window and move to another panel are not
+- [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M | presets and rotate done; drag handles are not
 - [x] H37 Preview start page: recent URL cards, discovered local server cards, unreachable page with mapped error messages | apps/web/src/components/preview/PreviewEmptyState.tsx | w d | S
-- [ ] H38 Browser history and favicons: address bar suggestions from visited URLs, remembered tab icons | apps/web/src/browserHistoryStore.ts | w d | S
-- [ ] H39 Webview crash recovery: reloads a crashed page up to 3 times within 30 seconds with growing delay | apps/web/src/browser/webviewCrashRecovery.ts | d | S
-- [ ] H40 Incognito tabs: private tabs reopen only until reload or quit and reopen in a fresh session | docs/user/keybindings.md | w d | S
-- [ ] H41 Open file in preview: workspace files and terminal links open as browser tabs | apps/web/src/browser/openFileInPreview.ts | w d | S
-- [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
-- [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
+- [ ] H38 Browser history and favicons: address bar suggestions from visited URLs, remembered tab icons | apps/web/src/browserHistoryStore.ts | w d | S | address bar suggestions done; favicons are not, since the UI blocks remote images
+- [x] H39 Webview crash recovery: reloads a crashed page up to 3 times within 30 seconds with growing delay | apps/web/src/browser/webviewCrashRecovery.ts | d | S | three growing tries in 30 seconds; a killed browser came back in a real run
+- [x] H40 Incognito tabs: private tabs reopen only until reload or quit and reopen in a fresh session | docs/user/keybindings.md | w d | S | private tabs stay out of history; every tab without a named profile already ends with the tab
+- [x] H41 Open file in preview: workspace files and terminal links open as browser tabs | apps/web/src/browser/openFileInPreview.ts | w d | S | HTML files from the Files panel, inside the checkout only; terminal links not yet
+- [x] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M | `enable_agent_browser_access` now stops agent preview tools, globally or per project; the device flag is stored and unused
+- [x] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
 - [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
 - [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 
@@ -710,19 +710,19 @@ are not built in.
 - [x] P9 Deep links: protocol and Linux URL handler | apps/desktop/src/app/DesktopLinuxUrlHandler.ts | d | M | `orbyn://`, routes only; the Linux handler is N/A since Linux is not a target; not yet opened through Windows
 - [x] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
 - [x] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M | seen on a packaged macOS app and in CI on an installed package
-- [ ] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M
-- [ ] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [x] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M | installs `orbyn` from Settings; seen on a packaged macOS app, and the command found the service; the Windows `.cmd` has unit tests only
+- [x] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | seen on a packaged macOS app; the Windows menu is untested
 - [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S
-- [ ] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S
+- [x] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S | seen holding a sleep assertion for a run and letting go after; Windows untested
 - [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M
-- [ ] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M
+- [x] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M | Settings lists Accessibility and Screen Recording with a link to each pane; macOS only
 - [ ] P18 Provider auth callback: Codex sign-in return | apps/desktop/src/app/CodexAuthCallback.ts | d | M | [auth-risk]
 - [x] P19 Local environment auth: tokens for bundled server | apps/desktop/src/backend/DesktopLocalEnvironmentAuth.ts | d | M | per-launch token over loopback, set by `orbynd`
 - [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M
 - [ ] P21 Linux secret storage: keyring integration | apps/desktop/src/linuxSecretStorage.ts | d | M
 - [ ] P22 Windows foreground: focus handling | apps/desktop/src/electron/WindowsForeground.ts | d | M
-- [ ] P23 View menu: reload, force reload, DevTools, actual size, zoom in and out (including keypad keys), full screen | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
-- [ ] P24 Edit and Window menus: paste as plain text, macOS Speech, minimize, zoom, File menu Settings and Close Window | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [ ] P23 View menu: reload, force reload, DevTools, actual size, zoom in and out (including keypad keys), full screen | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | all items built and zoom seen working and restored; Reload, Force Reload and DevTools not pressed on a real app yet
+- [ ] P24 Edit and Window menus: paste as plain text, macOS Speech, minimize, zoom, File menu Settings and Close Window | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | all items built; Paste as Text and Speech not pressed on a real app yet
 - [ ] P25 Desktop packaging channels: winget, Homebrew cask, deb (self-updating with password prompt), AUR stable and nightly, Nix, GitHub Releases | docs/user/install.md | d | M
 - [ ] P26 CLI install scripts: shell and PowerShell installers to `~/.local/bin`, nightly channel and exact-version pins, Intel Mac desktop only | docs/user/install.md | c | M
 - [ ] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S

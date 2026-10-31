@@ -20,10 +20,12 @@ import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from 
 import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
+import { PreviewFloat } from "../features/panels/PreviewFloat";
 import { Toasts } from "../ui/Toasts";
 import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
-import { useAsync } from "../lib/useAsync";
+import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
+import { toFailure, useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
@@ -106,6 +108,13 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "settings.open":
       navigate({ name: "settings", section: null });
+      return true;
+    case "updates.check":
+      navigate({ name: "settings", section: "maintenance" });
+      api.checkUpdates().then(
+        (status) => useWorkspace.getState().putUpdates(status),
+        (failure: unknown) => ui.pushToast(`Couldn't check for updates. ${toFailure(failure).message}`),
+      );
       return true;
     case "appearance.cycle":
       ui.setTheme(NEXT_THEME[ui.theme]);
@@ -359,6 +368,12 @@ function useGlobalKeys(route: Route) {
         return;
       }
       if (undoKey(event)) return;
+      const zoom = inDesktopApp() ? zoomKeyAction(event) : null;
+      if (zoom) {
+        event.preventDefault();
+        api.shellAction(zoom).catch(() => undefined);
+        return;
+      }
       // A focused surface that took the key, like the model picker's number jumps, keeps it.
       if (event.defaultPrevented) return;
       if (event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key)) {
@@ -409,11 +424,19 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
 
 /** Links and menu items from the desktop shell, which behave like keys pressed here. */
 export function onShellEvent(event: ShellEvent) {
-  if (event.type === "navigate") {
-    window.location.hash = event.href.slice(1);
-    return;
+  switch (event.type) {
+    case "navigate":
+      window.location.hash = event.href.slice(1);
+      return;
+    case "command":
+      if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
+      return;
+    case "changed":
+      shellChanged();
+      return;
+    case "failed":
+      useUi.getState().pushToast(event.message);
   }
-  if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
 }
 
 export function Shell() {
@@ -477,6 +500,7 @@ export function Shell() {
       </a>
       {showNav ? <Sidebar route={route} /> : null}
       <BackgroundAnnouncer />
+      <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
       <Toasts />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
       {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (
