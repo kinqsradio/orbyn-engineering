@@ -4,6 +4,8 @@ import type { PolicyEffect } from "./PolicyEffect";
 
 export type PolicyRule = { id: string, effect: PolicyEffect, kind: ActionKind, 
 /**
- * `*` wildcard glob matched against the action target.
+ * `*` wildcard glob matched against the action target. A leading `=` makes
+ * the rest of the pattern an exact literal, which is how `remember` stores
+ * a target that itself contains `*`.
  */
 pattern: string, engine: string | null, note: string | null, created_at: string, };
