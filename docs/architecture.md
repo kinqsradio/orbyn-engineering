@@ -312,6 +312,12 @@ keeps uncommitted work, and never while another active thread uses it. `?dry_run
 only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
+## Automatic requests
+
+`GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
+Orbyn makes without being asked, with host, cadence and what turns it off. A new one is
+added there in the same change. Engines make their own requests under their own terms.
+
 ## Automations
 
 A scheduled task fires on an interval, at a fixed time on chosen weekdays in a fixed
@@ -694,6 +700,8 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
 | `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
+| `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported writing, up to 200; a command's own writes are not known |
+| `GET /api/network` | `NetworkRequest[]`: every automatic outbound request |
 | `GET /api/threads/:id/files?path=` | `FileEntry[]`, one folder |
 | `GET /api/threads/:id/files/ignored` | Ignored paths |
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |

@@ -426,6 +426,17 @@ pub async fn list_items(
     Ok(Json(state.core.store.items(&id, 500)?))
 }
 
+pub async fn run_changes(
+    State(state): State<AppState>,
+    Path((id, run)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.run_changes(&id, &run)?))
+}
+
+pub async fn network_requests() -> impl IntoResponse {
+    Json(orbyn_core::network::automatic_requests())
+}
+
 pub async fn get_item(
     State(state): State<AppState>,
     Path((id, item)): Path<(String, String)>,

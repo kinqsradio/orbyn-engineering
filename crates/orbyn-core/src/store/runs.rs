@@ -170,6 +170,16 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// The raw items of one run, oldest first.
+    pub fn run_items(&self, thread_id: &str, run_id: &str) -> Result<Vec<ThreadItemRecord>> {
+        let conn = self.reader();
+        let mut statement = conn.prepare_cached(
+            "SELECT * FROM thread_items WHERE thread_id = ?1 AND run_id = ?2 ORDER BY updated_at, item_id",
+        )?;
+        let rows = statement.query_map([thread_id, run_id], item_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     pub fn item(&self, thread_id: &str, item_id: &str) -> Result<ThreadItemRecord> {
         self.reader()
             .query_row(

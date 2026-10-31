@@ -209,6 +209,11 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/mentions", get(api::mentions))
         .route("/api/threads/{id}/commands", get(api::slash_commands))
         .route("/api/threads/{id}/items", get(api::list_items))
+        .route(
+            "/api/threads/{id}/runs/{run}/changes",
+            get(api::run_changes),
+        )
+        .route("/api/network", get(api::network_requests))
         .route("/api/threads/{id}/items/{item}", get(api::get_item))
         .route("/api/threads/{id}/usage", get(api::thread_usage))
         .route("/api/threads/{id}/files", get(api::file_tree))

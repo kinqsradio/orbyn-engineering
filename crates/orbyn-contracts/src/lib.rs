@@ -330,6 +330,28 @@ pub struct RewindThread {
 }
 
 wire! {
+/// Files a run's engine said it wrote. Nothing is inferred from the checkout, so a
+/// thread sharing the folder adds nothing here. A command's own writes are not known.
+pub struct RunChanges {
+    pub run_id: String,
+    pub paths: Vec<String>,
+    /// More files were reported than are listed.
+    pub truncated: bool,
+}
+}
+
+wire! {
+/// One request Orbyn makes without being asked.
+pub struct NetworkRequest {
+    pub purpose: String,
+    pub host: String,
+    pub cadence: String,
+    /// What turns it off.
+    pub control: String,
+}
+}
+
+wire! {
 pub struct ForkThread {
     /// Fork after this run; absent forks the whole conversation.
     #[serde(default, skip_serializing_if = "Option::is_none")]

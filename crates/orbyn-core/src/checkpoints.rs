@@ -4,12 +4,12 @@
 
 use std::path::Path;
 
-use orbyn_contracts::ModelSelection;
 use orbyn_contracts::{
     CommitInfo, FileDiff, ForkThread, RestorePoint, RestoreWorkspace, RewindThread, SwitchEngine,
     Thread,
 };
-use serde_json::json;
+use orbyn_contracts::{ModelSelection, RunChanges};
+use serde_json::{Value, json};
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
@@ -19,6 +19,33 @@ use crate::util::new_id;
 
 pub fn checkpoint_ref(thread_id: &str, run_id: &str, point: &str) -> String {
     format!("refs/orbyn/checkpoints/{thread_id}/{run_id}/{point}")
+}
+
+const MAX_CHANGED_PATHS: usize = 200;
+
+/// Paths a raw engine item says were written: Codex's `fileChange` and Claude's own
+/// file tools.
+fn reported_paths(kind: &str, raw: &Value) -> Vec<String> {
+    let text = |value: Option<&Value>| value.and_then(Value::as_str).map(str::to_owned);
+    match kind {
+        "fileChange" => raw
+            .get("changes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|change| text(change.get("path")))
+            .collect(),
+        "tool_use" => match raw.get("name").and_then(Value::as_str) {
+            Some("Write" | "Edit" | "MultiEdit") => {
+                text(raw.pointer("/input/file_path")).into_iter().collect()
+            }
+            Some("NotebookEdit") => text(raw.pointer("/input/notebook_path"))
+                .into_iter()
+                .collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
 }
 
 impl Core {
@@ -193,6 +220,30 @@ impl Core {
         self.store.fork_thread(&parent, through, &title)
     }
 
+    /// The files this run's engine reported writing, from its stored items.
+    pub fn run_changes(&self, id: &str, run_id: &str) -> Result<RunChanges> {
+        let run = self.store.run(run_id)?;
+        if run.thread_id != id {
+            return Err(CoreError::NotFound("run".into()));
+        }
+        let items = self.store.run_items(id, run_id)?;
+        let mut paths: Vec<String> = Vec::new();
+        for item in &items {
+            for path in reported_paths(&item.kind, &item.raw) {
+                if !paths.contains(&path) {
+                    paths.push(path);
+                }
+            }
+        }
+        let truncated = paths.len() > MAX_CHANGED_PATHS;
+        paths.truncate(MAX_CHANGED_PATHS);
+        Ok(RunChanges {
+            run_id: run_id.to_owned(),
+            paths,
+            truncated,
+        })
+    }
+
     /// Moves a thread to another engine with a budgeted summary of the conversation.
     pub fn switch_engine(&self, id: &str, request: &SwitchEngine, actor: &str) -> Result<Thread> {
         let thread = self.store.thread(id)?;
@@ -229,5 +280,23 @@ impl Core {
         self.store
             .switch_thread_engine(id, &request.engine, &chosen, &handoff)?;
         self.store.thread(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_what_an_engine_reports_writing_counts() {
+        let codex = json!({ "changes": [{ "path": "a.rs" }, { "path": "b.rs" }] });
+        assert_eq!(reported_paths("fileChange", &codex), ["a.rs", "b.rs"]);
+        let edit = json!({ "name": "Edit", "input": { "file_path": "/w/a.rs" } });
+        assert_eq!(reported_paths("tool_use", &edit), ["/w/a.rs"]);
+        let read = json!({ "name": "Read", "input": { "file_path": "/w/a.rs" } });
+        assert!(reported_paths("tool_use", &read).is_empty());
+        let bash = json!({ "name": "Bash", "input": { "command": "echo > x" } });
+        assert!(reported_paths("tool_use", &bash).is_empty());
+        assert!(reported_paths("commandExecution", &json!({})).is_empty());
     }
 }

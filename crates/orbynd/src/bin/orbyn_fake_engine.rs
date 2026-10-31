@@ -648,6 +648,14 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         && let Some(name) = rest.split(']').next()
     {
         let checkout = std::env::var("ORBYN_FAKE_CHECKOUT").expect("checkout");
+        codex_note(
+            state,
+            "item/completed",
+            json!({ "item": {
+                "type": "fileChange", "id": format!("write-{name}"), "status": "completed",
+                "changes": [{ "path": name, "kind": { "type": "add" }, "diff": "" }],
+            }}),
+        );
         std::fs::write(
             std::path::Path::new(&checkout).join(name),
             "written by turn\n",

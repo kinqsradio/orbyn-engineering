@@ -227,3 +227,63 @@ async fn an_untrusted_folder_opens_no_terminal() {
     );
     service.stop().await;
 }
+
+#[tokio::test]
+async fn a_settle_script_runs_in_the_threads_own_worktree() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let repo = dir.path().join("settling");
+    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::write(
+        repo.join("orbyn.json"),
+        r#"{"scripts":[{"name":"Tidy","command":"touch settled-here","runOnSettle":true}]}"#,
+    )
+    .unwrap();
+    for args in [
+        vec!["init", "-q", "-b", "main"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=T",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-qm",
+            "x",
+        ],
+    ] {
+        let status = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(&repo)
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+    let project = service.project(&repo, true).await;
+    let (code, thread) = service
+        .send(
+            "/api/threads",
+            json!({
+                "project_id": project, "engine": "codex", "model": null, "title": null,
+                "worktree": "tidy", "skill_profile": null,
+            }),
+        )
+        .await;
+    assert_eq!(code, 201, "{thread}");
+    let id = thread["id"].as_str().unwrap();
+    let worktree = std::path::PathBuf::from(thread["cwd"].as_str().unwrap());
+    let (code, body) = service.patch(id, json!({ "settled": true })).await;
+    assert_eq!(code, 200, "{body}");
+    let marker = worktree.join("settled-here");
+    for _ in 0..500 {
+        if marker.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(marker.exists(), "the script ran in the worktree");
+    assert!(
+        !repo.join("settled-here").exists(),
+        "and not in the primary clone"
+    );
+}
