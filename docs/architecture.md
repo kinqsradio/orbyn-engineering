@@ -851,6 +851,24 @@ private like any secret file and goes when the service stops; one left by a cras
 as nothing running. Exit codes are 0, 1 when a request was refused or a waited-on run
 did not complete, and 2 when no service is running. `--json` prints the API's answer.
 
+`orbyn`, `orbyn <folder>` and `orbyn start` reuse a service that answers or start one that
+outlives the command, with its output in `service.log`, then open it in the browser with
+the token in the address, which the page moves out of history. A folder is registered
+first, untrusted, and reused if it is already a project. A bare name counts only if the
+folder exists, and nothing is started otherwise. The token is never printed. `orbyn app`
+goes through the `orbyn://` link, so it starts the desktop app by the system's own route and
+adds no way in. `ORBYN_OPENER` names another program, or `-` to print what would open.
+
+`orbyn service` runs the service from this user's login through the OS's own manager:
+launchd, Task Scheduler or systemd, with no administrator rights. Each change is a plan of
+one file and some commands, and `--dry-run` shows it and does nothing. Installing again
+repairs it, uninstalling leaves all data, and neither reads a credential. What the manager
+starts is `orbyn service run`, which adds `service.env` from the data folder to `orbynd`'s
+environment: one `NAME=value` a line, taken literally, and a bad line stops the start
+with its number. That file is the person's and stays out of Orbyn's rules and store. It
+shares the data folder's single lock, so a desktop app on the same folder cannot start
+while the service runs.
+
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`,

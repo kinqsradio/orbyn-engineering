@@ -670,18 +670,18 @@ are not built in.
 - [x] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M | server done: 512 KiB requests, 256 KiB replies; the permission prompt keeps its own timeout
 
 ## O. CLI
-- [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M
+- [x] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M | server done, as `orbyn` and `orbyn start`
 - [x] O2 `t3 serve`: headless server with host, LAN, Tailscale options | apps/server/src/cli/server.ts | c | M | server done, as `orbyn serve`; remote options are out of scope
-- [ ] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S
+- [x] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S | server done, as `orbyn app`, through the `orbyn://` link
 - [ ] O4 `t3 up`: prompted or flag-driven access setup | apps/server/src/cli/up.ts | c | L | [hosted]
 - [x] O5 `t3 status`: current access settings, JSON | apps/server/src/cli/up.ts | c | S | server done, as `orbyn status`, for the running service
 - [ ] O6 `t3 connect` and subcommands: login, link, status, publish, unlink, logout | apps/server/src/cli/connect.ts | c | L | [hosted]
 - [ ] O7 `t3 pair`: pairing link with scopes and Tailscale | apps/server/src/cli/pair.ts | c | M
 - [ ] O8 `t3 auth pairing`: create, list, revoke | apps/server/src/cli/auth.ts | c | M
 - [ ] O9 `t3 auth session`: issue, list, revoke | apps/server/src/cli/auth.ts | c | M
-- [ ] O10 `t3 service`: install, update, restart, status, uninstall | apps/server/src/cli/service.ts | c | L
+- [x] O10 `t3 service`: install, update, restart, status, uninstall | apps/server/src/cli/service.ts | c | L | server done, as `orbyn service`: install again to update; plans and dry runs tested on each OS's rules, and no real login service was loaded here
 - [ ] O11 `t3 service protect`: memory and OOM protection, undo | apps/server/src/cli/service.ts | c | M
-- [ ] O12 `service.env`: literal environment file | docs/user/background-service.md | c s | S
+- [x] O12 `service.env`: literal environment file | docs/user/background-service.md | c s | S | server done, in the data folder
 - [ ] O13 `t3 update`: exact version, channel, downgrade | apps/server/src/cli/update.ts | c | M
 - [ ] O14 `t3 uninstall`: removes launcher, service, versions | apps/server/src/cli/uninstall.ts | c | S
 - [x] O15 `t3 doctor`: database repair, dry run, fix | apps/server/src/cli/doctor.ts | c | M | server done, as `orbyn doctor`, `--dry-run` and `--fix`, through a running service
@@ -693,9 +693,9 @@ are not built in.
 - [ ] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S
 - [ ] O22 `t3 triage`: starts Claude or Codex in terminal | apps/server/src/cli/triage.ts | c | S
 - [x] O23 Config inputs: flags, environment, home directory | apps/server/src/cli/config.ts | c | M | server done: `--data-dir` and `ORBYN_DATA_DIR`; `orbyn serve` takes `orbynd serve` options
-- [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M
-- [ ] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S
-- [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S
+- [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M | server: service launcher only, as `orbyn service run`
+- [x] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S | server done, as `orbyn <path>`; `--data-dir` isolates a second service
+- [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S | server: `orbyn help` is done; no npm package exists to run
 - [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3
 
 ## P. Desktop shell
