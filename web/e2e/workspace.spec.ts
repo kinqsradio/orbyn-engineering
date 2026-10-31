@@ -214,3 +214,13 @@ test("code blocks get a language header and highlighted tokens", async ({ page }
   await expect(page.locator(".code-lang").first()).toHaveText("rust");
   await expect(page.locator(".code-card code span[style]").first()).toBeAttached();
 });
+
+test("the draft heading keeps its distance from the composer", async ({ page }) => {
+  for (const width of [1280, 1728]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/#/new");
+    const heading = await page.locator(".hero-title").boundingBox();
+    const composer = await page.locator(".composer-box").boundingBox();
+    expect((composer?.y ?? 0) - ((heading?.y ?? 0) + (heading?.height ?? 0))).toBe(47);
+  }
+});

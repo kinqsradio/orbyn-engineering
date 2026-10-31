@@ -454,6 +454,7 @@ export function createMockApi(options: MockOptions = {}) {
               body: {
                 skills: ["architect", "tdd", "unslop"].filter((n) => n.includes(needle)),
                 files: ["README.md", "src/main.rs", "src/lib.rs"].filter((f) => f.toLowerCase().includes(needle)),
+                threads: [],
               },
             };
           }
@@ -570,6 +571,7 @@ export function createMockApi(options: MockOptions = {}) {
           tier,
           capabilities: {
             streaming: tier !== "terminal",
+            goal_control: false,
             approvals: tier !== "terminal",
             resume: false,
             mcp: false,

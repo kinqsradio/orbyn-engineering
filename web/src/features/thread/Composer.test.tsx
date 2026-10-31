@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
-import type { Run, Thread } from "../../api/types";
+import type { Run, SlashCommand, Thread } from "../../api/types";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { Composer } from "./Composer";
@@ -121,7 +121,7 @@ describe("Composer", () => {
   });
 
   it("completes a $ skill from the keyboard", async () => {
-    const mentions = vi.spyOn(api, "mentions").mockResolvedValue({ skills: ["architect"], files: [] });
+    const mentions = vi.spyOn(api, "mentions").mockResolvedValue({ skills: ["architect"], files: [], threads: [] });
     const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
     setup();
     await userEvent.type(box(), "use $ar");
@@ -134,8 +134,8 @@ describe("Composer", () => {
   });
 
   it("completes @ files and / commands", async () => {
-    const mentions = vi.spyOn(api, "mentions").mockResolvedValue({ skills: [], files: ["src/main.rs"] });
-    const commands = vi.spyOn(api, "commands").mockResolvedValue([{ name: "review", description: "Review the diff" }]);
+    const mentions = vi.spyOn(api, "mentions").mockResolvedValue({ skills: [], files: ["src/main.rs"], threads: [] });
+    const commands = vi.spyOn(api, "commands").mockResolvedValue([{ name: "review", description: "Review the diff", source: "engine" } as SlashCommand]);
     setup();
     await userEvent.type(box(), "@ma");
     await screen.findByRole("option", { name: "@src/main.rs" });

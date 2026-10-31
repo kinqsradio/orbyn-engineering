@@ -52,6 +52,7 @@ export const projects: Project[] = [
 
 const caps = (over: Partial<EngineStatus["capabilities"]> = {}): EngineStatus["capabilities"] => ({
   streaming: true,
+  goal_control: false,
   approvals: true,
   resume: true,
   mcp: true,
@@ -751,8 +752,8 @@ export const serverSettings = (): ServerSettings => ({
 });
 
 export const slashCommands = [
-  { name: "review", description: "Review the current diff" },
-  { name: "clear", description: "Start with a clean context" },
+  { name: "review", description: "Review the current diff", source: "engine" },
+  { name: "clear", description: "Start with a clean context", source: "engine" },
 ];
 
 export const lifecycle = (): NonNullable<Thread["lifecycle"]> => ({
