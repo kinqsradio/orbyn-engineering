@@ -655,6 +655,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         let (core, stop) = (core.clone(), stop.clone());
         tokio::spawn(async move { core.run_lifecycle(stop).await })
     };
+    if args.parent_stdin {
+        let (core, stop) = (core.clone(), stop.clone());
+        tokio::spawn(async move { core.run_shell_activity(stop).await });
+    }
     let shutdown = stop.clone();
     let server = tokio::spawn(async move {
         axum::serve(listener, app)

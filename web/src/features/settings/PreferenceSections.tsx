@@ -104,6 +104,11 @@ export function GeneralSection() {
               },
               { key: "automatic_git_fetch_minutes", title: "Git fetch interval (minutes)" },
               { key: "provider_health_refresh_minutes", title: "Provider health interval (minutes)" },
+              {
+                key: "keep_awake_during_runs",
+                title: "Keep the computer awake during runs",
+                description: "In the desktop app. The screen can still sleep.",
+              },
             ],
           },
           {

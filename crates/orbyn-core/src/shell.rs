@@ -6,17 +6,21 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use orbyn_contracts::{ShellAction, ShellEvent, ShellStatus};
+use orbyn_contracts::{RunState, ShellAction, ShellEvent, ShellStatus};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, mpsc};
 
+use crate::app::Core;
 use crate::error::{CoreError, Result};
 
 /// Events kept for a window that has not connected yet, as with a link that
 /// launched the app.
 const HELD_EVENTS: usize = 8;
 const ID_LIMIT: usize = 128;
+/// How often the shell's picture of running work is brought up to date.
+const ACTIVITY_EVERY: Duration = Duration::from_secs(2);
 
 pub struct ShellBridge {
     lines: Mutex<Option<mpsc::UnboundedSender<Value>>>,
@@ -131,6 +135,59 @@ impl ShellBridge {
                 true
             }
             _ => false,
+        }
+    }
+}
+
+/// What the shell shows and holds while work runs: the Dock badge, the tray and the
+/// lock against sleep. The rule lives here, so the shell only applies the answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Activity {
+    pub running: usize,
+    pub waiting: usize,
+    pub keep_awake: bool,
+}
+
+impl Activity {
+    fn line(self) -> Value {
+        json!({
+            "type": "activity",
+            "running": self.running,
+            "waiting": self.waiting,
+            "keep_awake": self.keep_awake,
+        })
+    }
+}
+
+impl Core {
+    fn activity(&self) -> Result<Activity> {
+        let runs = self.store.active_runs()?;
+        let waiting = runs
+            .iter()
+            .filter(|run| run.state == RunState::AwaitingApproval)
+            .count();
+        let allowed = self.preference("keep_awake_during_runs", None)? != json!(false);
+        Ok(Activity {
+            running: runs.len(),
+            waiting,
+            keep_awake: allowed && !runs.is_empty(),
+        })
+    }
+
+    /// Tells the shell whenever the picture changes, until `stop` fires.
+    pub async fn run_shell_activity(&self, stop: tokio_util::sync::CancellationToken) {
+        let mut ticks = tokio::time::interval(ACTIVITY_EVERY);
+        let mut told = Activity::default();
+        loop {
+            tokio::select! {
+                () = stop.cancelled() => return,
+                _ = ticks.tick() => {}
+            }
+            match self.activity() {
+                Ok(now) if now != told && self.shell.send(now.line()) => told = now,
+                Ok(_) => {}
+                Err(error) => tracing::debug!(%error, "could not read running work"),
+            }
         }
     }
 }

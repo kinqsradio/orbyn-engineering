@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod activity;
 mod core_process;
 mod links;
 mod menu;
@@ -64,6 +65,7 @@ fn launch_core(app: &AppHandle) {
         ServiceMessage::CheckAppUpdate => check_for_update(&messages),
         ServiceMessage::InstallAppUpdate => install_update(&messages),
         ServiceMessage::ShellAction { action } => menu::on_action(&messages, action),
+        ServiceMessage::Activity(now) => activity::apply(&messages, now),
     };
     let on_exit = move |reason: String| {
         watcher.state::<Core>().0.lock().expect("core slot").take();
@@ -227,7 +229,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Orbyn Engineering", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
-    let mut tray = TrayIconBuilder::new()
+    let mut tray = TrayIconBuilder::with_id(activity::TRAY)
         .tooltip("Orbyn Engineering")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -263,6 +265,7 @@ fn main() {
         .manage(WaitingLinks(Mutex::new(Vec::new())))
         .manage(ServicePort::default())
         .manage(Zoom::default())
+        .manage(activity::KeepAwake::default())
         .menu(menu::build)
         .on_menu_event(menu::on_event)
         .invoke_handler(tauri::generate_handler![restart_core])
@@ -305,6 +308,7 @@ fn main() {
 
     app.run(|app, event| match event {
         RunEvent::Exit => {
+            app.state::<activity::KeepAwake>().set(false);
             if let Some(core) = app.state::<Core>().0.lock().expect("core slot").take() {
                 core.stop();
             }
