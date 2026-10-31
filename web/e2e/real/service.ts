@@ -71,7 +71,7 @@ export interface Service {
 /** A real `orbynd` on a fresh data directory, with the dev UI proxied to it. */
 export async function startService(
   port: number,
-  options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean } = {},
+  options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean; registry?: string } = {},
 ): Promise<Service> {
   if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
   const dir = mkdtempSync(join(tmpdir(), "orbyn-e2e-"));
@@ -84,7 +84,7 @@ export async function startService(
   const forgePath = options.forge ? `${standInGh(dir)}:` : "";
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, PATH: `${forgePath}${process.env.PATH}`, ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forgePath}${process.env.PATH}`, ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
@@ -136,7 +136,7 @@ export async function startService(
 }
 
 /** A signed-in workspace on one trusted repository, for specs that start from a thread. */
-export async function startProject(port: number, options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean } = {}) {
+export async function startProject(port: number, options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean; registry?: string } = {}) {
   const service = await startService(port, options);
   await service.api("POST", "/api/workspace/setup", {});
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });

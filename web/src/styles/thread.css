@@ -2809,3 +2809,29 @@ button.detail-row:hover {
 .terminal-host .xterm-viewport {
   overscroll-behavior: contain;
 }
+.acp-search {
+  display: flex;
+  gap: 8px;
+}
+.acp-search input {
+  flex: 1;
+  min-width: 0;
+}
+.acp-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.acp-results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.acp-results p {
+  margin: 0;
+  font-size: var(--text-small);
+}

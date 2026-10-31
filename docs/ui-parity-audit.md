@@ -105,6 +105,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Scheduled tasks | Source | List, new, pause, run, delete, Real; interval, fixed time with days, webhook kinds | The form sent an invalid kind before this was run for real; no edit, the save route has no id |
 | Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
+| Settings | ACP registry | Source: search and add agents | Search, add, remove, Real against a local registry file | First listed install route only |
 | Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
 | Settings | Maintenance | Live name | Update checks, Real | Contents unobserved |
