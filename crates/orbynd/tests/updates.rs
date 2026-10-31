@@ -168,7 +168,8 @@ async fn a_link_waits_for_the_window_and_arrives_as_a_route() {
     let dir = TempDir::new();
     let (mut service, _thread) = setup(&dir, desktop(), "codex").await;
     let status = service.json("/api/shell").await;
-    assert_eq!(status, json!({ "attached": true, "windows": 0 }));
+    assert_eq!(status["attached"], true);
+    assert_eq!(status["windows"], 0);
     say(
         &mut service,
         r#"{"type":"open_link","url":"orbyn://run/start"}"#,
@@ -224,4 +225,34 @@ async fn a_window_reaches_the_shell_only_through_listed_actions() {
         .await;
     assert_eq!(code, 422);
     assert_eq!(server.json("/api/shell").await["attached"], false);
+}
+
+#[tokio::test]
+async fn the_shell_hears_when_work_starts_and_ends() {
+    let dir = TempDir::new();
+    let (mut service, thread) = setup(&dir, desktop(), "codex").await;
+    let activity = async |service: &mut Service, running: u64| {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            service.stdout.read_line(&mut line).unwrap();
+            assert!(!line.is_empty(), "stdout closed");
+            let Ok(value) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if value["type"] == "activity" && value["running"] == running {
+                return value;
+            }
+        }
+    };
+    let run = service.admit(&thread, "[hang]").await;
+    let seen = activity(&mut service, 1).await;
+    assert_eq!(seen["keep_awake"], true);
+    assert_eq!(seen["waiting"], 0);
+    service
+        .send(&format!("/api/runs/{run}/cancel"), json!({}))
+        .await;
+    service.finished(&thread).await;
+    let seen = activity(&mut service, 0).await;
+    assert_eq!(seen["keep_awake"], false);
 }

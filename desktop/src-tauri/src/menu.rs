@@ -83,6 +83,10 @@ pub fn on_action(app: &AppHandle, action: ShellAction) {
         ShellAction::ZoomIn => step_zoom(app, &window, ZOOM_STEP),
         ShellAction::ZoomOut => step_zoom(app, &window, -ZOOM_STEP),
         ShellAction::ZoomReset => set_zoom(app, &window, 1.0),
+        ShellAction::InstallCli
+        | ShellAction::RemoveCli
+        | ShellAction::OpenAccessibilitySettings
+        | ShellAction::OpenScreenRecordingSettings => crate::system::on_action(app, action),
     }
 }
 

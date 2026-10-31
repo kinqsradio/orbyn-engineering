@@ -15,6 +15,18 @@ export async function readShellStatus(signal?: AbortSignal) {
   return status;
 }
 
+const changeListeners = new Set<() => void>();
+
+/** Calls back when the shell's facts change. Returns a stop function. */
+export function onShellChange(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => {
+    changeListeners.delete(listener);
+  };
+}
+
+export const shellChanged = () => changeListeners.forEach((listener) => listener());
+
 /** Zoom keys the native menu doesn't catch: the keypad, and Cmd with the shifted `+`. */
 export function zoomKeyAction(event: KeyboardEvent): ShellAction | null {
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return null;

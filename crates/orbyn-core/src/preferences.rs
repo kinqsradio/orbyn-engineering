@@ -56,12 +56,14 @@ const DEFINITIONS: &[Definition] = defs![
     "default_model" Kind::Text, "", true;
     "prefer_saved_login" Kind::Bool, false, false;
     "app_update_mode" Kind::OneOf(&["automatic", "notify", "off"]), "notify", false;
+    "keep_awake_during_runs" Kind::Bool, true, false;
     "default_engine" Kind::Text, "", true;
     "fallback_model" Kind::Text, "", false;
     "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;
     "default_thread_env_mode" Kind::OneOf(ENV_MODE), "local", true;
     "new_worktrees_start_from_origin" Kind::Bool, true, true;
     "worktree_submodules" Kind::OneOf(SUBMODULES), "recursive", true;
+    "worktree_location" Kind::Text, "", true;
     "add_project_base_directory" Kind::Text, "", false;
     "text_generation_model" Kind::Text, "", false;
     "auto_thread_titles" Kind::Bool, true, true;

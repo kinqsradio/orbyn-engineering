@@ -12,6 +12,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
 import { Menu } from "../../ui/Menu";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
+import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
 
 const heading = (title: string) => (
@@ -61,6 +62,7 @@ export function GeneralSection() {
   return (
     <>
       {heading("General")}
+      <DesktopApp />
       <SettingGroup title="Notifications">
         <SettingRow
           title="Thread notifications"
@@ -138,6 +140,11 @@ export function GeneralSection() {
               },
               { key: "automatic_git_fetch_minutes", title: "Git fetch interval (minutes)" },
               { key: "provider_health_refresh_minutes", title: "Provider health interval (minutes)" },
+              {
+                key: "keep_awake_during_runs",
+                title: "Keep the computer awake during runs",
+                description: "In the desktop app. The screen can still sleep.",
+              },
             ],
           },
           {
@@ -319,6 +326,11 @@ export function WorktreesSection() {
                 ],
               },
               { key: "new_worktrees_start_from_origin", title: "Start from origin" },
+              {
+                key: "worktree_location",
+                title: "Worktree location",
+                description: "An absolute folder. Empty keeps them beside the repository. Existing worktrees stay where they are.",
+              },
               {
                 key: "worktree_submodules",
                 title: "Submodules",

@@ -308,7 +308,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
 - [x] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S | web done
 - [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
-- [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
+- [x] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
 - [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done | web done
@@ -346,7 +346,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
 - [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done | web done
-- [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
+- [x] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S | server done
 - [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
 
@@ -710,12 +710,12 @@ are not built in.
 - [x] P9 Deep links: protocol and Linux URL handler | apps/desktop/src/app/DesktopLinuxUrlHandler.ts | d | M | `orbyn://`, routes only; the Linux handler is N/A since Linux is not a target; not yet opened through Windows
 - [x] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
 - [x] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M | seen on a packaged macOS app and in CI on an installed package
-- [ ] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M
+- [x] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M | installs `orbyn` from Settings; seen on a packaged macOS app, and the command found the service; the Windows `.cmd` has unit tests only
 - [x] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | seen on a packaged macOS app; the Windows menu is untested
 - [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S
-- [ ] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S
+- [x] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S | seen holding a sleep assertion for a run and letting go after; Windows untested
 - [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M
-- [ ] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M
+- [x] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M | Settings lists Accessibility and Screen Recording with a link to each pane; macOS only
 - [ ] P18 Provider auth callback: Codex sign-in return | apps/desktop/src/app/CodexAuthCallback.ts | d | M | [auth-risk]
 - [x] P19 Local environment auth: tokens for bundled server | apps/desktop/src/backend/DesktopLocalEnvironmentAuth.ts | d | M | per-launch token over loopback, set by `orbynd`
 - [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M

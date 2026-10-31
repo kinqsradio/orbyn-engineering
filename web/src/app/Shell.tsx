@@ -23,7 +23,7 @@ import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
-import { inDesktopApp, zoomKeyAction } from "../api/shell";
+import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
@@ -423,11 +423,19 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
 
 /** Links and menu items from the desktop shell, which behave like keys pressed here. */
 export function onShellEvent(event: ShellEvent) {
-  if (event.type === "navigate") {
-    window.location.hash = event.href.slice(1);
-    return;
+  switch (event.type) {
+    case "navigate":
+      window.location.hash = event.href.slice(1);
+      return;
+    case "command":
+      if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
+      return;
+    case "changed":
+      shellChanged();
+      return;
+    case "failed":
+      useUi.getState().pushToast(event.message);
   }
-  if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
 }
 
 export function Shell() {

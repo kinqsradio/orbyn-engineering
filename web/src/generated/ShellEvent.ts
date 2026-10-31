@@ -4,4 +4,4 @@
  * What the desktop shell tells the windows. A link or menu item only ever moves
  * the UI; nothing here can start work.
  */
-export type ShellEvent = { "type": "navigate", href: string, } | { "type": "command", command: string, };
+export type ShellEvent = { "type": "navigate", href: string, } | { "type": "command", command: string, } | { "type": "changed" } | { "type": "failed", message: string, };
