@@ -40,6 +40,7 @@ impl EngineDriver for Fake {
                 managed: true,
                 skill_delivery: Vec::new(),
                 goal_control: false,
+                decline_feedback: false,
             },
         }
     }

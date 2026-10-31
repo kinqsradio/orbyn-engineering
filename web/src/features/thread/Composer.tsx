@@ -1,5 +1,5 @@
 import { composerMarkup } from "./composerMarkup";
-import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, Square, X,
+import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, SlidersHorizontal, Square, X,
   RotateCcw,
 } from "lucide-react";
 import {
@@ -22,6 +22,7 @@ import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
+import { Menu } from "../../ui/Menu";
 import { useWorkspace } from "../../state/workspace";
 import { ComposerBanners, ContextMeter, InlineLimits, StashDrawer, StopNotice } from "./ComposerExtras";
 import {
@@ -80,6 +81,10 @@ const LOCAL_COMMANDS: Suggestion[] = [
   { value: "btw", detail: "Ask in a side chat" },
 ];
 const PLAN_COMMANDS = new Set(["plan", "default"]);
+/** Below this the footer's controls fold into one menu. */
+const NARROW_BAR = 440;
+const WIDE = 1000;
+const MENU_LIFT = 150;
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
 
@@ -118,6 +123,20 @@ export function Composer({
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
   const shiftPaste = useRef(false);
+  const bar = useRef<HTMLDivElement>(null);
+  const [narrowBar, setNarrowBar] = useState(false);
+  const [overflow, setOverflow] = useState<{ x: number; y: number } | null>(null);
+  const openOverflow = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setOverflow({ x: rect.left, y: rect.top - MENU_LIFT });
+  };
+  useLayoutEffect(() => {
+    const element = bar.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setNarrowBar((entry?.contentRect.width ?? WIDE) < NARROW_BAR));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const caretAfterEdit = useRef<number | null>(null);
   const mirror = useRef<HTMLDivElement>(null);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
@@ -251,11 +270,20 @@ export function Composer({
     setError(null);
     try {
       await beforeSend?.();
+      // Claude hears a typed reply as the reason it was declined, so nothing is queued.
+      if (pendingHere.length > 0 && engine?.capabilities.decline_feedback) {
+        await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false, prompt.trim())));
+        setDraft(thread.id, "");
+        void refreshThread(thread.id);
+        return true;
+      }
       await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false)));
       const ids = attachments.flatMap((file) => file.id ?? []);
       const run = busy ? null : await api.startRun(thread.id, prompt.trim(), ids);
-      if (steering) await api.steer(thread.id, prompt.trim());
-      else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
+      if (steering) {
+        const steered = await api.steer(thread.id, prompt.trim());
+        if (steered.state === "queued") useUi.getState().pushToast("This engine reads it on its next turn");
+      } else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
       setRecall(null);
       // Text typed after pressing Send stays; only what was sent is removed.
@@ -692,7 +720,9 @@ export function Composer({
           aria-describedby="composer-help"
           placeholder={
             pendingHere.length > 0
-              ? "Send a message to decline and redirect the agent"
+              ? engine?.capabilities.decline_feedback
+                ? "Type a reply to decline with feedback"
+                : "Send a message to decline and redirect the agent"
               : "Ask anything. @ files, $ skills, / commands"
           }
           data-autofocus={layout === "narrow" ? undefined : true}
@@ -701,7 +731,7 @@ export function Composer({
         <span id="composer-help" className="sr-only">
           Enter to send, Shift+Enter for a new line
         </span>
-        <div className="composer-bar">
+        <div ref={bar} className="composer-bar">
           <input
             ref={filePicker}
             type="file"
@@ -727,7 +757,7 @@ export function Composer({
               <span>{stashes.length}</span>
             </button>
           ) : null}
-          {planControls || planMode ? (
+          {(planControls || planMode) && !narrowBar ? (
             <button
               type="button"
               className="composer-control"
@@ -742,6 +772,12 @@ export function Composer({
           ) : null}
           <span className="composer-spacer" />
           {contextMeter ? <ContextMeter threadId={thread.id} disabled={busy} /> : null}
+          {narrowBar ? (
+            <IconButton label="Composer controls" onClick={(event) => openOverflow(event.currentTarget)}>
+              <SlidersHorizontal size={16} aria-hidden />
+            </IconButton>
+          ) : null}
+          <span className="composer-controls" data-folded={narrowBar || undefined}>
           {engine ? (
             <ModelPickerTrigger
               engines={installed}
@@ -772,6 +808,7 @@ export function Composer({
               <span>{ACCESS[access].label}</span>
             </button>
           ) : null}
+          </span>
           {busy && !draft.trim() ? (
             <button
               type="button"
@@ -841,6 +878,44 @@ export function Composer({
         </dl>
       </div>
       {traits.menu}
+      {overflow ? (
+        <Menu
+          x={overflow.x}
+          y={overflow.y}
+          label="Composer controls"
+          onClose={() => setOverflow(null)}
+          items={[
+            {
+              label: model?.label ?? thread.model ?? engineName,
+              disabled: busy,
+              onSelect: () => document.querySelector<HTMLElement>("form.composer [data-model-trigger]")?.click(),
+            },
+            {
+              label: "Effort",
+              disabled: busy,
+              onSelect: () => {
+                const trigger = effortButton();
+                if (trigger) traits.openAt(trigger, false);
+              },
+            },
+            ...(unmanaged
+              ? []
+              : [
+                  {
+                    label: `Permissions: ${ACCESS[access].label}`,
+                    disabled: busy,
+                    onSelect: () => {
+                      const trigger = effortButton();
+                      if (trigger) traits.openAt(trigger, true);
+                    },
+                  },
+                ]),
+            ...(planControls
+              ? [{ label: "Plan", selected: planMode, disabled: busy, onSelect: () => void setPlanMode(!planMode) }]
+              : []),
+          ]}
+        />
+      ) : null}
       </div>
     </form>
   );

@@ -1,4 +1,5 @@
 import { readToken } from "./token";
+import type { SteerResult } from "../generated/SteerResult";
 import type {
   BranchInfo,
   GitAction,
@@ -150,7 +151,8 @@ export const api = {
   removeQueued: (id: string) => request<void>("DELETE", `/api/queue/${q(id)}`),
   sendQueuedNow: (id: string) => request<void>("POST", `/api/queue/${q(id)}/send-now`),
   steer: (threadId: string, prompt: string) =>
-    request<void>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
+    request<SteerResult>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
+  restartSession: (threadId: string) => request<void>("POST", `/api/threads/${q(threadId)}/restart-session`),
   patchThread: (id: string, body: UpdateThread) =>
     request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
   threadLimits: (threadId: string, signal?: AbortSignal) =>
@@ -270,8 +272,8 @@ export const api = {
 
   pendingApprovals: (signal?: AbortSignal) =>
     request<Approval[]>("GET", "/api/approvals?state=pending", undefined, signal),
-  decideApproval: (id: string, allow: boolean, remember: boolean) =>
-    request<Approval>("POST", `/api/approvals/${q(id)}/decide`, { allow, remember }),
+  decideApproval: (id: string, allow: boolean, remember: boolean, feedback?: string) =>
+    request<Approval>("POST", `/api/approvals/${q(id)}/decide`, { allow, remember, ...(feedback ? { feedback } : {}) }),
 
   engines: (signal?: AbortSignal) =>
     request<EngineStatus[]>("GET", "/api/engines", undefined, signal),

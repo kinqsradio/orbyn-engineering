@@ -74,7 +74,11 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Approval placeholder | Live | Match | Declines, then queues |
 | Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
 | Composer | Pull requests, threads | Source: # browse and search, @ lookup, chips | Menu Real against a stand-in gh; inserts a Markdown link | Link text, no chip until the rich editor |
-| Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double | Long-press flip absent |
+| Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double; an engine with no mid-turn input takes it next turn, and a refused one goes to the queue | Long-press flip absent; no per-message delivered mark in the timeline |
+| Composer | Compact controls | Source: narrow composers fold controls into one menu | Below 440 wide, Real | Own icon |
+| Composer | Text decline | Source: typed reply declines Claude with feedback | Match, Real through the fake Claude | n/a |
+| Thread | Goal | Source: end line, /goal clear, pause, resume | End line and the row's Goal status, Real | Pause and Resume on Codex only |
+| Timeline | Lifecycle rows | Source: dividers for restarts, handoffs and context boundaries | Notices for restart, lost session, engine switch, compaction, rewind, Real | Plain notices, not dividers |
 | Composer | Send shortcut | Source: Enter, Mod+Enter multiline, Mod+Enter | Match, Real | 0 |
 | Composer | Recall, stash, large paste, drop | Source | Match, Real | Stash keeps text only, attachments are not stashed |
 | Composer | Message limit | Source: 120,000, draft kept | Match, Real | Counted in the client as well as the service |

@@ -7,11 +7,13 @@ import {
   PanelRight,
   Rows3,
   ShieldAlert,
+  Target,
   WifiOff,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
+import { toFailure } from "../../lib/useAsync";
 import { useCommand } from "../../app/shortcuts";
 import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
@@ -116,6 +118,38 @@ const statusSentence = (state: RunState, tools: number): string => {
 };
 
 /** The server's run state, with the Stop action, at the end of the conversation. */
+/** The goal at the end of the thread, and the words that change it. */
+function GoalLine({ thread, canPause }: { thread: Thread; canPause: boolean }) {
+  const goal = thread.goal;
+  const refreshThread = useWorkspace((store) => store.refreshThread);
+  const pushToast = useUi((store) => store.pushToast);
+  if (!goal) return null;
+  const send = (prompt: string) => {
+    (thread.active_run ? api.enqueue(thread.id, prompt, []) : api.startRun(thread.id, prompt)).then(
+      () => void refreshThread(thread.id),
+      (failure: unknown) => pushToast(`Couldn't change the goal. ${toFailure(failure).message}`),
+    );
+  };
+  const paused = goal.status === "paused";
+  return (
+    <p className="end-line">
+      <Target size={14} aria-hidden />
+      <span className="end-line-text">
+        Goal: {goal.objective}
+        {goal.status === "active" ? "" : ` (${goal.status.replace(/_/g, " ")})`}
+      </span>
+      {canPause ? (
+        <button type="button" className="text-action" onClick={() => send(paused ? "/goal resume" : "/goal pause")}>
+          {paused ? "Resume" : "Pause"}
+        </button>
+      ) : null}
+      <button type="button" className="text-action" onClick={() => send("/goal clear")}>
+        Clear
+      </button>
+    </p>
+  );
+}
+
 function RunStatusLine({ thread }: { thread: Thread }) {
   const state = threadRunState(thread);
   const active = thread.active_run;
@@ -131,7 +165,7 @@ function RunStatusLine({ thread }: { thread: Thread }) {
       <div className="thread-state" role="status">
         <span className={state === "interrupted" ? "run-status" : "sr-only"}>{runStateLabels[state]}</span>
         {settledAt ? (
-          <p className="settled-note">
+          <p className="end-line">
             <CircleCheck size={14} aria-hidden />
             Settled {relativeTime(settledAt).toLowerCase()}
             <button
@@ -224,9 +258,9 @@ function StreamBanner({ threadId }: { threadId: string }) {
   const status = useThreadLogs((state) => state.streams[threadId]?.status);
   if (status !== "reconnecting") return null;
   return (
-    <p className="banner banner-warn" role="status">
-      <WifiOff size={16} aria-hidden />
-      Reconnecting. The thread resumes from the last event.
+    <p className="end-line" role="status">
+      <WifiOff size={14} aria-hidden />
+      <span className="end-line-text">Reconnecting. The thread resumes from the last event.</span>
     </p>
   );
 }
@@ -359,7 +393,6 @@ export function ThreadView({ id }: { id: string }) {
         />
         {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
         <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined}>
-          <StreamBanner threadId={id} />
           {project && !project.trusted ? (
             <p className="banner banner-warn">
               <ShieldAlert size={16} aria-hidden />
@@ -372,7 +405,13 @@ export function ThreadView({ id }: { id: string }) {
               activeRunId={thread.active_run?.id ?? null}
               threadId={id}
               active={thread.active_run !== null}
-                footer={<RunStatusLine thread={thread} />}
+                footer={
+                  <>
+                    <StreamBanner threadId={id} />
+                    <GoalLine thread={thread} canPause={engine?.capabilities.goal_control === true} />
+                    <RunStatusLine thread={thread} />
+                  </>
+                }
             />
           )}
           <ThreadErrorBanner thread={thread} />

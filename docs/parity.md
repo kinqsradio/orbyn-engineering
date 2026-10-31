@@ -146,20 +146,20 @@ toward completion.
 - [ ] B33 Microphone ranking: priority across device kinds | apps/mobile/src/features/settings/SettingsMicrophoneRouteScreen.tsx | m | M
 - [x] B34 Slash commands: `/` menu with T3 and provider commands | apps/web/src/components/chat/ComposerCommandMenu.tsx | w d m | M | server done | web done
 - [x] B35 Skills: `$` menu, also in slash menu by toggle | apps/web/src/components/chat/SkillInlineText.tsx | w d m | M | server done | web done
-- [ ] B36 Restart agent session: reloads skills, plugins and MCP config | apps/web/src/components/CommandPalette.tsx | w d s | S
+- [x] B36 Restart agent session: reloads skills, plugins and MCP config | apps/web/src/components/CommandPalette.tsx | w d s | S | web done
 - [x] B37 `/compact`: manual compaction, also from context meter | docs/user/composer.md | w d m s | M | server done | web done
-- [ ] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L
+- [x] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L | web done
 - [x] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
 - [ ] B40 Inline context chips: terminal, review comment, annotation, file at cursor | apps/web/src/components/ContextChip.tsx | w d m | L
 - [x] B41 PR chips: `#` browse, number and text search | docs/user/composer.md | w d | M | web done: a Markdown link in the prompt, not a chip
 - [x] B42 Thread chips: `@` lookup, on-demand read by the agent | apps/web/src/components/ThreadContextChip.tsx | w d m | M | web done: a Markdown link in the prompt, not a chip
-- [ ] B43 Drag threads to composer: multi-select, cross-environment transcript file | apps/web/src/components/chat/composerThreadImport.ts | w d | M
+- [x] B43 Drag threads to composer: multi-select, cross-environment transcript file | apps/web/src/components/chat/composerThreadImport.ts | w d | M | web done: a thread link, as there is one environment
 - [x] B44 Image shelf and chips: thumbnails plus inline references | apps/web/src/components/chat/ComposerImageThumbnail.tsx | w d | M
 - [ ] B45 Chip clipboard: copy/paste keeps chips, refetches files | packages/contracts/src/composerContextClipboard.ts | w d | L
 - [x] B46 Readable copy: Markdown output with links replacing chips | apps/web/src/components/chat/MessageCopyButton.tsx | w d | S
 - [ ] B47 Question attachments: files in custom answers, kept per question | docs/user/question-attachments.md | w d m s | M
 - [x] B48 Pending approval actions: approve or reject inline | apps/web/src/components/chat/ComposerPendingApprovalActions.tsx | w d m | M | web done
-- [ ] B49 Text decline to Claude: typed reply rejects with feedback | docs/user/permission-modes.md | w d m | S
+- [x] B49 Text decline to Claude: typed reply rejects with feedback | docs/user/permission-modes.md | w d m | S | web done
 - [x] B50 Question panel: async question answer or dismiss | apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx | w d m | M
 - [ ] B51 Secret request card: agent asks for a secret, you answer | apps/web/src/components/chat/SecretRequestCard.tsx | w d m s | M
 - [ ] B52 Link request card: agent asks to link a machine | apps/web/src/components/chat/LinkRequestCard.tsx | w d m s | M
@@ -167,18 +167,18 @@ toward completion.
 - [ ] B54 Compact chip: offered on return after prompt cache expiry | docs/user/providers-claude.md | w d | M
 - [x] B55 Composer banners: provider, update, clone, retry notices | apps/web/src/components/chat/ComposerBannerStack.tsx | w d | M
 - [x] B56 Persistent composer context: keeps branch controls after first send | packages/contracts/src/settings.ts | w d | S
-- [ ] B57 Compact controls menu: narrow composers fold model, traits, permission and plan controls into one overflow menu | apps/web/src/components/chat/CompactComposerControlsMenu.tsx | w d | S
+- [x] B57 Compact controls menu: narrow composers fold model, traits, permission and plan controls into one overflow menu | apps/web/src/components/chat/CompactComposerControlsMenu.tsx | w d | S | web done
 - [x] B58 Text direction: each composer block gets left-to-right or right-to-left direction from its own text | apps/web/src/composer-text-direction.ts | w d | S
 - [x] B59 Composer editor switches: turn live Markdown styling off, show or hide skills in the slash menu (skills still appear with `$`), show context meter | packages/contracts/src/settings.ts | w d m | S
 - [ ] B60 Compact composer on phone: sheets for command popover, queued-message edit, attachment button and error notice | apps/mobile/src/features/threads/ComposerCommandPopover.tsx | m | M
-- [ ] B61 Steer delivery states: each mid-turn message reports pending, delivered or failed by id; a failed one returns to the queue; engines with no mid-turn input hold it for the next turn | src-tauri/src/providers/steering.rs | w d s | M
+- [x] B61 Steer delivery states: each mid-turn message reports pending, delivered or failed by id; a failed one returns to the queue; engines with no mid-turn input hold it for the next turn | src-tauri/src/providers/steering.rs | w d s | M | web done: the reply says delivered or queued, with no per-message mark in the timeline
 - [ ] B62 Response style packs: per-thread output-saving packs added as one folded block only when the selection changes and every N messages | src/token-saver.ts | w d | M | beyond T3
 - [ ] B63 Workflow recipes: local step lists (prompt, slash command, check, approval) with a dry run showing supported, fallback or blocked per engine; run goes through the normal queue | docs/recipes.md | w d s | M | beyond T3
 - [ ] B64 Turn checks: optional run of the checkout's own quick check after a clean turn; a failure queues one editable fix message, never a loop; needs trusted folder | src-tauri/src/checks.rs | w d s | M | beyond T3
 - [ ] B65 Prompt context chips: documents and folders become context blocks; sent blocks render as read-only chips that open the file, reveal the path or show the text | src/message-attachments.ts | w d | M | beyond T3
 
 ## C. Timeline and rendered output
-- [ ] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L
+- [x] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L | web done
 - [x] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
 - [x] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
 - [ ] C4 Orchestrator summaries: action-specific wording, failures not counted | docs/user/activity-log.md | w d | M
@@ -210,10 +210,10 @@ toward completion.
 - [x] C30 Word wrap and chat width: comfortable, wide, full | packages/contracts/src/settings.ts | w d | S
 - [ ] C31 Right panel tabs: add-tab menu (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Side chat), mute tab, close, maximize, resize handle, sheet on small screens | apps/web/src/components/RightPanelTabs.tsx | w d | M
 - [x] C32 Proactive panels: opt-in setting opens the linked PR, or the Changes panel after a turn touching at least 3 files or 50 lines; a panel you opened or closed wins | apps/web/src/hooks/useProactivePanels.ts | w d | M
-- [ ] C33 Thread end lines: sync state, reconnect, goal and status lines at the end of the timeline share one family with icon, detail and actions | apps/web/src/components/chat/ThreadNow.tsx | w d m | S
+- [x] C33 Thread end lines: sync state, reconnect, goal and status lines at the end of the timeline share one family with icon, detail and actions | apps/web/src/components/chat/ThreadNow.tsx | w d m | S | web done
 - [x] C34 Changed files tree in timeline: per-turn file list with open-diff action | apps/web/src/components/chat/ChangedFilesTree.tsx | w d | S
 - [x] C35 Error banner: thread-level error with dismiss and retry actions | apps/web/src/components/chat/ThreadErrorBanner.tsx | w d m | S
-- [ ] C36 Lifecycle rows: system dividers and lifecycle rows mark restarts, handoffs and context boundaries | apps/web/src/components/chat/V2LifecycleRow.tsx | w d m | S
+- [x] C36 Lifecycle rows: system dividers and lifecycle rows mark restarts, handoffs and context boundaries | apps/web/src/components/chat/V2LifecycleRow.tsx | w d m | S | web done
 - [ ] C37 Sentence tool trace: each tool call is a verb-object row with kind icon; calls group in fives with a count summary; live view bounded to 30 rows; turn folds to a summary at the end | src/tool-trace.ts | w d | L
 - [x] C38 Bounded tool snapshots: input preview 4 KiB, output preview 8 KiB, UTF-8-safe truncation notice, 64 snapshots per run | docs/providers.md | s | S | server done: arguments 16 KiB rather than 4, because cut JSON no longer parses
 - [x] C39 Delta coalescing: text deltas merged for 33 ms or 8 KiB before sending, only new text per event | src-tauri/src/providers.rs | s | S | server done

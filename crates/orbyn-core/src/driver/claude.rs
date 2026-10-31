@@ -161,6 +161,7 @@ impl EngineDriver for ClaudeDriver {
                     SkillDelivery::McpSkillServer,
                 ],
                 goal_control: false,
+                decline_feedback: true,
             },
         }
     }
@@ -626,6 +627,17 @@ impl StreamMapper {
                 .into(),
             ],
             Some("rate_limit_event") => rejected_limit(frame).into_iter().collect(),
+            Some("system")
+                if frame.get("subtype").and_then(Value::as_str) == Some("compact_boundary") =>
+            {
+                vec![
+                    AgUiEvent::Custom {
+                        name: "context.compacted".into(),
+                        value: Value::Null,
+                    }
+                    .into(),
+                ]
+            }
             Some("result") => {
                 self.outcome = Some(result_outcome(frame));
                 let mut events = session(frame);

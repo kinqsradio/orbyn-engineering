@@ -121,6 +121,13 @@ Claude stays on `--permission-mode default` and the gate accepts for it, because
 still wins, computer and browser actions still ask, and the write scope is checked
 first. Plan mode refuses file changes, runs Claude in `plan` and Codex read-only.
 
+`response_streaming_mode` `turn` holds a reply's text until that message ends;
+`paragraph` is the default and writes it as it comes, merged over 33 ms. Reasoning and
+tools always go out as they happen. Steering answers `delivered` or `queued`: an engine
+with no mid-turn input takes it on the next turn, and an engine that refuses one sends it
+to the queue with a `steer.failed` note. A typed decline carries its words only on
+engines with `decline_feedback`, which today is Claude; elsewhere the message queues.
+
 Attachments stay in app data, never in a target, and are removed with their thread.
 The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per other
 file. A record exists only once its bytes are in place, and a message naming an

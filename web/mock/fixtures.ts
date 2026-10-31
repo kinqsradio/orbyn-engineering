@@ -57,7 +57,7 @@ export const projects: Project[] = [
 
 const caps = (over: Partial<EngineStatus["capabilities"]> = {}): EngineStatus["capabilities"] => ({
   streaming: true,
-  goal_control: false,
+  goal_control: false, decline_feedback: false,
   approvals: true,
   resume: true,
   mcp: true,
