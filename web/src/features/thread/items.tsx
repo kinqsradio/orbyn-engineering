@@ -173,7 +173,7 @@ function InspectItem({ item }: { item: ToolItem }) {
       </button>
       {open ? (
         <Dialog title="Item details" onClose={() => setOpen(false)}>
-          <ItemDetails threadId={threadId} id={item.key.replace(/^tool:/, "")} />
+          <ItemDetails threadId={threadId} id={item.callId} />
         </Dialog>
       ) : null}
     </>

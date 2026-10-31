@@ -27,6 +27,8 @@ export interface ReasoningItem extends ItemBase {
 }
 export interface ToolItem extends ItemBase {
   kind: "tool";
+  /** The engine's id for the call, which the server's item record also uses. */
+  callId: string;
   name: string;
   args: string;
   /** Output streamed while the tool runs, until its final result arrives. */
@@ -253,6 +255,8 @@ function patch<K extends ThreadItem["kind"]>(
 function applyEvent(fold: Fold, wire: WireThreadEvent): void {
   const event: AgUiEvent = wire.event;
   const base = { seq: wire.seq, ts: wire.ts, runId: wire.run_id };
+  // Engines reuse ids between runs; each run keeps its own rows.
+  const scoped = (kind: string, id: string) => `${kind}:${wire.run_id ?? ""}:${id}`;
   const log = (label: string, detail: string | null, tone: TimelineEntry["tone"] = "neutral") =>
     fold.timeline.push({ seq: wire.seq, ts: wire.ts, label, detail, tone });
   const endRun = (outcome: RunSpan["outcome"]) => {
@@ -298,7 +302,7 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
     case "TEXT_MESSAGE_START":
       put(fold, {
         ...base,
-        key: `msg:${event.messageId}`,
+        key: scoped("msg", event.messageId),
         kind: "message",
         role: event.role,
         text: "",
@@ -306,37 +310,38 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       });
       break;
     case "TEXT_MESSAGE_CONTENT":
-      patch(fold, `msg:${event.messageId}`, "message", (item) => ({
+      patch(fold, scoped("msg", event.messageId), "message", (item) => ({
         ...item,
         text: item.text + event.delta,
       }));
       break;
     case "TEXT_MESSAGE_END":
-      patch(fold, `msg:${event.messageId}`, "message", (item) => ({ ...item, done: true }));
+      patch(fold, scoped("msg", event.messageId), "message", (item) => ({ ...item, done: true }));
       break;
     case "REASONING_MESSAGE_START":
       put(fold, {
         ...base,
-        key: `rsn:${event.messageId}`,
+        key: scoped("rsn", event.messageId),
         kind: "reasoning",
         text: "",
         done: false,
       });
       break;
     case "REASONING_MESSAGE_CONTENT":
-      patch(fold, `rsn:${event.messageId}`, "reasoning", (item) => ({
+      patch(fold, scoped("rsn", event.messageId), "reasoning", (item) => ({
         ...item,
         text: item.text + event.delta,
       }));
       break;
     case "REASONING_MESSAGE_END":
-      patch(fold, `rsn:${event.messageId}`, "reasoning", (item) => ({ ...item, done: true }));
+      patch(fold, scoped("rsn", event.messageId), "reasoning", (item) => ({ ...item, done: true }));
       break;
     case "TOOL_CALL_START":
       put(fold, {
         ...base,
-        key: `tool:${event.toolCallId}`,
+        key: scoped("tool", event.toolCallId),
         kind: "tool",
+        callId: event.toolCallId,
         name: event.toolCallName,
         args: "",
         output: "",
@@ -347,24 +352,23 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       log(`Tool: ${event.toolCallName}`, null);
       break;
     case "TOOL_CALL_ARGS":
-      patch(fold, `tool:${event.toolCallId}`, "tool", (item) => ({
+      patch(fold, scoped("tool", event.toolCallId), "tool", (item) => ({
         ...item,
         args: item.args + event.delta,
       }));
       break;
     case "TOOL_CALL_END":
-      patch(fold, `tool:${event.toolCallId}`, "tool", (item) => ({ ...item, done: true }));
+      patch(fold, scoped("tool", event.toolCallId), "tool", (item) => ({ ...item, done: true }));
       break;
     case "TOOL_CALL_RESULT":
-      patch(fold, `tool:${event.toolCallId}`, "tool", (item) => ({
+      patch(fold, scoped("tool", event.toolCallId), "tool", (item) => ({
         ...item,
         result: event.content,
         done: true,
       }));
       break;
     case "ACTIVITY_SNAPSHOT": {
-      // Drivers reuse ids like "plan" between runs; each run keeps its own card.
-      const key = `act:${wire.run_id ?? ""}:${event.messageId}`;
+      const key = scoped("act", event.messageId);
       // AG-UI: `replace: false` keeps an activity that already exists.
       if (event.replace === false && fold.index.has(key)) break;
       const common = { ...base, key };
@@ -414,7 +418,7 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         const body = record(event.value);
         const delta = body?.delta;
         if (typeof body?.toolCallId === "string" && typeof delta === "string") {
-          patch(fold, `tool:${body.toolCallId}`, "tool", (item) => ({
+          patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({
             ...item,
             output: item.output + delta,
           }));
@@ -423,7 +427,7 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         const body = record(event.value);
         const code = body?.exitCode;
         if (typeof body?.toolCallId === "string" && typeof code === "number") {
-          patch(fold, `tool:${body.toolCallId}`, "tool", (item) => ({ ...item, exitCode: code }));
+          patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({ ...item, exitCode: code }));
         }
       } else if (event.name === "subagent.activity") {
         const body = record(event.value);

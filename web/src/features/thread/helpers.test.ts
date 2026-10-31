@@ -95,7 +95,7 @@ describe("groupWork", () => {
   it("joins neighbouring work and leaves messages out", () => {
     const entries = groupWork([
       { ...base, kind: "reasoning", key: "a", text: "", done: true },
-      { ...base, kind: "tool", key: "b", name: "Read", args: "", output: "", result: "ok", done: true, exitCode: null },
+      { ...base, kind: "tool", key: "b", callId: "b", name: "Read", args: "", output: "", result: "ok", done: true, exitCode: null },
       { ...base, kind: "message", key: "c", role: "assistant", text: "hi", done: true },
     ]);
     expect(entries.map((entry) => entry.kind)).toEqual(["work", "message"]);
@@ -108,7 +108,7 @@ describe("arrangeTimeline", () => {
   const items: ThreadItem[] = [
     { ...base, ts: at(0), kind: "message", key: "u", role: "user", text: "go", done: true },
     { ...base, ts: at(1), kind: "message", key: "m1", role: "assistant", text: "looking", done: true },
-    { ...base, ts: at(2), kind: "tool", key: "t", name: "command", args: "{}", output: "", result: "x", done: true, exitCode: 0 },
+    { ...base, ts: at(2), kind: "tool", key: "t", callId: "t", name: "command", args: "{}", output: "", result: "x", done: true, exitCode: 0 },
     { ...base, ts: at(3), kind: "message", key: "m2", role: "assistant", text: "done", done: true },
   ];
   it("folds a finished turn down to the prompt and the answer", () => {
@@ -130,7 +130,7 @@ describe("arrangeTimeline", () => {
 
 describe("summarizeWork", () => {
   const tool = (name: string, args: unknown, exitCode: number | null = 0): ToolItem => ({
-    seq: 1, runId: "r", ts: "", kind: "tool", key: name, name, args: JSON.stringify(args), output: "", result: "", done: true, exitCode,
+    seq: 1, runId: "r", ts: "", kind: "tool", key: name, callId: name, name, args: JSON.stringify(args), output: "", result: "", done: true, exitCode,
   });
   it("names up to two kinds of work and counts the rest", () => {
     const { summary } = summarizeWork([
