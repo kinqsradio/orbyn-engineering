@@ -96,7 +96,11 @@ mod tests {
 
     #[test]
     fn links_are_picked_out_of_arguments() {
-        let args = ["app".to_owned(), "orbyn://usage".to_owned(), "--flag".to_owned()];
+        let args = [
+            "app".to_owned(),
+            "orbyn://usage".to_owned(),
+            "--flag".to_owned(),
+        ];
         assert_eq!(links_in(&args), ["orbyn://usage"]);
     }
 }

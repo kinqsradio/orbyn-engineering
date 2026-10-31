@@ -2,6 +2,7 @@
 //! to the service as commands, the same ones the app's keys run. `Cmd+W`, `Cmd+N` and
 //! the like belong to the page, which has its own rules for them, so no item takes them.
 
+use crate::core_process::ShellAction;
 use std::sync::Mutex;
 use tauri::menu::{
     AboutMetadata, Menu, MenuBuilder, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
@@ -73,7 +74,19 @@ fn speech(start: bool) {
     unsafe { app.sendAction_to_from(action, None, None) };
 }
 
-pub fn on_event(app: &AppHandle, event: &MenuEvent) {
+/// A window asking for what its keys can't reach through the menu, like the keypad.
+pub fn on_action(app: &AppHandle, action: ShellAction) {
+    let Some(window) = crate::main_window(app) else {
+        return;
+    };
+    match action {
+        ShellAction::ZoomIn => step_zoom(app, &window, ZOOM_STEP),
+        ShellAction::ZoomOut => step_zoom(app, &window, -ZOOM_STEP),
+        ShellAction::ZoomReset => set_zoom(app, &window, 1.0),
+    }
+}
+
+pub fn on_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
     if let Some(command) = page_command(id) {
         crate::reveal(app);
@@ -151,7 +164,8 @@ fn app_submenu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
 }
 
 fn file_submenu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
-    let mut menu = SubmenuBuilder::new(app, "File").item(&item(app, "new-thread", "New Thread", None)?);
+    let mut menu =
+        SubmenuBuilder::new(app, "File").item(&item(app, "new-thread", "New Thread", None)?);
     if cfg!(not(target_os = "macos")) {
         menu = menu
             .item(&item(app, "settings", "Settings...", Some("CmdOrCtrl+,"))?)
@@ -170,7 +184,12 @@ fn edit_submenu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
         .cut()
         .copy()
         .paste()
-        .item(&item(app, "paste-text", "Paste as Text", Some("CmdOrCtrl+Shift+V"))?)
+        .item(&item(
+            app,
+            "paste-text",
+            "Paste as Text",
+            Some("CmdOrCtrl+Shift+V"),
+        )?)
         .separator()
         .select_all();
     #[cfg(target_os = "macos")]
@@ -195,10 +214,25 @@ fn view_submenu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
         .item(&item(app, "palette", "Command Palette", None)?)
         .separator()
         .item(&item(app, "reload", "Reload", Some("CmdOrCtrl+R"))?)
-        .item(&item(app, "force-reload", "Force Reload", Some("CmdOrCtrl+Shift+R"))?)
-        .item(&item(app, "devtools", "Toggle Developer Tools", Some(devtools))?)
+        .item(&item(
+            app,
+            "force-reload",
+            "Force Reload",
+            Some("CmdOrCtrl+Shift+R"),
+        )?)
+        .item(&item(
+            app,
+            "devtools",
+            "Toggle Developer Tools",
+            Some(devtools),
+        )?)
         .separator()
-        .item(&item(app, "zoom-reset", "Actual Size", Some("CmdOrCtrl+0"))?)
+        .item(&item(
+            app,
+            "zoom-reset",
+            "Actual Size",
+            Some("CmdOrCtrl+0"),
+        )?)
         .item(&item(app, "zoom-in", "Zoom In", Some("CmdOrCtrl+="))?)
         .item(&item(app, "zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?)
         .separator()

@@ -7,9 +7,11 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use orbyn_contracts::{ShellEvent, ShellStatus};
-use serde_json::Value;
+use orbyn_contracts::{ShellAction, ShellEvent, ShellStatus};
+use serde_json::{Value, json};
 use tokio::sync::{broadcast, mpsc};
+
+use crate::error::{CoreError, Result};
 
 /// Events kept for a window that has not connected yet, as with a link that
 /// launched the app.
@@ -65,6 +67,17 @@ impl ShellBridge {
         lock(&self.lines)
             .as_ref()
             .is_some_and(|lines| lines.send(line).is_ok())
+    }
+
+    /// Passes a window's request on. A plain server has no shell to ask.
+    pub fn request(&self, action: ShellAction) -> Result<()> {
+        if self.send(json!({ "type": "shell_action", "action": action })) {
+            Ok(())
+        } else {
+            Err(CoreError::Unsupported(
+                "This needs the desktop app.".to_owned(),
+            ))
+        }
     }
 
     pub fn status(&self) -> ShellStatus {
@@ -200,6 +213,19 @@ mod tests {
         drop(first);
         assert_eq!(shell.status().windows, 0);
         assert!(shell.watch().held.is_empty());
+    }
+
+    #[test]
+    fn a_request_reaches_the_shell_and_fails_without_one() {
+        let shell = ShellBridge::default();
+        assert!(shell.request(ShellAction::ZoomIn).is_err());
+        let (lines, mut out) = mpsc::unbounded_channel();
+        shell.attach(lines);
+        shell.request(ShellAction::ZoomReset).unwrap();
+        assert_eq!(
+            out.try_recv().unwrap(),
+            json!({ "type": "shell_action", "action": "zoom_reset" })
+        );
     }
 
     #[test]
