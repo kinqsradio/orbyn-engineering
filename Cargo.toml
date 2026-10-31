@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["desktop/src-tauri"]
 members = ["crates/orbyn-contracts", "crates/orbyn-core", "crates/orbynd"]
 
 [workspace.package]

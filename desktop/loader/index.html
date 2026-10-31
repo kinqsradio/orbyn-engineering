@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orbyn Engineering</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #fafafa; --text: #202124; --muted: #67676f; --accent: #2563eb; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #171717; --text: #f4f4f5; --muted: #a1a1aa; --accent: #93c5fd; }
+      }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; box-sizing: border-box;
+        background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+      main { max-width: 420px; }
+      h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+      p { margin: 0 0 16px; color: var(--muted); overflow-wrap: anywhere; }
+      button { height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--accent); color: var(--bg); font: inherit; font-size: 13px; cursor: pointer; }
+      [hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main role="status">
+      <h1 id="title">Starting Orbyn Engineering</h1>
+      <p id="detail">Opening the local service.</p>
+      <button id="retry" hidden>Try again</button>
+    </main>
+    <script>
+      const failure = new URLSearchParams(location.search).get("error");
+      if (failure) {
+        document.getElementById("title").textContent = "The local service stopped";
+        document.getElementById("detail").textContent =
+          failure + " Your threads are saved. Interrupted runs stay in their thread.";
+        const retry = document.getElementById("retry");
+        retry.hidden = false;
+        retry.addEventListener("click", () => {
+          retry.disabled = true;
+          window.__TAURI_INTERNALS__.invoke("restart_core");
+        });
+      }
+    </script>
+  </body>
+</html>
