@@ -92,7 +92,8 @@ test("a project script runs in its own terminal, and a watch-only terminal sends
 
 test("Rescan asks the hosts again, and shows the signed-in state", async ({ page }) => {
   await page.goto(`${service.page}#/settings/source-control`);
-  await expect(page.locator(".setting-line").filter({ hasText: "GitHub" })).toContainText("Signed in");
+  // Every host's command line is asked, and a missing one can take a while to say so.
+  await expect(page.locator(".setting-line").filter({ hasText: "GitHub" })).toContainText("Signed in", { timeout: 25_000 });
   const before = service.ghCalls().filter((call) => call[0] === "auth").length;
   await page.getByRole("button", { name: "Rescan" }).click();
   await expect.poll(() => service.ghCalls().filter((call) => call[0] === "auth").length).toBeGreaterThan(before);
