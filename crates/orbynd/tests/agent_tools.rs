@@ -457,8 +457,10 @@ async fn a_handoff_starts_a_thread_in_a_new_worktree() {
             reply["thread_id"].as_str().unwrap()
         ))
         .await;
+    let cwd = std::path::Path::new(child["cwd"].as_str().unwrap());
+    assert!(cwd.ends_with("tidy"), "{child}");
     assert!(
-        child["cwd"].as_str().unwrap().contains("-wt/tidy"),
+        cwd.parent().unwrap().to_string_lossy().ends_with("-wt"),
         "{child}"
     );
     service.stop().await;
