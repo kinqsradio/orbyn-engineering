@@ -89,6 +89,8 @@ function makeLibrary(root: string): string {
 export interface Service {
   /** The dev server in front of the real service, token included. */
   page: string;
+  /** The service itself, for callers from outside the UI. */
+  url: string;
   /** A plain folder outside any library, for the add-folder flow. */
   folder: string;
   /** A small Git repository outside the library. */
@@ -164,6 +166,7 @@ export async function startService(
     git(repo, "fetch", "-q", remote, "+refs/heads/*:refs/remotes/origin/*");
   }
   return {
+    url: ready.url,
     folder,
     repo,
     remote: join(dir, "remote.git"),

@@ -1234,3 +1234,51 @@ kbd {
   flex: 1 1 140px;
   min-width: 0;
 }
+
+.task-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.task-group legend {
+  padding: 0 8px 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.task-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.task-filter input,
+.task-filter select {
+  flex: 1;
+  min-width: 0;
+}
+.task-deliveries {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.task-deliveries summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+.task-deliveries pre {
+  max-height: 160px;
+  overflow: auto;
+  font-size: var(--text-meta);
+}
+.task-deliveries h4 {
+  margin: 8px 0 2px;
+  font-size: var(--text-meta);
+}

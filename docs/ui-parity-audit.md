@@ -108,7 +108,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules; the shell now runs every rule through when contexts, Real | Row layout own; mod+digit falls back in the client, the service lists no jump rules |
 | Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
 | Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
-| Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook kinds | The form sent an invalid kind before this was run for real |
+| Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook and after-thread kinds; signature, filters, repeats, age, address and deliveries log | The address shows once, when issued, so reopening needs a new one |
 | Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | ACP registry | Source: search and add agents | Search, add, remove, Real against a local registry file | First listed install route only |

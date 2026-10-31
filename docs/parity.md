@@ -70,7 +70,7 @@ toward completion.
 - [x] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S | web done
 - [ ] A36 Copy reference/thread/ID: PR link first, then thread chip, then bare ID | docs/user/thread-sidebar.md | w d m | S
 - [x] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M
-- [x] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L | server done
+- [x] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L | server done | web done
 - [x] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M | web done
 - [x] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
 - [x] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
@@ -617,12 +617,12 @@ are not built in.
 - [x] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L
 - [ ] M2 Task manager UI: edit, pause, resume, run now, delete | apps/web/src/components/settings/ScheduledTasksSettings.tsx | w d m | M
 - [ ] M3 Thread automations panel: tasks tied to a thread | apps/web/src/components/chat/ThreadAutomationsPanel.tsx | w d | M
-- [x] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted] | server done, reachable only where the host is; no relay
+- [x] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted] | server done, reachable only where the host is; no relay | web done
 - [x] M5 Webhook templates: placeholders with untrusted-data wrapping | apps/server/src/scheduledTasks/webhookTemplate.ts | s | M | server done
-- [x] M6 Webhook signatures: header, encoding, prefix | apps/server/src/scheduledTasks/webhookVerification.ts | w d s | M | server done
-- [x] M7 Webhook filters: up to 16 conditions | apps/server/src/scheduledTasks/webhookFilter.ts | w d s | M | server done
+- [x] M6 Webhook signatures: header, encoding, prefix | apps/server/src/scheduledTasks/webhookVerification.ts | w d s | M | server done | web done
+- [x] M7 Webhook filters: up to 16 conditions | apps/server/src/scheduledTasks/webhookFilter.ts | w d s | M | server done | web done
 - [x] M8 Replay and coalesce: dedupe with windows | apps/server/src/scheduledTasks/webhookDedupe.ts | s | L | server done
-- [x] M9 Webhook deliveries log: request and prompt detail | packages/contracts/src/rpc.ts | w d s | M | server done
+- [x] M9 Webhook deliveries log: request and prompt detail | packages/contracts/src/rpc.ts | w d s | M | server done | web done
 - [ ] M10 Hold webhooks offline: relay stores up to 24 hours | apps/server/src/relay/HeldHooksWaker.ts | s | L | [hosted]
 - [x] M11 Skip stale deliveries: maximum age per task | packages/contracts/src/scheduledTask.ts | s | S | server done
 - [x] M12 Delegated subagents: child threads with result wake | apps/server/src/mcp/OrchestratorMcpService.ts | w d m s | L | server done
@@ -630,7 +630,7 @@ are not built in.
 - [x] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done
 - [ ] M15 Secret request tool: agent requests secret securely | apps/server/src/secrets/SecretRequests.ts | s | M | [auth-risk]
 - [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
-- [x] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M | server done, within a minute of the end; firings are not capped since each is a thread of its own
+- [x] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M | server done, within a minute of the end; firings are not capped since each is a thread of its own | web done
 - [x] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S | server done
 - [x] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M | server done
 
