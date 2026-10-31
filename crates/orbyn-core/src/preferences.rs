@@ -50,6 +50,7 @@ const DEFINITIONS: &[Definition] = defs![
     "enable_agent_browser_access" Kind::Bool, true, true;
     "enable_agent_device_access" Kind::Bool, false, false;
     "auto_pull" Kind::Bool, false, true;
+    "poll_pull_requests" Kind::Bool, true, false;
     "default_project_scripts" Kind::List, [], true;
     "default_model" Kind::Text, "", true;
     "prefer_saved_login" Kind::Bool, false, false;

@@ -108,7 +108,10 @@ impl Core {
                         tracing::warn!(%error, "lifecycle tick failed");
                     }
                     watched += 1;
-                    if watched.is_multiple_of(PULL_WATCH_TICKS) {
+                    let polling = self.preference("poll_pull_requests", None);
+                    if watched.is_multiple_of(PULL_WATCH_TICKS)
+                        && polling.is_ok_and(|on| on != serde_json::json!(false))
+                    {
                         self.watch_pulls().await;
                     }
                     self.run_due_tasks().await;

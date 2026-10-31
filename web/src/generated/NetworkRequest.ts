@@ -7,4 +7,13 @@ export type NetworkRequest = { purpose: string, host: string, cadence: string,
 /**
  * What turns it off.
  */
-control: string, };
+control: string, 
+/**
+ * The key that does, in `/api/settings` for `background_update_checks` and in
+ * preferences otherwise. Empty when nothing here controls it.
+ */
+setting: string | null, 
+/**
+ * Happening now. False for one that runs only when asked.
+ */
+enabled: boolean, };

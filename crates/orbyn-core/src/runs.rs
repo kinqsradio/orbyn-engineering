@@ -1042,6 +1042,9 @@ impl RunManager {
                                 tracing::debug!(%error, "could not keep an engine item");
                             }
                         }
+                        EngineEvent::Files(paths) => {
+                            crate::file_changes::finished(&self.store, scope, &paths).await;
+                        }
                         EngineEvent::Usage(usage) => {
                             if let Err(error) = self.store.record_usage(&scope.run_id, &usage) {
                                 tracing::debug!(%error, "could not keep usage");

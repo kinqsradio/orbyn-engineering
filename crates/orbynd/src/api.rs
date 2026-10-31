@@ -15,10 +15,10 @@ use orbyn_contracts::{
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
     DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
     GitAction, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
-    OpenInEditor, OtlpCheck, PublishProject, QuestionState, ReorderThreads, RestoreWorkspace,
-    RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerRun,
-    SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask,
-    WorkspaceSetup, WriteFile,
+    OpenInEditor, OtlpCheck, PublishProject, QuestionState, ReorderThreads, RestoreChanges,
+    RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile,
+    StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread,
+    UpsertTask, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -433,8 +433,31 @@ pub async fn run_changes(
     Ok(Json(state.core.run_changes(&id, &run)?))
 }
 
-pub async fn network_requests() -> impl IntoResponse {
-    Json(orbyn_core::network::automatic_requests())
+#[derive(Deserialize)]
+pub struct ChangedFileQuery {
+    path: String,
+}
+
+pub async fn changed_file(
+    State(state): State<AppState>,
+    Path((id, run)): Path<(String, String)>,
+    Query(query): Query<ChangedFileQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.changed_file(&id, &run, &query.path)?))
+}
+
+pub async fn restore_changes(
+    State(state): State<AppState>,
+    Path((id, run)): Path<(String, String)>,
+    ApiJson(body): ApiJson<RestoreChanges>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state.core.restore_changes(&id, &run, &body, LOCAL_USER)?,
+    ))
+}
+
+pub async fn network_requests(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.network_requests()?))
 }
 
 pub async fn get_item(

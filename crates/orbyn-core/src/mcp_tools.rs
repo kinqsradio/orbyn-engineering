@@ -129,6 +129,13 @@ const TOOLS: &[Tool] = &[
         &[("thread_id", "string")],
         &["thread_id"],
     ),
+    read(
+        "orbyn_track_files",
+        "Before writing files no tool reports, such as from a shell script, call this with \
+         the checkout paths; call it again with done true afterwards.",
+        &[("paths", "array"), ("done", "boolean")],
+        &["paths"],
+    ),
     act(
         "orbyn_thread_launch",
         "Start a new thread in this project with a first message.",
@@ -425,6 +432,19 @@ impl Core {
                     "active": thread.active_run.is_some(),
                     "last_run_state": thread.last_run_state,
                 })
+            }
+            "orbyn_track_files" => {
+                let paths: Vec<String> = args
+                    .get("paths")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| CoreError::Invalid("paths is required.".into()))?
+                    .iter()
+                    .filter_map(|path| path.as_str().map(str::to_owned))
+                    .take(200)
+                    .collect();
+                let done = args.get("done").and_then(Value::as_bool).unwrap_or(false);
+                crate::file_changes::record(&self.store, &binding.scope, &paths, done);
+                json!({ "tracked": paths.len() })
             }
             "orbyn_thread_launch" => {
                 let thread = self

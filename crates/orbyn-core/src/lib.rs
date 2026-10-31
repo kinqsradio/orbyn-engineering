@@ -12,6 +12,7 @@ pub mod driver;
 pub mod engines;
 pub mod error;
 pub mod file_bytes;
+pub mod file_changes;
 pub mod files;
 pub mod forge;
 pub mod git;

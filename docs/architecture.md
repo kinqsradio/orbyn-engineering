@@ -130,7 +130,10 @@ Codex reads `model/list`, every page, hidden models left out, on a short-lived
 app-server, then `config/read` with no folder for a configured `service_tier`, which
 becomes the default wherever a model offers it (config's `fast` is a catalog's
 `priority`). An ACP agent's models, modes and config options come from a session opened
-in a temp folder with no prompt sent.
+in a temp folder with no prompt sent. Some list what a model offers only once it is
+chosen, so a probe chooses up to 24 in turn, within 15 seconds, and keeps what differs from
+the session's own options. It then deletes that session where the agent offers
+`session/delete`, or closes it with `session/close`, so it never shows among real work.
 
 Claude's list is kept until its CLI version or login changes, which is compared at most
 once a minute. Other lists are kept five minutes, a stand-in 30 seconds, and `?refresh=
@@ -240,6 +243,25 @@ leaves it pending, and until then `/compact` and `/goal`, which reach an engine 
 thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
 is not used.
 
+## What a run changed
+
+A run's change list holds only files a tool named, never what status shows, so a thread
+sharing the folder adds nothing. Both ends of each file are kept as bytes in the
+database. The new ones are read when the tool ends, which freezes them against anything
+later. The old ones come from the moment the gate allows the write, or failing that the
+run's start checkpoint. An engine's "started" notice is not used, because it can arrive
+after a fast write and make a change look like none. A write nothing reports, such as a
+shell script, can be declared with `orbyn_track_files`. With no source, as in a full-access
+Codex turn outside Git, that end is `unknown`, which is reported rather than guessed. Links, `.git` and anything outside the
+checkout are never read. The limits are 200 files and 32 MiB a run and 1 MiB a file, and
+past 512 MiB in all the oldest bytes go while their paths stay.
+
+Reading a change uses only what was kept. A restore puts files back to either end from
+those bytes, so it works on one file, outside Git and in a folder other threads share,
+where a checkpoint cannot. It needs the thread idle, and a file holding anything but the
+run's own two versions is reported as `conflict` and left alone. An added file is removed
+by a restore to the start.
+
 ## Source control
 
 Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
@@ -335,8 +357,9 @@ that left something out. Archived threads are searched only when asked.
 ## Automatic requests
 
 `GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
-Orbyn makes without being asked, with host, cadence and what turns it off. A new one is
-added there in the same change. Engines make their own requests under their own terms.
+Orbyn makes without being asked, with host, cadence, what turns it off, the key that does
+and whether it is on now. A new one is added there in the same change, with a switch.
+The two-minute pull request poll has its own, `poll_pull_requests`. Engines make their own requests under their own terms.
 
 ## Automations
 
@@ -752,8 +775,10 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
 | `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
-| `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported writing, up to 200; a command's own writes are not known |
-| `GET /api/network` | `NetworkRequest[]`: every automatic outbound request |
+| `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported or the agent declared, up to 200, with status and whether each can be restored |
+| `GET /api/threads/:id/runs/:run/changes/file?path=` | `ChangedFileContent`: both ends as kept, never the folder as it is now |
+| `POST /api/threads/:id/runs/:run/changes/restore` | `RestoreChanges` to `RestoredFile[]`: `restored`, `unchanged`, `conflict`, `not_kept`; `409 thread_busy` |
+| `GET /api/network` | `NetworkRequest[]`: every automatic outbound request, its switch and whether it is on |
 | `GET /api/threads/:id/files?path=` | `FileEntry[]`, one folder |
 | `GET /api/threads/:id/files/ignored` | Ignored paths |
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |

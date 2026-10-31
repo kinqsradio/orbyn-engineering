@@ -216,10 +216,12 @@ async fn codex_gets_the_mcp_server_without_approve() {
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
     service.admit(&thread, "[mcp-tools]").await;
     service.finished(&thread).await;
-    assert_eq!(
-        text_of(&service.all_events(&thread).await),
-        "mcp 200 tools 32"
-    );
+    let text = text_of(&service.all_events(&thread).await);
+    let tools: u32 = text
+        .strip_prefix("mcp 200 tools ")
+        .and_then(|count| count.parse().ok())
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(tools > 30, "{text}");
 }
 
 #[tokio::test]

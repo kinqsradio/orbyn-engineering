@@ -3,14 +3,23 @@
 
 use orbyn_contracts::NetworkRequest;
 
-const UPDATE_CHECKS: &str = "The background_update_checks setting, or ORBYN_OFFLINE for versions";
+use crate::app::Core;
+use crate::error::Result;
 
-pub fn automatic_requests() -> Vec<NetworkRequest> {
+const UPDATE_CHECKS: &str = "The background_update_checks setting, or ORBYN_OFFLINE for versions";
+const UPDATE_SETTING: &str = "background_update_checks";
+const PULLS_SETTING: &str = "poll_pull_requests";
+const AUTO_PULL_SETTING: &str = "auto_pull";
+
+/// The list with no state filled in, which is what stays true of it.
+fn listed() -> Vec<NetworkRequest> {
     let row = |purpose: &str, host: &str, cadence: &str, control: &str| NetworkRequest {
         purpose: purpose.to_owned(),
         host: host.to_owned(),
         cadence: cadence.to_owned(),
         control: control.to_owned(),
+        setting: None,
+        enabled: false,
     };
     vec![
         row(
@@ -35,7 +44,7 @@ pub fn automatic_requests() -> Vec<NetworkRequest> {
             "Linked pull requests, through the forge's own CLI",
             "The forge of each linked repository",
             "Every two minutes while a pull request is linked",
-            "Unlink the pull request",
+            "The poll_pull_requests preference, or unlink the pull request",
         ),
         row(
             "Fast-forward of a clean checkout",
@@ -50,4 +59,31 @@ pub fn automatic_requests() -> Vec<NetworkRequest> {
             "Leave it unconfigured",
         ),
     ]
+}
+
+impl Core {
+    /// Every automatic request, and whether it is happening now.
+    pub fn network_requests(&self) -> Result<Vec<NetworkRequest>> {
+        let settings = self.store.settings()?;
+        let updates = settings.background_update_checks != Some(false);
+        let on = |key: &str| -> Result<bool> { Ok(self.preference(key, None)? == true) };
+        let (pulls, auto_pull) = (on(PULLS_SETTING)?, on(AUTO_PULL_SETTING)?);
+        Ok(listed()
+            .into_iter()
+            .map(|mut row| {
+                let (setting, enabled) = if row.control == UPDATE_CHECKS {
+                    (Some(UPDATE_SETTING), updates)
+                } else if row.control.contains(PULLS_SETTING) {
+                    (Some(PULLS_SETTING), pulls)
+                } else if row.control.contains(AUTO_PULL_SETTING) {
+                    (Some(AUTO_PULL_SETTING), auto_pull)
+                } else {
+                    (None, false)
+                };
+                row.setting = setting.map(str::to_owned);
+                row.enabled = enabled;
+                row
+            })
+            .collect())
+    }
 }

@@ -5,6 +5,7 @@
 mod approvals;
 mod automations;
 mod catalog;
+mod changes;
 mod checkpoints;
 mod hub;
 mod migrations;
@@ -14,6 +15,8 @@ mod runs;
 #[cfg(test)]
 mod tests;
 mod threads;
+
+pub use changes::{KeptChange, Snapshot};
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};

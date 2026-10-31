@@ -518,7 +518,62 @@ async fn acp_models_come_from_a_session_and_a_choice_reaches_the_agent() {
     assert_eq!(code, 200);
     service.admit(&thread, "hi").await;
     assert_eq!(service.finished(&thread).await, "completed");
-    assert!(launches(&launch_file, "acp-model")[0].contains("acp-large"));
+    let chosen = launches(&launch_file, "acp-model");
+    assert!(chosen.last().unwrap().contains("acp-large"));
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn an_acp_probe_reads_each_models_options_and_deletes_its_session() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let mut options = engines(true, &launch_file);
+    options
+        .env
+        .push(("ORBYN_FAKE_ACP_SESSIONS".into(), "1".into()));
+    let (service, _) = setup(&dir, options, "claude").await;
+    let (code, body) = service
+        .send(
+            "/api/engines/custom",
+            json!({ "id": "acp1", "name": "Acp", "tier": "acp", "target": FAKE, "args": ["acp"] }),
+        )
+        .await;
+    assert!(code < 300, "{body}");
+    let models = service.json("/api/engines/acp1/models").await;
+    assert_eq!(models["models"][0]["options"], json!([]));
+    let large = &models["models"][1]["options"];
+    assert_eq!(large[0]["id"], "config:effort");
+    assert_eq!(large[0]["values"][1]["id"], "max");
+    assert_eq!(models["options"][0]["id"], "mode", "the session's own stay");
+    let deleted = launches(&launch_file, "acp-delete");
+    assert_eq!(deleted.len(), 1, "{deleted:?}");
+    assert!(deleted[0].contains("acp-session-1"));
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn an_agent_that_refuses_a_probe_keeps_its_model_list() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let mut options = engines(true, &launch_file);
+    options
+        .env
+        .push(("ORBYN_FAKE_ACP_REFUSE_MODEL".into(), "1".into()));
+    let (service, _) = setup(&dir, options, "claude").await;
+    let (code, body) = service
+        .send(
+            "/api/engines/custom",
+            json!({ "id": "acp1", "name": "Acp", "tier": "acp", "target": FAKE, "args": ["acp"] }),
+        )
+        .await;
+    assert!(code < 300, "{body}");
+    let models = service.json("/api/engines/acp1/models").await;
+    assert_eq!(models["models"].as_array().unwrap().len(), 2);
+    assert_eq!(models["error"], Value::Null);
+    assert!(
+        launches(&launch_file, "acp-delete").is_empty(),
+        "not offered"
+    );
     service.stop().await;
 }
 

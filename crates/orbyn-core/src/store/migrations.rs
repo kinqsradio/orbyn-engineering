@@ -16,7 +16,23 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (12, MODEL_OPTIONS),
     (13, STOP_REQUESTS),
     (14, MESSAGE_SEARCH),
+    (15, RUN_FILE_CHANGES),
 ];
+
+// What a run changed, as bytes, for reading and restoring later whatever the folder
+// holds by then. A state is `absent`, `stored`, or `unknown` when it was not captured.
+const RUN_FILE_CHANGES: &str = r#"
+CREATE TABLE run_file_changes (
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    before_state TEXT NOT NULL,
+    before_bytes BLOB,
+    after_state TEXT NOT NULL,
+    after_bytes BLOB,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, path)
+) WITHOUT ROWID;
+"#;
 
 // Whole messages for search, since a message is split over many events. Written with
 // each event; this fills it from the log for threads that already exist.

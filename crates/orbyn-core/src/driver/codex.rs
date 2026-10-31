@@ -1154,6 +1154,9 @@ impl TurnMapper {
             raw: item.clone(),
             exit_code,
         }));
+        if kind == "fileChange" {
+            events.push(EngineEvent::Files(change_paths(item)));
+        }
         if let Some(code) = exit_code {
             events.push(
                 AgUiEvent::Custom {

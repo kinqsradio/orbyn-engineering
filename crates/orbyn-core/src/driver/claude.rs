@@ -3,7 +3,7 @@
 //! ignores OAuth, is never passed. Permissions reach Orbyn through the per-run
 //! MCP `approve` tool, not through this process's stdio.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::Path;
 use std::time::Duration;
@@ -593,6 +593,8 @@ struct StreamMapper {
     outcome: Option<EngineOutcome>,
     /// Plan tools already shown, since Claude can repeat a block across frames.
     plans_seen: HashSet<String>,
+    /// Files each open write tool named, until its result arrives.
+    writing: HashMap<String, Vec<String>>,
 }
 
 impl StreamMapper {
@@ -611,7 +613,11 @@ impl StreamMapper {
                 .get("event")
                 .map_or_else(Vec::new, |event| self.on_stream_event(event)),
             Some("assistant") if !nested => self.on_assistant(frame),
-            Some("user") if !nested => on_user(frame),
+            Some("user") if !nested => {
+                let mut events = self.writes_finished(frame);
+                events.extend(on_user(frame));
+                events
+            }
             Some("assistant") => vec![
                 AgUiEvent::Custom {
                     name: "subagent.activity".into(),
@@ -748,6 +754,7 @@ impl StreamMapper {
             .collect();
         for block in &content {
             events.extend(self.plan_events(block));
+            self.write_started(block);
         }
         if self.saw_partials {
             return events;
@@ -795,6 +802,29 @@ impl StreamMapper {
             }
         }
         events
+    }
+
+    /// Remembers what a write tool names until its result says it ran.
+    fn write_started(&mut self, block: &Value) {
+        if block.get("type").and_then(Value::as_str) != Some("tool_use") {
+            return;
+        }
+        let paths = crate::checkpoints::claude_write_paths(block);
+        if let (false, Some(id)) = (paths.is_empty(), text_of(block, "id")) {
+            self.writing.insert(id, paths);
+        }
+    }
+
+    fn writes_finished(&mut self, frame: &Value) -> Vec<EngineEvent> {
+        let empty = Vec::new();
+        frame
+            .pointer("/message/content")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty)
+            .iter()
+            .filter_map(|block| self.writing.remove(block.get("tool_use_id")?.as_str()?))
+            .map(EngineEvent::Files)
+            .collect()
     }
 
     /// `TodoWrite` is the plan as a checklist and `ExitPlanMode` carries a proposed

@@ -166,6 +166,8 @@ pub enum EngineEvent {
     Permission(PermissionRequest),
     /// A raw item for the inspector.
     Item(ItemRecord),
+    /// Files a tool just finished writing.
+    Files(Vec<String>),
     Usage(orbyn_contracts::ThreadUsage),
     /// Slash commands the engine says it has, as `(name, description)`.
     Commands(Vec<(String, String)>),

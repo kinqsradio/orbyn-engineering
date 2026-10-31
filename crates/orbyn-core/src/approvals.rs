@@ -149,8 +149,19 @@ impl ApprovalGate {
     /// precedes the effect. The future can be dropped safely: an abandoned
     /// approval expires rather than staying pending.
     pub async fn request(&self, scope: &RunScope, ask: ActionAsk) -> Verdict {
+        let writes = if ask.kind == ActionKind::FileChange {
+            ask.paths.clone()
+        } else {
+            Vec::new()
+        };
         match self.request_inner(scope, ask).await {
-            Ok(verdict) => verdict,
+            Ok(verdict) => {
+                // The last moment before the write, so the old bytes are still there.
+                if verdict.is_allowed() {
+                    crate::file_changes::record(&self.store, scope, &writes, false);
+                }
+                verdict
+            }
             Err(error) => {
                 tracing::warn!(%error, run_id = %scope.run_id, "approval path failed; denying");
                 Verdict::Deny("Orbyn could not reach its approval service.".to_owned())
