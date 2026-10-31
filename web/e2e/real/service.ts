@@ -94,7 +94,8 @@ export async function startService(
     service.once("exit", (code) => fail(new Error(`orbynd exited with ${code}`)));
     createInterface({ input: service.stdout }).once("line", (line) => done(JSON.parse(line) as never));
   });
-  const vite = spawn("npx", ["vite", "--port", String(port), "--strictPort"], {
+  // Node itself, so stopping it frees the port for a spec that restarts after a failure.
+  const vite = spawn(process.execPath, [resolve(WEB, "node_modules/vite/bin/vite.js"), "--port", String(port), "--strictPort"], {
     cwd: WEB,
     env: { ...process.env, ORBYN_API: ready.url },
     stdio: "ignore",
