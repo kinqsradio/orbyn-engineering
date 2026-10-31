@@ -2,52 +2,48 @@ import { Search, X } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { routeHref, type SettingsSection } from "../../state/route";
 import { IconButton } from "../../ui/controls";
-import { AccessSection } from "./Access";
 import { AppearanceSection } from "./Appearance";
-import { AuditSection } from "./Audit";
-import { ComputerSection } from "./Computer";
-import { EnginesSection } from "./Engines";
-import { PolicySection } from "./Policy";
-import { SkillsSection } from "./Skills";
-import { UpdatesSection } from "./Updates";
-import { WorkspaceSection } from "./Workspace";
+import { KeybindingsSection } from "./Keybindings";
+import { MaintenanceSection } from "./Maintenance";
+import { ProjectsSection } from "./Projects";
+import { ProvidersSection } from "./Providers";
+import { SharingSection } from "./Sharing";
+import { ThreadsSection } from "./Threads";
 
 const labels: Record<SettingsSection, string> = {
-  engines: "Engines",
-  workspace: "Workspace",
-  updates: "Updates",
-  skills: "Skills",
-  policy: "Policy",
-  audit: "Audit",
-  computer: "Computer",
-  access: "Access",
   appearance: "Appearance",
+  keybindings: "Keybindings",
+  providers: "Providers",
+  threads: "Threads",
+  projects: "Projects",
+  sharing: "Sharing & access",
+  maintenance: "Maintenance",
 };
 
+/** The reference product's order. Sections without a backend here stay out. */
 const groups: { label: string | null; sections: SettingsSection[] }[] = [
-  { label: null, sections: ["appearance", "updates"] },
-  { label: "Agents", sections: ["engines", "skills", "policy", "audit"] },
-  { label: "Code", sections: ["workspace"] },
-  { label: "Connections", sections: ["computer", "access"] },
+  { label: null, sections: ["appearance", "keybindings"] },
+  { label: "Agents", sections: ["providers", "threads"] },
+  { label: "Code", sections: ["projects"] },
+  { label: "Connections", sections: ["sharing"] },
+  { label: null, sections: ["maintenance"] },
 ];
 
 const views: Record<SettingsSection, () => React.JSX.Element | null> = {
-  engines: EnginesSection,
-  workspace: WorkspaceSection,
-  updates: UpdatesSection,
-  skills: SkillsSection,
-  policy: PolicySection,
-  audit: AuditSection,
-  computer: ComputerSection,
-  access: AccessSection,
   appearance: AppearanceSection,
+  keybindings: KeybindingsSection,
+  providers: ProvidersSection,
+  threads: ThreadsSection,
+  projects: ProjectsSection,
+  sharing: SharingSection,
+  maintenance: MaintenanceSection,
 };
 
 /** Settings float over the workspace, which stays as it was underneath. */
 export function SettingsPage({ section, onClose }: { section: SettingsSection | null; onClose(): void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
-  const current = section ?? "engines";
+  const current = section ?? "appearance";
   const View = views[current];
 
   useLayoutEffect(() => {
@@ -93,7 +89,7 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
         </div>
         <nav className="settings-nav" aria-label="Settings sections">
           {visible.map((group) => (
-            <div key={group.label ?? "general"}>
+            <div key={group.label ?? group.sections[0]}>
               {group.label ? <p className="settings-group">{group.label}</p> : null}
               {group.sections.map((entry) => (
                 <a

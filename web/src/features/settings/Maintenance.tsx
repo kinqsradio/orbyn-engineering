@@ -1,0 +1,68 @@
+import { useState } from "react";
+import { api } from "../../api/client";
+import { fullTime } from "../../lib/format";
+import { toFailure, useAsync } from "../../lib/useAsync";
+import { useWorkspace } from "../../state/workspace";
+import { Button } from "../../ui/controls";
+import { SettingGroup, SettingRow } from "../../ui/SettingRow";
+
+export function MaintenanceSection() {
+  const updates = useWorkspace((state) => state.updates.data);
+  const unsupported = useWorkspace((state) => state.updatesUnsupported);
+  const putUpdates = useWorkspace((state) => state.putUpdates);
+  const settings = useAsync("server-settings", (signal) => api.settings(signal));
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const check = async () => {
+    setChecking(true);
+    setError(null);
+    try {
+      putUpdates(await api.checkUpdates());
+    } catch (failure) {
+      setError(`Couldn't check for updates. ${toFailure(failure).message}`);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const lastChecked = updates?.checked_at ? fullTime(updates.checked_at) : "Not checked yet";
+  return (
+    <>
+      <h1 className="sr-only" tabIndex={-1} data-page-title>
+        Maintenance
+      </h1>
+      <SettingGroup title="Updates">
+        {unsupported || updates?.app.unconfigured ? (
+          <SettingRow title="App updates" description="Updates aren't set up for this build." />
+        ) : null}
+        <SettingRow title="Check for updates" description={`Last checked: ${lastChecked}`}>
+          <Button small busy={checking} onClick={() => void check()}>
+            Check for updates
+          </Button>
+        </SettingRow>
+        <SettingRow title="Background checks" description="Checks only look. Nothing is applied without a click.">
+          <input
+            type="checkbox"
+            aria-label="Check in the background"
+            checked={settings.data?.background_update_checks !== false}
+            disabled={!settings.data}
+            onChange={(event) => {
+              if (!settings.data) return;
+              const next = { ...settings.data, background_update_checks: event.target.checked };
+              void api.putSettings(next).then(settings.setData, (failure: unknown) => {
+                setError(toFailure(failure).message);
+              });
+            }}
+          />
+        </SettingRow>
+      </SettingGroup>
+      {updates?.error ? <p className="banner banner-warn">{updates.error}</p> : null}
+      {error ? (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}

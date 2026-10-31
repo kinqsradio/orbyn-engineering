@@ -3,8 +3,6 @@ import type {
   ApplyAllResult,
   Approval,
   Attachment,
-  ComputerStatus,
-  CreatePolicyRule,
   CreateThread,
   CustomEngine,
   EngineStatus,
@@ -14,20 +12,16 @@ import type {
   JsonValue,
   LibraryUpdateResult,
   Mentions,
-  PolicyRule,
   Project,
   ProjectRemoval,
   QueuedMessage,
   Run,
   ServerInfo,
   ServerSettings,
-  SkillPackStatus,
-  SkillProfile,
   SlashCommand,
   Thread,
   UpdateStatus,
   UpdateThread,
-  WireAuditEvent,
   WorkspaceSetup,
   WorkspaceStatus,
 } from "./types";
@@ -208,30 +202,8 @@ export const api = {
     request<EngineStatus>("POST", "/api/engines/custom", body),
   removeCustomEngine: (id: string) => request<void>("DELETE", `/api/engines/custom/${q(id)}`),
 
-  skills: (signal?: AbortSignal) =>
-    request<SkillPackStatus>("GET", "/api/skills", undefined, signal),
-  rebuildSkills: () => request<SkillPackStatus>("POST", "/api/skills/rebuild"),
-  profiles: (signal?: AbortSignal) =>
-    request<SkillProfile[]>("GET", "/api/skills/profiles", undefined, signal),
-  createProfile: (body: SkillProfile) =>
-    request<SkillProfile>("POST", "/api/skills/profiles", body),
-  deleteProfile: (id: string) => request<void>("DELETE", `/api/skills/profiles/${q(id)}`),
 
-  rules: (signal?: AbortSignal) =>
-    request<PolicyRule[]>("GET", "/api/policy/rules", undefined, signal),
-  createRule: (body: CreatePolicyRule) => request<PolicyRule>("POST", "/api/policy/rules", body),
-  deleteRule: (id: string) => request<void>("DELETE", `/api/policy/rules/${q(id)}`),
 
-  audit: (threadId: string | null, limit: number, signal?: AbortSignal) =>
-    request<WireAuditEvent[]>(
-      "GET",
-      `/api/audit?limit=${limit}${threadId ? `&thread_id=${q(threadId)}` : ""}`,
-      undefined,
-      signal,
-    ),
-
-  computer: (signal?: AbortSignal) =>
-    request<ComputerStatus>("GET", "/api/computer", undefined, signal),
 };
 
 export type { JsonValue };

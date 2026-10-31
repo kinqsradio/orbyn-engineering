@@ -9,6 +9,8 @@ Surfaces: w web, d desktop, m mobile, s server, c cli.
 
 A row marked `| server done` has its service behavior finished and tested; any
 web, desktop or mobile surface on that row is tracked by that client's owner.
+`| web done` means the web surface was run against the real `orbynd`; other
+surfaces on that row stay open.
 
 ## Rows Orbyn will not copy as written
 
@@ -113,7 +115,7 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [x] B16 Held queue and resume: preserved after stop or restart | docs/user/composer.md | w d m s | M | server done
 - [ ] B17 Steer oldest queued: shortcut, draft untouched | packages/contracts/src/keybindings.ts | w d | S
 - [ ] B18 Offline mobile queue: local copies, resumes on reconnect | docs/user/composer.md | m | L
-- [ ] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S
+- [x] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S | web done
 - [ ] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M
 - [ ] B21 Remembered model defaults: provider, model and options carry to new threads | docs/user/composer.md | w d m | S
 - [ ] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L
@@ -142,7 +144,7 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] B45 Chip clipboard: copy/paste keeps chips, refetches files | packages/contracts/src/composerContextClipboard.ts | w d | L
 - [ ] B46 Readable copy: Markdown output with links replacing chips | apps/web/src/components/chat/MessageCopyButton.tsx | w d | S
 - [ ] B47 Question attachments: files in custom answers, kept per question | docs/user/question-attachments.md | w d m s | M
-- [ ] B48 Pending approval actions: approve or reject inline | apps/web/src/components/chat/ComposerPendingApprovalActions.tsx | w d m | M
+- [x] B48 Pending approval actions: approve or reject inline | apps/web/src/components/chat/ComposerPendingApprovalActions.tsx | w d m | M | web done
 - [ ] B49 Text decline to Claude: typed reply rejects with feedback | docs/user/permission-modes.md | w d m | S
 - [ ] B50 Question panel: async question answer or dismiss | apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx | w d m | M
 - [ ] B51 Secret request card: agent asks for a secret, you answer | apps/web/src/components/chat/SecretRequestCard.tsx | w d m s | M

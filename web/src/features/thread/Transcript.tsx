@@ -43,12 +43,10 @@ export function withLocalPrompts(
 export function Transcript({
   threadId,
   active,
-  engineName,
   footer,
 }: {
   threadId: string;
   active: boolean;
-  engineName: string | null;
   /** The run status line, which sits at the end of the conversation. */
   footer?: ReactNode;
 }) {
@@ -146,7 +144,7 @@ export function Transcript({
                 {entry.kind === "work" ? (
                   <WorkGroupView group={entry} live={active} latest={at >= entries.length - 2} />
                 ) : (
-                  <ThreadItemView item={entry} live={active} engine={engineName} />
+                  <ThreadItemView item={entry} live={active} />
                 )}
               </div>
             ))

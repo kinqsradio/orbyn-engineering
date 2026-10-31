@@ -476,9 +476,59 @@
 .approval {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   padding: 2px 4px;
   min-width: 0;
+}
+.approval-target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text);
+  font-size: var(--text-meta);
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.approval-target svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.approval-target code {
+  font-size: var(--text-meta);
+}
+.approval-more-target {
+  padding-left: 24px;
+}
+.approval-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding-left: 24px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  line-height: 16px;
+}
+.approval-line button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  cursor: pointer;
+}
+.approval-line button:hover:not(:disabled) {
+  color: var(--color-text);
+}
+.approval-line .approval-primary {
+  color: var(--color-text);
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .approval-line button {
+    min-height: var(--hit);
+    padding: 0 8px 0 0;
+  }
 }
 .approval-closed {
   gap: 2px;
@@ -696,13 +746,36 @@
 .hero-title strong {
   font-weight: 500;
 }
-.hero-alt {
-  color: var(--color-muted);
-  font-size: var(--text-small);
-  text-decoration: none;
+.hero-project {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  letter-spacing: inherit;
+  cursor: pointer;
 }
-.hero-alt:hover {
-  color: var(--color-text);
+.draft-stage {
+  position: relative;
+  height: 100%;
+}
+.draft-stage .composer-lane {
+  inset: 0;
+}
+.composer-engine {
+  flex: none;
+  gap: 6px;
+  color: var(--color-textSoft);
+  font-size: var(--text-small);
+}
+.worktree-purpose {
+  min-height: 0 !important;
+  width: 120px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: var(--text-meta) !important;
 }
 .composer {
   flex: none;

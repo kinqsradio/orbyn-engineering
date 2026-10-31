@@ -127,9 +127,56 @@
   gap: 12px;
   min-height: var(--button-h);
 }
-.settings-body > .section-bar h1 {
+.settings-body > .section-bar {
+  justify-content: flex-end;
+  min-height: 0;
+}
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.setting-group h2,
+.settings-body .section > h2 {
+  padding: 0 16px;
   font-size: var(--text-title);
   font-weight: 600;
+}
+.setting-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.setting-line:last-child {
+  border-bottom: 0;
+}
+.setting-line-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.setting-line-title {
+  font-size: var(--text-body);
+  font-weight: 500;
+}
+.setting-line-desc {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  line-height: 18px;
+}
+.setting-line-control {
+  flex: none;
+  max-width: 50%;
+}
+.setting-line-control select,
+.setting-line-control textarea {
+  min-width: 188px;
+  min-height: var(--control-h-sm);
+  font-size: var(--control-fs-sm);
 }
 .filter {
   width: 200px !important;

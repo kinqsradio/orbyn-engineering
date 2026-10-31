@@ -13,7 +13,8 @@ interface Entry {
   route: Route;
 }
 
-const title = (section: string) => section.charAt(0).toUpperCase() + section.slice(1);
+const title = (section: string) =>
+  section === "sharing" ? "Sharing & access" : section.charAt(0).toUpperCase() + section.slice(1);
 
 export function CommandPalette({ onClose }: { onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);

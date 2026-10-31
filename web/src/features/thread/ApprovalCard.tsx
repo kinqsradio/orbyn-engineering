@@ -1,45 +1,37 @@
-import { CircleCheck, CircleSlash, Clock } from "lucide-react";
+import { CircleCheck, CircleSlash, Clock, FileDiff, SquareTerminal, Wrench } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { Approval, JsonValue } from "../../api/types";
-import { actionLabels, fullTime, relativeTime } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
-import { Button } from "../../ui/controls";
+import { Menu } from "../../ui/Menu";
 import { touchesOf } from "./approvalDetail";
 import { approvalFromContent } from "./projection";
 
-type Decision = "allow" | "deny" | "always";
-
 const outcome = {
-  allowed: { icon: CircleCheck, label: "Allowed" },
-  denied: { icon: CircleSlash, label: "Denied" },
+  allowed: { icon: CircleCheck, label: "Approved" },
+  denied: { icon: CircleSlash, label: "Declined" },
   expired: { icon: Clock, label: "Expired" },
 } as const;
 
-export function ApprovalCard({
-  approval,
-  engine,
-  source,
-}: {
-  approval: Approval;
-  /** Engine name, shown because the decision is about what it will do. */
-  engine: string | null;
-  /** Where this request came from, for lists outside its thread. */
-  source?: { label: string; href: string };
-}) {
-  const [pending, setPending] = useState<Decision | null>(null);
+const kindIcon = (kind: Approval["kind"]) =>
+  kind === "command" ? SquareTerminal : kind === "file_change" ? FileDiff : Wrench;
+
+/** An approval as a work row: what it would do, then Decline, Approve and More. */
+export function ApprovalCard({ approval }: { approval: Approval }) {
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [more, setMore] = useState<{ x: number; y: number } | null>(null);
   const putReceipt = useWorkspace((state) => state.putReceipt);
   const refreshApprovals = useWorkspace((state) => state.refreshApprovals);
-  const touches = touchesOf(approval.detail);
+  const touches = touchesOf(approval.detail).flatMap((touch) => touch.values);
+  const Icon = kindIcon(approval.kind);
 
-  const decide = async (decision: Decision) => {
-    setPending(decision);
+  const decide = async (allow: boolean, remember: boolean) => {
+    setBusy(true);
     setError(null);
     try {
-      const decided = await api.decideApproval(approval.id, decision !== "deny", decision === "always");
-      putReceipt(decided);
+      putReceipt(await api.decideApproval(approval.id, allow, remember));
     } catch (failure) {
       const known = toFailure(failure);
       // The first decision won. The server returns that outcome with the refusal.
@@ -51,80 +43,72 @@ export function ApprovalCard({
           approval.created_at,
         );
         if (existing) putReceipt(existing);
-        setError("This approval was already decided.");
+        setError("Already decided.");
         void refreshApprovals();
       } else {
-        setError(`${known.message} Your decision may not have been recorded. Try again.`);
+        setError(`${known.message} Try again.`);
       }
     } finally {
-      setPending(null);
+      setBusy(false);
     }
   };
 
-  const decided = approval.state === "pending" ? null : outcome[approval.state];
+  const cancelRun = () => {
+    void api.cancelRun(approval.run_id).catch((failure: unknown) => setError(toFailure(failure).message));
+  };
 
+  const decided = approval.state === "pending" ? null : outcome[approval.state];
   return (
-    <article
-      className={`approval ${decided ? "approval-closed" : ""}`}
-      aria-label={`Approval: ${approval.summary}`}
-    >
-      <header className="approval-head">
-        {decided ? (
-          <decided.icon size={14} aria-hidden />
-        ) : (
-          <span className="status-dot tone-warn" aria-hidden />
-        )}
-        <h3>{approval.summary}</h3>
-        {decided ? <span className="approval-state">{decided.label}</span> : null}
-      </header>
-      <p className="approval-meta">
-        {[actionLabels[approval.kind], engine].filter(Boolean).join(" · ")}
-        {" · "}
-        <time dateTime={approval.created_at} title={fullTime(approval.created_at)}>
-          {relativeTime(approval.created_at)}
-        </time>
-        {source ? (
-          <>
-            {" · "}
-            <a href={source.href}>{source.label}</a>
-          </>
-        ) : null}
+    <article className="approval" aria-label={approval.summary}>
+      <p className="approval-target">
+        <Icon size={14} aria-hidden />
+        <code>{touches[0] ?? approval.summary}</code>
       </p>
-      {touches.length > 0 ? (
-        <dl className="approval-touches">
-          {touches.map((touch) => (
-            <div key={touch.label}>
-              <dt className="sr-only">{touch.label}</dt>
-              {touch.values.map((value) => (
-                <dd key={value}>
-                  <code>{value}</code>
-                </dd>
-              ))}
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      {touches.length === 0 && approval.detail !== null ? (
-        <details className="plain-details">
-          <summary>Request details</summary>
-          <pre tabIndex={0}>{JSON.stringify(approval.detail, null, 2)}</pre>
-        </details>
-      ) : null}
-      {decided ? null : (
-        <div className="approval-actions">
-          <span className="approval-state tone-warn">Waiting for approval</span>
-          <Button tone="primary" small busy={pending === "allow"} disabled={pending !== null} onClick={() => void decide("allow")}>
-            Allow
-          </Button>
-          <Button small busy={pending === "deny"} disabled={pending !== null} onClick={() => void decide("deny")}>
-            Deny
-          </Button>
-          <Button small tone="quiet" busy={pending === "always"} disabled={pending !== null} onClick={() => void decide("always")}>
-            Always allow this
-          </Button>
-          <span className="approval-note">Stores a rule for this exact target.</span>
+      {touches.slice(1).map((value) => (
+        <p key={value} className="approval-target approval-more-target">
+          <code>{value}</code>
+        </p>
+      ))}
+      {decided ? (
+        <p className="approval-line">
+          <decided.icon size={12} aria-hidden />
+          {decided.label}
+        </p>
+      ) : (
+        <div className="approval-line">
+          <span className="status-dot tone-warn" aria-hidden />
+          <span className="tone-warn">Waiting for approval</span>
+          <span aria-hidden>·</span>
+          <button type="button" disabled={busy} onClick={() => void decide(false, false)}>
+            Decline
+          </button>
+          <button type="button" className="approval-primary" disabled={busy} onClick={() => void decide(true, false)}>
+            Approve
+          </button>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            disabled={busy}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setMore({ x: rect.left, y: rect.bottom + 4 });
+            }}
+          >
+            More
+          </button>
         </div>
       )}
+      {more ? (
+        <Menu
+          {...more}
+          label="More approval options"
+          onClose={() => setMore(null)}
+          items={[
+            { label: "Always allow", onSelect: () => void decide(true, true) },
+            { label: "Cancel", onSelect: cancelRun },
+          ]}
+        />
+      ) : null}
       {error ? (
         <p className="field-error" role="alert">
           {error}

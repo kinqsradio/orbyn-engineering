@@ -16,12 +16,28 @@ const go = (hash: string) => {
 };
 
 describe("App against the mock API", () => {
-  it("opens on the workspace with the global approval count", async () => {
+  it("opens on the draft, with approvals shown as thread status", async () => {
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "Workspace" });
-    expect(await within(nav).findByRole("link", { name: "Approvals, 3 pending approvals" })).toBeInTheDocument();
-    expect(await within(nav).findByText("Upgrade tokio and fix the fallout")).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("(3) Orbyn Engineering"));
+    expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();
+    expect((await within(nav).findAllByText("Approval")).length).toBe(2);
+    expect(within(nav).queryByRole("link", { name: /Approvals/ })).toBeNull();
+  });
+
+  it("creates the thread on first send from the draft", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("textbox", { name: "Message" }), "start here{Enter}");
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/threads\/t-/));
+    expect(await screen.findByText("start here")).toBeInTheDocument();
+  });
+
+  it("picks project and engine from the draft", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^Engine:/ }));
+    expect(await screen.findByRole("menuitem", { name: /Aider \(terminal\) \(Unmanaged\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Cursor Agent/ })).toBeNull();
   });
 
   it("labels an unmanaged engine in the sidebar", async () => {
@@ -121,7 +137,7 @@ describe("App against the mock API", () => {
 
     it("checks from Settings without applying anything", async () => {
       const user = userEvent.setup();
-      go("#/settings/updates");
+      go("#/settings/maintenance");
       render(<App />);
       const before = mock.updates.checked_at;
       await user.click(await screen.findByRole("button", { name: "Check for updates" }));
@@ -135,9 +151,9 @@ describe("App against the mock API", () => {
 
     it("says when updates aren't set up for this build", async () => {
       mock.patchUpdates({ app: { ...mock.updates.app, latest: null, unconfigured: true } });
-      go("#/settings/updates");
+      go("#/settings/maintenance");
       render(<App />);
-      expect(await screen.findByText("Updates aren't set up for this build")).toBeInTheDocument();
+      expect(await screen.findByText("Updates aren't set up for this build.")).toBeInTheDocument();
     });
   });
 
@@ -162,8 +178,8 @@ describe("App against the mock API", () => {
     expect(screen.getByText(/execute this repository's hooks/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Trust folder" }));
 
-    expect(await screen.findByRole("heading", { name: "New thread" })).toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Create thread" }));
+    expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();
+    await user.type(await screen.findByRole("textbox", { name: "Message" }), "go{Enter}");
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/threads\//));
   });
 
@@ -187,7 +203,7 @@ describe("App against the mock API", () => {
     await user.click(await screen.findByRole("tab", { name: "Create new" }));
     await user.type(screen.getByLabelText("Project name"), "fresh-idea");
     await user.click(screen.getByRole("button", { name: "Create project" }));
-    expect(await screen.findByRole("heading", { name: "New thread" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();
   });
 
   it("blocks everything on first run until setup finishes", async () => {
@@ -216,7 +232,7 @@ describe("App against the mock API", () => {
   it("reviews incoming commits before updating the library", async () => {
     for (const thread of mock.threads) thread.active_run = null;
     const user = userEvent.setup();
-    go("#/settings/workspace");
+    go("#/settings/projects");
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Review update" }));
     const dialog = await screen.findByRole("dialog", { name: "Update the library?" });
@@ -227,7 +243,7 @@ describe("App against the mock API", () => {
   });
 
   it("disables library updates while runs are active", async () => {
-    go("#/settings/workspace");
+    go("#/settings/projects");
     render(<App />);
     expect(await screen.findByText(/runs are active/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
@@ -237,7 +253,7 @@ describe("App against the mock API", () => {
     mock.patchWorkspace({
       library: { ...mock.workspace.library!, dirty: true, dirty_files: ["skills/a.md"] },
     });
-    go("#/settings/workspace");
+    go("#/settings/projects");
     render(<App />);
     expect(await screen.findByText(/local changes/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
@@ -246,7 +262,7 @@ describe("App against the mock API", () => {
 
   it("blocks removing a project with unpushed work until acknowledged", async () => {
     const user = userEvent.setup();
-    go("#/settings/workspace");
+    go("#/settings/projects");
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Remove marketing-site" }));
     const dialog = await screen.findByRole("dialog", { name: "Remove marketing-site?" });
@@ -257,15 +273,6 @@ describe("App against the mock API", () => {
     await user.click(confirm);
     expect(await screen.findByText(/stays at \/Users\/dev\/code\/marketing-site/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("heading", { name: "marketing-site" })).toBeNull());
-  });
-
-  it("shows library revision, not a signature, and the fallback notice", async () => {
-    mock.patchWorkspace({ library: { ...mock.workspace.library!, native_skills: false } });
-    go("#/settings/skills");
-    render(<App />);
-    expect(await screen.findByText("Library revision")).toBeInTheDocument();
-    expect(screen.getByText(/fallback route/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/signature/i);
   });
 
   it("shows the selected branch in the thread", async () => {
@@ -304,8 +311,8 @@ describe("App against the mock API", () => {
     expect(await screen.findByText(/the engine hangs/)).toBeInTheDocument();
     expect(await screen.findByText("Grep")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
-    expect(await screen.findByRole("article", { name: "Approval: Run the core test suite" })).toBeInTheDocument();
-    expect(document.querySelector(".thread-state")).toHaveTextContent("Waiting for you");
+    expect(await screen.findByRole("article", { name: "Run the core test suite" })).toBeInTheDocument();
+    expect(document.querySelector(".thread-state")).toHaveTextContent("Approval");
   });
 
   it("streams a run to completion", async () => {
@@ -349,28 +356,19 @@ describe("App against the mock API", () => {
     expect(await screen.findByLabelText(/^Message/)).toHaveValue("go");
   });
 
-  it("shows engine tiers, login and the unmanaged warning when picking an engine", async () => {
-    go("#/new/p-app");
-    render(<App />);
-    expect(await screen.findByRole("radio", { name: /Claude Code/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Cursor Agent/ })).toBeDisabled();
-    expect(screen.getByText(/Sign in through the Codex CLI/)).toBeInTheDocument();
-    expect(screen.getByText(/Can't ask permission/)).toBeInTheDocument();
-  });
-
   it("recovers an Engines failure with retry", async () => {
     mock.fail("/api/engines", 1);
     const user = userEvent.setup();
-    go("#/settings/engines");
+    go("#/settings/providers");
     render(<App />);
-    expect(await screen.findByText("Couldn't load engines")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load providers")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("heading", { name: "Claude Code" })).toBeInTheDocument();
   });
 
   it("confirms an engine update and refuses during an active run", async () => {
     const user = userEvent.setup();
-    go("#/settings/engines");
+    go("#/settings/providers");
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Update to 2.1.20" }));
     const dialog = await screen.findByRole("dialog", { name: "Update Claude Code?" });
@@ -380,34 +378,11 @@ describe("App against the mock API", () => {
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 
-  it("adds and deletes a policy rule", async () => {
-    const user = userEvent.setup();
-    go("#/settings/policy");
-    render(<App />);
-    await user.type(await screen.findByLabelText("Target pattern"), "git push*");
-    await user.click(screen.getByRole("button", { name: "Add rule" }));
-    const remove = await screen.findByRole("button", { name: "Delete rule git push*" });
-    await user.click(remove);
-    await user.click(await screen.findByRole("button", { name: "Delete rule" }));
-    await waitFor(() => expect(screen.queryByText("git push*")).toBeNull());
-  });
-
-  it("filters the audit log", async () => {
-    const user = userEvent.setup();
-    go("#/settings/audit");
-    render(<App />);
-    await screen.findAllByText("policy.evaluate");
-    await user.type(screen.getByLabelText("Search"), "project.trust");
-    await waitFor(() => expect(screen.queryByText("policy.evaluate")).toBeNull());
-    await user.clear(screen.getByLabelText("Search"));
-    await user.type(screen.getByLabelText("Search"), "nothing-matches");
-    expect(await screen.findByText("No matching rows")).toBeInTheDocument();
-  });
-
   it("never asks for an engine credential", async () => {
-    go("#/settings/engines");
+    go("#/settings/providers");
     render(<App />);
     await screen.findByRole("heading", { name: "Codex" });
+    expect(screen.getByText(/Sign in through the Codex CLI/)).toBeInTheDocument();
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.body.textContent).not.toMatch(/api key|paste your token/i);
   });
@@ -479,8 +454,7 @@ describe("App against the mock API", () => {
   it("opens an empty thread as a draft, with the project in the heading", async () => {
     go("#/threads/t-empty");
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "What should we work on in marketing-site?" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "or choose another project" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we build in marketing-site?" })).toBeInTheDocument();
     expect(screen.getByText("Current checkout")).toBeInTheDocument();
   });
 
@@ -497,9 +471,9 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     go("#/settings/appearance");
     render(<App />);
-    expect(await screen.findByRole("radio", { name: "Dark" })).toBeChecked();
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    await user.click(screen.getByRole("radio", { name: "Light" }));
+    const theme = await screen.findByRole("combobox", { name: "Theme" });
+    expect(theme).toHaveValue("dark");
+    await user.selectOptions(theme, "light");
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"theme":"light"');
   });

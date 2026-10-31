@@ -26,7 +26,6 @@ import { IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
 import { TerminalPanel } from "../panels/TerminalPanel";
-import { ApprovalsLink } from "../workspace/ApprovalsLink";
 import { threadRunState } from "../workspace/RunState";
 import { Composer } from "./Composer";
 import { DetailsCard } from "./DetailsCard";
@@ -84,7 +83,6 @@ function TopBar({
         </h1>
       </div>
       <div className="layout-toggles" role="group" aria-label="Layout">
-        {narrow ? <ApprovalsLink /> : null}
         <IconButton label="Details" pressed={detailsShown} onClick={onToggleDetails}>
           <Rows3 size={16} aria-hidden />
         </IconButton>
@@ -104,7 +102,6 @@ function TopBar({
 }
 
 const statusSentence = (state: RunState, tools: number): string => {
-  if (state === "awaiting_approval") return "Waiting for your approval";
   if (state === "running") {
     if (tools === 0) return "Thinking";
     return tools === 1 ? "Waiting on 1 tool" : `Waiting on ${tools} tools`;
@@ -146,33 +143,24 @@ function RunStatusLine({ thread }: { thread: Thread }) {
     );
   }
 
+  // The approval row itself says what the run is waiting for.
+  if (state === "awaiting_approval") {
+    return (
+      <div className="thread-state" role="status">
+        <span className="sr-only">Approval</span>
+      </div>
+    );
+  }
+
   return (
     <div className="thread-state run-status-row" role="status">
-      {state === "running" && tools.length === 0 ? (
-        <Brain size={14} aria-hidden />
-      ) : (
-        <span className={`status-dot ${state === "awaiting_approval" ? "tone-warn" : "tone-info"}`} aria-hidden />
-      )}
+      {tools.length === 0 ? <Brain size={14} aria-hidden /> : <span className="status-dot tone-info" aria-hidden />}
       <span className="run-status text-sweep">{statusSentence(state, tools.length)}</span>
       {tools.length > 0 ? (
         <span className="run-status-detail">{tools.map((tool) => tool.name).join(", ")}</span>
       ) : null}
     </div>
   );
-}
-
-function useProfileName(profileId: string | null): string | null {
-  const [names, setNames] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (!profileId) return;
-    const abort = new AbortController();
-    api.profiles(abort.signal).then(
-      (profiles) => setNames(Object.fromEntries(profiles.map((p) => [p.id, p.name]))),
-      () => undefined,
-    );
-    return () => abort.abort();
-  }, [profileId]);
-  return profileId ? (names[profileId] ?? null) : null;
 }
 
 function StreamBanner({ threadId }: { threadId: string }) {
@@ -205,17 +193,8 @@ function DraftHero({ project }: { project: Project | null }) {
   return (
     <div className="hero">
       <h2 className="hero-title">
-        {project ? (
-          <>
-            What should we work on in <strong>{project.name}</strong>?
-          </>
-        ) : (
-          "What should we work on?"
-        )}
+        What should we build in <strong>{project?.name ?? "this project"}</strong>?
       </h2>
-      <a className="hero-alt" href={routeHref({ name: "new", projectId: null })}>
-        or choose another project
-      </a>
     </div>
   );
 }
@@ -251,7 +230,6 @@ export function ThreadView({ id }: { id: string }) {
     void refreshThread(id);
   }, [id, refreshThread, setLastThread]);
 
-  const profileName = useProfileName(thread?.skill_profile ?? null);
   const project = useMemo(
     () => projects?.find((p) => p.id === thread?.project_id) ?? null,
     [projects, thread?.project_id],
@@ -291,7 +269,6 @@ export function ThreadView({ id }: { id: string }) {
   }
 
   const engine = engineById(engines, thread.engine);
-  const unmanaged = engine !== null && !engine.capabilities.managed;
   const swapped = panelOpen && (!wide || maximized);
   const terminalTakesOver = terminalOpen && layout === "narrow";
   const detailsFit = layout === "xwide" || !panelOpen;
@@ -329,18 +306,11 @@ export function ThreadView({ id }: { id: string }) {
               <a href={routeHref({ name: "trust", projectId: project.id, threadId: id })}>Review folder</a>
             </p>
           ) : null}
-          {unmanaged ? (
-            <p className="banner banner-warn">
-              <ShieldAlert size={16} aria-hidden />
-              {engine?.name} can't ask permission, so Orbyn can't gate its actions.
-            </p>
-          ) : null}
           {hero ? null : (
             <Transcript
               threadId={id}
               active={thread.active_run !== null}
-              engineName={engine?.name ?? thread.engine}
-              footer={<RunStatusLine thread={thread} />}
+                footer={<RunStatusLine thread={thread} />}
             />
           )}
           <div className="composer-lane">
@@ -351,7 +321,6 @@ export function ThreadView({ id }: { id: string }) {
                   <Composer
                     thread={thread}
                     engine={engine}
-                    profileName={profileName}
                     beforeSend={beforeSend}
                     onSendFailed={() => setDocked(false)}
                     showContext={hero || !detailsShown}
@@ -366,7 +335,6 @@ export function ThreadView({ id }: { id: string }) {
           <DetailsCard
             thread={thread}
             engine={engine}
-            profileName={profileName}
             compact={!wide}
             onClose={() => setDetailsOverlay(false)}
           />

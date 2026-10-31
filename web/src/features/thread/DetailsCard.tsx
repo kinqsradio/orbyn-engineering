@@ -20,7 +20,7 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
-import { Button, IconButton, Pill } from "../../ui/controls";
+import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { runningTools } from "./timeline";
 
@@ -144,13 +144,11 @@ function RunningList({ threadId, active }: { threadId: string; active: boolean }
 export function DetailsCard({
   thread,
   engine,
-  profileName,
   compact,
   onClose,
 }: {
   thread: Thread;
   engine: EngineStatus | null;
-  profileName: string | null;
   /** On one-surface layouts the card also carries the panel shortcuts. */
   compact: boolean;
   onClose(): void;
@@ -193,7 +191,7 @@ export function DetailsCard({
         <div className="detail-row detail-row-static">
           <EngineGlyph name={engine?.name ?? thread.engine} />
           <span>{engine?.name ?? thread.engine}</span>
-          {engine && !engine.capabilities.managed ? <Pill tone="warn">Unmanaged</Pill> : null}
+          {engine && !engine.capabilities.managed ? <span className="detail-dim">Unmanaged</span> : null}
         </div>
       </div>
       <div className="details-section">
@@ -201,12 +199,6 @@ export function DetailsCard({
           <div className="detail-row detail-row-static" title={thread.cwd}>
             <GitBranch size={16} aria-hidden />
             <span>{branch}</span>
-          </div>
-        ) : null}
-        {profileName ? (
-          <div className="detail-row detail-row-static">
-            <span className="detail-dim detail-label">Skill profile</span>
-            <span className="detail-meta detail-meta-text">{profileName}</span>
           </div>
         ) : null}
         <ChangesRow threadId={thread.id} />

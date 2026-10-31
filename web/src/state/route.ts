@@ -1,21 +1,18 @@
 import { useSyncExternalStore } from "react";
 
 export const SETTINGS_SECTIONS = [
-  "engines",
-  "workspace",
-  "updates",
-  "skills",
-  "policy",
-  "audit",
-  "computer",
-  "access",
   "appearance",
+  "keybindings",
+  "providers",
+  "threads",
+  "projects",
+  "sharing",
+  "maintenance",
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export type Route =
   | { name: "home" }
-  | { name: "approvals" }
   | { name: "thread"; id: string }
   | { name: "new"; projectId: string | null }
   | { name: "add-project" }
@@ -28,8 +25,6 @@ export function routeHref(route: Route): string {
   switch (route.name) {
     case "home":
       return "#/";
-    case "approvals":
-      return "#/approvals";
     case "thread":
       return `#/threads/${enc(route.id)}`;
     case "new":
@@ -57,8 +52,6 @@ export function parseRoute(hash: string): Route {
     });
   const [head, first, second] = parts;
   switch (head) {
-    case "approvals":
-      return { name: "approvals" };
     case "threads":
       return first ? { name: "thread", id: first } : { name: "home" };
     case "new":

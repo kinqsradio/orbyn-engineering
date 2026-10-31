@@ -1,18 +1,13 @@
 /** mock-fixture: deterministic data for the dev server and tests. Never shipped. */
 import type {
   Approval,
-  ComputerStatus,
   EngineStatus,
   FileDiff,
-  PolicyRule,
   Project,
   Run,
   RunState,
   ServerInfo,
-  SkillPackStatus,
-  SkillProfile,
   Thread,
-  WireAuditEvent,
   WireThreadEvent,
   AgUiEvent,
   ImportReport,
@@ -249,7 +244,6 @@ export function threads(): Thread[] {
   const list: Thread[] = [
     baseThread("t-approval", "p-app", "Add approval timeout handling to the run owner", "claude", -300, {
       model: "claude-opus-5-5",
-      skill_profile: "sp-backend",
       active_run: run("r-approval", "t-approval", "awaiting_approval", -360),
       last_run_state: "awaiting_approval",
       worktree: {
@@ -274,7 +268,6 @@ export function threads(): Thread[] {
     baseThread("t-site-approval", "p-site", "Push a preview of the pricing page", "claude", -600, {
       active_run: run("r-site", "t-site-approval", "awaiting_approval", -640),
       last_run_state: "awaiting_approval",
-      skill_profile: "sp-frontend",
     }),
     baseThread("t-empty", "p-site", "New thread", "claude", -9000),
   ];
@@ -570,97 +563,6 @@ export const diffs: Record<string, FileDiff[]> = {
     },
   ],
   "t-done": [],
-};
-
-export const skills: SkillPackStatus = {
-  version: "2026.10.3",
-  digest: "sha256:7f3c9a1e4b0d62f8c15ab09e7d44c1e2b6a8f03d19c75e2284ab6e10f7cd3a91",
-  signature_valid: true,
-  source: "orbyn-fullstack-skills@8ede3c4",
-  skills: [
-    ["architect", "design", "Design data shapes, interfaces, ownership and module boundaries."],
-    ["how", "investigation", "Trace source behaviour and data flow across boundaries."],
-    ["why", "investigation", "Investigate design rationale and regressions through history."],
-    ["tdd", "quality", "Design focused contract tests and failing-before regressions."],
-    ["interrogate", "quality", "Challenge a design or claim for concrete evidence gaps."],
-    ["orbyn-ui-design", "design", "Design, implement or review UI and UX."],
-    ["orbyn-content-design", "design", "Write concise product content and labels."],
-    ["orbyn-backend-design", "backend", "Design API and service behaviour."],
-    ["orbyn-data-migration", "backend", "Plan stored-data and schema migrations."],
-    ["orbyn-ci-design", "delivery", "Design or repair CI and verify release evidence."],
-    ["orbyn-worktree", "delivery", "Manage task branches and worktree isolation."],
-    ["unslop", "writing", "Edit prose for clear, factual communication."],
-  ].map(([name, category, description], at) => ({
-    name: name as string,
-    category: category as string,
-    description: description as string,
-    enabled: at !== 11,
-  })),
-};
-
-export const profiles: SkillProfile[] = [
-  { id: "sp-backend", name: "Backend", skills: ["architect", "how", "tdd", "orbyn-backend-design"] },
-  { id: "sp-frontend", name: "Frontend", skills: ["orbyn-ui-design", "orbyn-content-design"] },
-];
-
-export const rules: PolicyRule[] = [
-  {
-    id: "rule-1",
-    effect: "deny",
-    kind: "network",
-    pattern: "*://*.internal.example/*",
-    engine: null,
-    note: "Internal hosts stay out of reach.",
-    created_at: iso(-86400),
-  },
-  {
-    id: "rule-2",
-    effect: "allow",
-    kind: "command",
-    pattern: "cargo test*",
-    engine: "claude",
-    note: null,
-    created_at: iso(-7200),
-  },
-  {
-    id: "rule-3",
-    effect: "ask",
-    kind: "file_change",
-    pattern: "*/migrations/*",
-    engine: null,
-    note: "Always review migrations.",
-    created_at: iso(-3600),
-  },
-];
-
-export function audit(): WireAuditEvent[] {
-  const rows: WireAuditEvent[] = [];
-  const actions = ["approval.request", "approval.decide", "run.admit", "run.finish", "policy.evaluate", "project.trust"];
-  for (let at = 0; at < 40; at += 1) {
-    const action = actions[at % actions.length] ?? "run.admit";
-    rows.push({
-      id: 1000 - at,
-      ts: iso(-at * 420),
-      actor: at % 3 === 0 ? "person" : "orbynd",
-      action,
-      target: at % 4 === 0 ? "cargo test -p orbyn-core" : `crates/orbyn-core/src/file_${at}.rs`,
-      decision: at % 5 === 0 ? "deny" : at % 5 === 1 ? "allow" : at % 5 === 2 ? "ask" : null,
-      source: at % 2 === 0 ? "policy" : "person",
-      thread_id: at % 2 === 0 ? "t-approval" : "t-done",
-      run_id: at % 2 === 0 ? "r-approval" : "r-done",
-      detail: { rule_id: at % 5 === 0 ? "rule-1" : null, seq: at },
-    });
-  }
-  return rows;
-}
-
-export const computer: ComputerStatus = {
-  desktop_control: false,
-  desktop_path: null,
-  desktop_version: null,
-  browser_control: true,
-  browser_path: "/Applications/Google Chrome.app",
-  problem: "Desktop control helper not found. Install it to let engines operate apps.",
 };
 
 export const fsTree: Record<string, { parent: string | null; entries: { name: string; is_git?: boolean }[] }> = {

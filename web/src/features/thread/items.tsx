@@ -118,9 +118,9 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
   );
 }
 
-function ApprovalEntry({ item, engine }: { item: ApprovalItem; engine: string | null }) {
+function ApprovalEntry({ item }: { item: ApprovalItem }) {
   const approval = useResolvedApproval(item.approval);
-  return <ApprovalCard approval={approval} engine={engine} />;
+  return <ApprovalCard approval={approval} />;
 }
 
 const stepDone = (status: string | null) => status === "completed" || status === "done";
@@ -285,20 +285,12 @@ export function WorkGroupView({
   );
 }
 
-function ItemView({
-  item,
-  live,
-  engine,
-}: {
-  item: Exclude<TimelineEntry, WorkGroup>;
-  live: boolean;
-  engine: string | null;
-}) {
+function ItemView({ item, live }: { item: Exclude<TimelineEntry, WorkGroup>; live: boolean }) {
   switch (item.kind) {
     case "message":
       return <Message item={item} live={live} />;
     case "approval":
-      return <ApprovalEntry item={item} engine={engine} />;
+      return <ApprovalEntry item={item} />;
     case "plan":
       return <Plan item={item} live={live} />;
     case "diff":

@@ -1,84 +1,50 @@
-import { useId } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
 import { useUi, type ThemeChoice } from "../../state/ui";
+import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 const choices: { value: ThemeChoice; label: string }[] = [
-  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
   { value: "light", label: "Light" },
-  { value: "system", label: "Match system" },
-];
-
-const shortcuts: { keys: string; action: string }[] = [
-  { keys: "Enter", action: "Send message" },
-  { keys: "Shift+Enter", action: "New line" },
-  { keys: "Cmd/Ctrl+K", action: "Command palette" },
-  { keys: "Alt+N", action: "New thread" },
-  { keys: "Alt+A", action: "Approvals" },
-  { keys: "Alt+1, 2, 3", action: "Diff, Terminal, Activity" },
-  { keys: "Esc", action: "Close the top dialog or panel" },
+  { value: "dark", label: "Dark" },
 ];
 
 export function AppearanceSection() {
   const theme = useUi((state) => state.theme);
   const setTheme = useUi((state) => state.setTheme);
-  const group = useId();
-  const sliderId = useId();
   const panelMs = useUi((state) => state.panelAnimationMs);
   const setPanelMs = useUi((state) => state.setPanelAnimationMs);
   return (
     <>
-      <div className="section-bar">
-        <h1 tabIndex={-1} data-page-title>
-          Appearance
-        </h1>
-      </div>
-      <fieldset className="fieldset">
-        <legend>Theme</legend>
-        <div className="choice-row">
-          {choices.map((choice) => (
-            <label key={choice.value} className="check">
-              <input
-                type="radio"
-                name={group}
-                checked={theme === choice.value}
-                onChange={() => setTheme(choice.value)}
-              />
-              <span>{choice.label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <section className="section">
-        <h2>Motion</h2>
-        <div className="field">
-          <label htmlFor={sliderId}>Panel animations: {panelMs === 0 ? "Off" : `${panelMs} ms`}</label>
+      <h1 className="sr-only" tabIndex={-1} data-page-title>
+        Appearance
+      </h1>
+      <SettingGroup title="Theme">
+        <SettingRow title="Theme" description="How the app looks on this device.">
+          <select aria-label="Theme" value={theme} onChange={(event) => setTheme(event.target.value as ThemeChoice)}>
+            {choices.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </SettingRow>
+      </SettingGroup>
+      <SettingGroup title="Motion">
+        <SettingRow
+          title={`Panel animations: ${panelMs === 0 ? "Off" : `${panelMs} ms`}`}
+          description="Animates panels opening and the composer moving."
+        >
           <input
-            id={sliderId}
             type="range"
+            aria-label="Panel animations"
             min={0}
             max={MAX_PANEL_ANIMATION_MS}
             step={20}
             value={panelMs}
             onChange={(event) => setPanelMs(Number(event.target.value))}
           />
-          <p className="field-hint">
-            Moves panels and the composer. Off by default, since it redraws layout on every frame.
-          </p>
-        </div>
-      </section>
-      <section className="section">
-        <h2>Keyboard</h2>
-        <dl className="shortcuts">
-          {shortcuts.map((shortcut) => (
-            <div key={shortcut.keys}>
-              <dt>
-                <kbd>{shortcut.keys}</kbd>
-              </dt>
-              <dd>{shortcut.action}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+        </SettingRow>
+      </SettingGroup>
     </>
   );
 }

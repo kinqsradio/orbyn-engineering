@@ -55,9 +55,6 @@ export function createMockApi(options: MockOptions = {}) {
   let approvals: Approval[] = [];
   let logs: Record<string, WireThreadEvent[]> = {};
   let engines: EngineStatus[] = [];
-  let skills = structuredClone(fixtures.skills);
-  let profiles = structuredClone(fixtures.profiles);
-  let rules = structuredClone(fixtures.rules);
   let managed: WorkspaceStatus = fixtures.workspaceStatus([]);
   let failNextSetup = false;
   let updates: UpdateStatus = fixtures.updateStatus(2);
@@ -99,9 +96,6 @@ export function createMockApi(options: MockOptions = {}) {
     failStep = null;
     if (next === "first-run") managed = fixtures.workspaceStatus([], false);
     engines = structuredClone(fixtures.engines);
-    skills = structuredClone(fixtures.skills);
-    profiles = structuredClone(fixtures.profiles);
-    rules = structuredClone(fixtures.rules);
   }
   reset();
 
@@ -186,7 +180,7 @@ export function createMockApi(options: MockOptions = {}) {
     return { status: 202, body: run };
   }
 
-  function decide(approval: Approval, allow: boolean, remember: boolean): MockResponse {
+  function decide(approval: Approval, allow: boolean): MockResponse {
     if (approval.state !== "pending") return err(409, "already_decided", `Already ${approval.state}.`);
     const decided: Approval = {
       ...approval,
@@ -196,20 +190,6 @@ export function createMockApi(options: MockOptions = {}) {
     };
     approvals = approvals.filter((a) => a.id !== approval.id);
     append(approval.thread_id, approval.run_id, fixtures.approvalEvent(decided));
-    if (remember) {
-      rules = [
-        ...rules,
-        {
-          id: nextId("rule"),
-          effect: "allow",
-          kind: approval.kind,
-          pattern: approval.summary,
-          engine: null,
-          note: "Added from an approval.",
-          created_at: now(),
-        },
-      ];
-    }
     if (!approvals.some((a) => a.thread_id === approval.thread_id)) {
       const thread = threads.find((t) => t.id === approval.thread_id);
       if (thread?.active_run) {
@@ -472,7 +452,7 @@ export function createMockApi(options: MockOptions = {}) {
             return {
               status: 200,
               body: {
-                skills: skills.skills.map((s) => s.name).filter((n) => n.includes(needle)),
+                skills: ["architect", "tdd", "unslop"].filter((n) => n.includes(needle)),
                 files: ["README.md", "src/main.rs", "src/lib.rs"].filter((f) => f.toLowerCase().includes(needle)),
               },
             };
@@ -499,21 +479,6 @@ export function createMockApi(options: MockOptions = {}) {
         return { status: 200, body: approvals };
       case "GET /api/engines":
         return { status: 200, body: engines };
-      case "GET /api/skills":
-        if (seg[2] === "profiles") return { status: 200, body: profiles };
-        return { status: 200, body: skills };
-      case "GET /api/policy":
-        return { status: 200, body: rules };
-      case "GET /api/audit": {
-        const id = query.get("thread_id");
-        const limit = Number(query.get("limit") ?? 100);
-        return {
-          status: 200,
-          body: fixtures.audit().filter((row) => !id || row.thread_id === id).slice(0, limit),
-        };
-      }
-      case "GET /api/computer":
-        return { status: 200, body: fixtures.computer };
       default:
         break;
     }
@@ -594,7 +559,7 @@ export function createMockApi(options: MockOptions = {}) {
       if (seg[1] === "approvals" && seg[3] === "decide") {
         const approval = approvals.find((a) => a.id === seg[2]);
         if (!approval) return err(409, "already_decided", "This approval was already decided.");
-        return decide(approval, data.allow === true, data.remember === true);
+        return decide(approval, data.allow === true);
       }
       if (seg[1] === "engines" && seg[2] === "refresh") return { status: 200, body: engines };
       if (seg[1] === "engines" && seg[2] === "custom") {
@@ -643,30 +608,11 @@ export function createMockApi(options: MockOptions = {}) {
         timers.add(timer);
         return { status: 202 };
       }
-      if (seg[1] === "skills" && seg[2] === "rebuild") return { status: 200, body: skills };
-      if (seg[1] === "skills" && seg[2] === "profiles") {
-        const profile = { id: nextId("sp"), name: String(data.name), skills: (data.skills ?? []) as string[] };
-        profiles = [...profiles, profile];
-        return { status: 201, body: profile };
-      }
-      if (seg[1] === "policy" && seg[2] === "rules") {
-        const rule = { ...(data as object), id: nextId("rule"), created_at: now() } as (typeof rules)[number];
-        rules = [...rules, rule];
-        return { status: 201, body: rule };
-      }
     }
 
     if (method === "DELETE" && seg[0] === "api") {
       if (seg[1] === "engines" && seg[2] === "custom") {
         engines = engines.filter((e) => e.id !== seg[3]);
-        return { status: 204 };
-      }
-      if (seg[1] === "skills" && seg[2] === "profiles") {
-        profiles = profiles.filter((p) => p.id !== seg[3]);
-        return { status: 204 };
-      }
-      if (seg[1] === "policy" && seg[2] === "rules") {
-        rules = rules.filter((r) => r.id !== seg[3]);
         return { status: 204 };
       }
     }

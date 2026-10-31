@@ -12,7 +12,7 @@ for (const [width, height] of [
 ]) {
   test(`no page overflow at ${width}x${height}`, async ({ page }) => {
     await page.setViewportSize({ width: width!, height: height! });
-    for (const hash of ["#/threads/t-done", "#/new", "#/settings/audit", "#/settings/policy", "#/approvals"]) {
+    for (const hash of ["#/threads/t-done", "#/new", "#/settings/projects", "#/settings/providers"]) {
       await page.goto(`/${hash}`);
       await page.waitForTimeout(300);
       const overflow = await page.evaluate(() =>
@@ -69,7 +69,7 @@ test("narrow layout is one surface with a way back", async ({ page }) => {
 });
 
 test("Escape closes a dialog and returns focus to its opener", async ({ page }) => {
-  await page.goto("/#/settings/engines");
+  await page.goto("/#/settings/providers");
   const open = page.getByRole("button", { name: "Update to 2.1.20" });
   await open.click();
   const dialog = page.getByRole("dialog", { name: /^Update / });
@@ -84,7 +84,7 @@ test("Escape closes a dialog and returns focus to its opener", async ({ page }) 
 test("keyboard focus is visible and reduced motion stops animation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/#/threads/t-approval");
-  await expect(page.locator(".thread-state")).toContainText("Waiting for your approval");
+  await expect(page.locator(".thread-state")).toContainText("Approval");
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   const outline = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineStyle);
@@ -107,7 +107,7 @@ const openHero = async (page: Page, animationMs: number) => {
     animationMs,
   );
   await page.goto("/__mock/scenario/default?to=/%23/threads/t-empty");
-  await expect(page.getByRole("heading", { name: /What should we work on/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /What should we build/ })).toBeVisible();
 };
 
 const send = async (page: Page, text: string) => {
@@ -152,7 +152,7 @@ test("the default zero duration and reduced motion skip the transition", async (
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ panelAnimationMs: 240 })));
   await page.goto("/__mock/scenario/default?to=/%23/threads/t-empty");
-  await expect(page.getByRole("heading", { name: /What should we work on/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /What should we build/ })).toBeVisible();
   await send(page, "still");
   expect(await page.evaluate(() => document.getAnimations().some((a) => a.id === "composer-dock"))).toBe(false);
   await expect(page.getByText("still", { exact: true })).toBeVisible();

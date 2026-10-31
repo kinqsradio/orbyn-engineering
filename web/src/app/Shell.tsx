@@ -1,11 +1,10 @@
 import { PanelLeft } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AddProject } from "../features/onboarding/AddProject";
-import { NewThread } from "../features/onboarding/NewThread";
+import { DraftView } from "../features/onboarding/DraftView";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
-import { ApprovalsPage, HomePage } from "../features/workspace/Attention";
 import { CommandPalette } from "../features/workspace/CommandPalette";
 import { Sidebar } from "../features/workspace/Sidebar";
 import { Toasts } from "../ui/Toasts";
@@ -21,13 +20,11 @@ const POLL_MS = 4000;
 function RouteView({ route, needsProject }: { route: Exclude<Route, { name: "settings" }>; needsProject: boolean }) {
   switch (route.name) {
     case "home":
-      return needsProject ? <AddProject /> : <HomePage />;
-    case "approvals":
-      return <ApprovalsPage />;
+      return needsProject ? <AddProject /> : <DraftView key="draft" projectId={null} />;
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":
-      return <NewThread projectId={route.projectId} />;
+      return <DraftView key={route.projectId ?? "draft"} projectId={route.projectId} />;
     case "add-project":
       return <AddProject />;
     case "trust":
@@ -55,9 +52,6 @@ function useGlobalKeys(route: Route) {
       if (event.code === "KeyN") {
         event.preventDefault();
         navigate({ name: "new", projectId: null });
-      } else if (event.code === "KeyA") {
-        event.preventDefault();
-        navigate({ name: "approvals" });
       } else if (route.name === "thread" && PANEL_KEYS[event.code]) {
         event.preventDefault();
         useUi.getState().togglePanel(PANEL_KEYS[event.code] ?? "diff");
@@ -88,7 +82,6 @@ export function Shell() {
   const route = useRoute();
   const layout = useLayoutWidth();
   const projects = useWorkspace((state) => state.projects.data);
-  const pending = useWorkspace((state) => state.approvals.data?.length ?? 0);
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
   const sidebarWidth = useUi((state) => state.sidebarWidth);
@@ -121,10 +114,6 @@ export function Shell() {
     }, POLL_MS);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    document.title = pending > 0 ? `(${pending}) Orbyn Engineering` : "Orbyn Engineering";
-  }, [pending]);
 
   const needsProject = projects !== null && projects.length === 0;
   const underneath = route.name === "settings" ? behindSettings.current : route;

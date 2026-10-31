@@ -1,4 +1,4 @@
-import { ArrowUp, Folder, GitBranch, Paperclip, ShieldCheck, ShieldOff, Square, X } from "lucide-react";
+import { ArrowUp, Folder, GitBranch, Lock, Paperclip, Pencil, ShieldOff, Square, Wand2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
 import type { Attachment, EngineStatus, PermissionMode, Thread } from "../../api/types";
@@ -15,10 +15,17 @@ import { QueuedMessages } from "./QueuedMessages";
 import { insertToken, triggerAt } from "./skillMention";
 
 const accessLabels: Record<PermissionMode, string> = {
-  supervised: "Asks before acting",
-  auto_edits: "Auto edits",
+  supervised: "Supervised",
+  auto_edits: "Auto-accept edits",
   auto: "Auto",
   full_access: "Full access",
+};
+
+const accessIcons: Record<PermissionMode, typeof Lock> = {
+  supervised: Lock,
+  auto_edits: Pencil,
+  auto: Wand2,
+  full_access: ShieldOff,
 };
 
 const ACCESS_MODES = Object.keys(accessLabels) as PermissionMode[];
@@ -34,14 +41,12 @@ const MENU_ROWS = 6;
 export function Composer({
   thread,
   engine,
-  profileName,
   beforeSend,
   onSendFailed,
   showContext,
 }: {
   thread: Thread;
   engine: EngineStatus | null;
-  profileName: string | null;
   /** Runs first and may hold the send, as the hero transition does. */
   beforeSend?(): Promise<void>;
   onSendFailed?(): void;
@@ -121,6 +126,7 @@ export function Composer({
     setError(null);
     try {
       await beforeSend?.();
+      await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false)));
       const ids = attachments.map((file) => file.id);
       const run = busy ? null : await api.startRun(thread.id, prompt.trim(), ids);
       if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
@@ -199,6 +205,12 @@ export function Composer({
     }
   };
 
+  const approvals = useWorkspace((state) => state.approvals.data);
+  const pendingHere = useMemo(
+    () => (approvals ?? []).filter((approval) => approval.thread_id === thread.id),
+    [approvals, thread.id],
+  );
+
   const stop = async () => {
     if (!thread.active_run) return;
     setStopping(true);
@@ -215,6 +227,7 @@ export function Composer({
 
   const unmanaged = engine !== null && !engine.capabilities.managed;
   const access = thread.lifecycle?.permission_mode ?? "supervised";
+  const AccessIcon = accessIcons[access];
   const engineName = engine?.name ?? thread.engine;
 
   return (
@@ -283,7 +296,11 @@ export function Composer({
           onKeyDown={onKeyDown}
           aria-label={`Message ${thread.title}`}
           aria-describedby="composer-help"
-          placeholder="Ask anything. @ files, $ skills, / commands"
+          placeholder={
+            pendingHere.length > 0
+              ? "Send a message to decline and redirect the agent"
+              : "Ask anything. @ files, $ skills, / commands"
+          }
           data-autofocus={layout === "narrow" ? undefined : true}
         />
         <span id="composer-help" className="sr-only">
@@ -306,14 +323,14 @@ export function Composer({
             <Paperclip size={16} aria-hidden />
           </IconButton>
           <dl className="composer-left">
-            {profileName ? (
-              <div>
-                <dt className="sr-only">Skill profile</dt>
-                <dd>{profileName}</dd>
-              </div>
-            ) : null}
           </dl>
           <dl className="composer-right">
+            {showContext ? null : (
+              <div>
+                <dt className="sr-only">Access</dt>
+                <dd>{unmanaged ? "Unmanaged" : accessLabels[access]}</dd>
+              </div>
+            )}
             <div>
               <dt className="sr-only">Engine</dt>
               <dd>
@@ -388,7 +405,7 @@ export function Composer({
                     setAccessMenu({ x: rect.left, y: rect.top - 4 - ACCESS_MODES.length * 32 });
                   }}
                 >
-                  <ShieldCheck size={12} aria-hidden />
+                  <AccessIcon size={12} aria-hidden />
                   {accessLabels[access]}
                 </button>
               )}
@@ -405,6 +422,10 @@ export function Composer({
           items={ACCESS_MODES.map((mode) => ({
             label: accessLabels[mode],
             selected: mode === access,
+            icon: (() => {
+              const Icon = accessIcons[mode];
+              return <Icon size={14} aria-hidden />;
+            })(),
             onSelect: () => void setAccess(mode),
           }))}
         />

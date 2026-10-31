@@ -1,42 +1,67 @@
 # UI parity audit
 
-Reference: running T3 Code, observed look-only at 1728x1048, plus its source at
-`cadf7d5fe3` and two saved captures. The candidate is `web/` on mock data unless a
-row says otherwise. Live inspection stopped early, when script access to the
-reference was declined, so most states below are source-derived or unobserved.
-"Live" means measured in the running app. Nothing from the reference's data is here.
+Reference: a running T3 Code, observed at 1440x900 and 1728x1048 at DPR 2, with its
+source at `cadf7d5fe3` and two saved captures. "Live" means measured in the running
+app, including two test turns in one dedicated thread on GPT-6-Luna at Low in
+Supervised mode. "Source" means read from code only. "Unobserved" means neither.
+The candidate is `web/`. "Real" means run through `orbynd` with synthetic data and a
+fake ACP engine; everything else ran on the mock. No reference data is recorded here.
 
 | Surface | State | Reference observed | Our status | Measured deviation |
 | --- | --- | --- | --- | --- |
-| Sidebar | Width | Live: 208px | Match | 0 |
-| Sidebar | Search row | Live: y 62-90, icon buttons 28px | Match | 0, y from CSS, not re-measured |
-| Sidebar | Settled row | Live: one line, 36px, pitch 37, 14px title, 12px age | Match | Not re-measured after change |
-| Sidebar | Settled shelf | Live: toggle 32px, 10 rows, then Show n more | Match | 0 |
-| Sidebar | Footer | Live: 32px buttons at x 8, 44, 80; update at x 167 | Match | Update x 166 at 1728 |
-| Sidebar | Main list rows | Marketing image only; live list was empty | Three-line rows | Unobserved live |
-| Sidebar | Traffic-light clearance | Saved capture | Not built; shell has a native title bar | Gap |
-| Sidebar | Drag resize and label reveal | Source only | Not built | Gap |
-| Hover card | Older thread | Live: x row right + 4, width 320, radius 6, 150ms scale and opacity; delay per source 150ms | Built with neutral rows | Live height 109, ours varies |
-| Draft | Heading | Live: 30px, -0.75px, line 36 | Match | Tracking -0.75px, x differs by column |
-| Draft | Composer | Live: 736x111.5; capture x 80-816, y 469-580 | x 80.5-816.5, y 468-580 | 0.5 x, 1 y |
-| Draft | Divider and pane | Capture: x 1189, pane 539 | x 1189, 539 | 0 |
-| Draft | Details card | Capture: 280 wide, y 64-295 | 280, y 64-225 | Shorter: editor, script and commit rows hidden |
-| Draft | Launcher | Capture: seven surfaces | Terminal, Diff, Activity | Others hidden, no backend |
-| Timeline | Markdown body | Live: 14px, line 22.75, p margin 10.4 | Match | Line height from 1.625 |
-| Timeline | Heading h2 | Live: 18px, 600, margins 20 and 8 | Match | 0 |
-| Timeline | Inline code | Live: 11.9px, radius 4, padding 1.19/4.165 | Match | 0 by ratio |
+| Sidebar | Width | Live: 208px | Match, resizable 180-420 | 0 |
+| Sidebar | Search row | Live: y 62-90, 28px icons | Match | 0 |
+| Sidebar | Settled row | Live: one line, 36px, pitch 37 | Match | 0 by CSS |
+| Sidebar | Settled shelf | Live: 32px toggle, 10 rows, Show n more | Match | 0 |
+| Sidebar | Footer | Live: 32px at x 8, 44, 80; update x 167 | Settings, update only | x 166; Pull requests and Usage hidden |
+| Sidebar | Working status | Live: spinner, blue "Working Ns" | Match | Spin 1000 ms |
+| Sidebar | Approval status | Live: warn "Approval" | Match, Real | Dot, not their icon |
+| Sidebar | Multi-line rows | Live: selected row, three lines | Built | Unread title weight unobserved |
+| Hover card | Older thread | Live: 165 ms to show, x +4, width 320, radius 6, 150 ms | Match | Delay 150 ms set |
+| Draft | Heading | Live: 30px, -0.75px, line 36 | Match, own wording removed | Same wording as reference |
+| Draft | Composer | Capture: x 80-816, y 469-580 | x 80.5-816.5, y 468-580 | 0.5 x, 1 y, re-measured |
+| Draft | Divider, pane | Capture: x 1189, 539 wide | x 1189, 539 wide | 0, re-measured |
+| Draft | Details card | Capture: 280, y 64-295 | 280, y 64-225 | Editor, script, commit rows hidden |
+| Draft | Launcher | Live: 7 surfaces | Terminal, Diff, Activity | Others hidden, no backend |
+| Draft | Secondary action | Live: or start without a project | Removed | Threads require a project |
+| Hero | First send | Live: at 0 ms snaps y 394 to 768 with no animation | Match at default | With a duration, FLIP asserted |
+| Timeline | Live header | Live: "Working for Ns" with rule | Match | 0 |
+| Timeline | Thinking row | Live: band 2200 ms stepped | Match | Sweep and band asserted |
+| Timeline | Tool shimmer | Live: 2200 ms, spin 1000 ms | Match | 0 |
+| Timeline | Finished fold | Live: hidden when no tools ran | Kept as "Worked for" | Keeps reasoning reachable |
+| Timeline | Markdown | Live: 14/22.75, p margin 10.4, h2 18/600 | Match | 0 |
+| Timeline | Inline code | Live: 11.9px, radius 4 | Match | 0 by ratio |
+| Timeline | Table | Live: full width, th 600, td padding 7.2 | Match | Numeric right-align not built |
+| Timeline | Code block | Live: card radius 8, header 30, pre 13/17.875, language icon | Header, Shiki tokens, wrap, copy | Language text, no icon |
 | Timeline | User bubble | Live: radius 16, padding 12 | Match | 0 |
-| Timeline | Code block header, shiki, tables, images, math | Source only | Plain block | Gap |
-| Timeline | Tool rows, shimmer, streaming | Source only | Built from source values | Unobserved live; no test turn run |
-| Composer | Model picker, traits | Live: present | Read-only model label | Gap |
-| Composer | Mentions, commands, attachments, access | Source only | Built, wired to service API | Not run on real service |
-| Composer | Queue and steer | Source only | Not built | Gap, backend exists |
-| Terminal drawer | Open | Source only | Built | Unobserved live |
-| Command palette | Open | Source: 576px wide, 420 tall | Own build | Unobserved live |
-| Dialogs, menus, toasts | Open | Source only | Own build | Unobserved live |
-| Settings | Layout | Not reached | Grouped surfaces from source | Unobserved live |
-| Settings | Engines, Workspace, Updates, Skills, Policy, Audit, Computer, Access | n/a | Loaded on real orbynd, no failed requests | Synthetic data, load only |
-| First run | Setup, import | n/a | Passed on real orbynd with a local library | Synthetic data |
-| Motion | Hero dock | Source: 0 ms default, cubic-bezier(0.4, 0, 0.2, 1) | Asserted with Web Animations | Live duration unobserved |
-| Motion | Status loops, sweep, disclosures | Source values | Asserted computed styles | Live frames unobserved |
-| Layout | 1024, 390, light | n/a | Inspected after this pass | No overflow in e2e |
+| Composer | Stop | Live: red round button | Match, Real | 0 |
+| Composer | Model picker | Live: provider rail, search, 362 wide | Absent | No model list in the API |
+| Composer | Effort, service tier | Live | Absent | No backend |
+| Composer | Permission modes | Live: Supervised, Full access seen | Menu of four, Real not exercised | Own menu shape |
+| Composer | Approval placeholder | Live | Match | Declines, then queues |
+| Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
+| Composer | Queue and steer | Source | Built; queue and remove Real | Steer mock only |
+| Approval | Inline row | Live: target, Waiting for approval, Decline, Approve, More | Match, Real | Always allow persists, so no "this session" |
+| Approval | Question panel | Source | Absent | No backend event |
+| Command palette | Open | Live: y 90, 576x420, radius 16, blur 16, items 32 radius 4 | Match | Fewer actions |
+| Dialogs | Backdrop | Live: 64% black, blur 4, 200 ms | Match | 0 |
+| Menus | Popover | Live: radius 8, 150 ms scale and opacity | 100 ms | 50 ms |
+| Terminal drawer | Open | Unobserved | Built | Unknown |
+| Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
+| Settings | Sections | Live: 17 sections | 7 backed, Real | Others hidden |
+| Settings | Appearance, Keybindings | Live names | Backed | Keybindings read-only |
+| Settings | Providers | Live name | Engines moved here, Real | Layout own |
+| Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
+| Settings | Projects | Live name | Library and projects, Real | Layout own |
+| Settings | Sharing & access | Live name | Access moved here, Real | Layout own |
+| Settings | Maintenance | Live name | Update checks, Real | Contents unobserved |
+| First run | Setup, create, trust, draft send | n/a, required by Orbyn | Passed, Real | Synthetic data |
+| Removed | Audit section | Not in reference | Removed with its mock data | n/a |
+| Removed | Policy section | Not in reference | Removed with its mock data | n/a |
+| Removed | Computer section | Not in reference | Removed with its mock data | n/a |
+| Removed | Skills section | Not in reference | Removed; `$` menu remains | n/a |
+| Removed | Updates section | Not in reference | Removed; pill, dialog and Maintenance | n/a |
+| Removed | Workspace section | Not in reference | Folded into Projects | n/a |
+| Removed | Workspace home | Not in reference | Replaced by the draft | n/a |
+| Removed | Approvals page, link and count | Not in reference | Replaced by thread status | n/a |
+| Removed | New thread form | Not in reference | Replaced by draft pickers | n/a |

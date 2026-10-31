@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   ChevronRight,
   CircleDashed,
   FolderPlus,
@@ -32,10 +31,9 @@ import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { EngineGlyph, OrbynMark, ProjectBadge } from "../../ui/badges";
 import { Collapsible } from "../../ui/Collapsible";
-import { IconButton, Pill } from "../../ui/controls";
+import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
-import { ApprovalsLink } from "./ApprovalsLink";
 import { groupThreads } from "./groups";
 import { threadRunState } from "./RunState";
 import { UpdatePill } from "./Updates";
@@ -233,7 +231,7 @@ function ThreadRow({
               </>
             ) : null}
           </span>
-          {unmanaged ? <Pill tone="warn">Unmanaged</Pill> : null}
+          {unmanaged ? <span className="row-age">Unmanaged</span> : null}
           <EngineGlyph name={engineName} />
         </span>
           </>
@@ -301,7 +299,7 @@ function EmptyProjectRow({ project }: { project: Project }) {
           {project.trusted ? null : (
             <span className="row-status tone-warn" title="Folder not trusted">
               <ShieldAlert size={14} aria-hidden />
-              Untrusted
+              Not trusted
             </span>
           )}
         </span>
@@ -405,15 +403,6 @@ function SidebarFoot({ route }: { route: Route }) {
         aria-current={route.name === "settings" ? "page" : undefined}
       >
         <Settings size={16} aria-hidden />
-      </a>
-      <ApprovalsLink current={route.name === "approvals"} />
-      <a
-        className="icon-btn"
-        href={routeHref({ name: "settings", section: "audit" })}
-        aria-label="Audit log"
-        title="Audit log"
-      >
-        <BarChart3 size={16} aria-hidden />
       </a>
       <UpdatePill />
     </div>
