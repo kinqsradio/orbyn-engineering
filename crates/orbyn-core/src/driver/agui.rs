@@ -52,6 +52,7 @@ impl EngineDriver for AguiDriver {
                 sandbox: false,
                 managed: true,
                 skill_delivery: vec![SkillDelivery::PromptBootstrap],
+                goal_control: false,
             },
         }
     }

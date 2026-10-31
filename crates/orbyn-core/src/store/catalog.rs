@@ -227,6 +227,21 @@ impl Store {
         })
     }
 
+    /// What an engine last said its slash commands are.
+    pub fn engine_commands(&self, engine: &str) -> Result<Vec<(String, String)>> {
+        Ok(self
+            .setting(&format!("engine_commands:{engine}"))?
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default())
+    }
+
+    pub fn set_engine_commands(&self, engine: &str, commands: &[(String, String)]) -> Result<()> {
+        self.set_setting(
+            &format!("engine_commands:{engine}"),
+            &serde_json::to_string(commands)?,
+        )
+    }
+
     pub fn setting(&self, key: &str) -> Result<Option<String>> {
         Ok(self
             .reader()

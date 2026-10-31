@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, PermissionMode,
-    SkillDelivery, ThreadUsage,
+    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, ModelInfo, ModelOption,
+    ModelOptionValue, PermissionMode, Question, QuestionOption, SkillDelivery, ThreadGoal,
+    ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -17,17 +18,21 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{EngineProcess, exit_message, one_shot_cli, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
-    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, ItemRecord,
-    MCP_SERVER_NAME, RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths, diff_activity,
+    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, GoalAction,
+    ItemRecord, MCP_SERVER_NAME, ModelCatalog, RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths,
+    ask_question, diff_activity,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
 use crate::error::{CoreError, Result};
+use crate::questions::Answers;
 use crate::util::new_id;
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
+/// More pages than any real catalog, so a looping cursor still ends.
+const MODEL_PAGES: usize = 10;
 
 /// JSON-RPC method-not-found, used to refuse server requests Orbyn does not serve.
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -62,6 +67,7 @@ impl EngineDriver for CodexDriver {
                     SkillDelivery::NativeSkillRoot,
                     SkillDelivery::McpSkillServer,
                 ],
+                goal_control: true,
             },
         }
     }
@@ -105,22 +111,56 @@ impl EngineDriver for CodexDriver {
     }
 
     /// Asks a short-lived app-server. Codex answers from its own login, and this
-    /// never uses `account/login/*`.
+    /// never uses `account/login/*`. The plan comes from `account/read`, and only
+    /// the plan: a failure there leaves the limits standing.
     async fn limits(&self) -> Result<Option<Value>> {
-        let command = resolve_engine(&self.program)?;
-        let args = [OsString::from("app-server")];
-        let process = spawn_engine(&command, &args, &std::env::temp_dir())?;
-        let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, false);
-        rpc.call(
-            "initialize",
-            json!({ "clientInfo": { "name": "orbyn", "version": env!("CARGO_PKG_VERSION") } }),
-            CALL_TIMEOUT,
-        )
-        .await?;
-        rpc.notify("initialized", None).await?;
-        rpc.call("account/rateLimits/read", Value::Null, CALL_TIMEOUT)
+        let session = self.short_session().await?;
+        let mut limits = session
+            .rpc
+            .call("account/rateLimits/read", Value::Null, CALL_TIMEOUT)
+            .await?;
+        if let Ok(account) = session
+            .rpc
+            .call(
+                "account/read",
+                json!({ "refreshToken": false }),
+                CALL_TIMEOUT,
+            )
             .await
-            .map(Some)
+            && let (Some(plan), Some(object)) = (
+                account.pointer("/account/planType").cloned(),
+                limits.as_object_mut(),
+            )
+        {
+            object.insert("planType".into(), plan);
+        }
+        Ok(Some(limits))
+    }
+
+    async fn models(&self) -> Result<Option<ModelCatalog>> {
+        let session = self.short_session().await?;
+        let mut models = Vec::new();
+        let mut cursor = Value::Null;
+        for _ in 0..MODEL_PAGES {
+            let page = session
+                .rpc
+                .call(
+                    "model/list",
+                    json!({ "cursor": cursor, "limit": 100, "includeHidden": false }),
+                    CALL_TIMEOUT,
+                )
+                .await?;
+            let items = page.get("data").and_then(Value::as_array);
+            models.extend(items.into_iter().flatten().filter_map(parse_model));
+            cursor = page.get("nextCursor").cloned().unwrap_or(Value::Null);
+            if cursor.is_null() {
+                break;
+            }
+        }
+        Ok(Some(ModelCatalog {
+            source: "engine",
+            models,
+        }))
     }
 
     async fn start_run(
@@ -146,6 +186,84 @@ impl EngineDriver for CodexDriver {
             task,
             input: Some(input),
         })
+    }
+}
+
+/// An app-server kept alive only for a read. Dropping it ends the process.
+struct ShortSession {
+    rpc: RpcClient,
+    _process: crate::process::ManagedChild,
+}
+
+impl CodexDriver {
+    async fn short_session(&self) -> Result<ShortSession> {
+        let command = resolve_engine(&self.program)?;
+        let args = [OsString::from("app-server")];
+        let process = spawn_engine(&command, &args, &std::env::temp_dir())?;
+        let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, false);
+        rpc.call(
+            "initialize",
+            json!({ "clientInfo": { "name": "orbyn", "version": env!("CARGO_PKG_VERSION") } }),
+            CALL_TIMEOUT,
+        )
+        .await?;
+        rpc.notify("initialized", None).await?;
+        Ok(ShortSession {
+            rpc,
+            _process: process.child,
+        })
+    }
+}
+
+/// Reads one `model/list` entry. Hidden models stay out of the picker.
+fn parse_model(value: &Value) -> Option<ModelInfo> {
+    if value.get("hidden").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let id = text(value, "model").or_else(|| text(value, "id"))?;
+    let default_effort = text(value, "defaultReasoningEffort");
+    let efforts: Vec<ModelOptionValue> = value
+        .get("supportedReasoningEfforts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|option| {
+            let id = text(option, "reasoningEffort")?;
+            Some(ModelOptionValue {
+                label: effort_label(&id),
+                default: default_effort.as_deref() == Some(id.as_str()),
+                id,
+            })
+        })
+        .collect();
+    let options = if efforts.is_empty() {
+        Vec::new()
+    } else {
+        vec![ModelOption {
+            id: "effort".into(),
+            label: "Effort".into(),
+            values: efforts,
+        }]
+    };
+    Some(ModelInfo {
+        label: text(value, "displayName").unwrap_or_else(|| id.clone()),
+        description: text(value, "description"),
+        is_default: value.get("isDefault").and_then(Value::as_bool) == Some(true),
+        custom: false,
+        options,
+        id,
+    })
+}
+
+fn effort_label(id: &str) -> String {
+    match id {
+        "xhigh" => "Extra high".to_owned(),
+        other => {
+            let mut chars = other.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(chars).collect()
+            })
+        }
     }
 }
 
@@ -178,6 +296,8 @@ async fn run_protocol(
         Err(error) => {
             let outcome = if cancel.is_cancelled() {
                 EngineOutcome::Cancelled
+            } else if matches!(error, CoreError::SessionLost) {
+                EngineOutcome::SessionLost
             } else {
                 let status = tokio::time::timeout(EXIT_WAIT, process.child.wait()).await;
                 let exited = status.ok().and_then(Result::ok);
@@ -312,7 +432,13 @@ async fn open_turn(
     let thread = match &spec.resume {
         Some(session) => {
             params["threadId"] = json!(session);
-            rpc.call("thread/resume", params, CALL_TIMEOUT).await?
+            match rpc.call("thread/resume", params, CALL_TIMEOUT).await {
+                Ok(thread) => thread,
+                Err(error) if is_missing_thread(&error.to_string()) => {
+                    return Err(CoreError::SessionLost);
+                }
+                Err(error) => return Err(error),
+            }
         }
         None => rpc.call("thread/start", params, CALL_TIMEOUT).await?,
     };
@@ -332,14 +458,28 @@ async fn open_turn(
             .await?;
             return Ok((session, None));
         }
-        RunKind::Goal(objective) => {
-            rpc.call(
-                "thread/goal/set",
-                json!({ "threadId": session, "objective": objective }),
-                CALL_TIMEOUT,
-            )
-            .await?;
-            if objective.is_none() {
+        RunKind::Goal(action) => {
+            let (method, params) = match action {
+                GoalAction::Set(objective) => (
+                    "thread/goal/set",
+                    json!({ "threadId": session, "objective": objective, "status": "active" }),
+                ),
+                GoalAction::Clear => ("thread/goal/clear", json!({ "threadId": session })),
+                GoalAction::Pause => (
+                    "thread/goal/set",
+                    json!({ "threadId": session, "status": "paused" }),
+                ),
+                GoalAction::Resume => (
+                    "thread/goal/set",
+                    json!({ "threadId": session, "status": "active" }),
+                ),
+            };
+            let reply = rpc.call(method, params, CALL_TIMEOUT).await?;
+            // The reply carries the goal; a notification could arrive after the
+            // run has already stopped listening.
+            let goal = reply.get("goal").filter(|goal| !goal.is_null());
+            let _ = events.send(EngineEvent::Goal(goal.map(parse_goal))).await;
+            if matches!(action, GoalAction::Clear | GoalAction::Pause) {
                 let _ = events
                     .send(EngineEvent::Finished(EngineOutcome::Completed))
                     .await;
@@ -348,16 +488,22 @@ async fn open_turn(
         }
         RunKind::Turn => {}
     }
+    let text = match &spec.kind {
+        RunKind::Goal(GoalAction::Resume) => "Continue working toward the goal.",
+        _ => spec.prompt.as_str(),
+    };
     let policy = if spec.plan { "read-only" } else { sandbox };
     let turn = rpc
         .call(
             "turn/start",
             json!({
                 "threadId": session,
-                "input": [{ "type": "text", "text": spec.prompt, "text_elements": [] }],
+                "input": [{ "type": "text", "text": text, "text_elements": [] }],
                 "cwd": spec.checkout,
                 "sandboxPolicy": sandbox_policy(policy, &spec.checkout, spec.mode),
                 "approvalPolicy": approval_policy(spec.mode),
+                "model": spec.model,
+                "effort": spec.effort,
             }),
             CALL_TIMEOUT,
         )
@@ -421,6 +567,14 @@ fn answer_request(
     params: Value,
 ) {
     let rpc = rpc.clone();
+    if method == "item/tool/requestUserInput" {
+        let events = events.clone();
+        tokio::spawn(async move {
+            let answers = ask_question(&events, parse_questions(&params)).await;
+            let _ = rpc.respond(id, question_response(answers)).await;
+        });
+        return;
+    }
     let Some(request) = classify_request(&method, &params, mapper) else {
         tracing::info!(%method, "refusing an unknown Codex server request");
         tokio::spawn(async move {
@@ -443,6 +597,49 @@ fn answer_request(
         let result = approval_response(&method, &params, &verdict);
         let _ = rpc.respond(id, result).await;
     });
+}
+
+/// Codex names a thread it no longer has in one of these ways.
+fn is_missing_thread(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("no rollout") || lower.contains("not found") || lower.contains("no thread")
+}
+
+fn parse_questions(params: &Value) -> Vec<Question> {
+    let items = params.get("questions").and_then(Value::as_array);
+    items
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let options = item.get("options").and_then(Value::as_array);
+            Some(Question {
+                id: text(item, "id")?,
+                header: text(item, "header").unwrap_or_default(),
+                question: text(item, "question").unwrap_or_default(),
+                options: options
+                    .into_iter()
+                    .flatten()
+                    .map(|option| QuestionOption {
+                        label: text(option, "label").unwrap_or_default(),
+                        description: text(option, "description").unwrap_or_default(),
+                    })
+                    .collect(),
+                multi_select: false,
+                allow_other: item.get("isOther").and_then(Value::as_bool) == Some(true),
+                secret: item.get("isSecret").and_then(Value::as_bool) == Some(true),
+            })
+        })
+        .collect()
+}
+
+/// A dismissal is an empty answer set, which Codex reads as no answer given.
+fn question_response(answers: Option<Answers>) -> Value {
+    let answers: serde_json::Map<String, Value> = answers
+        .into_iter()
+        .flatten()
+        .map(|(id, values)| (id, json!({ "answers": values })))
+        .collect();
+    json!({ "answers": answers })
 }
 
 struct ClassifiedRequest {
@@ -724,6 +921,11 @@ impl TurnMapper {
                 );
                 step.events.push(EngineEvent::Usage(report));
             }
+            "thread/goal/updated" => {
+                step.events
+                    .push(EngineEvent::Goal(params.get("goal").map(parse_goal)));
+            }
+            "thread/goal/cleared" => step.events.push(EngineEvent::Goal(None)),
             "warning" => {
                 step.events.push(
                     AgUiEvent::Custom {
@@ -923,6 +1125,22 @@ impl TurnMapper {
                 .into()
             })
             .collect()
+    }
+}
+
+fn parse_goal(goal: &Value) -> ThreadGoal {
+    let number = |key: &str| goal.get(key).and_then(Value::as_u64);
+    let status = text(goal, "status").unwrap_or_default();
+    ThreadGoal {
+        objective: text(goal, "objective").unwrap_or_default(),
+        status: match status.as_str() {
+            "usageLimited" => "usage_limited".to_owned(),
+            "budgetLimited" => "budget_limited".to_owned(),
+            _ => status,
+        },
+        tokens_used: number("tokensUsed"),
+        token_budget: number("tokenBudget"),
+        seconds_used: number("timeUsedSeconds"),
     }
 }
 
@@ -1162,6 +1380,7 @@ mod tests {
             mode: PermissionMode::Supervised,
             plan: false,
             model: None,
+            effort: None,
             resume: None,
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
             run_dir: "/run".into(),
@@ -1202,7 +1421,6 @@ mod tests {
         for method in [
             "account/chatgptAuthTokens/refresh",
             "item/tool/call",
-            "item/tool/requestUserInput",
             "mcpServer/elicitation/request",
             "attestation/generate",
             "anything/new",

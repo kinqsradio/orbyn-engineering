@@ -4,13 +4,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use orbyn_contracts::{ActionKind, ComputerAction};
+use orbyn_contracts::{ActionKind, ComputerAction, Question, QuestionOption};
 use serde_json::{Value, json};
 
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, Verdict};
 use crate::computer::{Caller, ComputerGateway};
 use crate::driver::MCP_SERVER_NAME;
 use crate::error::Result;
+use crate::questions::QuestionDesk;
 use crate::skills::SkillService;
 use crate::util::{random_token, sha256_hex};
 
@@ -37,6 +38,7 @@ pub struct McpService {
     /// Keyed by digest, so a lookup reveals nothing about stored tokens.
     tokens: Mutex<HashMap<String, Arc<McpBinding>>>,
     gate: Arc<ApprovalGate>,
+    questions: Arc<QuestionDesk>,
     skills: Arc<SkillService>,
     computer: Arc<ComputerGateway>,
 }
@@ -44,12 +46,14 @@ pub struct McpService {
 impl McpService {
     pub fn new(
         gate: Arc<ApprovalGate>,
+        questions: Arc<QuestionDesk>,
         skills: Arc<SkillService>,
         computer: Arc<ComputerGateway>,
     ) -> Self {
         Self {
             tokens: Mutex::new(HashMap::new()),
             gate,
+            questions,
             skills,
             computer,
         }
@@ -170,9 +174,7 @@ impl McpService {
             .to_owned();
         let input = args.get("input").cloned().unwrap_or(json!({}));
         if tool == QUESTION_TOOL {
-            return deny_json(
-                "Orbyn cannot show this question as a form. Ask it in your reply and stop.",
-            );
+            return self.ask_question(binding, input).await;
         }
         if tool.starts_with(OWN_TOOL_PREFIX) {
             return allow_json(&input);
@@ -183,6 +185,63 @@ impl McpService {
             Verdict::Deny(reason) => deny_json(&reason),
         }
     }
+}
+
+impl McpService {
+    /// Claude's question tool is answered through its input: the person's choices
+    /// go back as `answers`, keyed by question text, in one comma-joined string.
+    async fn ask_question(&self, binding: &McpBinding, mut input: Value) -> String {
+        let questions = parse_questions(&input);
+        if questions.is_empty() {
+            return deny_json("This question has nothing to show.");
+        }
+        match self.questions.ask(&binding.scope.run_id, questions).await {
+            Some(answers) => {
+                let joined: serde_json::Map<String, Value> = answers
+                    .into_iter()
+                    .map(|(question, values)| (question, json!(values.join(", "))))
+                    .collect();
+                input["answers"] = Value::Object(joined);
+                allow_json(&input)
+            }
+            None => deny_json("The user dismissed this question without answering."),
+        }
+    }
+}
+
+fn parse_questions(input: &Value) -> Vec<Question> {
+    let text = |value: &Value, key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    input
+        .get("questions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|item| Question {
+            id: text(item, "question"),
+            header: text(item, "header"),
+            question: text(item, "question"),
+            options: item
+                .get("options")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|option| QuestionOption {
+                    label: text(option, "label"),
+                    description: text(option, "description"),
+                })
+                .collect(),
+            multi_select: item.get("multiSelect").and_then(Value::as_bool) == Some(true),
+            allow_other: true,
+            secret: false,
+        })
+        .filter(|question| !question.id.is_empty())
+        .collect()
 }
 
 fn allow_json(input: &Value) -> String {

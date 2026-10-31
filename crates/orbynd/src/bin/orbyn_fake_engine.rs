@@ -5,7 +5,8 @@
 //!
 //! Prompts carry scenario tags:
 //! `[approve]`, `[crash-in-approval]`, `[hang]`, `[late]`, `[fail]`,
-//! `[unknown-request]`, `[mcp-tools]`.
+//! `[unknown-request]`, `[mcp-tools]`, `[question]`. With `ORBYN_FAKE_LOSE_SESSION`
+//! set, Claude and Codex refuse every resume.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -159,8 +160,22 @@ fn claude(args: &[String]) {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_owned();
-    let session = flag("--resume").unwrap_or_else(|| "claude-session-1".to_owned());
-    send(&json!({ "type": "system", "subtype": "init", "session_id": session, "model": "fake" }));
+    let resume = flag("--resume");
+    if let (Some(session), true) = (
+        &resume,
+        std::env::var_os("ORBYN_FAKE_LOSE_SESSION").is_some(),
+    ) {
+        send(&json!({
+            "type": "result", "subtype": "error_during_execution", "is_error": true,
+            "errors": [format!("No conversation found with session ID: {session}")],
+        }));
+        return;
+    }
+    let session = resume.unwrap_or_else(|| "claude-session-1".to_owned());
+    send(&json!({
+        "type": "system", "subtype": "init", "session_id": session, "model": "fake",
+        "slash_commands": ["compact", "review", "fake-command"],
+    }));
     let block = |index: u64, block: Value| {
         send(&json!({
             "type": "stream_event",
@@ -250,6 +265,45 @@ fn claude(args: &[String]) {
         }));
         answer = format!("permission {behavior}");
     }
+    if has(&prompt, "question") {
+        let config: Value = serde_json::from_str(
+            &std::fs::read_to_string(flag("--mcp-config").expect("mcp config")).expect("read"),
+        )
+        .expect("mcp json");
+        let url = config["mcpServers"]["orbyn_engineering"]["url"]
+            .as_str()
+            .expect("url")
+            .to_owned();
+        mcp_call(
+            &url,
+            1,
+            "initialize",
+            json!({ "protocolVersion": "2025-06-18" }),
+        );
+        let (_, reply) = mcp_call(
+            &url,
+            2,
+            "tools/call",
+            json!({ "name": "approve", "arguments": {
+                "tool_name": "AskUserQuestion", "tool_use_id": "toolu_2", "input": { "questions": [{
+                    "question": "Which color?", "header": "Color", "multiSelect": true,
+                    "options": [{ "label": "Red", "description": "Warm" }],
+                }]},
+            }}),
+        );
+        let decision = reply
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or("{}");
+        let decision: Value = serde_json::from_str(decision).unwrap_or(Value::Null);
+        answer = format!(
+            "question {} {}",
+            decision["behavior"].as_str().unwrap_or("none"),
+            decision["updatedInput"]["answers"]["Which color?"]
+                .as_str()
+                .unwrap_or("-"),
+        );
+    }
     if has(&prompt, "hang") {
         // Stays alive until stdin closes, like the real CLI between turns.
         match lines.next() {
@@ -323,6 +377,11 @@ fn codex() {
                 eprintln!("skills come from native discovery");
                 std::process::exit(12);
             }
+            "thread/resume" if std::env::var_os("ORBYN_FAKE_LOSE_SESSION").is_some() => {
+                send(&json!({ "id": id, "error": {
+                    "code": -32600, "message": "no rollout found for thread id",
+                }}));
+            }
             "thread/start" | "thread/resume" => {
                 let params = &message["params"];
                 record_launch("codex-thread", &[params.to_string()]);
@@ -359,9 +418,34 @@ fn codex() {
                 codex_finish(&state, "interrupted");
             }
             "account/rateLimits/read" => {
-                send(
-                    &json!({ "id": id, "result": { "rateLimits": { "primary": { "usedPercent": 12 } } } }),
-                );
+                send(&json!({ "id": id, "result": { "rateLimits": {
+                    "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1800000000 },
+                    "secondary": { "usedPercent": 40, "windowDurationMins": 10080 },
+                }}}));
+            }
+            "account/read" => {
+                send(&json!({ "id": id, "result": {
+                    "account": { "type": "chatgpt", "email": "x@y.z", "planType": "plus" },
+                    "requiresOpenaiAuth": true,
+                }}));
+            }
+            "model/list" => {
+                send(&json!({ "id": id, "result": { "nextCursor": null, "data": [
+                    {
+                        "id": "fake-big", "model": "fake-big", "displayName": "Fake Big",
+                        "description": "Large", "hidden": false, "isDefault": true,
+                        "defaultReasoningEffort": "medium",
+                        "supportedReasoningEfforts": [
+                            { "reasoningEffort": "medium", "description": "Balanced" },
+                            { "reasoningEffort": "xhigh", "description": "Deep" },
+                        ],
+                    },
+                    {
+                        "id": "fake-old", "model": "fake-old", "displayName": "Fake Old",
+                        "description": "", "hidden": true, "isDefault": false,
+                        "defaultReasoningEffort": "low", "supportedReasoningEfforts": [],
+                    },
+                ]}}));
             }
             "thread/compact/start" => {
                 record_launch("codex-compact", &[]);
@@ -369,8 +453,23 @@ fn codex() {
                 codex_finish(&state, "completed");
             }
             "thread/goal/set" => {
-                record_launch("codex-goal", &[message["params"].to_string()]);
-                send(&json!({ "id": id, "result": {} }));
+                let params = &message["params"];
+                record_launch("codex-goal", &[params.to_string()]);
+                let goal = json!({
+                    "objective": params["objective"].as_str().unwrap_or("kept"),
+                    "status": params["status"], "tokensUsed": 5, "timeUsedSeconds": 2,
+                });
+                send(&json!({ "id": id, "result": { "goal": goal } }));
+                send(&json!({ "method": "thread/goal/updated", "params": {
+                    "threadId": state.thread, "goal": goal,
+                }}));
+            }
+            "thread/goal/clear" => {
+                record_launch("codex-goal", &["clear".to_owned()]);
+                send(&json!({ "id": id, "result": { "cleared": true } }));
+                send(&json!({ "method": "thread/goal/cleared", "params": {
+                    "threadId": state.thread,
+                }}));
             }
             _ => {
                 if id != Value::Null && !method.is_empty() {
@@ -443,11 +542,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
     );
     let mut answer = "hello from codex".to_owned();
     if has(prompt, "unknown-request") {
-        let reply = codex_request(
-            "item/tool/requestUserInput",
-            json!({ "itemId": "x" }),
-            lines,
-        );
+        let reply = codex_request("item/tool/call", json!({ "itemId": "x" }), lines);
         answer = format!(
             "refused {}",
             reply.pointer("/error/code").unwrap_or(&Value::Null)
@@ -508,6 +603,20 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
             .and_then(Value::as_array)
             .map_or(0, Vec::len);
         answer = format!("mcp {status} tools {tools}");
+    }
+    if has(prompt, "question") {
+        let reply = codex_request(
+            "item/tool/requestUserInput",
+            json!({
+                "threadId": state.thread, "turnId": "turn-1", "itemId": "ask1",
+                "questions": [{
+                    "id": "q1", "header": "Token", "question": "Paste it", "isOther": true,
+                    "isSecret": true, "options": null,
+                }],
+            }),
+            lines,
+        );
+        answer = format!("answers {}", reply["result"]["answers"]);
     }
     if has(prompt, "approve") || has(prompt, "crash-in-approval") {
         codex_note(
@@ -669,7 +778,20 @@ fn acp() {
                 "agentCapabilities": { "mcpCapabilities": { "http": true } },
                 "authMethods": [],
             }})),
-            "session/new" => acp_send(json!({ "id": id, "result": { "sessionId": session } })),
+            "session/new" => acp_send(json!({ "id": id, "result": {
+                "sessionId": session,
+                "models": {
+                    "currentModelId": "acp-small",
+                    "availableModels": [
+                        { "modelId": "acp-small", "name": "ACP Small" },
+                        { "modelId": "acp-large", "name": "ACP Large", "description": "Big" },
+                    ],
+                },
+            }})),
+            "session/set_model" => {
+                record_launch("acp-model", &[message["params"].to_string()]);
+                acp_send(json!({ "id": id, "result": {} }));
+            }
             "session/prompt" => {
                 let prompt = message["params"]["prompt"][0]["text"]
                     .as_str()

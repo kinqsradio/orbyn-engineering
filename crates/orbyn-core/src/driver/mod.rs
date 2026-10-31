@@ -14,7 +14,8 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, InstallerKind,
+    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, InstallerKind, ModelOption,
+    ModelOptionValue,
 };
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -23,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::approvals::Verdict;
 use crate::error::Result;
+use crate::questions::Answers;
 
 /// The per-run MCP server's name in every engine. It is distinct from `orbyn`
 /// because a user's own engine config can already define a server by that name,
@@ -87,6 +89,7 @@ pub struct RunSpec {
     /// Plan mode: the engine may read and propose, not change anything.
     pub plan: bool,
     pub model: Option<String>,
+    pub effort: Option<String>,
     /// The engine's own session id from an earlier run of this thread.
     pub resume: Option<String>,
     /// Per-run MCP URL; the token inside it is revoked at run end.
@@ -107,11 +110,27 @@ pub struct PermissionRequest {
     pub reply: oneshot::Sender<Verdict>,
 }
 
+/// A question for the person. Dropping `reply` is a dismissal.
+#[derive(Debug)]
+pub struct QuestionAsk {
+    pub questions: Vec<orbyn_contracts::Question>,
+    pub reply: oneshot::Sender<Option<Answers>>,
+}
+
+/// A model list and where it came from: `engine` or `documented`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModelCatalog {
+    pub source: &'static str,
+    pub models: Vec<orbyn_contracts::ModelInfo>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum EngineOutcome {
     Completed,
     Cancelled,
     Failed(String),
+    /// The engine does not have the session this run tried to resume.
+    SessionLost,
 }
 
 #[derive(Debug)]
@@ -123,6 +142,11 @@ pub enum EngineEvent {
     /// A raw item for the inspector.
     Item(ItemRecord),
     Usage(orbyn_contracts::ThreadUsage),
+    /// Slash commands the engine says it has, as `(name, description)`.
+    Commands(Vec<(String, String)>),
+    Question(QuestionAsk),
+    /// The goal as the engine reports it; `None` means it was cleared.
+    Goal(Option<orbyn_contracts::ThreadGoal>),
     Finished(EngineOutcome),
 }
 
@@ -155,8 +179,16 @@ pub enum RunKind {
     Turn,
     /// `/compact`.
     Compact,
-    /// `/goal <objective>`; `None` clears the goal.
-    Goal(Option<String>),
+    Goal(GoalAction),
+}
+
+/// What a `/goal` message asks for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GoalAction {
+    Set(String),
+    Clear,
+    Pause,
+    Resume,
 }
 
 impl RunKind {
@@ -166,8 +198,12 @@ impl RunKind {
             return Self::Compact;
         }
         match text.strip_prefix("/goal ").map(str::trim) {
-            Some("clear") => Self::Goal(None),
-            Some(objective) if !objective.is_empty() => Self::Goal(Some(objective.to_owned())),
+            Some("clear") => Self::Goal(GoalAction::Clear),
+            Some("pause") => Self::Goal(GoalAction::Pause),
+            Some("resume") => Self::Goal(GoalAction::Resume),
+            Some(objective) if !objective.is_empty() => {
+                Self::Goal(GoalAction::Set(objective.to_owned()))
+            }
             _ => Self::Turn,
         }
     }
@@ -211,12 +247,34 @@ pub trait EngineDriver: Send + Sync {
         Ok(None)
     }
 
+    /// Models this engine offers, from the engine itself where it can say.
+    /// `Ok(None)` means it has no way to report them.
+    async fn models(&self) -> Result<Option<ModelCatalog>> {
+        Ok(None)
+    }
+
     /// One prompt, one reply, no tools and no session. This spends the user's
     /// engine usage, so it runs only when they ask for it.
     async fn one_shot(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
         Err(crate::error::CoreError::Unsupported(
             "This engine cannot answer a one-off request.".into(),
         ))
+    }
+}
+
+/// An `effort` option from `(id, label)` pairs.
+pub(crate) fn effort_option(values: &[(&str, &str)], default: Option<&str>) -> ModelOption {
+    ModelOption {
+        id: "effort".into(),
+        label: "Effort".into(),
+        values: values
+            .iter()
+            .map(|(id, label)| ModelOptionValue {
+                id: (*id).to_owned(),
+                label: (*label).to_owned(),
+                default: Some(*id) == default,
+            })
+            .collect(),
     }
 }
 
@@ -230,6 +288,17 @@ pub(crate) async fn ask(
     detail: Value,
 ) -> Verdict {
     ask_paths(events, kind, target, summary, detail, Vec::new()).await
+}
+
+/// Puts questions to the person. A closed channel or dropped reply is no answer.
+pub(crate) async fn ask_question(
+    events: &mpsc::Sender<EngineEvent>,
+    questions: Vec<orbyn_contracts::Question>,
+) -> Option<Answers> {
+    let (reply, answer) = oneshot::channel();
+    let ask = QuestionAsk { questions, reply };
+    events.send(EngineEvent::Question(ask)).await.ok()?;
+    answer.await.ok().flatten()
 }
 
 /// `ask` for a write with known file paths.
@@ -294,9 +363,20 @@ mod tests {
         assert_eq!(RunKind::parse(" /compact "), RunKind::Compact);
         assert_eq!(
             RunKind::parse("/goal tests pass"),
-            RunKind::Goal(Some("tests pass".into()))
+            RunKind::Goal(GoalAction::Set("tests pass".into()))
         );
-        assert_eq!(RunKind::parse("/goal clear"), RunKind::Goal(None));
+        assert_eq!(
+            RunKind::parse("/goal clear"),
+            RunKind::Goal(GoalAction::Clear)
+        );
+        assert_eq!(
+            RunKind::parse("/goal pause"),
+            RunKind::Goal(GoalAction::Pause)
+        );
+        assert_eq!(
+            RunKind::parse("/goal resume"),
+            RunKind::Goal(GoalAction::Resume)
+        );
         assert_eq!(RunKind::parse("/goal"), RunKind::Turn);
         assert_eq!(RunKind::parse("/compactly please"), RunKind::Turn);
         assert_eq!(RunKind::parse("please /compact"), RunKind::Turn);

@@ -234,11 +234,7 @@ impl Store {
                     &stamp,
                 )?;
             }
-            let remaining: i64 = tx.query_row(
-                "SELECT COUNT(*) FROM approvals WHERE run_id = ?1 AND state = 'pending'",
-                [&approval.run_id],
-                |row| row.get(0),
-            )?;
+            let remaining = super::questions::open_requests(tx, &approval.run_id)?;
             if remaining == 0 && guard.state == RunState::AwaitingApproval {
                 set_state(
                     tx,

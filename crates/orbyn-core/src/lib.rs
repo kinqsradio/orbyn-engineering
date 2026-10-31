@@ -15,6 +15,7 @@ pub mod mcp;
 pub mod policy;
 pub mod process;
 pub mod projects;
+pub mod questions;
 pub mod runs;
 pub mod scm;
 pub mod skills;

@@ -3,6 +3,7 @@
 //! own folder is out of reach. An edit names the revision it started from; a file
 //! that moved on since then is reported, never overwritten.
 
+use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 
@@ -22,29 +23,200 @@ use crate::util::{new_id, sha256_hex};
 const MAX_READ_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_HITS: usize = 200;
 const MAX_LIST: usize = 5_000;
-/// Editors Orbyn knows how to launch. Nothing else can be named.
-const EDITORS: &[(&str, &str, &str)] = &[
-    ("vscode", "Visual Studio Code", "code"),
-    ("cursor", "Cursor", "cursor"),
-    ("windsurf", "Windsurf", "windsurf"),
-    ("zed", "Zed", "zed"),
-    ("sublime", "Sublime Text", "subl"),
-    ("idea", "IntelliJ IDEA", "idea"),
-    ("pycharm", "PyCharm", "pycharm"),
-    ("webstorm", "WebStorm", "webstorm"),
-    ("goland", "GoLand", "goland"),
-    ("rustrover", "RustRover", "rustrover"),
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LaunchStyle {
+    /// `editor file:line:col`.
+    Path,
+    /// `editor --goto file:line:col`.
+    Goto,
+    /// `editor --line N --column C file`.
+    LineColumn,
+}
+
+struct Editor {
+    id: &'static str,
+    name: &'static str,
+    /// Tried in order; the first on PATH wins.
+    commands: &'static [&'static str],
+    args: &'static [&'static str],
+    style: LaunchStyle,
+}
+
+const fn editor(
+    id: &'static str,
+    name: &'static str,
+    commands: &'static [&'static str],
+    style: LaunchStyle,
+) -> Editor {
+    Editor {
+        id,
+        name,
+        commands,
+        args: &[],
+        style,
+    }
+}
+
+const FILE_MANAGER: &str = "file_manager";
+
+/// Only these can be launched, so a request cannot name an arbitrary program.
+const EDITORS: &[Editor] = &[
+    Editor {
+        args: &["--classic"],
+        ..editor("cursor", "Cursor", &["cursor"], LaunchStyle::Goto)
+    },
+    editor("trae", "Trae", &["trae"], LaunchStyle::Goto),
+    Editor {
+        args: &["ide"],
+        ..editor("kiro", "Kiro", &["kiro"], LaunchStyle::Goto)
+    },
+    editor("vscode", "VS Code", &["code"], LaunchStyle::Goto),
+    editor(
+        "vscode-insiders",
+        "VS Code Insiders",
+        &["code-insiders"],
+        LaunchStyle::Goto,
+    ),
+    editor("vscodium", "VSCodium", &["codium"], LaunchStyle::Goto),
+    editor("windsurf", "Windsurf", &["windsurf"], LaunchStyle::Goto),
+    editor("zed", "Zed", &["zed", "zeditor"], LaunchStyle::Path),
+    editor(
+        "antigravity",
+        "Antigravity",
+        &["antigravity-ide", "agy-ide"],
+        LaunchStyle::Goto,
+    ),
+    editor("sublime", "Sublime Text", &["subl"], LaunchStyle::Path),
+    editor("idea", "IntelliJ IDEA", &["idea"], LaunchStyle::LineColumn),
+    editor("pycharm", "PyCharm", &["pycharm"], LaunchStyle::LineColumn),
+    editor(
+        "webstorm",
+        "WebStorm",
+        &["webstorm"],
+        LaunchStyle::LineColumn,
+    ),
+    editor("goland", "GoLand", &["goland"], LaunchStyle::LineColumn),
+    editor(
+        "rustrover",
+        "RustRover",
+        &["rustrover"],
+        LaunchStyle::LineColumn,
+    ),
+    editor("clion", "CLion", &["clion"], LaunchStyle::LineColumn),
+    editor("rider", "Rider", &["rider"], LaunchStyle::LineColumn),
+    editor(
+        "rubymine",
+        "RubyMine",
+        &["rubymine"],
+        LaunchStyle::LineColumn,
+    ),
+    editor(
+        "phpstorm",
+        "PhpStorm",
+        &["phpstorm"],
+        LaunchStyle::LineColumn,
+    ),
+    editor(
+        "datagrip",
+        "DataGrip",
+        &["datagrip"],
+        LaunchStyle::LineColumn,
+    ),
 ];
+
+fn style_name(style: LaunchStyle) -> &'static str {
+    match style {
+        LaunchStyle::Path => "path",
+        LaunchStyle::Goto => "goto",
+        LaunchStyle::LineColumn => "line_column",
+    }
+}
+
+fn program_of(editor: &Editor) -> Option<crate::process::ResolvedCommand> {
+    editor.commands.iter().find_map(|name| resolve(name))
+}
+
+/// The system file manager's name for this platform.
+fn file_manager_name() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Finder"
+    } else if cfg!(windows) {
+        "File Explorer"
+    } else {
+        "Files"
+    }
+}
 
 pub fn installed_editors() -> Vec<EditorInfo> {
     EDITORS
         .iter()
-        .filter(|(_, _, program)| resolve(program).is_some())
-        .map(|(id, name, _)| EditorInfo {
-            id: (*id).to_owned(),
-            name: (*name).to_owned(),
+        .filter(|editor| program_of(editor).is_some())
+        .map(|editor| EditorInfo {
+            id: editor.id.to_owned(),
+            name: editor.name.to_owned(),
+            launch_style: style_name(editor.style).to_owned(),
+            file_manager: false,
         })
+        .chain(std::iter::once(EditorInfo {
+            id: FILE_MANAGER.to_owned(),
+            name: file_manager_name().to_owned(),
+            launch_style: String::new(),
+            file_manager: true,
+        }))
         .collect()
+}
+
+/// The arguments that open `file` at a position, in this editor's own form.
+fn launch_args(
+    editor: &Editor,
+    file: &Path,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Vec<OsString> {
+    let mut args: Vec<OsString> = editor.args.iter().map(OsString::from).collect();
+    let target = |suffix: String| {
+        let mut full = file.as_os_str().to_owned();
+        full.push(suffix);
+        full
+    };
+    let position = match (line, column) {
+        (Some(line), Some(column)) => format!(":{line}:{column}"),
+        (Some(line), None) => format!(":{line}"),
+        _ => String::new(),
+    };
+    match (editor.style, line) {
+        (_, None) => args.push(file.into()),
+        (LaunchStyle::Path, Some(_)) => args.push(target(position)),
+        (LaunchStyle::Goto, Some(_)) => {
+            args.push("--goto".into());
+            args.push(target(position));
+        }
+        (LaunchStyle::LineColumn, Some(line)) => {
+            args.push("--line".into());
+            args.push(line.to_string().into());
+            if let Some(column) = column {
+                args.push("--column".into());
+                args.push(column.to_string().into());
+            }
+            args.push(file.into());
+        }
+    }
+    args
+}
+
+/// Shows a file in the system file manager.
+fn reveal_command(file: &Path) -> (&'static str, Vec<OsString>) {
+    if cfg!(target_os = "macos") {
+        ("open", vec!["-R".into(), file.into()])
+    } else if cfg!(windows) {
+        let mut select = OsString::from("/select,");
+        select.push(file);
+        ("explorer", vec![select])
+    } else {
+        let folder = file.parent().unwrap_or(file);
+        ("xdg-open", vec![folder.into()])
+    }
 }
 
 fn scope_of(root: &Path, thread: &Thread) -> WriteScope {
@@ -289,12 +461,29 @@ impl Core {
     ) -> Result<()> {
         let (thread, scope) = self.file_scope(thread_id)?;
         let full = inside(&scope, &request.path)?;
-        let (_, _, program) = EDITORS
-            .iter()
-            .find(|(id, _, _)| *id == request.editor)
-            .ok_or_else(|| CoreError::Invalid("Choose a known editor.".into()))?;
-        let command = resolve(program)
-            .ok_or_else(|| CoreError::Invalid("That editor is not installed.".into()))?;
+        if request.column.is_some() && request.line.is_none()
+            || request.line == Some(0)
+            || request.column == Some(0)
+        {
+            return Err(CoreError::Invalid(
+                "Lines and columns start at 1, and a column needs a line.".into(),
+            ));
+        }
+        let (command, args) = if request.editor == FILE_MANAGER {
+            let (program, args) = reveal_command(&full);
+            let command = resolve(program)
+                .ok_or_else(|| CoreError::Invalid("No file manager was found.".into()))?;
+            (command, args)
+        } else {
+            let editor = EDITORS
+                .iter()
+                .find(|editor| editor.id == request.editor)
+                .ok_or_else(|| CoreError::Invalid("Choose a known editor.".into()))?;
+            let command = program_of(editor)
+                .ok_or_else(|| CoreError::Invalid("That editor is not installed.".into()))?;
+            let args = launch_args(editor, &full, request.line, request.column);
+            (command, args)
+        };
         self.store.append_audit(&AuditRecord {
             actor: actor.to_owned(),
             action: "file.open".into(),
@@ -303,11 +492,11 @@ impl Core {
             source: "user".into(),
             thread_id: Some(thread.id),
             run_id: None,
-            detail: json!({ "editor": request.editor }),
+            detail: json!({ "editor": request.editor, "line": request.line }),
         })?;
         tokio::process::Command::new(&command.program)
             .args(&command.prefix)
-            .arg(&full)
+            .args(&args)
             .current_dir(&scope.checkout)
             .stdin(Stdio::null())
             .stdout(Stdio::null())

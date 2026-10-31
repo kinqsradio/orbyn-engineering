@@ -8,8 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use orbyn_contracts::{
-    AgUiEvent, EngineTier, PermissionMode, QueuedMessage, Run, RunState, Thread,
+    AgUiEvent, EngineTier, PermissionMode, QueuedMessage, Run, RunState, Thread, ThreadGoal,
 };
+use serde_json::json;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -17,11 +18,14 @@ use tokio_util::sync::CancellationToken;
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, WriteScope};
 use crate::checkpoints::checkpoint_ref;
 use crate::composer::check_prompt;
-use crate::driver::{EngineEvent, EngineOutcome, PermissionRequest, RunHandle, RunKind, RunSpec};
+use crate::driver::{
+    EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunHandle, RunKind, RunSpec,
+};
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
 use crate::git::{git, snapshot, text};
 use crate::mcp::{McpBinding, McpService};
+use crate::questions::QuestionDesk;
 use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, Store};
 use crate::util::new_id;
@@ -137,6 +141,7 @@ fn run_context(context: &RunContext<'_>) -> String {
 pub struct RunServices {
     pub store: Arc<Store>,
     pub gate: Arc<ApprovalGate>,
+    pub questions: Arc<QuestionDesk>,
     pub engines: Arc<EngineManager>,
     pub skills: Arc<SkillService>,
     pub workspace: Arc<Workspace>,
@@ -148,6 +153,7 @@ pub struct RunServices {
 pub struct RunManager {
     store: Arc<Store>,
     gate: Arc<ApprovalGate>,
+    questions: Arc<QuestionDesk>,
     engines: Arc<EngineManager>,
     skills: Arc<SkillService>,
     workspace: Arc<Workspace>,
@@ -168,6 +174,7 @@ impl RunManager {
         let RunServices {
             store,
             gate,
+            questions,
             engines,
             skills,
             workspace,
@@ -178,6 +185,7 @@ impl RunManager {
         Self {
             store,
             gate,
+            questions,
             engines,
             skills,
             workspace,
@@ -203,7 +211,7 @@ impl RunManager {
     ) -> Result<Run> {
         check_prompt(prompt)?;
         let thread = self.store.thread(thread_id)?;
-        self.engines.driver(&thread.engine)?;
+        self.check_goal_action(&thread, prompt)?;
         self.attachment_files(thread_id, attachments)?;
         let root = self.workspace.root()?;
         let run = self.workspace.admit_with(|| {
@@ -217,6 +225,22 @@ impl RunManager {
         })?;
         self.launch(thread, run.clone(), prompt.to_owned(), attachments, &root)?;
         Ok(run)
+    }
+
+    /// Pausing and resuming a goal is the engine's own feature, so an engine
+    /// without it refuses here rather than reading the words as a prompt.
+    fn check_goal_action(&self, thread: &Thread, prompt: &str) -> Result<()> {
+        let driver = self.engines.driver(&thread.engine)?;
+        let held = matches!(
+            RunKind::parse(prompt),
+            RunKind::Goal(GoalAction::Pause | GoalAction::Resume)
+        );
+        if held && !driver.descriptor().capabilities.goal_control {
+            return Err(CoreError::Unsupported(
+                "This engine cannot pause or resume a goal.".into(),
+            ));
+        }
+        Ok(())
     }
 
     fn attachment_files(&self, thread_id: &str, ids: &[String]) -> Result<Vec<PathBuf>> {
@@ -464,6 +488,10 @@ impl RunManager {
             EngineOutcome::Completed => (RunState::Completed, None),
             EngineOutcome::Cancelled => (RunState::Cancelled, None),
             EngineOutcome::Failed(message) => (RunState::Failed, Some(message)),
+            EngineOutcome::SessionLost => (
+                RunState::Failed,
+                Some("The engine lost this conversation.".to_owned()),
+            ),
         };
         self.close_run(&run_id, state, message.as_deref());
     }
@@ -519,17 +547,60 @@ impl RunManager {
         token: &mut Option<String>,
         cancel: &CancellationToken,
     ) -> EngineOutcome {
+        let first = self
+            .attempt(
+                thread,
+                scope,
+                message.clone(),
+                run_dir,
+                token,
+                cancel,
+                false,
+            )
+            .await;
+        if first != EngineOutcome::SessionLost {
+            return first;
+        }
+        // The engine's session is gone, so a fresh one gets the budgeted history
+        // from the log instead, once.
+        if let Err(error) = self.recover_session(thread) {
+            return EngineOutcome::Failed(error.public_message());
+        }
+        self.attempt(thread, scope, message, run_dir, token, cancel, true)
+            .await
+    }
+
+    fn recover_session(&self, thread: &Thread) -> Result<()> {
+        let handoff = self.store.recovery_handoff(&thread.id)?;
+        self.store.set_handoff(&thread.id, &handoff)?;
+        self.store
+            .note_thread_event(&thread.id, "engine.session_lost", json!({}))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn attempt(
+        &self,
+        thread: &Thread,
+        scope: &RunScope,
+        message: (String, Vec<PathBuf>),
+        run_dir: &Path,
+        token: &mut Option<String>,
+        cancel: &CancellationToken,
+        retry: bool,
+    ) -> EngineOutcome {
         match self
-            .start(thread, scope, message, run_dir, token, cancel)
+            .start(thread, scope, message, run_dir, token, cancel, retry)
             .await
         {
             Ok(Some((handle, events))) => self.pump(thread, scope, handle, events, cancel).await,
             Ok(None) => EngineOutcome::Cancelled,
             Err(CoreError::RunClosed | CoreError::StaleOwner) => EngineOutcome::Cancelled,
+            Err(CoreError::SessionLost) => EngineOutcome::SessionLost,
             Err(error) => EngineOutcome::Failed(error.public_message()),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn start(
         &self,
         thread: &Thread,
@@ -538,8 +609,11 @@ impl RunManager {
         run_dir: &Path,
         token: &mut Option<String>,
         cancel: &CancellationToken,
+        retry: bool,
     ) -> Result<Option<(RunHandle, mpsc::Receiver<EngineEvent>)>> {
-        self.store.mark_starting(&scope.run_id)?;
+        if !retry {
+            self.store.mark_starting(&scope.run_id)?;
+        }
         let driver = self.engines.driver(&thread.engine)?;
         let descriptor = driver.descriptor();
         let root = self.workspace.root()?;
@@ -554,7 +628,12 @@ impl RunManager {
             thread.skill_profile.as_deref(),
         )?;
         std::fs::create_dir_all(run_dir)?;
-        self.checkpoint_start(scope, &checkout, run_dir).await;
+        if !retry {
+            self.checkpoint_start(scope, &checkout, run_dir).await;
+        }
+        if let Some(token) = token.take() {
+            self.mcp.revoke(&token);
+        }
         let mcp_url = if descriptor.capabilities.mcp {
             let issued = self.mcp.register(McpBinding {
                 scope: scope.clone(),
@@ -586,17 +665,33 @@ impl RunManager {
             handoff: handoff.as_deref(),
         });
         let native = descriptor.tier == EngineTier::Native;
+        let kind = RunKind::parse(&prompt);
+        match &kind {
+            RunKind::Goal(GoalAction::Set(objective)) => self.store.set_goal(
+                &thread.id,
+                Some(&ThreadGoal {
+                    objective: objective.clone(),
+                    status: "active".into(),
+                    tokens_used: None,
+                    token_budget: None,
+                    seconds_used: None,
+                }),
+            )?,
+            RunKind::Goal(GoalAction::Clear) => self.store.set_goal(&thread.id, None)?,
+            _ => {}
+        }
         let spec = RunSpec {
             run_id: scope.run_id.clone(),
             thread_id: thread.id.clone(),
             cwd: if native { root } else { checkout.clone() },
             checkout,
             prompt: format!("{context}\n\n{prompt}"),
-            kind: RunKind::parse(&prompt),
+            kind,
             mode: scope.mode,
             plan: scope.plan,
             user_prompt: prompt,
             model: thread.model.clone(),
+            effort: thread.effort.clone(),
             resume: self.store.engine_session(&thread.id)?,
             mcp_url,
             run_dir: run_dir.to_path_buf(),
@@ -639,6 +734,9 @@ impl RunManager {
                     if let Err(error) = self.gate.expire_run(&thread.id, &scope.run_id, "system:cancel") {
                         tracing::warn!(%error, "could not expire approvals on cancel");
                     }
+                    if let Err(error) = self.questions.expire_run(&thread.id, &scope.run_id, "system:cancel") {
+                        tracing::warn!(%error, "could not expire questions on cancel");
+                    }
                     handle.cancel.cancel();
                 }
                 () = &mut stop_deadline, if cancelling => break EngineOutcome::Cancelled,
@@ -675,6 +773,23 @@ impl RunManager {
                                 tracing::debug!(%error, "could not keep usage");
                             }
                         }
+                        EngineEvent::Commands(commands) => {
+                            if let Err(error) = self.store.set_engine_commands(&thread.engine, &commands) {
+                                tracing::debug!(%error, "could not keep engine commands");
+                            }
+                        }
+                        EngineEvent::Goal(goal) => {
+                            if let Err(error) = self.store.set_goal(&thread.id, goal.as_ref()) {
+                                tracing::debug!(%error, "could not keep the goal");
+                            }
+                        }
+                        EngineEvent::Question(ask) => {
+                            let desk = self.questions.clone();
+                            let run_id = scope.run_id.clone();
+                            tokio::spawn(async move {
+                                let _ = ask.reply.send(desk.ask(&run_id, ask.questions).await);
+                            });
+                        }
                         EngineEvent::Permission(request) => {
                             self.answer(scope, request);
                         }
@@ -689,6 +804,12 @@ impl RunManager {
             .expire_run(&thread.id, &scope.run_id, "system:run_end")
         {
             tracing::warn!(%error, "could not expire approvals at run end");
+        }
+        if let Err(error) = self
+            .questions
+            .expire_run(&thread.id, &scope.run_id, "system:run_end")
+        {
+            tracing::warn!(%error, "could not expire questions at run end");
         }
         drop(events);
         handle.cancel.cancel();

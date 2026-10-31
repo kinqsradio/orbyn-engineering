@@ -8,7 +8,27 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (4, TIMELINE),
     (5, CHECKPOINTS),
     (6, PULL_REQUESTS),
+    (7, MODELS_AND_QUESTIONS),
 ];
+
+const MODELS_AND_QUESTIONS: &str = r#"
+ALTER TABLE threads ADD COLUMN effort TEXT;
+ALTER TABLE threads ADD COLUMN goal TEXT;
+
+CREATE TABLE question_requests (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    questions TEXT NOT NULL,
+    state TEXT NOT NULL,
+    answers TEXT,
+    decided_by TEXT,
+    decided_at TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX questions_by_run ON question_requests(run_id, state);
+CREATE INDEX questions_by_thread ON question_requests(thread_id, state);
+"#;
 
 const THREAD_LIFECYCLE: &str = r#"
 ALTER TABLE threads ADD COLUMN parent_thread_id TEXT REFERENCES threads(id) ON DELETE CASCADE;

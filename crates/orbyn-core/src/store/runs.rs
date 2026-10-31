@@ -419,6 +419,7 @@ fn close_run(
     actor: &str,
 ) -> Result<(Run, Vec<Approval>)> {
     let expired = expire_pending(tx, appended, run_id, thread_id, actor)?;
+    super::questions::expire_questions(tx, appended, run_id, actor)?;
     // A stop, failure or crash keeps queued work from starting on its own, except
     // a message whose send-now caused the stop.
     if to != RunState::Completed {

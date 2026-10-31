@@ -13,6 +13,7 @@ use crate::engines::{EngineConfig, EngineManager};
 use crate::error::{CoreError, Result};
 use crate::git;
 use crate::mcp::McpService;
+use crate::questions::QuestionDesk;
 use crate::runs::{RunManager, RunServices};
 use crate::skills::SkillService;
 use crate::store::{NewThread, Recovery, Store};
@@ -61,6 +62,7 @@ pub struct Core {
     pub config: CoreConfig,
     pub store: Arc<Store>,
     pub gate: Arc<ApprovalGate>,
+    pub questions: Arc<QuestionDesk>,
     pub engines: Arc<EngineManager>,
     pub workspace: Arc<Workspace>,
     pub skills: Arc<SkillService>,
@@ -97,6 +99,7 @@ impl Core {
             tracing::info!(?recovery, "recovered runs from a previous process");
         }
         let gate = Arc::new(ApprovalGate::new(store.clone(), config.approval_timeout));
+        let questions = Arc::new(QuestionDesk::new(store.clone(), config.approval_timeout));
         let terminals = Arc::new(TerminalManager::default());
         let http = reqwest::Client::builder()
             .user_agent(concat!("orbyn/", env!("CARGO_PKG_VERSION")))
@@ -117,12 +120,14 @@ impl Core {
         let computer = Arc::new(ComputerGateway::new(store.clone(), gate.clone(), backend));
         let mcp = Arc::new(McpService::new(
             gate.clone(),
+            questions.clone(),
             skills.clone(),
             computer.clone(),
         ));
         let runs = Arc::new(RunManager::new(RunServices {
             store: store.clone(),
             gate: gate.clone(),
+            questions: questions.clone(),
             engines: engines.clone(),
             skills: skills.clone(),
             workspace: workspace.clone(),
@@ -143,6 +148,7 @@ impl Core {
             config,
             store,
             gate,
+            questions,
             engines,
             workspace,
             skills,

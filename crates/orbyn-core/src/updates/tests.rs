@@ -38,6 +38,7 @@ impl EngineDriver for Fake {
                 sandbox: false,
                 managed: true,
                 skill_delivery: Vec::new(),
+                goal_control: false,
             },
         }
     }

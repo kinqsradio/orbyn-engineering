@@ -10,12 +10,12 @@ use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    ApiError, ApprovalState, CloneProject, ComputerAction, CreateBranch, CreatePolicyRule,
-    CreateThread, CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage,
-    ForkThread, FsEntry, FsListing, GitAction, ImportProject, LibraryUpdateRequest, LinkPull,
-    MergePull, NewProject, OpenInEditor, PublishProject, ReorderThreads, RestoreWorkspace,
-    RewindThread, ServerInfo, ServerSettings, SkillProfile, StartRun, SteerRun, SubmitReview,
-    SwitchBranch, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
+    AnswerQuestion, ApiError, ApprovalState, CloneProject, ComputerAction, CreateBranch,
+    CreatePolicyRule, CreateThread, CustomEngine, DecideApproval, EditQueuedMessage, EngineTier,
+    EnqueueMessage, ForkThread, FsEntry, FsListing, GitAction, ImportProject, LibraryUpdateRequest,
+    LinkPull, MergePull, NewProject, OpenInEditor, PublishProject, QuestionState, ReorderThreads,
+    RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SkillProfile, StartRun, SteerRun,
+    SubmitReview, SwitchBranch, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -76,6 +76,7 @@ impl From<CoreError> for ApiFailure {
         }
         let detail = match &error {
             CoreError::AlreadyDecided(existing) => serde_json::to_value(existing).ok(),
+            CoreError::QuestionClosed(existing) => serde_json::to_value(existing).ok(),
             CoreError::ProjectHasWork { detail, .. } => Some(detail.clone()),
             CoreError::FileConflict { revision } => Some(json!({ "revision": revision })),
             _ => None,
@@ -592,9 +593,11 @@ pub async fn start_run(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<StartRun>,
 ) -> ApiResult<impl IntoResponse> {
-    if let Some(mode) = body.permission_mode {
+    if body.permission_mode.is_some() || body.model.is_some() || body.effort.is_some() {
         let patch = UpdateThread {
-            permission_mode: Some(mode),
+            permission_mode: body.permission_mode,
+            model: body.model.clone(),
+            effort: body.effort.clone(),
             ..UpdateThread::default()
         };
         state.core.update_thread(&id, &patch, LOCAL_USER)?;
@@ -728,8 +731,51 @@ pub async fn mentions(
 pub async fn slash_commands(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.slash_commands(&id)?))
+    let skills = query.get("skills").is_some_and(|value| value == "true");
+    Ok(Json(state.core.slash_commands(&id, skills)?))
+}
+
+pub async fn engine_models(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let refresh = query.get("refresh").is_some_and(|value| value == "true");
+    Ok(Json(state.core.engines.models(&id, refresh).await?))
+}
+
+pub async fn list_questions(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let filter = query
+        .get("state")
+        .map(|text| serde_json::from_value::<QuestionState>(json!(text)))
+        .transpose()
+        .map_err(|_| ApiFailure::new(StatusCode::BAD_REQUEST, "invalid_input", "Unknown state."))?;
+    let thread = query.get("thread_id").map(String::as_str);
+    Ok(Json(state.core.store.list_questions(thread, filter)?))
+}
+
+pub async fn answer_question(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<AnswerQuestion>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.questions.answer(
+        &id,
+        body.answers,
+        LOCAL_USER,
+    )?))
+}
+
+pub async fn dismiss_question(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.questions.dismiss(&id, LOCAL_USER)?))
 }
 
 pub async fn cancel_run(

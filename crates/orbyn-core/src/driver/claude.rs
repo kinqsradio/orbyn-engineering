@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use orbyn_contracts::{AgUiEvent, EngineCapabilities, EngineTier, SkillDelivery, ThreadUsage};
+use orbyn_contracts::{
+    AgUiEvent, EngineCapabilities, EngineTier, ModelInfo, SkillDelivery, ThreadUsage,
+};
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -18,7 +20,8 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{exit_message, lines, one_shot_cli, resolve_engine, spawn_engine};
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
-    ItemRecord, MCP_SERVER_NAME, RunHandle, RunKind, RunSpec, UpdatePlan,
+    ItemRecord, MCP_SERVER_NAME, ModelCatalog, RunHandle, RunKind, RunSpec, UpdatePlan,
+    effort_option,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -61,6 +64,10 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
         args.push("--model".into());
         args.push(model.into());
     }
+    if let Some(effort) = &spec.effort {
+        args.push("--effort".into());
+        args.push(effort.into());
+    }
     if let Some(session) = &spec.resume {
         args.push("--resume".into());
         args.push(session.into());
@@ -86,6 +93,7 @@ impl EngineDriver for ClaudeDriver {
                     SkillDelivery::NativeSkillRoot,
                     SkillDelivery::McpSkillServer,
                 ],
+                goal_control: false,
             },
         }
     }
@@ -110,6 +118,59 @@ impl EngineDriver for ClaudeDriver {
 
     fn npm_package(&self) -> Option<&str> {
         Some(maintenance::CLAUDE.npm_package)
+    }
+
+    /// The CLI has no listing command, so this is the aliases its docs name. An
+    /// alias tracks the vendor's latest, and any full model name also works as a
+    /// custom model.
+    async fn models(&self) -> Result<Option<ModelCatalog>> {
+        const EFFORTS: &[(&str, &str)] = &[
+            ("low", "Low"),
+            ("medium", "Medium"),
+            ("high", "High"),
+            ("xhigh", "Extra high"),
+            ("max", "Max"),
+        ];
+        let model = |id: &str, label: &str, description: &str, is_default: bool| ModelInfo {
+            id: id.to_owned(),
+            label: label.to_owned(),
+            description: Some(description.to_owned()),
+            is_default,
+            custom: false,
+            options: vec![effort_option(EFFORTS, None)],
+        };
+        Ok(Some(ModelCatalog {
+            source: "documented",
+            models: vec![
+                model(
+                    "default",
+                    "Default",
+                    "What Claude Code picks for your plan",
+                    true,
+                ),
+                model("sonnet", "Sonnet", "The latest Sonnet", false),
+                model("opus", "Opus", "The latest Opus", false),
+                model("haiku", "Haiku", "The latest Haiku", false),
+                model(
+                    "sonnet[1m]",
+                    "Sonnet (1M context)",
+                    "Sonnet with a 1M context window",
+                    false,
+                ),
+                model(
+                    "opus[1m]",
+                    "Opus (1M context)",
+                    "Opus with a 1M context window",
+                    false,
+                ),
+                model(
+                    "opusplan",
+                    "Opus for planning",
+                    "Opus in plan mode, Sonnet otherwise",
+                    false,
+                ),
+            ],
+        }))
     }
 
     async fn one_shot(&self, prompt: &str, model: Option<&str>) -> Result<String> {
@@ -227,10 +288,20 @@ async fn run_protocol(
     let outcome = match (outcome, cancelled, stream_ended) {
         (_, true, _) => EngineOutcome::Cancelled,
         (Some(result), _, _) => result,
-        _ => EngineOutcome::Failed(exit_message(status, &process.stderr).await),
+        _ => {
+            let message = exit_message(status, &process.stderr).await;
+            if message.contains(NO_SESSION) {
+                EngineOutcome::SessionLost
+            } else {
+                EngineOutcome::Failed(message)
+            }
+        }
     };
     let _ = events.send(EngineEvent::Finished(outcome)).await;
 }
+
+/// How the CLI reports a `--resume` id it does not have.
+const NO_SESSION: &str = "No conversation found";
 
 /// Slash commands reach the CLI bare, or it would read them as ordinary text.
 fn user_message(spec: &RunSpec) -> String {
@@ -281,7 +352,9 @@ impl StreamMapper {
             .is_some_and(|parent| !parent.is_null());
         match frame.get("type").and_then(Value::as_str) {
             Some("system") if frame.get("subtype").and_then(Value::as_str) == Some("init") => {
-                session(frame)
+                let mut events = session(frame);
+                events.extend(init_commands(frame));
+                events
             }
             Some("stream_event") if !nested => frame
                 .get("event")
@@ -512,6 +585,18 @@ fn session(frame: &Value) -> Vec<EngineEvent> {
         .collect()
 }
 
+/// The init frame lists names alone.
+fn init_commands(frame: &Value) -> Option<EngineEvent> {
+    let names = frame.get("slash_commands")?.as_array()?;
+    Some(EngineEvent::Commands(
+        names
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|name| (name.to_owned(), String::new()))
+            .collect(),
+    ))
+}
+
 fn text_of(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_owned)
 }
@@ -559,6 +644,7 @@ fn result_outcome(frame: &Value) -> EngineOutcome {
     if !failed {
         return EngineOutcome::Completed;
     }
+    let lost = |text: &str| text.contains(NO_SESSION);
     let errors = frame.get("errors").and_then(Value::as_array).map(|errors| {
         errors
             .iter()
@@ -571,6 +657,9 @@ fn result_outcome(frame: &Value) -> EngineOutcome {
         .or_else(|| text_of(frame, "result").filter(|text| !text.is_empty()))
         .or_else(|| text_of(frame, "subtype"))
         .unwrap_or_else(|| "Claude ended the turn with an error.".to_owned());
+    if lost(&message) {
+        return EngineOutcome::SessionLost;
+    }
     EngineOutcome::Failed(message)
 }
 
@@ -591,6 +680,7 @@ mod tests {
             mode: orbyn_contracts::PermissionMode::Supervised,
             plan: false,
             model: Some("sonnet".into()),
+            effort: None,
             resume: Some("sess".into()),
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
             run_dir: PathBuf::from("/run"),

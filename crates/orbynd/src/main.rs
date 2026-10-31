@@ -249,6 +249,7 @@ fn router(state: AppState) -> Router {
         .route("/api/projects/{id}/publish", post(api::publish_project))
         .route("/api/usage", get(api::usage).post(api::usage))
         .route("/api/engines/{id}/limits", get(api::engine_limits))
+        .route("/api/engines/{id}/models", get(api::engine_models))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(
@@ -260,6 +261,9 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/events", get(stream::thread_events))
         .route("/api/approvals", get(api::list_approvals))
         .route("/api/approvals/{id}/decide", post(api::decide_approval))
+        .route("/api/questions", get(api::list_questions))
+        .route("/api/questions/{id}/answer", post(api::answer_question))
+        .route("/api/questions/{id}/dismiss", post(api::dismiss_question))
         .route("/api/threads/{id}/diff", get(api::thread_diff))
         .route("/api/engines", get(api::list_engines))
         .route("/api/engines/refresh", post(api::refresh_engines))

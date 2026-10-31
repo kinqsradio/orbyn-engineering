@@ -8,10 +8,10 @@ pub mod probe;
 use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
-    AuthState, CustomEngine, EngineStatus, EngineTier, InstallerKind, VersionSupport,
+    AuthState, CustomEngine, EngineModels, EngineStatus, EngineTier, InstallerKind, VersionSupport,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -31,6 +31,8 @@ use manifest::TestedManifest;
 
 const LATEST_TIMEOUT: Duration = Duration::from_secs(4);
 pub const UPDATE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const MODELS_TTL: Duration = Duration::from_secs(5 * 60);
+const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Debug)]
 pub struct EngineConfig {
@@ -65,6 +67,7 @@ pub struct EngineManager {
     updating: Mutex<HashSet<String>>,
     installer_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     statuses: tokio::sync::Mutex<Option<Vec<EngineStatus>>>,
+    models: tokio::sync::Mutex<HashMap<String, (Instant, EngineModels)>>,
 }
 
 impl EngineManager {
@@ -91,6 +94,7 @@ impl EngineManager {
             updating: Mutex::new(HashSet::new()),
             installer_locks: Mutex::new(HashMap::new()),
             statuses: tokio::sync::Mutex::new(None),
+            models: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -166,6 +170,41 @@ impl EngineManager {
     /// Drops the cached list so the next read sees a changed engine set.
     pub async fn invalidate(&self) {
         *self.statuses.lock().await = None;
+    }
+
+    /// What the engine says it offers. A failure is reported with the list empty,
+    /// so custom models still work, and only a good answer is kept.
+    pub async fn models(&self, id: &str, refresh: bool) -> Result<EngineModels> {
+        let driver = self.driver(id)?;
+        let mut cache = self.models.lock().await;
+        if !refresh
+            && let Some((at, models)) = cache.get(id)
+            && at.elapsed() < MODELS_TTL
+        {
+            return Ok(models.clone());
+        }
+        let report = tokio::time::timeout(MODELS_TIMEOUT, driver.models()).await;
+        let (source, models, error) = match report {
+            Ok(Ok(Some(catalog))) => (catalog.source, catalog.models, None),
+            Ok(Ok(None)) => ("none", Vec::new(), None),
+            Ok(Err(error)) => ("none", Vec::new(), Some(error.public_message())),
+            Err(_) => (
+                "none",
+                Vec::new(),
+                Some("The engine did not list its models in time.".to_owned()),
+            ),
+        };
+        let models = EngineModels {
+            engine: id.to_owned(),
+            source: source.to_owned(),
+            models,
+            error,
+            checked_at: crate::util::now(),
+        };
+        if models.error.is_none() {
+            cache.insert(id.to_owned(), (Instant::now(), models.clone()));
+        }
+        Ok(models)
     }
 
     pub async fn status(&self, id: &str) -> Result<EngineStatus> {

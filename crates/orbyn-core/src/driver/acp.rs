@@ -8,7 +8,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, CustomEngine, EngineCapabilities, EngineTier, SkillDelivery,
+    ActionKind, AgUiEvent, AuthState, CustomEngine, EngineCapabilities, EngineTier, ModelInfo,
+    SkillDelivery,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -18,7 +19,7 @@ use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
-    RunHandle, RunSpec, ask_paths,
+    ModelCatalog, RunHandle, RunSpec, ask_paths,
 };
 use crate::approvals::Verdict;
 use crate::error::{CoreError, Result};
@@ -55,6 +56,7 @@ impl EngineDriver for AcpDriver {
                 sandbox: false,
                 managed: true,
                 skill_delivery: vec![SkillDelivery::McpSkillServer],
+                goal_control: false,
             },
         }
     }
@@ -65,6 +67,21 @@ impl EngineDriver for AcpDriver {
             auth: Some(AuthState::NotApplicable),
             ..EngineProbe::default()
         }
+    }
+
+    /// ACP has no listing call, so this opens a session in a temp folder, reads
+    /// what the agent reports for it, and ends the process. No prompt is sent.
+    async fn models(&self) -> Result<Option<ModelCatalog>> {
+        let command = resolve_engine(&self.engine.target)?;
+        let args: Vec<OsString> = self.engine.args.iter().map(OsString::from).collect();
+        let cwd = std::env::temp_dir();
+        let process = spawn_engine(&command, &args, &cwd)?;
+        let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, true);
+        let (_, session) = open_raw(&rpc, &cwd, None).await?;
+        Ok(Some(ModelCatalog {
+            source: "engine",
+            models: parse_models(&session),
+        }))
     }
 
     async fn start_run(
@@ -183,6 +200,29 @@ async fn run_protocol(
 }
 
 async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
+    let (id, _) = open_raw(rpc, &spec.cwd, spec.mcp_url.as_deref()).await?;
+    if let Some(model) = &spec.model {
+        // Optional in the protocol: an agent without it keeps its own model.
+        let selected = rpc
+            .call(
+                "session/set_model",
+                json!({ "sessionId": id, "modelId": model }),
+                CALL_TIMEOUT,
+            )
+            .await;
+        if let Err(error) = selected {
+            tracing::debug!(%error, "this agent did not take a model choice");
+        }
+    }
+    Ok(id)
+}
+
+/// Initializes and opens a session, returning its id and the agent's whole reply.
+async fn open_raw(
+    rpc: &RpcClient,
+    cwd: &std::path::Path,
+    mcp_url: Option<&str>,
+) -> Result<(String, Value)> {
     let init = rpc
         .call(
             "initialize",
@@ -208,7 +248,7 @@ async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
         .pointer("/agentCapabilities/mcpCapabilities/http")
         .and_then(Value::as_bool)
         == Some(true);
-    let servers = match &spec.mcp_url {
+    let servers = match mcp_url {
         Some(url) if http_mcp => {
             json!([{ "type": "http", "name": MCP_SERVER_NAME, "url": url, "headers": [] }])
         }
@@ -217,15 +257,47 @@ async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
     let session = rpc
         .call(
             "session/new",
-            json!({ "cwd": spec.cwd, "mcpServers": servers }),
+            json!({ "cwd": cwd, "mcpServers": servers }),
             CALL_TIMEOUT,
         )
         .await?;
-    session
+    let id = session
         .get("sessionId")
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .ok_or_else(|| CoreError::EngineUnavailable("The agent returned no session id.".into()))
+        .ok_or_else(|| CoreError::EngineUnavailable("The agent returned no session id.".into()))?;
+    Ok((id, session))
+}
+
+/// Reads the models a session reply lists, marking the agent's current one.
+fn parse_models(session: &Value) -> Vec<ModelInfo> {
+    let current = session
+        .pointer("/models/currentModelId")
+        .and_then(Value::as_str);
+    session
+        .pointer("/models/availableModels")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|model| {
+            let id = model.get("modelId")?.as_str()?.to_owned();
+            Some(ModelInfo {
+                label: model
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&id)
+                    .to_owned(),
+                description: model
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                is_default: current == Some(id.as_str()),
+                custom: false,
+                options: Vec::new(),
+                id,
+            })
+        })
+        .collect()
 }
 
 fn stop_outcome(reply: &Value) -> EngineOutcome {

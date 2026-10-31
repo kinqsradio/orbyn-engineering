@@ -7,6 +7,7 @@ mod catalog;
 mod checkpoints;
 mod hub;
 mod migrations;
+mod questions;
 mod queue;
 mod runs;
 #[cfg(test)]
@@ -545,6 +546,10 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
         title: row.get("title")?,
         engine: row.get("engine")?,
         model: row.get("model")?,
+        effort: row.get("effort")?,
+        goal: row
+            .get::<_, Option<String>>("goal")?
+            .and_then(|text| serde_json::from_str(&text).ok()),
         cwd: row.get("cwd")?,
         worktree,
         skill_profile: row.get("skill_profile")?,

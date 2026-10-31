@@ -43,6 +43,7 @@ impl EngineDriver for TerminalDriver {
                 sandbox: false,
                 managed: false,
                 skill_delivery: Vec::new(),
+                goal_control: false,
             },
         }
     }

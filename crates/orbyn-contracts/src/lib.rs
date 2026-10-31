@@ -53,6 +53,25 @@ pub struct Thread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub lifecycle: Option<ThreadLifecycle>,
+    /// Reasoning effort for this thread's turns; `None` is the engine's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    /// The goal the engine is working toward, as last reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub goal: Option<ThreadGoal>,
+}
+}
+
+wire! {
+pub struct ThreadGoal {
+    pub objective: String,
+    /// `active`, `paused`, `blocked`, `usage_limited`, `budget_limited` or `complete`.
+    pub status: String,
+    pub tokens_used: Option<u64>,
+    pub token_budget: Option<u64>,
+    pub seconds_used: Option<u64>,
 }
 }
 
@@ -197,6 +216,12 @@ wire! {
 pub struct EditorInfo {
     pub id: String,
     pub name: String,
+    /// `path`, `goto` or `line_column`; `path` editors take `file:line:col`.
+    #[serde(default)]
+    pub launch_style: String,
+    /// The system file manager, which reveals a file and has no line target.
+    #[serde(default)]
+    pub file_manager: bool,
 }
 }
 
@@ -204,6 +229,13 @@ wire! {
 pub struct OpenInEditor {
     pub path: String,
     pub editor: String,
+    /// One-based position to open at. A column needs a line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub column: Option<u32>,
 }
 }
 
@@ -393,8 +425,18 @@ pub struct PublishProject {
 wire! {
 pub struct Mentions {
     pub skills: Vec<String>,
-    /// Paths relative to the checkout.
+    /// Paths relative to the checkout, best match first.
     pub files: Vec<String>,
+    /// Other threads in this project.
+    #[serde(default)]
+    pub threads: Vec<ThreadMention>,
+}
+}
+
+wire! {
+pub struct ThreadMention {
+    pub id: String,
+    pub title: String,
 }
 }
 
@@ -402,6 +444,54 @@ wire! {
 pub struct SlashCommand {
     pub name: String,
     pub description: String,
+    /// `orbyn` commands the service or client handles, `engine` commands sent to
+    /// the engine as typed, or `skill`.
+    #[serde(default)]
+    pub source: String,
+}
+}
+
+wire! {
+/// One value of a model option, such as `high` for effort.
+pub struct ModelOptionValue {
+    pub id: String,
+    pub label: String,
+    pub default: bool,
+}
+}
+
+wire! {
+/// A choice a model offers per turn.
+pub struct ModelOption {
+    /// `effort` is the only id today.
+    pub id: String,
+    pub label: String,
+    pub values: Vec<ModelOptionValue>,
+}
+}
+
+wire! {
+pub struct ModelInfo {
+    /// What `--model`, `model` and `session/set_model` take.
+    pub id: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub is_default: bool,
+    /// Added in settings rather than reported by the engine.
+    pub custom: bool,
+    pub options: Vec<ModelOption>,
+}
+}
+
+wire! {
+pub struct EngineModels {
+    pub engine: String,
+    /// `engine`, `documented` (a fixed list from the vendor's docs) or `none`.
+    pub source: String,
+    pub models: Vec<ModelInfo>,
+    /// Why the engine could not be asked. Custom models still appear.
+    pub error: Option<String>,
+    pub checked_at: String,
 }
 }
 
@@ -442,6 +532,14 @@ pub struct UpdateThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub plan_mode: Option<bool>,
+    /// An empty string goes back to the engine's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    /// An empty string goes back to the engine's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
 }
 }
 
@@ -798,6 +896,59 @@ pub struct Approval {
 }
 }
 
+wire! {
+pub struct QuestionOption {
+    pub label: String,
+    pub description: String,
+}
+}
+
+wire! {
+pub struct Question {
+    /// What an answer is keyed by.
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub options: Vec<QuestionOption>,
+    pub multi_select: bool,
+    /// A typed answer is allowed alongside the options.
+    pub allow_other: bool,
+    /// Mask the input. Orbyn passes the answer on and never stores it.
+    pub secret: bool,
+}
+}
+
+wire_enum! {
+pub enum QuestionState {
+    Pending,
+    Answered,
+    Dismissed,
+    Expired,
+}
+}
+
+wire! {
+/// An engine's question, which holds its run until answered or dismissed.
+pub struct QuestionRequest {
+    pub id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub questions: Vec<Question>,
+    pub state: QuestionState,
+    /// Keyed by question id. Secret answers read `[hidden]`.
+    pub answers: Option<std::collections::BTreeMap<String, Vec<String>>>,
+    pub decided_by: Option<String>,
+    pub decided_at: Option<String>,
+    pub created_at: String,
+}
+}
+
+wire! {
+pub struct AnswerQuestion {
+    pub answers: std::collections::BTreeMap<String, Vec<String>>,
+}
+}
+
 wire_enum! {
 pub enum PolicyEffect {
     Allow,
@@ -873,6 +1024,9 @@ pub struct EngineCapabilities {
     /// False means Orbyn cannot gate this engine's actions.
     pub managed: bool,
     pub skill_delivery: Vec<SkillDelivery>,
+    /// The engine can pause and resume a goal, not only set and clear it.
+    #[serde(default)]
+    pub goal_control: bool,
 }
 }
 
@@ -1184,6 +1338,14 @@ pub struct StartRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub permission_mode: Option<PermissionMode>,
+    /// Sets the thread's model for this turn and the ones after it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    /// Sets the thread's effort for this turn and the ones after it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
 }
 }
 

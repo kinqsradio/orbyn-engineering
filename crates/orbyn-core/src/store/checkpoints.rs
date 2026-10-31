@@ -132,6 +132,11 @@ impl Store {
         })
     }
 
+    /// Everything logged so far, up to the handoff budget.
+    pub fn recovery_handoff(&self, thread_id: &str) -> Result<String> {
+        self.handoff_text(thread_id, self.latest_seq(thread_id)?)
+    }
+
     /// Ends the engine session and leaves `handoff` for the next run.
     pub fn set_handoff(&self, thread_id: &str, handoff: &str) -> Result<()> {
         self.commit(|tx, _| {

@@ -36,6 +36,7 @@ fn capabilities() -> EngineCapabilities {
         sandbox: false,
         managed: true,
         skill_delivery: vec![SkillDelivery::McpSkillServer],
+        goal_control: false,
     }
 }
 

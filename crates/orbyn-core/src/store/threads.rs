@@ -190,6 +190,22 @@ impl Store {
                 )?;
                 notify(tx, appended, id, "permission_mode")?;
             }
+            if let Some(model) = &patch.model {
+                let value = Some(model.trim()).filter(|model| !model.is_empty());
+                tx.execute(
+                    "UPDATE threads SET model = ?2 WHERE id = ?1",
+                    params![id, value],
+                )?;
+                notify(tx, appended, id, "model")?;
+            }
+            if let Some(effort) = &patch.effort {
+                let value = Some(effort.trim()).filter(|effort| !effort.is_empty());
+                tx.execute(
+                    "UPDATE threads SET effort = ?2 WHERE id = ?1",
+                    params![id, value],
+                )?;
+                notify(tx, appended, id, "effort")?;
+            }
             if let Some(plan) = patch.plan_mode {
                 tx.execute(
                     "UPDATE threads SET plan_mode = ?2 WHERE id = ?1",

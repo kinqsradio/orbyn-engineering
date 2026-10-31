@@ -1,7 +1,7 @@
 //! Expected failures and their stable client codes. Transport maps `status` and
 //! `code` directly to `ApiError`, so a client can branch without parsing prose.
 
-use orbyn_contracts::Approval;
+use orbyn_contracts::{Approval, QuestionRequest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -15,6 +15,8 @@ pub enum CoreError {
     FolderUntrusted,
     #[error("this approval was already decided")]
     AlreadyDecided(Box<Approval>),
+    #[error("this question was already closed")]
+    QuestionClosed(Box<QuestionRequest>),
     #[error("{0} has an active run or update")]
     EngineBusy(String),
     #[error("{0}")]
@@ -50,6 +52,9 @@ pub enum CoreError {
     UpdateFailed(String),
     #[error("{0}")]
     PolicyDenied(String),
+    /// The engine does not have the session a run tried to resume.
+    #[error("the engine no longer has this session")]
+    SessionLost,
     /// A write from a process that no longer owns the run.
     #[error("run is owned by another process")]
     StaleOwner,
@@ -85,7 +90,7 @@ impl CoreError {
             Self::Invalid(_) => "invalid_input",
             Self::ThreadBusy => "thread_busy",
             Self::FolderUntrusted => "folder_untrusted",
-            Self::AlreadyDecided(_) => "already_decided",
+            Self::AlreadyDecided(_) | Self::QuestionClosed(_) => "already_decided",
             Self::EngineBusy(_) => "engine_busy",
             Self::EngineUnavailable(_) => "engine_unavailable",
             Self::ThreadArchived => "thread_archived",
@@ -108,6 +113,7 @@ impl CoreError {
             Self::DatabaseTooNew { .. } => "database_too_new",
             Self::DataDirLocked => "data_dir_locked",
             Self::PackTampered(_) => "pack_tampered",
+            Self::SessionLost => "session_lost",
             Self::Computer(_) => "computer_failed",
             Self::Git(_) => "git_failed",
             Self::Store(_) | Self::Io(_) | Self::Json(_) | Self::Internal(_) => "internal",
@@ -122,6 +128,7 @@ impl CoreError {
             Self::FolderUntrusted | Self::PolicyDenied(_) | Self::WorkspaceRefused(_) => 403,
             Self::ThreadBusy
             | Self::AlreadyDecided(_)
+            | Self::QuestionClosed(_)
             | Self::ThreadArchived
             | Self::WorkspaceRequired
             | Self::LibraryDirty(_)
