@@ -32,6 +32,16 @@ toward completion.
   a self-hosted route, and Orbyn runs none of these services today.
 - `Q` rows need a React Native client, which this repository does not have.
 
+## Rows that stay open, and why
+
+These stay unticked on purpose. Each needs something this scope leaves out:
+
+- Rule 1: `[auth-risk]` rows, and B51, K33, M15 and N21's `request_secret`, would have Orbyn hold or broker a credential.
+- Remote and linked environments: A74, B52, D26, F50, F62, K1's environment half, K22, N22, O18, and the host keys in K41.
+- Hosted services: `[hosted]` rows such as K31, M10 and J22.
+- Providers with no CLI or protocol double here: I17, I22, I24 to I27, I46 to I50 and I62 can't be proved without a usage-spending engine.
+- No backing here: A54 has no earlier database to migrate. K38's star prompt is an upstream growth prompt, not product behaviour.
+
 ## A. Threads and sidebar
 - [x] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
 - [x] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S | web done
@@ -344,7 +354,7 @@ toward completion.
 - [x] G1 Thread terminals: per-thread drawer, persistent across switches | apps/web/src/components/ThreadTerminalDrawer.tsx | w d m s | L
 - [x] G2 Splits and tabs: horizontal, vertical, new, close | packages/contracts/src/keybindings.ts | w d | M
 - [x] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M | server done
-- [ ] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S
+- [x] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S | web done
 - [ ] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M
 - [ ] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S
 - [x] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M | server done | web done
