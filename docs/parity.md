@@ -140,7 +140,7 @@ toward completion.
 - [x] B27 Plan mode toggle: plan or build | packages/contracts/src/orchestrationV2.ts | w d m s | M
 - [ ] B28 Cite in composer: quote assistant text with a comment | apps/web/src/components/chat/AssistantCitationChip.tsx | w d | L
 - [x] B29 Prompt recall: up/down through sent prompts | apps/web/src/components/chat/composerPromptHistory.ts | w d | S
-- [ ] B30 Edit from here: rewind with or without file restore | apps/web/src/components/chat/useTimelineRewind.ts | w d s | L
+- [x] B30 Edit from here: rewind with or without file restore | apps/web/src/components/chat/useTimelineRewind.ts | w d s | L | web done
 - [x] B31 Prompt stash: save/restore drafts, uploads kept 24 hours | apps/web/src/components/chat/ComposerStashMenu.tsx | w d | M
 - [ ] B32 iPhone voice input: on-device transcription, 5-minute limit, iOS 26+ | apps/mobile/src/features/voice-input/VoiceInputProvider.tsx | m | L
 - [ ] B33 Microphone ranking: priority across device kinds | apps/mobile/src/features/settings/SettingsMicrophoneRouteScreen.tsx | m | M
@@ -615,7 +615,7 @@ are not built in.
 
 ## M. Automations, subagents and orchestration
 - [x] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L
-- [ ] M2 Task manager UI: edit, pause, resume, run now, delete | apps/web/src/components/settings/ScheduledTasksSettings.tsx | w d m | M
+- [x] M2 Task manager UI: edit, pause, resume, run now, delete | apps/web/src/components/settings/ScheduledTasksSettings.tsx | w d m | M | web done
 - [ ] M3 Thread automations panel: tasks tied to a thread | apps/web/src/components/chat/ThreadAutomationsPanel.tsx | w d | M
 - [x] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted] | server done, reachable only where the host is; no relay | web done
 - [x] M5 Webhook templates: placeholders with untrusted-data wrapping | apps/server/src/scheduledTasks/webhookTemplate.ts | s | M | server done

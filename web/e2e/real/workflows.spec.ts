@@ -52,6 +52,16 @@ test("a snooze preset joins the thread menu, and a message wakes a snoozed threa
   await expect.poll(async () => (await service.api<{ lifecycle: { snoozed_until: string | null } }>("GET", `/api/threads/${made.id}`)).lifecycle.snoozed_until).toBeNull();
 });
 
+test("a snoozed row wakes from its own button", async ({ page }) => {
+  const made = await thread("Sleeper");
+  const later = new Date(Date.now() + 3_600_000).toISOString();
+  await service.api("PATCH", `/api/threads/${made.id}`, { snoozed_until: later });
+  await page.goto(service.page);
+  await row(page, "Sleeper").hover();
+  await row(page, "Sleeper").getByRole("button", { name: "Wake thread now" }).click();
+  await expect.poll(async () => (await service.api<{ lifecycle: { snoozed_until: string | null } }>("GET", `/api/threads/${made.id}`)).lifecycle.snoozed_until).toBeNull();
+});
+
 test("a server from this checkout is listed and can be stopped", async ({ page }) => {
   const made = await thread("Servers");
   const server = spawn(process.execPath, ["-e", "require('http').createServer((_,r)=>r.end('ok')).listen(0,'127.0.0.1');setTimeout(()=>{},60000)"], { cwd: made.cwd, stdio: "ignore" });
