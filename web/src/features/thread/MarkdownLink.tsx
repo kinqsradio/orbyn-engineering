@@ -48,9 +48,15 @@ export function ExternalLink({ href, children }: { href: string; children: React
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY });
   };
+  const onClick = (event: MouseEvent) => {
+    const { linkTarget, showInBrowser } = useUi.getState();
+    if (linkTarget !== "in-app" || !/^https?:/i.test(href) || !window.location.hash.startsWith("#/threads/")) return;
+    event.preventDefault();
+    showInBrowser(href);
+  };
   return (
     <>
-      <a href={href} target="_blank" rel="noreferrer noopener" onContextMenu={onContext}>
+      <a href={href} target="_blank" rel="noreferrer noopener" onClick={onClick} onContextMenu={onContext}>
         {children}
       </a>
       {menu ? (

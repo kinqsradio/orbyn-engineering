@@ -401,6 +401,38 @@ fn router(state: AppState) -> Router {
             axum::routing::delete(preview_routes::close),
         )
         .route(
+            "/api/threads/{id}/previews/file",
+            post(preview_routes::open_file),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/view",
+            post(preview_routes::view),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/reload",
+            post(preview_routes::reload),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/clear",
+            post(preview_routes::clear),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/pick",
+            post(preview_routes::pick),
+        )
+        .route(
+            "/api/browser-profiles",
+            get(preview_routes::profiles).post(preview_routes::create_profile),
+        )
+        .route(
+            "/api/browser-profiles/{id}",
+            axum::routing::delete(preview_routes::delete_profile),
+        )
+        .route(
+            "/api/browser-profiles/{id}/clear",
+            post(preview_routes::clear_profile),
+        )
+        .route(
             "/api/threads/{id}/previews/{tab}/navigate",
             post(preview_routes::navigate),
         )

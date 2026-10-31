@@ -179,6 +179,8 @@ export function ChatSection() {
   const persistent = useUi((state) => state.persistentComposerContext);
   const proactive = useUi((state) => state.proactivePanels);
   const searchEngine = useUi((state) => state.previewSearchEngine);
+  const linkTarget = useUi((state) => state.linkTarget);
+  const autoFloat = useUi((state) => state.autoFloatPreview);
   const skillsInSlash = useUi((state) => state.skillsInSlashMenu);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
@@ -214,6 +216,18 @@ export function ChatSection() {
             <option value="startpage">Startpage</option>
           </select>
         </SettingRow>
+        <SettingRow title="Open links in" description="For links in a thread.">
+          <select aria-label="Open links in" value={linkTarget} onChange={(event) => setPrefs({ linkTarget: event.target.value as "system" | "in-app" })}>
+            <option value="system">System browser</option>
+            <option value="in-app">Browser panel</option>
+          </select>
+        </SettingRow>
+        <Toggle
+          title="Float pages agents open"
+          description="Shows the page over the chat when the Browser panel isn't open."
+          on={autoFloat}
+          set={(on) => setPrefs({ autoFloatPreview: on })}
+        />
       </SettingGroup>
       <SettingGroup title="Composer">
         <Toggle title="Keep checkout and branch visible" on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />

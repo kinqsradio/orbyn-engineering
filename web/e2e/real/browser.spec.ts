@@ -43,7 +43,7 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   await page.getByRole("button", { name: /^Browser/ }).first().click();
   await expect(page.getByText("No preview yet")).toBeVisible();
 
-  const address = page.getByRole("textbox", { name: "Search or enter URL" });
+  const address = page.getByRole("combobox", { name: "Search or enter URL" });
   await address.fill(`localhost:${SITE_PORT}/one`);
   await address.press("Enter");
   const frame = page.getByRole("img", { name: /^Page at/ });

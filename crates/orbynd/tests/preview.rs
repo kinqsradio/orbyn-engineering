@@ -414,3 +414,167 @@ async fn servers_are_those_running_from_the_checkout_and_only_they_can_be_stoppe
     let _ = outside.wait();
     service.stop().await;
 }
+
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn a_tab_is_shown_as_asked_and_reads_an_element() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let port = serve_page();
+    let base = format!("/api/threads/{thread}/previews");
+    let (code, tab) = service
+        .send(
+            &base,
+            json!({ "url": format!("http://127.0.0.1:{port}/"), "width": 600, "height": 400, "private": true }),
+        )
+        .await;
+    assert_eq!(code, 201, "{tab}");
+    assert_eq!(tab["private"], true);
+    assert_eq!(tab["opened_by"], "person");
+    assert_eq!(tab["title"], "t");
+    let at = format!("{base}/{}", tab["id"].as_str().unwrap());
+
+    let (code, view) = service
+        .send(
+            &format!("{at}/view"),
+            json!({ "zoom": 2.0, "appearance": "dark", "mobile": true }),
+        )
+        .await;
+    assert_eq!(code, 200, "{view}");
+    assert_eq!(
+        (view["zoom"].as_f64(), view["mobile"].as_bool()),
+        (Some(2.0), Some(true))
+    );
+    let (code, _) = service
+        .send(&format!("{at}/view"), json!({ "zoom": 9.0 }))
+        .await;
+    assert_eq!(code, 400);
+
+    // The button is 400 wide and the page is at twice its size.
+    let (code, picked) = service
+        .send(&format!("{at}/pick"), json!({ "x": 100.0, "y": 100.0 }))
+        .await;
+    assert_eq!(code, 200, "{picked}");
+    assert_eq!(picked["tag"], "button");
+    assert_eq!(picked["selector"], "#b");
+    assert_eq!(picked["text"], "go");
+
+    let (code, _) = service
+        .send(&format!("{at}/reload"), json!({ "hard": true }))
+        .await;
+    assert_eq!(code, 200);
+    let (code, _) = service
+        .send(
+            &format!("{at}/clear"),
+            json!({ "cookies": true, "cache": true }),
+        )
+        .await;
+    assert_eq!(code, 204);
+    service.stop().await;
+}
+
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn a_named_profile_outlives_its_tab_and_holds_one_at_a_time() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let port = serve_page();
+    let url = format!("http://127.0.0.1:{port}/");
+    let base = format!("/api/threads/{thread}/previews");
+    let (code, profile) = service
+        .send("/api/browser-profiles", json!({ "name": "Work" }))
+        .await;
+    assert_eq!(code, 201, "{profile}");
+    let id = profile["id"].as_str().unwrap();
+    let (code, tab) = service
+        .send(&base, json!({ "url": url, "profile": id }))
+        .await;
+    assert_eq!(code, 201, "{tab}");
+    let (code, _) = service
+        .send(&base, json!({ "url": url, "profile": id }))
+        .await;
+    assert_eq!(code, 400, "the browser has it locked");
+    assert_eq!(
+        service.json("/api/browser-profiles").await[0]["in_use"],
+        true
+    );
+    let (code, _) = service
+        .send(&format!("/api/browser-profiles/{id}/clear"), json!({}))
+        .await;
+    assert_eq!(code, 400, "not while a tab has it");
+
+    let closed = service
+        .client
+        .delete(format!(
+            "{}{base}/{}",
+            service.url,
+            tab["id"].as_str().unwrap()
+        ))
+        .bearer_auth(&service.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(closed.status(), 204);
+    let folder = dir.path().join("data/browser-profiles").join(id);
+    assert!(folder.exists(), "a named profile stays");
+    let (code, _) = service
+        .send(&format!("/api/browser-profiles/{id}/clear"), json!({}))
+        .await;
+    assert_eq!(code, 204);
+    assert!(!folder.exists());
+    assert_eq!(
+        service.json("/api/browser-profiles").await[0]["name"],
+        "Work"
+    );
+    let gone = service
+        .client
+        .delete(format!("{}/api/browser-profiles/{id}", service.url))
+        .bearer_auth(&service.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(gone.status(), 204);
+    assert_eq!(service.json("/api/browser-profiles").await, json!([]));
+    service.stop().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn a_crashed_browser_comes_back_on_its_page() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let port = serve_page();
+    let base = format!("/api/threads/{thread}/previews");
+    let (code, tab) = service
+        .send(&base, json!({ "url": format!("http://127.0.0.1:{port}/") }))
+        .await;
+    assert_eq!(code, 201, "{tab}");
+    let id = tab["id"].as_str().unwrap();
+    let url = format!(
+        "{}/ws/preview/{thread}/{id}?token={}",
+        service.url.replacen("http", "ws", 1),
+        service.token
+    );
+    let (mut socket, _) = connect_async(url).await.unwrap();
+    next_frame(&mut socket).await;
+    let killed = std::process::Command::new("pkill")
+        .args(["-9", "-f", &format!("preview-profiles/{id}")])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    // The page didn't change, so only a working browser proves it came back.
+    let mut working = false;
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let (code, reloaded) = service
+            .send(&format!("{base}/{id}/reload"), json!({}))
+            .await;
+        if code == 200 {
+            working = reloaded["crashed"] == false;
+            break;
+        }
+    }
+    assert!(working, "the browser never came back");
+    service.stop().await;
+}
