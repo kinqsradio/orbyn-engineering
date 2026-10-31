@@ -60,6 +60,19 @@ test("Labs turns Plan off, and Shift+Tab flips it while it is on", async ({ page
   await settings(page).getByRole("switch", { name: "Plan mode" }).click();
 });
 
+test("the worktree location decides where a new worktree goes", async ({ page }) => {
+  const location = join(service.dataDir, "elsewhere");
+  await page.goto(`${service.page}#/settings/worktrees`);
+  const field = settings(page).getByLabel("Worktree location");
+  await field.fill(location);
+  await field.blur();
+  await expect.poll(async () => JSON.stringify(await service.api("GET", "/api/preferences"))).toContain("elsewhere");
+  const engines = await service.api<{ id: string }[]>("GET", "/api/engines");
+  const made = await service.api<{ cwd: string }>("POST", "/api/threads", { project_id: projectId, engine: engines[0]?.id, model: null, title: "Placed", worktree: "placed", skill_profile: null });
+  expect(made.cwd.startsWith(location)).toBe(true);
+  await service.api("PUT", "/api/preferences", { values: { worktree_location: "" } });
+});
+
 test("theme keys cycle the appearance and open the theme settings", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await expect(box(page)).toBeVisible();
