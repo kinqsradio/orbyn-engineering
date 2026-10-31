@@ -13,21 +13,30 @@ import {
   X,
   CircleCheck,
   Unplug,
+  Archive,
+  Clock,
+  Mail,
+  Pin,
 } from "lucide-react";
-import { memo, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Project, Thread } from "../../api/types";
-import { compactAge, elapsed } from "../../lib/format";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { api } from "../../api/client";
+import type { Project, Thread, UpdateThread } from "../../api/types";
+import { compactAge, elapsed, runStateLabels } from "../../lib/format";
+import { toFailure } from "../../lib/useAsync";
 import { useNow } from "../../lib/useNow";
-import { useVisibleAnimations } from "../../lib/visibleAnimation";
+import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { routeHref, type Route } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { EngineGlyph, OrbynMark, ProjectBadge } from "../../ui/badges";
 import { Collapsible } from "../../ui/Collapsible";
 import { IconButton, Pill } from "../../ui/controls";
+import { Menu } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
 import { ApprovalsLink } from "./ApprovalsLink";
 import { groupThreads } from "./groups";
+import { threadRunState } from "./RunState";
 import { UpdatePill } from "./Updates";
 
 const DONE_WINDOW_MS = 5 * 60_000;
@@ -80,6 +89,55 @@ function RowStatus({ thread }: { thread: Thread }) {
   );
 }
 
+const HOVER_DELAY_MS = 150;
+
+/** Details for a row, beside it, after upstream's 150 ms delay. Pointer only. */
+function ThreadHoverCard({
+  thread,
+  projectName,
+  branch,
+  engineName,
+  anchor,
+}: {
+  thread: Thread;
+  projectName: string;
+  branch: string | null;
+  engineName: string;
+  anchor: DOMRect;
+}) {
+  const state = threadRunState(thread);
+  return createPortal(
+    <div className="hover-card" role="tooltip" style={{ left: anchor.right + 4, top: anchor.top }}>
+      <p className="hover-card-title">{thread.title}</p>
+      <div className="hover-card-rows">
+        <div>
+          <ProjectBadge name={projectName} />
+          <span>{projectName}</span>
+        </div>
+        {branch ? (
+          <div>
+            <GitBranch size={12} aria-hidden />
+            <span>{branch}</span>
+          </div>
+        ) : null}
+        <div>
+          <EngineGlyph name={engineName} />
+          <span>{thread.model ? `${engineName}, ${thread.model}` : engineName}</span>
+        </div>
+        {state ? (
+          <div>
+            <Clock size={12} aria-hidden />
+            <span>
+              {runStateLabels[state]}, {compactAge(thread.updated_at)}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) {
   const project = useWorkspace((state) =>
     state.projects.data?.find((p) => p.id === thread.project_id),
@@ -91,12 +149,47 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
   const branch = thread.worktree?.branch ?? projectBranch;
   const unmanaged = engine?.capabilities.managed === false;
   const projectName = project?.name ?? "Unknown project";
+  const engineName = engine?.name ?? thread.engine;
+  const putThread = useWorkspace((state) => state.putThread);
+  const pushToast = useUi((state) => state.pushToast);
+  const [hover, setHover] = useState<DOMRect | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const lifecycle = thread.lifecycle;
+  const patch = (body: UpdateThread, done: string) => {
+    api.patchThread(thread.id, body).then(
+      (next) => {
+        putThread(next);
+        pushToast(done);
+      },
+      (failure: unknown) => pushToast(`Couldn't update the thread. ${toFailure(failure).message}`),
+    );
+  };
+
   return (
     <li>
       <a
         className="thread-row"
         href={routeHref({ name: "thread", id: thread.id })}
         aria-current={selected ? "page" : undefined}
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "mouse") return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          timer.current = setTimeout(() => setHover(rect), HOVER_DELAY_MS);
+        }}
+        onPointerLeave={() => {
+          clearTimeout(timer.current);
+          setHover(null);
+        }}
+        onContextMenu={(event) => {
+          if (!lifecycle) return;
+          event.preventDefault();
+          clearTimeout(timer.current);
+          setHover(null);
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
       >
         <span className="thread-row-line">
           <ProjectBadge name={projectName} />
@@ -114,9 +207,49 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
             ) : null}
           </span>
           {unmanaged ? <Pill tone="warn">Unmanaged</Pill> : null}
-          <EngineGlyph name={engine?.name ?? thread.engine} />
+          <EngineGlyph name={engineName} />
         </span>
       </a>
+      {hover && !menu ? (
+        <ThreadHoverCard
+          thread={thread}
+          projectName={projectName}
+          branch={branch}
+          engineName={engineName}
+          anchor={hover}
+        />
+      ) : null}
+      {menu && lifecycle ? (
+        <Menu
+          {...menu}
+          label={`Actions for ${thread.title}`}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: lifecycle.pinned_at ? "Unpin" : "Pin",
+              icon: <Pin size={14} aria-hidden />,
+              onSelect: () => patch({ pinned: !lifecycle.pinned_at }, lifecycle.pinned_at ? "Unpinned" : "Pinned"),
+            },
+            {
+              label: lifecycle.settled_at ? "Unsettle" : "Settle",
+              icon: <CircleCheck size={14} aria-hidden />,
+              onSelect: () =>
+                patch({ settled: !lifecycle.settled_at }, lifecycle.settled_at ? "Back in the list" : "Settled"),
+            },
+            {
+              label: lifecycle.unread ? "Mark as read" : "Mark as unread",
+              icon: <Mail size={14} aria-hidden />,
+              onSelect: () => patch({ unread: !lifecycle.unread }, "Updated"),
+            },
+            {
+              label: "Archive",
+              icon: <Archive size={14} aria-hidden />,
+              disabled: thread.active_run !== null,
+              onSelect: () => patch({ archived: true }, "Archived"),
+            },
+          ]}
+        />
+      ) : null}
     </li>
   );
 }
@@ -223,7 +356,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [needsAttention, setNeedsAttention] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const nav = useRef<HTMLElement>(null);
-  useVisibleAnimations(nav);
+  useLoopsWhileVisible(nav);
   const selectedThread = route.name === "thread" ? route.id : null;
   const list = useMemo(() => projects.data ?? [], [projects.data]);
 

@@ -8,7 +8,10 @@ export interface ThreadGroups {
   settled: Thread[];
 }
 
-const newestFirst = (a: Thread, b: Thread) => b.updated_at.localeCompare(a.updated_at);
+const newestFirst = (a: Thread, b: Thread) => {
+  const pinned = Number(Boolean(b.lifecycle?.pinned_at)) - Number(Boolean(a.lifecycle?.pinned_at));
+  return pinned || b.updated_at.localeCompare(a.updated_at);
+};
 
 /**
  * Sidebar placement only, from what the server reports. Archived threads leave

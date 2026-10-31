@@ -1,33 +1,30 @@
 import { useEffect, type RefObject } from "react";
 
 /**
- * Stepped animations read `--visible-animation-state`, paused unless set, so a
- * status dot off screen or in a hidden tab costs no frames. Follows upstream's
- * lib/visibleAnimation.ts (see web/NOTICE).
+ * Looping animations read `--loop-state` and rest paused unless it says run.
+ * This keeps a region's loops running only while it's on screen in a visible tab.
  */
-export function useVisibleAnimations(ref: RefObject<HTMLElement | null>): void {
+export function useLoopsWhileVisible(ref: RefObject<HTMLElement | null>): void {
   useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    let intersecting = typeof IntersectionObserver === "undefined";
-    const apply = () => {
-      const running = intersecting && !document.hidden;
-      element.style.setProperty("--visible-animation-state", running ? "running" : "paused");
-      element.style.setProperty("--visible-animation-will-change", running ? "transform" : "auto");
+    const region = ref.current;
+    if (!region) return;
+    let onScreen = true;
+    const publish = () => {
+      region.style.setProperty("--loop-state", onScreen && !document.hidden ? "running" : "paused");
     };
-    apply();
     const observer =
-      typeof IntersectionObserver === "undefined"
-        ? null
-        : new IntersectionObserver((entries) => {
-            intersecting = entries.at(-1)?.isIntersecting ?? intersecting;
-            apply();
-          });
-    observer?.observe(element);
-    document.addEventListener("visibilitychange", apply);
+      typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(([entry]) => {
+            onScreen = entry?.isIntersecting ?? onScreen;
+            publish();
+          })
+        : null;
+    observer?.observe(region);
+    document.addEventListener("visibilitychange", publish);
+    publish();
     return () => {
       observer?.disconnect();
-      document.removeEventListener("visibilitychange", apply);
+      document.removeEventListener("visibilitychange", publish);
     };
   }, [ref]);
 }

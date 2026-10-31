@@ -214,6 +214,7 @@ const baseThread = (
   last_run_state: null,
   created_at: iso(offset - 600),
   updated_at: iso(offset),
+  lifecycle: lifecycle(),
   ...over,
 });
 
@@ -845,4 +846,23 @@ export const serverSettings = (): ServerSettings => ({
   auto_settle: { after_days: null, on_merge: false, keep_pull_requests: true },
   snooze_presets: [],
   title_instructions: null,
+});
+
+export const slashCommands = [
+  { name: "review", description: "Review the current diff" },
+  { name: "clear", description: "Start with a clean context" },
+];
+
+export const lifecycle = (): NonNullable<Thread["lifecycle"]> => ({
+  pinned_at: null,
+  archived_at: null,
+  settled_at: null,
+  snoozed_until: null,
+  unread: false,
+  auto_settle: null,
+  position: 0,
+  parent_thread_id: null,
+  relation: null,
+  permission_mode: "supervised",
+  plan_mode: false,
 });

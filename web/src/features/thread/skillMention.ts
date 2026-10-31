@@ -1,21 +1,32 @@
-/** The `$query` being typed at the caret, or null when there isn't one. */
-export function mentionAt(text: string, caret: number): { start: number; query: string } | null {
-  const before = text.slice(0, caret);
-  const match = /(?:^|\s)\$([\w-]*)$/.exec(before);
-  if (!match) return null;
-  const query = match[1] ?? "";
-  return { start: caret - query.length - 1, query };
+export type TriggerChar = "$" | "@" | "/";
+
+export interface Trigger {
+  char: TriggerChar;
+  start: number;
+  query: string;
 }
 
-export function insertMention(
+/** The token being typed at the caret. `/` counts only at the start of the prompt. */
+export function triggerAt(text: string, caret: number): Trigger | null {
+  const before = text.slice(0, caret);
+  const match = /(?:^|\s)([$@/])([\w./-]*)$/.exec(before);
+  if (!match) return null;
+  const char = match[1] as TriggerChar;
+  const query = match[2] ?? "";
+  const start = caret - query.length - 1;
+  if (char === "/" && start !== 0) return null;
+  return { char, start, query };
+}
+
+export function insertToken(
   text: string,
   caret: number,
-  start: number,
-  name: string,
+  trigger: Trigger,
+  value: string,
 ): { text: string; caret: number } {
-  const inserted = `$${name} `;
+  const inserted = `${trigger.char}${value} `;
   return {
-    text: text.slice(0, start) + inserted + text.slice(caret),
-    caret: start + inserted.length,
+    text: text.slice(0, trigger.start) + inserted + text.slice(caret),
+    caret: trigger.start + inserted.length,
   };
 }

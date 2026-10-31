@@ -32,8 +32,9 @@ describe("App against the mock API", () => {
 
   it("pins Working open and keeps Settled collapsed behind a count", async () => {
     const user = userEvent.setup();
-    const now = Date.now();
-    for (const thread of mock.threads.slice(10)) thread.updated_at = new Date(now - 3 * 86_400_000).toISOString();
+    for (const thread of mock.threads.slice(10)) {
+      thread.lifecycle = { ...thread.lifecycle!, settled_at: "2026-10-30T10:00:00Z" };
+    }
     render(<App />);
     const settled = await screen.findByRole("button", { name: /^Settled/ });
     expect(settled).toHaveAttribute("aria-expanded", "false");
@@ -425,6 +426,39 @@ describe("App against the mock API", () => {
     expect(within(details).getByText("approval-timeout")).toBeInTheDocument();
     expect(within(details).queryByText("Commit")).toBeNull();
     expect(within(details).queryByText(/Open in editor/)).toBeNull();
+  });
+
+  it("opens the command palette and goes to a result", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByText("Upgrade tokio and fix the fallout");
+    await user.keyboard("{Control>}k{/Control}");
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await user.type(within(palette).getByRole("combobox"), "tokio{Enter}");
+    await waitFor(() => expect(window.location.hash).toBe("#/threads/t-failed"));
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  });
+
+  it("settles a thread from its menu", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Workspace" });
+    const row = (await within(nav).findByText("Explain how the event log resumes")).closest("a");
+    fireEvent.contextMenu(row as HTMLElement);
+    await user.click(await screen.findByRole("menuitem", { name: "Settle" }));
+    await waitFor(() => expect(mock.threads.find((t) => t.id === "t-done")?.lifecycle?.settled_at).not.toBeNull());
+  });
+
+  it("shows a hover card for a row after the delay", async () => {
+    render(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Workspace" });
+    const row = (await within(nav).findByText("Explain how the event log resumes")).closest("a") as HTMLElement;
+    fireEvent.pointerEnter(row, { pointerType: "mouse" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    const card = await screen.findByRole("tooltip");
+    expect(card).toHaveTextContent("Claude Code, claude-opus-5-5");
+    fireEvent.pointerLeave(row);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
   });
 
   it("offers only surfaces it can back", async () => {

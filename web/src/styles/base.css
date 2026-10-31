@@ -418,7 +418,7 @@ input[type="radio"] {
   height: 16px;
   border-radius: var(--radius-xs);
   background: var(--color-chip);
-  animation: skeleton 2.4s infinite;
+  animation: loading-breathe 2.4s infinite;
 }
 .skeleton:nth-child(3n) {
   width: 60%;
@@ -583,10 +583,9 @@ input[type="radio"] {
 .spin {
   animation: spin 1s linear infinite;
 }
-/* Stepped loops, after upstream's index.css (see web/NOTICE). A handful of
-   discrete frames per cycle instead of one per vsync. They read
-   --visible-animation-state, so nothing runs off screen. */
-@keyframes skeleton {
+/* Loops use a few discrete steps per cycle rather than one frame per vsync, and
+   read --loop-state, so nothing runs off screen. */
+@keyframes loading-breathe {
   0%,
   42% {
     opacity: 1;
@@ -601,7 +600,7 @@ input[type="radio"] {
     opacity: 1;
   }
 }
-@keyframes status-pulse {
+@keyframes dot-breathe {
   0%,
   40% {
     opacity: 1;
@@ -616,7 +615,7 @@ input[type="radio"] {
     opacity: 1;
   }
 }
-@keyframes status-ping {
+@keyframes dot-ripple {
   0% {
     opacity: 0.9;
     scale: 0.75;
@@ -628,7 +627,7 @@ input[type="radio"] {
     scale: 2;
   }
 }
-@keyframes live-tool-shine {
+@keyframes text-sweep {
   from {
     background-position:
       -4.5rem 0,
@@ -640,7 +639,7 @@ input[type="radio"] {
       0 0;
   }
 }
-@keyframes live-activity-focus {
+@keyframes band-sweep {
   from {
     transform: translateX(-100%);
   }
@@ -656,8 +655,8 @@ input[type="radio"] {
   flex: none;
   border-radius: 50%;
   background: currentColor;
-  animation: status-pulse 2s infinite;
-  animation-play-state: var(--visible-animation-state, paused);
+  animation: dot-breathe 2s infinite;
+  animation-play-state: var(--loop-state, paused);
 }
 .status-dot::after {
   content: "";
@@ -665,11 +664,11 @@ input[type="radio"] {
   inset: 0;
   border-radius: 50%;
   background: currentColor;
-  animation: status-ping 2s infinite;
-  animation-play-state: var(--visible-animation-state, paused);
+  animation: dot-ripple 2s infinite;
+  animation-play-state: var(--loop-state, paused);
 }
 @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-  .live-tool-shine {
+  .text-sweep {
     color: transparent;
     background-image:
       linear-gradient(to right, transparent, var(--color-text), transparent),
@@ -680,8 +679,8 @@ input[type="radio"] {
     background-repeat: no-repeat;
     background-clip: text;
     -webkit-background-clip: text;
-    animation: live-tool-shine 2.2s steps(30) infinite;
-    animation-play-state: var(--visible-animation-state, paused);
+    animation: text-sweep 2.2s steps(30) infinite;
+    animation-play-state: var(--loop-state, paused);
   }
 }
 .collapsible-panel {
@@ -691,6 +690,220 @@ input[type="radio"] {
 }
 .collapsible-panel[data-collapsed] {
   height: 0;
+}
+.popup-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--color-outline),
+    0 18px 44px -18px var(--color-shadow);
+  transition:
+    scale 100ms,
+    opacity 100ms;
+}
+@starting-style {
+  .popup-menu {
+    scale: 0.98;
+    opacity: 0;
+  }
+}
+.popup-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-textSoft);
+  font-size: var(--text-small);
+  text-align: left;
+  cursor: pointer;
+}
+.popup-menu button:hover:not(:disabled),
+.popup-menu button:focus-visible {
+  background: var(--color-hover);
+  outline: none;
+}
+.popup-menu button:disabled {
+  color: var(--color-faint);
+  cursor: default;
+}
+.popup-menu button[aria-current] {
+  color: var(--color-text);
+}
+.hover-card {
+  position: fixed;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--color-outline),
+    0 18px 44px -18px var(--color-shadow);
+  font-size: var(--text-meta);
+  pointer-events: none;
+  transition:
+    scale 100ms,
+    opacity 100ms;
+  transform-origin: left top;
+}
+@starting-style {
+  .hover-card {
+    scale: 0.98;
+    opacity: 0;
+  }
+}
+.hover-card-title {
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 500;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hover-card-rows {
+  display: grid;
+  gap: 6px;
+  padding-left: 2px;
+  color: var(--color-muted);
+}
+.hover-card-rows > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hover-card-rows svg {
+  flex: none;
+}
+.hover-card-rows span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hover-card .badge,
+.hover-card .engine-glyph {
+  width: 12px;
+  height: 12px;
+}
+.toasts {
+  position: fixed;
+  z-index: 70;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--color-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--color-outline),
+    0 18px 44px -18px var(--color-shadow);
+  font-size: var(--text-small);
+  transition:
+    translate 200ms var(--ease-drawer),
+    opacity 200ms;
+}
+@starting-style {
+  .toast {
+    translate: 0 8px;
+    opacity: 0;
+  }
+}
+.palette {
+  width: min(576px, calc(100vw - 32px));
+  max-height: min(420px, calc(100dvh - 96px));
+  margin: 12dvh auto auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-raised);
+  color: var(--color-text);
+  box-shadow:
+    inset 0 0 0 1px var(--color-outline),
+    0 24px 64px -24px var(--color-shadow);
+}
+.palette[open] {
+  display: flex;
+  flex-direction: column;
+}
+.palette::backdrop {
+  background: var(--color-backdrop);
+  backdrop-filter: blur(4px);
+}
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-muted);
+}
+.palette-search input {
+  border: 0;
+  background: transparent;
+  outline: none !important;
+}
+.palette-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+.palette-group {
+  padding: 6px 8px 4px;
+  color: var(--color-faint);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.palette-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-textSoft);
+  font-size: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+}
+.palette-list button[data-active] {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.palette-list button span:last-child:not(:first-child) {
+  margin-left: auto;
+  color: var(--color-faint);
+  font-size: var(--text-meta);
+}
+.palette-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .menu,
 .mention-menu {

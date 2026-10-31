@@ -244,11 +244,11 @@
 .group-head {
   transition: color 150ms;
 }
-[data-panel-animations="true"] .sidebar {
-  transition: translate var(--panel-animation-duration) var(--ease-drawer);
+[data-panel-motion="on"] .sidebar {
+  transition: translate var(--panel-duration) var(--ease-drawer);
 }
 @starting-style {
-  [data-panel-animations="true"] .sidebar {
+  [data-panel-motion="on"] .sidebar {
     translate: -32px 0;
   }
 }

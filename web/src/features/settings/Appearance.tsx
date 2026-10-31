@@ -11,6 +11,7 @@ const choices: { value: ThemeChoice; label: string }[] = [
 const shortcuts: { keys: string; action: string }[] = [
   { keys: "Enter", action: "Send message" },
   { keys: "Shift+Enter", action: "New line" },
+  { keys: "Cmd/Ctrl+K", action: "Command palette" },
   { keys: "Alt+N", action: "New thread" },
   { keys: "Alt+A", action: "Approvals" },
   { keys: "Alt+1, 2, 3", action: "Diff, Terminal, Activity" },

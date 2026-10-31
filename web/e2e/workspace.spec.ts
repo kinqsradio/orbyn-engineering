@@ -123,7 +123,7 @@ test("the composer travels with upstream's easing and holds the send until it la
   });
   await send(page, "travel");
   const timing = await page.evaluate(() => {
-    const animation = document.getAnimations().find((a) => a.id === "orbyn-draft-hero-transition");
+    const animation = document.getAnimations().find((a) => a.id === "composer-dock");
     if (!animation) return null;
     animation.pause();
     const effect = animation.effect?.getComputedTiming();
@@ -136,7 +136,7 @@ test("the composer travels with upstream's easing and holds the send until it la
   expect(timing?.properties).not.toContain("width");
   await page.waitForTimeout(150);
   expect(posted).toBe(false);
-  await page.evaluate(() => document.getAnimations().find((a) => a.id === "orbyn-draft-hero-transition")?.finish());
+  await page.evaluate(() => document.getAnimations().find((a) => a.id === "composer-dock")?.finish());
   await expect.poll(() => posted).toBe(true);
   const end = await page.locator(".composer-box").boundingBox();
   expect(end!.y).toBeGreaterThan(startBox!.y + 100);
@@ -145,13 +145,13 @@ test("the composer travels with upstream's easing and holds the send until it la
 test("the default zero duration and reduced motion skip the transition", async ({ page }) => {
   await openHero(page, 0);
   await send(page, "instant");
-  expect(await page.evaluate(() => document.getAnimations().some((a) => a.id === "orbyn-draft-hero-transition"))).toBe(false);
+  expect(await page.evaluate(() => document.getAnimations().some((a) => a.id === "composer-dock"))).toBe(false);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ panelAnimationMs: 240 })));
   await page.goto("/__mock/scenario/default?to=/%23/threads/t-empty");
   await expect(page.getByRole("heading", { name: /What should we work on/ })).toBeVisible();
   await send(page, "still");
-  expect(await page.evaluate(() => document.getAnimations().some((a) => a.id === "orbyn-draft-hero-transition"))).toBe(false);
+  expect(await page.evaluate(() => document.getAnimations().some((a) => a.id === "composer-dock"))).toBe(false);
   await expect(page.getByText("still", { exact: true })).toBeVisible();
 });
 
@@ -164,7 +164,7 @@ test("status loops are stepped and pause when not visible", async ({ page }) => 
       const style = getComputedStyle(element);
       return { name: style.animationName, duration: style.animationDuration, state: style.animationPlayState };
     });
-  await expect.poll(read).toMatchObject({ name: "status-pulse", duration: "2s", state: "running" });
+  await expect.poll(read).toMatchObject({ name: "dot-breathe", duration: "2s", state: "running" });
   await page.evaluate(() => {
     Object.defineProperty(document, "hidden", { value: true, configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));

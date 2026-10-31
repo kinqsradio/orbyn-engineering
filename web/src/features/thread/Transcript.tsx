@@ -1,7 +1,7 @@
 import { ArrowDown } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useThreadLogs, type LocalPrompt } from "../../state/threadLogs";
-import { useVisibleAnimations } from "../../lib/visibleAnimation";
+import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { ThreadItemView, WorkGroupView } from "./items";
@@ -64,7 +64,7 @@ export function Transcript({
 
   const scroller = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
-  useVisibleAnimations(scroller);
+  useLoopsWhileVisible(scroller);
   const pinned = useRef(!scrollMemory.has(threadId));
   const [showJump, setShowJump] = useState(false);
 

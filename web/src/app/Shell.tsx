@@ -1,13 +1,15 @@
 import { PanelLeft } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AddProject } from "../features/onboarding/AddProject";
 import { NewThread } from "../features/onboarding/NewThread";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { ApprovalsPage, HomePage } from "../features/workspace/Attention";
+import { CommandPalette } from "../features/workspace/CommandPalette";
 import { Sidebar } from "../features/workspace/Sidebar";
-import { usePanelAnimationAttribute } from "../lib/panelAnimations";
+import { Toasts } from "../ui/Toasts";
+import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
 import { useUi, type ContextTab } from "../state/ui";
@@ -95,8 +97,19 @@ export function Shell() {
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
   useGlobalKeys(route);
-  usePanelAnimationAttribute(routeKey);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);
 
   useEffect(() => {
@@ -126,6 +139,8 @@ export function Shell() {
         Skip to content
       </a>
       {showNav ? <Sidebar route={route} /> : null}
+      <Toasts />
+      {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
       {collapsed && layout !== "narrow" && route.name !== "thread" ? (
         <IconButton className="expand-nav" label="Expand sidebar" onClick={toggleSidebar}>
           <PanelLeft size={16} aria-hidden />

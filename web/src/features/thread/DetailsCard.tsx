@@ -166,7 +166,13 @@ export function DetailsCard({
     (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
   );
   const branch = thread.worktree?.branch ?? projectBranch;
-  const copyPath = () => void navigator.clipboard?.writeText(thread.cwd).catch(() => undefined);
+  const pushToast = useUi((state) => state.pushToast);
+  const copyPath = () => {
+    navigator.clipboard?.writeText(thread.cwd).then(
+      () => pushToast("Folder path copied"),
+      () => pushToast("Couldn't copy the path"),
+    );
+  };
 
   return (
     <aside className="details" aria-label="Thread details">

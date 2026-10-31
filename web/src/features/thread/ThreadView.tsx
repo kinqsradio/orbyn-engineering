@@ -14,7 +14,7 @@ import { api } from "../../api/client";
 import type { Project, RunState, Thread } from "../../api/types";
 import { elapsed, runStateLabels } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
-import { usePanelAnimations, usePanelPresence } from "../../lib/panelAnimations";
+import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
 import { useNow } from "../../lib/useNow";
 import { routeHref } from "../../state/route";
@@ -30,7 +30,7 @@ import { ApprovalsLink } from "../workspace/ApprovalsLink";
 import { threadRunState } from "../workspace/RunState";
 import { Composer } from "./Composer";
 import { DetailsCard } from "./DetailsCard";
-import { useHeroTransition, waitForHeroTransition } from "./heroTransition";
+import { composerSettled, useComposerDock } from "./heroTransition";
 import { runningTools } from "./timeline";
 import { Transcript } from "./Transcript";
 
@@ -146,7 +146,7 @@ function RunStatusLine({ thread }: { thread: Thread }) {
   return (
     <div className="thread-state run-status-row" role="status">
       <span className={`status-dot ${state === "awaiting_approval" ? "tone-warn" : "tone-info"}`} aria-hidden />
-      <span className="run-status live-tool-shine">{statusSentence(state, tools.length)}</span>
+      <span className="run-status text-sweep">{statusSentence(state, tools.length)}</span>
       {tools.length > 0 ? (
         <span className="run-status-detail">{tools.map((tool) => tool.name).join(", ")}</span>
       ) : (
@@ -246,7 +246,7 @@ export function ThreadView({ id }: { id: string }) {
   const hasContent = useThreadLogs(
     (state) => (state.logs[id]?.items.length ?? 0) > 0 || (state.prompts[id]?.length ?? 0) > 0,
   );
-  const animation = usePanelAnimations();
+  const motion = usePanelMotion();
   useThreadStream(id);
 
   useEffect(() => {
@@ -267,10 +267,10 @@ export function ThreadView({ id }: { id: string }) {
     thread !== undefined &&
     thread.active_run === null &&
     thread.last_run_state === null;
-  const { groupRef, anchorRef, capture } = useHeroTransition(hero, animation.active, animation.durationMs);
+  const { mover, anchor, recordStart } = useComposerDock(hero, motion.enabled, motion.durationMs);
 
   const panelOpen = panelPref ?? layout === "xwide";
-  const panelPresent = usePanelPresence(panelOpen, animation.active, animation.durationMs);
+  const panelPresent = useLingering(panelOpen, motion.enabled ? motion.durationMs : 0);
 
   if (!thread) {
     if (missing) {
@@ -302,9 +302,9 @@ export function ThreadView({ id }: { id: string }) {
 
   const beforeSend = async () => {
     if (!hero) return;
-    capture();
+    recordStart();
     flushSync(() => setDocked(true));
-    await waitForHeroTransition();
+    await composerSettled();
   };
 
   return (
@@ -347,10 +347,10 @@ export function ThreadView({ id }: { id: string }) {
             />
           )}
           <div className="composer-lane">
-            <div ref={groupRef} className="composer-group">
+            <div ref={mover} className="composer-group">
               <div className="composer-stack">
                 {hero ? <DraftHero project={project} /> : null}
-                <div ref={anchorRef}>
+                <div ref={anchor}>
                   <Composer
                     thread={thread}
                     engine={engine}

@@ -1,16 +1,17 @@
-import { ArrowUp, Folder, GitBranch, ShieldCheck, ShieldOff } from "lucide-react";
+import { ArrowUp, Folder, GitBranch, Paperclip, ShieldCheck, ShieldOff, X } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
-import type { EngineStatus, SkillSummary, Thread } from "../../api/types";
-import type { PermissionMode } from "../../generated/PermissionMode";
+import type { Attachment, EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
+import { IconButton } from "../../ui/controls";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
-import { insertMention, mentionAt } from "./skillMention";
+import { Menu } from "../../ui/Menu";
+import { insertToken, triggerAt } from "./skillMention";
 
 const accessLabels: Record<PermissionMode, string> = {
   supervised: "Asks before acting",
@@ -18,6 +19,13 @@ const accessLabels: Record<PermissionMode, string> = {
   auto: "Auto",
   full_access: "Full access",
 };
+
+const ACCESS_MODES = Object.keys(accessLabels) as PermissionMode[];
+
+interface Suggestion {
+  value: string;
+  detail: string | null;
+}
 
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
@@ -47,7 +55,11 @@ export function Composer({
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const skills = useAsync("composer-skills", (signal) => api.skills(signal));
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [accessMenu, setAccessMenu] = useState<{ x: number; y: number } | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
+  const putThread = useWorkspace((state) => state.putThread);
   const projectBranch = useWorkspace(
     (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
   );
@@ -55,14 +67,22 @@ export function Composer({
   const busy = thread.active_run !== null;
   const canSend = draft.trim() !== "" && !busy && !sending;
 
-  const mention = menuDismissed ? null : mentionAt(draft, caret);
-  const matches = useMemo<SkillSummary[]>(() => {
-    if (!mention) return [];
-    const needle = mention.query.toLowerCase();
-    return (skills.data?.skills ?? [])
-      .filter((skill) => skill.enabled && skill.name.toLowerCase().includes(needle))
-      .slice(0, MENU_ROWS);
-  }, [mention, skills.data]);
+  const trigger = menuDismissed ? null : triggerAt(draft, caret);
+  const lookupKey = trigger ? `${thread.id}:${trigger.char}:${trigger.query}` : `${thread.id}:idle`;
+  const lookup = useAsync<Suggestion[]>(lookupKey, async (signal) => {
+    if (!trigger) return [];
+    if (trigger.char === "/") {
+      const commands = await api.commands(thread.id, signal);
+      const needle = trigger.query.toLowerCase();
+      return commands
+        .filter((command) => command.name.toLowerCase().includes(needle))
+        .map((command) => ({ value: command.name, detail: command.description }));
+    }
+    const found = await api.mentions(thread.id, trigger.query, signal);
+    const values = trigger.char === "$" ? found.skills : found.files;
+    return values.map((value) => ({ value, detail: null }));
+  });
+  const matches = useMemo(() => (trigger ? (lookup.data ?? []).slice(0, MENU_ROWS) : []), [trigger, lookup.data]);
   const menuOpen = matches.length > 0;
   const active = Math.min(highlight, Math.max(matches.length - 1, 0));
 
@@ -74,9 +94,9 @@ export function Composer({
     element.style.height = `${Math.min(element.scrollHeight + 2, limit)}px`;
   }, [draft]);
 
-  const pick = (skill: SkillSummary) => {
-    if (!mention) return;
-    const next = insertMention(draft, caret, mention.start, skill.name);
+  const pick = (suggestion: Suggestion) => {
+    if (!trigger) return;
+    const next = insertToken(draft, caret, trigger, suggestion.value);
     setDraft(thread.id, next.text);
     setCaret(next.caret);
     requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
@@ -89,7 +109,8 @@ export function Composer({
     setError(null);
     try {
       await beforeSend?.();
-      const run = await api.startRun(thread.id, prompt.trim());
+      const run = await api.startRun(thread.id, prompt.trim(), attachments.map((file) => file.id));
+      setAttachments([]);
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
       setDraft(thread.id, current === prompt ? "" : current);
@@ -123,8 +144,8 @@ export function Composer({
       }
       if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
         event.preventDefault();
-        const skill = matches[active];
-        if (skill) pick(skill);
+        const suggestion = matches[active];
+        if (suggestion) pick(suggestion);
         return;
       }
       if (event.key === "Escape") {
@@ -139,7 +160,32 @@ export function Composer({
     void send();
   };
 
+  const upload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const added = await Promise.all([...files].map((file) => api.uploadAttachment(thread.id, file)));
+      setAttachments((current) => [...current, ...added]);
+    } catch (failure) {
+      setError(`Couldn't attach that. ${toFailure(failure).message}`);
+    } finally {
+      setUploading(false);
+      if (filePicker.current) filePicker.current.value = "";
+    }
+  };
+
+  const setAccess = async (mode: PermissionMode) => {
+    setError(null);
+    try {
+      putThread(await api.patchThread(thread.id, { permission_mode: mode }));
+    } catch (failure) {
+      setError(`Couldn't change access. ${toFailure(failure).message}`);
+    }
+  };
+
   const unmanaged = engine !== null && !engine.capabilities.managed;
+  const access = thread.lifecycle?.permission_mode ?? "supervised";
   const engineName = engine?.name ?? thread.engine;
 
   return (
@@ -158,17 +204,36 @@ export function Composer({
       ) : null}
       <div className="composer-box">
         {menuOpen ? (
-          <ul className="mention-menu" role="listbox" aria-label="Skills">
-            {matches.map((skill, at) => (
-              <li key={skill.name} role="option" aria-selected={at === active}>
+          <ul className="mention-menu" role="listbox" aria-label="Suggestions">
+            {matches.map((suggestion, at) => (
+              <li key={suggestion.value} role="option" aria-selected={at === active}>
                 <button
                   type="button"
                   tabIndex={-1}
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => pick(skill)}
+                  onClick={() => pick(suggestion)}
                 >
-                  <span className="mention-name">${skill.name}</span>
-                  <span className="mention-detail">{skill.description}</span>
+                  <span className="mention-name">
+                    {trigger?.char}
+                    {suggestion.value}
+                  </span>
+                  {suggestion.detail ? <span className="mention-detail">{suggestion.detail}</span> : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {attachments.length > 0 ? (
+          <ul className="attachment-strip" aria-label="Attachments">
+            {attachments.map((file) => (
+              <li key={file.id}>
+                <span>{file.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => setAttachments(attachments.filter((entry) => entry.id !== file.id))}
+                >
+                  <X size={12} aria-hidden />
                 </button>
               </li>
             ))}
@@ -188,13 +253,28 @@ export function Composer({
           onKeyDown={onKeyDown}
           aria-label={`Message ${thread.title}`}
           aria-describedby="composer-help"
-          placeholder="Ask anything. $ skills"
+          placeholder="Ask anything. @ files, $ skills, / commands"
           data-autofocus={layout === "narrow" ? undefined : true}
         />
         <span id="composer-help" className="sr-only">
           Enter to send, Shift+Enter for a new line
         </span>
         <div className="composer-bar">
+          <input
+            ref={filePicker}
+            type="file"
+            multiple
+            hidden
+            aria-label="Attach files"
+            onChange={(event) => void upload(event.target.files)}
+          />
+          <IconButton
+            label={uploading ? "Attaching" : "Attach files"}
+            disabled={uploading}
+            onClick={() => filePicker.current?.click()}
+          >
+            <Paperclip size={16} aria-hidden />
+          </IconButton>
           <dl className="composer-left">
             {profileName ? (
               <div>
@@ -244,12 +324,43 @@ export function Composer({
           <div>
             <dt className="sr-only">Access</dt>
             <dd className={unmanaged ? "tone-warn" : undefined}>
-              {unmanaged ? <ShieldOff size={12} aria-hidden /> : <ShieldCheck size={12} aria-hidden />}
-              {unmanaged ? "Unmanaged" : accessLabels[thread.lifecycle?.permission_mode ?? "supervised"]}
+              {unmanaged ? (
+                <>
+                  <ShieldOff size={12} aria-hidden />
+                  Unmanaged
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="context-action"
+                  aria-haspopup="menu"
+                  disabled={busy || !thread.lifecycle}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setAccessMenu({ x: rect.left, y: rect.top - 4 - ACCESS_MODES.length * 32 });
+                  }}
+                >
+                  <ShieldCheck size={12} aria-hidden />
+                  {accessLabels[access]}
+                </button>
+              )}
             </dd>
           </div>
         </dl>
       </div>
+      {accessMenu ? (
+        <Menu
+          {...accessMenu}
+          origin="bottom left"
+          label="Access"
+          onClose={() => setAccessMenu(null)}
+          items={ACCESS_MODES.map((mode) => ({
+            label: accessLabels[mode],
+            selected: mode === access,
+            onSelect: () => void setAccess(mode),
+          }))}
+        />
+      ) : null}
       </div>
     </form>
   );

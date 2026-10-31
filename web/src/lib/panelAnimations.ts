@@ -1,58 +1,55 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUi } from "../state/ui";
 import { usePrefersReducedMotion } from "./useLayout";
 
 export const MAX_PANEL_ANIMATION_MS = 400;
 
-/**
- * Panel motion is off at 0 ms, upstream's default: animating a panel's width
- * costs layout on every frame. Reduced motion always wins.
- */
-export function usePanelAnimations(): { active: boolean; durationMs: number } {
+/** Panel motion is opt-in: 0 ms by default, and reduced motion always wins. */
+export function usePanelMotion(): { enabled: boolean; durationMs: number } {
   const durationMs = useUi((state) => state.panelAnimationMs);
   const reduced = usePrefersReducedMotion();
-  return { active: durationMs > 0 && !reduced, durationMs };
+  return { enabled: durationMs > 0 && !reduced, durationMs };
 }
 
 /**
- * Mirrors the setting onto <html> for CSS. Held off for two frames after a route
- * change, so a pane that mounts with the new route doesn't animate in.
+ * Publishes the setting on <html> for the stylesheet. It goes quiet across a
+ * route change for two frames, so a pane mounting with the new route stays still.
  */
-export function usePanelAnimationAttribute(routeKey: string): void {
-  const { active, durationMs } = usePanelAnimations();
-  const [paintedKey, setPaintedKey] = useState<string | null>(null);
-  const suppressed = paintedKey !== routeKey;
+export function usePanelMotionRoot(routeKey: string): void {
+  const { enabled, durationMs } = usePanelMotion();
+  const [settledRoute, setSettledRoute] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!suppressed) return;
-    let release = 0;
-    const paint = requestAnimationFrame(() => {
-      release = requestAnimationFrame(() => setPaintedKey(routeKey));
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setSettledRoute(routeKey));
     });
-    return () => {
-      cancelAnimationFrame(paint);
-      cancelAnimationFrame(release);
-    };
-  }, [routeKey, suppressed]);
+    return () => cancelAnimationFrame(frame);
+  }, [routeKey]);
 
+  const on = enabled && settledRoute === routeKey;
   useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.panelAnimations = String(active && !suppressed);
-    root.style.setProperty("--panel-animation-duration", `${durationMs}ms`);
-  }, [active, durationMs, suppressed]);
+    const { dataset, style } = document.documentElement;
+    dataset.panelMotion = on ? "on" : "off";
+    style.setProperty("--panel-duration", `${durationMs}ms`);
+  }, [on, durationMs]);
 }
 
-/** Keeps a closing panel mounted for its exit, then lets it go. */
-export function usePanelPresence(open: boolean, animated: boolean, durationMs: number): boolean {
-  const [present, setPresent] = useState(open);
-  if (open && !present) setPresent(true);
-  if (!open && !animated && present) setPresent(false);
+/** Stays true for `exitMs` after `open` drops, so a closing pane can animate out. */
+export function useLingering(open: boolean, exitMs: number): boolean {
+  const [lingering, setLingering] = useState(false);
+  const wasOpen = useRef(open);
 
   useEffect(() => {
-    if (open || !animated) return;
-    const timer = setTimeout(() => setPresent(false), durationMs);
+    const closed = wasOpen.current && !open;
+    wasOpen.current = open;
+    if (!closed || exitMs === 0) {
+      setLingering(false);
+      return;
+    }
+    setLingering(true);
+    const timer = setTimeout(() => setLingering(false), exitMs);
     return () => clearTimeout(timer);
-  }, [animated, durationMs, open]);
+  }, [open, exitMs]);
 
-  return open || (animated && present);
+  return open || lingering;
 }

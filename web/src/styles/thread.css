@@ -244,58 +244,81 @@
 
 /* Markdown */
 .md {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
   overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre,
+.md .md-table {
+  margin: 0.65rem 0;
 }
 .md h2,
 .md h3,
 .md h4,
 .md h5 {
-  margin-top: 6px;
-  font-size: var(--text-body);
+  margin: 1.25rem 0 0.5rem;
+  color: var(--color-text);
   font-weight: 600;
+  line-height: 1.3;
 }
 .md h2 {
-  font-size: var(--text-title);
-  font-weight: 500;
+  font-size: var(--text-heading);
 }
-.md ul,
-.md ol {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-left: 22px;
+.md h3 {
+  font-size: var(--text-title);
+}
+.md h4,
+.md h5 {
+  font-size: var(--text-body);
 }
 .md ul {
-  list-style: disc;
+  padding-inline-start: 1.25rem;
+  list-style-type: disc;
 }
 .md ol {
-  list-style: decimal;
+  padding-inline-start: 1.25rem;
+  list-style-type: decimal;
 }
-.md li > .md,
-.md li {
-  min-width: 0;
+.md li::marker {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.md li > :first-child {
+  margin-top: 0;
+}
+.md li > :last-child {
+  margin-bottom: 0;
 }
 .md :not(pre) > code {
   padding: 1px 4px;
   border-radius: var(--radius-xs);
   background: var(--color-chip);
+  font-size: 0.9em;
   overflow-wrap: anywhere;
 }
 .md pre {
   padding: 10px 12px;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   background: var(--color-raised);
+  box-shadow: inset 0 0 0 1px var(--color-divider);
   line-height: 1.5;
 }
 .md blockquote {
-  margin: 0;
   padding-left: 12px;
-  border-left: 3px solid var(--color-border);
-  color: var(--color-textSoft);
+  border-left: 2px solid var(--color-border);
+  color: var(--color-muted);
+}
+.md blockquote > * {
+  margin: 0;
 }
 .md hr {
   width: 100%;
@@ -311,13 +334,14 @@
 }
 .md th,
 .md td {
-  padding: 4px 12px 4px 0;
+  padding: 6px 12px 6px 0;
   border-bottom: 1px solid var(--color-divider);
   text-align: left;
   vertical-align: top;
 }
 .md th {
-  font-weight: 600;
+  color: var(--color-muted);
+  font-weight: 500;
 }
 
 /* Reasoning, tools, other activity */
@@ -333,9 +357,8 @@
   inset: 0;
   background: linear-gradient(to right, transparent, var(--color-hover), transparent);
   pointer-events: none;
-  animation: live-activity-focus 2.2s steps(30) infinite;
-  animation-play-state: var(--visible-animation-state, paused);
-  will-change: var(--visible-animation-will-change, auto);
+  animation: band-sweep 2.2s steps(30) infinite;
+  animation-play-state: var(--loop-state, paused);
 }
 .trace-summary {
   display: flex;
@@ -679,7 +702,7 @@
   align-items: center;
   gap: 12px;
   height: 48px;
-  padding: 0 8px 4px 16px;
+  padding: 0 8px 4px 8px;
 }
 .composer-left,
 .composer-right {
@@ -726,6 +749,47 @@
   background: var(--color-sendIdle);
   color: var(--color-muted);
   cursor: default;
+}
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px 12px 0;
+}
+.attachment-strip li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-chip);
+  font-size: var(--text-meta);
+}
+.attachment-strip button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.context-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+.context-action:hover:not(:disabled) {
+  color: var(--color-text);
 }
 .mention-menu {
   position: absolute;
@@ -905,17 +969,17 @@ button.detail-row:hover {
   border-left: 1px solid var(--color-divider);
   background: var(--color-background);
 }
-[data-panel-animations="true"] .context {
+[data-panel-motion="on"] .context {
   transition:
-    translate var(--panel-animation-duration) var(--ease-drawer),
-    opacity var(--panel-animation-duration) var(--ease-drawer);
+    translate var(--panel-duration) var(--ease-drawer),
+    opacity var(--panel-duration) var(--ease-drawer);
 }
-[data-panel-animations="true"] .context[data-closing] {
+[data-panel-motion="on"] .context[data-closing] {
   translate: 24px 0;
   opacity: 0;
 }
 @starting-style {
-  [data-panel-animations="true"] .context {
+  [data-panel-motion="on"] .context {
     translate: 24px 0;
     opacity: 0;
   }

@@ -2,6 +2,7 @@ import { readToken } from "./token";
 import type {
   ApplyAllResult,
   Approval,
+  Attachment,
   ComputerStatus,
   CreatePolicyRule,
   CreateThread,
@@ -12,6 +13,7 @@ import type {
   ImportReport,
   JsonValue,
   LibraryUpdateResult,
+  Mentions,
   PolicyRule,
   Project,
   ProjectRemoval,
@@ -20,8 +22,10 @@ import type {
   ServerSettings,
   SkillPackStatus,
   SkillProfile,
+  SlashCommand,
   Thread,
   UpdateStatus,
+  UpdateThread,
   WireAuditEvent,
   WorkspaceSetup,
   WorkspaceStatus,
@@ -112,6 +116,28 @@ export async function request<T>(
 const q = encodeURIComponent;
 
 export const api = {
+  patchThread: (id: string, body: UpdateThread) =>
+    request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
+  mentions: (threadId: string, query: string, signal?: AbortSignal) =>
+    request<Mentions>("GET", `/api/threads/${q(threadId)}/mentions?q=${q(query)}`, undefined, signal),
+  commands: (threadId: string, signal?: AbortSignal) =>
+    request<SlashCommand[]>("GET", `/api/threads/${q(threadId)}/commands`, undefined, signal),
+  uploadAttachment: async (threadId: string, file: File): Promise<Attachment> => {
+    let response: Response;
+    try {
+      response = await fetch(`/api/threads/${q(threadId)}/attachments?name=${q(file.name)}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { ...authHeaders(), "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+    } catch {
+      throw new ApiFailure(NETWORK_ERROR, "Can't reach the Orbyn service.", 0);
+    }
+    if (!response.ok) throw await failureFrom(response);
+    return (await response.json()) as Attachment;
+  },
+
   updates: (signal?: AbortSignal) => request<UpdateStatus>("GET", "/api/updates", undefined, signal),
   checkUpdates: () => request<UpdateStatus>("POST", "/api/updates/check"),
   applyAppUpdate: () => request<void>("POST", "/api/updates/app/apply"),
@@ -147,8 +173,11 @@ export const api = {
     request<Thread>("GET", `/api/threads/${q(id)}`, undefined, signal),
   createThread: (body: CreateThread) => request<Thread>("POST", "/api/threads", body),
   deleteThread: (id: string) => request<void>("DELETE", `/api/threads/${q(id)}`),
-  startRun: (threadId: string, prompt: string) =>
-    request<Run>("POST", `/api/threads/${q(threadId)}/runs`, { prompt }),
+  startRun: (threadId: string, prompt: string, attachmentIds: string[] = []) =>
+    request<Run>("POST", `/api/threads/${q(threadId)}/runs`, {
+      prompt,
+      ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+    }),
   cancelRun: (runId: string) => request<void>("POST", `/api/runs/${q(runId)}/cancel`),
   diff: (threadId: string, signal?: AbortSignal) =>
     request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff`, undefined, signal),

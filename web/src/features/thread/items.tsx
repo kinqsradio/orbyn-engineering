@@ -56,7 +56,7 @@ function Reasoning({ item, live }: { item: ReasoningItem; live: boolean }) {
         <>
           <ChevronRight size={14} className="chev" aria-hidden />
           <Brain size={14} aria-hidden />
-          <span className={streaming ? "live-tool-shine" : undefined}>Reasoning</span>
+          <span className={streaming ? "text-sweep" : undefined}>Reasoning</span>
         </>
       }
     >
@@ -90,7 +90,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
         <>
           <ChevronRight size={14} className="chev" aria-hidden />
           <Wrench size={14} aria-hidden />
-          <span className={running ? "trace-name live-tool-shine" : "trace-name"}>{item.name}</span>
+          <span className={running ? "trace-name text-sweep" : "trace-name"}>{item.name}</span>
           <code className="trace-arg">{firstValue(item.args)}</code>
           {running ? (
             <span className="sr-only">Running</span>

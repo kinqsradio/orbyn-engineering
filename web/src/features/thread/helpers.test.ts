@@ -4,20 +4,26 @@ import { parsePatch } from "../panels/DiffPanel";
 import { groupThreads } from "../workspace/groups";
 import { touchesOf } from "./approvalDetail";
 import type { ThreadItem } from "./projection";
-import { insertMention, mentionAt } from "./skillMention";
+import { insertToken, triggerAt } from "./skillMention";
 import { groupWork } from "./timeline";
 import { withLocalPrompts } from "./Transcript";
 
-describe("mentions", () => {
-  it("finds a $query at the caret only at a word start", () => {
-    expect(mentionAt("use $ar", 7)).toEqual({ start: 4, query: "ar" });
-    expect(mentionAt("$", 1)).toEqual({ start: 0, query: "" });
-    expect(mentionAt("cost$ar", 7)).toBeNull();
-    expect(mentionAt("$ar then", 8)).toBeNull();
+describe("triggers", () => {
+  it("finds a token at the caret only at a word start", () => {
+    expect(triggerAt("use $ar", 7)).toEqual({ char: "$", start: 4, query: "ar" });
+    expect(triggerAt("@src/ma", 7)).toEqual({ char: "@", start: 0, query: "src/ma" });
+    expect(triggerAt("cost$ar", 7)).toBeNull();
+    expect(triggerAt("$ar then", 8)).toBeNull();
+  });
+
+  it("takes / only at the start of the prompt", () => {
+    expect(triggerAt("/re", 3)).toEqual({ char: "/", start: 0, query: "re" });
+    expect(triggerAt("see /re", 7)).toBeNull();
   });
 
   it("replaces the query and places the caret after it", () => {
-    expect(insertMention("use $ar now", 7, 4, "architect")).toEqual({
+    const trigger = { char: "$", start: 4, query: "ar" } as const;
+    expect(insertToken("use $ar now", 7, trigger, "architect")).toEqual({
       text: "use $architect  now",
       caret: 15,
     });

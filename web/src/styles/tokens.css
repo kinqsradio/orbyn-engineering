@@ -1,5 +1,4 @@
-/* Theme tokens. Values follow T3 Code's apps/web/src/index.css (see web/NOTICE).
-   Light is :root; dark is the default theme, set on <html data-theme="dark">. */
+/* Theme tokens. Light is :root; dark is the default, set on <html data-theme="dark">. */
 :root {
   color-scheme: light;
   --color-background: oklch(99.2% 0 0);
@@ -83,7 +82,7 @@
   --motion-base: 150ms;
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --panel-animation-duration: 0ms;
+  --panel-duration: 0ms;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;

@@ -11,6 +11,7 @@ import type {
   ServerSettings,
   Thread,
   UpdateStatus,
+  UpdateThread,
   WireThreadEvent,
   WorkspaceStatus,
 } from "../src/api/types.ts";
@@ -440,8 +441,38 @@ export function createMockApi(options: MockOptions = {}) {
         }
         break;
       }
+      case "PATCH /api/threads": {
+        const thread = threads.find((t) => t.id === seg[2]);
+        if (!thread) return err(404, "not_found", "Thread not found.");
+        const stamp = now();
+        const base = thread.lifecycle ?? fixtures.lifecycle();
+        const patch = data as UpdateThread;
+        const lifecycle = {
+          ...base,
+          ...(patch.pinned === undefined ? {} : { pinned_at: patch.pinned ? stamp : null }),
+          ...(patch.settled === undefined ? {} : { settled_at: patch.settled ? stamp : null }),
+          ...(patch.archived === undefined ? {} : { archived_at: patch.archived ? stamp : null }),
+          ...(patch.unread === undefined ? {} : { unread: patch.unread }),
+          ...(patch.permission_mode ? { permission_mode: patch.permission_mode } : {}),
+        };
+        threads = threads.map((t) =>
+          t.id === thread.id ? { ...t, lifecycle, title: patch.title ?? t.title } : t,
+        );
+        return { status: 200, body: threads.find((t) => t.id === thread.id) };
+      }
       case "GET /api/threads": {
         if (seg[2]) {
+          if (seg[3] === "mentions") {
+            const needle = (query.get("q") ?? "").toLowerCase();
+            return {
+              status: 200,
+              body: {
+                skills: skills.skills.map((s) => s.name).filter((n) => n.includes(needle)),
+                files: ["README.md", "src/main.rs", "src/lib.rs"].filter((f) => f.toLowerCase().includes(needle)),
+              },
+            };
+          }
+          if (seg[3] === "commands") return { status: 200, body: fixtures.slashCommands };
           const thread = threads.find((t) => t.id === seg[2]);
           if (!thread) return err(404, "not_found", "Thread not found.");
           if (seg[3] === "diff") return { status: 200, body: fixtures.diffs[thread.id] ?? [] };
@@ -511,6 +542,9 @@ export function createMockApi(options: MockOptions = {}) {
         };
         threads = [...threads, thread];
         return { status: 201, body: thread };
+      }
+      if (seg[1] === "threads" && seg[3] === "attachments") {
+        return { status: 201, body: { id: nextId("att"), thread_id: seg[2], name: query.get("name") ?? "file", mime: "", size: 1, created_at: now() } };
       }
       if (seg[1] === "threads" && seg[3] === "runs") {
         const thread = threads.find((t) => t.id === seg[2]);

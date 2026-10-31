@@ -23,6 +23,9 @@ interface Prefs {
   groups: Record<string, boolean>;
 }
 
+const TOAST_MS = 4000;
+let toastCounter = 0;
+
 const PREFS_KEY = "orbyn.prefs.v1";
 const DRAFTS_KEY = "orbyn.drafts.v1";
 
@@ -41,6 +44,9 @@ const defaults: Prefs = {
 interface UiState extends Prefs {
   drafts: Record<string, string>;
   lastThreadId: string | null;
+  toasts: { id: number; text: string }[];
+  pushToast(text: string): void;
+  dismissToast(id: number): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   togglePanel(tab: ContextTab): void;
@@ -83,6 +89,15 @@ export const useUi = create<UiState>((set, get) => {
     ...savedPrefs(),
     drafts: readJson<Record<string, string>>(DRAFTS_KEY) ?? {},
     lastThreadId: null,
+    toasts: [],
+    pushToast(text) {
+      const id = ++toastCounter;
+      set((state) => ({ toasts: [...state.toasts, { id, text }] }));
+      setTimeout(() => get().dismissToast(id), TOAST_MS);
+    },
+    dismissToast(id) {
+      set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }));
+    },
     setTheme(theme) {
       set({ theme });
       savePrefs();
