@@ -54,7 +54,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }) {
         {lines ? (
           <code>
             {lines.map((line, at) => (
-              <span key={at} className="code-line">
+              <span key={at}>
                 {line.map((token, part) => (
                   <span key={part} style={token.color ? { color: token.color } : undefined}>
                     {token.content}

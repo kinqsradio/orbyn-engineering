@@ -212,5 +212,5 @@ test("the sidebar rail resizes and remembers", async ({ page }) => {
 test("code blocks get a language header and highlighted tokens", async ({ page }) => {
   await page.goto("/#/threads/t-done");
   await expect(page.locator(".code-lang").first()).toHaveText("rust");
-  await expect(page.locator(".code-line span[style]").first()).toBeAttached();
+  await expect(page.locator(".code-card code span[style]").first()).toBeAttached();
 });

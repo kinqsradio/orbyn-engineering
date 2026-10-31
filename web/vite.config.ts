@@ -1,3 +1,4 @@
+import type { ClientRequest } from "node:http";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 import { mockApi } from "./mock/plugin.ts";
@@ -10,6 +11,10 @@ import { mockApi } from "./mock/plugin.ts";
  */
 const realApi = process.env.ORBYN_API;
 
+/** The service accepts only its own Origin, and the browser's here is the dev port. */
+const dropOrigin = (proxy: { on(event: "proxyReq", listener: (request: ClientRequest) => void): unknown }) =>
+  proxy.on("proxyReq", (request) => request.removeHeader("origin"));
+
 export default defineConfig({
   plugins: [react(), ...(realApi ? [] : [mockApi()])],
   server: {
@@ -17,8 +22,8 @@ export default defineConfig({
     strictPort: false,
     proxy: realApi
       ? {
-          "/api": realApi,
-          "/auth": realApi,
+          "/api": { target: realApi, configure: dropOrigin },
+          "/auth": { target: realApi, configure: dropOrigin },
           "/ws": { target: realApi, ws: true },
         }
       : undefined,

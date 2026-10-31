@@ -1,9 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/** Runs against the dev server's deterministic mock API. */
+/** Runs against the dev server's deterministic mock API; `e2e/real` starts the real service. */
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 20_000,
+  timeout: 30_000,
   fullyParallel: false,
   workers: 1,
   use: {

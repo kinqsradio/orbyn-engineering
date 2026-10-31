@@ -99,7 +99,7 @@ export function DiffPanel({ threadId }: { threadId: string }) {
   const removed = files.reduce((sum, file) => sum + file.deletions, 0);
 
   return (
-    <div className="diff-panel">
+    <div>
       <div className="panel-bar">
         <span>
           {files.length === 1 ? "1 file" : `${files.length} files`}

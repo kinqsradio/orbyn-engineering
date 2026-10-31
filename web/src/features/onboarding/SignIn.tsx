@@ -29,8 +29,8 @@ export function SignIn({ onSignedIn }: { onSignedIn(): void }) {
   };
 
   return (
-    <main className="signin">
-      <form className="signin-card" onSubmit={(event) => void submit(event)}>
+    <main className="standalone">
+      <form className="standalone-card" onSubmit={(event) => void submit(event)}>
         <span className="brand">
           <span className="brand-mark" aria-hidden />
           Orbyn Engineering
@@ -38,7 +38,7 @@ export function SignIn({ onSignedIn }: { onSignedIn(): void }) {
         <h1 tabIndex={-1} data-page-title>
           Sign in to this service
         </h1>
-        <p className="lede">
+        <p className="standalone-lede">
           {local
             ? "This session needs its launch link, or an access key if the service runs in remote mode."
             : "Enter the access key set for this service."}

@@ -36,14 +36,3 @@ export function RunStatePill({ state }: { state: RunState }) {
     </Pill>
   );
 }
-
-export function RunStateIcon({ state }: { state: RunState | null }) {
-  if (!state) return <span className="state-dot" aria-hidden />;
-  const { icon: Icon, tone, spin } = presentation[state];
-  return (
-    <span className={`state-icon state-${tone}`}>
-      <Icon size={16} className={spin ? "spin" : undefined} aria-hidden />
-      <span className="sr-only">{runStateLabels[state]}</span>
-    </span>
-  );
-}

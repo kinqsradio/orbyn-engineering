@@ -30,8 +30,8 @@ function Setup() {
   };
 
   return (
-    <main className="setup">
-      <div className="setup-card">
+    <main className="standalone">
+      <div className="standalone-card">
         <span className="brand">
           <OrbynMark />
           Orbyn Engineering
@@ -39,7 +39,7 @@ function Setup() {
         <h1 tabIndex={-1} data-page-title>
           Set up your workspace
         </h1>
-        <p className="lede">Orbyn keeps your skill library and project checkouts in one managed place.</p>
+        <p className="standalone-lede">Orbyn keeps your skill library and project checkouts in one managed place.</p>
         {busy ? (
           <p className="setup-progress" role="status">
             <Loader2 size={16} className="spin" aria-hidden />

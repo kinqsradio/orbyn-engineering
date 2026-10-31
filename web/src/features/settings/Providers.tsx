@@ -60,7 +60,7 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
   const removable = engine.tier !== "native";
   return (
-    <li className="setting-row engine-row">
+    <li className="setting-row">
       <div className="engine-row-head">
         <h3>{engine.name}</h3>
         <Pill>{tierLabels[engine.tier]}</Pill>
