@@ -23,6 +23,16 @@ struct Ready {
 pub enum ServiceMessage {
     CheckAppUpdate,
     InstallAppUpdate,
+    ShellAction { action: ShellAction },
+}
+
+/// The closed list in `ShellAction` on the service's side. A newer one is ignored.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ShellAction {
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
 }
 
 pub struct CoreProcess {

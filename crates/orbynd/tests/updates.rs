@@ -196,3 +196,32 @@ async fn a_link_waits_for_the_window_and_arrives_as_a_route() {
     );
     assert_eq!(service.json("/api/shell").await["windows"], 1);
 }
+
+#[tokio::test]
+async fn a_window_reaches_the_shell_only_through_listed_actions() {
+    let dir = TempDir::new();
+    let (mut service, _thread) = setup(&dir, desktop(), "codex").await;
+    let (code, _) = service
+        .send("/api/shell/actions", json!({ "action": "zoom_in" }))
+        .await;
+    assert_eq!(code, 202);
+    let mut line = String::new();
+    while !line.contains("shell_action") {
+        line.clear();
+        service.stdout.read_line(&mut line).unwrap();
+        assert!(!line.is_empty(), "stdout closed");
+    }
+    assert!(line.contains("zoom_in"), "{line}");
+    let (code, _) = service
+        .send("/api/shell/actions", json!({ "action": "open_anything" }))
+        .await;
+    assert_eq!(code, 400);
+
+    let dir = TempDir::new();
+    let (server, _thread) = setup(&dir, Options::default(), "codex").await;
+    let (code, _) = server
+        .send("/api/shell/actions", json!({ "action": "zoom_in" }))
+        .await;
+    assert_eq!(code, 422);
+    assert_eq!(server.json("/api/shell").await["attached"], false);
+}

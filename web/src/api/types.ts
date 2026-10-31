@@ -69,6 +69,7 @@ export type { RunState } from "../generated/RunState";
 export type { ServerInfo } from "../generated/ServerInfo";
 export type { BrowserProfile } from "../generated/BrowserProfile";
 export type { PickedElement } from "../generated/PickedElement";
+export type { ShellAction } from "../generated/ShellAction";
 export type { ShellEvent } from "../generated/ShellEvent";
 export type { ShellStatus } from "../generated/ShellStatus";
 export type { ServerSettings } from "../generated/ServerSettings";
