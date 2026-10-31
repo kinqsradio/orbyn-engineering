@@ -3,6 +3,7 @@ import type { Thread } from "../../api/types";
 import { parsePatch } from "../panels/DiffPanel";
 import { arrangeThreads } from "../workspace/groups";
 import { touchesOf } from "./approvalDetail";
+import { percentLabel } from "./ComposerExtras";
 import type { ThreadItem } from "./projection";
 import { insertToken, triggerAt } from "./skillMention";
 import { outputSpans } from "./ansi";
@@ -201,5 +202,13 @@ describe("withLocalPrompts", () => {
   it("drops a prompt the log has echoed", () => {
     const echoed = { ...assistant, key: "u", role: "user", text: "q" };
     expect(withLocalPrompts([echoed], [{ runId: "r", text: "q" }])).toHaveLength(1);
+  });
+});
+
+describe("percentLabel", () => {
+  it("keeps a small share readable", () => {
+    expect(percentLabel(0.4)).toBe("0.4%");
+    expect(percentLabel(3)).toBe("3%");
+    expect(percentLabel(42.6)).toBe("43%");
   });
 });

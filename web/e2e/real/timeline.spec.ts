@@ -135,6 +135,11 @@ test("the minimap goes to a prompt and the error banner retries and dismisses", 
   await settled(service, id);
   const map = page.getByRole("navigation", { name: "Prompts in this thread" });
   await expect(map.getByRole("button")).toHaveCount(2);
+  // No stray ticks over the conversation until the pointer reaches the edge.
+  const edge = page.locator(".minimap-zone");
+  await expect(edge).toHaveCSS("opacity", "0");
+  await edge.hover();
+  await expect(edge).toHaveCSS("opacity", "1");
   await map.getByRole("button").first().click();
   await expect(page.locator(".msg-user").first()).toBeInViewport();
 
