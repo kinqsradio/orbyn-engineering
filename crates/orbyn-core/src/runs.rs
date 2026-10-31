@@ -515,6 +515,7 @@ impl RunManager {
                 let _ = self.cancel(&active.id);
             }
         }
+        self.store.request_stop(run_id)?;
         match self.lock().get(run_id) {
             Some(active) => {
                 active.cancel.cancel();

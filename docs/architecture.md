@@ -54,6 +54,11 @@ admitted -> starting -> running <-> awaiting_approval
   a second admission returns `409 thread_busy`.
 - `interrupted` is assigned only by startup recovery, for runs a dead process
   owned. Recovery also moves pending approvals to `expired`.
+- A stop is saved before anything is signalled, so a run stopped by a person ends
+  `cancelled` even if the process dies first. Recovery closes tools the dead process
+  left open with a note. A run still `admitted` never reached an engine, so its message
+  returns to the front of the held queue, without attachments, and is not resent on its
+  own. A later state may have reached the engine and is never resent.
 - Terminal states never change. Every transition is a compare-and-set on the
   previous state, so a late engine event cannot revive a finished run.
 - A run owner is fenced by `(run_id, owner_epoch)`. `owner_epoch` is a value

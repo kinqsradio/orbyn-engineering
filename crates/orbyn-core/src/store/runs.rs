@@ -26,6 +26,10 @@ pub struct Admission<'a> {
 pub struct Recovery {
     pub interrupted_runs: usize,
     pub expired_approvals: usize,
+    /// Someone had already pressed stop, so these ended cancelled.
+    pub stopped_runs: usize,
+    /// Admitted runs whose message never reached an engine, now back in the queue.
+    pub returned_messages: usize,
 }
 
 /// The owner and state read inside the writing transaction.
@@ -250,31 +254,65 @@ impl Store {
     pub fn recover(&self) -> Result<Recovery> {
         self.commit(|tx, appended| {
             let mut statement = tx.prepare(&format!(
-                "SELECT id, thread_id FROM runs
+                "SELECT id, thread_id, state, stop_requested FROM runs
                  WHERE state IN {} AND owner_epoch <> ?1",
                 super::ACTIVE_STATES
             ))?;
             let orphans = statement
                 .query_map([&self.epoch], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, bool>(3)?,
+                    ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             drop(statement);
             let mut recovery = Recovery::default();
-            for (run_id, thread_id) in orphans {
+            for (run_id, thread_id, state, stopped) in orphans {
+                close_open_tools(tx, appended, &run_id, &thread_id)?;
+                let unsent = !stopped && state == wire_name(RunState::Admitted)?;
+                let (to, message) = match (stopped, unsent) {
+                    (true, _) => (RunState::Cancelled, None),
+                    (_, true) => (
+                        RunState::Interrupted,
+                        Some("Orbyn stopped before this message reached the engine."),
+                    ),
+                    _ => (
+                        RunState::Interrupted,
+                        Some("Orbyn stopped while this run was active."),
+                    ),
+                };
                 let (_, expired) = close_run(
                     tx,
                     appended,
                     &run_id,
                     &thread_id,
-                    RunState::Interrupted,
-                    Some("Orbyn stopped while this run was active."),
+                    to,
+                    message,
                     "system:recovery",
                 )?;
-                recovery.interrupted_runs += 1;
+                if stopped {
+                    recovery.stopped_runs += 1;
+                } else {
+                    recovery.interrupted_runs += 1;
+                }
                 recovery.expired_approvals += expired.len();
+                if unsent && return_message(tx, &run_id, &thread_id)? {
+                    recovery.returned_messages += 1;
+                }
             }
             Ok(recovery)
+        })
+    }
+
+    /// Records a stop before anything is signalled, so a process that dies in between
+    /// still reads as a stop and not as a crash that interrupted the work.
+    pub fn request_stop(&self, run_id: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute("UPDATE runs SET stop_requested = 1 WHERE id = ?1", [run_id])?;
+            Ok(())
         })
     }
 
@@ -310,6 +348,78 @@ fn item_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadItemRecord> {
         exit_code: row.get("exit_code")?,
         updated_at: row.get("updated_at")?,
     })
+}
+
+/// Every event a run logged, oldest first.
+fn events_of_run(tx: &Transaction<'_>, run_id: &str) -> Result<Vec<AgUiEvent>> {
+    let mut statement =
+        tx.prepare("SELECT event FROM thread_events WHERE run_id = ?1 ORDER BY seq")?;
+    let rows = statement.query_map([run_id], |row| row.get::<_, String>(0))?;
+    let mut events = Vec::new();
+    for text in rows {
+        events.push(serde_json::from_str(&text?)?);
+    }
+    Ok(events)
+}
+
+/// A tool the dead process left open would show as running forever.
+fn close_open_tools(
+    tx: &Transaction<'_>,
+    appended: &mut Appended,
+    run_id: &str,
+    thread_id: &str,
+) -> Result<()> {
+    let mut open: Vec<String> = Vec::new();
+    for event in events_of_run(tx, run_id)? {
+        match event {
+            AgUiEvent::ToolCallStart { tool_call_id, .. } => open.push(tool_call_id),
+            AgUiEvent::ToolCallEnd { tool_call_id }
+            | AgUiEvent::ToolCallResult { tool_call_id, .. } => {
+                open.retain(|id| *id != tool_call_id);
+            }
+            _ => {}
+        }
+    }
+    for tool_call_id in open {
+        for event in [
+            AgUiEvent::ToolCallEnd {
+                tool_call_id: tool_call_id.clone(),
+            },
+            AgUiEvent::ToolCallResult {
+                message_id: new_id(),
+                tool_call_id,
+                content: "Interrupted before a result.".to_owned(),
+                role: Some("tool".to_owned()),
+            },
+        ] {
+            insert_event(tx, appended, thread_id, Some(run_id), &event)?;
+        }
+    }
+    Ok(())
+}
+
+/// Puts a message that never reached an engine back at the front of a held queue, so
+/// what was typed is neither lost nor sent again without someone choosing to. Its
+/// attachment ids went with the queue row; the files stay on the thread.
+fn return_message(tx: &Transaction<'_>, run_id: &str, thread_id: &str) -> Result<bool> {
+    let wanted = format!("{run_id}:prompt");
+    let prompt = events_of_run(tx, run_id)?
+        .into_iter()
+        .find_map(|event| match event {
+            AgUiEvent::TextMessageContent { message_id, delta } if message_id == wanted => {
+                Some(delta)
+            }
+            _ => None,
+        });
+    let Some(prompt) = prompt else {
+        return Ok(false);
+    };
+    tx.execute(
+        "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held, urgent, created_at)
+         VALUES (?1, ?2, ?3, '[]', 1, 1, ?4)",
+        params![new_id(), thread_id, prompt, now()],
+    )?;
+    Ok(true)
 }
 
 pub(super) fn admit_in(
