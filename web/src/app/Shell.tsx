@@ -7,7 +7,7 @@ import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { CommandPalette } from "../features/workspace/CommandPalette";
-import type { Thread } from "../api/types";
+import type { ShellEvent, Thread } from "../api/types";
 import { arrangeThreads, threadsFlat } from "../features/workspace/groups";
 import {
   copyReference,
@@ -23,10 +23,11 @@ import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
-import { useAsync } from "../lib/useAsync";
+import { inDesktopApp, zoomKeyAction } from "../api/shell";
+import { toFailure, useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
-import { navigate, routeHref, useRoute, type Route } from "../state/route";
+import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
@@ -103,6 +104,16 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "usage.open":
       navigate({ name: "usage" });
+      return true;
+    case "settings.open":
+      navigate({ name: "settings", section: null });
+      return true;
+    case "updates.check":
+      navigate({ name: "settings", section: "maintenance" });
+      api.checkUpdates().then(
+        (status) => useWorkspace.getState().putUpdates(status),
+        (failure: unknown) => ui.pushToast(`Couldn't check for updates. ${toFailure(failure).message}`),
+      );
       return true;
     case "appearance.cycle":
       ui.setTheme(NEXT_THEME[ui.theme]);
@@ -356,6 +367,12 @@ function useGlobalKeys(route: Route) {
         return;
       }
       if (undoKey(event)) return;
+      const zoom = inDesktopApp() ? zoomKeyAction(event) : null;
+      if (zoom) {
+        event.preventDefault();
+        api.shellAction(zoom).catch(() => undefined);
+        return;
+      }
       // A focused surface that took the key, like the model picker's number jumps, keeps it.
       if (event.defaultPrevented) return;
       if (event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key)) {
@@ -402,6 +419,15 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
     (target ?? root).focus({ preventScroll: true });
     root.scrollTop = 0;
   }, [routeKey, ready, main]);
+}
+
+/** Links and menu items from the desktop shell, which behave like keys pressed here. */
+export function onShellEvent(event: ShellEvent) {
+  if (event.type === "navigate") {
+    window.location.hash = event.href.slice(1);
+    return;
+  }
+  if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
 }
 
 export function Shell() {

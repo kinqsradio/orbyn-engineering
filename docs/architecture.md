@@ -14,7 +14,7 @@ credentials.
 | Service | `crates/orbynd` | HTTP/SSE/WebSocket transport, static UI, access control, CLI entry point |
 | Workspace | `crates/orbyn-core` `workspace`, `projects` | Library checkout, target boundaries, library updates, project intake |
 | UI | `web` | Task flows only; it holds no authority and no lifecycle rules |
-| Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads its loopback URL, tray and app updates |
+| Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads its loopback URL, tray, app updates and what only the OS can do |
 
 Dependency direction: `orbynd -> orbyn-core -> orbyn-contracts`. The UI depends
 only on generated types and the HTTP API. Nothing in `web` may import Tauri APIs.
@@ -650,6 +650,36 @@ compare with the running version; with none, the app reports `unconfigured`. A
 server cannot replace itself, so `can_apply` stays false and `blocked_reason` says
 what to do.
 
+## Desktop shell
+
+The UI holds no native access. `desktop/src-tauri/build.rs` lists the shell's commands,
+so a capability decides who may call them, and the only capability is the local loader
+page's. The product UI, served by `orbynd`, has none. It asks the service, the service
+asks the shell over the same stdin and stdout as app updates, and what the shell sees
+goes back the same way to `GET /api/shell/events`. `ShellBridge` in core owns this side.
+Events wait, eight at most, for the first window to connect, and `GET /api/shell` counts
+the windows following them, which is how a startup check knows the UI ran. A line that
+isn't the bridge's goes on to `UpdateCenter`.
+
+The window stays on the loader and the running service. Anything else is refused, and
+`http`, `https` and `mailto` go to the system browser instead. No other scheme is
+handed over, so a page cannot start whatever program claims one.
+
+`orbyn://` links come from outside the app, so they only move a window, and only to a
+place spelled as a route: `thread/<id>`, `new[/<project>]`, `settings[/<section>]`,
+`usage`, `pulls`, or nothing for home. The service turns one into a route and drops
+anything else, and a link that started the app waits in the shell until the service
+runs. A second launch hands its links to the first and exits.
+
+`POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
+path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
+the window, and everything else goes to the windows as a `command`, the same ones keys
+run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
+is kept beside the window state in the app's config folder.
+
+The shell passes no data folder, so `orbynd` and the `orbyn` command agree on it, and it
+sets no `PATH`: `child_env` widens that for every child without sourcing a shell.
+
 ## Per-thread MCP server
 
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
@@ -833,6 +863,9 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/diagnostics`, `POST /api/diagnostics/repair` | `Diagnostics`; `409 runs_active` |
 | `POST /api/diagnostics/otlp` | `OtlpCheck` to `OtlpResult` |
 | `GET, POST /api/storage/cleanup?dry_run=` | Last `CleanupReport`; apply the retention rules |
+| `GET /api/shell` | `ShellStatus` |
+| `GET /api/shell/events` | SSE `ShellEvent`, with events held for the first window |
+| `POST /api/shell/actions` | `ShellRequest` (`202`, `422` with no shell) |
 | `GET /api/updates`, `POST /api/updates/check` | `UpdateStatus`; a check only reads |
 | `GET /api/updates/events` | SSE `UpdateStatus` on each change |
 | `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |

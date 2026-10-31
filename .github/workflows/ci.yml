@@ -121,3 +121,10 @@ jobs:
       - name: Load the packaged service
         shell: bash
         run: node scripts/smoke-package.mjs
+      - name: Shell tests
+        shell: bash
+        working-directory: desktop/src-tauri
+        run: cargo test
+      - name: Install and start the app
+        shell: bash
+        run: node scripts/smoke-app.mjs

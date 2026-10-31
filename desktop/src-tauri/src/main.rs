@@ -1,13 +1,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod core_process;
+mod links;
+mod menu;
+mod shell_state;
 
 use core_process::{CoreProcess, ServiceMessage};
+use links::ServicePort;
+use menu::Zoom;
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
+use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
 use tauri::{AppHandle, Manager, RunEvent, WebviewWindow, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -15,12 +22,14 @@ const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 struct Core(Mutex<Option<CoreProcess>>);
 /// The update found by the latest check, installed only when orbynd asks.
 struct PendingUpdate(Mutex<Option<Update>>);
+/// Links that arrived before the service could take them.
+struct WaitingLinks(Mutex<Vec<String>>);
 
-fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
+pub(crate) fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
-fn reveal(app: &AppHandle) {
+pub(crate) fn reveal(app: &AppHandle) {
     if let Some(window) = main_window(app) {
         let _ = window.show();
         let _ = window.unminimize();
@@ -54,6 +63,7 @@ fn launch_core(app: &AppHandle) {
     let on_message = move |message: ServiceMessage| match message {
         ServiceMessage::CheckAppUpdate => check_for_update(&messages),
         ServiceMessage::InstallAppUpdate => install_update(&messages),
+        ServiceMessage::ShellAction { action } => menu::on_action(&messages, action),
     };
     let on_exit = move |reason: String| {
         watcher.state::<Core>().0.lock().expect("core slot").take();
@@ -62,10 +72,16 @@ fn launch_core(app: &AppHandle) {
     match CoreProcess::start(app, on_message, on_exit) {
         Ok(core) => {
             let target = core.app_url();
+            app.state::<ServicePort>().set(target.port().unwrap_or(0));
             *slot = Some(core);
             drop(slot);
             if let Some(window) = main_window(app) {
                 let _ = window.navigate(target);
+            }
+            let waiting =
+                std::mem::take(&mut *app.state::<WaitingLinks>().0.lock().expect("link queue"));
+            for url in waiting {
+                tell_core(app, serde_json::json!({ "type": "open_link", "url": url }));
             }
         }
         Err(error) => {
@@ -80,10 +96,49 @@ fn restart_core(app: AppHandle) {
     std::thread::spawn(move || launch_core(&app));
 }
 
-fn tell_core(app: &AppHandle, message: serde_json::Value) {
+pub(crate) fn tell_core(app: &AppHandle, message: serde_json::Value) {
     if let Some(core) = app.state::<Core>().0.lock().expect("core slot").as_ref() {
         core.send(&message);
     }
+}
+
+/// A link is for the service, which decides where it goes. Until the service runs it
+/// waits here, as when the link is what started the app. This runs on the main
+/// thread, so it never waits on a service that is still starting: the queue's lock,
+/// taken first, keeps the start from emptying the queue before the link is in it.
+fn open_link(app: &AppHandle, url: String) {
+    reveal(app);
+    let waiting = app.state::<WaitingLinks>();
+    let mut waiting = waiting.0.lock().expect("link queue");
+    let state = app.state::<Core>();
+    match state.0.try_lock().as_deref() {
+        Ok(Some(core)) => core.send(&serde_json::json!({ "type": "open_link", "url": url })),
+        _ => waiting.push(url),
+    }
+}
+
+/// Builds the window here rather than from the config, for its navigation rules.
+fn open_window(app: &AppHandle) -> tauri::Result<()> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .first()
+        .ok_or(tauri::Error::WindowNotFound)?
+        .clone();
+    let navigating = app.clone();
+    let opening = app.clone();
+    let window = WebviewWindowBuilder::from_config(app, &config)?
+        .on_navigation(move |url| links::on_navigation(&navigating, url))
+        .on_new_window(move |url, _| {
+            links::open_outside(&opening, &url);
+            NewWindowResponse::Deny
+        })
+        .build()?;
+    shell_state::load(app);
+    let zoom = *app.state::<Zoom>().0.lock().expect("zoom");
+    window.set_zoom(zoom)?;
+    Ok(())
 }
 
 /// Read-only: reports what is available and leaves installing to the service,
@@ -189,14 +244,46 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
 
 fn main() {
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| reveal(app)))
+        // First, so a second launch hands over before it starts anything.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _| {
+            reveal(app);
+            // Elsewhere the plugin passes these to the deep link handler.
+            #[cfg(target_os = "macos")]
+            for url in links::links_in(&_args) {
+                open_link(app, url);
+            }
+        }))
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Core(Mutex::new(None)))
         .manage(PendingUpdate(Mutex::new(None)))
+        .manage(WaitingLinks(Mutex::new(Vec::new())))
+        .manage(ServicePort::default())
+        .manage(Zoom::default())
+        .menu(menu::build)
+        .on_menu_event(menu::on_event)
         .invoke_handler(tauri::generate_handler![restart_core])
         .setup(|app| {
             let handle = app.handle().clone();
+            open_window(&handle)?;
             install_tray(&handle)?;
+            let links = handle.clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    open_link(&links, url.to_string());
+                }
+            });
+            // The installer registers the scheme; a portable copy does it here.
+            #[cfg(windows)]
+            let _ = app.deep_link().register("orbyn");
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    open_link(&handle, url.to_string());
+                }
+            }
             std::thread::spawn(move || {
                 launch_core(&handle);
                 loop {

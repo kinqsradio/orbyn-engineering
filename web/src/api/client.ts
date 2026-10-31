@@ -36,6 +36,8 @@ import type {
   PublishProject,
   RestorePoint,
   ServerSettings,
+  ShellAction,
+  ShellStatus,
   SlashCommand,
   Thread,
   UpdateStatus,
@@ -195,6 +197,8 @@ export const api = {
   limits: (force: boolean, signal?: AbortSignal) =>
     request<LimitsOverview>("GET", `/api/limits${force ? "?force=true" : ""}`, undefined, signal),
   updates: (signal?: AbortSignal) => request<UpdateStatus>("GET", "/api/updates", undefined, signal),
+  shell: (signal?: AbortSignal) => request<ShellStatus>("GET", "/api/shell", undefined, signal),
+  shellAction: (action: ShellAction) => request<void>("POST", "/api/shell/actions", { action }),
   checkUpdates: () => request<UpdateStatus>("POST", "/api/updates/check"),
   applyAppUpdate: () => request<void>("POST", "/api/updates/app/apply"),
   applyAllUpdates: () => request<ApplyAllResult>("POST", "/api/updates/apply-all"),

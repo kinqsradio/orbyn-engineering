@@ -2025,6 +2025,43 @@ pub struct PreviewRecording {
 }
 }
 
+wire! {
+/// What the desktop shell tells the windows. A link or menu item only ever moves
+/// the UI; nothing here can start work.
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ShellEvent {
+    /// Go to this route, a `#/...` address.
+    Navigate { href: String },
+    /// Run this keybinding command, as if its keys were pressed.
+    Command { command: String },
+}
+}
+
+wire_enum! {
+/// What a window may ask the desktop shell to do. The list is closed: no path, URL
+/// or command comes through here.
+pub enum ShellAction {
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
+}
+}
+
+wire! {
+pub struct ShellRequest {
+    pub action: ShellAction,
+}
+}
+
+wire! {
+pub struct ShellStatus {
+    /// True when a desktop shell started this service.
+    pub attached: bool,
+    /// How many windows are following shell events.
+    pub windows: usize,
+}
+}
+
 wire_enum! {
 pub enum ActionKind {
     Command,

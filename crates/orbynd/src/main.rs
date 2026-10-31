@@ -166,6 +166,9 @@ fn router(state: AppState) -> Router {
                 .patch(api::update_thread)
                 .delete(api::delete_thread),
         )
+        .route("/api/shell", get(api::shell_status))
+        .route("/api/shell/events", get(stream::shell_events))
+        .route("/api/shell/actions", post(api::shell_action))
         .route("/api/updates", get(api::updates))
         .route("/api/updates/events", get(stream::update_events))
         .route("/api/updates/check", post(api::check_updates))
@@ -531,7 +534,11 @@ fn read_parent(core: Arc<Core>, closed: oneshot::Sender<()>) {
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             match line {
-                Ok(line) => core.updates.on_shell_line(&line),
+                Ok(line) => {
+                    if !core.shell.on_line(&line) {
+                        core.updates.on_shell_line(&line);
+                    }
+                }
                 // Not UTF-8 is a bad line, not a closed pipe.
                 Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {}
                 Err(_) => break,
@@ -631,6 +638,9 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     let stop = CancellationToken::new();
     let parent = args.parent_stdin.then(|| {
         let mut lines = core.updates.attach_shell();
+        if let Some(sender) = core.updates.shell_lines() {
+            core.shell.attach(sender);
+        }
         // Every line after the first ready line is for the shell.
         tokio::spawn(async move {
             while let Some(line) = lines.recv().await {
