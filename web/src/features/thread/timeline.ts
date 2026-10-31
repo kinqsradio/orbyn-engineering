@@ -147,3 +147,21 @@ export const runningTools = (items: readonly ThreadItem[]): ToolItem[] =>
 
 /** Offers older rows on demand so a long run stays light. */
 export const LIVE_ROW_LIMIT = 30;
+
+/** The row that shows an item, inside a fold or on its own. */
+export function entryIndexOf(entries: readonly TimelineEntry[], key: string): number {
+  const holds = (entry: TimelineEntry): boolean =>
+    entry.kind === "fold" ? entry.entries.some(holds) : entry.key === key;
+  return entries.findIndex(holds);
+}
+
+/**
+ * The first reply between your last visit and this one, unless the whole conversation
+ * is new. Anything after `arrivedAt` you watched arrive, so it never moves the line.
+ */
+export function firstUnread(items: readonly ThreadItem[], readUpTo: string | null, arrivedAt: string): string | null {
+  if (!readUpTo) return null;
+  const replies = items.filter((item) => item.kind === "message" && item.role === "assistant");
+  const first = replies.find((item) => item.ts > readUpTo && item.ts < arrivedAt);
+  return first && first !== replies[0] ? first.key : null;
+}

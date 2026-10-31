@@ -21,6 +21,10 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Sidebar | Settled row | Live: one line, 36px, pitch 37 | Match | 0 by CSS |
 | Sidebar | Settled shelf | Live: 32px toggle, 10 rows, Show n more | Match | 0 |
 | Sidebar | Footer | Live: 32px at x 8, 44, 80; update x 167 | Settings, update only | x 166; Pull requests and Usage hidden |
+| Sidebar | Working section | Source: folds working threads, subagents and watches, with a setting | Match, Real for watches; open by default, as measured earlier | Backgrounded commands are not detected |
+| Sidebar | Provider update | Source: capsule with dismiss | Match, Real in unit data | Capsule layout own |
+| Thread | Related threads | Source: control with related threads and agents | Menu with status, Real | Menu, not a popover |
+| Thread | Visit mark | Source: where you last read | Line above the first new reply, Real | Only replies count |
 | Sidebar | Working status | Live: spinner, blue "Working Ns" | Match | Spin 1000 ms |
 | Sidebar | Approval status | Live: warn "Approval" | Match, Real | Dot, not their icon |
 | Sidebar | Limited and Question | Source: request states on the row | Limited, Question, Real | Own label for a question |
@@ -32,7 +36,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Draft | Heading | Live: 30px, -0.75px, line 36 | Match, own wording removed | Same wording as reference |
 | Draft | Composer | Capture: x 80-816, y 469-580 | x 80.5-816.5, y 468-580 | 0.5 x, 1 y, re-measured |
 | Draft | Divider, pane | Capture: x 1189, 539 wide | x 1189, 539 wide | 0, re-measured |
-| Draft | Details card | Capture: 280, y 64-295 | 280, y 64-225 | Editor, script, commit rows hidden |
+| Draft | Details card | Capture: 280, y 64-295 | 280, y 64-225; rows for pull requests, servers, usage and scripts, right-click and Settings to choose, Real | Commit row hidden |
 | Draft | New worktree | Source: base branch picker | Base branch text box beside the purpose, Real | Typed, not picked |
 | Draft | Launcher | Live: 7 surfaces | Terminal, Diff, Activity | Others hidden, no backend |
 | Draft | No project state | Live: What should we work on?, No project picker below it, permissions alone under the composer | Match, Real | Scratch thread sent through the real service |

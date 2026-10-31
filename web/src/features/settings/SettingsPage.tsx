@@ -48,7 +48,7 @@ const groups: { label: string | null; sections: SettingsSection[] }[] = [
 
 /** Words a person might search for, beyond the section names. */
 const KEYWORDS: Partial<Record<SettingsSection, string>> = {
-  general: "notifications sidebar confirmation sound project order thread order",
+  general: "notifications sidebar confirmation sound project order thread order working details",
   appearance: "theme dark light contrast font typography size animation effort color",
   chat: "width timestamp word wrap math send shortcut follow-up steer queue streaming permissions",
   diffs: "pull request merge whitespace",

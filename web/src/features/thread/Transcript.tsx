@@ -1,5 +1,5 @@
 import { ArrowDown } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useThreadLogs, type LocalPrompt } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
@@ -8,7 +8,7 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { TimelineRow, TimelineThread } from "./items";
 import { Minimap } from "./Minimap";
 import type { MessageItem, ThreadItem } from "./projection";
-import { arrangeTimeline, entryForMessage, runningTools } from "./timeline";
+import { arrangeTimeline, entryForMessage, entryIndexOf, firstUnread, runningTools } from "./timeline";
 
 const NEAR_BOTTOM = 80;
 const NO_RUNS = {};
@@ -49,10 +49,13 @@ export function Transcript({
   active,
   activeRunId,
   footer,
+  readUpTo,
 }: {
   threadId: string;
   active: boolean;
   activeRunId?: string | null;
+  /** Rows after this time are new to you, and a line marks where they start. */
+  readUpTo?: string | null;
   /** The run status line, which sits at the end of the conversation. */
   footer?: ReactNode;
 }) {
@@ -73,6 +76,10 @@ export function Transcript({
     () => items.flatMap((item) => (item.kind === "message" && item.role === "user" ? [{ key: item.key, text: item.text }] : [])),
     [items],
   );
+
+  const [arrivedAt] = useState(() => new Date().toISOString());
+  const newKey = useMemo(() => firstUnread(items, readUpTo ?? null, arrivedAt), [items, readUpTo, arrivedAt]);
+  const newAt = newKey ? entryIndexOf(entries, newKey) : -1;
 
   const scroller = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
@@ -169,10 +176,17 @@ export function Transcript({
             </Empty>
           ) : (
             <TimelineThread value={threadId}>
-              {entries.map((entry) => (
-                <div key={entry.key} className={`item item-${entry.kind}`} data-entry={entry.key}>
-                  <TimelineRow entry={entry} live={active} tools={tools} />
-                </div>
+              {entries.map((entry, at) => (
+                <Fragment key={entry.key}>
+                  {at === newAt ? (
+                    <p className="visit-mark" role="separator">
+                      New since you were here
+                    </p>
+                  ) : null}
+                  <div className={`item item-${entry.kind}`} data-entry={entry.key}>
+                    <TimelineRow entry={entry} live={active} tools={tools} />
+                  </div>
+                </Fragment>
               ))}
             </TimelineThread>
           )}

@@ -85,6 +85,11 @@ manual one leaves `woke_at` until dismissed. Thread activity never changes the
 saved order. A running thread or descendant is never settled automatically or
 deleted. Lifecycle changes are logged as `CUSTOM thread.updated`.
 
+A run a dead process left mid-work continues on the first lifecycle pass after a restart,
+with a continuation message, unless `continue_threads_after_update` is off. Each thread
+gets three of those in a row; your own message resets the count. `visited_at` is the last
+time you were reading a thread, and a thread with a watch counts as working.
+
 A side chat is a fork with relation `side`: it may start while its parent runs, stays
 out of the thread list, works in the parent's folder and starts `supervised`. Bring back
 adds its own messages to the parent's handoff and leaves the parent's engine session

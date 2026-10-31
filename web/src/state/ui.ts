@@ -90,6 +90,12 @@ interface Prefs {
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
   /** The project the unsent draft belongs to, so its row opens it there. */
   draftProject: string | null;
+  /** Thread details rows turned off. */
+  detailsHidden: string[];
+  /** Moves working threads, and ones waiting on delegated work, to their own shelf. */
+  workingSection: boolean;
+  /** Provider updates already dismissed, as `engine:version`. */
+  dismissedProviderUpdates: string[];
 }
 
 export interface Typography {
@@ -190,6 +196,9 @@ const defaults: Prefs = {
   confirmDelete: true,
   lastModel: null,
   draftProject: null,
+  detailsHidden: ["usage"],
+  workingSection: true,
+  dismissedProviderUpdates: [],
 };
 
 interface UiState extends Prefs {
@@ -323,6 +332,9 @@ const prefsOf = (state: Prefs): Prefs => ({
   confirmDelete: state.confirmDelete,
   lastModel: state.lastModel,
   draftProject: state.draftProject,
+  detailsHidden: state.detailsHidden,
+  workingSection: state.workingSection,
+  dismissedProviderUpdates: state.dismissedProviderUpdates,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */

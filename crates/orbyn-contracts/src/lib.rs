@@ -115,6 +115,14 @@ pub struct ThreadLifecycle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub limit: Option<ThreadLimit>,
+    /// When you were last in this thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub visited_at: Option<String>,
+    /// A pull request is being watched for this thread.
+    #[serde(default)]
+    #[ts(optional, as = "Option<bool>")]
+    pub watching: bool,
 }
 }
 
@@ -453,6 +461,9 @@ pub struct ForkThread {
     /// A side chat: allowed while the parent runs, and kept out of the thread list.
     #[serde(default)]
     pub side: bool,
+    /// Forks from just before `run_id` rather than just after it.
+    #[serde(default)]
+    pub before: bool,
 }
 }
 
@@ -1073,6 +1084,10 @@ pub struct UpdateThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub wake: Option<bool>,
+    /// True records that you are reading the thread now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub visited: Option<bool>,
     /// True clears the note that a snooze ended early.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

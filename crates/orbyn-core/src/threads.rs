@@ -17,6 +17,8 @@ const PULL_WATCH_TICKS: u32 = 2;
 const AUTO_PULL_TICKS: u32 = 30;
 
 const LIMIT_CONTINUATION: &str = "Continue where you left off.";
+/// Automatic continuations after a restart before a thread waits for you.
+const MAX_RESUME_TRIES: i64 = 3;
 
 impl Core {
     pub fn update_thread(&self, id: &str, patch: &UpdateThread, actor: &str) -> Result<Thread> {
@@ -96,8 +98,32 @@ impl Core {
         }
     }
 
+    /// Picks up threads a restart interrupted, unless the setting is off. A thread that
+    /// keeps dying stops after a few tries, and your own message resets the count.
+    pub fn continue_interrupted(&self) {
+        let enabled = self
+            .preference("continue_threads_after_update", None)
+            .is_ok_and(|on| on == serde_json::json!(true));
+        if !enabled {
+            return;
+        }
+        for id in &self.recovery.interrupted_threads {
+            if !self
+                .store
+                .take_resume_try(id, MAX_RESUME_TRIES)
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if let Err(error) = self.runs.admit(id, LIMIT_CONTINUATION, "system:restart") {
+                tracing::debug!(%error, "a thread did not continue after the restart");
+            }
+        }
+    }
+
     /// Runs the periodic rules until `stop` fires.
     pub async fn run_lifecycle(&self, stop: tokio_util::sync::CancellationToken) {
+        self.continue_interrupted();
         let mut ticks = tokio::time::interval(std::time::Duration::from_secs(60));
         let mut watched: u32 = 0;
         loop {

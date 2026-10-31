@@ -85,7 +85,16 @@ pub async fn generate_title(
         actor,
         source,
     } = call;
-    let instructions = store.settings()?.title_instructions;
+    let own = crate::preferences::stored_preference(
+        store,
+        "project_title_instructions",
+        Some(&thread.project_id),
+    )?;
+    let instructions = own
+        .as_str()
+        .filter(|text| !text.trim().is_empty())
+        .map(str::to_owned)
+        .or(store.settings()?.title_instructions);
     let prompt = format!(
         "Write a short title of at most eight words for this conversation. \
          Reply with only the title.{}\n\n<conversation>\n{conversation}\n</conversation>\n",
