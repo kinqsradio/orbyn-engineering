@@ -64,21 +64,21 @@ toward completion.
 - [x] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S | web done
 - [x] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S | web done
 - [x] A31 Wake rules: returns early on approval, answer, failure or your message | docs/user/thread-sidebar.md | w d m s | M | server done
-- [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S | server done
-- [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
+- [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S | server done | web done
+- [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done | web done
 - [x] A34 Mark unread: flags a thread | packages/contracts/src/orchestrationV2.ts | w d m s | S | server done
-- [ ] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S
+- [x] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S | web done
 - [ ] A36 Copy reference/thread/ID: PR link first, then thread chip, then bare ID | docs/user/thread-sidebar.md | w d m | S
 - [ ] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M
 - [ ] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L
-- [ ] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M
+- [x] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M | web done
 - [ ] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
 - [ ] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
 - [ ] A42 Thread hover card: rich preview on hover | apps/web/src/components/ThreadHoverCard.tsx | w d | S
 - [ ] A43 Status indicators: working, limited, needs-you, request states | apps/web/src/components/ThreadStatusIndicators.tsx | w d m | M
 - [ ] A44 Side chats: `/side`, `/btw` or + menu, separate tab with own permissions | apps/web/src/components/chat/SideChatPane.tsx | w d m | L
 - [ ] A45 Bring back: sends side chat into the parent's next message | docs/user/thread-sidebar.md | w d | M
-- [x] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L | server done
+- [x] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L | server done | web done
 - [x] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L | server done
 - [ ] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M
 - [ ] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M
@@ -209,12 +209,12 @@ toward completion.
 - [ ] C36 Lifecycle rows: system dividers and lifecycle rows mark restarts, handoffs and context boundaries | apps/web/src/components/chat/V2LifecycleRow.tsx | w d m | S
 
 ## D. Files, search and attachments
-- [ ] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L
+- [x] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L | web done
 - [ ] D2 Go to file: quick picker | apps/web/src/components/files/ProjectFilePicker.tsx | w d | M
 - [x] D3 Project content search: full-text dialog | apps/web/src/components/search/ProjectContentSearchDialog.tsx | w d s | L | server done
 - [x] D4 Show ignored files: separate listing | packages/contracts/src/rpc.ts | s | S | server done
 - [x] D5 Edit and save files: save coordination, conflict revision tracking | apps/web/src/components/files/fileSaveCoordinator.ts | w d s | L | server done
-- [ ] D6 Source preview: read-only highlighted view | apps/web/src/components/files/ReadOnlySourcePreview.tsx | w d m | M
+- [x] D6 Source preview: read-only highlighted view | apps/web/src/components/files/ReadOnlySourcePreview.tsx | w d m | M | web done
 - [ ] D7 Large text viewer: worker-backed partial viewing | apps/web/src/components/files/LargeTextViewer.tsx | w d | M
 - [ ] D8 Markdown preview: rendered/raw toggle | apps/web/src/components/files/FileMarkdownPreview.tsx | w d m | S
 - [ ] D9 CSV/TSV tables: virtualized delimited view | apps/web/src/components/files/DelimitedTablePreview.tsx | w d m | M
@@ -230,7 +230,7 @@ toward completion.
 - [ ] D19 File comments: annotations feed review chips | apps/web/src/components/files/fileCommentAnnotations.ts | w d | M
 - [ ] D20 Tree drag mention: drag file into composer | apps/web/src/components/files/fileTreeDragMention.ts | w d | S
 - [ ] D21 Outside-workspace files: read-only, isolated HTML | docs/user/composer.md | w d s | M
-- [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done
+- [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done | web done
 - [ ] D23 File context menu: Open, Reveal in Finder/File Explorer/Files (label by OS) and Open with any available editor | apps/web/src/fileContextMenu.ts | w d | S
 - [x] D24 Editor catalog: 20 editors plus the system file manager (Cursor, Trae, Kiro, VS Code, Insiders, VSCodium, Zed, Antigravity, ten JetBrains IDEs) detected per host by command, each with path, goto or line-column launch style | packages/contracts/src/editor.ts | s w d | M | server done
 - [ ] D25 Favorite editor: last used editor remembered per browser, fallback to first available, menu shows its shortcut, hidden when the host cannot launch editors | apps/web/src/editorPreferences.ts | w d | S
@@ -240,9 +240,9 @@ toward completion.
 
 ## E. Diffs, checkpoints and revert
 - [x] E1 Turn checkpoints: hidden git ref at each turn end | apps/server/src/checkpointing/CheckpointStore.ts | s | L | server done
-- [x] E2 Turn diff: shows only that turn's work | docs/user/source-control.md | w d m s | L | server done
-- [x] E3 Full thread diff: cumulative view | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
-- [x] E4 Branch comparison: everything against base | apps/server/src/review/ReviewService.ts | w d m s | M | server done
+- [x] E2 Turn diff: shows only that turn's work | docs/user/source-control.md | w d m s | L | server done | web done
+- [x] E3 Full thread diff: cumulative view | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done | web done
+- [x] E4 Branch comparison: everything against base | apps/server/src/review/ReviewService.ts | w d m s | M | server done | web done
 - [x] E5 Commits source: newest 100, one commit at a time | docs/user/source-control.md | w d s | M | server done
 - [ ] E6 Commit link routing: opens local commit in Diff pane | docs/user/source-control.md | w d | M
 - [ ] E7 Diff layout: stacked or split | packages/contracts/src/settings.ts | w d | S
@@ -252,7 +252,7 @@ toward completion.
 - [ ] E11 Find in diff: search within diff | docs/user/keybindings.md | w d | M
 - [ ] E12 Copy diff path: per-file button | apps/web/src/components/DiffFilePathCopyButton.tsx | w d | S
 - [x] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L | server done
-- [x] E14 Conversation rewind: trims provider history where supported | docs/user/composer.md | w d s | L | server done
+- [x] E14 Conversation rewind: trims provider history where supported | docs/user/composer.md | w d s | L | server done | web done
 - [ ] E15 Codex thread revert: native rollback integration | apps/server/src/provider/CodexThreadRevert.ts | s | M
 - [ ] E16 Native mobile diff: custom diff view with word diffs | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
 - [ ] E17 Diff status markers: per-file added, modified, deleted, renamed badges and plus/minus counts | apps/web/src/components/diffs/DiffFileStatus.tsx | w d m | S

@@ -42,6 +42,11 @@ interface Prefs {
   modelOrder: string[];
   effortDisplay: "label" | "bars";
   preferredEditor: string | null;
+  threadNotifications: boolean;
+  inAppNotifications: boolean;
+  confirmUnpin: boolean;
+  confirmArchive: boolean;
+  confirmDelete: boolean;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
 }
@@ -94,6 +99,11 @@ const defaults: Prefs = {
   modelOrder: [],
   effortDisplay: "label",
   preferredEditor: null,
+  threadNotifications: false,
+  inAppNotifications: false,
+  confirmUnpin: false,
+  confirmArchive: false,
+  confirmDelete: true,
   lastModel: null,
 };
 
@@ -138,6 +148,11 @@ interface UiState extends Prefs {
         | "modelOrder"
         | "effortDisplay"
         | "preferredEditor"
+        | "threadNotifications"
+        | "inAppNotifications"
+        | "confirmUnpin"
+        | "confirmArchive"
+        | "confirmDelete"
         | "lastModel"
       >
     >,
@@ -198,6 +213,11 @@ const prefsOf = (state: Prefs): Prefs => ({
   modelOrder: state.modelOrder,
   effortDisplay: state.effortDisplay,
   preferredEditor: state.preferredEditor,
+  threadNotifications: state.threadNotifications,
+  inAppNotifications: state.inAppNotifications,
+  confirmUnpin: state.confirmUnpin,
+  confirmArchive: state.confirmArchive,
+  confirmDelete: state.confirmDelete,
   lastModel: state.lastModel,
 });
 

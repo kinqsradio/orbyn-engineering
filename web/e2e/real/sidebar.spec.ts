@@ -255,3 +255,24 @@ test("the terminal drawer opens tabs and splits, and files and diff sources read
   await expect(page.getByRole("textbox", { name: "Find in thread" })).toBeFocused();
   await page.keyboard.press("Escape");
 });
+
+test("every settings section loads from the real service", async ({ page }) => {
+  const failures: string[] = [];
+  page.on("response", (response) => {
+    if (response.url().includes("/api/") && response.status() >= 400) failures.push(`${response.status()} ${response.url()}`);
+  });
+  await page.goto(`${service.page}#/settings/general`);
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  for (const name of ["Chat", "Diffs & pull requests", "Keybindings", "Scheduled tasks", "Source control", "Worktrees", "Maintenance", "Labs", "About", "Archive"]) {
+    await nav.getByRole("link", { name, exact: true }).click();
+    await expect(page.locator(".settings-head")).toContainText(name);
+    await expect(page.getByText(/^Loading/)).toHaveCount(0, { timeout: 10_000 });
+  }
+  await nav.getByRole("link", { name: "Chat", exact: true }).click();
+  await page.getByRole("combobox", { name: "Default permissions" }).selectOption("auto");
+  await expect
+    .poll(async () => (await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences")).find((p) => p.key === "default_permission_mode")?.value)
+    .toBe("auto");
+  await page.getByRole("combobox", { name: "Default permissions" }).selectOption("supervised");
+  expect(failures).toEqual([]);
+});

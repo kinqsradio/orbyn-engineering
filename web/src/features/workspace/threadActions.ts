@@ -86,12 +86,17 @@ export const wakeThreads = (threads: readonly Thread[]) =>
 export const pinThreads = (threads: readonly Thread[]) =>
   each(threads, "pin the thread", () => ({ pinned: true }));
 
-export const unpinThreads = (threads: readonly Thread[]) =>
-  each(threads, "unpin the thread", () => ({ pinned: false }), (thread) =>
+const declined = (question: string) => !window.confirm(question);
+
+export const unpinThreads = async (threads: readonly Thread[]) =>
+  useUi.getState().confirmUnpin && declined("Unpin this thread?")
+    ? undefined
+    : each(threads, "unpin the thread", () => ({ pinned: false }), (thread) =>
     pushUndo("Unpinned", () => patch(thread, { pinned: true }).catch((f: unknown) => toastFailure("undo", f))),
   );
 
 export function archiveThreads(threads: readonly Thread[]) {
+  if (useUi.getState().confirmArchive && declined("Archive this thread?")) return undefined;
   moveOff(new Set(threads.map((thread) => thread.id)));
   return each(threads, "archive the thread", () => ({ archived: true }), (thread) =>
     pushUndo("Archived", () => patch(thread, { archived: false }).catch((f: unknown) => toastFailure("undo", f))),

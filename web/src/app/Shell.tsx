@@ -6,6 +6,7 @@ import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { CommandPalette } from "../features/workspace/CommandPalette";
+import type { Thread } from "../api/types";
 import { arrangeThreads, threadsFlat } from "../features/workspace/groups";
 import {
   copyText,
@@ -115,6 +116,46 @@ function threadKey(event: KeyboardEvent, route: Route): boolean {
   return false;
 }
 
+type Attention = "working" | "waiting" | "done" | "failed" | "idle";
+
+const attentionOf = (thread: Thread): Attention =>
+  thread.active_run?.state === "awaiting_approval"
+    ? "waiting"
+    : thread.active_run
+      ? "working"
+      : thread.last_run_state === "failed"
+        ? "failed"
+        : thread.last_run_state === "completed"
+          ? "done"
+          : "idle";
+
+const notices: Partial<Record<Attention, string>> = {
+  waiting: "needs your approval",
+  done: "finished",
+  failed: "failed",
+};
+
+/** Tells you when another thread finishes, fails or needs you. */
+function useThreadNotifications(openId: string | null) {
+  useEffect(() => {
+    const seen = new Map<string, Attention>();
+    return useWorkspace.subscribe((state) => {
+      for (const thread of Object.values(state.threads)) {
+        const now = attentionOf(thread);
+        const before = seen.get(thread.id);
+        seen.set(thread.id, now);
+        const notice = notices[now];
+        if (before === undefined || before === now || !notice || thread.id === openId) continue;
+        const { inAppNotifications, threadNotifications, pushToast } = useUi.getState();
+        if (inAppNotifications) pushToast(`${thread.title} ${notice}`);
+        if (threadNotifications && document.hidden && "Notification" in window && Notification.permission === "granted") {
+          new Notification(thread.title, { body: notice });
+        }
+      }
+    });
+  }, [openId]);
+}
+
 function useGlobalKeys(route: Route) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -176,6 +217,7 @@ export function Shell() {
   const palette = useUi((state) => state.palette);
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
+  useThreadNotifications(route.name === "thread" ? route.id : null);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {

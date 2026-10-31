@@ -17,6 +17,8 @@ import type { PullRequestDetail as PullRequestDetailWire } from "../generated/Pu
 import type { PullTimelineEvent as PullTimelineEventWire } from "../generated/PullTimelineEvent";
 import type { FileContent as FileContentWire } from "../generated/FileContent";
 import type { FileEntry as FileEntryWire } from "../generated/FileEntry";
+import type { Diagnostics as DiagnosticsWire } from "../generated/Diagnostics";
+import type { ScheduledTask as ScheduledTaskWire } from "../generated/ScheduledTask";
 import type { ThreadEvent } from "../generated/ThreadEvent";
 import type { UsageReport as UsageReportWire } from "../generated/UsageReport";
 
@@ -99,3 +101,7 @@ export type { Question } from "../generated/Question";
 export type { QuestionRequest } from "../generated/QuestionRequest";
 export type { SearchHit } from "../generated/SearchHit";
 export type { TerminalInfo } from "../generated/TerminalInfo";
+export type Diagnostics = Wired<DiagnosticsWire>;
+export type ScheduledTask = Wired<ScheduledTaskWire>;
+export type { KeybindingsView } from "../generated/KeybindingsView";
+export type { PreferenceView } from "../generated/PreferenceView";

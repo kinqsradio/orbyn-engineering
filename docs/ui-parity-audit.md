@@ -68,8 +68,10 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Timeline | Message actions | Live: Copy, Edit from here, Fork from this response | Built | Not run on a real turn |
 | Thread | Find | Source: find bar with position | Built, opens Real | Highlights need the browser's Highlight API |
 | Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
-| Settings | Sections | Live: 17 sections | 7 backed, Real | Others hidden |
-| Settings | Appearance, Keybindings | Live names | Backed | Keybindings read-only |
+| Settings | Sections | Live: General, Appearance, Chat, Diffs & pull requests, Keybindings, SnapShots, Providers, Threads, Browser, Devices, Scheduled tasks, Projects, Source control, Worktrees, Environments, Sharing & access, Maintenance, Labs, About, Archive | 15 backed, all load Real | SnapShots, Browser, Devices hidden; Environments and Sharing out of scope |
+| Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules | Row layout own |
+| Settings | Scheduled tasks | Source | List, new, pause, run, delete | Only interval schedules in the form; webhooks hidden |
+| Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
 | Settings | Projects | Live name | Library and projects, Real | Layout own |

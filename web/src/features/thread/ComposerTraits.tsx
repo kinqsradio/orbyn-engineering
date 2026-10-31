@@ -23,6 +23,9 @@ export const ACCESS: Record<PermissionMode, { label: string; description: string
 
 const MODES = Object.keys(ACCESS) as PermissionMode[];
 
+/** Per-model options the service can take on a turn. The values always come from the model. */
+const TRAIT_OPTIONS = ["effort"];
+
 function TraitsMenu({
   model,
   effort,
@@ -42,7 +45,7 @@ function TraitsMenu({
   onAccess(mode: PermissionMode): void;
   onClose(): void;
 }) {
-  const option = effortOption(model);
+  const options = (model?.options ?? []).filter((entry) => TRAIT_OPTIONS.includes(entry.id));
   const current = effortValue(model, effort);
   const section = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -67,8 +70,9 @@ function TraitsMenu({
   return (
     <FloatingPanel anchor={anchor} label="Composer options" className="traits-menu" onClose={onClose}>
       <div ref={body} className="traits-body" role="menu" aria-label="Composer options" onKeyDown={onKey}>
-        {option ? (
-          <div role="group" aria-label={option.label}>
+        {options.map((option, index) => (
+          <div key={option.id} role="group" aria-label={option.label}>
+            {index > 0 ? <hr /> : null}
             <div className="traits-label">{option.label}</div>
             {option.values.map((value) => (
               <button
@@ -87,8 +91,8 @@ function TraitsMenu({
               </button>
             ))}
           </div>
-        ) : null}
-        {option && access ? <hr /> : null}
+        ))}
+        {options.length > 0 && access ? <hr /> : null}
         {access ? (
           <div ref={section} data-composer-permissions>
             <div className="traits-label">Permissions</div>

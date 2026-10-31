@@ -1,12 +1,21 @@
 import { useSyncExternalStore } from "react";
 
 export const SETTINGS_SECTIONS = [
+  "general",
   "appearance",
+  "chat",
+  "diffs",
   "keybindings",
   "providers",
   "threads",
+  "tasks",
   "projects",
+  "source-control",
+  "worktrees",
   "maintenance",
+  "labs",
+  "about",
+  "archive",
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 

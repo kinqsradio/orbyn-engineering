@@ -379,7 +379,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [snoozing, setSnoozing] = useState<Thread[] | null>(null);
-  const [deleting, setDeleting] = useState<Thread[] | null>(null);
+  const [deleting, setDeletingState] = useState<Thread[] | null>(null);
+  const setDeleting = (threads: Thread[]) => {
+    if (useUi.getState().confirmDelete) setDeletingState(threads);
+    else void deleteThreads(threads);
+  };
   const [drag, setDrag] = useState<DragState | null>(null);
   const [sweep, setSweep] = useState<{ verb: DropVerb; ids: ReadonlySet<string> } | null>(null);
   const [settings, setSettings] = useState<ServerSettings | null>(null);
@@ -880,7 +884,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           title={deleting.length === 1 ? "Delete thread?" : `Delete ${deleting.length} threads?`}
           confirmLabel="Delete"
           tone="danger"
-          onClose={() => setDeleting(null)}
+          onClose={() => setDeletingState(null)}
           onConfirm={() => deleteThreads(deleting)}
         >
           <p>This also removes side chats and cannot be undone.</p>

@@ -7,27 +7,56 @@ import { KeybindingsSection } from "./Keybindings";
 import { MaintenanceSection } from "./Maintenance";
 import { ProjectsSection } from "./Projects";
 import { ProvidersSection } from "./Providers";
+import {
+  AboutSection,
+  ArchiveSection,
+  ChatSection,
+  DiffsSection,
+  GeneralSection,
+  LabsSection,
+  SourceControlSection,
+  WorktreesSection,
+} from "./PreferenceSections";
+import { ScheduledTasksSection } from "./ScheduledTasks";
 import { ThreadsSection } from "./Threads";
 
 const labels: Record<SettingsSection, string> = {
+  general: "General",
   appearance: "Appearance",
+  chat: "Chat",
+  diffs: "Diffs & pull requests",
   keybindings: "Keybindings",
   providers: "Providers",
   threads: "Threads",
+  tasks: "Scheduled tasks",
   projects: "Projects",
+  "source-control": "Source control",
+  worktrees: "Worktrees",
   maintenance: "Maintenance",
+  labs: "Labs",
+  about: "About",
+  archive: "Archive",
 };
 
 /** The reference product's order. Sections without a backend here stay out. */
 const groups: { label: string | null; sections: SettingsSection[] }[] = [
-  { label: null, sections: ["appearance", "keybindings"] },
-  { label: "Agents", sections: ["providers", "threads"] },
-  { label: "Code", sections: ["projects"] },
-  { label: null, sections: ["maintenance"] },
+  { label: null, sections: ["general", "appearance", "chat", "diffs", "keybindings"] },
+  { label: "Agents", sections: ["providers", "threads", "tasks"] },
+  { label: "Code", sections: ["projects", "source-control", "worktrees"] },
+  { label: null, sections: ["maintenance", "labs", "about", "archive"] },
 ];
 
 const views: Record<SettingsSection, () => React.JSX.Element | null> = {
+  general: GeneralSection,
   appearance: AppearanceSection,
+  chat: ChatSection,
+  diffs: DiffsSection,
+  tasks: ScheduledTasksSection,
+  "source-control": SourceControlSection,
+  worktrees: WorktreesSection,
+  labs: LabsSection,
+  about: AboutSection,
+  archive: ArchiveSection,
   keybindings: KeybindingsSection,
   providers: ProvidersSection,
   threads: ThreadsSection,
@@ -39,7 +68,7 @@ const views: Record<SettingsSection, () => React.JSX.Element | null> = {
 export function SettingsPage({ section, onClose }: { section: SettingsSection | null; onClose(): void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
-  const current = section ?? "appearance";
+  const current = section ?? "general";
   const View = views[current];
 
   useLayoutEffect(() => {
