@@ -26,7 +26,7 @@ const loadXterm = async () => {
   return { Terminal, FitAddon };
 };
 
-export function TerminalPanel({ threadId }: { threadId: string }) {
+export function TerminalPanel({ threadId, terminalId }: { threadId: string; terminalId?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [attempt, setAttempt] = useState(0);
@@ -61,7 +61,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         terminal.options.theme = terminalTheme();
       };
 
-      const socket = new WebSocket(terminalUrl(threadId));
+      const socket = new WebSocket(terminalUrl(threadId, window.location, terminalId));
       socket.binaryType = "arraybuffer";
       const encoder = new TextEncoder();
 
@@ -112,7 +112,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
       disposed = true;
       cleanup();
     };
-  }, [threadId, attempt]);
+  }, [threadId, terminalId, attempt]);
 
   return (
     <div className="terminal-panel">

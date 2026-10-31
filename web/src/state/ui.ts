@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
-export type RightTab = "diff" | "activity" | "pulls";
+export type RightTab = "diff" | "files" | "activity" | "pulls";
 export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
@@ -205,7 +205,9 @@ const prefsOf = (state: Prefs): Prefs => ({
 function savedPrefs(): Partial<Prefs> {
   const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
   const panelTab =
-    saved.panelTab === "diff" || saved.panelTab === "activity" || saved.panelTab === "pulls" ? saved.panelTab : null;
+    saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls"
+      ? saved.panelTab
+      : null;
   return { ...saved, panelTab, layouts: saved.layouts ?? {} };
 }
 

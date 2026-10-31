@@ -11,6 +11,7 @@ import { IconButton } from "../../ui/controls";
 import { useWorkspace } from "../../state/workspace";
 import { ACCESS, EffortTrigger, useTraitsMenu } from "./ComposerTraits";
 import { ModelPickerTrigger } from "./ModelPicker";
+import { QuestionPanel } from "./QuestionPanel";
 import { resolveModel, useEngineModels } from "./modelStore";
 import { QueuedMessages } from "./QueuedMessages";
 import { insertToken, triggerAt } from "./skillMention";
@@ -263,6 +264,7 @@ export function Composer({
         </p>
       ) : null}
       <QueuedMessages threadId={thread.id} items={queue.data ?? []} running={busy} onChange={reloadQueue} />
+      <QuestionPanel threadId={thread.id} waiting={thread.active_run?.state === "awaiting_approval"} />
       <div className="composer-box">
         {menuOpen ? (
           <ul className="mention-menu" role="listbox" aria-label="Suggestions">

@@ -1,3 +1,4 @@
+import { MessageActions } from "./MessageActions";
 import {
   Brain,
   Check,
@@ -35,6 +36,7 @@ function Message({ item, live }: { item: MessageItem; live: boolean }) {
       <div className="msg-user">
         <span className="sr-only">You said:</span>
         <p className="msg-bubble">{item.text}</p>
+        <MessageActions text={item.text} runId={item.runId} role="user" />
       </div>
     );
   }
@@ -42,6 +44,7 @@ function Message({ item, live }: { item: MessageItem; live: boolean }) {
     <div className="msg-assistant">
       <Markdown text={item.text} />
       {live && !item.done ? <span className="caret" aria-hidden /> : null}
+      {item.done ? <MessageActions text={item.text} runId={item.runId} role="assistant" /> : null}
     </div>
   );
 }

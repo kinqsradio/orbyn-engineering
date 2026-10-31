@@ -233,3 +233,25 @@ test("each thread restores its own panel across switches and a reload", async ({
   await open(third);
   await expect(pane).toBeHidden();
 });
+
+test("the terminal drawer opens tabs and splits, and files and diff sources read the checkout", async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 900 });
+  const id = ids.Bravo ?? "";
+  await page.goto(`${service.page}#/threads/${id}`);
+  await page.getByRole("button", { name: "Terminal" }).first().click();
+  const drawer = page.getByRole("region", { name: "Terminal" });
+  await expect(drawer.getByText("Connected")).toBeVisible({ timeout: 10_000 });
+  await drawer.getByRole("button", { name: "New terminal" }).click();
+  await expect(drawer.getByRole("tab")).toHaveCount(2);
+  await drawer.getByRole("button", { name: "Split terminal" }).click();
+  await expect(drawer.locator(".terminal-panel")).toHaveCount(2);
+  await drawer.getByRole("button", { name: /^Close Terminal|^Close [^t]/ }).first().click();
+
+  await page.getByRole("button", { name: "Surfaces" }).click();
+  const pane = page.getByRole("complementary", { name: "Thread context" });
+  await pane.getByRole("button", { name: /^Files/ }).click();
+  await expect(pane.locator(".file-tree button").first()).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(page.getByRole("textbox", { name: "Find in thread" })).toBeFocused();
+  await page.keyboard.press("Escape");
+});

@@ -25,12 +25,13 @@ import { ProjectBadge } from "../../ui/badges";
 import { IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
-import { TerminalPanel } from "../panels/TerminalPanel";
+import { TerminalDrawerBody } from "../panels/TerminalDrawerBody";
 import { threadRunState } from "../workspace/RunState";
 import { Composer } from "./Composer";
 import { DetailsCard } from "./DetailsCard";
 import { composerSettled, useComposerDock } from "./heroTransition";
 import { runningTools } from "./timeline";
+import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
 
 function TopBar({
@@ -181,7 +182,7 @@ function TerminalDrawer({ threadId, open, onClose }: { threadId: string; open: b
   if (!opened) return null;
   return (
     <section className="drawer" hidden={!open} aria-label="Terminal">
-      <TerminalPanel threadId={threadId} />
+      <TerminalDrawerBody threadId={threadId} />
       <IconButton label="Close terminal" className="drawer-close" onClick={onClose}>
         <X size={14} aria-hidden />
       </IconButton>
@@ -216,6 +217,17 @@ export function ThreadView({ id }: { id: string }) {
   const layout = useLayoutWidth();
   const wide = isWide(layout);
   const [detailsOverlay, setDetailsOverlay] = useState(false);
+  const [finding, setFinding] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setFinding(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   const maximized = useUi((state) => state.panelMaximized);
   const setMaximized = useUi((state) => state.setPanelMaximized);
   const [docked, setDocked] = useState(false);
@@ -298,6 +310,7 @@ export function ThreadView({ id }: { id: string }) {
           onToggleDetails={() => (wide ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
           onTogglePane={() => setPanelOpen(true)}
         />
+        {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
         <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined}>
           <StreamBanner threadId={id} />
           {project && !project.trusted ? (

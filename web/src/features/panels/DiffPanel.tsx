@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import type { FileDiff } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
+import { useWorkspace } from "../../state/workspace";
 import { useThreadLogs } from "../../state/threadLogs";
 import { Button, IconButton, Pill } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
@@ -63,6 +64,15 @@ function Patch({ patch }: { patch: string }) {
   );
 }
 
+type DiffSource = "worktree" | "turn" | "thread" | "branch";
+
+const DIFF_SOURCES: { id: DiffSource; label: string }[] = [
+  { id: "worktree", label: "Working tree" },
+  { id: "turn", label: "Turn" },
+  { id: "thread", label: "Thread" },
+  { id: "branch", label: "Branch" },
+];
+
 function FileRow({ file, open, onToggle }: { file: FileDiff; open: boolean; onToggle(): void }) {
   return (
     <li className="diff-file">
@@ -82,7 +92,23 @@ function FileRow({ file, open, onToggle }: { file: FileDiff; open: boolean; onTo
 
 export function DiffPanel({ threadId }: { threadId: string }) {
   const version = useThreadLogs((state) => state.diffVersion[threadId] ?? 0);
-  const diff = useAsync(`diff:${threadId}`, (signal) => api.diff(threadId, signal));
+  const [source, setSource] = useState<DiffSource>("worktree");
+  const checkpoints = useAsync(`checkpoints:${threadId}`, (signal) =>
+    source === "turn" ? api.checkpoints(threadId, signal) : Promise.resolve([]),
+  );
+  const latestRun = checkpoints.data?.at(-1)?.run_id ?? null;
+  const base = useWorkspace((state) => state.threads[threadId]?.worktree?.base ?? "main");
+  const scope =
+    source === "turn"
+      ? latestRun
+        ? `turn&run=${encodeURIComponent(latestRun)}`
+        : null
+      : source === "branch"
+        ? `branch&base=${encodeURIComponent(base)}`
+        : source;
+  const diff = useAsync(`diff:${threadId}:${scope ?? "none"}`, (signal) =>
+    scope ? api.diff(threadId, signal, scope) : Promise.resolve([]),
+  );
   const { reload } = diff;
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
 
@@ -100,6 +126,19 @@ export function DiffPanel({ threadId }: { threadId: string }) {
 
   return (
     <div>
+      <div className="diff-sources segment" role="radiogroup" aria-label="Diff source">
+        {DIFF_SOURCES.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            role="radio"
+            aria-checked={source === entry.id}
+            onClick={() => setSource(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
       <div className="panel-bar">
         <span>
           {files.length === 1 ? "1 file" : `${files.length} files`}

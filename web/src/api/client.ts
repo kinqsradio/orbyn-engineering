@@ -3,6 +3,7 @@ import type {
   ApplyAllResult,
   Approval,
   Attachment,
+  Checkpoint,
   CloneJob,
   CreateThread,
   CustomEngine,
@@ -212,8 +213,14 @@ export const api = {
       ...turn,
     }),
   cancelRun: (runId: string) => request<void>("POST", `/api/runs/${q(runId)}/cancel`),
-  diff: (threadId: string, signal?: AbortSignal) =>
-    request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff`, undefined, signal),
+  diff: (threadId: string, signal?: AbortSignal, scope?: string) =>
+    request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff${scope ? `?scope=${scope}` : ""}`, undefined, signal),
+  checkpoints: (threadId: string, signal?: AbortSignal) =>
+    request<Checkpoint[]>("GET", `/api/threads/${q(threadId)}/checkpoints`, undefined, signal),
+  rewindThread: (threadId: string, runId: string, restoreFiles: boolean) =>
+    request<void>("POST", `/api/threads/${q(threadId)}/rewind`, { run_id: runId, restore_files: restoreFiles }),
+  forkThread: (threadId: string, runId: string) =>
+    request<Thread>("POST", `/api/threads/${q(threadId)}/fork`, { run_id: runId }),
 
   pendingApprovals: (signal?: AbortSignal) =>
     request<Approval[]>("GET", "/api/approvals?state=pending", undefined, signal),

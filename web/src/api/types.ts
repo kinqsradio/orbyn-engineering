@@ -15,6 +15,8 @@ import type { PullListEntry as PullListEntryWire } from "../generated/PullListEn
 import type { PullRequest as PullRequestWire } from "../generated/PullRequest";
 import type { PullRequestDetail as PullRequestDetailWire } from "../generated/PullRequestDetail";
 import type { PullTimelineEvent as PullTimelineEventWire } from "../generated/PullTimelineEvent";
+import type { FileContent as FileContentWire } from "../generated/FileContent";
+import type { FileEntry as FileEntryWire } from "../generated/FileEntry";
 import type { ThreadEvent } from "../generated/ThreadEvent";
 import type { UsageReport as UsageReportWire } from "../generated/UsageReport";
 
@@ -89,3 +91,11 @@ export type PullFile = Wired<PullFileWire>;
 export type PullTimelineEvent = Wired<PullTimelineEventWire>;
 export type { ForgeStatus } from "../generated/ForgeStatus";
 export type { EditorInfo } from "../generated/EditorInfo";
+export type FileEntry = Wired<FileEntryWire>;
+export type FileContent = Wired<FileContentWire>;
+export type { Checkpoint } from "../generated/Checkpoint";
+export type { ProjectFileView } from "../generated/ProjectFileView";
+export type { Question } from "../generated/Question";
+export type { QuestionRequest } from "../generated/QuestionRequest";
+export type { SearchHit } from "../generated/SearchHit";
+export type { TerminalInfo } from "../generated/TerminalInfo";

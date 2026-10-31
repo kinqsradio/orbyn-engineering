@@ -62,7 +62,11 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
 | Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
 | Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
-| Terminal drawer | Open | Unobserved | Built | Unknown |
+| Terminal drawer | Tabs and splits | Source: per-thread tabs, split, close, scripts | Built, Real for new, split and close | Scripts menu not run; no project file in the test |
+| Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree | No editing, no image viewer |
+| Diff | Sources | Source: turn, thread, branch | Working tree, Turn, Thread, Branch from the real scopes | Commit source absent |
+| Timeline | Message actions | Live: Copy, Edit from here, Fork from this response | Built | Not run on a real turn |
+| Thread | Find | Source: find bar with position | Built, opens Real | Highlights need the browser's Highlight API |
 | Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
 | Settings | Sections | Live: 17 sections | 7 backed, Real | Others hidden |
 | Settings | Appearance, Keybindings | Live names | Backed | Keybindings read-only |
