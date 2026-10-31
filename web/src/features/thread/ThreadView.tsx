@@ -195,21 +195,27 @@ function PlanBanner({ thread }: { thread: Thread }) {
 const PROACTIVE_FILES = 3;
 const PROACTIVE_LINES = 50;
 
+/** Runs that already had their chance, so closing the panel or coming back never reopens it. */
+const proactiveHandled = new Set<string>();
+
 /** Opens Changes after a turn that touched a lot, unless the setting is off or a panel is up. */
 function useProactivePanels(threadId: string, runId: string | null) {
-  const previous = useRef(runId);
+  const live = useRef(new Set<string>());
+  const changed = useThreadLogs((state) => state.logs[threadId]?.items.findLast((item) => item.kind === "diff"));
   useEffect(() => {
-    const finished = previous.current;
-    previous.current = runId;
-    if (!finished || runId) return;
+    if (runId) live.current.add(runId);
+  }, [runId]);
+  useEffect(() => {
+    if (runId || changed?.kind !== "diff" || !changed.runId || proactiveHandled.has(changed.runId)) return;
+    // A fast turn can end before this view sees it run, so one sent from here counts too.
+    const sentHere = useThreadLogs.getState().prompts[threadId]?.some((prompt) => prompt.runId === changed.runId);
+    if (!sentHere && !live.current.has(changed.runId)) return;
+    proactiveHandled.add(changed.runId);
     const ui = useUi.getState();
     if (!ui.proactivePanels || ui.panelOpen === true) return;
-    const items = useThreadLogs.getState().logs[threadId]?.items ?? [];
-    const changed = items.findLast((item) => item.kind === "diff" && item.runId === finished);
-    if (changed?.kind !== "diff") return;
     const lines = changed.files.reduce((sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0), 0);
     if (changed.files.length >= PROACTIVE_FILES || lines >= PROACTIVE_LINES) ui.togglePanel("diff");
-  }, [threadId, runId]);
+  }, [threadId, runId, changed]);
 }
 
 function StreamBanner({ threadId }: { threadId: string }) {

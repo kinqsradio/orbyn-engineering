@@ -102,6 +102,7 @@ export function Composer({
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
   const shiftPaste = useRef(false);
+  const caretAfterEdit = useRef<number | null>(null);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
   const sendShortcut = useUi((state) => state.sendShortcut);
   const persistentContext = useUi((state) => state.persistentComposerContext);
@@ -177,6 +178,9 @@ export function Composer({
     element.style.height = "auto";
     const limit = window.innerHeight * MAX_HEIGHT_RATIO;
     element.style.height = `${Math.min(element.scrollHeight + 2, limit)}px`;
+    // Before the next paint, so a key pressed right after lands at the caret.
+    if (caretAfterEdit.current !== null) element.setSelectionRange(caretAfterEdit.current, caretAfterEdit.current);
+    caretAfterEdit.current = null;
   }, [draft]);
 
   const pick = (suggestion: Suggestion) => {
@@ -185,7 +189,7 @@ export function Composer({
     const next = insertToken(draft, caret, trigger, suggestion.value, suggestion.insert);
     setDraft(thread.id, next.text);
     setCaret(next.caret);
-    requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
+    caretAfterEdit.current = next.caret;
   };
 
   const setPlanMode = async (on: boolean) => {
@@ -290,7 +294,7 @@ export function Composer({
       if (next) {
         event.preventDefault();
         setDraft(thread.id, next.text);
-        requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
+        caretAfterEdit.current = next.caret;
         return;
       }
     }
@@ -300,7 +304,7 @@ export function Composer({
       if (next) {
         event.preventDefault();
         setDraft(thread.id, next.text);
-        requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
+        caretAfterEdit.current = next.caret;
       }
       return;
     }

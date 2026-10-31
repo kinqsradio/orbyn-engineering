@@ -54,6 +54,38 @@ jobs:
       - run: npm run build
         working-directory: web
 
+  e2e:
+    name: E2E
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: cargo build -p orbynd --bin orbynd --bin orbyn-fake-engine
+      - run: npm run test:e2e:install
+        working-directory: web
+      - name: System libraries for the headless shell
+        run: sudo npx playwright install-deps chromium-headless-shell
+        working-directory: web
+      - run: npm run test:e2e
+        working-directory: web
+      - name: Keep failure traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-results
+          path: web/test-results
+          retention-days: 7
+
   desktop:
     name: Unsigned desktop build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

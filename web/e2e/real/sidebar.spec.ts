@@ -27,7 +27,7 @@ async function dragTo(page: Page, from: Locator, y: number) {
 }
 
 test.beforeAll(async () => {
-  service = await startService(PORT);
+  service = await startService(PORT, { fakeEngines: true });
   await service.api("POST", "/api/workspace/setup", {});
   const projects = await service.api<{ id: string }[]>("GET", "/api/projects");
   projectId = projects[0]?.id ?? "";
@@ -163,6 +163,7 @@ test("usage reads the real report and limits", async ({ page }) => {
 test("the composer picks model and effort, sets access, and keeps favourites", async ({ page }) => {
   const id = ids.Delta ?? "";
   await page.goto(`${service.page}#/threads/${id}`);
+  await expect(page.getByRole("textbox", { name: /^Message Delta/ })).toBeVisible();
   const trigger = page.locator("[data-model-trigger]");
   await expect(trigger).toBeVisible();
   await trigger.click();
