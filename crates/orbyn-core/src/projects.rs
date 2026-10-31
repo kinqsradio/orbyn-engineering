@@ -39,10 +39,11 @@ fn slug_of(name: &str) -> Result<String> {
     Ok(slug)
 }
 
-/// The last path segment of a clone URL, without `.git`.
+/// The last segment of a clone URL or local path, without `.git`. A local path on
+/// Windows uses backslashes and a drive letter.
 fn name_from_url(url: &str) -> Option<&str> {
-    let trimmed = url.trim_end_matches('/');
-    let last = trimmed.rsplit(['/', ':']).next()?;
+    let trimmed = url.trim_end_matches(['/', '\\']);
+    let last = trimmed.rsplit(['/', '\\', ':']).next()?;
     let name = last.strip_suffix(".git").unwrap_or(last);
     (!name.is_empty()).then_some(name)
 }

@@ -82,7 +82,7 @@ pub fn plan_from_paths(
         && under(&path, roots.brew.as_deref())
     {
         let mut args = vec!["upgrade".to_owned()];
-        if path.contains("/caskroom/") || path.contains("/Caskroom/") {
+        if path.to_lowercase().contains("/caskroom/") {
             args.push("--cask".to_owned());
         }
         args.push(name);
@@ -140,10 +140,12 @@ pub fn plan_from_paths(
     (InstallerKind::Unknown, None)
 }
 
+/// Compares in lowercase, as `normalize` leaves a path on Windows.
 fn brew_package(path: &str, spec: &PackageSpec) -> Option<String> {
+    let path = path.to_lowercase();
     let rest = path
-        .split_once("/Cellar/")
-        .or_else(|| path.split_once("/Caskroom/"))?
+        .split_once("/cellar/")
+        .or_else(|| path.split_once("/caskroom/"))?
         .1;
     let name = rest.split('/').next()?;
     spec.brew_names

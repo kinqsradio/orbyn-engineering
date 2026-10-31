@@ -70,6 +70,8 @@ fn slugs_are_plain_and_never_a_worktree_root() {
         "separators cannot survive"
     );
     assert_eq!(name_from_url("git@github.com:a/b.git"), Some("b"));
+    assert_eq!(name_from_url(r"C:\Users\me\source\tool.git\"), Some("tool"));
+    assert_eq!(name_from_url(r"\\?\D:\work\app"), Some("app"));
     assert_eq!(name_from_url("https://x.test/a/b/"), Some("b"));
 }
 
