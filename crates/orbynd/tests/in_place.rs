@@ -53,6 +53,8 @@ fn external_repo(path: &Path) -> PathBuf {
     run_git(path, &["init", "-q", "-b", "main"]);
     run_git(path, &["config", "user.email", "t@example.com"]);
     run_git(path, &["config", "user.name", "T"]);
+    // A commit's detached maintenance would come and go under `.git` during the comparison.
+    run_git(path, &["config", "maintenance.auto", "false"]);
     std::fs::write(path.join("base.txt"), "base\n").unwrap();
     run_git(path, &["add", "."]);
     run_git(path, &["commit", "-q", "-m", "first"]);

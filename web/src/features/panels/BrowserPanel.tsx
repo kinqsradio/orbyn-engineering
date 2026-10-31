@@ -28,6 +28,19 @@ export function resolveAddress(input: string, engine: string): string {
   return `${ENGINES[engine] ?? ENGINES.duckduckgo}${q(text)}`;
 }
 
+const PAGE_MIN = 100;
+const PAGE_MAX = 4096;
+const RESIZE_DELAY_MS = 300;
+/** Pixels of change, both ways together, worth asking the browser to lay out again. */
+const RESIZE_SLACK = 8;
+const TAB_POLL_MS = 1000;
+
+/** The page follows the panel, within the sizes the service takes. */
+export function pageSize(width: number, height: number): { width: number; height: number } {
+  const fit = (value: number) => Math.min(PAGE_MAX, Math.max(PAGE_MIN, Math.round(value)));
+  return { width: fit(width), height: fit(height) };
+}
+
 function frameSocket(threadId: string, tabId: string) {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const token = readToken();
@@ -40,6 +53,7 @@ function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
   const [frame, setFrame] = useState<string | null>(null);
   const [lost, setLost] = useState(false);
   const stage = useRef<HTMLImageElement>(null);
+  const area = useRef<HTMLDivElement>(null);
   const pushToast = useUi((state) => state.pushToast);
   const human = tab.control === "human";
   useEffect(() => {
@@ -64,8 +78,8 @@ function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
     const box = stage.current?.getBoundingClientRect();
     if (!box) return { x: 0, y: 0 };
     return {
-      x: ((event.clientX - box.left) / box.width) * VIEWPORT.width,
-      y: ((event.clientY - box.top) / box.height) * VIEWPORT.height,
+      x: ((event.clientX - box.left) / box.width) * tab.width,
+      y: ((event.clientY - box.top) / box.height) * tab.height,
     };
   };
   const onKey = (event: KeyboardEvent) => {
@@ -75,20 +89,48 @@ function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
     else send({ kind: "key", text: event.key });
   };
   const onWheel = (event: WheelEvent) => send({ kind: "scroll", ...point(event), delta_y: event.deltaY });
-  if (!frame) return <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>;
+  const fitted = useRef({ width: tab.width, height: tab.height });
+  useEffect(() => {
+    const element = area.current;
+    if (!element) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const size = pageSize(entry.contentRect.width, entry.contentRect.height);
+        if (Math.abs(size.width - fitted.current.width) + Math.abs(size.height - fitted.current.height) < RESIZE_SLACK) return;
+        fitted.current = size;
+        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) =>
+          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`),
+        );
+      }, RESIZE_DELAY_MS);
+    });
+    observer.observe(element);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [threadId, tab.id, pushToast]);
   return (
-    <img
-      ref={stage}
-      className="browser-frame"
-      data-preview
-      data-human={human || undefined}
-      tabIndex={0}
-      alt={`Page at ${tab.url}`}
-      src={`data:image/jpeg;base64,${frame}`}
-      onClick={(event) => send({ kind: "click", ...point(event) })}
-      onKeyDown={onKey}
-      onWheel={onWheel}
-    />
+    <div ref={area} className="browser-stage">
+      {frame ? (
+        <img
+          ref={stage}
+          className="browser-frame"
+          data-preview
+          data-human={human || undefined}
+          tabIndex={0}
+          alt={`Page at ${tab.url}`}
+          src={`data:image/jpeg;base64,${frame}`}
+          onClick={(event) => send({ kind: "click", ...point(event) })}
+          onKeyDown={onKey}
+          onWheel={onWheel}
+        />
+      ) : (
+        <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>
+      )}
+    </div>
   );
 }
 
@@ -137,8 +179,6 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [back, setBack] = useState<string[]>([]);
-  const [forward, setForward] = useState<string[]>([]);
   const searchEngine = useUi((state) => state.previewSearchEngine);
   const setPrefs = useUi((state) => state.setPrefs);
   const reload = tabs.reload;
@@ -161,17 +201,13 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
       setBusy(false);
     }
   };
-  const go = (raw: string, push = true) => {
+  const go = (raw: string) => {
     const url = resolveAddress(raw, searchEngine);
     setAddress(url);
     remember(url);
     void act(async () => {
       if (active) {
         await request("POST", `${base}/${q(active.id)}/navigate`, { url });
-        if (push) {
-          setBack((stack) => [...stack, active.url]);
-          setForward([]);
-        }
       } else {
         const made = await request<PreviewTab>("POST", base, { url, ...VIEWPORT });
         setDraftTab(false);
@@ -179,13 +215,17 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
       }
     });
   };
-  const step = (from: string[], setFrom: (next: string[]) => void, setTo: (next: (stack: string[]) => string[]) => void) => {
-    const url = from.at(-1);
-    if (!url || !active) return;
-    setFrom(from.slice(0, -1));
-    setTo((stack) => [...stack, active.url]);
-    go(url, false);
+  const step = (back: boolean) => {
+    if (!active) return;
+    void act(() => request("POST", `${base}/${q(active.id)}/history`, { back }));
   };
+  // A link clicked in the page moves the tab with nobody telling this side.
+  const watching = active !== null;
+  useEffect(() => {
+    if (!watching) return;
+    const timer = setInterval(reload, TAB_POLL_MS);
+    return () => clearInterval(timer);
+  }, [watching, reload]);
   const shown = active?.url ?? "";
   const human = active?.control === "human";
 
@@ -218,13 +258,13 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         </IconButton>
       </div>
       <div className="browser-bar">
-        <IconButton label="Back" disabled={back.length === 0} onClick={() => step(back, setBack, setForward)}>
+        <IconButton label="Back" disabled={!active?.can_go_back} onClick={() => step(true)}>
           <ArrowLeft size={14} aria-hidden />
         </IconButton>
-        <IconButton label="Forward" disabled={forward.length === 0} onClick={() => step(forward, setForward, setBack)}>
+        <IconButton label="Forward" disabled={!active?.can_go_forward} onClick={() => step(false)}>
           <ArrowRight size={14} aria-hidden />
         </IconButton>
-        <IconButton label="Reload" disabled={!active} onClick={() => go(shown, false)}>
+        <IconButton label="Reload" disabled={!active} onClick={() => go(shown)}>
           <RotateCw size={14} aria-hidden />
         </IconButton>
         <input

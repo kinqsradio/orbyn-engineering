@@ -1,5 +1,5 @@
 import { chooseDraftEngine } from "../onboarding/draftEngine";
-import { Play, Trash2 } from "lucide-react";
+import { Pencil, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { request } from "../../api/client";
 import type { ScheduledTask } from "../../api/types";
@@ -15,26 +15,41 @@ const listTasks = (signal?: AbortSignal) => request<ScheduledTask[]>("GET", "/ap
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function NewTask({ onClose, onSaved }: { onClose(): void; onSaved(): void }) {
+type TaskKind = "interval" | "fixed_time" | "webhook";
+
+/** Adds a task, or edits one. What this form doesn't show goes back as it came. */
+function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; onClose(): void; onSaved(): void }) {
   const projects = useVisibleProjects() ?? [];
   const engines = useWorkspace((state) => state.engines.data) ?? [];
-  const [name, setName] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [minutes, setMinutes] = useState("60");
-  const [kind, setKind] = useState<"interval" | "fixed_time" | "webhook">("interval");
-  const [time, setTime] = useState("09:00");
-  const [weekdays, setWeekdays] = useState<number[]>([]);
-  const [project, setProject] = useState(projects[0]?.id ?? "");
+  const [name, setName] = useState(task?.name ?? "");
+  const [prompt, setPrompt] = useState(task?.prompt ?? "");
+  const [minutes, setMinutes] = useState(String(task?.schedule.every_minutes ?? 60));
+  const [kind, setKind] = useState<TaskKind>((task?.schedule.kind as TaskKind | undefined) ?? "interval");
+  const [time, setTime] = useState(task?.schedule.time ?? "09:00");
+  const [weekdays, setWeekdays] = useState<number[]>(task?.schedule.weekdays ?? []);
+  const [project, setProject] = useState(task?.project_id ?? projects[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
-  const engine = chooseDraftEngine(engines.filter((entry) => entry.installed), null, false)?.id ?? "";
+  const engine = task?.engine ?? chooseDraftEngine(engines.filter((entry) => entry.installed), null, false)?.id ?? "";
   const save = async () => {
     try {
-      await request("POST", "/api/tasks", {
+      const kept = task
+        ? {
+            thread_id: task.thread_id ?? undefined,
+            signature: task.signature ?? undefined,
+            filters: task.filters,
+            dedupe: task.dedupe ?? undefined,
+            max_age_seconds: task.max_age_seconds ?? undefined,
+            timestamp_path: task.timestamp_path ?? undefined,
+          }
+        : {};
+      await request(task ? "PUT" : "POST", task ? `/api/tasks/${encodeURIComponent(task.id)}` : "/api/tasks", {
+        ...kept,
         project_id: project,
         name,
         prompt,
         engine,
         schedule: {
+          ...task?.schedule,
           kind,
           every_minutes: kind === "interval" ? Number(minutes) : null,
           time: kind === "fixed_time" ? time : null,
@@ -50,7 +65,7 @@ function NewTask({ onClose, onSaved }: { onClose(): void; onSaved(): void }) {
   };
   return (
     <Dialog
-      title="New scheduled task"
+      title={task ? "Edit scheduled task" : "New scheduled task"}
       onClose={onClose}
       footer={
         <>
@@ -125,7 +140,7 @@ function NewTask({ onClose, onSaved }: { onClose(): void; onSaved(): void }) {
 
 export function ScheduledTasksSection() {
   const tasks = useAsync("tasks", listTasks);
-  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<ScheduledTask | "new" | null>(null);
   const pushToast = useUi((state) => state.pushToast);
   const act = (work: Promise<unknown>) =>
     work.then(tasks.reload, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));
@@ -135,7 +150,7 @@ export function ScheduledTasksSection() {
         <h1 className="sr-only" tabIndex={-1} data-page-title>
           Scheduled tasks
         </h1>
-        <Button small onClick={() => setAdding(true)}>
+        <Button small onClick={() => setEditing("new")}>
           New task
         </Button>
       </div>
@@ -165,6 +180,9 @@ export function ScheduledTasksSection() {
               <IconButton label={`Run ${task.name}`} onClick={() => void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/run`))}>
                 <Play size={14} aria-hidden />
               </IconButton>
+              <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
+                <Pencil size={14} aria-hidden />
+              </IconButton>
               <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
                 <Trash2 size={14} aria-hidden />
               </IconButton>
@@ -172,7 +190,9 @@ export function ScheduledTasksSection() {
           ))}
         </SettingGroup>
       )}
-      {adding ? <NewTask onClose={() => setAdding(false)} onSaved={tasks.reload} /> : null}
+      {editing ? (
+        <TaskDialog task={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={tasks.reload} />
+      ) : null}
     </>
   );
 }

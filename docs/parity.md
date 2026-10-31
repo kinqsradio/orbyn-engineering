@@ -437,8 +437,8 @@ are not built in.
 - [ ] I25 Pi provider: RPC integration with MCP injection | packages/provider-pi/src/adapter.ts | s | L
 - [ ] I26 Muse Code provider: opt-in, Supervised and Full access | packages/provider-muse/src/adapter.ts | s | L | [auth-risk]
 - [ ] I27 fx provider: Supervised and Auto with effort | packages/provider-fx/src/adapter.ts | s | M
-- [x] I28 ACP Registry search: find and add agents | apps/web/src/components/settings/AcpRegistrySearchStep.tsx | w d s | L | server done
-- [x] I29 ACP install: checksummed binaries, npx/uvx prefixes | packages/provider-acp-registry/src/AcpRegistrySupport.ts | s | L | server done: a binary needs a digest; `npx` and `uvx` fetch on first run
+- [x] I28 ACP Registry search: find and add agents | apps/web/src/components/settings/AcpRegistrySearchStep.tsx | w d s | L | web done
+- [x] I29 ACP install: checksummed binaries, npx/uvx prefixes | packages/provider-acp-registry/src/AcpRegistrySupport.ts | s | L | server done
 - [x] I30 Local ACP command: executable with literal arguments | apps/web/src/components/settings/AddProviderInstanceDialog.tsx | w d s | M | server done, as a custom engine
 - [ ] I31 ACP v1/v2 negotiation: preview protocol with fallback | packages/provider-acp/src/AcpSessionRuntime.ts | s | L
 - [ ] I32 ACP sign-in: browser or terminal methods, sign out | apps/web/src/components/settings/ProviderAuthTerminal.tsx | w d m s | M | [auth-risk]

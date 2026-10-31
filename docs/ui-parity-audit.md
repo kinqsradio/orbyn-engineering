@@ -92,7 +92,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
 | Palette | Messages | Source: all words, opens at the message | Messages group, Real, scrolls to the row or the fold that holds it | Word highlights not drawn |
-| Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward, reload, control, record, start page, Real on headless shell | Back and forward are this panel's own stack; no zoom, devices or profiles |
+| Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward from the page's history, reload, control, record, start page, the page follows the panel's size, Real on headless shell | No zoom, devices or profiles |
 | Diff | Sources | Source: turn, thread, branch, commits | All five, Real | Picker is a select |
 | Diff | Restore a file | Source | Per-file in Turn, Real, reports a later edit instead of overwriting it | Latest turn only |
 | Diff | Options | Source: layout, collapse, whitespace, tests, find, copy path, status | Match, Real | Whitespace filtered in the client, find highlights lines not words |
@@ -103,9 +103,10 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules; the shell now runs every rule through when contexts, Real | Row layout own; mod+digit falls back in the client, the service lists no jump rules |
 | Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
 | Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
-| Settings | Scheduled tasks | Source | List, new, pause, run, delete, Real; interval, fixed time with days, webhook kinds | The form sent an invalid kind before this was run for real; no edit, the save route has no id |
+| Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook kinds | The form sent an invalid kind before this was run for real |
 | Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
+| Settings | ACP registry | Source: search and add agents | Search, add, remove, Real against a local registry file | First listed install route only |
 | Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
 | Settings | Maintenance | Live name | Update checks, Real | Contents unobserved |
