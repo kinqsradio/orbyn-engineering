@@ -90,6 +90,8 @@ interface Prefs {
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
   /** The project the unsent draft belongs to, so its row opens it there. */
   draftProject: string | null;
+  /** Pull request links open in the panel instead of on the host. */
+  pullLinksInApp: boolean;
   /** Thread details rows turned off. */
   detailsHidden: string[];
   /** Moves working threads, and ones waiting on delegated work, to their own shelf. */
@@ -196,6 +198,7 @@ const defaults: Prefs = {
   confirmDelete: true,
   lastModel: null,
   draftProject: null,
+  pullLinksInApp: true,
   detailsHidden: ["usage"],
   workingSection: true,
   dismissedProviderUpdates: [],
@@ -218,6 +221,9 @@ interface UiState extends Prefs {
   messageReveal: { threadId: string; messageId: string } | null;
   revealMessage(threadId: string, messageId: string): void;
   clearMessageReveal(): void;
+  /** A pull request the panel should open. */
+  pullReveal: number | null;
+  revealPull(number: number | null): void;
   /** A file the Diff surface should scroll to. */
   diffReveal: { path: string; nonce: number } | null;
   revealDiff(path: string): void;
@@ -332,6 +338,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   confirmDelete: state.confirmDelete,
   lastModel: state.lastModel,
   draftProject: state.draftProject,
+  pullLinksInApp: state.pullLinksInApp,
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
   dismissedProviderUpdates: state.dismissedProviderUpdates,
@@ -375,6 +382,20 @@ export const useUi = create<UiState>((set, get) => {
     setTheme(theme) {
       set({ theme });
       savePrefs();
+    },
+    pullReveal: null,
+    revealPull(number) {
+      if (number === null) {
+        set({ pullReveal: null });
+        return;
+      }
+      const { openSurfaces } = get();
+      set({
+        pullReveal: number,
+        panelOpen: true,
+        panelTab: "pulls",
+        openSurfaces: openSurfaces.includes("pulls") ? openSurfaces : [...openSurfaces, "pulls"],
+      });
     },
     diffReveal: null,
     revealDiff(path) {

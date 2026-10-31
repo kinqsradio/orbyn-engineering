@@ -1,5 +1,5 @@
 import { Bell, BellOff, Link2Off } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCommand } from "../../app/shortcuts";
 import type { Thread } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -54,6 +54,12 @@ function LinkDialog({ thread, onClose, onLinked }: { thread: Thread; onClose(): 
 export function LinkedPulls({ thread }: { thread: Thread }) {
   const linked = useAsync(`linked-pulls:${thread.id}`, (signal) => pullsApi.linked(thread.id, signal));
   const [selected, setSelected] = useState<number | null>(null);
+  const reveal = useUi((state) => state.pullReveal);
+  useEffect(() => {
+    if (reveal === null) return;
+    setSelected(reveal);
+    useUi.getState().revealPull(null);
+  }, [reveal]);
   const watches = useAsync(`pull-watches:${thread.id}`, (signal) => pullsApi.watches(thread.id, signal));
   const [linking, setLinking] = useState(false);
   const pushToast = useUi((state) => state.pushToast);
