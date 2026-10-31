@@ -1,4 +1,4 @@
-import { ChevronRight, ExternalLink, File, Folder, Search } from "lucide-react";
+import { ChevronRight, Download, ExternalLink, File, Folder, Search } from "lucide-react";
 import { useState } from "react";
 import { api, request } from "../../api/client";
 import type { FileContent, FileEntry, SearchHit } from "../../api/types";
@@ -6,6 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
+import { FileBytes, FileMedia, mediaKind, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
 
 const q = encodeURIComponent;
@@ -100,8 +101,11 @@ const scrollToMarkedLine = (element: HTMLPreElement | null) => {
 };
 
 function Viewer({ threadId, path, line, onBack }: { threadId: string; path: string; line: number | null; onBack(): void }) {
-  const file = useAsync(`file:${threadId}:${path}`, (signal) =>
-    request<FileContent>("GET", `/api/threads/${q(threadId)}/files/content?path=${q(path)}`, undefined, signal),
+  const media = mediaKind(path);
+  const file = useAsync(`file:${threadId}:${media ? "" : path}`, (signal) =>
+    media
+      ? Promise.resolve(null)
+      : request<FileContent>("GET", `/api/threads/${q(threadId)}/files/content?path=${q(path)}`, undefined, signal),
   );
   const preferred = useUi((state) => state.preferredEditor);
   const pushToast = useUi((state) => state.pushToast);
@@ -122,18 +126,23 @@ function Viewer({ threadId, path, line, onBack }: { threadId: string; path: stri
           Files
         </Button>
         <code title={path}>{path}</code>
+        <a className="icon-btn" aria-label="Save file" title="Save file" href={rawUrl(threadId, path, true)} download>
+          <Download size={14} aria-hidden />
+        </a>
         <IconButton label="Open in editor" onClick={() => void open()}>
           <ExternalLink size={14} aria-hidden />
         </IconButton>
       </div>
-      {file.status === "loading" ? (
+      {media ? (
+        <FileMedia kind={media} threadId={threadId} path={path} />
+      ) : file.status === "loading" ? (
         <Loading label="Loading file" rows={6} />
       ) : file.status === "error" ? (
         <ErrorState compact title="Couldn't read this file" failure={file.error} onRetry={file.reload} />
-      ) : file.data.binary ? (
-        <p className="muted">This is a binary file.</p>
+      ) : !file.data ? null : file.data.binary ? (
+        <FileBytes threadId={threadId} path={path} size={file.data.size} as="hex" />
       ) : file.data.truncated ? (
-        <p className="muted">This file is too large to show here.</p>
+        <FileBytes threadId={threadId} path={path} size={file.data.size} as="text" />
       ) : (
         <FileBody threadId={threadId} path={path} file={file.data} line={line} onSaved={file.reload} />
       )}

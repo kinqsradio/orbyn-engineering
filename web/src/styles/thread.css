@@ -2648,6 +2648,39 @@ button.detail-row:hover {
   margin: 8px;
   overflow: auto;
 }
+.file-media {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  place-items: center;
+  padding: 12px;
+  overflow: auto;
+}
+.file-media img,
+.file-media video {
+  max-width: 100%;
+  max-height: 100%;
+}
+.file-media audio {
+  width: 100%;
+}
+.file-font {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+.file-bytes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 0 8px 8px;
+}
+.file-bytes > p {
+  font-size: var(--text-small);
+}
 .file-frame {
   width: 100%;
   height: calc(100dvh - 180px);
