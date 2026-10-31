@@ -257,6 +257,11 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               { key: "default_model", title: "Default model" },
               { key: "default_permission_mode", title: "Default permissions", options: PERMISSIONS },
               {
+                key: "project_title_instructions",
+                title: "Title instructions",
+                description: "Used instead of the global instructions in this project.",
+              },
+              {
                 key: "default_thread_env_mode",
                 title: "Default checkout",
                 options: [

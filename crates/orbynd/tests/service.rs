@@ -398,6 +398,15 @@ async fn crash_recovery_interrupts_runs_and_expires_approvals() {
     let dir = TempDir::new();
     let data = dir.path().join("data");
     let (mut service, thread) = setup(&dir, Options::default(), "codex").await;
+    let off = json!({ "values": { "continue_threads_after_update": false } });
+    service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&off)
+        .send()
+        .await
+        .unwrap();
     service.admit(&thread, "[approve]").await;
     let approval = service.pending().await;
     service.kill();

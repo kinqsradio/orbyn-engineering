@@ -5,6 +5,8 @@ import type { FileContent, FileEntry, SearchHit } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
+import { Menu } from "../../ui/Menu";
+import { FILE_MENTION_TYPE } from "../thread/skillMention";
 import { ErrorState, Loading } from "../../ui/states";
 import { FileBytes, FileMedia, mediaKind, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
@@ -165,6 +167,14 @@ function FolderList({
     request<FileEntry[]>("GET", `/api/threads/${q(threadId)}/files?path=${q(path)}`, undefined, signal),
   );
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: FileEntry } | null>(null);
+  const editors = useAsync("editors", (signal) => api.editors(signal));
+  const pushToast = useUi((state) => state.pushToast);
+  const openWith = (path: string, editor: string) => {
+    api.openInEditor(threadId, { path, editor }).catch((failure: unknown) => {
+      pushToast(`Couldn't open it. ${toFailure(failure).message}`);
+    });
+  };
   if (list.status === "loading") return depth === 0 ? <Loading label="Loading files" rows={6} /> : null;
   if (list.status === "error") {
     return <ErrorState compact title="Couldn't read this folder" failure={list.error} onRetry={list.reload} />;
@@ -178,6 +188,12 @@ function FolderList({
             style={{ paddingLeft: 8 + depth * 12 }}
             data-ignored={entry.ignored || undefined}
             aria-expanded={entry.is_dir ? open.has(entry.path) : undefined}
+            draggable
+            onDragStart={(event) => event.dataTransfer.setData(FILE_MENTION_TYPE, entry.path)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setMenu({ x: event.clientX, y: event.clientY, entry });
+            }}
             onClick={() => {
               if (!entry.is_dir) {
                 onFile(entry.path);
@@ -197,6 +213,21 @@ function FolderList({
           ) : null}
         </li>
       ))}
+      {menu ? (
+        <Menu
+          x={menu.x}
+          y={menu.y}
+          label={`Actions for ${menu.entry.name}`}
+          onClose={() => setMenu(null)}
+          items={[
+            ...(menu.entry.is_dir ? [] : [{ label: "Open", onSelect: () => onFile(menu.entry.path) }]),
+            ...(editors.data ?? []).map((editor) => ({
+              label: editor.file_manager ? `Reveal in ${editor.name}` : `Open in ${editor.name}`,
+              onSelect: () => openWith(menu.entry.path, editor.id),
+            })),
+          ]}
+        />
+      ) : null}
     </ul>
   );
 }

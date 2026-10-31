@@ -143,6 +143,32 @@ async fn a_crash_holds_the_queue_across_restart() {
 }
 
 #[tokio::test]
+async fn an_interrupted_thread_continues_after_a_restart() {
+    let dir = TempDir::new();
+    let data = dir.path().join("data");
+    let (mut service, thread) = setup(&dir, Options::default(), "codex").await;
+    service.admit(&thread, "[hang]").await;
+    until_running(&service, &thread).await;
+    service.kill();
+    let reopened = Service::start(&data, Options::default());
+    let sent = async {
+        loop {
+            let body = reopened
+                .json(&format!("/api/threads/{thread}/messages?limit=100"))
+                .await;
+            if body.to_string().contains("Continue where you left off.") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), sent)
+        .await
+        .unwrap();
+    assert_eq!(reopened.finished(&thread).await, "completed");
+}
+
+#[tokio::test]
 async fn send_now_stops_the_turn_and_goes_first_edit_and_remove_work() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;

@@ -18,7 +18,14 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (14, MESSAGE_SEARCH),
     (15, RUN_FILE_CHANGES),
     (16, LIMIT_STOPS),
+    (17, VISITS_AND_RESUMES),
 ];
+
+// `resume_tries` counts automatic continuations since your last message.
+const VISITS_AND_RESUMES: &str = r#"
+ALTER TABLE threads ADD COLUMN visited_at TEXT;
+ALTER TABLE threads ADD COLUMN resume_tries INTEGER NOT NULL DEFAULT 0;
+"#;
 
 // A limit stop lives on the thread, since it outlasts the run that hit it. `resume_at`
 // is a scheduled continuation; any new run, settle or archive clears the lot.

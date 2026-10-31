@@ -14,6 +14,7 @@ use std::time::Duration;
 use orbyn_contracts::{LocalServer, PreviewInput, PreviewRecording, PreviewTab};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tokio::process::Command;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -466,7 +467,8 @@ impl Core {
         })?;
         let pid = pid.to_string();
         let (program, args): (&str, Vec<&str>) = if cfg!(windows) {
-            ("taskkill", vec!["/PID", &pid])
+            // A server has no window to ask politely, and its children hold the port.
+            ("taskkill", vec!["/PID", &pid, "/T", "/F"])
         } else {
             ("kill", vec![&pid])
         };
@@ -580,15 +582,24 @@ fn parse_netstat(text: &str) -> Vec<(u32, String, u16)> {
         .collect()
 }
 
-async fn in_folder(pid: u32, checkout: &Path) -> bool {
-    let pid = pid.to_string();
-    let Some(text) = output("lsof", &["-a", "-p", &pid, "-d", "cwd", "-Fn"]).await else {
-        return false;
-    };
-    text.lines()
-        .filter_map(|line| line.strip_prefix('n'))
-        .filter_map(|path| crate::util::canonicalize(Path::new(path)).ok())
-        .any(|path| path.starts_with(checkout))
+/// The folder a process runs in, or `None` where the OS won't say, as for another
+/// user's process.
+fn process_folder(pid: u32) -> Option<PathBuf> {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always),
+    );
+    system.process(pid)?.cwd().map(Path::to_path_buf)
+}
+
+/// Whether a process runs from the checkout, and `None` where that can't be known.
+fn in_folder(pid: u32, checkout: &Path) -> Option<bool> {
+    let folder = process_folder(pid)?;
+    let folder = crate::util::canonicalize(&folder).ok()?;
+    Some(folder.starts_with(checkout))
 }
 
 async fn listeners(checkout: &Path) -> Vec<LocalServer> {
@@ -606,13 +617,18 @@ async fn listeners(checkout: &Path) -> Vec<LocalServer> {
         } else {
             found
         };
+        // A service of the system won't name its folder, so it shows and can't be
+        // stopped. One that does name a folder elsewhere is another project's.
         return found
             .into_iter()
-            .map(|(pid, process, port)| LocalServer {
-                port,
-                pid,
-                process,
-                in_checkout: false,
+            .filter_map(|(pid, process, port)| {
+                let in_checkout = in_folder(pid, checkout);
+                (in_checkout != Some(false)).then_some(LocalServer {
+                    port,
+                    pid,
+                    process,
+                    in_checkout: in_checkout == Some(true),
+                })
             })
             .collect();
     }
@@ -621,7 +637,7 @@ async fn listeners(checkout: &Path) -> Vec<LocalServer> {
         .unwrap_or_default();
     let mut servers = Vec::new();
     for (pid, process, port) in parse_lsof(&text) {
-        if in_folder(pid, checkout).await {
+        if in_folder(pid, checkout) == Some(true) {
             servers.push(LocalServer {
                 port,
                 pid,
@@ -653,6 +669,15 @@ mod tests {
         let one = r#"{"address":"127.0.0.1","port":80,"pid":1,"process":"x"}"#;
         assert_eq!(parse_windows_listeners(one).len(), 1);
         assert!(parse_windows_listeners("Access denied").is_empty());
+    }
+
+    #[test]
+    fn a_process_folder_is_read_on_this_platform() {
+        let here = crate::util::canonicalize(&std::env::current_dir().unwrap()).unwrap();
+        assert_eq!(in_folder(std::process::id(), &here), Some(true));
+        let other = here.join("not-the-checkout");
+        assert_eq!(in_folder(std::process::id(), &other), Some(false));
+        assert_eq!(in_folder(u32::MAX - 1, &here), None);
     }
 
     #[test]

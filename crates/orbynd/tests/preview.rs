@@ -334,42 +334,40 @@ async fn a_preview_refuses_other_schemes_and_an_untrusted_folder() {
     service.stop().await;
 }
 
-/// Windows gives no process's folder, so a server is listed and never in reach of Stop.
-#[cfg(windows)]
-#[tokio::test]
-async fn windows_lists_a_listener_and_stops_nothing_outside_the_checkout() {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    let dir = TempDir::new();
-    let (service, thread) = setup(&dir, Options::default(), "codex").await;
-    let path = format!("/api/threads/{thread}/servers");
-    let listed = service.json(&path).await;
-    let row = listed
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["port"] == port)
-        .unwrap_or_else(|| panic!("{listed}"));
-    assert_eq!(row["pid"], std::process::id());
-    assert_eq!(row["in_checkout"], false);
-    let (code, _) = service
-        .send(&format!("{path}/{}/stop", std::process::id()), json!({}))
-        .await;
-    assert_eq!(code, 404);
-    service.stop().await;
+/// A listener that holds for 30 seconds, from a program every machine of this kind has.
+fn listener_in(cwd: &str) -> std::process::Child {
+    let mut command = if cfg!(windows) {
+        let mut command = std::process::Command::new("powershell.exe");
+        command.args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$l.Start();Start-Sleep 30",
+        ]);
+        command
+    } else {
+        let mut command = std::process::Command::new("python3");
+        command.args([
+            "-c",
+            "import socket,time;s=socket.socket();s.bind(('127.0.0.1',0));s.listen();time.sleep(30)",
+        ]);
+        command
+    };
+    command.current_dir(cwd).spawn().unwrap()
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn servers_are_those_running_from_the_checkout_and_only_they_can_be_stopped() {
-    if std::process::Command::new("lsof")
-        .arg("-v")
-        .output()
-        .is_err()
-        || std::process::Command::new("python3")
-            .arg("-V")
+    if cfg!(unix)
+        && (std::process::Command::new("lsof")
+            .arg("-v")
             .output()
             .is_err()
+            || std::process::Command::new("python3")
+                .arg("-V")
+                .output()
+                .is_err())
     {
         return;
     }
@@ -377,31 +375,30 @@ async fn servers_are_those_running_from_the_checkout_and_only_they_can_be_stoppe
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
     let body = service.json(&format!("/api/threads/{thread}")).await;
     let checkout = body["cwd"].as_str().unwrap();
-    let listen =
-        "import socket,time;s=socket.socket();s.bind(('127.0.0.1',0));s.listen();time.sleep(30)";
-    let spawn = |cwd: &str| {
-        std::process::Command::new("python3")
-            .args(["-c", listen])
-            .current_dir(cwd)
-            .spawn()
-            .unwrap()
-    };
-    let mut inside = spawn(checkout);
+    let mut inside = listener_in(checkout);
     let elsewhere = dir.path().join("elsewhere");
     std::fs::create_dir_all(&elsewhere).unwrap();
-    let mut outside = spawn(elsewhere.to_str().unwrap());
+    let mut outside = listener_in(elsewhere.to_str().unwrap());
     let path = format!("/api/threads/{thread}/servers");
+    let row_of = |listed: &serde_json::Value, pid: u32| {
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["pid"] == pid)
+            .cloned()
+    };
     let mut listed = serde_json::Value::Null;
-    for _ in 0..100 {
+    for _ in 0..200 {
         listed = service.json(&path).await;
-        if !listed.as_array().unwrap().is_empty() {
+        if row_of(&listed, inside.id()).is_some() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
-    assert_eq!(listed[0]["pid"], inside.id());
-    assert_eq!(listed[0]["in_checkout"], true);
+    let row = row_of(&listed, inside.id()).unwrap_or_else(|| panic!("{listed}"));
+    assert_eq!(row["in_checkout"], true);
+    assert!(row_of(&listed, outside.id()).is_none(), "{listed}");
     let (code, _) = service
         .send(&format!("{path}/{}/stop", outside.id()), json!({}))
         .await;
@@ -411,7 +408,8 @@ async fn servers_are_those_running_from_the_checkout_and_only_they_can_be_stoppe
         .send(&format!("{path}/{}/stop", inside.id()), json!({}))
         .await;
     assert_eq!(code, 204);
-    assert!(inside.wait().unwrap().code().is_none(), "it was signalled");
+    let status = inside.wait().unwrap();
+    assert!(!status.success(), "it was stopped before it finished");
     outside.kill().unwrap();
     let _ = outside.wait();
     service.stop().await;

@@ -85,6 +85,11 @@ manual one leaves `woke_at` until dismissed. Thread activity never changes the
 saved order. A running thread or descendant is never settled automatically or
 deleted. Lifecycle changes are logged as `CUSTOM thread.updated`.
 
+A run a dead process left mid-work continues on the first lifecycle pass after a restart,
+with a continuation message, unless `continue_threads_after_update` is off. Each thread
+gets three of those in a row; your own message resets the count. `visited_at` is the last
+time you were reading a thread, and a thread with a watch counts as working.
+
 A side chat is a fork with relation `side`: it may start while its parent runs, stays
 out of the thread list, works in the parent's folder and starts `supervised`. Bring back
 adds its own messages to the parent's handoff and leaves the parent's engine session
@@ -735,10 +740,13 @@ The headless shell's separate GPU process exits once a page composites, which en
 browser, so a binary named as that shell gets `--in-process-gpu` on macOS and Linux.
 `ORBYN_BROWSER_IN_PROCESS_GPU` forces it for one behind a wrapper.
 
-`/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout,
-through `lsof`. Windows has no such check, so there it lists loopback and wildcard
-listeners, named through a PowerShell query with `netstat` behind it, with `in_checkout:
-false`, and none of those can be stopped from here.
+`/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout.
+`lsof` finds them on macOS, and on Windows a PowerShell query with `netstat` behind it
+finds loopback and wildcard listeners. Each process's folder is read from the OS, so
+both platforms apply one rule: a server in the checkout can be stopped, one in another
+folder isn't listed, and one whose folder can't be read, like a system service, shows
+with `in_checkout: false` and can't be stopped. Stopping on Windows ends the process and
+its children by force, since a server has no window to ask.
 
 ## Tool budgets
 

@@ -64,6 +64,22 @@ test("alt+up takes the last queued message back, and terminal keys split and clo
   }).toPass();
 });
 
+test("Shift+PageUp reads scrollback without leaving the terminal", async ({ page }) => {
+  await fresh(page);
+  await settled(service, threadIdOf(page));
+  await page.getByRole("button", { name: "Terminal" }).click();
+  const input = page.locator(".terminal-drawer-body .xterm-helper-textarea").first();
+  await input.focus();
+  await page.keyboard.type("for i in $(seq 1 300); do echo line$i; done\n");
+  const rows = page.locator(".terminal-drawer-body .xterm-rows").first();
+  await expect(rows).toContainText("line300");
+  await input.focus();
+  await page.keyboard.press("Shift+PageUp");
+  await expect(rows).not.toContainText("line300");
+  await page.keyboard.press("Shift+PageDown");
+  await expect(rows).toContainText("line300");
+});
+
 test("F6 walks the window's areas", async ({ page }) => {
   await fresh(page);
   await settled(service, threadIdOf(page));
