@@ -4,4 +4,4 @@ export type PreviewTab = { id: string, thread_id: string, url: string,
 /**
  * `human` while a person holds the page, `none` otherwise.
  */
-control: string, recording: boolean, viewers: number, };
+control: string, recording: boolean, viewers: number, width: number, height: number, can_go_back: boolean, can_go_forward: boolean, };

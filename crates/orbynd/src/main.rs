@@ -145,6 +145,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
     config.desktop_program = std::env::var("ORBYN_AGENT_DESKTOP").ok();
     config.browser_path = std::env::var_os("ORBYN_BROWSER").map(PathBuf::from);
     config.browser_headless = env_flag("ORBYN_BROWSER_HEADLESS");
+    config.browser_in_process_gpu = env_flag("ORBYN_BROWSER_IN_PROCESS_GPU");
     Ok(config)
 }
 
@@ -403,6 +404,14 @@ fn router(state: AppState) -> Router {
             post(preview_routes::navigate),
         )
         .route(
+            "/api/threads/{id}/previews/{tab}/history",
+            post(preview_routes::history),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/resize",
+            post(preview_routes::resize),
+        )
+        .route(
             "/api/threads/{id}/previews/{tab}/control",
             post(preview_routes::control),
         )
@@ -423,6 +432,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/runs", post(api::start_run))
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/force-stop", post(api::force_stop))
+        .route("/api/search/messages", get(api::search_messages))
         .route("/api/threads/{id}/events", get(stream::thread_events))
         .route("/api/approvals", get(api::list_approvals))
         .route("/api/approvals/{id}/decide", post(api::decide_approval))

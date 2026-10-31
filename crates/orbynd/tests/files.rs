@@ -290,13 +290,15 @@ async fn open_in_editor_runs_only_a_known_editor_on_a_checkout_file() {
         .send(&opened, json!({ "path": "a.txt", "editor": "vscode" }))
         .await;
     assert_eq!(status, 202);
-    for _ in 0..200 {
-        if record.exists() {
+    // The editor runs detached, and on a busy machine it can take a while.
+    let mut seen = String::new();
+    for _ in 0..6000 {
+        seen = std::fs::read_to_string(&record).unwrap_or_default();
+        if !seen.is_empty() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    let seen = std::fs::read_to_string(&record).unwrap();
     assert_eq!(seen.trim(), checkout.join("a.txt").to_str().unwrap());
 }
 

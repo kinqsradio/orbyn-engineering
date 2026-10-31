@@ -115,7 +115,7 @@ impl Store {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn reader(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn reader(&self) -> MutexGuard<'_, Connection> {
         self.read
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -546,8 +546,41 @@ fn insert_event(
             serde_json::to_string(event)?
         ],
     )?;
+    match event {
+        AgUiEvent::TextMessageStart { message_id, role } => {
+            index_message(tx, &record, message_id, role, "")?;
+        }
+        AgUiEvent::TextMessageContent { message_id, delta } => {
+            index_message(tx, &record, message_id, "assistant", delta)?;
+        }
+        _ => {}
+    }
     appended.0.push((thread_id.to_owned(), seq));
     Ok(record)
+}
+
+/// Keeps the whole text of a message beside the log, for search.
+fn index_message(
+    tx: &Transaction<'_>,
+    record: &ThreadEvent,
+    message_id: &str,
+    role: &str,
+    text: &str,
+) -> Result<()> {
+    tx.execute(
+        "INSERT INTO thread_messages (thread_id, message_id, seq, role, ts, text)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (thread_id, message_id) DO UPDATE SET text = text || excluded.text",
+        params![
+            record.thread_id,
+            message_id,
+            record.seq,
+            role,
+            record.ts,
+            text
+        ],
+    )?;
+    Ok(())
 }
 
 fn insert_audit(tx: &Transaction<'_>, record: &AuditRecord) -> Result<i64> {

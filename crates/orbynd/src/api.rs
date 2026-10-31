@@ -1116,6 +1116,28 @@ pub async fn cancel_run(
     Ok(StatusCode::ACCEPTED)
 }
 
+#[derive(Deserialize)]
+pub struct MessageSearchQuery {
+    q: String,
+    project_id: Option<String>,
+    thread_id: Option<String>,
+    limit: Option<usize>,
+    archived: Option<bool>,
+}
+
+pub async fn search_messages(
+    State(state): State<AppState>,
+    Query(query): Query<MessageSearchQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = orbyn_core::search::SearchScope {
+        project_id: query.project_id,
+        thread_id: query.thread_id,
+        archived: query.archived.unwrap_or(false),
+        limit: query.limit,
+    };
+    Ok(Json(state.core.store.search_messages(&query.q, &scope)?))
+}
+
 pub async fn force_stop(
     State(state): State<AppState>,
     Path(id): Path<String>,

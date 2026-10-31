@@ -690,3 +690,84 @@ fn old_rows_gain_lifecycle_defaults() {
     assert!(!lifecycle.unread);
     assert!(lifecycle.parent_thread_id.is_none());
 }
+
+fn say(store: &Store, run: &str, id: &str, role: &str, parts: &[&str]) {
+    let start = AgUiEvent::TextMessageStart {
+        message_id: id.into(),
+        role: role.into(),
+    };
+    store.append_run_event(run, &start).unwrap();
+    for part in parts {
+        let content = AgUiEvent::TextMessageContent {
+            message_id: id.into(),
+            delta: (*part).into(),
+        };
+        store.append_run_event(run, &content).unwrap();
+    }
+}
+
+#[test]
+fn every_word_must_be_in_one_message_even_across_events() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    say(&f.store, &run, "a", "user", &["fix the lo", "gin page"]);
+    say(&f.store, &run, "b", "assistant", &["the login"]);
+    say(&f.store, &run, "c", "assistant", &["page only"]);
+    let scope = crate::search::SearchScope::default();
+    let found = f.store.search_messages("PAGE login", &scope).unwrap();
+    assert_eq!(found.hits.len(), 1, "{found:?}");
+    assert_eq!(found.hits[0].message_id, "a");
+    assert_eq!(found.hits[0].role, "user");
+    assert_eq!(found.hits[0].snippet, "fix the login page");
+    assert!(found.hits[0].seq > 0);
+}
+
+#[test]
+fn search_folds_any_script_and_short_queries_read_nothing() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    say(&f.store, &run, "a", "assistant", &["ÉCOLE 登录页面 ok"]);
+    let scope = crate::search::SearchScope::default();
+    let search = |query: &str| f.store.search_messages(query, &scope).unwrap();
+    assert_eq!(search("école").hits.len(), 1, "non-ASCII case folds");
+    assert_eq!(
+        search("登录").hits.len(),
+        1,
+        "two CJK characters are enough"
+    );
+    let lone = search("登");
+    assert!(lone.too_short && lone.hits.is_empty());
+    assert!(search("ok").too_short);
+    assert!(search("   ").too_short);
+    assert_eq!(
+        search("登录 ok").hits.len(),
+        1,
+        "a short word must still match"
+    );
+    assert!(search("登录 no").hits.is_empty());
+    assert!(
+        search("100%").hits.is_empty(),
+        "a percent is not a wildcard"
+    );
+    assert!(search("o_k").hits.is_empty(), "nor is an underscore");
+}
+
+#[test]
+fn old_logs_fill_the_search_table_with_the_migration() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    say(&f.store, &run, "a", "user", &["part one ", "part two"]);
+    say(&f.store, &run, "b", "assistant", &["other"]);
+    let conn = rusqlite::Connection::open(&f.path).unwrap();
+    conn.execute_batch("DROP TABLE thread_messages").unwrap();
+    let (_, migration) = super::migrations::MIGRATIONS
+        .iter()
+        .find(|(version, _)| *version == 14)
+        .unwrap();
+    conn.execute_batch(migration).unwrap();
+    let scope = crate::search::SearchScope::default();
+    let found = f.store.search_messages("one two", &scope).unwrap();
+    assert_eq!(found.hits.len(), 1);
+    assert_eq!(found.hits[0].role, "user");
+    assert_eq!(found.hits[0].snippet, "part one part two");
+}

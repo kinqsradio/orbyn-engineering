@@ -199,6 +199,7 @@ impl Core {
             json!({ "through": through }),
         )?;
         self.store.set_handoff(thread_id, &handoff)?;
+        self.store.forget_messages_after(thread_id, through)?;
         self.store
             .note_thread_event(thread_id, "thread.rewound", json!({ "through": through }))
     }

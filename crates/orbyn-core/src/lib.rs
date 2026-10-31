@@ -30,6 +30,7 @@ pub mod questions;
 pub mod runs;
 pub mod scm;
 pub mod scratch;
+pub mod search;
 pub mod selection;
 pub mod skills;
 pub mod sse;

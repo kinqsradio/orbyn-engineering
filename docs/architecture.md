@@ -318,6 +318,20 @@ keeps uncommitted work, and never while another active thread uses it. `?dry_run
 only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
+## Message search
+
+A message is split over many events, so `thread_messages` keeps each one whole, written
+in the same transaction as its event, copied with a fork and filled from the log for
+threads made before it. Reasoning is not in it, and a rewind takes out what it hides from
+clients while the log stays whole.
+
+A message matches when it holds every word, in any order, ignoring case. A search needs
+one word of at least three characters, or two in Chinese, Japanese or Korean, which has
+no spaces and packs more into a character. Shorter words still have to match; a query
+with none long enough returns `too_short` and reads nothing. At most 16 words and 200
+characters, 200 hits and the newest 50,000 messages are read, and `truncated` says when
+that left something out. Archived threads are searched only when asked.
+
 ## Automatic requests
 
 `GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
@@ -600,6 +614,16 @@ Recording keeps the changed frames as numbered JPEG files in
 `<data>/browser-artifacts`, with no video encoder. Agents do not act on a preview tab
 yet, so taking control only guards against a watcher's stray input.
 
+Back and forward step through web pages only, so the blank page a browser starts on
+and anything else not `http` or `https` is passed over, and at either end nothing
+happens. A link clicked in the page changes where a tab is with nobody telling this
+side, so the address and those two flags are reread about once a second while someone
+watches. A page is 100 to 4096 pixels each way, which also bounds each frame.
+
+The headless shell's separate GPU process exits once a page composites, which ends the
+browser, so a binary named as that shell gets `--in-process-gpu` on macOS and Linux.
+`ORBYN_BROWSER_IN_PROCESS_GPU` forces it for one behind a wrapper.
+
 `/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout,
 through `lsof`. Windows has no such check, so there it lists loopback and wildcard
 listeners, named through a PowerShell query with `netstat` behind it, with `in_checkout:
@@ -664,7 +688,8 @@ wins, and a shim that points at a shell is refused.
 `{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
 for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
-`ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`, `ORBYN_OFFLINE`
+`ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,
+`ORBYN_BROWSER_IN_PROCESS_GPU`, `ORBYN_OFFLINE`
 (skip latest-version lookups) and `ORBYN_LOG`.
 
 ## HTTP API
@@ -721,6 +746,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET, POST /api/threads/:id/attachments?name=` | Raw upload body; `Content-Type` is the kind |
 | `DELETE /api/attachments/:id` | Remove an attachment |
 | `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills, ranked unignored files, this project's threads |
+| `GET /api/search/messages?q=&project_id=&thread_id=&archived=&limit=` | `MessageSearch`: `MessageHit[]`, newest first, each with `seq` and `message_id` to open at |
 | `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, its agents (`source: agent`), custom command files, and skills when `true` |
 | `GET /api/questions?thread_id=&state=` | `QuestionRequest[]` |
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
@@ -777,6 +803,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET, POST /api/threads/:id/previews` | `PreviewTab[]`; `OpenPreview` |
 | `DELETE /api/threads/:id/previews/:tab` | Close the tab and its browser |
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
+| `POST .../previews/:tab/history`, `/resize` | `StepPreview`; `ResizePreview`, `400` outside 100 to 4096; both to `PreviewTab` |
 | `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
 | `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
 | `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |

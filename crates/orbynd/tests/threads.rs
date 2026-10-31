@@ -342,3 +342,109 @@ async fn settings_round_trip_and_validate() {
         .unwrap();
     assert_eq!(response.status(), 400);
 }
+
+async fn search(service: &Service, query: &[(&str, &str)]) -> Value {
+    let response = service
+        .get("/api/search/messages")
+        .query(query)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    response.json().await.unwrap()
+}
+
+#[tokio::test]
+async fn message_search_opens_at_the_message_and_keeps_to_its_scope() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    service.admit(&thread, "rename the billing helper").await;
+    service.finished(&thread).await;
+
+    let found = search(&service, &[("q", "HELPER billing")]).await;
+    assert_eq!(found["too_short"], false);
+    let hit = &found["hits"][0];
+    assert_eq!(hit["thread_id"], thread.as_str());
+    assert_eq!(hit["role"], "user");
+    assert_eq!(hit["snippet"], "rename the billing helper");
+    let events = service.all_events(&thread).await;
+    let at = events
+        .iter()
+        .find(|event| event["seq"] == hit["seq"])
+        .expect("the hit points into the log");
+    assert_eq!(at["event"]["messageId"], hit["message_id"]);
+
+    let answer = search(&service, &[("q", "hello codex")]).await;
+    assert_eq!(answer["hits"][0]["role"], "assistant");
+    let split = search(&service, &[("q", "billing hello")]).await;
+    assert_eq!(split["hits"], json!([]), "the words are in two messages");
+
+    let project = service.json(&format!("/api/threads/{thread}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let inside = search(&service, &[("q", "billing"), ("project_id", &project)]).await;
+    assert_eq!(inside["hits"].as_array().unwrap().len(), 1);
+    let elsewhere = search(&service, &[("q", "billing"), ("project_id", "other")]).await;
+    assert_eq!(elsewhere["hits"], json!([]));
+
+    let short = search(&service, &[("q", "a")]).await;
+    assert_eq!(short["too_short"], true);
+    let long = "x".repeat(201);
+    let refused = service
+        .get("/api/search/messages")
+        .query(&[("q", long.as_str())])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 400);
+
+    let (code, _) = service.patch(&thread, json!({ "archived": true })).await;
+    assert_eq!(code, 200);
+    assert_eq!(
+        search(&service, &[("q", "billing")]).await["hits"],
+        json!([])
+    );
+    let archived = search(&service, &[("q", "billing"), ("archived", "true")]).await;
+    assert_eq!(archived["hits"].as_array().unwrap().len(), 1);
+
+    let response = service
+        .client
+        .delete(format!("{}/api/threads/{thread}", service.url))
+        .bearer_auth(&service.token)
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    let gone = search(&service, &[("q", "billing"), ("archived", "true")]).await;
+    assert_eq!(
+        gone["hits"],
+        json!([]),
+        "deleting a thread deletes its text"
+    );
+}
+
+#[tokio::test]
+async fn a_fork_is_searchable_and_a_rewind_hides_what_it_undid() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let run = service.admit(&thread, "first walrus prompt").await;
+    service.finished(&thread).await;
+    let (status, fork) = service
+        .send(&format!("/api/threads/{thread}/fork"), json!({}))
+        .await;
+    assert_eq!(status, 201, "{fork}");
+    let found = search(&service, &[("q", "walrus")]).await;
+    assert_eq!(found["hits"].as_array().unwrap().len(), 2);
+
+    let (status, body) = service
+        .send(
+            &format!("/api/threads/{thread}/rewind"),
+            json!({ "run_id": run, "restore_files": false }),
+        )
+        .await;
+    assert!(status < 300, "{status} {body}");
+    let found = search(&service, &[("q", "walrus")]).await;
+    assert_eq!(found["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(found["hits"][0]["thread_id"], fork["id"]);
+}

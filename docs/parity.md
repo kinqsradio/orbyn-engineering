@@ -70,7 +70,7 @@ toward completion.
 - [x] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S | web done
 - [ ] A36 Copy reference/thread/ID: PR link first, then thread chip, then bare ID | docs/user/thread-sidebar.md | w d m | S
 - [x] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M
-- [ ] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L
+- [x] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L | server done
 - [x] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M | web done
 - [x] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
 - [x] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
@@ -91,7 +91,7 @@ toward completion.
 - [ ] A56 Resume at reset: scheduled continuation, default optional | packages/contracts/src/settings.ts | w d m s | M
 - [ ] A57 Snooze until reset: hides thread until allowance returns | packages/contracts/src/settings.ts | w d m s | S
 - [ ] A58 Continue after restarts: resumes active threads, stops after 3 automatic tries | docs/user/updating.md | s | L
-- [ ] A59 Force stop: kills unresponsive thread | apps/web/src/components/chat/useForceStopThread.ts | w d s | M
+- [x] A59 Force stop: kills unresponsive thread | apps/web/src/components/chat/useForceStopThread.ts | w d s | M | server done
 - [ ] A60 Background work view: mobile sheet of running background work | apps/mobile/src/features/threads/ThreadBackgroundWorkSheet.tsx | m | M
 - [ ] A61 Sidebar grouping and sort: repository/path/separate; project and thread sort; overrides | packages/contracts/src/settings.ts | w d m | M
 - [x] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M | server done

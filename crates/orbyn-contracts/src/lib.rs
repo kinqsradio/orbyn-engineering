@@ -1686,6 +1686,34 @@ pub struct UpsertTask {
 }
 
 wire! {
+/// A message that holds every word. `seq` is its place in the thread's log, and
+/// `message_id` the message clients draw, so a client can open right at it.
+pub struct MessageHit {
+    pub thread_id: String,
+    pub thread_title: String,
+    pub project_id: String,
+    pub message_id: String,
+    pub seq: i64,
+    pub role: String,
+    pub ts: String,
+    /// The text around the first word found.
+    pub snippet: String,
+}
+}
+
+wire! {
+pub struct MessageSearch {
+    pub hits: Vec<MessageHit>,
+    /// The words to highlight, lower-cased.
+    pub words: Vec<String>,
+    /// No word was long enough to search for, so nothing was searched.
+    pub too_short: bool,
+    /// More matched, or too many messages to read them all. Narrow the search.
+    pub truncated: bool,
+}
+}
+
+wire! {
 /// `run_id` is what was stopped, and empty when nothing was running.
 pub struct ForcedStop {
     pub run_id: Option<String>,
@@ -1784,6 +1812,10 @@ pub struct PreviewTab {
     pub control: String,
     pub recording: bool,
     pub viewers: usize,
+    pub width: u32,
+    pub height: u32,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
 }
 }
 
@@ -1802,6 +1834,20 @@ pub struct OpenPreview {
 wire! {
 pub struct NavigatePreview {
     pub url: String,
+}
+}
+
+wire! {
+pub struct StepPreview {
+    /// True goes back; false goes forward.
+    pub back: bool,
+}
+}
+
+wire! {
+pub struct ResizePreview {
+    pub width: u32,
+    pub height: u32,
 }
 }
 

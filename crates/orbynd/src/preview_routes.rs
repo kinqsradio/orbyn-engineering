@@ -7,7 +7,9 @@ use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use orbyn_contracts::{NavigatePreview, OpenPreview, PreviewControl, PreviewInput};
+use orbyn_contracts::{
+    NavigatePreview, OpenPreview, PreviewControl, PreviewInput, ResizePreview, StepPreview,
+};
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::api::{ApiJson, ApiResult, AppState, LOCAL_USER};
@@ -39,6 +41,28 @@ pub async fn navigate(
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(
         state.core.previews.navigate(&id, &tab, &body.url).await?,
+    ))
+}
+
+pub async fn history(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<StepPreview>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.previews.step(&id, &tab, body.back).await?))
+}
+
+pub async fn resize(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<ResizePreview>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state
+            .core
+            .previews
+            .resize(&id, &tab, body.width, body.height)
+            .await?,
     ))
 }
 

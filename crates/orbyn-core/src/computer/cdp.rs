@@ -19,6 +19,8 @@ use crate::process::ManagedChild;
 const START_TIMEOUT: Duration = Duration::from_secs(20);
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
+/// A step in history is usually instant, and a same-page entry fires no load at all.
+const HISTORY_LOAD_TIMEOUT: Duration = Duration::from_secs(5);
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -87,6 +89,83 @@ fn candidates() -> Vec<PathBuf> {
     .collect()
 }
 
+/// The extra switches a browser needs. The headless shell's separate GPU process exits
+/// once a page composites on macOS and Linux, which ends the browser, so that work stays
+/// in-process there. `forced` covers a shell behind a wrapper or another name.
+fn launch_flags(path: &Path, headless: bool, forced: bool) -> Vec<&'static str> {
+    let name = path
+        .file_stem()
+        .map(|name| name.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let shell = name.contains("headless") && name.contains("shell");
+    let mut flags = Vec::new();
+    if headless && !shell {
+        flags.push("--headless=new");
+    }
+    if forced || (shell && !cfg!(windows)) {
+        flags.push("--in-process-gpu");
+    }
+    flags
+}
+
+/// How to start a browser.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LaunchOptions {
+    pub headless: bool,
+    pub in_process_gpu: bool,
+}
+
+/// Where a tab stands in its history. Only web pages count, so the blank page every
+/// browser starts on is not somewhere to go back to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HistoryState {
+    pub url: String,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
+    back: Option<i64>,
+    forward: Option<i64>,
+}
+
+fn is_web(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// Reads `Page.getNavigationHistory`.
+fn read_history(reply: &Value) -> HistoryState {
+    let empty = Vec::new();
+    let entries = reply
+        .get("entries")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
+    let current = reply
+        .get("currentIndex")
+        .and_then(Value::as_u64)
+        .and_then(|index| usize::try_from(index).ok())
+        .unwrap_or(0);
+    fn url_of(entry: &Value) -> &str {
+        entry.get("url").and_then(Value::as_str).unwrap_or("")
+    }
+    let id_of = |entry: &Value| entry.get("id").and_then(Value::as_i64);
+    let back = entries
+        .iter()
+        .take(current)
+        .rev()
+        .find(|entry| is_web(url_of(entry)))
+        .and_then(id_of);
+    let forward = entries
+        .iter()
+        .skip(current + 1)
+        .find(|entry| is_web(url_of(entry)))
+        .and_then(id_of);
+    HistoryState {
+        url: entries.get(current).map(url_of).unwrap_or("").to_owned(),
+        can_go_back: back.is_some(),
+        can_go_forward: forward.is_some(),
+        back,
+        forward,
+    }
+}
+
 pub struct BrowserSession {
     socket: Socket,
     session_id: String,
@@ -95,7 +174,7 @@ pub struct BrowserSession {
 }
 
 impl BrowserSession {
-    pub async fn launch(path: &Path, profile: &Path, headless: bool) -> Result<Self> {
+    pub async fn launch(path: &Path, profile: &Path, options: LaunchOptions) -> Result<Self> {
         std::fs::create_dir_all(profile)?;
         let port_file = profile.join("DevToolsActivePort");
         let _ = std::fs::remove_file(&port_file);
@@ -106,9 +185,7 @@ impl BrowserSession {
             .arg("--remote-debugging-port=0")
             .arg(profile_arg)
             .args(["--no-first-run", "--no-default-browser-check"]);
-        if headless {
-            command.arg("--headless=new");
-        }
+        command.args(launch_flags(path, options.headless, options.in_process_gpu));
         command
             .arg("about:blank")
             .stdin(Stdio::null())
@@ -258,20 +335,44 @@ impl BrowserSession {
         if let Some(error) = reply.get("errorText").and_then(Value::as_str) {
             return Err(failed(error));
         }
-        // Load completion is best effort; a slow page is still navigated.
-        let deadline = tokio::time::Instant::now() + LOAD_TIMEOUT;
-        let _ = tokio::time::timeout_at(deadline, async {
+        self.wait_for_load(LOAD_TIMEOUT).await;
+        Ok(json!({ "url": self.current_url().await? }))
+    }
+
+    /// Load completion is best effort; a slow page is still navigated.
+    async fn wait_for_load(&mut self, limit: Duration) {
+        let _ = tokio::time::timeout(limit, async {
             while let Some(Ok(frame)) = self.socket.next().await {
                 let Ok(text) = frame.to_text() else { continue };
                 if let Ok(event) = serde_json::from_str::<Value>(text)
-                    && event.get("method").and_then(Value::as_str) == Some("Page.loadEventFired")
+                    && matches!(
+                        event.get("method").and_then(Value::as_str),
+                        Some("Page.loadEventFired" | "Page.navigatedWithinDocument")
+                    )
                 {
                     return;
                 }
             }
         })
         .await;
-        Ok(json!({ "url": self.current_url().await? }))
+    }
+
+    pub async fn history(&mut self) -> Result<HistoryState> {
+        let reply = self.call("Page.getNavigationHistory", json!({})).await?;
+        Ok(read_history(&reply))
+    }
+
+    /// Goes one web page back or forward. At the end of history it stays put.
+    pub async fn step_history(&mut self, back: bool) -> Result<HistoryState> {
+        let state = self.history().await?;
+        let target = if back { state.back } else { state.forward };
+        let Some(entry) = target else {
+            return Ok(state);
+        };
+        self.call("Page.navigateToHistoryEntry", json!({ "entryId": entry }))
+            .await?;
+        self.wait_for_load(HISTORY_LOAD_TIMEOUT).await;
+        self.history().await
     }
 
     pub async fn text(&mut self) -> Result<Value> {
@@ -360,6 +461,40 @@ async fn read_port_file(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_headless_shell_gets_the_gpu_switch() {
+        let shell = Path::new("/x/chrome-headless-shell");
+        let chrome = Path::new("/Applications/Google Chrome");
+        assert_eq!(launch_flags(chrome, true, false), ["--headless=new"]);
+        assert!(launch_flags(chrome, false, false).is_empty());
+        let flags = launch_flags(shell, true, false);
+        assert!(!flags.contains(&"--headless=new"), "a shell has one mode");
+        assert_eq!(flags.contains(&"--in-process-gpu"), !cfg!(windows));
+        assert!(launch_flags(chrome, true, true).contains(&"--in-process-gpu"));
+    }
+
+    fn history(current: u64, urls: &[&str]) -> HistoryState {
+        let entries: Vec<Value> = urls
+            .iter()
+            .enumerate()
+            .map(|(index, url)| json!({ "id": index + 10, "url": url }))
+            .collect();
+        read_history(&json!({ "currentIndex": current, "entries": entries }))
+    }
+
+    #[test]
+    fn history_never_leads_off_the_web() {
+        let first = history(1, &["about:blank", "http://a/"]);
+        assert!(!first.can_go_back, "the blank start page does not count");
+        assert!(!first.can_go_forward);
+        assert_eq!(first.url, "http://a/");
+        let middle = history(2, &["about:blank", "http://a/", "http://b/", "http://c/"]);
+        assert_eq!((middle.back, middle.forward), (Some(11), Some(13)));
+        let around = history(2, &["http://a/", "data:text/html,x", "http://b/"]);
+        assert_eq!(around.back, Some(10), "skips what is not a web page");
+        assert_eq!(read_history(&json!({})), HistoryState::default());
+    }
 
     #[test]
     fn urls_are_web_only_and_lowercase_the_host() {

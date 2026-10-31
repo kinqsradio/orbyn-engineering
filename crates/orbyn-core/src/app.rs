@@ -44,6 +44,8 @@ pub struct CoreConfig {
     pub desktop_program: Option<String>,
     pub browser_path: Option<PathBuf>,
     pub browser_headless: bool,
+    /// Forces `--in-process-gpu`, which the headless shell gets by itself.
+    pub browser_in_process_gpu: bool,
 }
 
 impl CoreConfig {
@@ -58,6 +60,7 @@ impl CoreConfig {
             desktop_program: None,
             browser_path: None,
             browser_headless: false,
+            browser_in_process_gpu: false,
         }
     }
 }
@@ -90,6 +93,7 @@ impl Core {
             browser_path: config.browser_path.clone(),
             profile_dir: config.data_dir.join("browser-profile"),
             headless: config.browser_headless,
+            in_process_gpu: config.browser_in_process_gpu,
         }));
         Self::open_with(config, backend)
     }
