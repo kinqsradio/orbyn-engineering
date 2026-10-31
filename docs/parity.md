@@ -116,10 +116,10 @@ surfaces on that row stay open.
 - [ ] B17 Steer oldest queued: shortcut, draft untouched | packages/contracts/src/keybindings.ts | w d | S
 - [ ] B18 Offline mobile queue: local copies, resumes on reconnect | docs/user/composer.md | m | L
 - [x] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S | web done
-- [ ] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M
+- [x] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M | server done
 - [ ] B21 Remembered model defaults: provider, model and options carry to new threads | docs/user/composer.md | w d m | S
 - [x] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L | server done
-- [ ] B23 Model visibility and order: hide, reorder, favorite per instance | packages/contracts/src/settings.ts | w d s | M
+- [x] B23 Model visibility and order: hide, reorder, favorite per instance | packages/contracts/src/settings.ts | w d s | M | server done
 - [x] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M | server done
 - [ ] B25 Effort display: label or bars, with shortcuts | apps/web/src/components/chat/EffortGlyph.tsx | w d | S
 - [x] B26 Permission mode: Supervised, Auto-accept edits, Auto, Full access | docs/user/permission-modes.md | w d m s | L | server done
@@ -268,15 +268,15 @@ surfaces on that row stay open.
 - [ ] F19 Writing style: repo conventions or custom, follows templates | apps/web/src/components/settings/SourceControlWritingSettings.tsx | w d m s | M
 - [x] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M | server done
 - [ ] F21 Environment mode selector: local vs new worktree, environment choice | apps/web/src/components/BranchToolbarEnvModeSelector.tsx | w d m | M
-- [ ] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L
+- [x] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L | server done
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
 - [ ] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S
-- [ ] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M
+- [ ] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
 - [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
-- [ ] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S
-- [ ] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S
-- [ ] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M
-- [ ] F30 Storage cleanup: worktree rules, keep-when policy, reports | apps/server/src/storageCleanup.ts | w d m s | L
+- [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done
+- [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
+- [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done
+- [x] F30 Storage cleanup: worktree rules, keep-when policy, reports | apps/server/src/storageCleanup.ts | w d m s | L | server done
 - [x] F31 PR list page: grouped filters across environments, quick actions | apps/web/src/components/pullRequest/PullRequestsPage.tsx | w d m s | L | server done
 - [x] F32 PR summary tab: description, state, editing | apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx | w d m | M | server done
 - [x] F33 PR timeline: activity with filters | apps/web/src/components/pullRequest/PullRequestTimelineTab.tsx | w d m | M | server done
@@ -309,7 +309,7 @@ surfaces on that row stay open.
 - [ ] F60 PR link menu: right-click a PR link for Copy link and Open on the host; hover preview card | apps/web/src/components/pullRequest/pullRequestLinkContextMenu.ts | w d | S
 - [ ] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
-- [ ] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M
+- [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done
 - [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
 
 ## G. Terminal
@@ -406,14 +406,14 @@ surfaces on that row stay open.
 - [ ] I32 ACP sign-in: browser or terminal methods, sign out | apps/web/src/components/settings/ProviderAuthTerminal.tsx | w d m s | M | [auth-risk]
 - [ ] I33 ACP native sessions: list, import, delete | apps/web/src/components/settings/AcpSessionManagementSection.tsx | w d s | M
 - [ ] I34 Named ACP agents: Claude, Copilot, Devin, Droid adapters | packages/provider-acp-registry/src/droidAcp.ts | s | M
-- [ ] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L
+- [ ] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L | server: stored only, no launch effect
 - [ ] I36 Instance environment: variables with sensitive marking | packages/provider-core/src/instanceEnvironment.ts | w d s | M | [auth-risk]
 - [ ] I37 Provider credential store: server-side secret storage | apps/server/src/provider/ProviderCredentialStore.ts | s | L | [auth-risk]
 - [ ] I38 Provider install flow: start, cancel, subscribe, remove | apps/web/src/components/settings/ProviderSetupSection.tsx | w d s | M
 - [ ] I39 Provider updates: per-provider and update-all | apps/web/src/components/ProviderUpdatesAction.tsx | w d m s | M
 - [ ] I40 Model catalog: refreshed discovery with manifest | apps/server/src/provider/ModelManifest.ts | s | M | [hosted]
 - [ ] I41 Status banners: provider health in composer | apps/web/src/components/chat/ProviderStatusBanner.tsx | w d m | S
-- [ ] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M
+- [x] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M | server done
 - [ ] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S
 - [ ] I44 Text generation model: titles and branch names | packages/contracts/src/settings.ts | w d s | S
 - [ ] I45 Permission-mode matrix per provider: fx Supervised and Auto; Muse Supervised and Full; Pi Supervised, Auto-accept edits, Full (stored Auto shows Supervised); OpenCode Auto equals Supervised; mode change restarts the provider session | docs/user/permission-modes.md | w d m s | M
@@ -458,13 +458,13 @@ surfaces on that row stay open.
 - [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
 - [ ] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
 - [ ] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S
-- [ ] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M
+- [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
 - [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
 - [x] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M | server done
 - [ ] K9 Project actions: run on worktree create, settle, async, preview URL | apps/web/src/components/settings/ProjectActionsSettings.tsx | w d s | M
-- [ ] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L
-- [ ] K11 Keybindings file: lenient JSON with late defaults | apps/server/src/keybindings.ts | s | M
+- [x] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L | server done
+- [x] K11 Keybindings file: lenient JSON with late defaults | apps/server/src/keybindings.ts | s | M | server done
 - [ ] K12 Workspace focus: F6 area cycling, tree navigation | docs/user/keyboard-focus.md | w d | M
 - [ ] K13 Command palette: threads, actions, projects, settings, submenus | apps/web/src/components/CommandPalette.tsx | w d m | L
 - [ ] K14 Themes: built-in, per-light/dark selection | apps/web/src/components/settings/ThemeSettings.tsx | w d m | M
@@ -482,10 +482,10 @@ surfaces on that row stay open.
 - [ ] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
 - [ ] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S
-- [ ] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L
-- [ ] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M
+- [ ] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server: counts and database only; no process or trace views
+- [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done
 - [ ] K31 Product telemetry: hashed usage events, env opt-out | docs/user/telemetry.md | s d | M | [hosted]
-- [ ] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S
+- [x] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S | server done
 - [ ] K33 Secrets: secret providers, references, 1Password driver | apps/web/src/components/settings/SecretsSettings.tsx | w d s | L | [auth-risk]
 - [ ] K34 Triage: playbook thread with source for server version | apps/server/src/triage/TriageService.ts | w d m c s | M
 - [ ] K35 Welcome wizard: computers, agents, project import | apps/web/src/components/onboarding/WelcomeWizard.tsx | w d | L
@@ -499,7 +499,7 @@ surfaces on that row stay open.
 - [ ] K43 Preview shortcuts: toggle, refresh, focus URL, zoom in, out and reset | packages/contracts/src/keybindings.ts | w d | S
 - [ ] K44 Search and new-thread shortcuts: palette, file picker, project search, find in thread, new thread, local new thread, new without project, open favorite editor, copy PR number | packages/contracts/src/keybindings.ts | w d | S
 - [ ] K45 Theme shortcuts: pick theme, cycle appearance, toggle theme editor, open usage | packages/contracts/src/keybindings.ts | w d | S
-- [ ] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M
+- [x] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M | server done
 - [ ] K47 Keybinding file notices: toast when file reloads or is invalid, warning when it cannot be opened | apps/web/src/components/KeybindingsUpdateToast.tsx | w d | S
 - [ ] K48 Reserved keys: mod+w never closes the desktop window; browsers need alt+w style rebind | docs/user/keybindings.md | w d | S
 - [ ] K49 Snap Shot settings: shortcut (including both Shift keys), sound choice, flash, animations, include accessibility data, setup dialog | apps/web/src/components/settings/SnapShotSettings.tsx | d | M

@@ -177,6 +177,7 @@ impl Core {
                 .project(request.project_id.as_deref().unwrap_or_default())?,
         };
         self.engines.driver(&request.engine)?;
+        self.check_engine_enabled(&request.engine, &project.id)?;
         if let Some(profile) = request.skill_profile.as_deref()
             && profile != crate::skills::DEFAULT_PROFILE
             && self.store.profile(profile)?.is_none()
@@ -193,7 +194,8 @@ impl Core {
                         "Worktrees need a Git repository.".into(),
                     ));
                 }
-                Some(git::create_worktree(Path::new(&project.path), purpose).await?)
+                let options = self.worktree_options(&project.id, &project.path, &request)?;
+                Some(git::create_worktree(Path::new(&project.path), purpose, &options).await?)
             }
             None => None,
         };
@@ -214,6 +216,34 @@ impl Core {
         })?;
         self.run_hook_scripts(&thread.id, |script| script.run_on_worktree_create);
         Ok(thread)
+    }
+
+    /// The settings for a new worktree. The project file's submodule choice wins,
+    /// since it travels with the branch being checked out.
+    fn worktree_options(
+        &self,
+        project_id: &str,
+        path: &str,
+        request: &orbyn_contracts::CreateThread,
+    ) -> Result<git::WorktreeOptions> {
+        let text = |key: &str| -> Result<String> {
+            Ok(self
+                .preference(key, Some(project_id))?
+                .as_str()
+                .unwrap_or_default()
+                .to_owned())
+        };
+        let file = crate::project_file::read_project_file(Path::new(path)).file;
+        Ok(git::WorktreeOptions {
+            prefix: text("branch_name_prefix")?,
+            base: request.base_branch.clone(),
+            from_origin: self.preference("new_worktrees_start_from_origin", Some(project_id))?
+                == serde_json::json!(true),
+            submodules: match file.and_then(|file| file.worktree_submodules) {
+                Some(choice) => choice,
+                None => text("worktree_submodules")?,
+            },
+        })
     }
 
     pub async fn thread_diff(&self, thread_id: &str) -> Result<Vec<orbyn_contracts::FileDiff>> {

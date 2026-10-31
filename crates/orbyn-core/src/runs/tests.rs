@@ -122,6 +122,7 @@ async fn fixture_with(script: Script, update: &str, update_timeout: Duration) ->
             title: None,
             worktree: None,
             skill_profile: None,
+            base_branch: None,
         })
         .await
         .unwrap();

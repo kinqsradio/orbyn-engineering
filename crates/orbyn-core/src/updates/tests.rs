@@ -118,6 +118,7 @@ async fn fixture(update: &'static str) -> Fixture {
             title: None,
             worktree: None,
             skill_profile: None,
+            base_branch: None,
         })
         .await
         .unwrap()

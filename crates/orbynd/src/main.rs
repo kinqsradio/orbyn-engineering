@@ -351,6 +351,26 @@ fn router(state: AppState) -> Router {
             "/api/settings",
             get(api::get_settings).put(api::put_settings),
         )
+        .route(
+            "/api/preferences",
+            get(api::preferences).put(api::set_preferences),
+        )
+        .route(
+            "/api/projects/{id}/preferences",
+            axum::routing::put(api::set_project_preferences),
+        )
+        .route("/api/projects/{id}/pull", post(api::pull_project))
+        .route(
+            "/api/keybindings",
+            get(api::keybindings).post(api::save_keybinding),
+        )
+        .route("/api/diagnostics", get(api::diagnostics))
+        .route("/api/diagnostics/repair", post(api::repair_database))
+        .route("/api/diagnostics/otlp", post(api::check_otlp))
+        .route(
+            "/api/storage/cleanup",
+            get(api::cleanup_report).post(api::storage_cleanup),
+        )
         .route("/api/threads/{id}/runs", post(api::start_run))
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/events", get(stream::thread_events))

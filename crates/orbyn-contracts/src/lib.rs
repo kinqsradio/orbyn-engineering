@@ -1341,6 +1341,108 @@ pub struct RunScript {
 }
 }
 
+wire! {
+pub struct PreferenceView {
+    pub key: String,
+    /// What applies here.
+    pub value: Value,
+    pub default: Value,
+    /// `default`, `global` or `project`.
+    pub source: String,
+    /// A project may set its own value.
+    pub project_scoped: bool,
+}
+}
+
+wire! {
+/// `null` for a key goes back to what it would inherit.
+pub struct SetPreferences {
+    pub values: std::collections::BTreeMap<String, Value>,
+}
+}
+
+wire! {
+pub struct KeybindingRule {
+    pub key: String,
+    pub command: String,
+    #[serde(default)]
+    pub when: Option<String>,
+    /// In the file, turns off a default with this key and command.
+    #[serde(default)]
+    pub remove: bool,
+}
+}
+
+wire! {
+pub struct KeybindingConflict {
+    pub key: String,
+    pub when: Option<String>,
+    pub commands: Vec<String>,
+}
+}
+
+wire! {
+pub struct KeybindingsView {
+    /// The file, which the person may also edit by hand.
+    pub path: String,
+    pub rules: Vec<KeybindingRule>,
+    /// What could not be read. The rest of the file still applies.
+    pub issues: Vec<String>,
+    pub conflicts: Vec<KeybindingConflict>,
+}
+}
+
+wire! {
+pub struct DatabaseStorage {
+    pub bytes: u64,
+    pub reclaimable_bytes: u64,
+    /// Reclaimable space has reached 1 GiB.
+    pub repair_suggested: bool,
+}
+}
+
+wire! {
+pub struct Diagnostics {
+    pub version: String,
+    pub pid: u32,
+    pub active_runs: usize,
+    pub terminals: usize,
+    pub database: DatabaseStorage,
+}
+}
+
+wire! {
+pub struct OtlpCheck {
+    pub url: String,
+}
+}
+
+wire! {
+pub struct OtlpResult {
+    pub ok: bool,
+    pub status: Option<u16>,
+    pub message: Option<String>,
+}
+}
+
+wire! {
+pub struct CleanupEntry {
+    /// `worktree`, `artifact` or `log`.
+    pub kind: String,
+    pub path: String,
+    pub removed: bool,
+    pub reason: String,
+}
+}
+
+wire! {
+pub struct CleanupReport {
+    pub dry_run: bool,
+    pub ran_at: String,
+    pub entries: Vec<CleanupEntry>,
+}
+}
+
 wire_enum! {
 pub enum ActionKind {
     Command,
@@ -1851,6 +1953,10 @@ pub struct CreateThread {
     /// Purpose slug for an isolated worktree; `None` works in the project root.
     pub worktree: Option<String>,
     pub skill_profile: Option<String>,
+    /// Where a new worktree starts; absent follows the settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base_branch: Option<String>,
 }
 }
 

@@ -13,10 +13,10 @@ use orbyn_contracts::{
     AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
     EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing, GitAction,
-    LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject, OpenInEditor,
-    PublishProject, QuestionState, ReorderThreads, RestoreWorkspace, RewindThread, ServerInfo,
-    ServerSettings, SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine,
-    UpdateThread, WorkspaceSetup, WriteFile,
+    KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
+    OpenInEditor, OtlpCheck, PublishProject, QuestionState, ReorderThreads, RestoreWorkspace,
+    RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerRun,
+    SubmitReview, SwitchBranch, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -669,6 +669,79 @@ pub async fn engine_limits(
     Ok(Json(state.core.engine_limits(&id, forced(&query)).await?))
 }
 
+pub async fn preferences(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let project = query.get("project_id").map(String::as_str);
+    Ok(Json(state.core.preferences(project)?))
+}
+
+pub async fn set_preferences(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<SetPreferences>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.set_preferences(None, &body.values)?;
+    Ok(Json(state.core.preferences(None)?))
+}
+
+pub async fn set_project_preferences(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<SetPreferences>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.project(&id)?;
+    state.core.set_preferences(Some(&id), &body.values)?;
+    Ok(Json(state.core.preferences(Some(&id))?))
+}
+
+pub async fn keybindings(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.core.keybindings())
+}
+
+pub async fn save_keybinding(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<KeybindingRule>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.save_keybinding(&body)?))
+}
+
+pub async fn diagnostics(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.diagnostics()?))
+}
+
+pub async fn repair_database(State(state): State<AppState>) -> ApiResult<StatusCode> {
+    state.core.repair_database()?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn check_otlp(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<OtlpCheck>,
+) -> impl IntoResponse {
+    Json(state.core.check_otlp(&body.url).await)
+}
+
+pub async fn storage_cleanup(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let dry_run = query.get("dry_run").is_some_and(|value| value == "true");
+    Ok(Json(state.core.storage_cleanup(dry_run).await?))
+}
+
+pub async fn cleanup_report(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.cleanup_report()?))
+}
+
+pub async fn pull_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.pull_project(&id, LOCAL_USER).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.store.settings()?))
 }
@@ -836,7 +909,7 @@ pub async fn engine_models(
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     let refresh = query.get("refresh").is_some_and(|value| value == "true");
-    Ok(Json(state.core.engines.models(&id, refresh).await?))
+    Ok(Json(state.core.engine_models(&id, refresh).await?))
 }
 
 pub async fn list_questions(

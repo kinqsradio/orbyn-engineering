@@ -212,6 +212,33 @@ folder. `run_on_worktree_create` and `run_on_settle` scripts run only in a workt
 one that cannot start is logged and does not undo the change that triggered it, and
 Orbyn does not hold a run for a setup script to finish.
 
+## Settings and maintenance
+
+`ServerSettings` holds lifecycle and pricing. Everything else is in a fixed catalog of
+preferences, each with a default and a shape: an unknown key or a wrong shape is
+`400`, and a change applies all of its values or none. A preference resolves project,
+then global, then default, and only those marked `project_scoped` can be set per
+project. The catalog holds no secret: provider environments and tokens stay out under
+rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
+and reordered models apply in `/api/engines/:id/models`. `provider_instances` is
+stored for clients and changes no launch yet.
+
+A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
+`new_worktrees_start_from_origin` is on, falling back to HEAD, and
+`worktree_submodules`, where the project file's choice wins. `auto_pull` fast-forwards
+a clean checkout on the remote's default branch every 30 minutes.
+
+`keybindings.json` lives in app data and holds only the person's changes over built-in
+defaults, so new defaults reach them. It allows comments and trailing commas, and a
+bad entry is reported while the rest apply. A key with two commands in one exact
+context is a conflict; a key in two contexts is not.
+
+Storage cleanup removes logs, browser artifacts and worktrees settled past their
+retention. A worktree goes only through `git worktree remove` with no force, so Git
+keeps uncommitted work, and never while another active thread uses it. `?dry_run=true`
+only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
+1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
+
 ## Files
 
 File routes need a trusted folder and share the engines' write scope, so `..` and
@@ -473,6 +500,13 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
 | `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
 | `GET, PUT /api/settings` | `ServerSettings` |
+| `GET, PUT /api/preferences?project_id=` | `PreferenceView[]`; `SetPreferences`, where `null` resets |
+| `PUT /api/projects/:id/preferences` | Project overrides |
+| `POST /api/projects/:id/pull` | Fast-forward a clean checkout |
+| `GET, POST /api/keybindings` | `KeybindingsView`; add or change a `KeybindingRule` |
+| `GET /api/diagnostics`, `POST /api/diagnostics/repair` | `Diagnostics`; `409 runs_active` |
+| `POST /api/diagnostics/otlp` | `OtlpCheck` to `OtlpResult` |
+| `GET, POST /api/storage/cleanup?dry_run=` | Last `CleanupReport`; apply the retention rules |
 | `GET /api/updates`, `POST /api/updates/check` | `UpdateStatus`; a check only reads |
 | `GET /api/updates/events` | SSE `UpdateStatus` on each change |
 | `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |

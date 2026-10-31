@@ -227,6 +227,58 @@ impl Store {
         })
     }
 
+    pub fn project_preferences(&self, project_id: &str) -> Result<Vec<(String, String)>> {
+        let conn = self.reader();
+        let mut statement =
+            conn.prepare("SELECT key, value FROM project_preferences WHERE project_id = ?1")?;
+        let rows = statement.query_map([project_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// `None` drops the project's own value.
+    pub fn set_project_preference(
+        &self,
+        project_id: &str,
+        key: &str,
+        value: Option<&str>,
+    ) -> Result<()> {
+        self.commit(|tx, _| {
+            match value {
+                Some(value) => tx.execute(
+                    "INSERT INTO project_preferences (project_id, key, value) VALUES (?1, ?2, ?3)
+                     ON CONFLICT (project_id, key) DO UPDATE SET value = excluded.value",
+                    rusqlite::params![project_id, key, value],
+                )?,
+                None => tx.execute(
+                    "DELETE FROM project_preferences WHERE project_id = ?1 AND key = ?2",
+                    rusqlite::params![project_id, key],
+                )?,
+            };
+            Ok(())
+        })
+    }
+
+    pub fn clear_setting(&self, key: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+            Ok(())
+        })
+    }
+
+    /// Database size and what `VACUUM` would give back.
+    pub fn database_storage(&self) -> Result<(u64, u64)> {
+        let conn = self.reader();
+        let page: u64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
+        let pages: u64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0))?;
+        let free: u64 = conn.query_row("PRAGMA freelist_count", [], |row| row.get(0))?;
+        Ok((page * pages, page * free))
+    }
+
+    pub fn repair_database(&self) -> Result<()> {
+        self.writer().execute_batch("VACUUM")?;
+        Ok(())
+    }
+
     /// What an engine last said its slash commands are.
     pub fn engine_commands(&self, engine: &str) -> Result<Vec<(String, String)>> {
         Ok(self

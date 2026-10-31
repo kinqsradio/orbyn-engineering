@@ -14,6 +14,9 @@ const TITLE_MAX_CHARS: usize = 80;
 /// Linked pull requests are polled every second lifecycle tick.
 const PULL_WATCH_TICKS: u32 = 2;
 
+/// Automatic pull runs every 30 minutes.
+const AUTO_PULL_TICKS: u32 = 30;
+
 impl Core {
     pub fn update_thread(&self, id: &str, patch: &UpdateThread, actor: &str) -> Result<Thread> {
         let thread = self.store.update_thread(id, patch, actor)?;
@@ -104,6 +107,9 @@ impl Core {
                     watched += 1;
                     if watched.is_multiple_of(PULL_WATCH_TICKS) {
                         self.watch_pulls().await;
+                    }
+                    if watched.is_multiple_of(AUTO_PULL_TICKS) {
+                        self.auto_pull().await;
                     }
                 }
             }

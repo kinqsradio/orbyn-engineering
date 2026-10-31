@@ -115,10 +115,35 @@ pub async fn linked_worktrees(repo: &Path) -> Result<Vec<RegisteredWorktree>> {
     Ok(worktrees)
 }
 
+/// How a new worktree starts, from the settings and the project file.
+#[derive(Clone, Debug)]
+pub struct WorktreeOptions {
+    pub prefix: String,
+    pub base: Option<String>,
+    pub from_origin: bool,
+    /// `recursive`, `top_level` or `skip`.
+    pub submodules: String,
+}
+
+impl Default for WorktreeOptions {
+    fn default() -> Self {
+        Self {
+            prefix: "feat".to_owned(),
+            base: None,
+            from_origin: false,
+            submodules: "skip".to_owned(),
+        }
+    }
+}
+
 /// Finds or creates the purpose's worktree at `<repo>-wt/<purpose>`. A registered
 /// worktree already at that path is reused; its base is where it left the
 /// primary clone's HEAD.
-pub async fn create_worktree(repo: &Path, purpose: &str) -> Result<Worktree> {
+pub async fn create_worktree(
+    repo: &Path,
+    purpose: &str,
+    options: &WorktreeOptions,
+) -> Result<Worktree> {
     if !valid_purpose(purpose) {
         return Err(CoreError::Invalid(
             "Use lowercase letters, digits and hyphens for the worktree name.".into(),
@@ -149,13 +174,65 @@ pub async fn create_worktree(repo: &Path, purpose: &str) -> Result<Worktree> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let branch = format!("feat/{purpose}");
-    git(repo, &["worktree", "add", "-b", &branch, &path_text, &head]).await?;
+    let branch = format!("{}/{purpose}", options.prefix);
+    if git(repo, &["check-ref-format", "--branch", &branch])
+        .await
+        .is_err()
+    {
+        return Err(CoreError::Invalid(
+            "That branch prefix is not valid.".into(),
+        ));
+    }
+    let start = worktree_start(repo, options).await.unwrap_or(head);
+    git(
+        repo,
+        &["worktree", "add", "-b", &branch, &path_text, &start],
+    )
+    .await?;
+    let submodules: &[&str] = match options.submodules.as_str() {
+        "skip" => &[],
+        "top_level" => &["submodule", "update", "--init"],
+        _ => &["submodule", "update", "--init", "--recursive"],
+    };
+    // A submodule that cannot be fetched leaves the worktree usable.
+    if !submodules.is_empty()
+        && path.join(".gitmodules").exists()
+        && let Err(error) = git(&path, submodules).await
+    {
+        tracing::warn!(%error, "could not populate submodules");
+    }
     Ok(Worktree {
         path: path_text,
         branch,
-        base: head,
+        base: start,
     })
+}
+
+/// A chosen base, or the remote's head when asked for. `None` means this clone's HEAD.
+async fn worktree_start(repo: &Path, options: &WorktreeOptions) -> Option<String> {
+    if let Some(base) = &options.base {
+        if base.starts_with('-') {
+            return None;
+        }
+        return Some(text(
+            &git(repo, &["rev-parse", "--verify", base]).await.ok()?,
+        ));
+    }
+    if !options.from_origin {
+        return None;
+    }
+    let default = git(
+        repo,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .await
+    .ok()?;
+    let default = text(&default);
+    let branch = default.strip_prefix("origin/")?;
+    git(repo, &["fetch", "-q", "origin", branch]).await.ok()?;
+    Some(text(
+        &git(repo, &["rev-parse", "--verify", &default]).await.ok()?,
+    ))
 }
 
 /// Refs and index entries only: a snapshot leaves the real index and every working
@@ -458,11 +535,15 @@ mod tests {
     async fn worktree_is_a_sibling_and_diff_sees_tracked_and_untracked() {
         let dir = TempDir::new();
         let repo = repo(dir.path()).await;
-        let worktree = create_worktree(&repo, "fix-bug").await.unwrap();
+        let worktree = create_worktree(&repo, "fix-bug", &WorktreeOptions::default())
+            .await
+            .unwrap();
         let path = PathBuf::from(&worktree.path);
         assert_eq!(path, dir.path().join("project-wt").join("fix-bug"));
         assert_eq!(worktree.branch, "feat/fix-bug");
-        let again = create_worktree(&repo, "fix-bug").await.unwrap();
+        let again = create_worktree(&repo, "fix-bug", &WorktreeOptions::default())
+            .await
+            .unwrap();
         assert_eq!(again, worktree, "a registered worktree is reused");
 
         std::fs::write(path.join("a.txt"), "one\ntwo\n").unwrap();

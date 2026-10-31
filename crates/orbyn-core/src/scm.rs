@@ -36,7 +36,7 @@ const MAX_COMMENT_WAKES: i64 = 10;
 const MAX_WATCH_FAILURES: i64 = 8;
 
 /// Runs git for a real user action: hooks stay on, and nothing may prompt.
-async fn git_user(cwd: &Path, args: &[&str], timeout: Duration) -> Result<String> {
+pub(crate) async fn git_user(cwd: &Path, args: &[&str], timeout: Duration) -> Result<String> {
     let mut command = Command::new("git");
     command
         .args(args)
@@ -697,7 +697,10 @@ impl Core {
     ) -> Result<()> {
         let (project, forge) = self.pull_site(project_id).await?;
         self.scm_audit(actor, "git.merge", &number.to_string(), None)?;
-        forge::merge(forge, Path::new(&project.path), number, options).await
+        let mut options = options.clone();
+        options.strip_credits |=
+            self.preference("remove_agent_credits_on_merge", Some(project_id))? == json!(true);
+        forge::merge(forge, Path::new(&project.path), number, &options).await
     }
 
     pub async fn pull_action(

@@ -11,7 +11,17 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (7, MODELS_AND_QUESTIONS),
     (8, PULL_WATCHES),
     (9, IN_PLACE_PROJECTS),
+    (10, PROJECT_PREFERENCES),
 ];
+
+const PROJECT_PREFERENCES: &str = r#"
+CREATE TABLE project_preferences (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (project_id, key)
+) WITHOUT ROWID;
+"#;
 
 // Until now every project was cloned or created by Orbyn, so all are managed.
 const IN_PLACE_PROJECTS: &str = r#"

@@ -276,6 +276,14 @@ impl TerminalManager {
         });
     }
 
+    /// Terminals still running, on every thread.
+    pub fn count(&self) -> usize {
+        lock(&self.sessions)
+            .values()
+            .filter(|entry| entry.session.is_alive())
+            .count()
+    }
+
     pub fn close_all(&self) {
         for (_, entry) in lock(&self.sessions).drain() {
             entry.session.kill();
