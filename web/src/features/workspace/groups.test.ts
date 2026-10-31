@@ -125,7 +125,7 @@ describe("press-drag", () => {
 
 describe("folders", () => {
   const project = (id: string, created_at: string) =>
-    ({ id, name: id, path: id, trusted: true, is_git: true, created_at }) as const;
+    ({ id, name: id, path: id, trusted: true, is_git: true, managed: false, scratch: false, created_at }) as const;
 
   it("sorts projects by latest activity and threads by the chosen field", () => {
     const folders = foldersOf(

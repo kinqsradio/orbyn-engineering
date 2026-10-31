@@ -13,6 +13,8 @@ export function AppearanceSection() {
   const setTheme = useUi((state) => state.setTheme);
   const panelMs = useUi((state) => state.panelAnimationMs);
   const setPanelMs = useUi((state) => state.setPanelAnimationMs);
+  const effortDisplay = useUi((state) => state.effortDisplay);
+  const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
       <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -26,6 +28,18 @@ export function AppearanceSection() {
                 {choice.label}
               </option>
             ))}
+          </select>
+        </SettingRow>
+      </SettingGroup>
+      <SettingGroup title="Composer">
+        <SettingRow title="Effort display" description="Show reasoning effort in the composer as its name, such as High, or as bars.">
+          <select
+            aria-label="Effort display"
+            value={effortDisplay}
+            onChange={(event) => setPrefs({ effortDisplay: event.target.value as "label" | "bars" })}
+          >
+            <option value="label">Word</option>
+            <option value="bars">Bars</option>
           </select>
         </SettingRow>
       </SettingGroup>

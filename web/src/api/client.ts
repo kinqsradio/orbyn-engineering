@@ -6,6 +6,7 @@ import type {
   CloneJob,
   CreateThread,
   CustomEngine,
+  EngineModels,
   EngineStatus,
   FileDiff,
   FsListing,
@@ -13,6 +14,7 @@ import type {
   LibraryUpdateResult,
   LimitsOverview,
   Mentions,
+  PermissionMode,
   Project,
   ProjectRemoval,
   QueuedMessage,
@@ -192,10 +194,16 @@ export const api = {
     request<Thread>("GET", `/api/threads/${q(id)}`, undefined, signal),
   createThread: (body: CreateThread) => request<Thread>("POST", "/api/threads", body),
   deleteThread: (id: string) => request<void>("DELETE", `/api/threads/${q(id)}`),
-  startRun: (threadId: string, prompt: string, attachmentIds: string[] = []) =>
+  startRun: (
+    threadId: string,
+    prompt: string,
+    attachmentIds: string[] = [],
+    turn: { model?: string; effort?: string; permission_mode?: PermissionMode } = {},
+  ) =>
     request<Run>("POST", `/api/threads/${q(threadId)}/runs`, {
       prompt,
       ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+      ...turn,
     }),
   cancelRun: (runId: string) => request<void>("POST", `/api/runs/${q(runId)}/cancel`),
   diff: (threadId: string, signal?: AbortSignal) =>
@@ -208,6 +216,10 @@ export const api = {
 
   engines: (signal?: AbortSignal) =>
     request<EngineStatus[]>("GET", "/api/engines", undefined, signal),
+  models: (engine: string, signal?: AbortSignal) =>
+    request<EngineModels>("GET", `/api/engines/${q(engine)}/models`, undefined, signal),
+  switchEngine: (threadId: string, engine: string, model: string | null) =>
+    request<Thread>("POST", `/api/threads/${q(threadId)}/switch-engine`, { engine, model }),
   refreshEngines: () => request<EngineStatus[]>("POST", "/api/engines/refresh"),
   updateEngine: (id: string) => request<void>("POST", `/api/engines/${q(id)}/update`),
   addCustomEngine: (body: CustomEngine) =>

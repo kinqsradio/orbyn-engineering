@@ -159,3 +159,37 @@ test("usage reads the real report and limits", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(usage).toBeHidden();
 });
+
+test("the composer picks model and effort, sets access, and keeps favourites", async ({ page }) => {
+  const id = ids.Delta ?? "";
+  await page.goto(`${service.page}#/threads/${id}`);
+  const trigger = page.locator("[data-model-trigger]");
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const picker = page.getByRole("dialog", { name: "Choose a model" });
+  await expect(picker.getByRole("option").first()).toBeVisible({ timeout: 15_000 });
+  await expect(picker.getByRole("button", { name: "Favorites", exact: true })).toBeVisible();
+  const opus = picker.getByRole("option", { name: /^Opus/ }).first();
+  await opus.hover();
+  await opus.getByRole("button", { name: "Add to favorites" }).click();
+  await picker.getByRole("button", { name: "Favorites", exact: true }).click();
+  await expect(picker.getByRole("option")).toHaveCount(1);
+  await picker.getByRole("textbox", { name: "Search models" }).press("ControlOrMeta+1");
+  await expect.poll(async () => (await thread(id) as unknown as { model: string }).model).toBe("opus");
+  await expect(trigger).toContainText("Opus");
+
+  await page.getByRole("button", { name: /^Effort:/ }).click();
+  await page.getByRole("menuitemradio", { name: "High", exact: true }).click();
+  await expect.poll(async () => (await thread(id) as unknown as { effort: string }).effort).toBe("high");
+  await expect(page.getByRole("button", { name: /^Effort: High/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Permissions: Supervised", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Full access" }).click();
+  await expect
+    .poll(async () => (await thread(id) as unknown as { lifecycle: { permission_mode: string } }).lifecycle.permission_mode)
+    .toBe("full_access");
+  await expect(page.getByText("Allow commands and edits without prompts.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Permissions: Full access", exact: true })).toBeVisible();
+  await service.api("PATCH", `/api/threads/${id}`, { permission_mode: "supervised" });
+});

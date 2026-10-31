@@ -314,6 +314,8 @@ export function createMockApi(options: MockOptions = {}) {
       path,
       trusted,
       is_git: true,
+      managed: false,
+      scratch: false,
       created_at: now(),
     };
     projects = [...projects, project];
@@ -496,6 +498,7 @@ export function createMockApi(options: MockOptions = {}) {
       case "GET /api/approvals":
         return { status: 200, body: approvals };
       case "GET /api/engines":
+        if (seg[3] === "models") return { status: 200, body: fixtures.engineModels(seg[2] ?? "") };
         return { status: 200, body: engines };
       default:
         break;
@@ -514,6 +517,7 @@ export function createMockApi(options: MockOptions = {}) {
         if (!engine || !project) return err(400, "invalid_request", "Unknown engine or project.");
         const purpose = typeof data.worktree === "string" && data.worktree ? data.worktree : null;
         const thread: Thread = {
+          scratch: false,
           id: nextId("t"),
           project_id: project.id,
           title: typeof data.title === "string" && data.title ? data.title : "New thread",

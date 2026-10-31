@@ -1,8 +1,8 @@
 import { ArrowUp, Bot, Folder, GitBranch, Paperclip, X } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { api } from "../../api/client";
-import type { EngineStatus, Project } from "../../api/types";
+import type { EngineStatus, PermissionMode, Project } from "../../api/types";
 import { slugify } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
@@ -10,13 +10,15 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { NoProjects } from "./NoProjects";
-import { EngineGlyph } from "../../ui/badges";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { Loading } from "../../ui/states";
+import { ACCESS, EffortTrigger, useTraitsMenu } from "../thread/ComposerTraits";
+import { ModelPickerTrigger } from "../thread/ModelPicker";
+import { resolveModel, useEngineModels } from "../thread/modelStore";
 import { DraftProjectPicker } from "./DraftProjectPicker";
 
-type OpenMenu = { kind: "engine" | "checkout"; x: number; y: number };
+type OpenMenu = { kind: "checkout"; x: number; y: number };
 
 const DRAFT_KEY = "new-thread";
 
@@ -26,7 +28,48 @@ const useDraftFiles = create<{ files: File[]; set(files: File[]): void }>((set) 
   set: (files) => set({ files }),
 }));
 
-const selectableEngines = (engines: EngineStatus[]) => engines.filter((engine) => engine.installed);
+function DraftModelControls({
+  engines,
+  engine,
+  model,
+  effort,
+  access,
+  register,
+  onModel,
+  onEffort,
+  onAccess,
+}: {
+  engines: EngineStatus[];
+  engine: string;
+  model: string | null;
+  effort: string | null;
+  access: PermissionMode | null;
+  register(open: () => (element: HTMLElement) => void): void;
+  onModel(next: { engine: string; model: string | null }): void;
+  onEffort(value: string): void;
+  onAccess(mode: PermissionMode): void;
+}) {
+  const models = useEngineModels(engine);
+  const resolved = resolveModel(models, model);
+  const traits = useTraitsMenu({ model: resolved, effort, access, onEffort, onAccess });
+  const openAt = useRef(traits.openAt);
+  openAt.current = traits.openAt;
+  useEffect(() => {
+    register(() => (element: HTMLElement) => openAt.current(element, true));
+  }, [register]);
+  return (
+    <>
+      <ModelPickerTrigger engines={engines} selected={{ engine, model }} onPick={onModel} />
+      <EffortTrigger
+        model={resolved}
+        effort={effort}
+        access={access}
+        onOpen={(element) => traits.openAt(element, false)}
+      />
+      {traits.menu}
+    </>
+  );
+}
 
 /** The default screen: a composer for a thread that doesn't exist until you send. */
 export function DraftView({ projectId }: { projectId: string | null }) {
@@ -36,7 +79,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const addPrompt = useThreadLogs((state) => state.addPrompt);
   const field = useRef<HTMLTextAreaElement>(null);
   const [chosenProject, setChosenProject] = useState(projectId);
-  const [chosenEngine, setChosenEngine] = useState<string | null>(null);
+  const lastModel = useUi((state) => state.lastModel);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const [choice, setChoice] = useState(lastModel);
+  const [access, setAccess] = useState<PermissionMode>("supervised");
   const prompt = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
   const setDraft = useUi((state) => state.setDraft);
   const setPalette = useUi((state) => state.setPalette);
@@ -44,6 +90,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const setFiles = useDraftFiles((state) => state.set);
   const fileInput = useRef<HTMLInputElement>(null);
   const [picker, setPicker] = useState<DOMRect | null>(null);
+  const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
   const [worktree, setWorktree] = useState<string | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,11 +102,13 @@ export function DraftView({ projectId }: { projectId: string | null }) {
 
   if (!projects || !engines) return <div className="page"><Loading label="Loading" rows={3} /></div>;
   const project: Project | null = projects.find((p) => p.id === chosenProject) ?? projects[0] ?? null;
+  const installed = engines.filter((e) => e.installed);
   const engine =
-    engines.find((e) => e.id === chosenEngine) ??
-    engines.find((e) => e.installed && e.capabilities.managed) ??
-    engines.find((e) => e.installed) ??
+    installed.find((e) => e.id === choice?.engine) ??
+    installed.find((e) => e.capabilities.managed) ??
+    installed[0] ??
     null;
+  const unmanaged = engine !== null && !engine.capabilities.managed;
 
   if (!project) {
     return (
@@ -68,6 +117,9 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   }
 
   const setPrompt = (text: string) => setDraft(DRAFT_KEY, text);
+  const pickedModel = choice?.engine === engine?.id ? (choice?.model ?? null) : null;
+  const pickedEffort = choice?.engine === engine?.id ? (choice?.effort ?? null) : null;
+  const AccessIcon = ACCESS[access].icon;
 
   const open = (kind: OpenMenu["kind"], element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
@@ -87,7 +139,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       const thread = await api.createThread({
         project_id: project.id,
         engine: engine.id,
-        model: null,
+        model: pickedModel,
         title: null,
         worktree: worktree ? slugify(worktree) : null,
         skill_profile: null,
@@ -98,6 +150,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         thread.id,
         text,
         attached.map((file) => file.id),
+        {
+          ...(pickedEffort ? { effort: pickedEffort } : {}),
+          ...(access === "supervised" ? {} : { permission_mode: access }),
+        },
       );
       addPrompt(thread.id, { runId: run.id, text });
       setPrompt("");
@@ -159,7 +215,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                     value={prompt}
                     data-autofocus
                     aria-label="Message"
-                    placeholder="Ask anything"
+                    placeholder="Ask anything. @ files, $ skills, / commands"
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -185,16 +241,32 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         <Paperclip size={16} aria-hidden />
                       </IconButton>
                     </span>
-                    <button
-                      type="button"
-                      className="context-action composer-engine"
-                      aria-haspopup="menu"
-                      aria-label={`Engine: ${engine?.name ?? "None"}`}
-                      onClick={(event) => open("engine", event.currentTarget)}
-                    >
-                      {engine ? <EngineGlyph name={engine.name} /> : <Bot size={14} aria-hidden />}
-                      {engine?.name ?? "No engine"}
-                    </button>
+                    {engine ? (
+                      <DraftModelControls
+                        engines={installed}
+                        engine={engine.id}
+                        model={pickedModel}
+                        effort={pickedEffort}
+                        access={unmanaged ? null : access}
+                        register={setOpenTraits}
+                        onModel={(next) => {
+                          const picked = { ...next, effort: pickedEffort };
+                          setChoice(picked);
+                          setPrefs({ lastModel: picked });
+                        }}
+                        onEffort={(value) => {
+                          const picked = { engine: engine.id, model: pickedModel, effort: value };
+                          setChoice(picked);
+                          setPrefs({ lastModel: picked });
+                        }}
+                        onAccess={setAccess}
+                      />
+                    ) : (
+                      <span className="composer-control">
+                        <Bot size={14} aria-hidden />
+                        No engine
+                      </span>
+                    )}
                     <button type="submit" className="send-btn" aria-label="Send" disabled={!prompt.trim() || busy || !engine}>
                       <ArrowUp size={16} aria-hidden />
                     </button>
@@ -233,7 +305,20 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                       </div>
                     ) : null}
                   </dl>
-                  {engine && !engine.capabilities.managed ? <span>Unmanaged</span> : null}
+                  {unmanaged ? (
+                    <span>Unmanaged</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="context-action"
+                      aria-haspopup="menu"
+                      aria-label={`Permissions: ${ACCESS[access].label}`}
+                      onClick={(event) => openTraits?.(event.currentTarget)}
+                    >
+                      <AccessIcon size={12} aria-hidden />
+                      {ACCESS[access].label}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
@@ -246,18 +331,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
           y={menu.y}
           label={menu.kind}
           onClose={() => setMenu(null)}
-          items={
-            menu.kind === "engine"
-              ? selectableEngines(engines).map((e) => ({
-                  label: e.capabilities.managed ? e.name : `${e.name} (Unmanaged)`,
-                  selected: e.id === engine?.id,
-                  onSelect: () => setChosenEngine(e.id),
-                }))
-              : [
-                  { label: "Current checkout", selected: worktree === null, onSelect: () => setWorktree(null) },
-                  { label: "New worktree", selected: worktree !== null, onSelect: () => setWorktree("") },
-                ]
-          }
+          items={[
+            { label: "Current checkout", selected: worktree === null, onSelect: () => setWorktree(null) },
+            { label: "New worktree", selected: worktree !== null, onSelect: () => setWorktree("") },
+          ]}
         />
       ) : null}
       {picker ? (

@@ -35,9 +35,12 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Timeline | Code block | Live: card radius 8, header 30, pre 13/17.875, language icon | Header, Shiki tokens, wrap, copy | Language text, no icon |
 | Timeline | User bubble | Live: radius 16, padding 12 | Match | 0 |
 | Composer | Stop | Live: red round button | Match, Real | 0 |
-| Composer | Model picker | Live: provider rail, search, 362 wide | Absent | No model list in the API |
-| Composer | Effort, service tier | Live | Absent | No backend |
-| Composer | Permission modes | Live: Supervised, Full access seen | Menu of four, Real not exercised | Own menu shape |
+| Composer | Model picker | Live at 1051x534: 362 wide, border 1, radius 8, blur 16 saturate 1.08, 150 ms scale and opacity; rail 44 with 36px tabs, 3x20 indicator, star tab and divider; search 291x33 with primary underline; rows 291x32, pitch 34, radius 4; selected 6% fill and a check; star on hover, filled when favourite | Match, Real: real model lists, favourites, search, number jumps, provider keys | Row width 292, +1; rail glyphs are neutral letters; no Legacy models group, no such flag in the API |
+| Composer | Picker placement | Live: flips at short heights, y 6 at 534 tall | Below, above, then beside the trigger | Same window: x 449 vs 471, y 232 vs 6, reference rule at this size not reproduced |
+| Composer | Closed trigger | Live: 28 tall, glyph 16, short name, 14px | Match, Real | Letter glyph instead of the vendor mark |
+| Composer | Effort menu | Live: 304 wide, rows 28, section label 12, Default badge, then Permissions | Match, Real | Service Tier absent, no backend; Claude reports no default, so it reads Effort |
+| Composer | Effort display | Source: word or bars | Match, Real setting in Appearance | 0 |
+| Composer | Permission modes | Live: four icon segments 65.5x24 in the effort menu, with one description line; the control under the composer opens the same menu at Permissions | Match, Real, all four saved by the server | Default stays Supervised |
 | Composer | Approval placeholder | Live | Match | Declines, then queues |
 | Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
 | Composer | Queue and steer | Source | Built; queue and remove Real | Steer mock only |

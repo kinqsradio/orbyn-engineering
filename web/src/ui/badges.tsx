@@ -9,10 +9,11 @@ export function ProjectBadge({ name }: { name: string }) {
 }
 
 /** A neutral letter, never a vendor's mark. */
-export function EngineGlyph({ name }: { name: string }) {
+export function EngineGlyph({ name, letters = 1 }: { name: string; letters?: number }) {
+  const mark = name.slice(0, letters);
   return (
     <span className="engine-glyph" title={name} aria-hidden>
-      {name.charAt(0).toUpperCase()}
+      {mark.charAt(0).toUpperCase() + mark.slice(1)}
     </span>
   );
 }

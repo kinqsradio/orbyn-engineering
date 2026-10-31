@@ -30,6 +30,13 @@ interface Prefs {
   multilineRows: boolean;
   threadSort: "updated_at" | "created_at";
   projectSort: "updated_at" | "created_at";
+  /** `engine:model` keys. */
+  modelFavorites: string[];
+  modelHidden: string[];
+  modelOrder: string[];
+  effortDisplay: "label" | "bars";
+  /** The last choice, which new threads start from. */
+  lastModel: { engine: string; model: string | null; effort: string | null } | null;
 }
 
 export type PaletteStart = "root" | "add-project";
@@ -57,6 +64,11 @@ const defaults: Prefs = {
   multilineRows: false,
   threadSort: "updated_at",
   projectSort: "updated_at",
+  modelFavorites: [],
+  modelHidden: [],
+  modelOrder: [],
+  effortDisplay: "label",
+  lastModel: null,
 };
 
 interface UiState extends Prefs {
@@ -80,7 +92,23 @@ interface UiState extends Prefs {
   toggleSidebar(): void;
   setSidebarWidth(width: number): void;
   toggleGroup(group: string, fallback: boolean): void;
-  setPrefs(prefs: Partial<Pick<Prefs, "projectFilter" | "projectFolders" | "multilineRows" | "threadSort" | "projectSort">>): void;
+  setPrefs(
+    prefs: Partial<
+      Pick<
+        Prefs,
+        | "projectFilter"
+        | "projectFolders"
+        | "multilineRows"
+        | "threadSort"
+        | "projectSort"
+        | "modelFavorites"
+        | "modelHidden"
+        | "modelOrder"
+        | "effortDisplay"
+        | "lastModel"
+      >
+    >,
+  ): void;
   setDraft(threadId: string, text: string): void;
   setLastThread(threadId: string): void;
 }
@@ -101,6 +129,11 @@ const prefsOf = (state: Prefs): Prefs => ({
   multilineRows: state.multilineRows,
   threadSort: state.threadSort,
   projectSort: state.projectSort,
+  modelFavorites: state.modelFavorites,
+  modelHidden: state.modelHidden,
+  modelOrder: state.modelOrder,
+  effortDisplay: state.effortDisplay,
+  lastModel: state.lastModel,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */

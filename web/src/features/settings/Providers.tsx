@@ -1,11 +1,13 @@
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2, ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../../api/client";
 import type { EngineStatus, EngineTier } from "../../api/types";
 import { authLabels, signInLabel, slugify, supportLabels, tierLabels } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
+import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { Button, CopyCommand, Field, Pill, type PillTone } from "../../ui/controls";
+import { arrangeModels, modelKey, useEngineModels } from "../thread/modelStore";
+import { Button, CopyCommand, Field, Pill, type PillTone, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 
@@ -55,6 +57,67 @@ function UpdateAction({ engine }: { engine: EngineStatus }) {
   );
 }
 
+/** Which of an engine's models the picker shows, and in what order. */
+function EngineModelList({ engine }: { engine: EngineStatus }) {
+  const hidden = useUi((state) => state.modelHidden);
+  const order = useUi((state) => state.modelOrder);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const listed = useEngineModels(engine.id);
+  const [open, setOpen] = useState(false);
+  const models = arrangeModels(engine.id, listed?.models ?? [], [], order);
+  if (models.length === 0) return null;
+
+  const move = (at: number, step: number) => {
+    const keys = models.map((model) => modelKey(engine.id, model.id));
+    const [key] = keys.splice(at, 1);
+    if (!key) return;
+    keys.splice(at + step, 0, key);
+    setPrefs({ modelOrder: [...order.filter((entry) => !keys.includes(entry)), ...keys] });
+  };
+
+  return (
+    <div className="setting-sub">
+      <button type="button" className="text-action" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Models ({models.length})
+      </button>
+      {open ? (
+        <ul className="model-settings">
+          {models.map((model, at) => {
+            const key = modelKey(engine.id, model.id);
+            const shown = !hidden.includes(key);
+            return (
+              <li key={model.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={shown}
+                    onChange={() =>
+                      setPrefs({
+                        modelHidden: shown ? [...hidden, key] : hidden.filter((entry) => entry !== key),
+                      })
+                    }
+                  />
+                  <span>{model.label}</span>
+                </label>
+                <IconButton label={`Move ${model.label} up`} disabled={at === 0} onClick={() => move(at, -1)}>
+                  <ArrowUp size={14} aria-hidden />
+                </IconButton>
+                <IconButton
+                  label={`Move ${model.label} down`}
+                  disabled={at === models.length - 1}
+                  onClick={() => move(at, 1)}
+                >
+                  <ArrowDown size={14} aria-hidden />
+                </IconButton>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function EngineRow({ engine }: { engine: EngineStatus }) {
   const [removing, setRemoving] = useState(false);
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
@@ -100,6 +163,7 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
         </div>
       </dl>
       {engine.problem ? <p className="banner banner-warn">{engine.problem}</p> : null}
+      {engine.installed ? <EngineModelList engine={engine} /> : null}
       {engine.auth === "logged_out" ? (
         <div className="setting-sub">
           <p>{signInLabel(engine)}. Run this in a terminal:</p>

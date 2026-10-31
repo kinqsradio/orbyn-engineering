@@ -35,9 +35,12 @@ describe("App against the mock API", () => {
   it("picks project and engine from the draft", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /^Engine:/ }));
-    expect(await screen.findByRole("menuitem", { name: /Aider \(terminal\) \(Unmanaged\)/ })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /Cursor Agent/ })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Claude Sonnet" }));
+    const picker = await screen.findByRole("dialog", { name: "Choose a model" });
+    expect(within(picker).getByRole("button", { name: /Aider \(terminal\) \(Unmanaged\)/ })).toBeInTheDocument();
+    expect(within(picker).queryByRole("button", { name: /Cursor Agent/ })).toBeNull();
+    await user.click(within(picker).getByRole("option", { name: /Claude Opus/ }));
+    expect(await screen.findByRole("button", { name: "Claude Opus" })).toBeInTheDocument();
   });
 
   it("labels an unmanaged engine in the sidebar", async () => {

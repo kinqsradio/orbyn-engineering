@@ -29,6 +29,8 @@ export const projects: Project[] = [
     path: "/Users/dev/code/orbyn-engineering-app",
     trusted: true,
     is_git: true,
+    managed: false,
+    scratch: false,
     created_at: iso(-86400 * 3),
   },
   {
@@ -37,6 +39,8 @@ export const projects: Project[] = [
     path: "/Users/dev/code/marketing-site",
     trusted: true,
     is_git: true,
+    managed: false,
+    scratch: false,
     created_at: iso(-86400 * 2),
   },
   {
@@ -45,6 +49,8 @@ export const projects: Project[] = [
     path: "/Users/dev/code/clients/acme/vendor-sdk-with-a-rather-long-repository-name-for-layout",
     trusted: false,
     is_git: false,
+    managed: false,
+    scratch: false,
     created_at: iso(-3600),
   },
 ];
@@ -207,6 +213,7 @@ const baseThread = (
   skill_profile: null,
   active_run: null,
   last_run_state: null,
+  scratch: false,
   created_at: iso(offset - 600),
   updated_at: iso(offset),
   lifecycle: lifecycle(),
@@ -592,6 +599,8 @@ export function referenceState(now: number) {
     path: `/Users/dev/code/${name}`,
     trusted: true,
     is_git: true,
+    managed: false,
+    scratch: false,
     created_at: ago(864000),
   });
   const refProjects = [project("rp-1", "draftdesk"), project("rp-2", "orbitkit"), project("rp-3", "ledgerline")];
@@ -610,6 +619,7 @@ export function referenceState(now: number) {
     model: "Opus 5.5",
     cwd: `/Users/dev/code/${projectId}`,
     worktree: { path: `/Users/dev/code/${projectId}-wt/${branch}`, branch, base: "main" },
+    scratch: false,
     skill_profile: null,
     active_run: null,
     last_run_state: state,
@@ -786,3 +796,25 @@ export const usageEngines = () => [
     ],
   },
 ];
+
+const effort = {
+  id: "effort",
+  label: "Reasoning",
+  values: [
+    { id: "low", label: "Low", default: false },
+    { id: "medium", label: "Medium", default: true },
+    { id: "high", label: "High", default: false },
+  ],
+};
+
+export const engineModels = (engine: string) => ({
+  engine,
+  source: "documented",
+  error: null,
+  checked_at: iso(0),
+  models: [
+    { id: "sonnet", label: "Claude Sonnet", description: null, is_default: true, custom: false, options: [effort] },
+    { id: "opus", label: "Claude Opus", description: null, is_default: false, custom: false, options: [effort] },
+    { id: "haiku", label: "Claude Haiku", description: null, is_default: false, custom: false, options: [] },
+  ],
+});

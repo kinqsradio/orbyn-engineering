@@ -1,4 +1,4 @@
-import { ArrowUp, Folder, GitBranch, Lock, Paperclip, Pencil, ShieldOff, Square, Wand2, X } from "lucide-react";
+import { ArrowUp, Folder, GitBranch, Paperclip, ShieldOff, Square, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
 import type { Attachment, EngineStatus, PermissionMode, Thread } from "../../api/types";
@@ -9,26 +9,11 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { useWorkspace } from "../../state/workspace";
-import { EngineGlyph } from "../../ui/badges";
-import { Menu } from "../../ui/Menu";
+import { ACCESS, EffortTrigger, useTraitsMenu } from "./ComposerTraits";
+import { ModelPickerTrigger } from "./ModelPicker";
+import { resolveModel, useEngineModels } from "./modelStore";
 import { QueuedMessages } from "./QueuedMessages";
 import { insertToken, triggerAt } from "./skillMention";
-
-const accessLabels: Record<PermissionMode, string> = {
-  supervised: "Supervised",
-  auto_edits: "Auto-accept edits",
-  auto: "Auto",
-  full_access: "Full access",
-};
-
-const accessIcons: Record<PermissionMode, typeof Lock> = {
-  supervised: Lock,
-  auto_edits: Pencil,
-  auto: Wand2,
-  full_access: ShieldOff,
-};
-
-const ACCESS_MODES = Object.keys(accessLabels) as PermissionMode[];
 
 interface Suggestion {
   value: string;
@@ -68,7 +53,6 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const refreshAll = useWorkspace((state) => state.refreshAll);
-  const [accessMenu, setAccessMenu] = useState<{ x: number; y: number } | null>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const putThread = useWorkspace((state) => state.putThread);
   const projectBranch = useWorkspace(
@@ -227,8 +211,42 @@ export function Composer({
 
   const unmanaged = engine !== null && !engine.capabilities.managed;
   const access = thread.lifecycle?.permission_mode ?? "supervised";
-  const AccessIcon = accessIcons[access];
+  const AccessIcon = ACCESS[access].icon;
   const engineName = engine?.name ?? thread.engine;
+  const allEngines = useWorkspace((state) => state.engines.data);
+  const installed = useMemo(() => (allEngines ?? []).filter((entry) => entry.installed), [allEngines]);
+  const models = useEngineModels(thread.engine);
+  const model = resolveModel(models, thread.model);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const setEffort = async (effort: string) => {
+    setError(null);
+    try {
+      putThread(await api.patchThread(thread.id, { effort }));
+      setPrefs({ lastModel: { engine: thread.engine, model: thread.model, effort } });
+    } catch (failure) {
+      setError(`Couldn't change the effort. ${toFailure(failure).message}`);
+    }
+  };
+  const pickModel = async (next: { engine: string; model: string | null }) => {
+    setError(null);
+    try {
+      const updated =
+        next.engine === thread.engine
+          ? await api.patchThread(thread.id, next.model ? { model: next.model } : {})
+          : await api.switchEngine(thread.id, next.engine, next.model);
+      putThread(updated);
+      setPrefs({ lastModel: { ...next, effort: updated.effort ?? null } });
+    } catch (failure) {
+      setError(`Couldn't change the model. ${toFailure(failure).message}`);
+    }
+  };
+  const traits = useTraitsMenu({
+    model,
+    effort: thread.effort ?? null,
+    access: unmanaged ? null : access,
+    onEffort: (value) => void setEffort(value),
+    onAccess: (mode) => void setAccess(mode),
+  });
 
   return (
     <form
@@ -322,27 +340,24 @@ export function Composer({
           >
             <Paperclip size={16} aria-hidden />
           </IconButton>
-          <dl className="composer-left">
-          </dl>
-          <dl className="composer-right">
-            {showContext ? null : (
-              <div>
-                <dt className="sr-only">Access</dt>
-                <dd>{unmanaged ? "Unmanaged" : accessLabels[access]}</dd>
-              </div>
-            )}
-            <div>
-              <dt className="sr-only">Engine</dt>
-              <dd>
-                <EngineGlyph name={engineName} />
-                <span className="sr-only">{engineName}</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="sr-only">Model</dt>
-              <dd>{thread.model ?? "Default model"}</dd>
-            </div>
-          </dl>
+          <span className="composer-spacer" />
+          {engine ? (
+            <ModelPickerTrigger
+              engines={installed}
+              selected={{ engine: thread.engine, model: thread.model }}
+              disabled={busy}
+              onPick={(next) => void pickModel(next)}
+            />
+          ) : (
+            <span className="composer-control">{thread.model ?? engineName}</span>
+          )}
+          <EffortTrigger
+            model={model}
+            effort={thread.effort ?? null}
+            access={unmanaged ? null : access}
+            disabled={busy}
+            onOpen={(element) => traits.openAt(element, false)}
+          />
           {busy && !draft.trim() ? (
             <button
               type="button"
@@ -399,37 +414,19 @@ export function Composer({
                   type="button"
                   className="context-action"
                   aria-haspopup="menu"
+                  aria-label={`Permissions: ${ACCESS[access].label}`}
                   disabled={busy || !thread.lifecycle}
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setAccessMenu({ x: rect.left, y: rect.top - 4 - ACCESS_MODES.length * 32 });
-                  }}
+                  onClick={(event) => traits.openAt(event.currentTarget, true)}
                 >
                   <AccessIcon size={12} aria-hidden />
-                  {accessLabels[access]}
+                  {ACCESS[access].label}
                 </button>
               )}
             </dd>
           </div>
         </dl>
       </div>
-      {accessMenu ? (
-        <Menu
-          {...accessMenu}
-          origin="bottom left"
-          label="Access"
-          onClose={() => setAccessMenu(null)}
-          items={ACCESS_MODES.map((mode) => ({
-            label: accessLabels[mode],
-            selected: mode === access,
-            icon: (() => {
-              const Icon = accessIcons[mode];
-              return <Icon size={14} aria-hidden />;
-            })(),
-            onSelect: () => void setAccess(mode),
-          }))}
-        />
-      ) : null}
+      {traits.menu}
       </div>
     </form>
   );

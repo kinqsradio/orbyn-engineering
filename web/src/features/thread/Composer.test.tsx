@@ -16,6 +16,7 @@ const thread: Thread = {
   cwd: "/r",
   worktree: null,
   skill_profile: null,
+  scratch: false,
   active_run: null,
   last_run_state: null,
   created_at: "",
@@ -170,7 +171,6 @@ describe("Composer", () => {
 
   it("shows engine and model", () => {
     render(<Composer thread={thread} engine={null} showContext />);
-    expect(screen.getByText("claude")).toBeInTheDocument();
     expect(screen.getByText("opus")).toBeInTheDocument();
   });
 });
