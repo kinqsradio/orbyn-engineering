@@ -703,7 +703,7 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
     })
 }
 
-fn run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
+pub(super) fn run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
     let state: RunState = parse_wire(2, row.get("state")?)?;
     Ok(Run {
         id: row.get("id")?,

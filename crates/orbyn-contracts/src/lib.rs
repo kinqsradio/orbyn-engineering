@@ -1649,7 +1649,7 @@ pub struct CleanupReport {
 
 wire! {
 pub struct TaskSchedule {
-    /// `interval`, `fixed_time` or `webhook`.
+    /// `interval`, `fixed_time`, `webhook` or `after_thread`.
     pub kind: String,
     #[serde(default)]
     pub every_minutes: Option<u32>,
@@ -1661,6 +1661,13 @@ pub struct TaskSchedule {
     pub weekdays: Vec<u8>,
     #[serde(default)]
     pub utc_offset_minutes: i32,
+    /// For `after_thread`: the thread whose runs set this off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub after_thread: Option<String>,
+    /// For `after_thread`: only when its run completed.
+    #[serde(default)]
+    pub only_on_success: bool,
 }
 }
 
@@ -1718,6 +1725,10 @@ pub struct ScheduledTask {
     /// `never`, `started`, or why the last firing failed.
     pub last_status: String,
     pub created_at: String,
+    /// The last run of `after_thread` this task has answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub after_run: Option<String>,
 }
 }
 

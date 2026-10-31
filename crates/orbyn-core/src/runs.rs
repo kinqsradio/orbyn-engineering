@@ -46,6 +46,8 @@ const FORCE_GRACE: Duration = Duration::from_secs(1);
 /// How long a forced stop waits for a run to close before closing it itself.
 const FORCE_WAIT: Duration = Duration::from_secs(4);
 const FORCE_POLL: Duration = Duration::from_millis(20);
+/// A delegated run this quiet is stuck: twice the longest a tool may take.
+const SILENCE_LIMIT: Duration = Duration::from_secs(2 * 240);
 const EVENT_BUFFER: usize = 1024;
 
 /// Where a thread's run may write: its checkout, and on a library thread never
@@ -984,6 +986,13 @@ impl RunManager {
         let mut shaper = EventShaper::default();
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
         tokio::pin!(stop_deadline);
+        // Only a delegated run, which nobody is watching, is stopped for going quiet.
+        let delegated = thread
+            .lifecycle
+            .as_ref()
+            .is_some_and(|l| l.relation.as_deref() == Some("subagent"));
+        let silence = tokio::time::sleep(SILENCE_LIMIT);
+        tokio::pin!(silence);
         let outcome = loop {
             let text_due = shaper.due();
             tokio::select! {
@@ -1007,12 +1016,25 @@ impl RunManager {
                     handle.cancel.cancel();
                 }
                 () = &mut stop_deadline, if cancelling => break EngineOutcome::Cancelled,
+                () = &mut silence, if delegated && !cancelling => {
+                    // Waiting on a person is not silence.
+                    let waiting = self.store.run(&scope.run_id).is_ok_and(|run| {
+                        run.state == RunState::AwaitingApproval
+                    });
+                    silence.as_mut().reset(tokio::time::Instant::now() + SILENCE_LIMIT);
+                    if !waiting {
+                        break EngineOutcome::Failed(
+                            "This delegated run stopped responding, so it was ended.".into(),
+                        );
+                    }
+                }
                 () = sleep_until_due(text_due), if text_due.is_some() => {
                     if let Some(outcome) = self.write_events(scope, shaper.flush()) {
                         break outcome;
                     }
                 }
                 event = events.recv() => {
+                    silence.as_mut().reset(tokio::time::Instant::now() + SILENCE_LIMIT);
                     let Some(event) = event else {
                         break if cancelling {
                             EngineOutcome::Cancelled

@@ -630,8 +630,8 @@ are not built in.
 - [x] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done
 - [ ] M15 Secret request tool: agent requests secret securely | apps/server/src/secrets/SecretRequests.ts | s | M | [auth-risk]
 - [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
-- [ ] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M
-- [ ] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S
+- [x] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M | server done, within a minute of the end; firings are not capped since each is a thread of its own
+- [x] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S | server done
 - [x] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M | server done
 
 ## N. MCP tools for agents

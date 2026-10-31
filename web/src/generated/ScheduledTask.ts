@@ -20,4 +20,8 @@ max_age_seconds: bigint | null, timestamp_path: string | null, next_run_at: stri
 /**
  * `never`, `started`, or why the last firing failed.
  */
-last_status: string, created_at: string, };
+last_status: string, created_at: string, 
+/**
+ * The last run of `after_thread` this task has answered.
+ */
+after_run?: string, };

@@ -864,6 +864,8 @@ impl Core {
                         time: None,
                         weekdays: Vec::new(),
                         utc_offset_minutes: 0,
+                        after_thread: None,
+                        only_on_success: false,
                     },
                     signature: None,
                     secret: None,

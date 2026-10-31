@@ -364,7 +364,10 @@ The two-minute pull request poll has its own, `poll_pull_requests`. Engines make
 ## Automations
 
 A scheduled task fires on an interval, at a fixed time on chosen weekdays in a fixed
-UTC offset, or on a webhook. The clock is checked each minute. Each firing queues the
+UTC offset, on a webhook, or after a run of another thread in its project ends,
+optionally only when it completed. The clock is checked each minute, so a follow-up starts
+within one, and answers each run once, never one from before the task existed. A task
+cannot run on the thread it follows, which would set itself off for ever. Each firing queues the
 prompt on the task's thread, or on a new thread, in that project's normal permission
 mode, and needs a trusted project at that moment. A failed firing records why and
 tries again at the next time. Changing a task by id replaces what it does and keeps
@@ -387,7 +390,9 @@ Reaching a machine from outside is up to the person; Orbyn runs no relay.
 A delegated thread is a `subagent` child in the parent's folder. When it ends with
 nothing queued, it reports through the parent's queue, with the newest text within
 the handoff budget, which wakes the parent. Cancelling a run cancels the runs of its
-delegated threads.
+delegated threads. A delegated run with no event for eight minutes, twice the longest a tool
+may take, is ended as failed and says so. Waiting on a person does not count, and a run
+someone is watching is never ended for going quiet.
 
 ## Files
 
