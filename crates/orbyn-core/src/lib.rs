@@ -23,6 +23,7 @@ pub mod store;
 pub mod terminal;
 pub mod threads;
 pub mod updates;
+pub mod usage;
 pub mod util;
 pub mod workspace;
 

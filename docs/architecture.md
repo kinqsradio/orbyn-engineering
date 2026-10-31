@@ -33,6 +33,7 @@ only on generated types and the HTTP API. Nothing in `web` may import Tauri APIs
    `.mcp.json` (`claude mcp list` 2.1.150: absent there, present inside the target),
    but an engine still acts on the target, so trust stays the gate.
 6. Audit rows are written before the effect they describe, and are append-only.
+   Policy and audit are internal safety, not a user feature.
 7. Anything unknown fails closed: an unreachable approver means deny.
 8. An engine that cannot ask permission is labelled unmanaged in every surface.
 9. Update only through the installer that provably owns the binary; otherwise
@@ -78,8 +79,12 @@ first and stops the running turn, and only that message escapes the hold. Prompt
 are capped at 120,000 characters. `/compact` and `/goal` reach Claude bare as its
 own commands and Codex as `thread/compact/start` and `thread/goal/set`.
 
-Permission modes are answered in the gate, not by engine flags, so no engine runs
-unmanaged. `auto_edits`, `auto` and `full_access` accept what no rule covers. A rule
+A thread's permission mode is `supervised`, `auto_edits`, `auto` or `full_access`,
+settable per thread and per turn. Codex maps it natively: `full_access` is
+`approvalPolicy: never` with the network on, and the writable root stays the checkout.
+Claude stays on `--permission-mode default` and the gate accepts for it, because
+`acceptEdits` trusts its cwd, which is the library, and `bypassPermissions` skips
+`mcp__orbyn_engineering__approve`, so either would defeat the write scope. A rule
 still wins, computer and browser actions still ask, and the write scope is checked
 first. Plan mode refuses file changes, runs Claude in `plan` and Codex read-only.
 
@@ -87,6 +92,18 @@ Attachments stay in app data, never in a target, and are removed with their thre
 The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per other
 file. A record exists only once its bytes are in place, and a message naming an
 attachment that is not ready is refused before anything is admitted.
+
+## Usage
+
+`UsageCenter` reads local session history and nothing else: `projects/**/*.jsonl`
+under `~/.claude` (or `CLAUDE_CONFIG_DIR`) and `sessions/**/*.jsonl` under `~/.codex`
+(or `CODEX_HOME`). It keeps only timestamps, models and token counts, and never opens a
+credential file. Claude rewrites an entry as it streams, so each message counts once.
+Codex repeats its running total, so an unchanged total counts once. Costs come from
+configured `model_prices`, after `model_aliases`; a model with no price has an unknown
+cost and is never guessed. Unchanged files are served from memory. Subscription
+limits appear only where an engine reports them itself, as Codex does through
+`account/rateLimits/read`, cached for five minutes.
 
 ## Checkpoints
 
@@ -133,7 +150,8 @@ The first decision wins by compare-and-set. A duplicate decision returns the
 existing outcome with `409 already_decided`. Run cancellation and driver exit
 expire open approvals, and the engine receives a denial. Policy is evaluated
 first: `deny` wins over `ask`, `ask` wins over `allow`, and no matching rule means
-`ask`. A timed-out approval expires and denies. A wildcard `allow` on a `command`
+`ask`. Policy and audit are internal safety: the product surface is the permission
+mode, and no client offers rule editing or an audit log. A timed-out approval expires and denies. A wildcard `allow` on a `command`
 never matches a compound command (`;`, `|`, `&`, redirection, substitution), so
 `git *` cannot grant `git log; rm -rf /`. `remember` stores an exact rule, written
 `=<target>`, so a target containing `*` does not become a wildcard.
@@ -378,8 +396,10 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
 | `GET /api/skills`, `POST /api/skills/rebuild` | Library skills; rebuild only re-reads them |
 | `GET, POST /api/skills/profiles`, `DELETE /api/skills/profiles/:id` | Profiles |
-| `GET, POST /api/policy/rules`, `DELETE /api/policy/rules/:id` | Policy |
-| `GET /api/audit?thread_id=&limit=` | Audit, newest first |
+| `GET /api/usage` | `UsageReport` from local history, rescanned on each read |
+| `GET /api/engines/:id/limits` | `EngineLimits`; `422 unsupported` if the engine reports none |
+| `GET, POST /api/policy/rules`, `DELETE /api/policy/rules/:id` | Internal: diagnostics only, no client uses these |
+| `GET /api/audit?thread_id=&limit=` | Internal: diagnostics only, no client uses this |
 | `GET /api/computer`, `POST /api/threads/:id/computer` | Status, and a governed action |
 | `POST /auth/session` | Exchange a remote access key for a cookie (`204`) |
 | `POST /agui/threads/:id` | External AG-UI endpoint (`RunAgentInput` in, SSE out) |

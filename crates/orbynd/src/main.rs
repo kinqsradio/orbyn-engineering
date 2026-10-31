@@ -247,6 +247,8 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/projects/{id}/pulls", get(api::project_pulls))
         .route("/api/projects/{id}/publish", post(api::publish_project))
+        .route("/api/usage", get(api::usage).post(api::usage))
+        .route("/api/engines/{id}/limits", get(api::engine_limits))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(

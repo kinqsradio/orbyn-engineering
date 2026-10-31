@@ -593,6 +593,7 @@ impl RunManager {
             checkout,
             prompt: format!("{context}\n\n{prompt}"),
             kind: RunKind::parse(&prompt),
+            mode: scope.mode,
             plan: scope.plan,
             user_prompt: prompt,
             model: thread.model.clone(),

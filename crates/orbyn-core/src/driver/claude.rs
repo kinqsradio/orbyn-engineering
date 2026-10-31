@@ -588,6 +588,7 @@ mod tests {
             prompt: "hello".into(),
             user_prompt: "hello".into(),
             kind: RunKind::Turn,
+            mode: orbyn_contracts::PermissionMode::Supervised,
             plan: false,
             model: Some("sonnet".into()),
             resume: Some("sess".into()),

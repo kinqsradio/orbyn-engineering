@@ -563,6 +563,18 @@ pub async fn publish_project(
     Ok(StatusCode::ACCEPTED)
 }
 
+pub async fn usage(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let settings = state.core.store.settings()?;
+    Ok(Json(state.core.usage.report(&settings).await?))
+}
+
+pub async fn engine_limits(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.engine_limits(&id).await?))
+}
+
 pub async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.store.settings()?))
 }
@@ -580,6 +592,13 @@ pub async fn start_run(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<StartRun>,
 ) -> ApiResult<impl IntoResponse> {
+    if let Some(mode) = body.permission_mode {
+        let patch = UpdateThread {
+            permission_mode: Some(mode),
+            ..UpdateThread::default()
+        };
+        state.core.update_thread(&id, &patch, LOCAL_USER)?;
+    }
     let run = state
         .core
         .runs

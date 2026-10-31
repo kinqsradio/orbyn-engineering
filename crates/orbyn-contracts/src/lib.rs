@@ -487,6 +487,82 @@ pub struct ServerSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub background_update_checks: Option<bool>,
+    /// Per-model rates. A model with no rate has an unknown cost.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<ModelPrice>>")]
+    pub model_prices: Vec<ModelPrice>,
+    /// Counts one model as another when pricing and grouping.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<ModelAlias>>")]
+    pub model_aliases: Vec<ModelAlias>,
+}
+}
+
+wire! {
+/// US dollars per million tokens.
+pub struct ModelPrice {
+    pub model: String,
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+}
+
+wire! {
+pub struct ModelAlias {
+    pub model: String,
+    pub counts_as: String,
+}
+}
+
+wire! {
+pub struct ModelUsage {
+    pub model: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    /// `None` when this model has no configured price.
+    pub estimated_cost: Option<f64>,
+}
+}
+
+wire! {
+pub struct DailyUsage {
+    /// `YYYY-MM-DD`.
+    pub date: String,
+    pub tokens: u64,
+}
+}
+
+wire! {
+pub struct EngineUsage {
+    pub engine: String,
+    /// `scanned`, or `no_history` when this machine has none.
+    pub status: String,
+    pub files_scanned: u32,
+    pub files_skipped: u32,
+    pub models: Vec<ModelUsage>,
+    pub days: Vec<DailyUsage>,
+}
+}
+
+wire! {
+pub struct UsageReport {
+    /// Stable for this machine.
+    pub host_id: String,
+    pub scanned_at: String,
+    pub engines: Vec<EngineUsage>,
+}
+}
+
+wire! {
+pub struct EngineLimits {
+    pub engine: String,
+    pub checked_at: String,
+    /// The engine's own report, which it gives without Orbyn reading a credential.
+    pub limits: Value,
 }
 }
 
@@ -1104,6 +1180,10 @@ pub struct StartRun {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(optional, as = "Option<Vec<String>>")]
     pub attachment_ids: Vec<String>,
+    /// Sets the thread's mode for this turn and the ones after it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission_mode: Option<PermissionMode>,
 }
 }
 

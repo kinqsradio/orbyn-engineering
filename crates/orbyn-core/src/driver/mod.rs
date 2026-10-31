@@ -83,6 +83,7 @@ pub struct RunSpec {
     /// The prompt alone, for engines that cannot take context.
     pub user_prompt: String,
     pub kind: RunKind,
+    pub mode: orbyn_contracts::PermissionMode,
     /// Plan mode: the engine may read and propose, not change anything.
     pub plan: bool,
     pub model: Option<String>,
@@ -203,6 +204,12 @@ pub trait EngineDriver: Send + Sync {
         spec: RunSpec,
         events: mpsc::Sender<EngineEvent>,
     ) -> Result<RunHandle>;
+
+    /// Subscription limits, when the engine reports them without Orbyn touching
+    /// a credential. Reading them spends no model usage.
+    async fn limits(&self) -> Result<Option<Value>> {
+        Ok(None)
+    }
 
     /// One prompt, one reply, no tools and no session. This spends the user's
     /// engine usage, so it runs only when they ask for it.

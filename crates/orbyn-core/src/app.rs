@@ -18,6 +18,7 @@ use crate::skills::SkillService;
 use crate::store::{NewThread, Recovery, Store};
 use crate::terminal::TerminalManager;
 use crate::updates::UpdateCenter;
+use crate::usage::UsageCenter;
 use crate::util::new_id;
 use crate::workspace::Workspace;
 
@@ -68,6 +69,7 @@ pub struct Core {
     pub runs: Arc<RunManager>,
     pub terminals: Arc<TerminalManager>,
     pub updates: Arc<UpdateCenter>,
+    pub usage: Arc<UsageCenter>,
     pub recovery: Recovery,
     _lock: File,
 }
@@ -129,6 +131,7 @@ impl Core {
             runs_dir: config.data_dir.join("runs"),
         }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
+        let usage = Arc::new(UsageCenter::new(&config.data_dir)?);
         let updates = Arc::new(UpdateCenter::new(
             store.clone(),
             workspace.clone(),
@@ -148,6 +151,7 @@ impl Core {
             runs,
             terminals,
             updates,
+            usage,
             recovery,
             _lock: lock,
         })

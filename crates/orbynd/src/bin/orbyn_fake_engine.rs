@@ -358,6 +358,11 @@ fn codex() {
                 send(&json!({ "id": id, "result": {} }));
                 codex_finish(&state, "interrupted");
             }
+            "account/rateLimits/read" => {
+                send(
+                    &json!({ "id": id, "result": { "rateLimits": { "primary": { "usedPercent": 12 } } } }),
+                );
+            }
             "thread/compact/start" => {
                 record_launch("codex-compact", &[]);
                 send(&json!({ "id": id, "result": {} }));

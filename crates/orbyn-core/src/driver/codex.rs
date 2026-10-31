@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, SkillDelivery, ThreadUsage,
+    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, PermissionMode,
+    SkillDelivery, ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -101,6 +102,25 @@ impl EngineDriver for CodexDriver {
         }
         args.push("-");
         one_shot_cli(&self.program, &args, prompt).await
+    }
+
+    /// Asks a short-lived app-server. Codex answers from its own login, and this
+    /// never uses `account/login/*`.
+    async fn limits(&self) -> Result<Option<Value>> {
+        let command = resolve_engine(&self.program)?;
+        let args = [OsString::from("app-server")];
+        let process = spawn_engine(&command, &args, &std::env::temp_dir())?;
+        let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, false);
+        rpc.call(
+            "initialize",
+            json!({ "clientInfo": { "name": "orbyn", "version": env!("CARGO_PKG_VERSION") } }),
+            CALL_TIMEOUT,
+        )
+        .await?;
+        rpc.notify("initialized", None).await?;
+        rpc.call("account/rateLimits/read", Value::Null, CALL_TIMEOUT)
+            .await
+            .map(Some)
     }
 
     async fn start_run(
@@ -336,7 +356,8 @@ async fn open_turn(
                 "threadId": session,
                 "input": [{ "type": "text", "text": spec.prompt, "text_elements": [] }],
                 "cwd": spec.checkout,
-                "sandboxPolicy": sandbox_policy(policy, &spec.checkout),
+                "sandboxPolicy": sandbox_policy(policy, &spec.checkout, spec.mode),
+                "approvalPolicy": approval_policy(spec.mode),
             }),
             CALL_TIMEOUT,
         )
@@ -351,11 +372,28 @@ async fn open_turn(
 /// Codex always lets a turn write to its own cwd. The thread therefore starts at
 /// the workspace root, for native discovery, and each turn moves its cwd and
 /// writable root to the selected checkout, keeping the library read-only.
-fn sandbox_policy(sandbox: &str, checkout: &std::path::Path) -> Value {
+///
+/// Full access stops asking and opens the network, but the writable root stays:
+/// `dangerFullAccess` would make the library and other projects writable.
+fn sandbox_policy(sandbox: &str, checkout: &std::path::Path, mode: PermissionMode) -> Value {
     match sandbox {
         "read-only" => json!({ "type": "readOnly" }),
         "danger-full-access" => json!({ "type": "dangerFullAccess" }),
-        _ => json!({ "type": "workspaceWrite", "writableRoots": [checkout] }),
+        _ => json!({
+            "type": "workspaceWrite",
+            "writableRoots": [checkout],
+            "networkAccess": mode == PermissionMode::FullAccess,
+        }),
+    }
+}
+
+/// Codex has no edits-only policy, so the lesser modes keep asking and the gate
+/// answers for them. That also keeps its deny rules in force.
+fn approval_policy(mode: PermissionMode) -> &'static str {
+    if mode == PermissionMode::FullAccess {
+        "never"
+    } else {
+        "on-request"
     }
 }
 
@@ -1121,6 +1159,7 @@ mod tests {
             prompt: "p".into(),
             user_prompt: "p".into(),
             kind: RunKind::Turn,
+            mode: PermissionMode::Supervised,
             plan: false,
             model: None,
             resume: None,
@@ -1137,13 +1176,24 @@ mod tests {
 
     #[test]
     fn turns_write_only_to_the_selected_checkout() {
-        let policy = sandbox_policy("workspace-write", std::path::Path::new("/w/repo/app"));
+        let checkout = std::path::Path::new("/w/repo/app");
+        let policy = sandbox_policy("workspace-write", checkout, PermissionMode::Supervised);
         assert_eq!(policy["type"], "workspaceWrite");
         assert_eq!(policy["writableRoots"], json!(["/w/repo/app"]));
+        assert_eq!(policy["networkAccess"], false);
         assert_eq!(
-            sandbox_policy("read-only", std::path::Path::new("/x"))["type"],
+            sandbox_policy("read-only", checkout, PermissionMode::FullAccess)["type"],
             "readOnly"
         );
+        let full = sandbox_policy("workspace-write", checkout, PermissionMode::FullAccess);
+        assert_eq!(
+            full["writableRoots"],
+            json!(["/w/repo/app"]),
+            "full access keeps the scope"
+        );
+        assert_eq!(full["networkAccess"], true);
+        assert_eq!(approval_policy(PermissionMode::FullAccess), "never");
+        assert_eq!(approval_policy(PermissionMode::Auto), "on-request");
     }
 
     #[test]
