@@ -224,3 +224,16 @@ test("the draft heading keeps its distance from the composer", async ({ page }) 
     expect((composer?.y ?? 0) - ((heading?.y ?? 0) + (heading?.height ?? 0))).toBe(47);
   }
 });
+
+test("usage opens from the sidebar and closes back to the thread", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/#/threads/t-done");
+  await page.getByRole("link", { name: "Usage" }).click();
+  const usage = page.getByRole("dialog", { name: "Usage" });
+  await expect(usage.getByRole("heading", { name: "Daily processed tokens" })).toBeVisible();
+  await usage.getByRole("radio", { name: "Limits" }).click();
+  await expect(usage.getByText("No engine reports limits.")).toBeVisible();
+  await page.keyboard.press("t");
+  await usage.getByRole("button", { name: "Close usage" }).click();
+  await expect(page).toHaveURL(/threads\/t-done/);
+});

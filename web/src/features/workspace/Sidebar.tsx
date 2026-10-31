@@ -1,4 +1,5 @@
 import {
+  ChartColumn,
   ChevronRight,
   Copy,
   FolderPlus,
@@ -222,6 +223,15 @@ function SidebarFoot({ route }: { route: Route }) {
         aria-current={route.name === "settings" ? "page" : undefined}
       >
         <Settings size={16} aria-hidden />
+      </a>
+      <a
+        className="icon-btn"
+        href={routeHref({ name: "usage" })}
+        aria-label="Usage"
+        title="Usage"
+        aria-current={route.name === "usage" ? "page" : undefined}
+      >
+        <ChartColumn size={16} aria-hidden />
       </a>
       <UndoNotice />
       <UpdatePill />

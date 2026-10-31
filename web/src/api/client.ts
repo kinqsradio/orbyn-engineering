@@ -11,6 +11,7 @@ import type {
   ImportReport,
   JsonValue,
   LibraryUpdateResult,
+  LimitsOverview,
   Mentions,
   Project,
   ProjectRemoval,
@@ -22,6 +23,7 @@ import type {
   Thread,
   UpdateStatus,
   UpdateThread,
+  UsageReport,
   WorkspaceSetup,
   WorkspaceStatus,
 } from "./types";
@@ -149,6 +151,11 @@ export const api = {
     return (await response.json()) as Attachment;
   },
 
+  usage: (days: number, signal?: AbortSignal) =>
+    request<UsageReport>("GET", `/api/usage?days=${days}`, undefined, signal),
+  refreshUsage: (days: number) => request<UsageReport>("POST", `/api/usage/refresh?days=${days}`),
+  limits: (force: boolean, signal?: AbortSignal) =>
+    request<LimitsOverview>("GET", `/api/limits${force ? "?force=true" : ""}`, undefined, signal),
   updates: (signal?: AbortSignal) => request<UpdateStatus>("GET", "/api/updates", undefined, signal),
   checkUpdates: () => request<UpdateStatus>("POST", "/api/updates/check"),
   applyAppUpdate: () => request<void>("POST", "/api/updates/app/apply"),

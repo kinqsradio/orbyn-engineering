@@ -3,7 +3,12 @@
  * adjustments here describe what JSON actually delivers.
  */
 import type { Approval as ApprovalWire } from "../generated/Approval";
+import type { EngineLimits as EngineLimitsWire } from "../generated/EngineLimits";
+import type { EngineUsage as EngineUsageWire } from "../generated/EngineUsage";
+import type { LimitsOverview as LimitsOverviewWire } from "../generated/LimitsOverview";
+import type { ModelUsage as ModelUsageWire } from "../generated/ModelUsage";
 import type { ThreadEvent } from "../generated/ThreadEvent";
+import type { UsageReport as UsageReportWire } from "../generated/UsageReport";
 
 export type { ActionKind } from "../generated/ActionKind";
 export type { AgUiEvent } from "../generated/AgUiEvent";
@@ -49,3 +54,18 @@ export type WireThreadEvent = Int64AsNumber<ThreadEvent, "seq">;
 
 /** The generated JSON type, reached without naming its path under `crates`. */
 export type JsonValue = ApprovalWire["detail"];
+
+/** Deeply, every i64 as JSON.parse delivers it. */
+export type Wired<T> = T extends bigint
+  ? number
+  : T extends (infer U)[]
+    ? Wired<U>[]
+    : T extends object
+      ? { [K in keyof T]: Wired<T[K]> }
+      : T;
+
+export type UsageReport = Wired<UsageReportWire>;
+export type EngineUsage = Wired<EngineUsageWire>;
+export type ModelUsage = Wired<ModelUsageWire>;
+export type LimitsOverview = Wired<LimitsOverviewWire>;
+export type EngineLimits = Wired<EngineLimitsWire>;

@@ -34,7 +34,8 @@ export async function startService(port: number): Promise<Service> {
   if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
   const dir = mkdtempSync(join(tmpdir(), "orbyn-e2e-"));
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
-    env: { ...process.env, ORBYN_OFFLINE: "1" },
+    // A home of its own, so no real engine history or login is read.
+    env: { ...process.env, ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {

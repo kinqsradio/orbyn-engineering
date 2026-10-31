@@ -769,3 +769,26 @@ export const lifecycle = (): NonNullable<Thread["lifecycle"]> => ({
   permission_mode: "supervised",
   plan_mode: false,
 });
+
+export const usageEngines = () => [
+  {
+    engine: "claude",
+    status: "scanned",
+    files_scanned: 3,
+    files_skipped: 0,
+    models: [
+      {
+        model: "claude-sonnet",
+        input_tokens: 120_000,
+        output_tokens: 90_000,
+        cache_read_tokens: 4_000_000,
+        cache_write_tokens: 40_000,
+        estimated_cost: 4.25,
+      },
+    ],
+    days: [
+      { date: iso(-86_400).slice(0, 10), tokens: 1_250_000 },
+      { date: iso(0).slice(0, 10), tokens: 3_000_000 },
+    ],
+  },
+];

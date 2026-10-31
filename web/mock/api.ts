@@ -426,6 +426,13 @@ export function createMockApi(options: MockOptions = {}) {
       case "DELETE /api/queue":
         queued = queued.filter((item) => item.id !== seg[2]);
         return { status: 204 };
+      case "GET /api/usage":
+        return {
+          status: 200,
+          body: { host_id: "mock", scanned_at: now(), engines: fixtures.usageEngines() },
+        };
+      case "GET /api/limits":
+        return { status: 200, body: { pooled: [], engines: [], unavailable: [] } };
       case "PATCH /api/threads": {
         const thread = threads.find((t) => t.id === seg[2]);
         if (!thread) return err(404, "not_found", "Thread not found.");

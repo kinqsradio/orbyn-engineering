@@ -17,7 +17,8 @@ export type Route =
   | { name: "new"; projectId: string | null }
   | { name: "add-project" }
   | { name: "trust"; projectId: string; threadId: string | null }
-  | { name: "settings"; section: SettingsSection | null };
+  | { name: "settings"; section: SettingsSection | null }
+  | { name: "usage" };
 
 const enc = encodeURIComponent;
 
@@ -33,6 +34,8 @@ export function routeHref(route: Route): string {
       return "#/add-project";
     case "trust":
       return `#/trust/${enc(route.projectId)}${route.threadId ? `/${enc(route.threadId)}` : ""}`;
+    case "usage":
+      return "#/usage";
     case "settings":
       return route.section ? `#/settings/${route.section}` : "#/settings";
   }
@@ -60,6 +63,8 @@ export function parseRoute(hash: string): Route {
       return { name: "add-project" };
     case "trust":
       return first ? { name: "trust", projectId: first, threadId: second ?? null } : { name: "home" };
+    case "usage":
+      return { name: "usage" };
     case "settings":
       return {
         name: "settings",

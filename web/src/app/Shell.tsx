@@ -16,6 +16,7 @@ import {
 } from "../features/workspace/threadActions";
 import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../features/workspace/threadUndo";
 import { Sidebar } from "../features/workspace/Sidebar";
+import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useLayoutWidth } from "../lib/useLayout";
@@ -26,7 +27,9 @@ import { IconButton } from "../ui/controls";
 
 const POLL_MS = 4000;
 
-function RouteView({ route, needsProject }: { route: Exclude<Route, { name: "settings" }>; needsProject: boolean }) {
+type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
+
+function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
     case "home":
       return needsProject ? <AddProject /> : <DraftView key="draft" projectId={null} />;
@@ -65,6 +68,11 @@ function threadKey(event: KeyboardEvent, route: Route): boolean {
       return true;
     }
     return false;
+  }
+  if (key === "u" && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    navigate({ name: "usage" });
+    return true;
   }
   if (key === "b" && !event.shiftKey && !event.altKey) {
     event.preventDefault();
@@ -154,7 +162,7 @@ export function Shell() {
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
   const sidebarWidth = useUi((state) => state.sidebarWidth);
-  const behindSettings = useRef<Exclude<Route, { name: "settings" }>>({ name: "home" });
+  const behindSettings = useRef<PageRoute>({ name: "home" });
   const main = useRef<HTMLElement>(null);
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
@@ -185,8 +193,9 @@ export function Shell() {
   }, []);
 
   const needsProject = projects !== null && projects.length === 0;
-  const underneath = route.name === "settings" ? behindSettings.current : route;
-  if (route.name !== "settings") behindSettings.current = route;
+  const overlay = route.name === "settings" || route.name === "usage";
+  const underneath = overlay ? behindSettings.current : route;
+  if (!overlay) behindSettings.current = route;
   const onHome = underneath.name === "home" && !needsProject;
   const showNav = layout === "narrow" ? onHome : !collapsed;
 
@@ -211,13 +220,14 @@ export function Shell() {
           <PanelLeft size={16} aria-hidden />
         </IconButton>
       ) : null}
-      {layout === "narrow" && onHome && route.name !== "settings" ? (
+      {layout === "narrow" && onHome && !overlay ? (
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">
           <RouteView route={underneath} needsProject={needsProject} />
         </main>
       )}
+      {route.name === "usage" ? <UsagePage onClose={() => navigate(underneath)} /> : null}
       {route.name === "settings" ? (
         <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
       ) : null}
