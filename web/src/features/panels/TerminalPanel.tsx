@@ -1,5 +1,6 @@
 import { RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { isTerminalShortcut } from "../../app/shortcuts";
 import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
@@ -63,6 +64,7 @@ export function TerminalPanel({
         scrollback: 5000,
         theme: terminalTheme(),
       });
+      terminal.attachCustomKeyEventHandler((event) => !isTerminalShortcut(event));
       const fit = new FitAddon();
       terminal.loadAddon(fit);
       terminal.open(element);

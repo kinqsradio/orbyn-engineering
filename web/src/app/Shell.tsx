@@ -24,7 +24,7 @@ import { Toasts } from "../ui/Toasts";
 import { api } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useAsync } from "../lib/useAsync";
-import { FALLBACK_RULES, matchesKey, runHandlers, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab } from "../state/ui";
@@ -302,6 +302,7 @@ function useGlobalKeys(route: Route) {
   const reload = keymap.reload;
   useCommand("keybindings.reload", reload);
   const rules = keymap.data?.rules ?? FALLBACK_RULES;
+  useEffect(() => setTerminalRules(rules), [rules]);
   const pushToast = useUi((state) => state.pushToast);
   const seenFile = useRef<string | null>(null);
   useEffect(() => {

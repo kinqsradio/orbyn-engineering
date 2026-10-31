@@ -58,6 +58,16 @@ export function matchesKey(rule: string, event: KeyboardEvent): boolean {
 
 export type WhenContext = Record<string, boolean>;
 
+let terminalRules: KeybindingRule[] = [];
+
+/** Keeps the rules that act inside a terminal, which reads the keyboard itself. */
+export function setTerminalRules(rules: KeybindingRule[]) {
+  terminalRules = rules.filter((rule) => !rule.remove && /(^|[^!])terminalFocus/.test(rule.when ?? ""));
+}
+
+/** True for a key the app owns while a terminal has focus, so xterm leaves it alone. */
+export const isTerminalShortcut = (event: KeyboardEvent) => terminalRules.some((rule) => matchesKey(rule.key, event));
+
 /** `a && !b`, with `||` between alternatives. An unknown name is false. */
 export function whenHolds(when: string | null, context: WhenContext): boolean {
   if (!when?.trim()) return true;

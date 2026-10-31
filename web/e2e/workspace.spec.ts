@@ -155,7 +155,7 @@ test("the default zero duration and reduced motion skip the transition", async (
   await expect(page.getByRole("heading", { name: /What should we build/ })).toBeVisible();
   await send(page, "still");
   expect(await page.evaluate(() => document.getAnimations().some((a) => a.id === "composer-dock"))).toBe(false);
-  await expect(page.getByText("still", { exact: true })).toBeVisible();
+  await expect(page.locator(".msg-user").getByText("still", { exact: true })).toBeVisible();
 });
 
 test("status loops are stepped and pause when not visible", async ({ page }) => {

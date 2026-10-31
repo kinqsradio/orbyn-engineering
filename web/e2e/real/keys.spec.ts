@@ -74,8 +74,11 @@ test("usage period keys come from the rules", async ({ page }) => {
   await page.goto(`${service.page}#/usage`);
   const usage = page.getByRole("dialog", { name: "Usage" });
   await expect(usage).toBeVisible();
-  await page.keyboard.press("ControlOrMeta+Shift+2");
-  await expect(usage.getByRole("radio", { name: "7 days" })).toBeChecked();
+  // The rules arrive just after the page does.
+  await expect(async () => {
+    await page.keyboard.press("ControlOrMeta+Shift+2");
+    await expect(usage.getByRole("radio", { name: "7 days" })).toBeChecked({ timeout: 500 });
+  }).toPass();
   await page.keyboard.press("ControlOrMeta+Shift+4");
   await expect(usage.getByRole("radio", { name: "90 days" })).toBeChecked();
 });
