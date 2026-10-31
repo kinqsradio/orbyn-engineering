@@ -6,6 +6,7 @@ import type {
   CloneJob,
   CreateThread,
   CustomEngine,
+  EditorInfo,
   EngineModels,
   EngineStatus,
   FileDiff,
@@ -190,6 +191,9 @@ export const api = {
 
   threads: (projectId: string, signal?: AbortSignal) =>
     request<Thread[]>("GET", `/api/threads?project_id=${q(projectId)}`, undefined, signal),
+  editors: (signal?: AbortSignal) => request<EditorInfo[]>("GET", "/api/editors", undefined, signal),
+  openInEditor: (threadId: string, body: { path: string; editor: string; line?: number; column?: number }) =>
+    request<void>("POST", `/api/threads/${q(threadId)}/files/open`, body),
   allThreads: (signal?: AbortSignal) => request<Thread[]>("GET", "/api/threads", undefined, signal),
   adoptScratch: (threadId: string) => request<Project>("POST", `/api/threads/${q(threadId)}/adopt`, {}),
   thread: (id: string, signal?: AbortSignal) =>

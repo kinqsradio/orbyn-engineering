@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Copy,
   FolderPlus,
+  GitPullRequest,
   PanelLeft,
   Search,
   Settings,
@@ -223,6 +224,15 @@ function SidebarFoot({ route }: { route: Route }) {
         aria-current={route.name === "settings" ? "page" : undefined}
       >
         <Settings size={16} aria-hidden />
+      </a>
+      <a
+        className="icon-btn"
+        href={routeHref({ name: "pulls" })}
+        aria-label="Pull requests"
+        title="Pull requests"
+        aria-current={route.name === "pulls" ? "page" : undefined}
+      >
+        <GitPullRequest size={16} aria-hidden />
       </a>
       <a
         className="icon-btn"

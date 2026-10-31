@@ -7,6 +7,14 @@ import type { EngineLimits as EngineLimitsWire } from "../generated/EngineLimits
 import type { EngineUsage as EngineUsageWire } from "../generated/EngineUsage";
 import type { LimitsOverview as LimitsOverviewWire } from "../generated/LimitsOverview";
 import type { ModelUsage as ModelUsageWire } from "../generated/ModelUsage";
+import type { PullCheck as PullCheckWire } from "../generated/PullCheck";
+import type { PullConversation as PullConversationWire } from "../generated/PullConversation";
+import type { PullFile as PullFileWire } from "../generated/PullFile";
+import type { PullList as PullListWire } from "../generated/PullList";
+import type { PullListEntry as PullListEntryWire } from "../generated/PullListEntry";
+import type { PullRequest as PullRequestWire } from "../generated/PullRequest";
+import type { PullRequestDetail as PullRequestDetailWire } from "../generated/PullRequestDetail";
+import type { PullTimelineEvent as PullTimelineEventWire } from "../generated/PullTimelineEvent";
 import type { ThreadEvent } from "../generated/ThreadEvent";
 import type { UsageReport as UsageReportWire } from "../generated/UsageReport";
 
@@ -71,3 +79,13 @@ export type EngineUsage = Wired<EngineUsageWire>;
 export type ModelUsage = Wired<ModelUsageWire>;
 export type LimitsOverview = Wired<LimitsOverviewWire>;
 export type EngineLimits = Wired<EngineLimitsWire>;
+export type PullRequest = Wired<PullRequestWire>;
+export type PullRequestDetail = Wired<PullRequestDetailWire>;
+export type PullList = Wired<PullListWire>;
+export type PullListEntry = Wired<PullListEntryWire>;
+export type PullCheck = Wired<PullCheckWire>;
+export type PullConversation = Wired<PullConversationWire>;
+export type PullFile = Wired<PullFileWire>;
+export type PullTimelineEvent = Wired<PullTimelineEventWire>;
+export type { ForgeStatus } from "../generated/ForgeStatus";
+export type { EditorInfo } from "../generated/EditorInfo";

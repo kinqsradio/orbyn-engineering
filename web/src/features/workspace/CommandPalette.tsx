@@ -17,7 +17,7 @@ interface Entry {
 }
 
 const title = (section: string) =>
-  section === "sharing" ? "Sharing & access" : section.charAt(0).toUpperCase() + section.slice(1);
+  section.charAt(0).toUpperCase() + section.slice(1);
 
 export function CommandPalette({ start, onClose }: { start: PaletteStart; onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);

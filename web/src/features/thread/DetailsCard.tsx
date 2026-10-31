@@ -22,6 +22,7 @@ import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
+import { OpenInEditor } from "./OpenInEditor";
 import { runningTools } from "./timeline";
 
 function ThreadMenu({ thread }: { thread: Thread }) {
@@ -202,6 +203,7 @@ export function DetailsCard({
           </div>
         ) : null}
         <ChangesRow threadId={thread.id} />
+        <OpenInEditor threadId={thread.id} />
         {compact ? (
           <>
             <button type="button" className="detail-row" onClick={() => togglePanel("activity")}>

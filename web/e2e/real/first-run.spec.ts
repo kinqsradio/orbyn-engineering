@@ -89,3 +89,9 @@ test("a folder is added where it is, and a thread can start without a project", 
     .poll(async () => (await service.api<{ scratch: boolean }>("GET", `/api/threads/${thread.id}`)).scratch)
     .toBe(false);
 });
+
+test("the pull requests page reads the real list", async ({ page }) => {
+  await page.goto(`${service.page}#/pulls`);
+  await expect(page.getByRole("heading", { name: "Pull requests", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No pull requests" })).toBeVisible({ timeout: 15_000 });
+});

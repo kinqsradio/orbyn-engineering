@@ -6,7 +6,6 @@ export const SETTINGS_SECTIONS = [
   "providers",
   "threads",
   "projects",
-  "sharing",
   "maintenance",
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
@@ -17,7 +16,8 @@ export type Route =
   | { name: "new"; projectId: string | null }
   | { name: "trust"; projectId: string; threadId: string | null }
   | { name: "settings"; section: SettingsSection | null }
-  | { name: "usage" };
+  | { name: "usage" }
+  | { name: "pulls" };
 
 const enc = encodeURIComponent;
 
@@ -33,6 +33,8 @@ export function routeHref(route: Route): string {
       return `#/trust/${enc(route.projectId)}${route.threadId ? `/${enc(route.threadId)}` : ""}`;
     case "usage":
       return "#/usage";
+    case "pulls":
+      return "#/pulls";
     case "settings":
       return route.section ? `#/settings/${route.section}` : "#/settings";
   }
@@ -60,6 +62,8 @@ export function parseRoute(hash: string): Route {
       return first ? { name: "trust", projectId: first, threadId: second ?? null } : { name: "home" };
     case "usage":
       return { name: "usage" };
+    case "pulls":
+      return { name: "pulls" };
     case "settings":
       return {
         name: "settings",

@@ -430,6 +430,10 @@ export function createMockApi(options: MockOptions = {}) {
       case "DELETE /api/queue":
         queued = queued.filter((item) => item.id !== seg[2]);
         return { status: 204 };
+      case "GET /api/editors":
+        return { status: 200, body: [{ id: "code", name: "VS Code", launch_style: "goto", file_manager: false }] };
+      case "GET /api/pulls":
+        return { status: 200, body: { pulls: fixtures.pulls(), failed: [] } };
       case "GET /api/clones":
         return { status: 200, body: clones };
       case "POST /api/clones": {

@@ -275,3 +275,13 @@ test("New thread in opens a draft in the chosen project", async ({ page }) => {
   await palette.getByRole("button", { name: "marketing-site" }).click();
   await expect(page.locator(".hero-project")).toHaveText("marketing-site");
 });
+
+test("the pull requests page lists and filters", async ({ page }) => {
+  await page.goto("/#/threads/t-done");
+  await page.getByRole("link", { name: "Pull requests" }).click();
+  await expect(page.getByRole("heading", { name: "Pull requests", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Add approval timeouts/ })).toBeVisible();
+  await page.getByLabel("Search pull requests").fill("label:nothing");
+  await page.getByLabel("Search pull requests").press("Enter");
+  await expect(page.getByRole("heading", { name: "No pull requests" })).toBeVisible();
+});

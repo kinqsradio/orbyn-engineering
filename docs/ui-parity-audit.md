@@ -59,6 +59,9 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Layout | Pane width | Live: 360 default, resized per thread | Match, Real; double-click resets | Default follows the window, as measured before |
 | Layout | Narrow | Source: right panel becomes a sheet at 980 and under | Replaces the thread with Back to thread | Own shape below the wide breakpoint |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
+| Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
+| Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
+| Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
 | Terminal drawer | Open | Unobserved | Built | Unknown |
 | Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
 | Settings | Sections | Live: 17 sections | 7 backed, Real | Others hidden |
@@ -66,7 +69,6 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
-| Settings | Sharing & access | Live name | Access moved here, Real | Layout own |
 | Settings | Maintenance | Live name | Update checks, Real | Contents unobserved |
 | First run | Setup, create, trust, draft send | n/a, required by Orbyn | Passed, Real | Synthetic data |
 | Removed | Audit section | Not in reference | Removed with its mock data | n/a |

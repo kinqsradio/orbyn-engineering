@@ -16,6 +16,7 @@ import {
 } from "../features/workspace/threadActions";
 import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../features/workspace/threadUndo";
 import { Sidebar } from "../features/workspace/Sidebar";
+import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
@@ -33,6 +34,8 @@ function RouteView({ route, needsProject }: { route: PageRoute; needsProject: bo
   switch (route.name) {
     case "home":
       return needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />;
+    case "pulls":
+      return <PullsPage />;
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":

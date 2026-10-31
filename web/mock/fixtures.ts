@@ -818,3 +818,23 @@ export const engineModels = (engine: string) => ({
     { id: "haiku", label: "Claude Haiku", description: null, is_default: false, custom: false, options: [] },
   ],
 });
+
+export const pulls = () => [
+  {
+    project_id: "orbyn-engineering-app",
+    pull: {
+      number: 42,
+      title: "Add approval timeouts",
+      url: "https://example.com/pull/42",
+      state: "open",
+      head: "approval-timeout",
+      base: "main",
+      author: "dev",
+      draft: false,
+      updated_at: iso(-600),
+      labels: ["bug"],
+      review_state: "approved",
+      checks_state: "passing",
+    },
+  },
+];

@@ -7,7 +7,6 @@ import { KeybindingsSection } from "./Keybindings";
 import { MaintenanceSection } from "./Maintenance";
 import { ProjectsSection } from "./Projects";
 import { ProvidersSection } from "./Providers";
-import { SharingSection } from "./Sharing";
 import { ThreadsSection } from "./Threads";
 
 const labels: Record<SettingsSection, string> = {
@@ -16,7 +15,6 @@ const labels: Record<SettingsSection, string> = {
   providers: "Providers",
   threads: "Threads",
   projects: "Projects",
-  sharing: "Sharing & access",
   maintenance: "Maintenance",
 };
 
@@ -25,7 +23,6 @@ const groups: { label: string | null; sections: SettingsSection[] }[] = [
   { label: null, sections: ["appearance", "keybindings"] },
   { label: "Agents", sections: ["providers", "threads"] },
   { label: "Code", sections: ["projects"] },
-  { label: "Connections", sections: ["sharing"] },
   { label: null, sections: ["maintenance"] },
 ];
 
@@ -35,7 +32,6 @@ const views: Record<SettingsSection, () => React.JSX.Element | null> = {
   providers: ProvidersSection,
   threads: ThreadsSection,
   projects: ProjectsSection,
-  sharing: SharingSection,
   maintenance: MaintenanceSection,
 };
 

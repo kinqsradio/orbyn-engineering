@@ -1,6 +1,7 @@
 import {
   Activity,
   FileDiff,
+  GitPullRequest,
   Maximize2,
   Minimize2,
   PanelBottom,
@@ -21,6 +22,7 @@ import { useUi, type ContextTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ActivityPanel } from "./ActivityPanel";
 import { DiffPanel } from "./DiffPanel";
+import { LinkedPulls } from "./LinkedPulls";
 import { RIGHT_TABS } from "./tabs";
 
 interface LauncherAction {
@@ -46,6 +48,7 @@ function Launcher({ thread }: { thread: Thread }) {
     { id: "terminal", label: "Terminal", icon: SquareTerminal, shortcut: "T", available: true },
     { id: "diff", label: "Diff", icon: FileDiff, shortcut: "D", available: (diff.data?.length ?? 0) > 0 },
     { id: "activity", label: "Activity", icon: Activity, shortcut: "A", available: activity },
+    { id: "pulls", label: "Pull requests", icon: GitPullRequest, shortcut: "P", available: true },
   ];
 
   const open = (action: LauncherAction) => {
@@ -201,7 +204,13 @@ export function SurfacePane({
           <Launcher thread={thread} />
         ) : (
           <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">
-            {tab === "diff" ? <DiffPanel threadId={thread.id} /> : <ActivityPanel threadId={thread.id} />}
+            {tab === "diff" ? (
+              <DiffPanel threadId={thread.id} />
+            ) : tab === "activity" ? (
+              <ActivityPanel threadId={thread.id} />
+            ) : (
+              <LinkedPulls thread={thread} />
+            )}
           </div>
         )}
       </div>

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
-export type RightTab = "diff" | "activity";
+export type RightTab = "diff" | "activity" | "pulls";
 export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
@@ -41,6 +41,7 @@ interface Prefs {
   modelHidden: string[];
   modelOrder: string[];
   effortDisplay: "label" | "bars";
+  preferredEditor: string | null;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
 }
@@ -92,6 +93,7 @@ const defaults: Prefs = {
   modelHidden: [],
   modelOrder: [],
   effortDisplay: "label",
+  preferredEditor: null,
   lastModel: null,
 };
 
@@ -135,6 +137,7 @@ interface UiState extends Prefs {
         | "modelHidden"
         | "modelOrder"
         | "effortDisplay"
+        | "preferredEditor"
         | "lastModel"
       >
     >,
@@ -194,13 +197,15 @@ const prefsOf = (state: Prefs): Prefs => ({
   modelHidden: state.modelHidden,
   modelOrder: state.modelOrder,
   effortDisplay: state.effortDisplay,
+  preferredEditor: state.preferredEditor,
   lastModel: state.lastModel,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
 function savedPrefs(): Partial<Prefs> {
   const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
-  const panelTab = saved.panelTab === "diff" || saved.panelTab === "activity" ? saved.panelTab : null;
+  const panelTab =
+    saved.panelTab === "diff" || saved.panelTab === "activity" || saved.panelTab === "pulls" ? saved.panelTab : null;
   return { ...saved, panelTab, layouts: saved.layouts ?? {} };
 }
 
