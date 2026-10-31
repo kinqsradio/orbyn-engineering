@@ -1,7 +1,5 @@
 //! Preview tabs in a real headless Chrome, and servers a thread started.
 
-#![cfg(unix)]
-
 mod support;
 
 use std::io::{Read, Write};
@@ -336,6 +334,32 @@ async fn a_preview_refuses_other_schemes_and_an_untrusted_folder() {
     service.stop().await;
 }
 
+/// Windows gives no process's folder, so a server is listed and never in reach of Stop.
+#[cfg(windows)]
+#[tokio::test]
+async fn windows_lists_a_listener_and_stops_nothing_outside_the_checkout() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let path = format!("/api/threads/{thread}/servers");
+    let listed = service.json(&path).await;
+    let row = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["port"] == port)
+        .unwrap_or_else(|| panic!("{listed}"));
+    assert_eq!(row["pid"], std::process::id());
+    assert_eq!(row["in_checkout"], false);
+    let (code, _) = service
+        .send(&format!("{path}/{}/stop", std::process::id()), json!({}))
+        .await;
+    assert_eq!(code, 404);
+    service.stop().await;
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn servers_are_those_running_from_the_checkout_and_only_they_can_be_stopped() {
     if std::process::Command::new("lsof")
