@@ -287,7 +287,11 @@ impl EngineManager {
         } else {
             None
         };
+        let (inherited_credentials, endpoint_origin) =
+            crate::child_env::inherited_login(&descriptor.id);
         EngineStatus {
+            inherited_credentials,
+            endpoint_origin,
             id: descriptor.id,
             name: descriptor.name,
             tier: descriptor.tier,

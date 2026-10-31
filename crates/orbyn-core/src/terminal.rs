@@ -120,6 +120,8 @@ impl PtySession {
     }
 }
 
+/// The tree goes first: this runs before the fields drop, and closing a pseudo console
+/// can block on a survivor still holding its output pipe.
 impl Drop for PtySession {
     fn drop(&mut self) {
         self.tree.kill();
@@ -345,6 +347,13 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
     if let Some(features) = fish_features(&spec.program) {
         command.env("fish_features", features);
     }
+    let inherited = crate::child_env::for_terminal();
+    for name in &inherited.remove {
+        command.env_remove(name);
+    }
+    for (name, value) in &inherited.set {
+        command.env(name, value);
+    }
     let mut child = pty.slave.spawn_command(command).map_err(failed)?;
     drop(pty.slave);
     let pid = child.process_id().unwrap_or(0);
@@ -406,7 +415,8 @@ fn tree_for(pid: u32) -> ProcessTree {
 pub fn default_shell() -> PathBuf {
     #[cfg(windows)]
     {
-        std::env::var_os("COMSPEC").map_or_else(|| "cmd.exe".into(), PathBuf::from)
+        let found = |name: &str| crate::process::resolve(name).map(|command| command.path);
+        windows_shell(found, std::env::var_os("COMSPEC"))
     }
     #[cfg(not(windows))]
     {
@@ -414,19 +424,77 @@ pub fn default_shell() -> PathBuf {
     }
 }
 
-/// The shell invocation that runs one command line.
+/// PowerShell if a native one is installed, then `ComSpec`. `SHELL` plays no part: Git
+/// Bash exports a POSIX path there that a pseudo console cannot start.
+pub fn windows_shell(
+    find: impl Fn(&str) -> Option<PathBuf>,
+    comspec: Option<std::ffi::OsString>,
+) -> PathBuf {
+    let native = |path: &PathBuf| {
+        path.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("com"))
+    };
+    ["pwsh", "powershell"]
+        .iter()
+        .find_map(|name| find(name).filter(native))
+        .or_else(|| comspec.map(PathBuf::from))
+        .unwrap_or_else(|| "cmd.exe".into())
+}
+
+/// The shell invocation that runs one command line. Windows stays on `cmd /C`, whose
+/// rules a project's scripts are written for, whatever a terminal opens in.
 pub fn shell_command(command: &str) -> (PathBuf, Vec<std::ffi::OsString>) {
-    let shell = default_shell();
     #[cfg(windows)]
-    let args = vec!["/C".into(), command.into()];
+    let (shell, args) = (
+        std::env::var_os("COMSPEC").map_or_else(|| "cmd.exe".into(), PathBuf::from),
+        vec!["/C".into(), command.into()],
+    );
     #[cfg(not(windows))]
-    let args = vec!["-lc".into(), command.into()];
+    let (shell, args) = (default_shell(), vec!["-lc".into(), command.into()]);
     (shell, args)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_prefers_a_native_powershell_and_never_a_script_or_posix_path() {
+        let comspec = || Some("C:\\Windows\\cmd.exe".into());
+        let installed = |pwsh: Option<&str>, windows: Option<&str>| {
+            let (pwsh, windows) = (pwsh.map(PathBuf::from), windows.map(PathBuf::from));
+            move |name: &str| {
+                if name == "pwsh" {
+                    pwsh.clone()
+                } else {
+                    windows.clone()
+                }
+            }
+        };
+        assert_eq!(
+            windows_shell(
+                installed(Some("C:/p/pwsh.exe"), Some("C:/w/powershell.exe")),
+                comspec()
+            ),
+            PathBuf::from("C:/p/pwsh.exe")
+        );
+        assert_eq!(
+            windows_shell(
+                installed(Some("C:/p/pwsh.cmd"), Some("C:/w/powershell.exe")),
+                comspec()
+            ),
+            PathBuf::from("C:/w/powershell.exe"),
+            "a shim is not a shell"
+        );
+        assert_eq!(
+            windows_shell(installed(None, None), comspec()),
+            PathBuf::from("C:\\Windows\\cmd.exe")
+        );
+        assert_eq!(
+            windows_shell(installed(None, None), None),
+            PathBuf::from("cmd.exe")
+        );
+    }
 
     #[test]
     fn scrollback_is_cut_at_lines_and_at_bytes() {

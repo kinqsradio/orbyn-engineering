@@ -240,7 +240,8 @@ tried once over HTTPS, and the job says so.
 
 ## Terminals
 
-A thread holds up to 32 terminals, each with 5,000 lines and 8 MiB of scrollback kept
+A terminal on Windows opens a native `pwsh`, then `powershell`, then `ComSpec`. `SHELL`
+is ignored there. A thread holds up to 32 terminals, each with 5,000 lines and 8 MiB of scrollback kept
 here. Terminals sharing a `group` are a split. The `main` terminal is what a plain
 socket opens and a terminal-tier run uses, and a plain one nobody returns to closes
 after a minute. Named terminals stay until closed. Settling or archiving closes them
@@ -313,7 +314,9 @@ delegated threads.
 File routes need a trusted folder and share the engines' write scope, so `..` and
 symlinks cannot leave the checkout, and `.git` is out of reach. A save names the
 revision it started from; a file that moved on is reported, never overwritten, and
-new bytes arrive by rename. These saves are the user's own edits, audited, and
+new bytes arrive by rename. A read opens the resolved file without following a link and
+checks the path again, which narrows the window for a swapped folder but cannot close it
+on every filesystem. These saves are the user's own edits, audited, and
 differ from rule 4, which covers what Orbyn adds on its own.
 
 ## Approval lifecycle
@@ -530,8 +533,9 @@ Recording keeps the changed frames as numbered JPEG files in
 yet, so taking control only guards against a watcher's stray input.
 
 `/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout,
-through `lsof`. Windows has no such check through `netstat`, so there it lists every
-listener with `in_checkout: false`, and none of those can be stopped from here.
+through `lsof`. Windows has no such check, so there it lists loopback and wildcard
+listeners, named through a PowerShell query with `netstat` behind it, with `in_checkout:
+false`, and none of those can be stopped from here.
 
 ## Service access
 
@@ -555,6 +559,26 @@ forward-only, applied in a transaction at startup, and recorded in
 Secret files are created with mode `0600` on Unix. Windows has no mode bits: they
 inherit the ACL of the per-user `%LOCALAPPDATA%` directory, which excludes other
 non-administrator users. Orbyn does not set its own ACL.
+
+## Child environment
+
+Everything Orbyn spawns goes through `child_env`. Started inside a Claude Code session,
+`CLAUDECODE` and the rest of that host's `CLAUDE*` variables are removed, which matters
+because some put a child into a reduced mode. `CLAUDE_CONFIG_DIR`, the provider switches
+and `CLAUDE_CODE_OAUTH_TOKEN` are a person's own settings and stay. `CODEX_SANDBOX`-style
+session markers go always, and an AppImage's variables and its mount's entries in
+library, data and `PATH` lists go when `APPIMAGE` and `APPDIR` are both set. The
+`prefer_saved_login` preference also drops API keys and endpoint overrides from engines
+only, so they use their own login. `EngineStatus` reports inherited credentials by
+variable name and an endpoint by origin, never a value. No value is read for any other
+purpose, which keeps this inside rule 1.
+
+`PATH` for lookups and for children is the inherited one, then usual install folders
+that exist: Homebrew, `~/.local/bin`, cargo, bun, Volta, asdf, mise, pnpm, fnm's default,
+the newest nvm or `n` Node, and the npm prefix from `NPM_CONFIG_PREFIX` or `~/.npmrc`.
+Nothing runs a shell or npm to learn these. On Windows a `.cmd` is followed to the script
+it wraps, including pnpm's store and a same-named sibling, a `node.exe` beside the shim
+wins, and a shim that points at a shell is refused.
 
 ## Service configuration
 

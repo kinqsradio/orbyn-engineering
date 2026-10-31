@@ -34,6 +34,7 @@ pub(crate) async fn capture(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    crate::child_env::for_engine(builder.as_std_mut());
     let output = tokio::time::timeout(timeout, builder.output())
         .await
         .ok()?

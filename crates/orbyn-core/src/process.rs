@@ -21,7 +21,8 @@ pub struct ResolvedCommand {
 
 /// Resolves a bare name through PATH, or an explicit path as given.
 pub fn resolve(name: &str) -> Option<ResolvedCommand> {
-    let path = find_on_path(name, std::env::var_os("PATH").as_deref())?;
+    let search = crate::child_env::widened(std::env::var_os("PATH").as_deref());
+    let path = find_on_path(name, Some(&search))?;
     shim_target(&path)
 }
 
@@ -90,8 +91,10 @@ fn shim_target(path: &Path) -> Option<ResolvedCommand> {
     match extension.as_deref() {
         Some("cmd" | "bat") => {
             let text = std::fs::read_to_string(path).ok()?;
-            let script = parse_cmd_shim(&text)?;
-            let script = path.parent()?.join(script);
+            let script = match parse_cmd_shim(&text) {
+                Some(script) => path.parent()?.join(script),
+                None => sibling_script(path)?,
+            };
             if script
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
@@ -102,7 +105,13 @@ fn shim_target(path: &Path) -> Option<ResolvedCommand> {
                     path: path.to_path_buf(),
                 });
             }
-            let node = find_on_path("node", std::env::var_os("PATH").as_deref())?;
+            let beside = path.parent()?.join("node.exe");
+            let node = if beside.is_file() {
+                beside
+            } else {
+                let search = crate::child_env::widened(std::env::var_os("PATH").as_deref());
+                find_on_path("node", Some(&search))?
+            };
             Some(ResolvedCommand {
                 program: node,
                 prefix: vec![script.into_os_string()],
@@ -133,8 +142,39 @@ fn shim_target(path: &Path) -> Option<ResolvedCommand> {
     }
 }
 
+/// A standalone installer can put its launcher beside the `.cmd` under the same name.
+#[cfg(windows)]
+fn sibling_script(shim: &Path) -> Option<PathBuf> {
+    ["js", "cjs", "mjs"]
+        .iter()
+        .map(|extension| shim.with_extension(extension))
+        .find(|script| script.is_file())
+}
+
+/// A shim that hands off to a shell would put arguments back through its parser,
+/// which is what following a shim exists to avoid.
+fn is_shell_host(file: &str) -> bool {
+    let name = file.rsplit(['\\', '/']).next().unwrap_or(file);
+    let name = name.to_ascii_lowercase();
+    let Some(stem) = name.strip_suffix(".exe") else {
+        return false;
+    };
+    [
+        "cmd",
+        "powershell",
+        "pwsh",
+        "wscript",
+        "cscript",
+        "bash",
+        "sh",
+        "mshta",
+    ]
+    .contains(&stem)
+}
+
 /// Finds the wrapped script in an npm-style `.cmd` shim: the first quoted
 /// `%dp0%\...` or `%~dp0\...` path. The result is relative to the shim's folder.
+/// npm and pnpm both write this shape; pnpm's path climbs into its store.
 pub fn parse_cmd_shim(text: &str) -> Option<String> {
     for marker in ["\"%dp0%\\", "\"%~dp0\\", "\"%dp0%/", "\"%~dp0/"] {
         for (start, _) in text.match_indices(marker) {
@@ -146,6 +186,7 @@ pub fn parse_cmd_shim(text: &str) -> Option<String> {
                 .iter()
                 .any(|ext| lower.ends_with(ext))
                 && !lower.ends_with("node.exe")
+                && !is_shell_host(&lower)
             {
                 return Some(candidate.replace('\\', std::path::MAIN_SEPARATOR_STR));
             }
@@ -165,6 +206,7 @@ pub fn engine_command(command: &ResolvedCommand, args: &[OsString], cwd: &Path) 
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    crate::child_env::for_engine(builder.as_std_mut());
     isolate(&mut builder);
     builder
 }
@@ -355,6 +397,24 @@ mod windows_job {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pnpm_shim_is_followed_into_its_store() {
+        let shim = "@SETLOCAL\r\n\"%~dp0\\node.exe\" \"%~dp0\\..\\.pnpm\\tool@1\\node_modules\\tool\\cli.mjs\" %*\r\n";
+        let script = parse_cmd_shim(shim).unwrap();
+        assert!(script.ends_with("cli.mjs"), "{script}");
+    }
+
+    #[test]
+    fn a_shim_that_hands_off_to_a_shell_is_refused() {
+        for shim in [
+            "\"%dp0%\\cmd.exe\" /c evil %*",
+            "\"%~dp0\\powershell.exe\" -File x %*",
+            "\"%dp0%\\sub\\PWSH.EXE\" %*",
+        ] {
+            assert_eq!(parse_cmd_shim(shim), None, "{shim}");
+        }
+    }
 
     #[test]
     fn follows_npm_cmd_shim_to_its_script() {

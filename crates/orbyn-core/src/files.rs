@@ -4,6 +4,7 @@
 //! that moved on since then is reported, never overwritten.
 
 use std::ffi::OsString;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 
@@ -246,6 +247,35 @@ fn inside(scope: &WriteScope, path: &str) -> Result<PathBuf> {
     Ok(scope.checkout.join(relative))
 }
 
+/// Opens the resolved file without following a link at the last step, then checks the
+/// path again. That way a folder swapped for a link after the first check cannot point
+/// this read somewhere else.
+fn read_inside(scope: &WriteScope, path: &str, full: &Path) -> Result<Vec<u8>> {
+    let resolved = crate::util::canonicalize(full)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let refused = || CoreError::Invalid("That path is outside this checkout.".into());
+    let mut file = options.open(&resolved).map_err(|_| refused())?;
+    let opened = file.metadata()?;
+    if !opened.is_file() || !scope.permits(path) {
+        return Err(refused());
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(opened.len()).unwrap_or(0));
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
 fn revision_of(bytes: &[u8]) -> String {
     sha256_hex(bytes)
 }
@@ -340,7 +370,7 @@ impl Core {
                 truncated: true,
             });
         }
-        let bytes = std::fs::read(&full)?;
+        let bytes = read_inside(&scope, path, &full)?;
         let revision = revision_of(&bytes);
         let text = String::from_utf8(bytes);
         let binary = text.is_err();
@@ -494,14 +524,16 @@ impl Core {
             run_id: None,
             detail: json!({ "editor": request.editor, "line": request.line }),
         })?;
-        tokio::process::Command::new(&command.program)
+        let mut editor = tokio::process::Command::new(&command.program);
+        editor
             .args(&command.prefix)
             .args(&args)
             .current_dir(&scope.checkout)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?;
+            .stderr(Stdio::null());
+        crate::child_env::for_tool(editor.as_std_mut());
+        editor.spawn()?;
         Ok(())
     }
 }

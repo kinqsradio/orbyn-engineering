@@ -52,6 +52,7 @@ const DEFINITIONS: &[Definition] = defs![
     "auto_pull" Kind::Bool, false, true;
     "default_project_scripts" Kind::List, [], true;
     "default_model" Kind::Text, "", true;
+    "prefer_saved_login" Kind::Bool, false, false;
     "default_engine" Kind::Text, "", true;
     "fallback_model" Kind::Text, "", false;
     "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;
@@ -187,6 +188,13 @@ impl Core {
                 (None, None) => self.store.clear_setting(&setting_key(key))?,
             }
         }
+        self.apply_login_preference()
+    }
+
+    /// Spawning has no store, so this preference is handed to it directly.
+    pub(crate) fn apply_login_preference(&self) -> Result<()> {
+        let prefer = self.preference("prefer_saved_login", None)?;
+        crate::child_env::set_prefer_saved_login(prefer == json!(true));
         Ok(())
     }
 

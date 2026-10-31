@@ -44,6 +44,7 @@ pub(crate) async fn git_raw(cwd: &Path, args: &[&str]) -> Result<std::process::O
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    crate::child_env::for_tool(command.as_std_mut());
     command
         .output()
         .await
@@ -254,6 +255,7 @@ pub async fn snapshot(cwd: &Path, reference: Option<&str>, index: &Path) -> Resu
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .kill_on_drop(true);
+            crate::child_env::for_tool(command.as_std_mut());
             let output = command
                 .output()
                 .await

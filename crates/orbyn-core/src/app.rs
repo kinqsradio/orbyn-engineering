@@ -151,7 +151,7 @@ impl Core {
             http,
             config.update_manifest.clone(),
         ));
-        Ok(Self {
+        let core = Self {
             config,
             store,
             gate,
@@ -169,7 +169,9 @@ impl Core {
             previews: PreviewManager::default(),
             recovery,
             _lock: lock,
-        })
+        };
+        core.apply_login_preference()?;
+        Ok(core)
     }
 
     /// Creates a thread, with a worktree when asked. `git worktree add` runs repo

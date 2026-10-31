@@ -348,3 +348,64 @@ async fn a_library_thread_is_explicit_and_cannot_reach_nested_projects() {
         .unwrap();
     assert_eq!(response.status(), 400);
 }
+
+#[tokio::test]
+async fn a_host_session_never_reaches_an_engine_and_a_preference_clears_a_key() {
+    let dir = TempDir::new();
+    let (file, mut options) = launch_options(&dir);
+    for (name, value) in [
+        ("CLAUDECODE", "1"),
+        ("CLAUDE_CODE_SIMPLE", "1"),
+        ("CLAUDE_CONFIG_DIR", "/tmp/kept"),
+        ("ANTHROPIC_API_KEY", "not-a-real-key"),
+    ] {
+        options.env.push((name.to_owned(), value.to_owned()));
+    }
+    options.env.push((
+        "ANTHROPIC_BASE_URL".to_owned(),
+        "https://u:p@proxy.test/v1".to_owned(),
+    ));
+    let (service, thread) = setup(&dir, options, "claude").await;
+    service.admit(&thread, "hi").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let run = launches(&file, "claude");
+    let seen = run.last().unwrap()["env"].to_string();
+    assert!(!seen.contains("\"CLAUDECODE\""), "{seen}");
+    assert!(!seen.contains("CLAUDE_CODE_SIMPLE"), "{seen}");
+    assert!(seen.contains("CLAUDE_CONFIG_DIR"), "{seen}");
+    assert!(
+        seen.contains("ANTHROPIC_API_KEY"),
+        "kept until asked: {seen}"
+    );
+
+    let engines = service.json("/api/engines").await;
+    let claude = engines
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|engine| engine["id"] == "claude")
+        .unwrap();
+    assert_eq!(
+        claude["inherited_credentials"],
+        json!(["ANTHROPIC_API_KEY"])
+    );
+    assert_eq!(claude["endpoint_origin"], "https://proxy.test");
+    assert!(!claude.to_string().contains("not-a-real-key"));
+
+    let response = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": { "prefer_saved_login": true } }))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    service.admit(&thread, "again").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let run = launches(&file, "claude");
+    let seen = run.last().unwrap()["env"].to_string();
+    assert!(!seen.contains("ANTHROPIC_API_KEY"), "{seen}");
+    assert!(!seen.contains("ANTHROPIC_BASE_URL"), "{seen}");
+    service.stop().await;
+}

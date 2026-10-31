@@ -46,6 +46,7 @@ pub(crate) async fn git_user(cwd: &Path, args: &[&str], timeout: Duration) -> Re
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    crate::child_env::for_tool(command.as_std_mut());
     let output = tokio::time::timeout(timeout, command.output())
         .await
         .map_err(|_| CoreError::Git("Git did not finish in time.".into()))?

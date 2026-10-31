@@ -117,6 +117,7 @@ impl BrowserSession {
             .kill_on_drop(true);
         #[cfg(unix)]
         command.process_group(0);
+        crate::child_env::for_tool(command.as_std_mut());
         let child = ManagedChild::spawn(command)?;
         let url = tokio::time::timeout(START_TIMEOUT, read_port_file(&port_file))
             .await

@@ -52,6 +52,12 @@ fn record_launch(mode: &str, args: &[String]) {
             "mode": mode,
             "args": args,
             "cwd": std::env::current_dir().expect("cwd"),
+            "env": std::env::vars_os()
+                .map(|(name, _)| name.to_string_lossy().into_owned())
+                .filter(|name| ["CLAUDE", "ANTHROPIC", "CODEX_S", "OPENAI"]
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix)))
+                .collect::<Vec<_>>(),
         });
         let mut file = std::fs::OpenOptions::new()
             .create(true)

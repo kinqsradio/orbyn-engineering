@@ -152,6 +152,7 @@ async fn spawn(forge: Forge, cwd: &Path, args: &[&str], input: Option<&str>) -> 
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     let run = async {
+        crate::child_env::for_tool(builder.as_std_mut());
         let mut child = builder.spawn()?;
         if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
             stdin.write_all(input.as_bytes()).await?;

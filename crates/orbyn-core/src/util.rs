@@ -111,11 +111,41 @@ pub fn canonicalize(path: &Path) -> std::io::Result<std::path::PathBuf> {
     Ok(strip_verbatim(&resolved.to_string_lossy()).into())
 }
 
+/// Drops the verbatim prefix unless that would change what the path names: without
+/// it Windows reads `CON` as a device, trims trailing dots and limits the length.
 fn strip_verbatim(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-        return format!(r"\\{rest}");
+    let (plain, tail) = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        (format!(r"\\{rest}"), rest)
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        (rest.to_owned(), rest)
+    } else {
+        return path.to_owned();
+    };
+    let kept = tail.split('\\').all(|part| !needs_verbatim(part));
+    if kept && plain.len() < MAX_PLAIN_PATH {
+        plain
+    } else {
+        path.to_owned()
     }
-    path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
+}
+
+/// `MAX_PATH`, leaving room for the terminator.
+const MAX_PLAIN_PATH: usize = 260;
+
+fn needs_verbatim(part: &str) -> bool {
+    if part.ends_with(['.', ' ']) && part != "." && part != ".." {
+        return true;
+    }
+    let stem = part.split('.').next().unwrap_or(part).to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix).is_some_and(|rest| {
+            matches!(
+                rest,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+    };
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") || numbered("COM") || numbered("LPT")
 }
 
 /// Keeps the tail of diagnostic output that is safe to bound.
@@ -133,6 +163,29 @@ pub fn tail(text: &str, max_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_verbatim_prefix_goes_only_when_the_path_means_the_same_without_it() {
+        assert_eq!(strip_verbatim(r"\\?\C:\work\app"), r"C:\work\app");
+        assert_eq!(strip_verbatim(r"\\?\UNC\host\share\a"), r"\\host\share\a");
+        assert_eq!(strip_verbatim(r"/already/plain"), r"/already/plain");
+        for kept in [
+            r"\\?\C:\work\CON",
+            r"\\?\C:\work\nul.txt",
+            r"\\?\C:\work\COM1\x",
+            r"\\?\C:\work\LPT²",
+            r"\\?\C:\work\name.",
+            r"\\?\C:\work\name ",
+        ] {
+            assert_eq!(strip_verbatim(kept), kept);
+        }
+        let long = format!(r"\\?\C:\{}", "a".repeat(300));
+        assert_eq!(strip_verbatim(&long), long);
+        assert_eq!(
+            strip_verbatim(r"\\?\C:\console\company"),
+            r"C:\console\company"
+        );
+    }
 
     #[test]
     fn hex_round_trips_and_rejects_odd_input() {

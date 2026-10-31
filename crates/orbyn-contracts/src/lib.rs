@@ -2023,6 +2023,14 @@ pub struct EngineStatus {
     pub sign_in_command: Option<String>,
     pub updating: bool,
     pub problem: Option<String>,
+    /// Credential variables this engine would inherit, by name only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub inherited_credentials: Vec<String>,
+    /// The origin of an inherited endpoint override, with no path or user info.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub endpoint_origin: Option<String>,
 }
 }
 

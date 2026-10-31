@@ -413,12 +413,14 @@ impl Core {
 }
 
 async fn output(program: &str, args: &[&str]) -> Option<String> {
-    let run = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .output();
+        .kill_on_drop(true);
+    crate::child_env::for_tool(command.as_std_mut());
+    let run = command.output();
     let done = tokio::time::timeout(CLI_TIMEOUT, run).await.ok()?.ok()?;
     Some(String::from_utf8_lossy(&done.stdout).into_owned())
 }
@@ -439,6 +441,50 @@ fn parse_lsof(text: &str) -> Vec<(u32, String, u16)> {
                 }
             }
             _ => {}
+        }
+    }
+    found
+}
+
+/// Lists TCP listeners as JSON. Arguments, not a command line, and no profile runs.
+const WINDOWS_LISTENERS: &[&str] = &[
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "Get-NetTCPConnection -State Listen | ForEach-Object { [pscustomobject]@{ \
+     address = $_.LocalAddress; port = $_.LocalPort; pid = $_.OwningProcess; \
+     process = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName \
+     } } | ConvertTo-Json -Compress",
+];
+
+/// The output of `WINDOWS_LISTENERS`, which is an object for one row and a list for
+/// more. Only loopback and wildcard addresses count, each port once.
+fn parse_windows_listeners(text: &str) -> Vec<(u32, String, u16)> {
+    let Ok(parsed) = serde_json::from_str::<Value>(text.trim()) else {
+        return Vec::new();
+    };
+    let rows = match parsed {
+        Value::Array(rows) => rows,
+        row @ Value::Object(_) => vec![row],
+        _ => Vec::new(),
+    };
+    let mut found: Vec<(u32, String, u16)> = Vec::new();
+    for row in rows {
+        let address = row.get("address").and_then(Value::as_str).unwrap_or("");
+        if !["127.0.0.1", "::1", "0.0.0.0", "::"].contains(&address) {
+            continue;
+        }
+        let number = |key: &str| row.get(key).and_then(Value::as_u64);
+        let (Some(port), Some(pid)) = (number("port"), number("pid")) else {
+            continue;
+        };
+        let (Ok(port), Ok(pid)) = (u16::try_from(port), u32::try_from(pid)) else {
+            continue;
+        };
+        if !found.iter().any(|(_, _, seen)| *seen == port) {
+            let process = row.get("process").and_then(Value::as_str).unwrap_or("");
+            found.push((pid, process.to_owned(), port));
         }
     }
     found
@@ -474,10 +520,20 @@ async fn in_folder(pid: u32, checkout: &Path) -> bool {
 
 async fn listeners(checkout: &Path) -> Vec<LocalServer> {
     if cfg!(windows) {
-        let text = output("netstat", &["-ano", "-p", "TCP"])
-            .await
-            .unwrap_or_default();
-        return parse_netstat(&text)
+        // PowerShell also names the process; `netstat` is here for when it cannot run.
+        let found = match output("powershell.exe", WINDOWS_LISTENERS).await {
+            Some(text) if !text.trim().is_empty() => parse_windows_listeners(&text),
+            _ => Vec::new(),
+        };
+        let found = if found.is_empty() {
+            let text = output("netstat", &["-ano", "-p", "TCP"])
+                .await
+                .unwrap_or_default();
+            parse_netstat(&text)
+        } else {
+            found
+        };
+        return found
             .into_iter()
             .map(|(pid, process, port)| LocalServer {
                 port,
@@ -507,6 +563,24 @@ async fn listeners(checkout: &Path) -> Vec<LocalServer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_listeners_keep_local_ones_once_and_survive_bad_output() {
+        let rows = r#"[
+            {"address":"127.0.0.1","port":3000,"pid":10,"process":"node"},
+            {"address":"::1","port":3000,"pid":10,"process":"node"},
+            {"address":"192.168.1.4","port":22,"pid":11,"process":"ssh"},
+            {"address":"0.0.0.0","port":99999,"pid":12,"process":"bad"},
+            {"address":"::","port":5173,"pid":13,"process":null}
+        ]"#;
+        assert_eq!(
+            parse_windows_listeners(rows),
+            vec![(10, "node".to_owned(), 3000), (13, String::new(), 5173)]
+        );
+        let one = r#"{"address":"127.0.0.1","port":80,"pid":1,"process":"x"}"#;
+        assert_eq!(parse_windows_listeners(one).len(), 1);
+        assert!(parse_windows_listeners("Access denied").is_empty());
+    }
 
     #[test]
     fn base64_round_trips_jpeg_bytes() {

@@ -80,6 +80,7 @@ pub async fn run(sidecar: &ResolvedCommand, command: &str, args: &[String]) -> R
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    crate::child_env::for_tool(builder.as_std_mut());
     let output = tokio::time::timeout(COMMAND_TIMEOUT, builder.output())
         .await
         .map_err(|_| CoreError::Computer("agent-desktop did not finish in time.".into()))?
