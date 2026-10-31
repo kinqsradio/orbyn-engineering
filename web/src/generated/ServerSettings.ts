@@ -5,4 +5,8 @@ import type { SnoozePreset } from "./SnoozePreset";
 /**
  * Service-wide settings. Fields only ever get added, with defaults.
  */
-export type ServerSettings = { auto_settle: AutoSettleSettings, snooze_presets: Array<SnoozePreset>, title_instructions: string | null, };
+export type ServerSettings = { auto_settle: AutoSettleSettings, snooze_presets: Array<SnoozePreset>, title_instructions: string | null, 
+/**
+ * `false` turns background update checks off. Absent means on.
+ */
+background_update_checks?: boolean, };

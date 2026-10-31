@@ -148,6 +148,11 @@ pub trait EngineDriver: Send + Sync {
         None
     }
 
+    /// The latest version, for an engine with its own way of knowing.
+    async fn latest_version(&self) -> Option<String> {
+        None
+    }
+
     /// The registry package name used to look up the latest version.
     fn npm_package(&self) -> Option<&str> {
         None

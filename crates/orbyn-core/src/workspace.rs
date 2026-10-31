@@ -4,6 +4,7 @@
 //! and happen only when asked for.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use orbyn_contracts::{
@@ -56,6 +57,8 @@ pub struct Workspace {
     /// True while the library is moving. Admission takes this lock too, so a run
     /// and an update can never slip past each other's check.
     moving: Mutex<bool>,
+    /// Set from an app install until exit, or until the install fails.
+    installing: AtomicBool,
 }
 
 fn refused(message: impl Into<String>) -> CoreError {
@@ -239,6 +242,7 @@ impl Workspace {
             default_url,
             state: RwLock::new(state),
             moving: Mutex::new(false),
+            installing: AtomicBool::new(false),
         })
     }
 
@@ -359,6 +363,16 @@ impl Workspace {
         })
     }
 
+    /// The upstream revision as last fetched.
+    pub async fn upstream_revision(&self) -> Option<String> {
+        let root = self.root().ok()?;
+        upstream_of(&root).await?;
+        git(&root, &["rev-parse", "@{upstream}"])
+            .await
+            .ok()
+            .map(|sha| text(&sha))
+    }
+
     /// Reads the library's identity for prompts and the skills view.
     pub async fn identity(&self) -> Result<(String, bool)> {
         let root = self.root()?;
@@ -369,10 +383,28 @@ impl Workspace {
     /// Runs `admit` while the library cannot start moving.
     pub fn admit_with<T>(&self, admit: impl FnOnce() -> Result<T>) -> Result<T> {
         let moving = self.moving_lock();
+        if self.installing.load(Ordering::SeqCst) {
+            return Err(CoreError::Updating);
+        }
         if *moving {
             return Err(CoreError::RunsActive);
         }
         admit()
+    }
+
+    /// Holds admission for an app install. Taken under the admission lock, so a
+    /// run cannot start between this check and the hold.
+    pub fn hold_for_install(&self) -> Result<()> {
+        let _moving = self.moving_lock();
+        if !self.store.active_runs()?.is_empty() {
+            return Err(CoreError::RunsActive);
+        }
+        self.installing.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    pub fn release_install(&self) {
+        self.installing.store(false, Ordering::SeqCst);
     }
 
     fn moving_lock(&self) -> std::sync::MutexGuard<'_, bool> {
@@ -399,6 +431,9 @@ impl Workspace {
     /// Fetches only: the merge is a separate, explicit step.
     pub async fn fetch(&self) -> Result<Vec<IncomingCommit>> {
         let root = self.root()?;
+        if upstream_of(&root).await.is_none() {
+            return Ok(Vec::new());
+        }
         git(&root, &["fetch", "--quiet", "--no-recurse-submodules"]).await?;
         incoming(&root).await
     }

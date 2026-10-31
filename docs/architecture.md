@@ -183,6 +183,33 @@ the MCP server and the bootstrap list. On Windows `.claude/skills` and
 `.agents/skills` are Git symlinks; if they did not materialize, status says so and
 that session uses the MCP route. The tree is never rewritten.
 
+## Updates
+
+`UpdateCenter` is one view of the skills library, the app and the engines. It checks
+at startup, every six hours and on demand, unless the `background_update_checks`
+setting is `false`. A check only reads: `git fetch` of the library, engine latest
+versions and the app's release. A network failure never blocks startup; it keeps
+the earlier results and sets `error`, and `checked_at` stays at the last full
+success. Nothing applies automatically, ever.
+
+`POST /api/updates/apply-all` runs engines, then the library, then the app, stops at
+the first failure, and is refused while any run is active (`409 runs_active`). Every
+applied update is audited. `GET /api/updates/events` sends the status, then each
+change, for the UI's badge.
+
+With `--parent-stdin` a desktop shell owns app updates over newline JSON. It sends
+`app_update_available`, `app_update_none`, `app_update_unconfigured`,
+`app_update_progress` and `app_update_failed` on stdin; unknown or malformed lines
+are ignored, and EOF still means shut down. After the ready line `orbynd` sends
+`check_app_update` and `install_app_update` on stdout. Install first checks for
+active runs and then holds admission (`503 updating`) under the admission lock, until
+exit or until the shell reports failure.
+
+With no shell, `--update-manifest` names a release manifest `{version, notes}` to
+compare with the running version; with none, the app reports `unconfigured`. A
+server cannot replace itself, so `can_apply` stays false and `blocked_reason` says
+what to do.
+
 ## Per-thread MCP server
 
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
@@ -222,10 +249,11 @@ non-administrator users. Orbyn does not set its own ACL.
 
 ## Service configuration
 
-`orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`, `--remote`,
+`orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`,
+`--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
 `{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
-for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
+for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`, `ORBYN_OFFLINE`
 (skip latest-version lookups) and `ORBYN_LOG`.
@@ -252,6 +280,10 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
 | `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
 | `GET, PUT /api/settings` | `ServerSettings` |
+| `GET /api/updates`, `POST /api/updates/check` | `UpdateStatus`; a check only reads |
+| `GET /api/updates/events` | SSE `UpdateStatus` on each change |
+| `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |
+| `POST /api/updates/apply-all` | `ApplyAllResult`; engines, library, app; stops at the first failure |
 | `POST /api/threads/:id/runs` | Admit a run (`202`, `409 thread_busy`, `403 folder_untrusted`) |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |

@@ -323,6 +323,23 @@ pub async fn reorder_threads(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn updates(State(state): State<AppState>) -> Json<orbyn_contracts::UpdateStatus> {
+    Json(state.core.updates.status().await)
+}
+
+pub async fn check_updates(State(state): State<AppState>) -> Json<orbyn_contracts::UpdateStatus> {
+    Json(state.core.updates.check().await)
+}
+
+pub async fn apply_app_update(State(state): State<AppState>) -> ApiResult<StatusCode> {
+    state.core.updates.apply_app(LOCAL_USER).await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn apply_all_updates(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.updates.apply_all(LOCAL_USER).await?))
+}
+
 pub async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.store.settings()?))
 }

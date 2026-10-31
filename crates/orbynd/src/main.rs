@@ -58,6 +58,9 @@ struct ServeArgs {
     /// that still pass it keep starting.
     #[arg(long, hide = true)]
     skills_dir: Option<PathBuf>,
+    /// Release manifest to compare against when no desktop shell is attached.
+    #[arg(long, env = "ORBYN_UPDATE_MANIFEST")]
+    update_manifest: Option<String>,
     /// Where a first-run clone of the skills library comes from.
     #[arg(long, env = "ORBYN_WORKSPACE_URL")]
     workspace_url: Option<String>,
@@ -110,6 +113,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
     if args.skills_dir.is_some() {
         tracing::warn!("--skills-dir is ignored: skills come from the managed workspace");
     }
+    config.update_manifest.clone_from(&args.update_manifest);
     if let Some(url) = &args.workspace_url {
         config.workspace_url.clone_from(url);
     }
@@ -167,6 +171,11 @@ fn router(state: AppState) -> Router {
                 .patch(api::update_thread)
                 .delete(api::delete_thread),
         )
+        .route("/api/updates", get(api::updates))
+        .route("/api/updates/events", get(stream::update_events))
+        .route("/api/updates/check", post(api::check_updates))
+        .route("/api/updates/app/apply", post(api::apply_app_update))
+        .route("/api/updates/apply-all", post(api::apply_all_updates))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(
@@ -233,20 +242,30 @@ fn remote_key(core: &Core) -> Result<(String, Option<String>), CoreError> {
     Ok((digest, Some(key)))
 }
 
-async fn wait_for_stop(parent_stdin: bool, stop: CancellationToken) {
+/// Reads newline JSON from the desktop shell. EOF means the shell is gone.
+fn read_parent(core: Arc<Core>, closed: oneshot::Sender<()>) {
+    use std::io::BufRead;
+    // A plain thread: tokio's stdin would hold the runtime open at exit.
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            match line {
+                Ok(line) => core.updates.on_shell_line(&line),
+                // Not UTF-8 is a bad line, not a closed pipe.
+                Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {}
+                Err(_) => break,
+            }
+        }
+        let _ = closed.send(());
+    });
+}
+
+async fn wait_for_stop(parent: Option<oneshot::Receiver<()>>, stop: CancellationToken) {
     let parent = async {
-        if parent_stdin {
-            // A plain thread: tokio's stdin would hold the runtime open at exit.
-            let (closed, wait) = oneshot::channel::<()>();
-            std::thread::spawn(move || {
-                let mut sink = [0u8; 256];
-                let mut stdin = std::io::stdin().lock();
-                while matches!(std::io::Read::read(&mut stdin, &mut sink), Ok(read) if read > 0) {}
-                let _ = closed.send(());
-            });
-            let _ = wait.await;
-        } else {
-            std::future::pending::<()>().await;
+        match parent {
+            Some(closed) => {
+                let _ = closed.await;
+            }
+            None => std::future::pending::<()>().await,
         }
     };
     tokio::select! {
@@ -322,7 +341,23 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     println!("{start}");
 
     let stop = CancellationToken::new();
-    tokio::spawn(wait_for_stop(args.parent_stdin, stop.clone()));
+    let parent = args.parent_stdin.then(|| {
+        let mut lines = core.updates.attach_shell();
+        // Every line after the first ready line is for the shell.
+        tokio::spawn(async move {
+            while let Some(line) = lines.recv().await {
+                println!("{line}");
+            }
+        });
+        let (closed, wait) = oneshot::channel();
+        read_parent(core.clone(), closed);
+        wait
+    });
+    tokio::spawn(wait_for_stop(parent, stop.clone()));
+    let checks = {
+        let (updates, stop) = (core.updates.clone(), stop.clone());
+        tokio::spawn(async move { updates.run_checks(stop).await })
+    };
     let lifecycle = {
         let (core, stop) = (core.clone(), stop.clone());
         tokio::spawn(async move { core.run_lifecycle(stop).await })
@@ -336,6 +371,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     stop.cancelled().await;
     tracing::info!("stopping");
     let _ = lifecycle.await;
+    checks.abort();
     core.shutdown().await;
     // Open streams never finish on their own; they end with the process.
     let _ = tokio::time::timeout(SHUTDOWN_GRACE, server).await;

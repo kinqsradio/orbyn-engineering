@@ -181,8 +181,9 @@ impl EngineManager {
         let installer = plan
             .as_ref()
             .map_or(InstallerKind::Unknown, |plan| plan.installer);
-        let latest = match driver.npm_package() {
-            Some(package) if self.config.lookup_latest && installed => {
+        let latest = match (driver.latest_version().await, driver.npm_package()) {
+            (Some(latest), _) => Some(latest),
+            (None, Some(package)) if self.config.lookup_latest && installed => {
                 self.latest_version(package).await
             }
             _ => None,

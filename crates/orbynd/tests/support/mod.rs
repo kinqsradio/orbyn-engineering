@@ -45,6 +45,8 @@ pub struct Service {
     pub access_key: Option<String>,
     pub client: reqwest::Client,
     pub child: Child,
+    /// Everything after the ready line, for tests of the shell channel.
+    pub stdout: BufReader<std::process::ChildStdout>,
 }
 
 impl Service {
@@ -71,7 +73,8 @@ impl Service {
         let mut child = command.spawn().unwrap();
         let stdout = child.stdout.take().unwrap();
         let mut line = String::new();
-        BufReader::new(stdout).read_line(&mut line).unwrap();
+        let mut stdout = BufReader::new(stdout);
+        stdout.read_line(&mut line).unwrap();
         if line.is_empty() {
             let mut text = String::new();
             std::io::Read::read_to_string(child.stderr.as_mut().unwrap(), &mut text).unwrap();
@@ -85,6 +88,7 @@ impl Service {
             access_key: start["access_key"].as_str().map(str::to_owned),
             client: reqwest::Client::new(),
             child,
+            stdout,
         })
     }
 

@@ -94,6 +94,27 @@ pub async fn thread_events(
     Ok(Sse::new(frames).keep_alive(KeepAlive::new().interval(KEEP_ALIVE)))
 }
 
+/// `GET /api/updates/events`: the current status, then each change. A slow client
+/// skips intermediate states, because only the newest one matters to a badge.
+pub async fn update_events(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let changes = state.core.updates.subscribe();
+    let updates = state.core.updates.clone();
+    let frames = stream::unfold(
+        (updates, changes, true),
+        |(updates, mut changes, first)| async move {
+            if !first {
+                changes.changed().await.ok()?;
+            }
+            let status = updates.status().await;
+            let frame = Event::default().json_data(&status).ok()?;
+            Some((Ok(frame), (updates, changes, false)))
+        },
+    );
+    Sse::new(frames).keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
+}
+
 /// Projects the thread log onto one external AG-UI run. A paused CLI stays alive
 /// here, so a pending approval ends the external run with an interrupt while the
 /// engine holds, and `resume[]` picks the same engine run back up.

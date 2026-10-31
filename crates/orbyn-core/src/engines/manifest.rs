@@ -62,6 +62,11 @@ fn verified_parse(manifest: &[u8], signature: &str, key: &str) -> Option<TestedM
     serde_json::from_slice(manifest).ok()
 }
 
+/// True when `latest` is a newer version than `current`.
+pub fn is_newer(latest: &str, current: &str) -> bool {
+    matches!((numbers(latest), numbers(current)), (Some(l), Some(c)) if l > c)
+}
+
 /// A comparable version. Pre-release suffixes sort as their release.
 fn numbers(version: &str) -> Option<Vec<u64>> {
     let core = version.split(['-', '+']).next()?;

@@ -17,6 +17,7 @@ use crate::runs::{RunManager, RunServices};
 use crate::skills::SkillService;
 use crate::store::{NewThread, Recovery, Store};
 use crate::terminal::TerminalManager;
+use crate::updates::UpdateCenter;
 use crate::util::new_id;
 use crate::workspace::Workspace;
 
@@ -30,6 +31,8 @@ pub struct CoreConfig {
     pub base_url: String,
     /// Where a first-run clone of the library comes from.
     pub workspace_url: String,
+    /// Release manifest for a server with no desktop shell.
+    pub update_manifest: Option<String>,
     pub engines: EngineConfig,
     pub approval_timeout: Duration,
     pub desktop_program: Option<String>,
@@ -43,6 +46,7 @@ impl CoreConfig {
             data_dir,
             base_url,
             workspace_url: crate::workspace::DEFAULT_LIBRARY_URL.to_owned(),
+            update_manifest: None,
             engines: EngineConfig::default(),
             approval_timeout: DEFAULT_APPROVAL_TIMEOUT,
             desktop_program: None,
@@ -63,6 +67,7 @@ pub struct Core {
     pub mcp: Arc<McpService>,
     pub runs: Arc<RunManager>,
     pub terminals: Arc<TerminalManager>,
+    pub updates: Arc<UpdateCenter>,
     pub recovery: Recovery,
     _lock: File,
 }
@@ -98,7 +103,7 @@ impl Core {
         let engines = Arc::new(EngineManager::new(
             store.clone(),
             terminals.clone(),
-            http,
+            http.clone(),
             config.engines.clone(),
         ));
         let workspace = Arc::new(Workspace::new(
@@ -124,6 +129,13 @@ impl Core {
             runs_dir: config.data_dir.join("runs"),
         }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
+        let updates = Arc::new(UpdateCenter::new(
+            store.clone(),
+            workspace.clone(),
+            engines.clone(),
+            http,
+            config.update_manifest.clone(),
+        ));
         Ok(Self {
             config,
             store,
@@ -135,6 +147,7 @@ impl Core {
             mcp,
             runs,
             terminals,
+            updates,
             recovery,
             _lock: lock,
         })

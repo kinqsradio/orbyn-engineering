@@ -437,6 +437,7 @@ pub fn default_settings() -> ServerSettings {
         })
         .collect(),
         title_instructions: None,
+        background_update_checks: None,
     }
 }
 

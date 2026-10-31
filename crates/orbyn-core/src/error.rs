@@ -31,6 +31,8 @@ pub enum CoreError {
     NotFastForward(String),
     #[error("finish or stop active runs first")]
     RunsActive,
+    #[error("Orbyn is installing an update")]
+    Updating,
     #[error("{message}")]
     ProjectHasWork {
         message: String,
@@ -88,6 +90,7 @@ impl CoreError {
             Self::LibraryDirty(_) => "library_dirty",
             Self::NotFastForward(_) => "not_fast_forward",
             Self::RunsActive => "runs_active",
+            Self::Updating => "updating",
             Self::ProjectHasWork { .. } => "project_has_work",
             Self::Unsupported(_) => "unsupported",
             Self::UpdateUnavailable(_) => "update_unavailable",
@@ -108,6 +111,7 @@ impl CoreError {
     pub fn status(&self) -> u16 {
         match self {
             Self::NotFound(_) => 404,
+            Self::Updating => 503,
             Self::Invalid(_) => 400,
             Self::FolderUntrusted | Self::PolicyDenied(_) | Self::WorkspaceRefused(_) => 403,
             Self::ThreadBusy

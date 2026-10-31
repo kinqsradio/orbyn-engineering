@@ -18,6 +18,7 @@ pub mod sse;
 pub mod store;
 pub mod terminal;
 pub mod threads;
+pub mod updates;
 pub mod util;
 pub mod workspace;
 
