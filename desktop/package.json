@@ -1,0 +1,14 @@
+{
+  "name": "orbyn-engineering-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "icons": "tauri icon app-icon.png",
+    "prepare-bundle": "node ../scripts/prepare-bundle.mjs",
+    "dev": "npm run prepare-bundle && tauri dev",
+    "build": "npm run prepare-bundle && tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

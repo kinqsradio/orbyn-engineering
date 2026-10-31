@@ -1,0 +1,71 @@
+name: Release
+
+# Maintainer-triggered only. This workflow runs no pull-request code and does
+# not publish: it uploads signed bundles for a person to review and promote.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Signed bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - os: macos-15
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+          - os: windows-2022
+            target: aarch64-pc-windows-msvc
+            bundles: nsis
+    env:
+      ORBYN_TARGET: ${{ matrix.target }}
+      ORBYN_UPDATE_PUBKEY: ${{ vars.ORBYN_UPDATE_PUBKEY }}
+      ORBYN_UPDATE_ENDPOINT: ${{ vars.ORBYN_UPDATE_ENDPOINT }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: web
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run prepare-bundle
+        working-directory: desktop
+      - run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        working-directory: desktop
+      - name: Sign Windows bundle
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          AZURE_CODESIGN_ENDPOINT: ${{ vars.AZURE_CODESIGN_ENDPOINT }}
+          AZURE_CODESIGN_ACCOUNT: ${{ vars.AZURE_CODESIGN_ACCOUNT }}
+          AZURE_CODESIGN_PROFILE: ${{ vars.AZURE_CODESIGN_PROFILE }}
+        run: |
+          echo "Azure Trusted Signing must be configured before this job can pass." >&2
+          test -n "$AZURE_CODESIGN_ENDPOINT"

@@ -1,0 +1,784 @@
+# T3 Code feature parity
+
+Reference: T3 Code at upstream `cadf7d5fe3`, MIT. This is our own feature list in
+our own words; it is not T3 Code's documentation. Paths in rows point into that
+reference checkout, not this repository. Tick a row only when it works through
+the real service and has a test or an observed run. Mock-only UI does not count.
+
+Surfaces: w web, d desktop, m mobile, s server, c cli.
+
+A row marked `| server done` has its service behavior finished and tested; any
+web, desktop or mobile surface on that row is tracked by that client's owner.
+`| web done` means the web surface was run against the real `orbynd`; other
+surfaces on that row stay open.
+
+## Scope decided on 31 October 2026
+
+The target is a working desktop and local web replica. Out of scope for now:
+
+- Accounts, sign-in and hosted identity.
+- Tailscale, tunnels, relays, device pairing, linked environments, guest links and
+  other remote access: all of section L except scoped local access checks.
+- Mobile: section Q, and rows whose only surface is `m`.
+
+Rows in those groups stay listed so they can return later. They do not count
+toward completion.
+
+## Rows Orbyn will not copy as written
+
+- `[auth-risk]` rows that hold, broker or read engine credentials break hard rule 1
+  in [architecture.md](architecture.md). Engines keep their own login.
+- `[hosted]` rows depend on services T3 runs. Each needs an Orbyn-run equivalent or
+  a self-hosted route, and Orbyn runs none of these services today.
+- `Q` rows need a React Native client, which this repository does not have.
+
+## A. Threads and sidebar
+- [ ] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
+- [x] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S | web done
+- [x] A3 Thread without project: starts with no project, can move machine before send | docs/user/thread-sidebar.md | w d m | M | server done | web done
+- [x] A4 Scratch folders: dated per-thread folder kept after thread deletion | docs/user/thread-sidebar.md | s | S | server done
+- [x] A5 Turn into project: adopts the folder in place, with sibling threads | packages/contracts/src/orchestrationV2.ts | w d s | M | server done | web done
+- [ ] A6 Start in background: sends and opens another draft, one worktree each | docs/user/thread-sidebar.md | w d | M
+- [ ] A7 Send and new thread: keyed send that leaves a fresh draft | packages/contracts/src/keybindings.ts | w d | S
+- [ ] A8 Multi-model fan-out: shift-click models, one thread and worktree each | apps/web/src/components/chat/useMultipleModelSend.ts | w d | M
+- [ ] A9 New thread in this worktree: reuses an existing worktree | docs/user/thread-sidebar.md | w d | S
+- [ ] A10 Use last project: mobile default for new threads, toggleable | docs/user/thread-sidebar.md | m | S
+- [x] A11 Pin and unpin: keeps thread above active work, scroll stays put | apps/web/src/components/Sidebar.tsx | w d m s | S | server done
+- [x] A12 Undo notices: 5-second undo for unpin, settle, snooze, archive, draft discard | apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx | w d m | M
+- [ ] A13 Drop files on a thread row: opens thread with files attached | docs/user/thread-sidebar.md | w d | S
+- [x] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L | web done
+- [x] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
+- [ ] A16 Arrange threads sheet: mobile drag handles, plus move up/down | apps/mobile/src/features/threads/ThreadArrangementSheet.tsx | m | M
+- [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S
+- [ ] A18 Title instructions: per-environment or per-project guidance | apps/web/src/components/settings/ThreadTitleInstructionsSettings.tsx | w d s | S
+- [x] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S
+- [ ] A20 Working section: folds threads waiting on subagents, watches, monitors | packages/contracts/src/settings.ts | w d m | M
+- [ ] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
+- [ ] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
+- [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M | server done
+- [x] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M | server done
+- [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S
+- [x] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M | web done
+- [x] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S | server done
+- [x] A28 Snooze presets: up to 8 duration or time-of-day options | apps/web/src/components/settings/SnoozePresetsSettings.tsx | w d m s | M | server done
+- [x] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S | web done
+- [x] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S | web done
+- [x] A31 Wake rules: returns early on approval, answer, failure or your message | docs/user/thread-sidebar.md | w d m s | M | server done
+- [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S
+- [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M
+- [x] A34 Mark unread: flags a thread | packages/contracts/src/orchestrationV2.ts | w d m s | S
+- [x] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S | web done
+- [ ] A36 Copy reference/thread/ID: PR link first, then thread chip, then bare ID | docs/user/thread-sidebar.md | w d m | S
+- [x] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M
+- [ ] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L
+- [x] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M | web done
+- [x] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
+- [x] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
+- [ ] A42 Thread hover card: rich preview on hover | apps/web/src/components/ThreadHoverCard.tsx | w d | S
+- [ ] A43 Status indicators: working, limited, needs-you, request states | apps/web/src/components/ThreadStatusIndicators.tsx | w d m | M
+- [ ] A44 Side chats: `/side`, `/btw` or + menu, separate tab with own permissions | apps/web/src/components/chat/SideChatPane.tsx | w d m | L
+- [ ] A45 Bring back: sends side chat into the parent's next message | docs/user/thread-sidebar.md | w d | M
+- [x] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L | server done | web done
+- [x] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L
+- [ ] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M
+- [ ] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M
+- [ ] A50 Customize details: show/hide rows, reset, right-click access | apps/web/src/components/settings/ThreadDetailsItemsRow.tsx | w d | S
+- [x] A51 Local servers list: thread's ports with open and stop | apps/web/src/components/chat/ThreadServersPanel.tsx | w d s | M | server done
+- [x] A52 Timeline minimap: overview navigation strip | apps/web/src/components/chat/TimelineMinimap.tsx | w d | M
+- [ ] A53 Visit watermark: marks where you last read | apps/web/src/components/chat/ThreadVisitWatermark.tsx | w d s | S
+- [ ] A54 V1 thread migration: copies old database, imports transcripts in stages | docs/user/thread-migration.md | s d | L
+- [ ] A55 Limited state: shows provider limit stop, resume manually | apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx | w d m | M
+- [ ] A56 Resume at reset: scheduled continuation, default optional | packages/contracts/src/settings.ts | w d m s | M
+- [ ] A57 Snooze until reset: hides thread until allowance returns | packages/contracts/src/settings.ts | w d m s | S
+- [ ] A58 Continue after restarts: resumes active threads, stops after 3 automatic tries | docs/user/updating.md | s | L
+- [ ] A59 Force stop: kills unresponsive thread | apps/web/src/components/chat/useForceStopThread.ts | w d s | M
+- [ ] A60 Background work view: mobile sheet of running background work | apps/mobile/src/features/threads/ThreadBackgroundWorkSheet.tsx | m | M
+- [ ] A61 Sidebar grouping and sort: repository/path/separate; project and thread sort; overrides | packages/contracts/src/settings.ts | w d m | M
+- [x] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M | server done
+- [x] A63 Project filter menu: header button limits the thread list to one or several projects, with project search, Shift+Enter to add or remove a project, favicon stack on the button and a context-key shortcut to open that project's settings | apps/web/src/components/Sidebar.tsx | w d | M | web done
+- [ ] A64 Project folder menu: right-click or pen button on a project folder offers new thread, copy path and project settings | apps/web/src/components/Sidebar.tsx | w d | S
+- [ ] A65 Thread menu extras: Find in thread, New thread on this branch, Filter by this project (toggles off when active), Copy branch, Copy path, Project settings shortcut | apps/web/src/components/threadActionMenu.logic.ts | w d m | S
+- [ ] A66 Draft rows: unsent drafts show in the list with an unsent marker and a discard button; discard offers undo with text and attachments restored | apps/web/src/components/sidebar/SidebarDraftBlock.tsx | w d | S
+- [ ] A67 Wake now and dismiss Woke: snoozed rows have a wake-now button; a thread that woke early shows a dismissible Woke badge | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
+- [ ] A68 Older settled paging: settled shelf loads older threads in pages, shows hidden count and a show-more control | apps/web/src/components/Sidebar.tsx | w d m | M
+- [ ] A69 Sidebar sizing and toggle: drag-resizable thread sidebar with remembered width, collapse toggle, and a header-docked toggle command | apps/web/src/components/threadSidebarWidth.ts | w d | S
+- [x] A70 Jump hints: number badges appear on the first nine rows while the jump modifier is held | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
+- [ ] A71 Provider update pill: sidebar capsule announces provider CLI updates with a dismiss control, separate from the desktop update pill | apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx | w d | S
+- [ ] A72 Landing states: no-projects hero, no-active-thread state, hosted empty state and draft hero with project name and heading | apps/web/src/components/NoProjectsHero.tsx | w d | S
+- [x] A73 Header panel toggles: buttons for thread details panel, terminal drawer and right panel; right panel becomes a sheet at narrow widths | apps/web/src/components/chat/PanelLayoutControls.tsx | w d | S
+- [ ] A74 Hide environment threads: per-environment switch hides that server's threads from the sidebar, plus reconnect and disconnect failure banners | apps/web/src/components/chat/useSystemComposerBanners.tsx | w d | S
+- [ ] A75 Open thread holds its section: the thread you are in never jumps between Active, Finished and Settled until you leave it; a held thread that starts running becomes Active | src/sidebar-sections.ts | w d | S | beyond T3
+- [ ] A76 Edit sent prompt: forks before that message into a new thread in the same folder and puts the text back in its composer; files are not rewound | docs/rewind.md | w d s | S | beyond T3
+
+## B. Composer
+- [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done
+- [x] B2 Large paste to attachment: 32 KiB or more becomes a file, shift-paste keeps it editable | docs/user/composer.md | w d | S
+- [ ] B3 Live Markdown styling: rich editor that keeps literal markers | apps/web/src/components/ComposerPromptEditorTiptap.tsx | w d m | L
+- [x] B4 List and quote editing: Shift+Enter continue, Tab nest | docs/user/composer.md | w d | M
+- [ ] B5 Code block editing: indent, language picker, exit rules | apps/web/src/components/chat/ComposerCodeBlockNodeView.tsx | w d | M
+- [x] B6 Attachments: 100 files; 10 MiB per image, 80 MiB images total, 50 MiB other | docs/user/composer.md | w d m s | L | server done
+- [x] B7 Upload lifecycle: starts on add, retry or remove, blocks send until done | apps/web/src/components/chat/ComposerAttachmentStrip.tsx | w d m | M | server done
+- [ ] B8 HEIC conversion and resizing: JPEG conversion, shrinks oversized photos | docs/user/composer.md | w d m | M
+- [x] B9 Drag and paste images: intake into web composer | apps/web/src/components/chat/useComposerAttachmentIntake.ts | w d | S
+- [ ] B10 System share sheet: send files to T3 from other apps | apps/mobile/src/features/sharing/IncomingShareProvider.tsx | m | M
+- [x] B11 Follow-up behavior: queue or steer default | packages/contracts/src/settings.ts | w d m | M
+- [x] B12 Send shortcut modes: Enter, Mod+Enter multiline only, Mod+Enter | packages/contracts/src/settings.ts | w d | S
+- [x] B13 Opposite action: modifier or long-press flips queue/steer | docs/user/composer.md | w d m | S
+- [x] B14 Queued messages: persisted on server, shown as dashed rows | apps/web/src/components/chat/QueuedRunsControl.tsx | w d m s | L | server done
+- [x] B15 Queue actions: send now, edit in composer, remove | apps/web/src/components/chat/useQueuedRunEdit.ts | w d m s | M | server done
+- [x] B16 Held queue and resume: preserved after stop or restart | docs/user/composer.md | w d m s | M | server done
+- [x] B17 Steer oldest queued: shortcut, draft untouched | packages/contracts/src/keybindings.ts | w d | S
+- [ ] B18 Offline mobile queue: local copies, resumes on reconnect | docs/user/composer.md | m | L
+- [x] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S | web done
+- [x] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M | server done
+- [x] B21 Remembered model defaults: provider, model and options carry to new threads | docs/user/composer.md | w d m | S | web done
+- [x] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L | server done | web done
+- [x] B23 Model visibility and order: hide, reorder, favorite per instance | packages/contracts/src/settings.ts | w d s | M | server done | web done
+- [x] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M | server done: effort, Codex service tier and Claude fast mode per model; neither engine reports thinking or context choices | web done
+- [x] B25 Effort display: label or bars, with shortcuts | apps/web/src/components/chat/EffortGlyph.tsx | w d | S | web done
+- [x] B26 Permission mode: Supervised, Auto-accept edits, Auto, Full access | docs/user/permission-modes.md | w d m s | L | server done | web done
+- [x] B27 Plan mode toggle: plan or build | packages/contracts/src/orchestrationV2.ts | w d m s | M
+- [ ] B28 Cite in composer: quote assistant text with a comment | apps/web/src/components/chat/AssistantCitationChip.tsx | w d | L
+- [x] B29 Prompt recall: up/down through sent prompts | apps/web/src/components/chat/composerPromptHistory.ts | w d | S
+- [ ] B30 Edit from here: rewind with or without file restore | apps/web/src/components/chat/useTimelineRewind.ts | w d s | L
+- [x] B31 Prompt stash: save/restore drafts, uploads kept 24 hours | apps/web/src/components/chat/ComposerStashMenu.tsx | w d | M
+- [ ] B32 iPhone voice input: on-device transcription, 5-minute limit, iOS 26+ | apps/mobile/src/features/voice-input/VoiceInputProvider.tsx | m | L
+- [ ] B33 Microphone ranking: priority across device kinds | apps/mobile/src/features/settings/SettingsMicrophoneRouteScreen.tsx | m | M
+- [x] B34 Slash commands: `/` menu with T3 and provider commands | apps/web/src/components/chat/ComposerCommandMenu.tsx | w d m | M | server done
+- [x] B35 Skills: `$` menu, also in slash menu by toggle | apps/web/src/components/chat/SkillInlineText.tsx | w d m | M | server done
+- [ ] B36 Restart agent session: reloads skills, plugins and MCP config | apps/web/src/components/CommandPalette.tsx | w d s | S
+- [x] B37 `/compact`: manual compaction, also from context meter | docs/user/composer.md | w d m s | M | server done
+- [ ] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L
+- [x] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
+- [ ] B40 Inline context chips: terminal, review comment, annotation, file at cursor | apps/web/src/components/ContextChip.tsx | w d m | L
+- [ ] B41 PR chips: `#` browse, number and text search | docs/user/composer.md | w d | M
+- [ ] B42 Thread chips: `@` lookup, on-demand read by the agent | apps/web/src/components/ThreadContextChip.tsx | w d m | M
+- [ ] B43 Drag threads to composer: multi-select, cross-environment transcript file | apps/web/src/components/chat/composerThreadImport.ts | w d | M
+- [x] B44 Image shelf and chips: thumbnails plus inline references | apps/web/src/components/chat/ComposerImageThumbnail.tsx | w d | M
+- [ ] B45 Chip clipboard: copy/paste keeps chips, refetches files | packages/contracts/src/composerContextClipboard.ts | w d | L
+- [x] B46 Readable copy: Markdown output with links replacing chips | apps/web/src/components/chat/MessageCopyButton.tsx | w d | S
+- [ ] B47 Question attachments: files in custom answers, kept per question | docs/user/question-attachments.md | w d m s | M
+- [x] B48 Pending approval actions: approve or reject inline | apps/web/src/components/chat/ComposerPendingApprovalActions.tsx | w d m | M | web done
+- [ ] B49 Text decline to Claude: typed reply rejects with feedback | docs/user/permission-modes.md | w d m | S
+- [x] B50 Question panel: async question answer or dismiss | apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx | w d m | M | server done
+- [ ] B51 Secret request card: agent asks for a secret, you answer | apps/web/src/components/chat/SecretRequestCard.tsx | w d m s | M
+- [ ] B52 Link request card: agent asks to link a machine | apps/web/src/components/chat/LinkRequestCard.tsx | w d m s | M
+- [x] B53 Context window meter: usage bar with compaction tick | apps/web/src/components/chat/ContextWindowMeter.tsx | w d | M
+- [ ] B54 Compact chip: offered on return after prompt cache expiry | docs/user/providers-claude.md | w d | M
+- [x] B55 Composer banners: provider, update, clone, retry notices | apps/web/src/components/chat/ComposerBannerStack.tsx | w d | M
+- [x] B56 Persistent composer context: keeps branch controls after first send | packages/contracts/src/settings.ts | w d | S
+- [ ] B57 Compact controls menu: narrow composers fold model, traits, permission and plan controls into one overflow menu | apps/web/src/components/chat/CompactComposerControlsMenu.tsx | w d | S
+- [x] B58 Text direction: each composer block gets left-to-right or right-to-left direction from its own text | apps/web/src/composer-text-direction.ts | w d | S
+- [ ] B59 Composer editor switches: turn live Markdown styling off, show or hide skills in the slash menu (skills still appear with `$`), show context meter | packages/contracts/src/settings.ts | w d m | S
+- [ ] B60 Compact composer on phone: sheets for command popover, queued-message edit, attachment button and error notice | apps/mobile/src/features/threads/ComposerCommandPopover.tsx | m | M
+- [ ] B61 Steer delivery states: each mid-turn message reports pending, delivered or failed by id; a failed one returns to the queue; engines with no mid-turn input hold it for the next turn | src-tauri/src/providers/steering.rs | w d s | M
+- [ ] B62 Response style packs: per-thread output-saving packs added as one folded block only when the selection changes and every N messages | src/token-saver.ts | w d | M | beyond T3
+- [ ] B63 Workflow recipes: local step lists (prompt, slash command, check, approval) with a dry run showing supported, fallback or blocked per engine; run goes through the normal queue | docs/recipes.md | w d s | M | beyond T3
+- [ ] B64 Turn checks: optional run of the checkout's own quick check after a clean turn; a failure queues one editable fix message, never a loop; needs trusted folder | src-tauri/src/checks.rs | w d s | M | beyond T3
+- [ ] B65 Prompt context chips: documents and folders become context blocks; sent blocks render as read-only chips that open the file, reveal the path or show the text | src/message-attachments.ts | w d | M | beyond T3
+
+## C. Timeline and rendered output
+- [ ] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L
+- [ ] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
+- [x] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
+- [ ] C4 Orchestrator summaries: action-specific wording, failures not counted | docs/user/activity-log.md | w d | M
+- [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M
+- [x] C6 Open diff from tool row: review a file change | docs/user/activity-log.md | w d | S
+- [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M
+- [x] C8 Proposed plan card: collapse, copy, save/download, follow-up | apps/web/src/components/chat/ProposedPlanCard.tsx | w d m | M
+- [x] C9 Plan follow-up banner: implement plan from a banner | apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx | w d | M
+- [ ] C10 Claude task lists: Tasks row via env flag | docs/user/providers-claude.md | w d | S
+- [x] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M
+- [x] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
+- [x] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
+- [x] C14 Math: opt-in TeX, inline and block | apps/web/src/components/chat/MarkdownMath.tsx | w d m | M
+- [x] C15 Mermaid: rendered diagrams | apps/web/src/components/chat/MermaidDiagram.tsx | w d | M
+- [x] C16 File links: line-aware opening in viewer | apps/web/src/components/chat/MarkdownFileLink.tsx | w d m | M
+- [x] C17 Thread links: render and navigate | apps/web/src/components/chat/MarkdownThreadLink.tsx | w d | S
+- [x] C18 External link menu: open target and context actions | apps/web/src/components/chat/MarkdownExternalLink.tsx | w d | S
+- [ ] C19 Media in messages: image gallery, video, save/copy path | apps/web/src/components/chat/ChatMarkdownMedia.tsx | w d m | M
+- [x] C20 Image lightbox: zoomable expanded view | apps/web/src/components/chat/ExpandedImageDialog.tsx | w d | S
+- [ ] C21 HTML renders: sandboxed agent pages with theme and zoom | apps/web/src/components/chat/HtmlRenderFrame.tsx | w d m s | L
+- [ ] C22 Render publish: embeds local images, deleted with thread | apps/server/src/htmlRender | s | M
+- [ ] C23 Render verification: headless screenshots, one 120 MB browser download | docs/user/html-renders.md | s | M
+- [ ] C24 MCP Apps: interactive tool UI inline, Codex only today | apps/web/src/components/chat/McpAppFrame.tsx | w d m s | L
+- [ ] C25 MCP App controls: tool-call and message approvals, full screen | docs/user/html-renders.md | w d m | L
+- [ ] C26 MCP App model context: latest note sent with next message | packages/contracts/src/mcpApps.ts | w d m s | M
+- [x] C27 Elapsed timers: per-turn agent timing | apps/web/src/components/chat/AgentElapsed.tsx | w d | S
+- [x] C28 Status line: current activity beneath the timeline | apps/web/src/components/chat/ThreadStatusLine.tsx | w d | S
+- [ ] C29 Accessibility announcers: activity and background thread announcements | apps/web/src/components/chat/ThreadActivityAnnouncer.tsx | w d | S
+- [x] C30 Word wrap and chat width: comfortable, wide, full | packages/contracts/src/settings.ts | w d | S
+- [ ] C31 Right panel tabs: add-tab menu (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Side chat), mute tab, close, maximize, resize handle, sheet on small screens | apps/web/src/components/RightPanelTabs.tsx | w d | M
+- [ ] C32 Proactive panels: opt-in setting opens the linked PR, or the Changes panel after a turn touching at least 3 files or 50 lines; a panel you opened or closed wins | apps/web/src/hooks/useProactivePanels.ts | w d | M
+- [ ] C33 Thread end lines: sync state, reconnect, goal and status lines at the end of the timeline share one family with icon, detail and actions | apps/web/src/components/chat/ThreadNow.tsx | w d m | S
+- [x] C34 Changed files tree in timeline: per-turn file list with open-diff action | apps/web/src/components/chat/ChangedFilesTree.tsx | w d | S
+- [x] C35 Error banner: thread-level error with dismiss and retry actions | apps/web/src/components/chat/ThreadErrorBanner.tsx | w d m | S
+- [ ] C36 Lifecycle rows: system dividers and lifecycle rows mark restarts, handoffs and context boundaries | apps/web/src/components/chat/V2LifecycleRow.tsx | w d m | S
+- [ ] C37 Sentence tool trace: each tool call is a verb-object row with kind icon; calls group in fives with a count summary; live view bounded to 30 rows; turn folds to a summary at the end | src/tool-trace.ts | w d | L
+- [x] C38 Bounded tool snapshots: input preview 4 KiB, output preview 8 KiB, UTF-8-safe truncation notice, 64 snapshots per run | docs/providers.md | s | S | server done: arguments 16 KiB rather than 4, because cut JSON no longer parses
+- [x] C39 Delta coalescing: text deltas merged for 33 ms or 8 KiB before sending, only new text per event | src-tauri/src/providers.rs | s | S | server done
+- [ ] C40 Rich question content: agent questions render Markdown, charts and sanitised SVG or static HTML in an isolated root; remote images become links | src/rich-markdown.ts | w d | M | beyond T3
+
+## D. Files, search and attachments
+- [x] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L | web done
+- [x] D2 Go to file: quick picker | apps/web/src/components/files/ProjectFilePicker.tsx | w d | M
+- [x] D3 Project content search: full-text dialog | apps/web/src/components/search/ProjectContentSearchDialog.tsx | w d s | L
+- [x] D4 Show ignored files: separate listing | packages/contracts/src/rpc.ts | s | S | server done
+- [x] D5 Edit and save files: save coordination, conflict revision tracking | apps/web/src/components/files/fileSaveCoordinator.ts | w d s | L | server done
+- [x] D6 Source preview: read-only highlighted view | apps/web/src/components/files/ReadOnlySourcePreview.tsx | w d m | M | web done
+- [ ] D7 Large text viewer: worker-backed partial viewing | apps/web/src/components/files/LargeTextViewer.tsx | w d | M
+- [ ] D8 Markdown preview: rendered/raw toggle | apps/web/src/components/files/FileMarkdownPreview.tsx | w d m | S
+- [ ] D9 CSV/TSV tables: virtualized delimited view | apps/web/src/components/files/DelimitedTablePreview.tsx | w d m | M
+- [ ] D10 PDF viewer: embedded pages, native on mobile | apps/web/src/components/files/PdfViewer.tsx | w d m | L
+- [ ] D11 Office viewer: Open XML documents via worker | apps/web/src/components/files/OfficeViewer.tsx | w d | L
+- [ ] D12 Notebook preview: renders notebooks | apps/web/src/components/files/NotebookPreview.tsx | w d | M
+- [ ] D13 Mermaid file preview: renders diagram files | apps/web/src/components/files/MermaidViewer.tsx | w d | S
+- [ ] D14 Font viewer: font file samples | apps/web/src/components/files/FontViewer.tsx | w d | M
+- [ ] D15 Binary viewer: hex-style inspection | apps/web/src/components/files/BinaryViewer.tsx | w d | M
+- [ ] D16 Audio/video/image previews: playback and decoded images | apps/web/src/components/files/AudioPreview.tsx | w d m | M
+- [ ] D17 HTML file preview: sandboxed render plus source mode | apps/web/src/components/files/BrowserDocumentFrame.tsx | w d m | M
+- [ ] D18 ZIP browsing: up to 50 MB shown as folder list | docs/user/composer.md | w d m | M
+- [ ] D19 File comments: annotations feed review chips | apps/web/src/components/files/fileCommentAnnotations.ts | w d | M
+- [ ] D20 Tree drag mention: drag file into composer | apps/web/src/components/files/fileTreeDragMention.ts | w d | S
+- [ ] D21 Outside-workspace files: read-only, isolated HTML | docs/user/composer.md | w d s | M
+- [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done
+- [ ] D23 File context menu: Open, Reveal in Finder/File Explorer/Files (label by OS) and Open with any available editor | apps/web/src/fileContextMenu.ts | w d | S
+- [x] D24 Editor catalog: 20 editors plus the system file manager (Cursor, Trae, Kiro, VS Code, Insiders, VSCodium, Zed, Antigravity, ten JetBrains IDEs) detected per host by command, each with path, goto or line-column launch style | packages/contracts/src/editor.ts | s w d | M | server done
+- [ ] D25 Favorite editor: last used editor remembered per browser, fallback to first available, menu shows its shortcut, hidden when the host cannot launch editors | apps/web/src/editorPreferences.ts | w d | S
+- [ ] D26 Open in editor over remote: for non-local environments the picker builds editor links (VS Code family, Cursor, Zed, JetBrains) to the host via SSH alias, Tailscale or mDNS name, or shows unavailable | apps/web/src/remoteOpen.ts | w d | M
+- [ ] D27 Attached file viewer controls: Copy contents, Save file, view toggle; on mobile Save or share and Open in file viewer; ZIP entries can be added to chat on mobile | docs/user/composer.md | w d m | M
+- [ ] D28 Mobile file browser: tree, source scroll position, image, video, web, ZIP and delimited previews with error state | apps/mobile/src/features/files/FileTreeBrowser.tsx | m | L
+- [ ] D29 Document viewer: PDF, Word and spreadsheet files open in a tab; zips size-checked before parsing; Word rendered in an isolated root | src/office-viewer.ts | w d | L | beyond T3
+- [ ] D30 Mockup sketcher: draw a sketch and attach it as an image | src/sketch.ts | w d | M | beyond T3
+
+## E. Diffs, checkpoints and revert
+- [x] E1 Turn checkpoints: hidden git ref at each turn end | apps/server/src/checkpointing/CheckpointStore.ts | s | L | server done
+- [x] E2 Turn diff: shows only that turn's work | docs/user/source-control.md | w d m s | L | server done | web done
+- [x] E3 Full thread diff: cumulative view | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done | web done
+- [x] E4 Branch comparison: everything against base | apps/server/src/review/ReviewService.ts | w d m s | M | server done | web done
+- [x] E5 Commits source: newest 100, one commit at a time | docs/user/source-control.md | w d s | M | server done
+- [ ] E6 Commit link routing: opens local commit in Diff pane | docs/user/source-control.md | w d | M
+- [ ] E7 Diff layout: stacked or split | packages/contracts/src/settings.ts | w d | S
+- [ ] E8 Diff preferences: collapse files, ignore whitespace, color scheme | packages/contracts/src/settings.ts | w d | S
+- [ ] E9 Diff file tree: navigable with hide-tests filter | apps/web/src/components/diffs/DiffFileTree.tsx | w d | M
+- [ ] E10 Inline diff comments: annotations to composer chips | apps/web/src/components/diffs/DiffCommentAnnotation.tsx | w d m | L
+- [ ] E11 Find in diff: search within diff | docs/user/keybindings.md | w d | M
+- [ ] E12 Copy diff path: per-file button | apps/web/src/components/DiffFilePathCopyButton.tsx | w d | S
+- [x] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L | server done
+- [x] E14 Conversation rewind: trims provider history where supported | docs/user/composer.md | w d s | L | server done | web done
+- [ ] E15 Codex thread revert: native rollback integration | apps/server/src/provider/CodexThreadRevert.ts | s | M
+- [ ] E16 Native mobile diff: custom diff view with word diffs | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
+- [ ] E17 Diff status markers: per-file added, modified, deleted, renamed badges and plus/minus counts | apps/web/src/components/diffs/DiffFileStatus.tsx | w d m | S
+- [ ] E18 Large diff loading: very large uncommitted diffs load files as you scroll; find covers loaded files only | docs/user/keybindings.md | w d | S
+- [ ] E19 Write-attributed changes: a turn's change list holds only files the thread declared (begin and complete handshake) or the engine reported, frozen at tool completion; never inferred from status; caps 200 paths, 1 MiB per file, 32 MiB per turn | docs/turn-changes.md | s w | L | beyond T3 | server: reported paths only, capped at 200; declared-file capture and contents not built
+
+## F. Source control, worktrees and pull requests
+- [x] F1 GitHub connection: saved token, env token, or gh | docs/user/source-control.md | w d s | M | server done, through `gh` only: saved and env tokens stay out under rule 1
+- [x] F2 GitHub Enterprise: custom host support | docs/user/source-control.md | s | M | server done
+- [ ] F3 Multi-account host picker: account per host, host off | apps/web/src/components/settings/SourceControlHostSettings.tsx | w d s | M
+- [ ] F4 GitHub app sign-in: in-app access and notices | packages/source-control-github/src/GitHubAppSignIn.ts | w d s | M
+- [x] F5 Forgejo/Gitea: fj then tea, Codeberg included | packages/source-control-forgejo/src/ForgejoCli.ts | s | M | server done, through `tea` only
+- [x] F6 GitLab: glab-based merge requests | packages/source-control-gitlab/src/GitLabCli.ts | s | M | server done
+- [ ] F7 Bitbucket: access token or account email plus API token | packages/source-control-bitbucket/src/BitbucketApi.ts | w d s | M | [auth-risk] no CLI exists, and this needs a stored token
+- [x] F8 Azure DevOps: az CLI integration | packages/source-control-azure-devops/src/AzureDevOpsCli.ts | s | M | server done
+- [ ] F9 GitCafe: API token or cafe login | packages/source-control-gitcafe/src/GitCafeApi.ts | w d s | M
+- [x] F10 Rescan: rediscover hosts and auth | packages/contracts/src/rpc.ts | w d s | S | server done
+- [x] F11 New project: repo with README, icon, first commit, optional private publish | docs/user/source-control.md | w d m s | M | server done
+- [x] F12 Add existing folder: picker with filesystem browse | apps/web/src/components/CommandPaletteAddProject.tsx | w d m s | M | server done
+- [x] F13 Clone project: background clone, prompt early, retry and cancel | apps/web/src/components/ProjectCloneToastCoordinator.tsx | w d m s | L | server done
+- [x] F14 Clone SSH fallback: HTTPS when SSH is refused | docs/user/source-control.md | s | S | server done
+- [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done
+- [x] F16 Initialize Git: vcs init from project | packages/contracts/src/rpc.ts | w d s | S | server done
+- [x] F17 Git actions: commit, push, create PR and combinations with phases | apps/web/src/components/GitActionsControl.tsx | w d m s | L | server done
+- [ ] F18 AI commit and PR text: generated messages, titles, descriptions | apps/server/src/textGeneration/TextGeneration.ts | s | M
+- [ ] F19 Writing style: repo conventions or custom, follows templates | apps/web/src/components/settings/SourceControlWritingSettings.tsx | w d m s | M
+- [x] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M | server done
+- [ ] F21 Environment mode selector: local vs new worktree, environment choice | apps/web/src/components/BranchToolbarEnvModeSelector.tsx | w d m | M
+- [x] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L | server done
+- [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
+- [ ] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S
+- [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
+- [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
+- [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done
+- [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
+- [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done
+- [x] F30 Storage cleanup: worktree rules, keep-when policy, reports | apps/server/src/storageCleanup.ts | w d m s | L | server done
+- [x] F31 PR list page: grouped filters across environments, quick actions | apps/web/src/components/pullRequest/PullRequestsPage.tsx | w d m s | L | server done
+- [x] F32 PR summary tab: description, state, editing | apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx | w d m | M | server done
+- [x] F33 PR timeline: activity with filters | apps/web/src/components/pullRequest/PullRequestTimelineTab.tsx | w d m | M | server done
+- [x] F34 PR code tab: file review with revisions | apps/web/src/components/pullRequest/PullRequestCodeTab.tsx | w d m | L | server done
+- [x] F35 Checks popover: status detail, fork workflow approval | apps/web/src/components/pullRequest/PullRequestChecksPopover.tsx | w d m | M | server done
+- [x] F36 Review submission: line drafts, submit review | apps/web/src/components/pullRequest/PullRequestReviewForm.tsx | w d m s | L | server done
+- [x] F37 Comments and threads: reply, edit, resolve, react | apps/web/src/components/pullRequest/PullRequestCommentForm.tsx | w d m s | L | server done
+- [x] F38 Reviewers and labels: search and set | apps/web/src/components/pullRequest/PullRequestReviewerPicker.tsx | w d m s | M | server done
+- [x] F39 Merge actions: method choice, auto-merge, revert PR, bulk close | apps/web/src/components/pullRequest/PullRequestDetailActions.tsx | w d m s | L | server done
+- [x] F40 Remove agent credits: strips agent lines on merge | packages/source-control-core/src/mergeMessage.ts | w d m s | S | server done
+- [x] F41 Files viewed: GitHub-synced or server-kept marks | apps/web/src/components/pullRequest/filesViewedStore.ts | w d m s | M | server done
+- [ ] F42 Review guides beta: AI stop-by-stop tour, shared on server | apps/web/src/components/pullRequest/PullRequestGuideTab.tsx | w d m s | L
+- [ ] F43 Guide instructions and model: override per project | packages/contracts/src/settings.ts | w d s | S
+- [ ] F44 Ask about stop: opens thread seeded with guide stop | docs/user/source-control.md | w | M
+- [x] F45 Linked PRs panel: multiple PRs, stacks, unlink | apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx | w d m s | L | server done
+- [x] F46 Automatic link: branch PR found, plus `gh`/`glab` detection | docs/user/source-control.md | s | M | server done
+- [x] F47 PR watch: 2-minute polling wakes agent, with stop rules | apps/server/src/pullRequest | w d s | L | server done
+- [x] F48 GitHub stacks: position badge, layer navigation | apps/web/src/components/pullRequest/PullRequestStackHeader.tsx | w d m s | L | server done
+- [x] F49 Merge and rebase stack: submit or rebase layers | packages/source-control-github/src/githubStackActions.ts | w d s | L | server done
+- [ ] F50 PR routing: Read/Read-and-act via another environment | apps/web/src/components/settings/PullRequestRoutingSettings.tsx | w d m s | L
+- [x] F51 Work on PR: draft thread prepares branch worktree | apps/web/src/components/chat/usePullRequestDraftThread.ts | w d m s | M | server done
+- [ ] F52 Offline PR cache: mobile keeps loaded reviews readable | docs/user/source-control.md | m | M
+- [x] F53 PR quick actions: Close, Reopen, Merge, Ready for review buttons on rows and detail header | apps/web/src/components/pullRequest/PullRequestSpeedActions.tsx | w d m s | M | server done
+- [x] F54 PR draft state: Convert to draft and Ready for review from the actions menu | apps/web/src/components/pullRequest/PullRequestActionsMenu.tsx | w d m s | S | server done
+- [x] F55 PR branch actions: Delete branch (with reconnect prompt), Revert changes, Allow edits from maintainers toggle | apps/web/src/components/pullRequest/PullRequestActionsMenu.tsx | w d s | M | server done
+- [x] F56 PR title and base: inline title editing with save error, base branch change, stacked marker, Update branch and Update with rebase | apps/web/src/components/pullRequest/PullRequestBaseBranch.tsx | w d s | M | server done
+- [x] F57 PR list filters: checks, draft, review state (approved, changes requested, review required, none), author, label, project and text; sort saved in the URL; compact menu on narrow widths; empty and unavailable states | apps/web/src/components/pullRequest/PullRequestListFilters.tsx | w d m | M | server done
+- [x] F58 Manual PR link: dialog with candidate picker by number or search to link a PR to a thread | apps/web/src/components/pullRequest/LinkPullRequestDialog.tsx | w d s | S | server done
+- [x] F59 PR checkout: check out in a worktree or locally, with a warning toast when the checkout is not on the latest commit | apps/web/src/components/pullRequest/PullRequestDetailActions.tsx | w d s | M | server done
+- [ ] F60 PR link menu: right-click a PR link for Copy link and Open on the host; hover preview card | apps/web/src/components/pullRequest/pullRequestLinkContextMenu.ts | w d | S
+- [ ] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S
+- [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
+- [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done
+- [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
+- [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
+
+## G. Terminal
+- [x] G1 Thread terminals: per-thread drawer, persistent across switches | apps/web/src/components/ThreadTerminalDrawer.tsx | w d m s | L | server done
+- [x] G2 Splits and tabs: horizontal, vertical, new, close | packages/contracts/src/keybindings.ts | w d | M | server done
+- [x] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M | server done
+- [ ] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S
+- [ ] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M
+- [ ] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S
+- [x] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M | server done
+- [ ] G8 Native mobile terminal: dedicated surface with paste and menu | apps/mobile/src/features/terminal/NativeTerminalSurface.tsx | m | L
+- [x] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S | server done
+- [x] G10 Project scripts control: run scripts, keybindings per script | apps/web/src/components/ProjectScriptsControl.tsx | w d m s | M | server done
+- [ ] G11 Mobile terminal preferences: font size 6 to 14 in half steps, theme, paste handling, session menu with status labels, exit navigation | apps/mobile/src/features/terminal/terminalPreferences.ts | m | S
+- [x] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] G13 Terminal close order: end the process tree before closing the pseudo console so the close cannot hang | src-tauri/src/terminal.rs | s | S | server done
+- [ ] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3
+
+## H. Browser preview and devices
+- [ ] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
+- [ ] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
+- [ ] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M
+- [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M | server done
+- [ ] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M
+- [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
+- [ ] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L
+- [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L | server: changed frames as JPEG files; no overlays or video
+- [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L
+- [ ] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M
+- [ ] H11 Browser import: cookies from other browsers, one time | apps/desktop/src/preview/BrowserImport/BrowserImport.ts | d | L
+- [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M
+- [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M
+- [ ] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
+- [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L | server done, local only
+- [ ] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
+- [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L
+- [ ] H18 Picture-in-picture: phone preview floats over apps | docs/user/remote-access.md | m | M
+- [ ] H19 Browser host setup: sandbox and library guidance | apps/server/src/cli/browser.ts | c s | M
+- [ ] H20 Device panel: live iOS Simulator or Android Emulator | apps/web/src/components/device/DevicePanel.tsx | w d s | L
+- [ ] H21 Device setup: three-step hub, platform, agent access | apps/web/src/components/device/DeviceSetup.tsx | w d s | M
+- [ ] H22 Device tabs and float: multiple tabs, rename, float over chat | apps/web/src/components/device/DeviceWorkspace.tsx | w d | M
+- [ ] H23 Device input: touch, type, Home, Back, Recents, rotate, power | apps/web/src/components/device/DeviceControlsRail.tsx | w d m | L
+- [ ] H24 3D device view: model with fold and hinge controls | apps/web/src/components/device/DeviceDuoViewport.tsx | w d | L
+- [ ] H25 Android fold controls: fold or unfold | apps/web/src/components/device/DeviceAndroidFoldControls.tsx | w d | M
+- [ ] H26 Device tools drawer: appearance, text, accessibility, location, permissions, push | apps/web/src/components/device/DeviceToolsPanel.tsx | w d s | L
+- [ ] H27 Agent devices: `agent-device` CLI, permission toggle | docs/user/devices.md | s | L
+- [ ] H28 SSH device hosts: test connection, pinned tools | apps/web/src/components/settings/DeviceHostEditor.tsx | w d s | L
+- [ ] H29 EAS device hosts: EAS simulator source | apps/web/src/components/settings/EasDeviceHostEditor.tsx | w d s | M
+- [ ] H30 Simlock hosts: alpha leased device pool | apps/web/src/components/settings/SimlockDeviceHostEditor.tsx | w d s | L
+- [ ] H31 Device tool versions: check and auto install | apps/web/src/components/device/DeviceToolVersions.tsx | w d s | M
+- [ ] H32 Mobile device viewer: stream and control in app, shake detection | apps/mobile/src/features/devices/DevicePreviewRouteScreen.tsx | m | L
+- [ ] H33 SnapShots: window capture to draft with app metadata | apps/desktop/src/snapShot/DesktopSnapShot.ts | d | L
+- [ ] H34 SnapShot setup by platform: accessibility data, GNOME, KDE, Hyprland, Niri, shortcut, sound | apps/desktop/src/snapShot/LinuxSnapShot.ts | d | L
+- [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M
+- [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M
+- [ ] H37 Preview start page: recent URL cards, discovered local server cards, unreachable page with mapped error messages | apps/web/src/components/preview/PreviewEmptyState.tsx | w d | S
+- [ ] H38 Browser history and favicons: address bar suggestions from visited URLs, remembered tab icons | apps/web/src/browserHistoryStore.ts | w d | S
+- [ ] H39 Webview crash recovery: reloads a crashed page up to 3 times within 30 seconds with growing delay | apps/web/src/browser/webviewCrashRecovery.ts | d | S
+- [ ] H40 Incognito tabs: private tabs reopen only until reload or quit and reopen in a fresh session | docs/user/keybindings.md | w d | S
+- [ ] H41 Open file in preview: workspace files and terminal links open as browser tabs | apps/web/src/browser/openFileInPreview.ts | w d | S
+- [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
+- [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
+- [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
+- [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: tested on any OS, not yet run on Windows
+
+## I. Providers
+
+Surveyed against PandaCode 0.3.85's engine list. Any ACP agent runs here as a custom
+engine, with its models, modes and config options read from `session/new`. Engines with
+no row of their own are in I62. Per-engine launch flags, environment and login checks
+are not built in, and an agent that lists effort only after switching models needs I59.
+
+- [ ] I1 Codex CLI login: existing install and login | docs/user/providers-codex.md | s | M | [auth-risk]
+- [ ] I2 Connect ChatGPT: managed sign-in with sharing | apps/server/src/provider/CodexChatGptAuth.ts | w d s | L | [auth-risk] [hosted]
+- [ ] I3 Managed token broker: brokers ChatGPT tokens to Codex | apps/server/src/provider/CodexManagedTokenBroker.ts | s | L | [auth-risk]
+- [ ] I4 ChatGPT account picker: multiple accounts, reconnect, disconnect | apps/web/src/components/settings/ChatGptAccountPicker.tsx | w d s | M | [auth-risk]
+- [ ] I5 ChatGPT profile handoff: import and reconnect profile | packages/contracts/src/rpc.ts | w d s | M | [auth-risk]
+- [ ] I6 Shared usage control: manage sharing and credits link | apps/web/src/components/chat/ChatGptSharingControl.tsx | w d m | S | [auth-risk]
+- [ ] I7 Codex shadow homes: per-account auth over shared state | apps/server/src/provider/Drivers/CodexHomeLayout.ts | s | L | [auth-risk]
+- [ ] I8 Account switch in thread: compatible Codex instances | docs/user/providers-codex.md | w d s | M | [auth-risk]
+- [ ] I9 Codex feedback: send feedback upstream | packages/contracts/src/rpc.ts | w d s | S
+- [ ] I10 App access approvals: MCP elicitation handling | apps/server/src/provider/CodexMcpElicitation.ts | s | M
+- [ ] I11 Claude provider: uses Claude Code login and config | apps/server/src/provider/ClaudeProvider.ts | s | L | [auth-risk]
+- [ ] I12 Claude config homes: multiple accounts by config directory | apps/server/src/provider/Drivers/ClaudeHome.ts | w d s | M | [auth-risk]
+- [ ] I13 Claude auto-compact window: threshold from 100k to 1M | packages/contracts/src/settings.ts | w d s | S
+- [ ] I14 Idle compaction: on return, before cache expiry, never | packages/contracts/src/settings.ts | w d s | M
+- [ ] I15 Claude skills: config, project and plugin sources | apps/server/src/provider/Drivers/ClaudeSkills.ts | s | M
+- [ ] I16 Router presets: OpenRouter via instance env variables | docs/user/providers-claude.md | w d s | S | [auth-risk]
+- [ ] I17 Cursor provider: official SDK local agent runtime | packages/provider-cursor/src/adapter.ts | s | L
+- [ ] I18 Cursor browser sign-in: per-instance saved credential | packages/provider-cursor/src/credentialStore.ts | w d m s | M | [auth-risk]
+- [ ] I19 Cursor Keychain usage: reads CLI login for usage | packages/provider-cursor/src/CursorKeychain.ts | s | M | [auth-risk]
+- [ ] I20 Grok provider: ACP adapter with xAI extension | packages/provider-grok/src/adapter.ts | s | L | [auth-risk]
+- [ ] I21 OpenCode provider: local or external server, 1.x and 2.x | packages/provider-opencode/src/adapter.ts | s | L | [auth-risk]
+- [ ] I22 Antigravity provider: Google ACP agent | apps/server/src/provider/AntigravityProvider.ts | s | L
+- [ ] I23 Antigravity sign-in: Google, Enterprise, API key, Vertex, remote callback paste | apps/server/src/provider/AntigravityAuth.ts | w d m s | L | [auth-risk]
+- [ ] I24 Antigravity runtime: managed install and removal | apps/server/src/provider/AntigravityInstallation.ts | w d s | M
+- [ ] I25 Pi provider: RPC integration with MCP injection | packages/provider-pi/src/adapter.ts | s | L
+- [ ] I26 Muse Code provider: opt-in, Supervised and Full access | packages/provider-muse/src/adapter.ts | s | L | [auth-risk]
+- [ ] I27 fx provider: Supervised and Auto with effort | packages/provider-fx/src/adapter.ts | s | M
+- [ ] I28 ACP Registry search: find and add agents | apps/web/src/components/settings/AcpRegistrySearchStep.tsx | w d s | L
+- [ ] I29 ACP install: checksummed binaries, npx/uvx prefixes | packages/provider-acp-registry/src/AcpRegistrySupport.ts | s | L
+- [ ] I30 Local ACP command: executable with literal arguments | apps/web/src/components/settings/AddProviderInstanceDialog.tsx | w d s | M
+- [ ] I31 ACP v1/v2 negotiation: preview protocol with fallback | packages/provider-acp/src/AcpSessionRuntime.ts | s | L
+- [ ] I32 ACP sign-in: browser or terminal methods, sign out | apps/web/src/components/settings/ProviderAuthTerminal.tsx | w d m s | M | [auth-risk]
+- [ ] I33 ACP native sessions: list, import, delete | apps/web/src/components/settings/AcpSessionManagementSection.tsx | w d s | M
+- [ ] I34 Named ACP agents: Claude, Copilot, Devin, Droid adapters | packages/provider-acp-registry/src/droidAcp.ts | s | M
+- [ ] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L | server: stored only, no launch effect
+- [ ] I36 Instance environment: variables with sensitive marking | packages/provider-core/src/instanceEnvironment.ts | w d s | M | [auth-risk]
+- [ ] I37 Provider credential store: server-side secret storage | apps/server/src/provider/ProviderCredentialStore.ts | s | L | [auth-risk]
+- [ ] I38 Provider install flow: start, cancel, subscribe, remove | apps/web/src/components/settings/ProviderSetupSection.tsx | w d s | M
+- [ ] I39 Provider updates: per-provider and update-all | apps/web/src/components/ProviderUpdatesAction.tsx | w d m s | M
+- [ ] I40 Model catalog: refreshed discovery with manifest | apps/server/src/provider/ModelManifest.ts | s | M | [hosted]
+- [ ] I41 Status banners: provider health in composer | apps/web/src/components/chat/ProviderStatusBanner.tsx | w d m | S
+- [x] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M | server done
+- [ ] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S
+- [ ] I44 Text generation model: titles and branch names | packages/contracts/src/settings.ts | w d s | S
+- [ ] I45 Permission-mode matrix per provider: fx Supervised and Auto; Muse Supervised and Full; Pi Supervised, Auto-accept edits, Full (stored Auto shows Supervised); OpenCode Auto equals Supervised; mode change restarts the provider session | docs/user/permission-modes.md | w d m s | M
+- [ ] I46 fx behavior: shared machine login, Default model from `fx status`, Medium effort start, `$` skill dedupe rules, steer stops the turn, mode saved as fx default, sub-agent threads with shortened replies that wait on permission, unsupported list (plan, full access, commit and PR text, titles) | docs/user/providers-fx.md | s w | M
+- [ ] I47 Muse behavior: host key from login, server-inherited key ignored, per-instance key wins, custom models for inaccessible ones, no `$` skills, fork copies context, no rewind, no in-app install or sign-in | docs/user/providers-muse.md | s w | M | [auth-risk]
+- [ ] I48 Pi behavior: 0.80.5 minimum, launch-argument validation, remote login paste, native resume, rollback and fork, extension dialogs in composer, notifications in work log, `$` skills, untrusted-folder notice, Pi default fallback model, thinking-level defaults | docs/user/providers-pi.md | s w | L
+- [ ] I49 OpenCode behavior: 1.14.19 minimum, 2.x detection, Limited support label on 1.x, local helper vs external URL and password, `.env` approvals, Allow once vs for workspace, 30-second config cache, reconnect on next prompt | docs/user/providers-opencode.md | s w m | M | [auth-risk]
+- [ ] I50 Cursor behavior: per-instance sign-in, API key override, Change account and Sign out stop that instance's threads, `auto` maps to default model, read-only task sub-agent threads, interrupt-and-restart steering, Windows sandbox rules | docs/user/cursor.md | s w d m | M | [auth-risk]
+- [ ] I51 Version compatibility warning: provider card flags versions with known problems and offers recommended version install | docs/user/install.md | w d m s | M
+- [ ] I52 Update route by installer: Homebrew, npm, pnpm, Yarn, Bun, Volta, Vite+ detected; mise handled manually; Cursor and Antigravity update with the app | docs/user/install.md | s w d | M
+- [ ] I53 Provider discovery: server-host PATH lookup, binary path override, Cursor `cursor-agent` name | docs/user/faq.md | s w | S
+- [x] I54 Child environment hygiene: remove AppImage variables, the nested-session marker and vendor desktop markers from every engine spawn | src-tauri/src/child_env.rs | s | S | server done
+- [x] I55 Prefer saved login: scrub inherited credential and endpoint variables so the engine uses its own login; report only variable names and endpoint origin | src-tauri/src/providers/claude_auth.rs | s w | M | beyond T3 | server done
+- [x] I56 Login probe without secrets: run the engine's own status command with settings sources empty, time and size bounded, output wiped; map to signed in, not signed in, other credentials, unknown | src-tauri/src/providers/claude_auth.rs | s | S | server done: three states, with inherited keys reported by I55 rather than a fourth
+- [ ] I57 Agent telemetry switch: one setting applies each engine's own telemetry opt-outs to every spawn; coverage table shows off, manual or unknown per engine | src-tauri/src/providers/privacy.rs | s w d | M | beyond T3
+- [x] I58 Codex fast tier from catalog: offered only when the model list names the tier | src-tauri/src/command_operations.rs | s w | S | server done
+- [ ] I59 Discovery without leftovers: engines that report per-model options only after a switch are probed in throwaway sessions that are deleted afterwards | src-tauri/src/providers/devin.rs | s | M
+- [ ] I60 Model health pauses: a failing model is paused with a cooldown that survives restart; same model on another engine is offered as failover; Settings can allow it now | src-tauri/src/model_health.rs | s w | M | beyond T3
+- [ ] I61 Warm next turn: start the next Claude process in the background and adopt it only when every launch input matches | src-tauri/src/providers/warm.rs | s | M | beyond T3
+- [ ] I62 Extra engines: Kimi Code, DeepSeek, Command Code, Cline, Kilo Code, Hermes Agent and ZCode with their documented quirks (Cline effort by flag, ZCode private protocol) | docs/providers.md | s | L | beyond T3
+
+## J. Usage and limits
+- [x] J1 Usage page: tokens, cache savings, estimated cost | apps/web/src/components/usage/UsagePage.tsx | w d m s | L | server done
+- [ ] J2 Cost split: token type, speed, Premium, Other | docs/user/usage.md | w d | M
+- [x] J3 Provider history readers: per-provider native scans | packages/provider-opencode/src/usage.ts | s | L | server done
+- [ ] J4 Environment filter: scanning status, dims stale figures | docs/user/usage.md | w d m | M
+- [ ] J5 Model breakdown: trend, cache hit, cost per million | apps/web/src/components/usage/UsageModelDialog.tsx | w d | M
+- [x] J6 Custom prices: per-model rates, Mixed, retry saves | apps/web/src/components/usage/UsagePriceOverrides.tsx | w d s | L | server done
+- [x] J7 Model aliases: Map to another model | packages/contracts/src/settings.ts | w d s | S | server done
+- [x] J8 Refresh rates: rescan and pricing update | packages/contracts/src/rpc.ts | w d s | S | server done
+- [x] J9 Usage host identity: stable host ID file | docs/user/usage.md | s | S | server done
+- [x] J10 Pooled limits: one number per window across accounts | apps/web/src/components/usage/UsageLimitsPooled.tsx | w d m | L | server done
+- [x] J11 Account detail: plan, location, reset time | apps/web/src/components/usage/UsageLimits.tsx | w d m | M | server done
+- [ ] J12 Claude usage limits: reads subscription windows | apps/server/src/provider/claudeUsageLimits.ts | s | M | [auth-risk]
+- [ ] J13 Codex usage limits: reads subscription windows | apps/server/src/provider/codexUsageLimits.ts | s | M | [auth-risk]
+- [ ] J14 Other provider limits: Antigravity, OpenCode Go, Cursor, Grok | apps/server/src/provider/antigravityUsageLimits.ts | s | M | [auth-risk]
+- [ ] J15 Reset credits: Use reset redeems banked credit | apps/server/src/provider/resetCreditCoordinator.ts | w d m s | M | [auth-risk]
+- [ ] J16 CLIProxyAPI hub: pooled limits with management key | apps/web/src/components/settings/AddUsageLimitSourceDialog.tsx | w d s | M | [auth-risk]
+- [x] J17 Thread details limits: remaining windows row | apps/web/src/components/chat/ThreadDetailsUsage.tsx | w d | S | server done
+- [x] J18 Composer limits panel: inline result | apps/web/src/components/chat/ComposerUsageLimits.tsx | w d m | S | server done
+- [x] J19 Auto check throttle: 5-minute client limit | docs/user/usage.md | w d m | S | server done
+- [ ] J20 Subscription widget: iOS and Android home-screen quota | apps/mobile/src/widgets/SubscriptionUsage.tsx | m | L
+- [x] J21 Usage shortcuts: C, T, L, period keys | apps/web/src/components/usage/usageShortcuts.ts | w d | S | server done
+- [ ] J22 Tunnel usage: T3 Connect usage display | apps/web/src/components/cloud/TunnelUsage.tsx | w d | S | [hosted]
+- [ ] J23 Usage charts: per-provider chart and share bar | apps/web/src/components/usage/UsageProviderChart.tsx | w d | S
+- [ ] J24 Mobile usage page: daily chart, environment selection, pooled limits, ChatGPT summary | apps/mobile/src/features/usage/UsageRouteScreen.tsx | m | M
+- [ ] J25 Usage in thread details: setting shows usage row, off by default | packages/contracts/src/settings.ts | w d | S
+- [ ] J26 Resume at reset: when an engine reports a reset time, offer to send Continue at that time; overdue resumes recovered at startup before queued messages | src-tauri/src/providers/limits.rs | s w | M | beyond T3
+
+## K. Settings, appearance and notifications
+- [ ] K1 Settings scope: choose project and environments, fan-out edit | apps/web/src/components/settings/SettingsScopeSentence.tsx | w d m | L
+- [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
+- [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
+- [ ] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S
+- [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients
+- [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
+- [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
+- [x] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M | server done
+- [ ] K9 Project actions: run on worktree create, settle, async, preview URL | apps/web/src/components/settings/ProjectActionsSettings.tsx | w d s | M
+- [x] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L
+- [x] K11 Keybindings file: lenient JSON with late defaults | apps/server/src/keybindings.ts | s | M | server done
+- [ ] K12 Workspace focus: F6 area cycling, tree navigation | docs/user/keyboard-focus.md | w d | M
+- [ ] K13 Command palette: threads, actions, projects, settings, submenus | apps/web/src/components/CommandPalette.tsx | w d m | L
+- [x] K14 Themes: built-in, per-light/dark selection | apps/web/src/components/settings/ThemeSettings.tsx | w d m | M
+- [x] K15 Theme editor: palette editing with element inspector | apps/web/src/components/settings/ThemeEditorPanel.tsx | w d | L
+- [x] K16 Theme import/export: T3 or VS Code, JSON | apps/web/src/components/settings/ThemeImportDialog.tsx | w d | M
+- [ ] K17 Environment themes: server-published with applied-once default | apps/server/src/environmentTheme.ts | w d c s | M
+- [x] K18 Typography: fonts and sizes for four surfaces | apps/web/src/components/settings/TypographySettings.tsx | w d m | M
+- [x] K19 Glass, contrast, smoothing: visual tuning | packages/contracts/src/settings.ts | w d | S
+- [ ] K20 Panel animations: 0–400 ms slider | apps/web/src/components/settings/PanelAnimationsPreview.tsx | w d | S
+- [x] K21 Timestamp format: locale, 12-hour, 24-hour | packages/contracts/src/settings.ts | w d m | S
+- [ ] K22 Environment identification: artwork, pill, none | packages/contracts/src/settings.ts | w d | S
+- [ ] K23 Material You: Android dynamic colors and layout | docs/user/appearance.md | m | M
+- [ ] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M
+- [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S
+- [ ] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M
+- [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
+- [ ] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S
+- [ ] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server: counts and database only; no process or trace views
+- [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done
+- [ ] K31 Product telemetry: hashed usage events, env opt-out | docs/user/telemetry.md | s d | M | [hosted]
+- [x] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S | server done
+- [ ] K33 Secrets: secret providers, references, 1Password driver | apps/web/src/components/settings/SecretsSettings.tsx | w d s | L | [auth-risk]
+- [ ] K34 Triage: playbook thread with source for server version | apps/server/src/triage/TriageService.ts | w d m c s | M
+- [ ] K35 Welcome wizard: computers, agents, project import | apps/web/src/components/onboarding/WelcomeWizard.tsx | w d | L
+- [ ] K36 Agent history import: scans Claude, Codex, Pi with limits | packages/contracts/src/agentSessions.ts | w d s | L
+- [ ] K37 Open source licenses: in-app legal list | apps/web/src/components/settings/OpenSourceLicenses.tsx | w d m | S
+- [ ] K38 GitHub star prompt: occasional prompt | apps/web/src/components/GitHubStarPrompt.tsx | w d | S
+- [ ] K39 Thread shortcuts: stop turn (unbound), steer first queued, edit queued, previous and next, jump 1 to 9 (desktop only), copy reference, settle, pin, global undo with mod+z | packages/contracts/src/keybindings.ts | w d | M
+- [ ] K40 Model picker shortcuts: toggle, previous and next provider, jump 1 to 9 inside the picker, Left or Shift+Tab to the provider list | docs/user/keybindings.md | w d | S
+- [ ] K41 Composer menu shortcuts: model, host, cycle host, effort, step effort up and down (wrapping), permissions, workspace, previous worktree, branch, stash | docs/user/keybindings.md | w d | M
+- [x] K42 Panel and navigation shortcuts: sidebar toggle, back and forward, right panel toggle, new, maximize, close, thread panel toggle, reopen closed tab, diff toggle, terminal toggle, split, new, close | packages/contracts/src/keybindings.ts | w d | M
+- [ ] K43 Preview shortcuts: toggle, refresh, focus URL, zoom in, out and reset | packages/contracts/src/keybindings.ts | w d | S
+- [x] K44 Search and new-thread shortcuts: palette, file picker, project search, find in thread, new thread, local new thread, new without project, open favorite editor, copy PR number | packages/contracts/src/keybindings.ts | w d | S
+- [ ] K45 Theme shortcuts: pick theme, cycle appearance, toggle theme editor, open usage | packages/contracts/src/keybindings.ts | w d | S
+- [x] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M
+- [ ] K47 Keybinding file notices: toast when file reloads or is invalid, warning when it cannot be opened | apps/web/src/components/KeybindingsUpdateToast.tsx | w d | S
+- [ ] K48 Reserved keys: mod+w never closes the desktop window; browsers need alt+w style rebind | docs/user/keybindings.md | w d | S
+- [ ] K49 Snap Shot settings: shortcut (including both Shift keys), sound choice, flash, animations, include accessibility data, setup dialog | apps/web/src/components/settings/SnapShotSettings.tsx | d | M
+- [ ] K50 Legacy features: legacy sidebar, Build/Plan with /plan, /default and Shift+Tab, context meter | apps/web/src/components/settings/SettingsPanels.tsx | w d | S
+- [ ] K51 Health toasts: slow requests, host frozen, legacy thread migration, permission update | apps/web/src/components/SlowRpcRequestToastCoordinator.tsx | w d m | S
+- [ ] K52 Provider update checks: toggle checking CLIs and model catalogs for updates | packages/contracts/src/settings.ts | w d s | S
+- [ ] K53 Default theme and environment icon: default theme preference with set time, machine-kind icon picker | apps/web/src/components/settings/EnvironmentIconPicker.tsx | w d | S
+- [ ] K54 New projects base directory: default parent folder for new and cloned projects | packages/contracts/src/settings.ts | w d s | S
+- [x] K55 Settings navigation: sidebar nav, breadcrumb, section deep links across 24 settings pages | apps/web/src/components/settings/SettingsSidebarNav.tsx | w d | M
+- [ ] K56 Capability inventory: read-only list of each engine's commands, MCP server names, hook event names, plugin names and skill folders; no secrets, bodies or absolute config paths | docs/capabilities.md | w d s | M | beyond T3
+- [ ] K57 Network disclosure: Settings lists every automatic outbound request with host and cadence | README.md | w d | S | beyond T3 | server: `GET /api/network`; Settings not built
+
+## L. Remote access, pairing and auth
+- [ ] L1 T3 Connect tunnel: reach host without port forwarding | docs/user/remote-access.md | w d m c s | L | [hosted]
+- [ ] L2 Connect sign-in: Clerk-based account, CLI code flow | apps/web/src/components/cloud/ConnectCliAuthSurface.tsx | w d m c | L | [hosted]
+- [ ] L3 Machine limit: 3 machines, more with T3 Chat | docs/user/remote-access.md | w d | M | [hosted]
+- [ ] L4 Link T3 Chat: raises machine limit | apps/web/src/components/clerk/T3ChatUserProfilePage.tsx | w d | M | [hosted]
+- [ ] L5 Deregister environment: frees host space | apps/web/src/components/clerk/RemoveT3ConnectEnvironmentDialog.tsx | w d m | S | [hosted]
+- [ ] L6 Idle tunnel cleanup: tunnel recreated on host wake | docs/user/remote-access.md | s | M | [hosted]
+- [ ] L7 Hosted web app: app.t3.codes as remote client | docs/user/remote-access.md | w | L | [hosted]
+- [ ] L8 Relay client install: installer dialog and status | apps/web/src/components/cloud/RelayClientInstallDialog.tsx | w d s | M | [hosted]
+- [ ] L9 Connect onboarding: dialog and environment connect list | apps/web/src/components/cloud/ConnectOnboardingDialog.tsx | w d m | M | [hosted]
+- [ ] L10 LAN pairing: network access toggle, one-time links | apps/web/src/components/settings/ConnectionsSettings.tsx | w d c s | M
+- [ ] L11 Pairing route: claim page plus QR | apps/web/src/components/auth/PairingRouteSurface.tsx | w d m | M
+- [ ] L12 Pairing deep link: `t3code://pair` with confirmation | docs/user/remote-access.md | d | S
+- [ ] L13 Custom CA on Android: trusts user-installed CA | docs/user/remote-access.md | m | S
+- [ ] L14 Multi-route environments: LAN, Tailscale, VPN, URL, SSH, Connect | apps/web/src/components/settings/EnvironmentRoutesList.tsx | w d m | L
+- [ ] L15 Add/reorder routes: speed-ordered, drag, remove | apps/web/src/components/settings/EnvironmentRow.tsx | w d m | M
+- [ ] L16 Learned routes: LAN and Tailscale auto-added | docs/user/remote-access.md | w d m s | L
+- [ ] L17 Failover and recovery: moves back to earlier route | docs/internals/connection-runtime.md | w d m | L
+- [ ] L18 Permissions view: scopes for in-use route | apps/web/src/components/settings/SessionPermissions.tsx | w d m | S
+- [ ] L19 Connection diagnosis: failure details and trace ID | apps/web/src/components/settings/ConnectionDiagnosisDetails.tsx | w d m | M
+- [ ] L20 Auto balance: machine weights for new threads | apps/web/src/components/settings/LoadBalancingSettings.tsx | w d | M
+- [ ] L21 Host resource checks: CPU and memory feed balancing | packages/contracts/src/resourceTelemetry.ts | s | M
+- [ ] L22 Tailscale HTTPS: serve mapping and endpoint | packages/tailscale/src/tailscale.ts | d c s | M
+- [ ] L23 Desktop-managed SSH: starts or reuses remote server, forwards port | apps/desktop/src/ssh/DesktopSshEnvironment.ts | d | L
+- [ ] L24 SSH password prompt: in-app secure entry | apps/web/src/components/desktop/SshPasswordPromptDialog.tsx | d | S
+- [ ] L25 WSL backend: runs agents and projects inside distro | apps/desktop/src/wsl/DesktopWslBackend.ts | d | L
+- [ ] L26 Remote-only desktop: disables local environment | apps/web/src/components/settings/LocalEnvironmentSetting.tsx | d | M
+- [ ] L27 Scoped access: 16 permission scopes, guarded RPCs | packages/contracts/src/auth.ts | s | L
+- [ ] L28 Client sessions: list, issue, revoke | apps/web/src/components/settings/AuthorizedClientsSettings.tsx | w d c s | M
+- [ ] L29 Pairing links management: create, list, revoke | apps/server/src/cli/auth.ts | w d c s | M
+- [ ] L30 Outside agents: OAuth MCP sign-in with mode choice | docs/user/outside-agents.md | s | L
+- [ ] L31 Copy MCP URL: per-route address | docs/user/outside-agents.md | w d | S
+- [ ] L32 Linked environments: beta, agents act across machines | apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx | w d m c s | L
+- [ ] L33 Link access rules: capped by mode, 30-day expiry, From marker | docs/user/remote-access.md | s | L
+- [ ] L34 Remote delegation: `delegate_task` across link | apps/server/src/peer/RemoteDelegation.ts | s | L
+- [ ] L35 Guest links: browser follows one thread, 24-hour link | apps/web/src/components/guest/GuestPage.tsx | w s | L | [hosted]
+- [ ] L36 Guest requests: send or dismiss in sidebar and mobile | apps/web/src/components/chat/GuestShareControls.tsx | w d m s | M | [hosted]
+- [ ] L37 Guest attachments: 4 files, 10 MB per message | apps/server/src/guest/guestAttachments.ts | w s | M | [hosted]
+- [ ] L38 Prompt links: draft from URL, never auto-runs | apps/web/src/components/promptLinks/NewThreadLinkView.tsx | w d m | M
+- [ ] L39 Prompt link landing: destination choice with remember | apps/web/src/components/promptLinks/HostedPromptLinkLanding.tsx | w | M | [hosted]
+- [ ] L40 Hidden character stripping: warns on invisible text | docs/user/prompt-links.md | w d m | S
+- [ ] L41 Protocol version gate: refuses mismatched client and server | docs/user/updating.md | w d m s | M
+- [ ] L42 Agent activity publishing: mobile push and Live Activity | apps/server/src/relay/AgentAwarenessRelay.ts | s m | L | [hosted]
+- [ ] L43 Connect troubleshooting guide: device, relay, host tunnel, host app chain; Details names first failing part; error table with fixes; copy diagnostics and trace ID | docs/user/t3-connect-troubleshooting.md | w d m s | M | [hosted]
+- [ ] L44 Host-side check: `t3 connect status` and Settings, Sharing and access test the host's own address and explain failure | apps/server/src/cli/connect.ts | w d c s | S | [hosted]
+- [ ] L45 Blocked tunnel hints: outbound port 7844, Tailscale exit node, VPN and firewall advice, direct-route fallback | docs/user/t3-connect-troubleshooting.md | w d | S | [hosted]
+- [ ] L46 Clock skew detection: reports a device or host clock that breaks signed requests | docs/user/t3-connect-troubleshooting.md | w d m s | S | [hosted]
+- [ ] L47 Account pages: Connect profile, mobile clients and T3 Chat profile pages, remove environment dialog | apps/web/src/components/clerk/T3ConnectAccountPages.tsx | w d m | M | [hosted] [auth-risk]
+- [ ] L48 Hosted channel switch: setting moves the hosted web app between release channels | apps/web/src/components/settings/SettingsPanels.tsx | w | S | [hosted]
+- [ ] L49 Connection status dot: per-environment health indicator | apps/web/src/components/ConnectionStatusDot.tsx | w d m | S
+- [ ] L50 Mobile app promo row: store links and QR in Settings, About | apps/web/src/components/settings/MobileAppSettingsRow.tsx | w d | S
+- [ ] L51 Revoke other clients: one action revokes all sessions except the current one | apps/web/src/components/settings/AuthorizedClientsSettings.tsx | w d | S
+
+## M. Automations, subagents and orchestration
+- [x] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L | server done
+- [ ] M2 Task manager UI: edit, pause, resume, run now, delete | apps/web/src/components/settings/ScheduledTasksSettings.tsx | w d m | M
+- [ ] M3 Thread automations panel: tasks tied to a thread | apps/web/src/components/chat/ThreadAutomationsPanel.tsx | w d | M
+- [x] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted] | server done, reachable only where the host is; no relay
+- [x] M5 Webhook templates: placeholders with untrusted-data wrapping | apps/server/src/scheduledTasks/webhookTemplate.ts | s | M | server done
+- [x] M6 Webhook signatures: header, encoding, prefix | apps/server/src/scheduledTasks/webhookVerification.ts | w d s | M | server done
+- [x] M7 Webhook filters: up to 16 conditions | apps/server/src/scheduledTasks/webhookFilter.ts | w d s | M | server done
+- [x] M8 Replay and coalesce: dedupe with windows | apps/server/src/scheduledTasks/webhookDedupe.ts | s | L | server done
+- [x] M9 Webhook deliveries log: request and prompt detail | packages/contracts/src/rpc.ts | w d s | M | server done
+- [ ] M10 Hold webhooks offline: relay stores up to 24 hours | apps/server/src/relay/HeldHooksWaker.ts | s | L | [hosted]
+- [x] M11 Skip stale deliveries: maximum age per task | packages/contracts/src/scheduledTask.ts | s | S | server done
+- [x] M12 Delegated subagents: child threads with result wake | apps/server/src/mcp/OrchestratorMcpService.ts | w d m s | L | server done
+- [ ] M13 Workflows: script view and stop | packages/contracts/src/orchestrationV2.ts | w d m s | L
+- [x] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done
+- [ ] M15 Secret request tool: agent requests secret securely | apps/server/src/secrets/SecretRequests.ts | s | M | [auth-risk]
+- [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
+- [ ] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M
+- [ ] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S
+- [x] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M | server done
+
+## N. MCP tools for agents
+- [ ] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M
+- [ ] N2 Worktree: `t3_worktree_handoff`, `_status`, `_list` | apps/server/src/mcp/toolkits/worktree/tools.ts | s | M
+- [ ] N3 HTML: `html_preview`, `html_render` | apps/server/src/mcp/toolkits/html/tools.ts | s | M
+- [ ] N4 Attachments: `t3_attachment_prepare_upload`, `_discard`, `t3_thread_send_attachments` | apps/server/src/mcp/toolkits/attachment/tools.ts | s | M
+- [ ] N5 Preview controls: `t3_preview_list`, `t3_preview_close` | apps/server/src/mcp/toolkits/previewControls/tools.ts | s | S
+- [ ] N6 Projects: `t3_project_list`, `_read`, `_create`, `_update`, `_delete`, `_clone` | apps/server/src/mcp/toolkits/project/tools.ts | s | M
+- [x] N7 Thread launch: `t3_thread_launch` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server done, as `orbyn_*`
+- [ ] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L
+- [ ] N9 Browser inspection: `preview_snapshot`, `_act`, `_evaluate`, `_wait_for` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L
+- [ ] N10 Browser recording: `preview_recording_start`, `_stop` | apps/server/src/mcp/toolkits/preview/tools.ts | s | M
+- [ ] N11 Devices: `device_list`, `_open`, `_screenshot`, `_close` | apps/server/src/mcp/toolkits/device/tools.ts | s | M
+- [ ] N12 Thread organize and config: `t3_thread_organize`, `t3_thread_configure`, `t3_thread_transfer` | apps/server/src/mcp/toolkits/thread/tools.ts | s | M
+- [x] N13 Queue and requests: `t3_queue`, `t3_pending_request` | apps/server/src/mcp/toolkits/thread/tools.ts | s | M | server done, as `orbyn_*`
+- [x] N14 Thread search: `t3_thread_search` | apps/server/src/mcp/toolkits/thread/tools.ts | s | S | server done, as `orbyn_*`
+- [x] N15 Thread lifecycle: `t3_thread_list`, `_read`, `_update`, `_send`, `_wait`, `_interrupt` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
+- [x] N16 PR links: `link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests` | apps/server/src/mcp/toolkits/pullRequests/tools.ts | s | M | server done, as `orbyn_*`, core calls tested through `gh`
+- [x] N17 PR watch: `watch_pull_request`, `unwatch_pull_request` | apps/server/src/mcp/toolkits/pullRequests/tools.ts | s | M | server done, as `orbyn_*`, core calls tested through `gh`
+- [ ] N18 Guides: `write_pull_request_guides`, `read_pull_request_guide` | apps/server/src/mcp/toolkits/pullRequests/tools.ts | s | M
+- [ ] N19 Delegation: `orchestrator_capabilities`, `delegate_task`, `task_status`, `task_cancel`, `t3_workflow_stop`, `t3_background_wait` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | L
+- [x] N20 Scheduling: `schedule_task`, `list_scheduled_tasks`, `delete_scheduled_task`, `run_scheduled_task_now` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
+- [ ] N21 Agent requests: `request_secret`, `create_threads` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | [auth-risk]
+- [ ] N22 Links: `t3_environment_links`, `_link`, `_unlink` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
+- [x] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M | server done: 512 KiB requests, 256 KiB replies; the permission prompt keeps its own timeout
+
+## O. CLI
+- [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M
+- [ ] O2 `t3 serve`: headless server with host, LAN, Tailscale options | apps/server/src/cli/server.ts | c | M
+- [ ] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S
+- [ ] O4 `t3 up`: prompted or flag-driven access setup | apps/server/src/cli/up.ts | c | L | [hosted]
+- [ ] O5 `t3 status`: current access settings, JSON | apps/server/src/cli/up.ts | c | S
+- [ ] O6 `t3 connect` and subcommands: login, link, status, publish, unlink, logout | apps/server/src/cli/connect.ts | c | L | [hosted]
+- [ ] O7 `t3 pair`: pairing link with scopes and Tailscale | apps/server/src/cli/pair.ts | c | M
+- [ ] O8 `t3 auth pairing`: create, list, revoke | apps/server/src/cli/auth.ts | c | M
+- [ ] O9 `t3 auth session`: issue, list, revoke | apps/server/src/cli/auth.ts | c | M
+- [ ] O10 `t3 service`: install, update, restart, status, uninstall | apps/server/src/cli/service.ts | c | L
+- [ ] O11 `t3 service protect`: memory and OOM protection, undo | apps/server/src/cli/service.ts | c | M
+- [ ] O12 `service.env`: literal environment file | docs/user/background-service.md | c s | S
+- [ ] O13 `t3 update`: exact version, channel, downgrade | apps/server/src/cli/update.ts | c | M
+- [ ] O14 `t3 uninstall`: removes launcher, service, versions | apps/server/src/cli/uninstall.ts | c | S
+- [ ] O15 `t3 doctor`: database repair, dry run, fix | apps/server/src/cli/doctor.ts | c | M
+- [ ] O16 `t3 thread`: list, start, send, show with wait and JSON | apps/server/src/cli/thread.ts | c | M
+- [ ] O17 `t3 project`: add, remove, rename | apps/server/src/cli/project.ts | c | S
+- [ ] O18 `t3 environment`: link, list, unlink | apps/server/src/cli/environment.ts | c | M
+- [ ] O19 `t3 theme`: set, clear, show | apps/server/src/cli/theme.ts | c | S
+- [ ] O20 `t3 browser setup`: host sandbox and libraries | apps/server/src/cli/browser.ts | c | M
+- [ ] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S
+- [ ] O22 `t3 triage`: starts Claude or Codex in terminal | apps/server/src/cli/triage.ts | c | S
+- [ ] O23 Config inputs: flags, environment, home directory | apps/server/src/cli/config.ts | c | M
+- [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M
+- [ ] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S
+- [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S
+- [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3
+
+## P. Desktop shell
+- [ ] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L
+- [ ] P2 Shell environment: loads profile PATH and variables | apps/desktop/src/shell/DesktopShellEnvironment.ts | d | M
+- [ ] P3 Auto updater: state machine with release notes | apps/desktop/src/updates/DesktopUpdates.ts | d | L
+- [ ] P4 Update everything: providers, servers, desktop in order | apps/web/src/components/sidebar/UpdateEverythingDialog.tsx | w d s | L
+- [ ] P5 Remote updates: desktop relaunch for remote hosts | apps/desktop/src/updates/DesktopRemoteUpdates.ts | d | L
+- [ ] P6 Update tracks: Stable and Nightly switching | apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx | d | L
+- [ ] P7 Update sidebar pill: progress and retry | apps/web/src/components/sidebar/SidebarUpdatePill.tsx | w d | M
+- [ ] P8 Startup recovery: failure window with update or last-good version | apps/desktop/src/app/DesktopStartupRecovery.ts | d | M
+- [ ] P9 Deep links: protocol and Linux URL handler | apps/desktop/src/app/DesktopLinuxUrlHandler.ts | d | M
+- [ ] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
+- [ ] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M
+- [ ] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M
+- [ ] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S
+- [ ] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S
+- [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M
+- [ ] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M
+- [ ] P18 Provider auth callback: Codex sign-in return | apps/desktop/src/app/CodexAuthCallback.ts | d | M | [auth-risk]
+- [ ] P19 Local environment auth: tokens for bundled server | apps/desktop/src/backend/DesktopLocalEnvironmentAuth.ts | d | M
+- [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M
+- [ ] P21 Linux secret storage: keyring integration | apps/desktop/src/linuxSecretStorage.ts | d | M
+- [ ] P22 Windows foreground: focus handling | apps/desktop/src/electron/WindowsForeground.ts | d | M
+- [ ] P23 View menu: reload, force reload, DevTools, actual size, zoom in and out (including keypad keys), full screen | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [ ] P24 Edit and Window menus: paste as plain text, macOS Speech, minimize, zoom, File menu Settings and Close Window | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [ ] P25 Desktop packaging channels: winget, Homebrew cask, deb (self-updating with password prompt), AUR stable and nightly, Nix, GitHub Releases | docs/user/install.md | d | M
+- [ ] P26 CLI install scripts: shell and PowerShell installers to `~/.local/bin`, nightly channel and exact-version pins, Intel Mac desktop only | docs/user/install.md | c | M
+- [ ] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S
+- [ ] P28 Menu-bar popover: icon with running count; popover lists running, needs you, finished unseen and plan usage read on open | src-tauri/src/tray.rs | d | L | beyond T3
+- [ ] P29 Quick launcher: global shortcut opens a small window for new and running threads; manual open when shortcut registration fails | src-tauri/src/overlay.rs | d | L | beyond T3
+- [x] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S | server done: `off` stops installs here; background checks keep their own setting
+- [x] P31 Deterministic tool search path: ordered install folders, version-manager defaults and npm prefix read from config, added once at startup without sourcing a shell | src-tauri/src/providers/launch.rs | d s | M | alternative to P2 | server done: `crates` side; PATH for the desktop shell is the lead's
+- [ ] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M
+- [ ] P33 Packaged-app startup smoke: install the built package on a disposable hosted runner with isolated profile folders and no secrets, and check it stays alive | scripts/release/ci-startup-smoke.mjs | d c | M
+- [ ] P34 Release evidence: per-asset checksums, installer and lockfile SBOMs, coverage report where an empty scan reads "incomplete", actions pinned by commit | docs/releasing.md | c | M
+- [ ] P35 Notarization check: require credentials for Developer ID builds, verify with stapler and spctl, retry stapling | scripts/release/build.mjs | d c | S
+
+## Q. Mobile
+- [ ] Q1 Adaptive workspace: phone tabs, tablet panes, inspector | apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx | m | L
+- [ ] Q2 Native navigation: iOS glass and Android bars | apps/mobile/src/features/workspace/WorkspaceNativeTabs.ios.tsx | m | L
+- [ ] Q3 Home thread list: filters, search, swipe actions | apps/mobile/src/features/home/HomeScreen.tsx | m | L
+- [ ] Q4 New task flow: project, branch, model pickers | apps/mobile/src/features/threads/NewTaskDraftScreen.tsx | m | L
+- [ ] Q5 Thread screen: feed, composer, header | apps/mobile/src/features/threads/ThreadDetailScreen.tsx | m | L
+- [ ] Q6 Native composer editor: custom module | apps/mobile/modules/t3-composer-editor | m | L
+- [ ] Q7 Native highlighter: code module | apps/mobile/modules/t3-highlights | m | L
+- [ ] Q8 Git sheets: overview, branches, commit, confirm | apps/mobile/src/features/threads/GitOverviewSheet.tsx | m | M
+- [ ] Q9 Agents sheet: subagent list and stop | apps/mobile/src/features/threads/ThreadAgentsSheet.tsx | m | M
+- [ ] Q10 Guest bar: send or dismiss guest messages | apps/mobile/src/features/threads/ThreadGuestShareBar.tsx | m | S | [hosted]
+- [ ] Q11 Connections: environments list, routes, pairing | apps/mobile/src/features/connection/ConnectionsRouteScreen.tsx | m | L
+- [ ] Q12 QR pairing: scan pairing link | apps/mobile/src/features/connection/pairing.ts | m | M
+- [ ] Q13 Connect profile: account and deregister | apps/mobile/src/features/cloud/T3ConnectProfilePage.tsx | m | M | [hosted]
+- [ ] Q14 Connect onboarding: first-run sign-in path with opt-out | apps/mobile/src/features/cloud/ConnectOnboardingRouteScreen.tsx | m | M | [hosted]
+- [ ] Q15 Push notifications: finish, fail, approval, input alerts | apps/mobile/src/features/agent-awareness/remoteRegistration.ts | m | L | [hosted]
+- [ ] Q16 Live Activities: iOS ongoing agent state | apps/mobile/src/features/agent-awareness/agentLiveActivity.ios.ts | m | L | [hosted]
+- [ ] Q17 Android ongoing cards: Live Update where supported | apps/mobile/src/features/agent-awareness/androidNotifications.ts | m | L | [hosted]
+- [ ] Q18 Mobile palette: iPad keyboard Cmd+K | apps/mobile/src/features/keyboard/CommandPalette.tsx | m | M
+- [ ] Q19 Hardware keyboard: thread shortcuts | apps/mobile/src/features/keyboard/HardwareKeyboardCommandProvider.tsx | m | M
+- [ ] Q20 App shortcuts: launcher quick actions | apps/mobile/src/features/shortcuts/appShortcuts.ts | m | S
+- [ ] Q21 Over-the-air updates: background download, apply on leave | apps/mobile/src/features/updates/app-updates.ts | m | M | [hosted]
+- [ ] Q22 Crash reports: relay to Axiom, toggle | apps/mobile/src/features/diagnostics/crash-log-model.ts | m | S | [hosted]
+- [ ] Q23 Client storage page: local data view | apps/mobile/src/features/settings/SettingsClientStorageRouteScreen.tsx | m | S
+- [ ] Q24 Server controls: maintenance per environment | apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx | m | M
+- [ ] Q25 Provider accounts: mobile sign-in | apps/mobile/src/features/settings/SettingsProviderAccountsRouteScreen.tsx | m | M | [auth-risk]
+- [ ] Q26 Mobile scheduled tasks: full task editor | apps/mobile/src/features/settings/SettingsScheduledTasksRouteScreen.tsx | m | M
+- [ ] Q27 Mobile PR guide: next/back stop reader | apps/mobile/src/features/pull-requests/PullRequestGuideScreen.tsx | m | M
+- [ ] Q28 Android FAB: home new-thread action | apps/mobile/src/features/home/AndroidHomeFab.tsx | m | S
+- [ ] Q29 Mobile HTML/MCP renders: webviews with sizing | apps/mobile/src/features/threads/McpAppWebView.tsx | m | M
+- [ ] Q30 Mobile add project: local, repository, new routes | apps/mobile/src/features/projects/AddProjectScreen.tsx | m | M
+- [ ] Q31 Navigation tabs setting: reorder, hide and reset phone tabs | apps/mobile/src/features/settings/SettingsNavigationRouteScreen.tsx | m | S
+- [ ] Q32 Return key setting: Return sends or inserts a new line on hardware keyboard | apps/mobile/src/features/settings/SettingsKeyboardRouteScreen.tsx | m | S
+- [ ] Q33 Mobile appearance: text scale per role, code surface, terminal text, Android navigation style | apps/mobile/src/features/settings/appearance/sections/TextAppearanceSection.tsx | m | M
+- [ ] Q34 Project grouping setting: mobile grouping choice | apps/mobile/src/features/settings/SettingsProjectGroupingRouteScreen.tsx | m | S
+- [ ] Q35 Floating working status: pill shows working, syncing, compacting, child input, background work and snoozed, settled or woke with an action | apps/mobile/src/features/threads/floating-working-status.ts | m | M
+- [ ] Q36 Undo notice and git progress: undo bar on the thread list; progress overlay for git actions | apps/mobile/src/features/threads/GitActionProgressOverlay.tsx | m | S
+- [ ] Q37 Mobile review sheet: review sections menu, file visibility, line selection, comment composer sheet | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
+- [ ] Q38 Mobile PR screens: discussion, inline comment, labels, edit, filter search, merge controls | apps/mobile/src/features/pull-requests/PullRequestDiscussionScreen.tsx | m | L
+- [ ] Q39 Startup crash log: Settings, Diagnostics lists last 7 days with error and component stack to copy | apps/mobile/src/features/diagnostics/SettingsDiagnosticsRouteScreen.tsx | m | S
+- [ ] Q40 Legal documents: terms and privacy pages in settings | apps/mobile/src/features/settings/SettingsLegalRouteScreen.tsx | m | S
+
+## R. RPC surface, grouped (`packages/contracts/src/rpc.ts`, plus `orchestrationV2.ts`)
+- [ ] R1 Projects (10): listEntries, listIgnoredFiles, readFile, searchContents, searchEntries, writeFile, mutate, ensureScratch, createNew, createFromThread | w d m s | L
+- [ ] R2 Shell, filesystem, sessions, assets (9): shell.openInEditor; filesystem.browse, getMetadata; agentSessions.scan, import; assets.createUrl, persistChatAttachments; attachments.createUploadUrl, delete | M
+- [ ] R3 MCP Apps (4): callTool, toolInfo, readResource, updateModelContext | M
+- [ ] R4 Provider (15): uploadFeedback; auth start, complete, respond, cancel, logout, subscribe; consumeResetCredit; chatgpt reconnect-profile, import-profile, handoff.subscribe; install start, cancel, subscribe, remove | L | [auth-risk]
+- [ ] R5 VCS and git (11): vcs pull, refreshStatus, listRefs, createWorktree, removeWorktree, createRef, switchRef, init; git runStackedAction, resolvePullRequest, preparePullRequestThread | L
+- [ ] R6 Review and terminal (10): review getBranchCommits, getDiffPreview, getDiffFileContents; terminal open, attach, observe, write, resize, clear, close | L
+- [ ] R7 Preview and devices (19): preview open, resize, adjust, close, list, clearProfile, reportProfiles, reportStatus, stopLocalServer; device configure, list, testHost, easAccount, simlockIdentity, open, close, shutdown, detail, action | L
+- [ ] R8 Server core (14): probe, getConfig, getNpmRelease, refreshProviders, updateProvider, updateServer, updateServerWithProgress, commitDesktopUpdate, upsertKeybinding, removeKeybinding, runStorageCleanup, getStorageCleanupReport, getDatabaseStorage, updateSettings | L
+- [ ] R9 ACP Registry (11): search, prepareAgent, uninstallManagedBinary, acceptUrlAuth, listSessions, importSession, deleteSession, listProviders, setProvider, disableProvider, logout | L | [auth-risk]
+- [ ] R10 Diagnostics and usage (12): discoverSourceControl, getTraceDiagnostics, getProcessDiagnostics, getHostResources, getProcessResourceHistory, getResourceTelemetryHistory, retryResourceTelemetry, checkOtlpEndpoint, prepareTriage, signalProcess, reportClientActivity, getUsageSummary, refreshUsageRates | M
+- [ ] R11 Links, tasks, secrets, sharing, cloud (15): peerLinks list, link, unlink, answerRequest; scheduledTasks subscribe, upsert, setEnabled, delete, runNow, rotateWebhookToken, listWebhookDeliveries, getWebhookDelivery; secrets.answerRequest; guestShare.create; cloud getRelayClientStatus, installRelayClient | L | [hosted]
+- [ ] R12 Pull requests (31): list, listStats, filterOptions, summary, routing, routingIdentity, stack, linkedThreads, detail, preview, checks, activity, reviewGuide, generateReviewGuide, threadComments, diffFileContents, filesViewed, changeBreakdown, setFilesViewed, runAction, update, comment, updateComment, submitReview, replyToThread, setThreadResolution, setReaction, invalidate, reportState, subscribeRefreshes, reviewerCandidates, requestReviewers, labelCandidates, setLabels | L
+- [ ] R13 Source control, clones, subscriptions (24): sourceControl lookupRepository, cloneRepository, publishRepository, signInStart, signInWait, signInCancel, appAccess, starred; projectClone start, cancel, retry; worktreeSetup.cancel; subscribe ProjectClones, VcsStatus, WorktreeSetup, TerminalMetadata, PreviewEvents, DiscoveredLocalServers, DeviceState, ServerConfig, ServerLifecycle, AuthAccess, ResourceTelemetry | L
+- [ ] R14 Orchestration (18): dispatchCommand, getTurnDiff, getFullThreadDiff, searchThreads, searchThread, searchThreadStream, getArchivedShellSnapshot, getThreadFamily, getWorktreeThreadIds, getOlderSettledThreads, getThreadProjection, getWorkflowScript, stopWorkflow, forceStopThread, getTurnItem, launchThread, subscribeShell, subscribeThread, subscribeCommandOutput | L

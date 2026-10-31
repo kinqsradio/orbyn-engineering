@@ -1,0 +1,164 @@
+//! The update channel through the real binary and its real stdin and stdout.
+
+mod support;
+
+use std::io::{BufRead, Write};
+use std::time::Duration;
+
+use serde_json::{Value, json};
+use support::{Options, Service, TempDir, setup};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+fn desktop() -> Options {
+    Options {
+        args: vec!["--parent-stdin".into()],
+        ..Options::default()
+    }
+}
+
+fn say(service: &mut Service, line: &str) {
+    let stdin = service.child.stdin.as_mut().unwrap();
+    writeln!(stdin, "{line}").unwrap();
+    stdin.flush().unwrap();
+}
+
+async fn app(service: &Service) -> Value {
+    service.json("/api/updates").await["app"].clone()
+}
+
+async fn until_can_apply(service: &Service) {
+    for _ in 0..500 {
+        if app(service).await["can_apply"] == true {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    panic!("the shell's message never arrived");
+}
+
+#[tokio::test]
+async fn shell_channel_survives_junk_and_install_holds_admission() {
+    let dir = TempDir::new();
+    let (mut service, thread) = setup(&dir, desktop(), "codex").await;
+    assert_eq!(app(&service).await["mode"], "desktop");
+    say(&mut service, "not json at all");
+    say(&mut service, r#"{"type":"from_the_future","x":1}"#);
+    say(
+        &mut service,
+        r#"{"type":"app_update_available","version":"99.0.0","notes":"n"}"#,
+    );
+    until_can_apply(&service).await;
+    assert_eq!(app(&service).await["latest"], "99.0.0");
+
+    let run = service.admit(&thread, "[hang]").await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let (code, body) = service.send("/api/updates/app/apply", json!({})).await;
+    assert_eq!(code, 409);
+    assert_eq!(body["code"], "runs_active");
+    service
+        .send(&format!("/api/runs/{run}/cancel"), json!({}))
+        .await;
+    service.finished(&thread).await;
+
+    let (code, _) = service.send("/api/updates/app/apply", json!({})).await;
+    assert_eq!(code, 202);
+    let mut line = String::new();
+    while !line.contains("install_app_update") {
+        line.clear();
+        service.stdout.read_line(&mut line).unwrap();
+        assert!(!line.is_empty(), "stdout closed");
+    }
+    assert_eq!(
+        serde_json::from_str::<Value>(&line).unwrap()["type"],
+        "install_app_update"
+    );
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "x" }),
+        )
+        .await;
+    assert_eq!(code, 503);
+    assert_eq!(body["code"], "updating");
+}
+
+#[tokio::test]
+async fn server_compares_a_release_manifest_and_keeps_it_when_it_disappears() {
+    let dir = TempDir::new();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut buffer = [0u8; 2048];
+        let _ = socket.read(&mut buffer).await;
+        let body = r#"{"version":"99.0.0","notes":"Big release"}"#;
+        let reply = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(reply.as_bytes()).await.unwrap();
+    });
+    let service = Service::start(
+        &dir.path().join("data"),
+        Options {
+            args: vec![
+                "--update-manifest".into(),
+                format!("http://127.0.0.1:{port}/manifest.json"),
+            ],
+            ..Options::default()
+        },
+    );
+    server.await.unwrap();
+    for _ in 0..500 {
+        if app(&service).await["latest"] == "99.0.0" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let status = app(&service).await;
+    assert_eq!(status["latest"], "99.0.0");
+    assert_eq!(status["notes"], "Big release");
+    assert_eq!(status["can_apply"], false, "a server cannot replace itself");
+    assert_eq!(status["unconfigured"], false);
+
+    let (code, after) = service.send("/api/updates/check", json!({})).await;
+    assert_eq!(code, 200);
+    assert_eq!(after["app"]["latest"], "99.0.0");
+    assert!(after["error"].as_str().unwrap().contains("manifest"));
+    let (code, _) = service.send("/api/updates/app/apply", json!({})).await;
+    assert_eq!(code, 422);
+}
+
+#[tokio::test]
+async fn update_events_send_the_status_then_each_change() {
+    let dir = TempDir::new();
+    let (mut service, _) = setup(&dir, desktop(), "codex").await;
+    let response = service
+        .get("/api/updates/events")
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let mut body = response.bytes_stream();
+    let mut parser = orbyn_core::sse::SseParser::default();
+    use futures_util::StreamExt;
+    say(
+        &mut service,
+        r#"{"type":"app_update_available","version":"99.0.0"}"#,
+    );
+    let found = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(Ok(chunk)) = body.next().await {
+            for frame in parser.push(&chunk) {
+                let status: Value = serde_json::from_str(&frame).unwrap();
+                if status["app"]["latest"] == "99.0.0" {
+                    return true;
+                }
+            }
+        }
+        false
+    })
+    .await
+    .unwrap();
+    assert!(found);
+}

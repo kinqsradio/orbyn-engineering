@@ -1,0 +1,29 @@
+// Builds the UI and the release service, then stages them for the Tauri bundle.
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const windows = process.platform === "win32";
+const run = (command, args, cwd) =>
+  execFileSync(command, args, { cwd, stdio: "inherit", shell: windows });
+
+const host = /host: (\S+)/.exec(
+  execFileSync("rustc", ["-vV"], { encoding: "utf8" }),
+)[1];
+const target = process.env.ORBYN_TARGET ?? host;
+
+run("npm", ["run", "build"], join(root, "web"));
+run("cargo", ["build", "--release", "-p", "orbynd", "--target", target], root);
+
+const build = join(root, "build");
+rmSync(build, { recursive: true, force: true });
+mkdirSync(join(root, "desktop/src-tauri/binaries"), { recursive: true });
+cpSync(join(root, "web/dist"), join(build, "ui"), { recursive: true });
+
+const suffix = target.includes("windows") ? ".exe" : "";
+cpSync(
+  join(root, "target", target, "release", `orbynd${suffix}`),
+  join(root, "desktop/src-tauri/binaries", `orbynd-${target}${suffix}`),
+);

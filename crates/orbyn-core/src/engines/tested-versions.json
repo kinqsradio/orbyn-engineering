@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "engines": {
+    "claude": { "minimum": "2.1.0", "tested": ["2.1.150"] },
+    "codex": { "minimum": "0.166.0", "tested": ["0.166.0"] }
+  }
+}
