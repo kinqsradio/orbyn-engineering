@@ -134,7 +134,10 @@ fn one_shot() {
     let mut prompt = String::new();
     std::io::stdin().read_to_string(&mut prompt).expect("stdin");
     if let Ok(path) = std::env::var("ORBYN_FAKE_ONE_SHOT_FILE") {
-        std::fs::write(path, &prompt).expect("record");
+        std::fs::write(&path, &prompt).expect("record");
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let args_path = std::path::Path::new(&path).with_extension("args");
+        std::fs::write(args_path, args.join(" ")).expect("record args");
     }
     if prompt.contains("[slow-title]") {
         std::thread::sleep(std::time::Duration::from_millis(600));

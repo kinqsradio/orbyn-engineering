@@ -290,6 +290,7 @@ async fn the_network_list_names_each_switch_and_reports_it() {
     assert_eq!(row(&rows, "poll_pull_requests")["enabled"], true);
     assert_eq!(row(&rows, "auto_pull")["enabled"], false, "off by default");
     assert_eq!(row(&rows, "background_update_checks")["enabled"], true);
+    assert_eq!(row(&rows, "auto_thread_titles")["enabled"], true);
     let (code, _) = put_value(
         &service,
         "/api/preferences",

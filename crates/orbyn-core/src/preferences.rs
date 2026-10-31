@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
+use crate::store::Store;
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -63,6 +64,7 @@ const DEFINITIONS: &[Definition] = defs![
     "worktree_submodules" Kind::OneOf(SUBMODULES), "recursive", true;
     "add_project_base_directory" Kind::Text, "", false;
     "text_generation_model" Kind::Text, "", false;
+    "auto_thread_titles" Kind::Bool, true, true;
     "branch_naming_mode" Kind::OneOf(NAMING), "static", true;
     "branch_name_prefix" Kind::Text, "feat", true;
     "branch_name_instructions" Kind::Text, "", true;
@@ -120,48 +122,62 @@ fn setting_key(key: &str) -> String {
     format!("pref:{key}")
 }
 
+/// Every setting as it applies globally, or in `project_id`.
+pub(crate) fn stored_preferences(
+    store: &Store,
+    project_id: Option<&str>,
+) -> Result<Vec<PreferenceView>> {
+    let own: BTreeMap<String, String> = match project_id {
+        Some(project) => {
+            store.project(project)?;
+            store.project_preferences(project)?.into_iter().collect()
+        }
+        None => BTreeMap::new(),
+    };
+    DEFINITIONS
+        .iter()
+        .map(|definition| {
+            let default = (definition.default)();
+            let global = store.setting(&setting_key(definition.key))?;
+            let local = own.get(definition.key).filter(|_| definition.project);
+            let (value, source) = match (local, global) {
+                (Some(text), _) => (serde_json::from_str(text)?, "project"),
+                (None, Some(text)) => (serde_json::from_str(&text)?, "global"),
+                (None, None) => (default.clone(), "default"),
+            };
+            Ok(PreferenceView {
+                key: definition.key.to_owned(),
+                value,
+                default,
+                source: source.to_owned(),
+                project_scoped: definition.project,
+            })
+        })
+        .collect()
+}
+
+/// One setting's effective value.
+pub(crate) fn stored_preference(
+    store: &Store,
+    key: &str,
+    project_id: Option<&str>,
+) -> Result<Value> {
+    stored_preferences(store, project_id)?
+        .into_iter()
+        .find(|view| view.key == key)
+        .map(|view| view.value)
+        .ok_or_else(|| CoreError::Invalid(format!("Unknown setting {key}.")))
+}
+
 impl Core {
     /// Every setting as it applies globally, or in `project_id`.
     pub fn preferences(&self, project_id: Option<&str>) -> Result<Vec<PreferenceView>> {
-        let own: BTreeMap<String, String> = match project_id {
-            Some(project) => {
-                self.store.project(project)?;
-                self.store
-                    .project_preferences(project)?
-                    .into_iter()
-                    .collect()
-            }
-            None => BTreeMap::new(),
-        };
-        DEFINITIONS
-            .iter()
-            .map(|definition| {
-                let default = (definition.default)();
-                let global = self.store.setting(&setting_key(definition.key))?;
-                let local = own.get(definition.key).filter(|_| definition.project);
-                let (value, source) = match (local, global) {
-                    (Some(text), _) => (serde_json::from_str(text)?, "project"),
-                    (None, Some(text)) => (serde_json::from_str(&text)?, "global"),
-                    (None, None) => (default.clone(), "default"),
-                };
-                Ok(PreferenceView {
-                    key: definition.key.to_owned(),
-                    value,
-                    default,
-                    source: source.to_owned(),
-                    project_scoped: definition.project,
-                })
-            })
-            .collect()
+        stored_preferences(&self.store, project_id)
     }
 
     /// One setting's effective value.
     pub fn preference(&self, key: &str, project_id: Option<&str>) -> Result<Value> {
-        self.preferences(project_id)?
-            .into_iter()
-            .find(|view| view.key == key)
-            .map(|view| view.value)
-            .ok_or_else(|| CoreError::Invalid(format!("Unknown setting {key}.")))
+        stored_preference(&self.store, key, project_id)
     }
 
     /// Applies all of a change or none: every value is checked before any is kept.

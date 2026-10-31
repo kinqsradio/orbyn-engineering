@@ -2,15 +2,14 @@
 //! the requested title call and the periodic lifecycle tick.
 
 use orbyn_contracts::{Thread, UpdateThread};
-use serde_json::json;
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
-use crate::store::{AuditRecord, LifecycleRules, TickReport};
+use crate::store::{LifecycleRules, TickReport};
+use crate::titles::{TitleCall, generate_title};
 use crate::util::unix_now;
 
 const TITLE_CONTEXT_CHARS: usize = 8_000;
-const TITLE_MAX_CHARS: usize = 80;
 /// Linked pull requests are polled every second lifecycle tick.
 const PULL_WATCH_TICKS: u32 = 2;
 
@@ -42,9 +41,7 @@ impl Core {
         Ok(())
     }
 
-    /// Asks the thread's engine for a title. This is the only path that spends
-    /// usage for a title, and it runs only on request. A rename that lands while
-    /// the engine is answering wins.
+    /// Asks the thread's engine for a title again, on request.
     pub async fn regenerate_title(&self, id: &str, actor: &str) -> Result<Thread> {
         let thread = self.store.thread(id)?;
         let conversation = self.store.transcript(id, TITLE_CONTEXT_CHARS)?;
@@ -53,28 +50,19 @@ impl Core {
                 "This thread has no conversation to title yet.".into(),
             ));
         }
-        let instructions = self.store.settings()?.title_instructions;
         let driver = self.engines.driver(&thread.engine)?;
-        let prompt = format!(
-            "Write a short title of at most eight words for this conversation. \
-             Reply with only the title.{}\n\n<conversation>\n{conversation}\n</conversation>\n",
-            instructions.map_or_else(String::new, |text| format!("\n\n{text}"))
-        );
-        self.store.append_audit(&AuditRecord {
-            actor: actor.to_owned(),
-            action: "engine.one_shot".into(),
-            target: thread.engine.clone(),
-            decision: None,
-            source: "user".into(),
-            thread_id: Some(id.to_owned()),
-            run_id: None,
-            detail: json!({ "purpose": "title" }),
-        })?;
-        let reply = driver.one_shot(&prompt, thread.model.as_deref()).await?;
-        let title = clean_title(&reply)
-            .ok_or_else(|| CoreError::EngineUnavailable("The engine returned no title.".into()))?;
-        self.store
-            .apply_generated_title(id, &thread.title, &title)?;
+        generate_title(
+            &self.store,
+            &self.engines,
+            driver.as_ref(),
+            TitleCall {
+                thread: &thread,
+                conversation: &conversation,
+                actor,
+                source: "user",
+            },
+        )
+        .await?;
         self.store.thread(id)
     }
 
@@ -124,32 +112,5 @@ impl Core {
                 }
             }
         }
-    }
-}
-
-fn clean_title(reply: &str) -> Option<String> {
-    let line = reply.lines().map(str::trim).find(|line| !line.is_empty())?;
-    let line = line.trim_matches(['"', '\'', '`', '#', '*', ' ']);
-    let title: String = line.chars().take(TITLE_MAX_CHARS).collect();
-    let title = title.trim().trim_end_matches('.').to_owned();
-    (!title.is_empty()).then_some(title)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn titles_lose_quotes_markup_and_extra_lines() {
-        assert_eq!(
-            clean_title("\n\"Fix the bug.\"\nmore").as_deref(),
-            Some("Fix the bug")
-        );
-        assert_eq!(clean_title("## Heading").as_deref(), Some("Heading"));
-        assert_eq!(clean_title("  \n \"\" "), None);
-        assert_eq!(
-            clean_title(&"x".repeat(200)).unwrap().len(),
-            TITLE_MAX_CHARS
-        );
     }
 }

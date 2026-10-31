@@ -4,6 +4,7 @@ import type { ServerSettings } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
+import { PreferenceGroups } from "./PreferenceRows";
 
 const AFTER_DAYS: { value: number | null; label: string }[] = [
   { value: null, label: "Never" },
@@ -81,6 +82,25 @@ export function ThreadsSection() {
           />
         </SettingRow>
       </SettingGroup>
+      <PreferenceGroups
+        groups={[
+          {
+            title: "Title generation",
+            rows: [
+              {
+                key: "auto_thread_titles",
+                title: "Name new threads",
+                description: "Title a thread from its first message. Each title spends a little engine usage.",
+              },
+              {
+                key: "text_generation_model",
+                title: "Title model",
+                description: "A model ID. Empty uses the engine's small model.",
+              },
+            ],
+          },
+        ]}
+      />
       {error ? (
         <p className="field-error" role="alert">
           {error}

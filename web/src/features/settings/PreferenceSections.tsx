@@ -106,7 +106,6 @@ export function GeneralSection() {
             title: "Providers",
             rows: [
               { key: "enable_provider_update_checks", title: "Check providers for updates" },
-              { key: "text_generation_model", title: "Text generation model" },
               { key: "prefer_saved_login", title: "Prefer saved login" },
             ],
           },

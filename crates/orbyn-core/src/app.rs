@@ -266,7 +266,9 @@ impl Core {
         };
         let thread = self.store.create_thread(NewThread {
             project_id: project.id,
-            title: request.title.unwrap_or_else(|| "New thread".to_owned()),
+            title: request
+                .title
+                .unwrap_or_else(|| crate::titles::NEW_THREAD_TITLE.to_owned()),
             engine: request.engine,
             model,
             cwd,

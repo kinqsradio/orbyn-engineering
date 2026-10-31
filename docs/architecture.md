@@ -361,6 +361,14 @@ Orbyn makes without being asked, with host, cadence, what turns it off, the key 
 and whether it is on now. A new one is added there in the same change, with a switch.
 The two-minute pull request poll has its own, `poll_pull_requests`. Engines make their own requests under their own terms.
 
+A thread's first message also spends one short engine call on its title, in the
+background, unless `auto_thread_titles` is off. It sees only that message and goes through
+the thread's own engine with no tools and no session. The model is
+`text_generation_model` when that engine lists it, otherwise the engine's small model,
+otherwise the thread's. A thread with a chosen title, a delegated thread, and a goal
+command are left alone. A failure keeps the default title, and a rename that lands first
+wins.
+
 ## Automations
 
 A scheduled task fires on an interval, at a fixed time on chosen weekdays in a fixed
@@ -781,7 +789,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST /api/threads/:id/adopt` | `AdoptScratch`: the scratch folder becomes a project in place |
 | `PATCH /api/threads/:id` | `UpdateThread`: rename, pin, archive, settle, snooze, wake, unread, auto-settle |
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
-| `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
+| `POST /api/threads/:id/title` | Regenerate the title from the conversation. Spends engine usage |
 | `GET, PUT /api/settings` | `ServerSettings` |
 | `GET, POST /api/tasks` | `ScheduledTask[]`; `UpsertTask` creates or changes |
 | `PUT /api/tasks/:id` | The whole `UpsertTask`; `404` if unknown, `400` for another task's `id` or another project |

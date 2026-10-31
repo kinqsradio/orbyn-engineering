@@ -39,6 +39,7 @@ pub mod sse;
 pub mod store;
 pub mod terminal;
 pub mod threads;
+pub mod titles;
 pub mod updates;
 pub mod usage;
 pub mod util;

@@ -106,6 +106,8 @@ impl EngineDriver for CodexDriver {
             "read-only",
             "--color",
             "never",
+            "-c",
+            "model_reasoning_effort=\"low\"",
         ];
         if let Some(model) = model {
             args.extend(["--model", model]);
