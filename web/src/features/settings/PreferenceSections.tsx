@@ -295,9 +295,19 @@ export function ChatSection() {
 }
 
 export function DiffsSection() {
+  const inApp = useUi((state) => state.pullLinksInApp);
+  const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
       {heading("Diffs & pull requests")}
+      <SettingGroup title="Links">
+        <Toggle
+          title="Open pull request links here"
+          description="Off opens them on the host."
+          on={inApp}
+          set={(on) => setPrefs({ pullLinksInApp: on })}
+        />
+      </SettingGroup>
       <PreferenceGroups
         groups={[
           {

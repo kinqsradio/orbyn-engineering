@@ -115,3 +115,15 @@ test("Edit in a new thread starts before the message and leaves this one alone",
   expect(thread.cwd).toBe((await service.api<{ cwd: string }>("GET", `/api/threads/${id}`)).cwd);
   await box(page).fill("");
 });
+
+test("a pull request link opens in the panel, and its menu offers the host", async ({ page }) => {
+  const id = await fresh(page, "[scene:pull-link] go");
+  await settled(service, id);
+  const link = page.getByRole("link", { name: "the pull request" });
+  await link.click();
+  await expect(page.getByRole("tab", { name: "Pull requests" })).toBeVisible();
+  await expect(page.getByRole("tabpanel").getByText("Fix the login").first()).toBeVisible();
+  await link.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Open on the host" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+});

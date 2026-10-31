@@ -1,3 +1,4 @@
+import { pullNumberOf } from "./MarkdownLink";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Markdown, safeHref } from "./Markdown";
@@ -52,5 +53,13 @@ describe("Markdown", () => {
     const { container } = render(<Markdown text={"- a\n  - b\n- c"} />);
     expect(container.querySelectorAll("ul ul li")).toHaveLength(1);
     expect(container.querySelectorAll(":scope > div > ul > li")).toHaveLength(2);
+  });
+});
+
+describe("pull request links", () => {
+  it("reads the number from a host's address and nothing else", () => {
+    expect(pullNumberOf("https://github.com/o/r/pull/42")).toBe(42);
+    expect(pullNumberOf("https://github.com/o/r/pull/42/files#x")).toBe(42);
+    expect(pullNumberOf("https://example.com/docs")).toBeNull();
   });
 });

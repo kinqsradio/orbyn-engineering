@@ -42,13 +42,26 @@ export function FileLink({ path, line, children }: { path: string; line: number 
   );
 }
 
+/** The number in a pull request's address on a host. */
+export const pullNumberOf = (href: string): number | null => {
+  const match = /^https:\/\/[^/]+\/[^/]+\/[^/]+\/pulls?\/(\d+)(?:[/?#].*)?$/.exec(href);
+  return match ? Number(match[1]) : null;
+};
+
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const inApp = useUi((state) => state.pullLinksInApp);
+  const number = pullNumberOf(href);
   const onContext = (event: MouseEvent) => {
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY });
   };
   const onClick = (event: MouseEvent) => {
+    if (number !== null && inApp) {
+      event.preventDefault();
+      useUi.getState().revealPull(number);
+      return;
+    }
     const { linkTarget, showInBrowser } = useUi.getState();
     if (linkTarget !== "in-app" || !/^https?:/i.test(href) || !window.location.hash.startsWith("#/threads/")) return;
     event.preventDefault();
@@ -66,7 +79,10 @@ export function ExternalLink({ href, children }: { href: string; children: React
           label="Link"
           onClose={() => setMenu(null)}
           items={[
-            { label: "Open link", onSelect: () => void window.open(href, "_blank", "noopener,noreferrer") },
+            {
+              label: number === null ? "Open link" : "Open on the host",
+              onSelect: () => void window.open(href, "_blank", "noopener,noreferrer"),
+            },
             { label: "Copy link", onSelect: () => void navigator.clipboard?.writeText(href) },
           ]}
         />
