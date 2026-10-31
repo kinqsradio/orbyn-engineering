@@ -171,7 +171,7 @@ describe("App against the mock API", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
     const field = await within(palette).findByLabelText("Folder path");
-    await user.clear(field);
+    // Typed straight after the starting ~/, an absolute path replaces it.
     await user.type(field, "/Users/dev/code/payments-service{Enter}");
 
     expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
