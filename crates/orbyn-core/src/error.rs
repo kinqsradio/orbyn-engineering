@@ -31,6 +31,8 @@ pub enum CoreError {
     NotFastForward(String),
     #[error("This file changed since you opened it.")]
     FileConflict { revision: Option<String> },
+    #[error("{0} other thread(s) work in this folder, so restoring could lose their work.")]
+    SharedDirectory(usize),
     #[error("finish or stop active runs first")]
     RunsActive,
     #[error("Orbyn is installing an update")]
@@ -92,6 +94,7 @@ impl CoreError {
             Self::LibraryDirty(_) => "library_dirty",
             Self::NotFastForward(_) => "not_fast_forward",
             Self::FileConflict { .. } => "file_conflict",
+            Self::SharedDirectory(_) => "shared_directory",
             Self::RunsActive => "runs_active",
             Self::Updating => "updating",
             Self::ProjectHasWork { .. } => "project_has_work",
@@ -124,6 +127,7 @@ impl CoreError {
             | Self::LibraryDirty(_)
             | Self::NotFastForward(_)
             | Self::FileConflict { .. }
+            | Self::SharedDirectory(_)
             | Self::RunsActive
             | Self::ProjectHasWork { .. }
             | Self::EngineBusy(_)

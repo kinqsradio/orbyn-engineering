@@ -64,8 +64,8 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] A43 Status indicators: working, limited, needs-you, request states | apps/web/src/components/ThreadStatusIndicators.tsx | w d m | M
 - [ ] A44 Side chats: `/side`, `/btw` or + menu, separate tab with own permissions | apps/web/src/components/chat/SideChatPane.tsx | w d m | L
 - [ ] A45 Bring back: sends side chat into the parent's next message | docs/user/thread-sidebar.md | w d | M
-- [ ] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L
-- [ ] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L
+- [x] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L | server done
+- [x] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L | server done
 - [ ] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M
 - [ ] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M
 - [ ] A50 Customize details: show/hide rows, reset, right-click access | apps/web/src/components/settings/ThreadDetailsItemsRow.tsx | w d | S
@@ -197,11 +197,11 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done
 
 ## E. Diffs, checkpoints and revert
-- [ ] E1 Turn checkpoints: hidden git ref at each turn end | apps/server/src/checkpointing/CheckpointStore.ts | s | L
-- [ ] E2 Turn diff: shows only that turn's work | docs/user/source-control.md | w d m s | L
-- [ ] E3 Full thread diff: cumulative view | packages/contracts/src/orchestrationV2.ts | w d m s | M
-- [ ] E4 Branch comparison: everything against base | apps/server/src/review/ReviewService.ts | w d m s | M
-- [ ] E5 Commits source: newest 100, one commit at a time | docs/user/source-control.md | w d s | M
+- [x] E1 Turn checkpoints: hidden git ref at each turn end | apps/server/src/checkpointing/CheckpointStore.ts | s | L | server done
+- [x] E2 Turn diff: shows only that turn's work | docs/user/source-control.md | w d m s | L | server done
+- [x] E3 Full thread diff: cumulative view | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
+- [x] E4 Branch comparison: everything against base | apps/server/src/review/ReviewService.ts | w d m s | M | server done
+- [x] E5 Commits source: newest 100, one commit at a time | docs/user/source-control.md | w d s | M | server done
 - [ ] E6 Commit link routing: opens local commit in Diff pane | docs/user/source-control.md | w d | M
 - [ ] E7 Diff layout: stacked or split | packages/contracts/src/settings.ts | w d | S
 - [ ] E8 Diff preferences: collapse files, ignore whitespace, color scheme | packages/contracts/src/settings.ts | w d | S
@@ -209,8 +209,8 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] E10 Inline diff comments: annotations to composer chips | apps/web/src/components/diffs/DiffCommentAnnotation.tsx | w d m | L
 - [ ] E11 Find in diff: search within diff | docs/user/keybindings.md | w d | M
 - [ ] E12 Copy diff path: per-file button | apps/web/src/components/DiffFilePathCopyButton.tsx | w d | S
-- [ ] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L
-- [ ] E14 Conversation rewind: trims provider history where supported | docs/user/composer.md | w d s | L
+- [x] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L | server done
+- [x] E14 Conversation rewind: trims provider history where supported | docs/user/composer.md | w d s | L | server done
 - [ ] E15 Codex thread revert: native rollback integration | apps/server/src/provider/CodexThreadRevert.ts | s | M
 - [ ] E16 Native mobile diff: custom diff view with word diffs | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
 

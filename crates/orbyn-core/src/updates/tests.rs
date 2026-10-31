@@ -136,15 +136,23 @@ fn upstream_commit(upstream: &Path) {
 }
 
 async fn wait_running(core: &Core, run: &str) {
-    while core.store.run(run).unwrap().state != RunState::Running {
+    for _ in 0..2500 {
+        if core.store.run(run).unwrap().state == RunState::Running {
+            return;
+        }
         tokio::time::sleep(Duration::from_millis(2)).await;
     }
+    panic!("run stayed {:?}", core.store.run(run).unwrap());
 }
 
 async fn wait_stopped(core: &Core, run: &str) {
-    while !core.store.run(run).unwrap().state.is_terminal() {
+    for _ in 0..2500 {
+        if core.store.run(run).unwrap().state.is_terminal() {
+            return;
+        }
         tokio::time::sleep(Duration::from_millis(2)).await;
     }
+    panic!("run never ended");
 }
 
 #[tokio::test]

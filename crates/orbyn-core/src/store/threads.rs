@@ -260,6 +260,23 @@ impl Store {
         self.thread(id)
     }
 
+    /// Logs a thread-level notice outside any run.
+    pub fn note_thread_event(&self, id: &str, name: &str, value: Value) -> Result<()> {
+        self.commit(|tx, appended| {
+            insert_event(
+                tx,
+                appended,
+                id,
+                None,
+                &AgUiEvent::Custom {
+                    name: name.to_owned(),
+                    value,
+                },
+            )?;
+            Ok(())
+        })
+    }
+
     /// Writes a generated title unless someone renamed the thread meanwhile.
     pub fn apply_generated_title(&self, id: &str, expected: &str, title: &str) -> Result<bool> {
         self.commit(|tx, appended| {

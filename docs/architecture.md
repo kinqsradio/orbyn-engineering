@@ -88,6 +88,22 @@ The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per
 file. A record exists only once its bytes are in place, and a message naming an
 attachment that is not ready is refused before anything is admitted.
 
+## Checkpoints
+
+Each run snapshots the checkout before it starts and when it ends, through a
+temporary index, into `refs/orbyn/checkpoints/<thread>/<run>/{start,end}`. The real
+index, HEAD and working files stay untouched, ignored files are not captured, and a
+failed snapshot costs that checkpoint, not the run. This Git metadata is the one
+thing Orbyn adds under a target, and it never reaches a working file or a push.
+
+Restoring takes a safety snapshot first, then makes the files match, leaving HEAD,
+the index and ignored files alone. It refuses while another live thread shares the
+folder. A rewind, a fork and an engine switch cannot carry an engine session, so each
+ends it and leaves a handoff of up to 16,000 characters, oldest text dropped first,
+that goes to the next run once. The log stays whole; a rewind is logged as `CUSTOM
+thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
+is not used.
+
 ## Files
 
 File routes need a trusted folder and share the engines' write scope, so `..` and
@@ -331,7 +347,13 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
-| `GET /api/threads/:id/diff` | `FileDiff[]` |
+| `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
+| `GET /api/threads/:id/commits` | `CommitInfo[]`, newest 100 |
+| `GET /api/threads/:id/checkpoints` | `Checkpoint[]` |
+| `POST /api/threads/:id/restore` | `RestoreWorkspace`; `409 shared_directory`, `409 thread_busy` |
+| `POST /api/threads/:id/rewind` | `RewindThread`: continue from before a run |
+| `POST /api/threads/:id/fork` | `ForkThread`: a child thread with the log up to a run |
+| `POST /api/threads/:id/switch-engine` | `SwitchEngine`: hand the conversation to another engine |
 | `GET /ws/terminal/:thread_id` | PTY: binary in/out, JSON text frame `{cols,rows}` resizes |
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |

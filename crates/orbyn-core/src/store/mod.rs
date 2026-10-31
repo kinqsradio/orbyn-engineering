@@ -4,6 +4,7 @@
 
 mod approvals;
 mod catalog;
+mod checkpoints;
 mod hub;
 mod migrations;
 mod queue;

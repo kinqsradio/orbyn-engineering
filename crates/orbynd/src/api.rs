@@ -11,10 +11,10 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
     ApiError, ApprovalState, CloneProject, ComputerAction, CreatePolicyRule, CreateThread,
-    CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage, FsEntry,
-    FsListing, ImportProject, LibraryUpdateRequest, NewProject, OpenInEditor, ReorderThreads,
-    ServerInfo, ServerSettings, SkillProfile, StartRun, SteerRun, UpdateThread, WorkspaceSetup,
-    WriteFile,
+    CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread,
+    FsEntry, FsListing, ImportProject, LibraryUpdateRequest, NewProject, OpenInEditor,
+    ReorderThreads, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SkillProfile,
+    StartRun, SteerRun, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -624,11 +624,92 @@ pub async fn decide_approval(
     )?))
 }
 
+#[derive(Deserialize)]
+pub struct DiffQuery {
+    /// `worktree` by default, or `turn`, `thread`, `branch` or `commit`.
+    scope: Option<String>,
+    run: Option<String>,
+    base: Option<String>,
+    sha: Option<String>,
+}
+
 pub async fn thread_diff(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<DiffQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.thread_diff(&id).await?))
+    let core = &state.core;
+    let missing = |what: &str| CoreError::Invalid(format!("This diff needs {what}."));
+    let files = match query.scope.as_deref() {
+        None | Some("worktree") => core.thread_diff(&id).await?,
+        Some("turn") => {
+            let run = query.run.ok_or_else(|| missing("a run"))?;
+            core.turn_diff(&id, &run).await?
+        }
+        Some("thread") => core.full_thread_diff(&id).await?,
+        Some("branch") => {
+            let base = query.base.ok_or_else(|| missing("a base branch"))?;
+            core.branch_diff(&id, &base).await?
+        }
+        Some("commit") => {
+            let sha = query.sha.ok_or_else(|| missing("a commit"))?;
+            core.commit_diff(&id, &sha).await?
+        }
+        Some(_) => return Err(CoreError::Invalid("Unknown diff scope.".into()).into()),
+    };
+    Ok(Json(files))
+}
+
+pub async fn commits(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_commits(&id).await?))
+}
+
+pub async fn checkpoints(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.thread(&id)?;
+    Ok(Json(state.core.store.checkpoints(&id)?))
+}
+
+pub async fn restore_workspace(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<RestoreWorkspace>,
+) -> ApiResult<StatusCode> {
+    state.core.restore_workspace(&id, &body, LOCAL_USER).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn rewind_thread(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<RewindThread>,
+) -> ApiResult<StatusCode> {
+    state.core.rewind_thread(&id, &body, LOCAL_USER).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn fork_thread(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<ForkThread>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.fork_thread(&id, &body, LOCAL_USER)?),
+    ))
+}
+
+pub async fn switch_engine(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<SwitchEngine>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.switch_engine(&id, &body, LOCAL_USER)?))
 }
 
 pub async fn list_engines(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {

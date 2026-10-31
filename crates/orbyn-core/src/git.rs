@@ -5,10 +5,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use orbyn_contracts::{FileDiff, Worktree};
+use orbyn_contracts::{CommitInfo, FileDiff, Worktree};
 use tokio::process::Command;
 
 use crate::error::{CoreError, Result};
+
+/// Git's well-known empty tree, the parent side of a root commit's diff.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// Refuses repository-configured programs on read paths.
 const SAFE_CONFIG: &[&str] = &[
@@ -155,10 +158,153 @@ pub async fn create_worktree(repo: &Path, purpose: &str) -> Result<Worktree> {
     })
 }
 
+/// Refs and index entries only: a snapshot leaves the real index and every working
+/// file alone. Ignored files are not captured.
+pub async fn snapshot(cwd: &Path, reference: Option<&str>, index: &Path) -> Result<String> {
+    let index_text = index.to_string_lossy().into_owned();
+    let with_index = |args: Vec<String>| {
+        let index_text = index_text.clone();
+        let cwd = cwd.to_path_buf();
+        async move {
+            let mut command = Command::new("git");
+            command
+                .args(SAFE_CONFIG)
+                .args(["-c", "user.name=Orbyn", "-c", "user.email=orbyn@localhost"])
+                .args(&args)
+                .current_dir(&cwd)
+                .env("GIT_INDEX_FILE", &index_text)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true);
+            let output = command
+                .output()
+                .await
+                .map_err(|error| CoreError::Git(format!("Could not run git: {error}")))?;
+            if !output.status.success() {
+                return Err(CoreError::Git(text(&output.stderr)));
+            }
+            Ok(text(&output.stdout))
+        }
+    };
+    let _ = std::fs::remove_file(index);
+    let head = git(cwd, &["rev-parse", "--verify", "-q", "HEAD"])
+        .await
+        .ok();
+    if let Some(head) = &head {
+        with_index(vec!["read-tree".into(), text(head)]).await?;
+    }
+    with_index(vec!["add".into(), "-A".into()]).await?;
+    let tree = with_index(vec!["write-tree".into()]).await?;
+    let mut commit = vec![
+        "commit-tree".to_owned(),
+        tree,
+        "-m".into(),
+        "checkpoint".into(),
+    ];
+    if let Some(head) = &head {
+        commit.extend(["-p".to_owned(), text(head)]);
+    }
+    let sha = with_index(commit).await?;
+    let _ = std::fs::remove_file(index);
+    if let Some(reference) = reference {
+        git(cwd, &["update-ref", reference, &sha]).await?;
+    }
+    Ok(sha)
+}
+
+/// What changed between two commits.
+pub async fn diff_between(cwd: &Path, from: &str, to: &str) -> Result<Vec<FileDiff>> {
+    tracked_diff(cwd, &[from, to]).await
+}
+
+/// The changes one commit made.
+pub async fn commit_diff(cwd: &Path, sha: &str) -> Result<Vec<FileDiff>> {
+    if !is_revision(sha) {
+        return Err(CoreError::Invalid("That is not a commit.".into()));
+    }
+    let parent = format!("{sha}^");
+    let base = match git(cwd, &["rev-parse", "--verify", "-q", &parent]).await {
+        Ok(found) => text(&found),
+        Err(_) => EMPTY_TREE.to_owned(),
+    };
+    diff_between(cwd, &base, sha).await
+}
+
+/// Everything since this branch left `base`, untracked work included.
+pub async fn branch_diff(cwd: &Path, base: &str) -> Result<Vec<FileDiff>> {
+    if base.starts_with('-') || base.is_empty() {
+        return Err(CoreError::Invalid("That is not a branch.".into()));
+    }
+    let shared = text(&git(cwd, &["merge-base", base, "HEAD"]).await?);
+    diff(cwd, Some(&shared)).await
+}
+
+pub fn is_revision(text: &str) -> bool {
+    (7..=64).contains(&text.len()) && text.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+pub async fn recent_commits(cwd: &Path, limit: u32) -> Result<Vec<CommitInfo>> {
+    let limit = format!("-{}", limit.min(100));
+    let Ok(log) = git(cwd, &["log", &limit, "--format=%H%x09%an%x09%aI%x09%s"]).await else {
+        // A repository with no commits has no history to show.
+        return Ok(Vec::new());
+    };
+    Ok(String::from_utf8_lossy(&log)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(4, '\t');
+            Some(CommitInfo {
+                sha: fields.next()?.to_owned(),
+                author: fields.next()?.to_owned(),
+                date: fields.next()?.to_owned(),
+                subject: fields.next()?.to_owned(),
+            })
+        })
+        .collect())
+}
+
+/// Makes the working files match `target`, leaving HEAD, the index and ignored
+/// files alone. `current` is a snapshot of the files as they are now.
+pub async fn restore_worktree(cwd: &Path, current: &str, target: &str) -> Result<()> {
+    let added = git(
+        cwd,
+        &[
+            "diff",
+            "--no-renames",
+            "--name-only",
+            "-z",
+            "--diff-filter=A",
+            target,
+            current,
+        ],
+    )
+    .await?;
+    for path in added
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        let path = cwd.join(String::from_utf8_lossy(path).as_ref());
+        std::fs::remove_file(path)?;
+    }
+    git(
+        cwd,
+        &[
+            "restore",
+            &format!("--source={target}"),
+            "--worktree",
+            "--",
+            ".",
+        ],
+    )
+    .await?;
+    Ok(())
+}
+
 /// Changes against `base` (or HEAD), including untracked files.
 pub async fn diff(cwd: &Path, base: Option<&str>) -> Result<Vec<FileDiff>> {
     let base = base.unwrap_or("HEAD");
-    let mut files = tracked_diff(cwd, base).await?;
+    let mut files = tracked_diff(cwd, &[base]).await?;
     let listing = git(cwd, &["ls-files", "--others", "--exclude-standard", "-z"]).await?;
     for path in listing.split(|byte| *byte == 0).filter(|p| !p.is_empty()) {
         files.push(untracked_diff(cwd, &String::from_utf8_lossy(path)).await?);
@@ -167,39 +313,26 @@ pub async fn diff(cwd: &Path, base: Option<&str>) -> Result<Vec<FileDiff>> {
     Ok(files)
 }
 
-async fn tracked_diff(cwd: &Path, base: &str) -> Result<Vec<FileDiff>> {
-    let statuses = git(
-        cwd,
-        &[
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--name-status",
-            "-z",
-            base,
-        ],
-    )
-    .await?;
-    let numstat = git(
-        cwd,
-        &[
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--numstat",
-            "-z",
-            base,
-        ],
-    )
-    .await?;
+async fn tracked_diff(cwd: &Path, range: &[&str]) -> Result<Vec<FileDiff>> {
+    let mut statuses_args = vec![
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-status",
+        "-z",
+    ];
+    statuses_args.extend(range);
+    let statuses = git(cwd, &statuses_args).await?;
+    let mut numstat_args = vec!["diff", "--no-ext-diff", "--no-textconv", "--numstat", "-z"];
+    numstat_args.extend(range);
+    let numstat = git(cwd, &numstat_args).await?;
     let counts = parse_numstat(&numstat);
     let mut files = Vec::new();
     for (status, path) in parse_name_status(&statuses) {
-        let patch = git(
-            cwd,
-            &["diff", "--no-ext-diff", "--no-textconv", base, "--", &path],
-        )
-        .await?;
+        let mut patch_args = vec!["diff", "--no-ext-diff", "--no-textconv"];
+        patch_args.extend(range);
+        patch_args.extend(["--", &path]);
+        let patch = git(cwd, &patch_args).await?;
         let (additions, deletions) = counts.get(&path).copied().unwrap_or((0, 0));
         files.push(FileDiff {
             path,

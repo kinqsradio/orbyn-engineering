@@ -213,6 +213,12 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
         .route("/api/editors", get(api::editors))
+        .route("/api/threads/{id}/commits", get(api::commits))
+        .route("/api/threads/{id}/checkpoints", get(api::checkpoints))
+        .route("/api/threads/{id}/restore", post(api::restore_workspace))
+        .route("/api/threads/{id}/rewind", post(api::rewind_thread))
+        .route("/api/threads/{id}/fork", post(api::fork_thread))
+        .route("/api/threads/{id}/switch-engine", post(api::switch_engine))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(

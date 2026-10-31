@@ -484,6 +484,17 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
             .unwrap_or("none");
         answer = format!("write {decision}");
     }
+    // Writing is how a turn changes the workspace; `[write:<name>]` names the file.
+    if let Some(rest) = prompt.split("[write:").nth(1)
+        && let Some(name) = rest.split(']').next()
+    {
+        let checkout = std::env::var("ORBYN_FAKE_CHECKOUT").expect("checkout");
+        std::fs::write(
+            std::path::Path::new(&checkout).join(name),
+            "written by turn\n",
+        )
+        .expect("write");
+    }
     if has(prompt, "mcp-tools") {
         let url = state.mcp_url.as_deref().expect("mcp url");
         let (status, reply) = mcp_call(url, 1, "tools/list", json!({}));

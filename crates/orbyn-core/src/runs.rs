@@ -15,11 +15,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, WriteScope};
+use crate::checkpoints::checkpoint_ref;
 use crate::composer::check_prompt;
 use crate::driver::{EngineEvent, EngineOutcome, PermissionRequest, RunHandle, RunKind, RunSpec};
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
-use crate::git::{git, text};
+use crate::git::{git, snapshot, text};
 use crate::mcp::{McpBinding, McpService};
 use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, Store};
@@ -76,6 +77,7 @@ struct RunContext<'a> {
     route: &'a SkillRoute,
     plan: bool,
     files: &'a [PathBuf],
+    handoff: Option<&'a str>,
 }
 
 /// The short bootstrap in front of each run's prompt. Nesting does not prove an
@@ -121,6 +123,11 @@ fn run_context(context: &RunContext<'_>) -> String {
         for file in context.files {
             text.push_str(&format!("- {}\n", file.display()));
         }
+    }
+    if let Some(handoff) = context.handoff {
+        text.push_str("Earlier conversation, carried over from another session:\n");
+        text.push_str(handoff);
+        text.push('\n');
     }
     text.push_str("</orbyn_context>");
     text
@@ -447,6 +454,7 @@ impl RunManager {
         if let Some(token) = token {
             self.mcp.revoke(&token);
         }
+        self.checkpoint_end(&scope, &thread, &run_dir).await;
         if let Err(error) = std::fs::remove_dir_all(&run_dir)
             && error.kind() != std::io::ErrorKind::NotFound
         {
@@ -458,6 +466,39 @@ impl RunManager {
             EngineOutcome::Failed(message) => (RunState::Failed, Some(message)),
         };
         self.close_run(&run_id, state, message.as_deref());
+    }
+
+    /// A failed snapshot costs that run its checkpoint, never the run itself.
+    async fn checkpoint_start(&self, scope: &RunScope, checkout: &Path, run_dir: &Path) {
+        let reference = checkpoint_ref(&scope.thread_id, &scope.run_id, "start");
+        let index = run_dir.join("checkpoint-index");
+        match snapshot(checkout, Some(&reference), &index).await {
+            Ok(sha) => {
+                if let Err(error) = self
+                    .store
+                    .add_checkpoint(&scope.thread_id, &scope.run_id, &sha)
+                {
+                    tracing::warn!(%error, "could not record a checkpoint");
+                }
+            }
+            Err(error) => tracing::warn!(%error, "could not take a checkpoint"),
+        }
+    }
+
+    async fn checkpoint_end(&self, scope: &RunScope, thread: &Thread, run_dir: &Path) {
+        if !matches!(self.store.checkpoint(&scope.run_id), Ok(Some(_))) {
+            return;
+        }
+        let reference = checkpoint_ref(&scope.thread_id, &scope.run_id, "end");
+        let index = run_dir.join("checkpoint-index");
+        match snapshot(Path::new(&thread.cwd), Some(&reference), &index).await {
+            Ok(sha) => {
+                if let Err(error) = self.store.finish_checkpoint(&scope.run_id, &sha) {
+                    tracing::warn!(%error, "could not record a checkpoint");
+                }
+            }
+            Err(error) => tracing::warn!(%error, "could not take a checkpoint"),
+        }
     }
 
     /// Writes the terminal state and hands expired approvals back to their waiters.
@@ -513,6 +554,7 @@ impl RunManager {
             thread.skill_profile.as_deref(),
         )?;
         std::fs::create_dir_all(run_dir)?;
+        self.checkpoint_start(scope, &checkout, run_dir).await;
         let mcp_url = if descriptor.capabilities.mcp {
             let issued = self.mcp.register(McpBinding {
                 scope: scope.clone(),
@@ -529,6 +571,7 @@ impl RunManager {
             return Ok(None);
         }
         let (revision, dirty) = self.workspace.identity().await?;
+        let handoff = self.store.take_handoff(&thread.id)?;
         let context = run_context(&RunContext {
             library: &root,
             revision: &revision,
@@ -540,6 +583,7 @@ impl RunManager {
             route: &route,
             plan: scope.plan,
             files: &files,
+            handoff: handoff.as_deref(),
         });
         let native = descriptor.tier == EngineTier::Native;
         let spec = RunSpec {

@@ -639,7 +639,10 @@ async fn resume_passes_the_stored_session() {
     for _ in 0..2 {
         let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
         until_terminal(&f.core, &run.id).await;
-        while f.core.runs.active_count() > 0 {
+        for _ in 0..2500 {
+            if f.core.runs.active_count() == 0 {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
     }

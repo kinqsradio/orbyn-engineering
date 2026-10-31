@@ -186,9 +186,15 @@ async fn write_inside_the_checkout_still_asks() {
     );
 }
 
+/// Every file, except the objects and hidden refs that checkpoints add to Git's
+/// own store. Config, excludes, hooks and the index must all stay untouched.
 fn tree(root: &std::path::Path, into: &mut Vec<(std::path::PathBuf, Vec<u8>)>) {
     for entry in std::fs::read_dir(root).unwrap().flatten() {
         let path = entry.path();
+        let text = path.to_string_lossy();
+        if text.ends_with(".git/objects") || text.ends_with(".git/refs/orbyn") {
+            continue;
+        }
         if entry.file_type().unwrap().is_dir() {
             tree(&path, into);
         } else {

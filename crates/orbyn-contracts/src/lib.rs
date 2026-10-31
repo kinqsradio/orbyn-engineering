@@ -208,6 +208,69 @@ pub struct OpenInEditor {
 }
 
 wire! {
+/// The workspace before and after one run, kept in hidden refs.
+pub struct Checkpoint {
+    pub run_id: String,
+    pub start: String,
+    /// Absent until the run ends.
+    pub end: Option<String>,
+    pub created_at: String,
+}
+}
+
+wire! {
+pub struct CommitInfo {
+    pub sha: String,
+    pub subject: String,
+    pub author: String,
+    pub date: String,
+}
+}
+
+wire_enum! {
+pub enum RestorePoint {
+    /// As the run found it.
+    Start,
+    /// As the run left it.
+    End,
+}
+}
+
+wire! {
+pub struct RestoreWorkspace {
+    pub run_id: String,
+    pub point: RestorePoint,
+}
+}
+
+wire! {
+pub struct RewindThread {
+    /// The conversation continues from just before this run.
+    pub run_id: String,
+    pub restore_files: bool,
+}
+}
+
+wire! {
+pub struct ForkThread {
+    /// Fork after this run; absent forks the whole conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+}
+}
+
+wire! {
+pub struct SwitchEngine {
+    pub engine: String,
+    pub model: Option<String>,
+}
+}
+
+wire! {
 pub struct Mentions {
     pub skills: Vec<String>,
     /// Paths relative to the checkout.
