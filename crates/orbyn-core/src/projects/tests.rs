@@ -304,3 +304,46 @@ async fn until_settled(core: &Arc<Core>, id: &str) -> CloneJob {
     }
     panic!("the clone never finished");
 }
+
+#[tokio::test]
+async fn the_clock_fires_due_tasks_and_a_refusal_is_recorded_and_rescheduled() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core
+        .save_task(
+            orbyn_contracts::UpsertTask {
+                id: None,
+                project_id: project.id,
+                thread_id: None,
+                name: "Tick".into(),
+                prompt: "hi".into(),
+                engine: "claude".into(),
+                schedule: orbyn_contracts::TaskSchedule {
+                    kind: "interval".into(),
+                    every_minutes: Some(5),
+                    time: None,
+                    weekdays: Vec::new(),
+                    utc_offset_minutes: 0,
+                },
+                signature: None,
+                secret: None,
+                filters: Vec::new(),
+                dedupe: None,
+                max_age_seconds: None,
+                timestamp_path: None,
+            },
+            "user",
+        )
+        .unwrap();
+    let start = crate::util::unix_now();
+    assert!(core.store.due_tasks(start).unwrap().is_empty());
+    core.store.save_task(&task, Some(start - 1), None).unwrap();
+    core.run_due_tasks().await;
+    let after = core.store.task(&task.id).unwrap();
+    assert!(after.last_status.contains("rust"), "{}", after.last_status);
+    assert!(
+        core.store.due_tasks(start).unwrap().is_empty(),
+        "it moved on"
+    );
+}

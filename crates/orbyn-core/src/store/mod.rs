@@ -3,6 +3,7 @@
 //! commit. Calls are short local SQLite operations and never span an await.
 
 mod approvals;
+mod automations;
 mod catalog;
 mod checkpoints;
 mod hub;

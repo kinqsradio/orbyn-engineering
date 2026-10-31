@@ -328,6 +328,7 @@ impl RunManager {
                 }
                 manager.lock().remove(&run_id);
                 manager.drain(&thread_id);
+                manager.report_to_parent(&thread_id, &run_id);
             }
         });
         if let Some(active) = self.lock().get_mut(&run.id) {
@@ -429,11 +430,46 @@ impl RunManager {
             .map_err(|_| CoreError::RunClosed)
     }
 
-    /// Requests cancellation. The run reaches `cancelled` once its engine is down.
+    /// A delegated thread with nothing left to do tells its parent, through the
+    /// parent's queue, so the report waits its turn and wakes the parent.
+    fn report_to_parent(self: &Arc<Self>, thread_id: &str, run_id: &str) {
+        let report = || -> Result<()> {
+            let thread = self.store.thread(thread_id)?;
+            let lifecycle = thread.lifecycle.as_ref();
+            let parent = lifecycle
+                .filter(|l| l.relation.as_deref() == Some("subagent"))
+                .and_then(|l| l.parent_thread_id.clone());
+            let Some(parent) = parent else { return Ok(()) };
+            if thread.active_run.is_some() || !self.store.list_queue(thread_id)?.is_empty() {
+                return Ok(());
+            }
+            let state = self.store.run(run_id)?.state;
+            let state = serde_json::to_value(state)?;
+            // The newest text, within the handoff budget: the ending is the result.
+            let transcript = self.store.recovery_handoff(thread_id)?;
+            let prompt = crate::automations::child_report(
+                &thread.title,
+                state.as_str().unwrap_or("ended"),
+                &transcript,
+            );
+            self.enqueue(&parent, &prompt, &[]).map(|_| ())
+        };
+        if let Err(error) = report() {
+            tracing::warn!(%error, "a delegated thread could not report back");
+        }
+    }
+
+    /// Requests cancellation, with any delegated threads running under this one.
+    /// The run reaches `cancelled` once its engine is down.
     pub fn cancel(&self, run_id: &str) -> Result<()> {
         let run = self.store.run(run_id)?;
         if run.state.is_terminal() {
             return Err(CoreError::RunClosed);
+        }
+        for child in self.store.child_threads(&run.thread_id)? {
+            if let Some(active) = self.store.thread(&child)?.active_run {
+                let _ = self.cancel(&active.id);
+            }
         }
         match self.lock().get(run_id) {
             Some(active) => {

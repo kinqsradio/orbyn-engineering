@@ -108,6 +108,7 @@ impl Core {
                     if watched.is_multiple_of(PULL_WATCH_TICKS) {
                         self.watch_pulls().await;
                     }
+                    self.run_due_tasks().await;
                     if watched.is_multiple_of(AUTO_PULL_TICKS) {
                         self.auto_pull().await;
                     }

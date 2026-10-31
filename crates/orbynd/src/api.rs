@@ -10,13 +10,14 @@ use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, CloneProject,
+    AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, BatchThreads, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
-    EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing, GitAction,
-    KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
+    DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
+    GitAction, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
     OpenInEditor, OtlpCheck, PublishProject, QuestionState, ReorderThreads, RestoreWorkspace,
     RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerRun,
-    SubmitReview, SwitchBranch, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
+    SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask,
+    WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -667,6 +668,107 @@ pub async fn engine_limits(
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.engine_limits(&id, forced(&query)).await?))
+}
+
+pub async fn tasks(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.tasks()?))
+}
+
+pub async fn save_task(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<UpsertTask>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.save_task(body, LOCAL_USER)?))
+}
+
+pub async fn set_task_enabled(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<TaskEnabled>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.set_task_enabled(&id, body.enabled)?))
+}
+
+pub async fn delete_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.delete_task(&id, LOCAL_USER)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn run_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let thread = state.core.run_task(&id).await?;
+    Ok((StatusCode::ACCEPTED, Json(json!({ "thread_id": thread }))))
+}
+
+pub async fn rotate_webhook(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.rotate_webhook(&id, LOCAL_USER)?))
+}
+
+pub async fn task_deliveries(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.deliveries(&id)?))
+}
+
+/// Public, because a sender cannot hold a session. The token in the path is the
+/// credential, and a wrong one is the same `404` as an unknown task.
+pub async fn webhook(
+    State(state): State<AppState>,
+    Path((id, token)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> ApiResult<impl IntoResponse> {
+    let headers = headers
+        .iter()
+        .filter_map(|(name, value)| {
+            Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
+        })
+        .collect();
+    match state.core.webhook(&id, &token, &headers, &body).await {
+        Ok(delivery) => {
+            let status = if delivery.status == "accepted" {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::OK
+            };
+            Ok((
+                status,
+                Json(json!({ "status": delivery.status, "id": delivery.id })),
+            ))
+        }
+        Err(_) => Err(ApiFailure::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Not found.",
+        )),
+    }
+}
+
+pub async fn delegate(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<DelegateTask>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.delegate(&id, &body, LOCAL_USER)?),
+    ))
+}
+
+pub async fn batch_threads(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<BatchThreads>,
+) -> impl IntoResponse {
+    Json(state.core.batch_threads(body.threads).await)
 }
 
 pub async fn preferences(

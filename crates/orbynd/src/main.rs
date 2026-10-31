@@ -371,6 +371,14 @@ fn router(state: AppState) -> Router {
             "/api/storage/cleanup",
             get(api::cleanup_report).post(api::storage_cleanup),
         )
+        .route("/api/tasks", get(api::tasks).post(api::save_task))
+        .route("/api/tasks/{id}", axum::routing::delete(api::delete_task))
+        .route("/api/tasks/{id}/enabled", post(api::set_task_enabled))
+        .route("/api/tasks/{id}/run", post(api::run_task))
+        .route("/api/tasks/{id}/webhook", post(api::rotate_webhook))
+        .route("/api/tasks/{id}/deliveries", get(api::task_deliveries))
+        .route("/api/threads/{id}/delegate", post(api::delegate))
+        .route("/api/threads/batch", post(api::batch_threads))
         .route("/api/threads/{id}/runs", post(api::start_run))
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/events", get(stream::thread_events))
@@ -435,6 +443,7 @@ fn router(state: AppState) -> Router {
     Router::new()
         .merge(protected)
         .route("/auth/session", post(api::open_session))
+        .route("/hooks/{id}/{token}", post(api::webhook))
         .route("/mcp/{thread_token}", post(api::mcp).get(api::mcp_get))
         .fallback(ui::serve)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))

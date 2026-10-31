@@ -1443,6 +1443,181 @@ pub struct CleanupReport {
 }
 }
 
+wire! {
+pub struct TaskSchedule {
+    /// `interval`, `fixed_time` or `webhook`.
+    pub kind: String,
+    #[serde(default)]
+    pub every_minutes: Option<u32>,
+    /// `HH:MM` for `fixed_time`.
+    #[serde(default)]
+    pub time: Option<String>,
+    /// 0 is Sunday. Empty means every day.
+    #[serde(default)]
+    pub weekdays: Vec<u8>,
+    #[serde(default)]
+    pub utc_offset_minutes: i32,
+}
+}
+
+wire! {
+pub struct WebhookSignature {
+    pub header: String,
+    /// `hex` or `base64`.
+    pub encoding: String,
+    #[serde(default)]
+    pub prefix: String,
+}
+}
+
+wire! {
+pub struct WebhookFilter {
+    /// Dotted path into the body; `headers.<name>` reads a header.
+    pub path: String,
+    /// `equals`, `not_equals`, `starts_with`, `in` or `exists`.
+    pub op: String,
+    #[serde(default)]
+    pub value: Option<Value>,
+}
+}
+
+wire! {
+pub struct WebhookDedupe {
+    pub path: String,
+    pub window_seconds: u64,
+}
+}
+
+wire! {
+pub struct ScheduledTask {
+    pub id: String,
+    pub project_id: String,
+    /// Runs here if set; otherwise each firing opens a new thread.
+    pub thread_id: Option<String>,
+    pub name: String,
+    /// `{{body.a.b}}` and `{{headers.x}}` read a webhook request.
+    pub prompt: String,
+    pub engine: String,
+    pub schedule: TaskSchedule,
+    pub enabled: bool,
+    pub signature: Option<WebhookSignature>,
+    #[serde(default)]
+    pub has_secret: bool,
+    #[serde(default)]
+    pub filters: Vec<WebhookFilter>,
+    pub dedupe: Option<WebhookDedupe>,
+    /// Refuses a request older than this, read from `timestamp_path`.
+    pub max_age_seconds: Option<u64>,
+    pub timestamp_path: Option<String>,
+    pub next_run_at: Option<String>,
+    pub last_run_at: Option<String>,
+    /// `never`, `started`, or why the last firing failed.
+    pub last_status: String,
+    pub created_at: String,
+}
+}
+
+wire! {
+pub struct UpsertTask {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub id: Option<String>,
+    pub project_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub thread_id: Option<String>,
+    pub name: String,
+    pub prompt: String,
+    pub engine: String,
+    pub schedule: TaskSchedule,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub signature: Option<WebhookSignature>,
+    /// Absent keeps the stored secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub secret: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<WebhookFilter>>")]
+    pub filters: Vec<WebhookFilter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub dedupe: Option<WebhookDedupe>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub max_age_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub timestamp_path: Option<String>,
+}
+}
+
+wire! {
+pub struct TaskEnabled {
+    pub enabled: bool,
+}
+}
+
+wire! {
+/// The token appears here once; only its digest is kept.
+pub struct WebhookEndpoint {
+    pub path: String,
+    pub token: String,
+}
+}
+
+wire! {
+pub struct WebhookDelivery {
+    pub id: String,
+    pub task_id: String,
+    /// `accepted`, `bad_signature`, `filtered`, `duplicate`, `stale`, `disabled`
+    /// or `failed`.
+    pub status: String,
+    pub received_at: String,
+    /// With credentials removed.
+    pub headers: Value,
+    pub body: String,
+    pub prompt: Option<String>,
+    pub thread_id: Option<String>,
+}
+}
+
+wire! {
+pub struct DelegateTask {
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+    /// Absent uses the parent's engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+}
+
+wire! {
+pub struct BatchThread {
+    pub thread: CreateThread,
+    pub prompt: String,
+}
+}
+
+wire! {
+pub struct BatchThreads {
+    pub threads: Vec<BatchThread>,
+}
+}
+
+wire! {
+pub struct BatchThreadResult {
+    pub thread: Option<Thread>,
+    pub error: Option<String>,
+}
+}
+
 wire_enum! {
 pub enum ActionKind {
     Command,

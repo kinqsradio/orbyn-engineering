@@ -239,6 +239,32 @@ keeps uncommitted work, and never while another active thread uses it. `?dry_run
 only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
+## Automations
+
+A scheduled task fires on an interval, at a fixed time on chosen weekdays in a fixed
+UTC offset, or on a webhook. The clock is checked each minute. Each firing queues the
+prompt on the task's thread, or on a new thread, in that project's normal permission
+mode, and needs a trusted project at that moment. A failed firing records why and
+tries again at the next time.
+
+`POST /hooks/:id/:token` is public, because a sender cannot hold a session, though the
+`Host` and `Origin` checks still apply. The token is shown once and kept as a digest,
+and a wrong token is the same `404` as an unknown task and is not logged. Past the
+token, a request is checked for its HMAC-SHA256 signature, age, up to 16 filters and
+dedupe key, in that order, and each result is logged with credentials removed. The
+reply is `202` if accepted and `200` with the status otherwise. Only an accepted key
+counts for dedupe. A webhook is untrusted input aimed at an agent: `{{body.a.b}}` and
+`{{headers.x}}` values reach the prompt inside a random per-request tag, with mentions,
+skill sigils, slash commands and tags broken, and the prompt says the text is data. The
+signing secret has to stay readable to check an HMAC, so it is stored in the database
+and never returned. It is a webhook's own secret, not an engine or forge credential.
+Reaching a machine from outside is up to the person; Orbyn runs no relay.
+
+A delegated thread is a `subagent` child in the parent's folder. When it ends with
+nothing queued, it reports through the parent's queue, with the newest text within
+the handoff budget, which wakes the parent. Cancelling a run cancels the runs of its
+delegated threads.
+
 ## Files
 
 File routes need a trusted folder and share the engines' write scope, so `..` and
@@ -494,12 +520,20 @@ accept `?token=` because browsers cannot set headers on them.
 | `DELETE /api/projects/:id?delete_files=&confirm=` | `ProjectRemoval`: unregisters; `delete_files` is `400` unless Orbyn made the folder, and can be `409 project_has_work` |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
 | `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads; no `project_id` on create makes a scratch folder |
+| `POST /api/threads/batch` | `BatchThreads` to `BatchThreadResult[]`; one failure does not stop the rest |
+| `POST /api/threads/:id/delegate` | `DelegateTask`: a child thread that reports back |
 | `POST /api/threads/:id/project` | `MoveThread`, before the first run; no `project_id` means a new scratch folder |
 | `POST /api/threads/:id/adopt` | `AdoptScratch`: the scratch folder becomes a project in place |
 | `PATCH /api/threads/:id` | `UpdateThread`: rename, pin, archive, settle, snooze, wake, unread, auto-settle |
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
 | `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
 | `GET, PUT /api/settings` | `ServerSettings` |
+| `GET, POST /api/tasks` | `ScheduledTask[]`; `UpsertTask` creates or changes |
+| `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |
+| `POST /api/tasks/:id/run` | Fire now (`202`, `{thread_id}`) |
+| `POST /api/tasks/:id/webhook` | `WebhookEndpoint`: issue or rotate the token, shown once |
+| `GET /api/tasks/:id/deliveries` | `WebhookDelivery[]`, newest 200 |
+| `POST /hooks/:id/:token` | Public webhook; `202` accepted, `200` with a status, `404` otherwise |
 | `GET, PUT /api/preferences?project_id=` | `PreferenceView[]`; `SetPreferences`, where `null` resets |
 | `PUT /api/projects/:id/preferences` | Project overrides |
 | `POST /api/projects/:id/pull` | Fast-forward a clean checkout |

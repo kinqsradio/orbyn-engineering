@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod approvals;
+pub mod automations;
 pub mod checkpoints;
 pub mod composer;
 pub mod computer;

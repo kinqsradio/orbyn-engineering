@@ -12,7 +12,28 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (8, PULL_WATCHES),
     (9, IN_PLACE_PROJECTS),
     (10, PROJECT_PREFERENCES),
+    (11, AUTOMATIONS),
 ];
+
+const AUTOMATIONS: &str = r#"
+CREATE TABLE scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    task TEXT NOT NULL,
+    next_run_at INTEGER,
+    token_sha256 TEXT,
+    secret TEXT
+);
+CREATE INDEX scheduled_tasks_due ON scheduled_tasks(next_run_at);
+
+CREATE TABLE webhook_deliveries (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    delivery TEXT NOT NULL,
+    dedupe_key TEXT,
+    received_unix INTEGER NOT NULL
+);
+CREATE INDEX deliveries_by_task ON webhook_deliveries(task_id, received_unix);
+"#;
 
 const PROJECT_PREFERENCES: &str = r#"
 CREATE TABLE project_preferences (
