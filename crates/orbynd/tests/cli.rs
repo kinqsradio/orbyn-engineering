@@ -152,6 +152,13 @@ async fn the_service_file_is_private_and_goes_when_the_service_does() {
     let data = dir.path().join("data");
     let service = Service::start(&data, Options::default());
     let file = data.join("service.json");
+    // The service announces itself a moment before it writes the file.
+    for _ in 0..500 {
+        if file.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     let found: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(found["token"], service.token.as_str());
     use std::os::unix::fs::PermissionsExt;

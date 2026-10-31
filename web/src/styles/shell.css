@@ -1031,3 +1031,21 @@ li[data-file-over] .thread-row {
   line-height: 16px;
   cursor: pointer;
 }
+.provider-update {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 999px;
+  background: var(--color-rowHover);
+  font-size: 12px;
+}
+.provider-update button {
+  overflow: hidden;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}

@@ -10,6 +10,8 @@ import licenses from "./licenses.json";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
+import { Menu } from "../../ui/Menu";
+import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
 import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
 
@@ -27,7 +29,27 @@ function Toggle({ title, description, on, set }: { title: string; description?: 
   );
 }
 
+function DetailRowsButton() {
+  const hidden = useUi((state) => state.detailsHidden);
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  return (
+    <>
+      <Button
+        small
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setAnchor({ x: rect.left, y: rect.bottom + 4 });
+        }}
+      >
+        {DETAIL_ROWS.length - hidden.length} of {DETAIL_ROWS.length} on
+      </Button>
+      {anchor ? <Menu {...anchor} label="Thread details rows" items={detailsMenuItems()} onClose={() => setAnchor(null)} /> : null}
+    </>
+  );
+}
+
 export function GeneralSection() {
+  const working = useUi((state) => state.workingSection);
   const threadSort = useUi((state) => state.threadSort);
   const projectSort = useUi((state) => state.projectSort);
   const notifications = useUi((state) => state.threadNotifications);
@@ -69,7 +91,18 @@ export function GeneralSection() {
           set={(on) => setPrefs({ inAppNotifications: on })}
         />
       </SettingGroup>
+      <SettingGroup title="Thread details">
+        <SettingRow title="Rows" description="Choose what the details card shows. You can also right-click the card.">
+          <DetailRowsButton />
+        </SettingRow>
+      </SettingGroup>
       <SettingGroup title="Sidebar">
+        <Toggle
+          title="Working section"
+          description="Threads at work, or waiting on delegated work or a watched pull request, fold into a shelf."
+          on={working}
+          set={(on) => setPrefs({ workingSection: on })}
+        />
         <SettingRow title="Project order">
           <select
             aria-label="Project order"

@@ -232,6 +232,7 @@ fn recovery_interrupts_dead_owners_runs_and_expires_their_approvals() {
         Recovery {
             interrupted_runs: 1,
             expired_approvals: 1,
+            interrupted_threads: vec![f.thread.clone()],
             ..Recovery::default()
         }
     );
@@ -863,4 +864,16 @@ fn only_an_early_end_to_a_snooze_leaves_a_note() {
     dismiss.dismiss_woke = Some(true);
     f.store.update_thread(&f.thread, &dismiss, "t").unwrap();
     assert!(woke(&f.store).is_none());
+}
+
+#[test]
+fn automatic_continuations_run_out_and_your_message_resets_them() {
+    let f = fixture();
+    for _ in 0..3 {
+        assert!(f.store.take_resume_try(&f.thread, 3).unwrap());
+    }
+    assert!(!f.store.take_resume_try(&f.thread, 3).unwrap());
+    let run = running(&f.store, &f.thread);
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    assert!(f.store.take_resume_try(&f.thread, 3).unwrap());
 }

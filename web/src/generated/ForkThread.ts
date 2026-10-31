@@ -8,4 +8,8 @@ run_id?: string, title?: string,
 /**
  * A side chat: allowed while the parent runs, and kept out of the thread list.
  */
-side: boolean, };
+side: boolean, 
+/**
+ * Forks from just before `run_id` rather than just after it.
+ */
+before: boolean, };

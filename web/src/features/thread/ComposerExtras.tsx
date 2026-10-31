@@ -9,7 +9,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
 import type { StashedPrompt } from "../../state/ui";
 
-const usageShare = (usage: JsonValue | null | undefined): { used: number; window: number } | null => {
+export const usageShare = (usage: JsonValue | null | undefined): { used: number; window: number } | null => {
   if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
   const used = usage.total_tokens;
   const window = usage.context_window;

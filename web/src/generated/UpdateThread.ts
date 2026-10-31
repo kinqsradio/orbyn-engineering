@@ -15,6 +15,10 @@ snoozed_until?: string,
  */
 wake?: boolean, 
 /**
+ * True records that you are reading the thread now.
+ */
+visited?: boolean, 
+/**
  * True clears the note that a snooze ended early.
  */
 dismiss_woke?: boolean, 

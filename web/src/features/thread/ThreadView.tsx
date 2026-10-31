@@ -30,6 +30,7 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
 import { TerminalDrawerBody } from "../panels/TerminalDrawerBody";
 import { threadRunState } from "../workspace/RunState";
+import { RelatedThreads } from "./RelatedThreads";
 import { Composer } from "./Composer";
 import { DetailsCard } from "./DetailsCard";
 import { composerSettled, useComposerDock } from "./heroTransition";
@@ -89,6 +90,7 @@ function TopBar({
           {thread.title}
         </h1>
       </div>
+      <RelatedThreads thread={thread} />
       <GitActions thread={thread} />
       <div className="layout-toggles" role="group" aria-label="Layout">
         <IconButton label="Details" pressed={detailsShown} onClick={onToggleDetails}>
@@ -287,6 +289,32 @@ function DraftHero({ project }: { project: Project | null }) {
   );
 }
 
+const VISIT_MARK_MS = 500;
+
+/** What you had read when you came here, kept while you stay. The service hears both ends. */
+function useVisit(id: string, visitedAt: string | null, updatedAt: string | undefined) {
+  const [seen, setSeen] = useState<string | null | undefined>(undefined);
+  if (updatedAt !== undefined && seen === undefined) setSeen(visitedAt);
+  const shown = useRef(false);
+  shown.current = updatedAt !== undefined;
+  useEffect(() => {
+    const mark = () => {
+      api.patchThread(id, { visited: true }).then(useWorkspace.getState().putThread, () => undefined);
+    };
+    // What arrives while you are here counts as read, even if the window just closes.
+    const timer = shown.current ? setTimeout(mark, VISIT_MARK_MS) : undefined;
+    return () => clearTimeout(timer);
+  }, [id, updatedAt]);
+  useEffect(
+    () => () => {
+      if (!shown.current) return;
+      api.patchThread(id, { visited: true }).then(useWorkspace.getState().putThread, () => undefined);
+    },
+    [id],
+  );
+  return seen ?? null;
+}
+
 export function ThreadView({ id }: { id: string }) {
   const thread = useWorkspace((state) => state.threads[id]);
   const missing = useWorkspace((state) => state.missingThreads[id]);
@@ -317,6 +345,7 @@ export function ThreadView({ id }: { id: string }) {
   const motion = usePanelMotion();
   useThreadStream(id);
   useProactivePanels(id, thread?.active_run?.id ?? null);
+  const lastVisit = useVisit(id, thread?.lifecycle?.visited_at ?? null, thread?.updated_at);
 
   useEffect(() => {
     setLastThread(id);
@@ -405,6 +434,7 @@ export function ThreadView({ id }: { id: string }) {
               activeRunId={thread.active_run?.id ?? null}
               threadId={id}
               active={thread.active_run !== null}
+              readUpTo={lastVisit}
                 footer={
                   <>
                     <StreamBanner threadId={id} />

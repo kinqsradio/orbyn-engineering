@@ -67,7 +67,7 @@ import {
 import { bulkMenuItems, CustomSnoozeDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
 import { ThreadRow, type RowActions } from "./ThreadRow";
 import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
-import { UpdatePill } from "./Updates";
+import { ProviderUpdatePill, UpdatePill } from "./Updates";
 
 const SETTLED_PAGE = 10;
 
@@ -293,6 +293,7 @@ function SidebarFoot({ route }: { route: Route }) {
         <ChartColumn size={16} aria-hidden />
       </a>
       <UndoNotice />
+      <ProviderUpdatePill />
       <UpdatePill />
     </div>
   );
@@ -433,6 +434,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const projectFilter = useUi((state) => state.projectFilter);
   const projectFolders = useUi((state) => state.projectFolders);
   const multilineRows = useUi((state) => state.multilineRows);
+  const workingSection = useUi((state) => state.workingSection);
   const threadSort = useUi((state) => state.threadSort);
   const projectSort = useUi((state) => state.projectSort);
   const setPrefs = useUi((state) => state.setPrefs);
@@ -485,7 +487,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         ? null
         : { id: selectedThread, section: open ? sectionOf(open, Date.now(), selectedThread) : null };
   }
-  const sections = arrangeThreads(scoped, Date.now(), selectedThread, hold.current?.section ?? null);
+  const sections = arrangeThreads(scoped, Date.now(), selectedThread, hold.current?.section ?? null, workingSection);
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
   const orderedRef = useRef<Thread[]>([]);
   orderedRef.current = threadsFlat(sections);
