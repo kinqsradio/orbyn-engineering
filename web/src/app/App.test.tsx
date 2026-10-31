@@ -51,6 +51,8 @@ describe("App against the mock API", () => {
     for (const thread of mock.threads.slice(10)) {
       thread.lifecycle = { ...thread.lifecycle!, settled_at: "2026-10-30T10:00:00Z" };
     }
+    const running = mock.threads.find((thread) => thread.active_run)!;
+    running.active_run = { ...running.active_run!, state: "running" };
     render(<App />);
     const settled = await screen.findByRole("button", { name: /^Settled/ });
     expect(settled).toHaveAttribute("aria-expanded", "false");
@@ -420,7 +422,7 @@ describe("App against the mock API", () => {
     const nav = await screen.findByRole("navigation", { name: "Workspace" });
     const row = (await within(nav).findByText("Explain how the event log resumes")).closest("a");
     fireEvent.contextMenu(row as HTMLElement);
-    await user.click(await screen.findByRole("menuitem", { name: "Settle" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Settle thread" }));
     await waitFor(() => expect(mock.threads.find((t) => t.id === "t-done")?.lifecycle?.settled_at).not.toBeNull());
   });
 

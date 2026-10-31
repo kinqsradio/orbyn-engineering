@@ -6,6 +6,15 @@ import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { CommandPalette } from "../features/workspace/CommandPalette";
+import { arrangeThreads, threadsFlat } from "../features/workspace/groups";
+import {
+  copyText,
+  pinThreads,
+  settleThreads,
+  unpinThreads,
+  unsettleThreads,
+} from "../features/workspace/threadActions";
+import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../features/workspace/threadUndo";
 import { Sidebar } from "../features/workspace/Sidebar";
 import { Toasts } from "../ui/Toasts";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
@@ -38,6 +47,65 @@ const PANEL_KEYS: Record<string, ContextTab> = {
   Digit3: "activity",
 };
 
+const editing = (target: EventTarget | null) =>
+  target instanceof HTMLElement && target.matches("input, textarea, select, [contenteditable='true']");
+
+/** The current thread's shortcuts, with their reference defaults. */
+function threadKey(event: KeyboardEvent, route: Route): boolean {
+  const mod = /mac/i.test(navigator.platform) ? event.metaKey : event.ctrlKey;
+  const key = event.key.toLowerCase();
+  if (!mod) {
+    if (!["shift", "meta", "control", "alt"].includes(key)) releaseUndoShortcut();
+    return false;
+  }
+  if (key === "z" && !event.shiftKey && !event.altKey) {
+    if (useUndoNotice.getState().notice && (undoHasShortcut() || !editing(event.target))) {
+      event.preventDefault();
+      void undoLatest();
+      return true;
+    }
+    return false;
+  }
+  if (key === "b" && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    useUi.getState().toggleSidebar();
+    return true;
+  }
+  if (!event.shiftKey || event.altKey) return false;
+  const { threads } = useWorkspace.getState();
+  const openId = route.name === "thread" ? route.id : null;
+  const current = openId ? threads[openId] : undefined;
+  if (key === "[" || key === "]" || event.code === "BracketLeft" || event.code === "BracketRight") {
+    const rows = threadsFlat(arrangeThreads(Object.values(threads), Date.now(), openId)).filter(
+      (thread) => !thread.lifecycle?.settled_at,
+    );
+    if (rows.length === 0) return false;
+    const at = rows.findIndex((thread) => thread.id === openId);
+    const step = event.code === "BracketLeft" ? -1 : 1;
+    const next = rows[(at + step + rows.length) % rows.length];
+    event.preventDefault();
+    if (next) navigate({ name: "thread", id: next.id });
+    return true;
+  }
+  if (!current) return false;
+  if (key === "s") {
+    event.preventDefault();
+    void (current.lifecycle?.settled_at ? unsettleThreads([current]) : settleThreads([current]));
+    return true;
+  }
+  if (key === "p") {
+    event.preventDefault();
+    void (current.lifecycle?.pinned_at ? unpinThreads([current]) : pinThreads([current]));
+    return true;
+  }
+  if (key === "c") {
+    event.preventDefault();
+    void copyText(current.id, "Copied thread ID");
+    return true;
+  }
+  return false;
+}
+
 function useGlobalKeys(route: Route) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -48,6 +116,7 @@ function useGlobalKeys(route: Route) {
         }
         return;
       }
+      if (threadKey(event, route)) return;
       if (!event.altKey || event.metaKey || event.ctrlKey) return;
       if (event.code === "KeyN") {
         event.preventDefault();

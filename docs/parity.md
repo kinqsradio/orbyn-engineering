@@ -34,7 +34,7 @@ surfaces on that row stay open.
 - [x] A11 Pin and unpin: keeps thread above active work, scroll stays put | apps/web/src/components/Sidebar.tsx | w d m s | S | server done
 - [ ] A12 Undo notices: 5-second undo for unpin, settle, snooze, archive, draft discard | apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx | w d m | M
 - [ ] A13 Drop files on a thread row: opens thread with files attached | docs/user/thread-sidebar.md | w d | S
-- [ ] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L
+- [x] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L | web done
 - [x] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
 - [ ] A16 Arrange threads sheet: mobile drag handles, plus move up/down | apps/mobile/src/features/threads/ThreadArrangementSheet.tsx | m | M
 - [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S | server done
@@ -46,11 +46,11 @@ surfaces on that row stay open.
 - [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M | server done
 - [x] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M | server done
 - [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S | server done
-- [ ] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M
+- [x] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M | web done
 - [ ] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S
 - [x] A28 Snooze presets: up to 8 duration or time-of-day options | apps/web/src/components/settings/SnoozePresetsSettings.tsx | w d m s | M | server done
-- [ ] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S
-- [ ] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S
+- [x] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S | web done
+- [x] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S | web done
 - [x] A31 Wake rules: returns early on approval, answer, failure or your message | docs/user/thread-sidebar.md | w d m s | M | server done
 - [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S | server done
 - [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
@@ -83,7 +83,7 @@ surfaces on that row stay open.
 - [ ] A60 Background work view: mobile sheet of running background work | apps/mobile/src/features/threads/ThreadBackgroundWorkSheet.tsx | m | M
 - [ ] A61 Sidebar grouping and sort: repository/path/separate; project and thread sort; overrides | packages/contracts/src/settings.ts | w d m | M
 - [ ] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M
-- [ ] A63 Project filter menu: header button limits the thread list to one or several projects, with project search, Shift+Enter to add or remove a project, favicon stack on the button and a context-key shortcut to open that project's settings | apps/web/src/components/Sidebar.tsx | w d | M
+- [x] A63 Project filter menu: header button limits the thread list to one or several projects, with project search, Shift+Enter to add or remove a project, favicon stack on the button and a context-key shortcut to open that project's settings | apps/web/src/components/Sidebar.tsx | w d | M | web done
 - [ ] A64 Project folder menu: right-click or pen button on a project folder offers new thread, copy path and project settings | apps/web/src/components/Sidebar.tsx | w d | S
 - [ ] A65 Thread menu extras: Find in thread, New thread on this branch, Filter by this project (toggles off when active), Copy branch, Copy path, Project settings shortcut | apps/web/src/components/threadActionMenu.logic.ts | w d m | S
 - [ ] A66 Draft rows: unsent drafts show in the list with an unsent marker and a discard button; discard offers undo with text and attachments restored | apps/web/src/components/sidebar/SidebarDraftBlock.tsx | w d | S

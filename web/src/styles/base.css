@@ -732,6 +732,19 @@ input[type="radio"] {
   background: var(--color-hover);
   outline: none;
 }
+.popup-menu button[data-destructive] {
+  color: var(--color-danger);
+}
+.popup-menu .menu-chev {
+  margin-left: auto;
+  color: var(--color-muted);
+}
+.menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: var(--color-divider);
+}
 .popup-menu button:disabled {
   color: var(--color-faint);
   cursor: default;

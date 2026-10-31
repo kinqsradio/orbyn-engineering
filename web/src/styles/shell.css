@@ -117,10 +117,18 @@
   color: var(--color-text);
 }
 .sidebar-scroll {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0 8px 4px;
+}
+.sidebar-scroll[data-dragging] {
+  user-select: none;
+}
+.sidebar-scroll[data-dragging] .thread-row {
+  pointer-events: none;
 }
 .sidebar-scroll .loading,
 .sidebar-scroll .error-state {
@@ -252,9 +260,277 @@
 }
 .sidebar-groups {
   flex: none;
-  max-height: 45%;
+  margin-top: auto;
+  padding: 4px 0 8px;
+}
+.thread-list > li,
+.group-list > li {
+  position: relative;
+}
+li[data-dragging] {
+  z-index: 2;
+}
+li[data-dragging] .thread-row {
+  background: var(--color-raised);
+  box-shadow: inset 0 0 0 1px var(--color-rowRing);
+}
+li[data-selected] .thread-row {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.thread-row[data-unread] .thread-row-title {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.thread-row[data-multiline] .thread-row-title {
+  white-space: normal;
+}
+.thread-row-rename {
+  width: 100%;
+  min-height: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--color-rowRing);
+  border-radius: var(--radius-sm);
+  background: var(--color-raised);
+  font-size: var(--text-small);
+}
+.row-trailing {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+}
+.row-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+li:hover > .thread-row .row-actions,
+.thread-row:focus-within .row-actions {
+  display: inline-flex;
+}
+li:hover > .thread-row .row-rest,
+.thread-row:focus-within .row-rest {
+  display: none;
+}
+.row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  cursor: pointer;
+}
+.row-action:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.row-pin {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.row-pin:hover {
+  color: var(--color-text);
+}
+.row-drop-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+.drag-boundary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  padding: 0 10px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+.drag-boundary::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-divider);
+}
+.drag-boundary[data-active] {
+  color: var(--color-primary);
+}
+.drag-boundary[data-active]::after {
+  background: var(--color-primary);
+}
+.drop-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  margin: 2px;
+  border: 1px dashed var(--color-borderStrong);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.drop-placeholder[data-active] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+li[data-highlight] .thread-row {
+  background: var(--color-rowHover);
+}
+.folder-head {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+.folder-head:first-child {
+  margin-top: 0;
+}
+.folder-toggle {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-textSoft);
+  font-size: var(--text-small);
+  font-weight: 500;
+  cursor: pointer;
+}
+.folder-toggle:hover {
+  background: var(--color-rowHover);
+}
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-new {
+  display: none;
+  width: 24px;
+  height: 24px;
+}
+.folder-head:hover .folder-new,
+.folder-new:focus-visible {
+  display: inline-grid;
+}
+.project-filter {
+  position: relative;
+  flex: none;
+}
+.filter-stack {
+  display: inline-flex;
+}
+.filter-stack .badge + .badge {
+  margin-left: -6px;
+}
+.filter-popup {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: -120px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 288px;
+  max-height: 320px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--color-outline),
+    0 18px 44px -18px var(--color-shadow);
+}
+.filter-popup input {
+  min-height: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-small);
+}
+.filter-popup [role="listbox"] {
   overflow-y: auto;
-  padding: 0 8px 12px;
+}
+.filter-empty {
+  padding: 6px 8px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+.filter-item[data-active] {
+  background: var(--color-hover);
+}
+.filter-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.filter-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.undo-notice {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.undo-notice button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-meta);
+  cursor: pointer;
 }
 .group + .group {
   margin-top: 3px;

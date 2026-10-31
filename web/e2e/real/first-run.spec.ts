@@ -1,72 +1,22 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { createInterface } from "node:readline";
+import { startService, type Service } from "./service";
 
 /** A fresh install against the real service, which the mock can't reach. */
-const WEB = resolve(import.meta.dirname, "../..");
-const BIN = process.env.ORBYN_BIN ?? resolve(WEB, "../target/debug/orbynd");
 const PORT = 5276;
 /** The desktop window less its native title bar. */
 const WINDOW = { width: 1280, height: 792 };
 
-let dir = "";
-let token = "";
-const children: ChildProcess[] = [];
-
-const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
-
-function makeLibrary(root: string): string {
-  const library = join(root, "library");
-  mkdirSync(join(library, "skills"), { recursive: true });
-  writeFileSync(join(library, "AGENTS.md"), "# Library\n");
-  writeFileSync(join(library, "skills/catalog.json"), "[]\n");
-  writeFileSync(join(library, ".gitignore"), "repo/\n");
-  git(library, "init", "-q", "-b", "main");
-  git(library, "add", ".");
-  git(library, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "Library");
-  return library;
-}
+let service: Service;
 
 test.beforeAll(async () => {
-  if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
-  dir = mkdtempSync(join(tmpdir(), "orbyn-first-run-"));
-  const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
-    env: { ...process.env, ORBYN_OFFLINE: "1" },
-    stdio: ["pipe", "pipe", "inherit"],
-  });
-  children.push(service);
-  const url = await new Promise<string>((done, fail) => {
-    service.once("exit", (code) => fail(new Error(`orbynd exited with ${code}`)));
-    createInterface({ input: service.stdout }).once("line", (line) => {
-      const ready = JSON.parse(line) as { url: string; token: string };
-      token = ready.token;
-      done(ready.url);
-    });
-  });
-  const vite = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], {
-    cwd: WEB,
-    env: { ...process.env, ORBYN_API: url },
-    stdio: "ignore",
-  });
-  children.push(vite);
-  await expect
-    .poll(() => fetch(`http://localhost:${PORT}/`).then((response) => response.ok, () => false), {
-      timeout: 15_000,
-    })
-    .toBe(true);
+  service = await startService(PORT);
 });
 
-test.afterAll(() => {
-  for (const child of children) child.kill();
-  rmSync(dir, { recursive: true, force: true });
-});
+test.afterAll(() => service.stop());
 
 test("first run shows a composed setup card and reaches the workspace", async ({ page }) => {
   await page.setViewportSize(WINDOW);
-  await page.goto(`http://localhost:${PORT}/?token=${token}`);
+  await page.goto(service.page);
 
   const heading = page.getByRole("heading", { name: "Set up your workspace" });
   await expect(heading).toBeVisible();

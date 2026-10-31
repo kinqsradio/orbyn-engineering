@@ -22,6 +22,14 @@ interface Prefs {
   sidebarWidth: number;
   /** Sidebar groups the viewer has opened or closed. */
   groups: Record<string, boolean>;
+  /** Projects the thread list is limited to; empty is all. */
+  projectFilter: string[];
+  /** Folders the active list by project. */
+  projectFolders: boolean;
+  /** Lets folder rows wrap their title. */
+  multilineRows: boolean;
+  threadSort: "updated_at" | "created_at";
+  projectSort: "updated_at" | "created_at";
 }
 
 export const DEFAULT_SIDEBAR_WIDTH = 208;
@@ -42,6 +50,11 @@ const defaults: Prefs = {
   sidebarCollapsed: false,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   groups: {},
+  projectFilter: [],
+  projectFolders: false,
+  multilineRows: false,
+  threadSort: "updated_at",
+  projectSort: "updated_at",
 };
 
 interface UiState extends Prefs {
@@ -63,6 +76,7 @@ interface UiState extends Prefs {
   toggleSidebar(): void;
   setSidebarWidth(width: number): void;
   toggleGroup(group: string, fallback: boolean): void;
+  setPrefs(prefs: Partial<Pick<Prefs, "projectFilter" | "projectFolders" | "multilineRows" | "threadSort" | "projectSort">>): void;
   setDraft(threadId: string, text: string): void;
   setLastThread(threadId: string): void;
 }
@@ -78,6 +92,11 @@ const prefsOf = (state: Prefs): Prefs => ({
   sidebarCollapsed: state.sidebarCollapsed,
   sidebarWidth: state.sidebarWidth,
   groups: state.groups,
+  projectFilter: state.projectFilter,
+  projectFolders: state.projectFolders,
+  multilineRows: state.multilineRows,
+  threadSort: state.threadSort,
+  projectSort: state.projectSort,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
@@ -164,6 +183,10 @@ export const useUi = create<UiState>((set, get) => {
     },
     toggleGroup(group, fallback) {
       set((state) => ({ groups: { ...state.groups, [group]: !(state.groups[group] ?? fallback) } }));
+      savePrefs();
+    },
+    setPrefs(prefs) {
+      set(prefs);
       savePrefs();
     },
     setDraft(threadId, text) {

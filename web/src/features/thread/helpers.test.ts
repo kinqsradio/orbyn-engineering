@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Thread } from "../../api/types";
 import { parsePatch } from "../panels/DiffPanel";
-import { groupThreads } from "../workspace/groups";
+import { arrangeThreads } from "../workspace/groups";
 import { touchesOf } from "./approvalDetail";
 import type { ThreadItem } from "./projection";
 import { insertToken, triggerAt } from "./skillMention";
@@ -37,12 +37,13 @@ describe("groupThreads", () => {
       id,
       active_run: null,
       last_run_state: "completed",
+      created_at: "2026-10-01T00:00:00Z",
       updated_at: new Date(now - hoursAgo * 3_600_000).toISOString(),
       ...over,
     }) as Thread;
 
   it("separates active, recent and settled", () => {
-    const groups = groupThreads(
+    const groups = arrangeThreads(
       [
         thread("new", 1),
         thread("old", 30),
@@ -50,9 +51,10 @@ describe("groupThreads", () => {
         thread("live", 200, { active_run: { id: "r" } as Thread["active_run"] }),
       ],
       now,
+      null,
     );
     expect(groups.working.map((t) => t.id)).toEqual(["live"]);
-    expect(groups.recent.map((t) => t.id)).toEqual(["new", "failed"]);
+    expect(groups.active.map((t) => t.id).sort()).toEqual(["failed", "new"]);
     expect(groups.settled.map((t) => t.id)).toEqual(["old"]);
   });
 
@@ -70,15 +72,16 @@ describe("groupThreads", () => {
       permission_mode: "supervised",
       plan_mode: false,
     } satisfies Thread["lifecycle"];
-    const groups = groupThreads(
+    const groups = arrangeThreads(
       [
         thread("kept", 300, { lifecycle }),
         thread("done", 1, { lifecycle: { ...lifecycle, settled_at: "2026-10-31T11:00:00Z" } }),
         thread("gone", 1, { lifecycle: { ...lifecycle, archived_at: "2026-10-31T11:00:00Z" } }),
       ],
       now,
+      null,
     );
-    expect(groups.recent.map((t) => t.id)).toEqual(["kept"]);
+    expect(groups.active.map((t) => t.id)).toEqual(["kept"]);
     expect(groups.settled.map((t) => t.id)).toEqual(["done"]);
     expect(groups.working).toEqual([]);
   });
