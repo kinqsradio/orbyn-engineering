@@ -1260,6 +1260,14 @@ kbd {
   min-width: 0;
 }
 .task-deliveries {
+}
+
+.engine-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cleanup-report {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1281,4 +1289,14 @@ kbd {
 .task-deliveries h4 {
   margin: 8px 0 2px;
   font-size: var(--text-meta);
+}
+
+  padding: 8px 16px;
+  list-style: none;
+  font-size: var(--text-meta);
+}
+.cleanup-report li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
 }

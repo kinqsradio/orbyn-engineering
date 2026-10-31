@@ -299,10 +299,10 @@ toward completion.
 - [ ] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S
 - [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
 - [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
-- [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done
+- [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
-- [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done
-- [x] F30 Storage cleanup: worktree rules, keep-when policy, reports | apps/server/src/storageCleanup.ts | w d m s | L | server done
+- [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done | web done
+- [x] F30 Storage cleanup: worktree rules, keep-when policy, reports | apps/server/src/storageCleanup.ts | w d m s | L | server done | web done
 - [x] F31 PR list page: grouped filters across environments, quick actions | apps/web/src/components/pullRequest/PullRequestsPage.tsx | w d m s | L | server done
 - [x] F32 PR summary tab: description, state, editing | apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx | w d m | M | server done
 - [x] F33 PR timeline: activity with filters | apps/web/src/components/pullRequest/PullRequestTimelineTab.tsx | w d m | M | server done
@@ -335,7 +335,7 @@ toward completion.
 - [ ] F60 PR link menu: right-click a PR link for Copy link and Open on the host; hover preview card | apps/web/src/components/pullRequest/pullRequestLinkContextMenu.ts | w d | S
 - [ ] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
-- [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done
+- [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done | web done
 - [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
 - [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: tested on any OS, not yet run on Windows
 - [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
@@ -451,7 +451,7 @@ are not built in.
 - [ ] I39 Provider updates: per-provider and update-all | apps/web/src/components/ProviderUpdatesAction.tsx | w d m s | M
 - [ ] I40 Model catalog: refreshed discovery with manifest | apps/server/src/provider/ModelManifest.ts | s | M | [hosted]
 - [ ] I41 Status banners: provider health in composer | apps/web/src/components/chat/ProviderStatusBanner.tsx | w d m | S
-- [x] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M | server done
+- [x] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M | server done | web done
 - [ ] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S
 - [x] I44 Text generation model: titles and branch names | packages/contracts/src/settings.ts | w d s | S
 - [ ] I45 Permission-mode matrix per provider: fx Supervised and Auto; Muse Supervised and Full; Pi Supervised, Auto-accept edits, Full (stored Auto shows Supervised); OpenCode Auto equals Supervised; mode change restarts the provider session | docs/user/permission-modes.md | w d m s | M
@@ -506,7 +506,7 @@ are not built in.
 - [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
 - [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
 - [ ] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S
-- [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients
+- [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients | web done
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
 - [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
 - [x] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M | server done
@@ -531,9 +531,9 @@ are not built in.
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
 - [ ] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S
 - [ ] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server: counts and database only; no process or trace views
-- [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done
+- [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done | web done
 - [ ] K31 Product telemetry: hashed usage events, env opt-out | docs/user/telemetry.md | s d | M | [hosted]
-- [x] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S | server done
+- [x] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S | server done | web done
 - [ ] K33 Secrets: secret providers, references, 1Password driver | apps/web/src/components/settings/SecretsSettings.tsx | w d s | L | [auth-risk]
 - [ ] K34 Triage: playbook thread with source for server version | apps/server/src/triage/TriageService.ts | w d m c s | M
 - [ ] K35 Welcome wizard: computers, agents, project import | apps/web/src/components/onboarding/WelcomeWizard.tsx | w d | L

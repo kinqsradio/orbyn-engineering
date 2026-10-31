@@ -29,6 +29,8 @@ export type { GitActionResult } from "../generated/GitActionResult";
 export type { GitPhase } from "../generated/GitPhase";
 export type { PublishProject } from "../generated/PublishProject";
 export type { RestorePoint } from "../generated/RestorePoint";
+export type { CleanupReport } from "../generated/CleanupReport";
+export type { OtlpResult } from "../generated/OtlpResult";
 export type { ActionKind } from "../generated/ActionKind";
 export type { AgUiEvent } from "../generated/AgUiEvent";
 export type { ApiError } from "../generated/ApiError";
