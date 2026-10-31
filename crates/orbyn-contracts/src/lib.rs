@@ -1960,12 +1960,32 @@ pub struct PreviewTab {
     pub height: u32,
     pub can_go_back: bool,
     pub can_go_forward: bool,
+    pub title: String,
+    /// `1` is actual size.
+    pub zoom: f64,
+    /// `system`, `light` or `dark`.
+    pub appearance: String,
+    /// True emulates a phone: touch, and pages that lay out for one.
+    pub mobile: bool,
+    /// True keeps the page out of recent pages and history.
+    pub private: bool,
+    /// The named profile, or `None` for one that ends with the tab.
+    pub profile: Option<String>,
+    /// `person` or `agent`.
+    pub opened_by: String,
+    /// True once the page has crashed too often to bring back.
+    pub crashed: bool,
 }
 }
 
 wire! {
 pub struct OpenPreview {
     pub url: String,
+    #[serde(default)]
+    pub private: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub profile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub width: Option<u32>,
@@ -1978,6 +1998,77 @@ pub struct OpenPreview {
 wire! {
 pub struct NavigatePreview {
     pub url: String,
+}
+}
+
+wire! {
+pub struct OpenPreviewFile {
+    /// Inside the thread's checkout.
+    pub path: String,
+}
+}
+
+wire! {
+/// How a page is shown. A field left out stays as it is.
+pub struct PreviewView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub zoom: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub appearance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mobile: Option<bool>,
+}
+}
+
+wire! {
+pub struct ReloadPreview {
+    /// True skips the cache.
+    #[serde(default)]
+    pub hard: bool,
+}
+}
+
+wire! {
+pub struct ClearPreview {
+    #[serde(default)]
+    pub cookies: bool,
+    #[serde(default)]
+    pub cache: bool,
+}
+}
+
+wire! {
+pub struct PickPreview {
+    pub x: f64,
+    pub y: f64,
+}
+}
+
+wire! {
+/// An element a person pointed at. All of it comes from the page.
+pub struct PickedElement {
+    pub tag: String,
+    pub selector: String,
+    pub text: String,
+    pub html: String,
+}
+}
+
+wire! {
+pub struct BrowserProfile {
+    pub id: String,
+    pub name: String,
+    /// True while a tab has it open.
+    pub in_use: bool,
+}
+}
+
+wire! {
+pub struct CreateBrowserProfile {
+    pub name: String,
 }
 }
 

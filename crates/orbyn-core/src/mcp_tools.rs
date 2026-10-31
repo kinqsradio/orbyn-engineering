@@ -515,6 +515,14 @@ impl Core {
         let actor = format!("engine:{}", binding.scope.engine);
         let own = self.store.thread(&binding.scope.thread_id)?;
         let thread_arg = || self.project_thread(binding, text(args, "thread_id")?);
+        if name.starts_with("orbyn_preview")
+            && self.preference("enable_agent_browser_access", Some(&own.project_id))?
+                == json!(false)
+        {
+            return Err(CoreError::Invalid(
+                "Agents can't use the browser here. It's turned off in Settings.".into(),
+            ));
+        }
         Ok(match name {
             "orbyn_environment_read" => json!({
                 "version": env!("CARGO_PKG_VERSION"),
@@ -759,8 +767,13 @@ impl Core {
                         .and_then(|value| u32::try_from(value).ok())
                 };
                 let url = text(args, "url")?;
-                let opened =
-                    self.open_preview(&own.id, url, (size("width"), size("height")), &actor);
+                let opened = self.open_preview(
+                    &own.id,
+                    url,
+                    (size("width"), size("height")),
+                    &actor,
+                    crate::preview::OpenHow::default(),
+                );
                 json!(opened.await?)
             }
             "orbyn_preview_navigate" => {

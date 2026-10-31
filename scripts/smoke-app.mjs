@@ -66,6 +66,9 @@ function install() {
     execFileSync(`"${setup}" /S /D=${installed}`, { shell: true, stdio: "inherit", env: environment });
     const apps = find(installed, (name) => /\.exe$/i.test(name) && !/^(uninstall|orbynd|orbyn)\.exe$/i.test(name));
     if (apps.length !== 1) throw new Error(`Expected one app, found: ${apps.join(", ")}`);
+    for (const exe of find(installed, (name) => /^(orbynd?|orbyn-engineering)\.exe$/i.test(name))) {
+      if (readFileSync(exe).includes("VCRUNTIME140")) throw new Error(`${exe} needs the C runtime installed.`);
+    }
     return apps[0];
   }
   const [bundle] = find(join(bundles, "macos"), (name) => name.endsWith(".app"));
@@ -170,5 +173,10 @@ try {
   await main();
   console.log("App smoke passed.");
 } finally {
-  rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  // Windows can hold a closing webview's folder a while longer. A leftover temp folder is no failure.
+  try {
+    rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  } catch (error) {
+    console.warn(`Left ${sandbox} behind: ${error.message}`);
+  }
 }

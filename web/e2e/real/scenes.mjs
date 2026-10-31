@@ -56,6 +56,7 @@ const limitStop = (resetsAt) => [
 ];
 
 export const scenes = {
+  "pull-link": message("pull-link", "See [the pull request](https://github.com/o/r/pull/42)."),
   limit: limitStop(4102444800),
   "limit-open": limitStop(undefined),
   get "limit-soon"() {

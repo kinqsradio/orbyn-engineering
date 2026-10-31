@@ -58,6 +58,10 @@ interface Prefs {
   /** Opens Changes after a large turn. */
   proactivePanels: boolean;
   recentUrls: string[];
+  /** Where a link in a thread opens. */
+  linkTarget: "system" | "in-app";
+  /** Floats the page when an agent opens one and the Browser panel isn't showing. */
+  autoFloatPreview: boolean;
   diffFilesCollapsed: boolean;
   diffIgnoreWhitespace: boolean;
   diffHideTests: boolean;
@@ -90,6 +94,8 @@ interface Prefs {
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
   /** The project the unsent draft belongs to, so its row opens it there. */
   draftProject: string | null;
+  /** Pull request links open in the panel instead of on the host. */
+  pullLinksInApp: boolean;
   /** Thread details rows turned off. */
   detailsHidden: string[];
   /** Moves working threads, and ones waiting on delegated work, to their own shelf. */
@@ -174,6 +180,8 @@ const defaults: Prefs = {
   previewSearchEngine: "duckduckgo",
   proactivePanels: false,
   recentUrls: [],
+  linkTarget: "system",
+  autoFloatPreview: false,
   diffFilesCollapsed: false,
   diffIgnoreWhitespace: false,
   diffHideTests: false,
@@ -196,6 +204,7 @@ const defaults: Prefs = {
   confirmDelete: true,
   lastModel: null,
   draftProject: null,
+  pullLinksInApp: true,
   detailsHidden: ["usage"],
   workingSection: true,
   dismissedProviderUpdates: [],
@@ -218,10 +227,19 @@ interface UiState extends Prefs {
   messageReveal: { threadId: string; messageId: string } | null;
   revealMessage(threadId: string, messageId: string): void;
   clearMessageReveal(): void;
+  /** A pull request the panel should open. */
+  pullReveal: number | null;
+  revealPull(number: number | null): void;
   /** A file the Diff surface should scroll to. */
   diffReveal: { path: string; nonce: number } | null;
   revealDiff(path: string): void;
   togglePanel(tab: ContextTab): void;
+  /** A page floating over the chat, if any. */
+  previewFloat: { threadId: string; tabId: string } | null;
+  /** A URL waiting for the Browser panel to open it. */
+  previewRequest: string | null;
+  setPreviewFloat(float: { threadId: string; tabId: string } | null): void;
+  showInBrowser(url: string | null): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
   /** Back to the launcher, keeping open surfaces. */
@@ -310,6 +328,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   previewSearchEngine: state.previewSearchEngine,
   proactivePanels: state.proactivePanels,
   recentUrls: state.recentUrls,
+  linkTarget: state.linkTarget,
+  autoFloatPreview: state.autoFloatPreview,
   diffFilesCollapsed: state.diffFilesCollapsed,
   diffIgnoreWhitespace: state.diffIgnoreWhitespace,
   diffHideTests: state.diffHideTests,
@@ -332,6 +352,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   confirmDelete: state.confirmDelete,
   lastModel: state.lastModel,
   draftProject: state.draftProject,
+  pullLinksInApp: state.pullLinksInApp,
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
   dismissedProviderUpdates: state.dismissedProviderUpdates,
@@ -376,6 +397,20 @@ export const useUi = create<UiState>((set, get) => {
       set({ theme });
       savePrefs();
     },
+    pullReveal: null,
+    revealPull(number) {
+      if (number === null) {
+        set({ pullReveal: null });
+        return;
+      }
+      const { openSurfaces } = get();
+      set({
+        pullReveal: number,
+        panelOpen: true,
+        panelTab: "pulls",
+        openSurfaces: openSurfaces.includes("pulls") ? openSurfaces : [...openSurfaces, "pulls"],
+      });
+    },
     diffReveal: null,
     revealDiff(path) {
       const { openSurfaces } = get();
@@ -401,6 +436,24 @@ export const useUi = create<UiState>((set, get) => {
         panelOpen: true,
         panelTab: "files",
         openSurfaces: openSurfaces.includes("files") ? openSurfaces : [...openSurfaces, "files"],
+      });
+    },
+    previewFloat: null,
+    previewRequest: null,
+    setPreviewFloat(previewFloat) {
+      set({ previewFloat });
+    },
+    showInBrowser(url) {
+      if (url === null) {
+        set({ previewRequest: null });
+        return;
+      }
+      const { openSurfaces } = get();
+      set({
+        previewRequest: url,
+        panelOpen: true,
+        panelTab: "browser",
+        openSurfaces: openSurfaces.includes("browser") ? openSurfaces : [...openSurfaces, "browser"],
       });
     },
     togglePanel(tab) {

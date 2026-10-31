@@ -29,6 +29,10 @@ Keep `main` current. Work lands as small, coherent pull requests from short-live
 Windows and web before merge; auto-merge lands a green PR. Never merge red. Commit
 `web/src/generated` in the same commit as any contract change.
 
+Commits and pull requests carry no agent or tool attribution. Do not add
+`Co-Authored-By` trailers for an assistant, generated-by lines, or a model or tool
+name to commit messages, pull request titles or bodies, or branch names.
+
 Windows and macOS are both supported targets. Never add a Unix-only path, shell
 or signal without its Windows branch and a test on the CI matrix.
 

@@ -49,6 +49,9 @@ const DEFINITIONS: &[Definition] = defs![
     "enable_provider_update_checks" Kind::Bool, true, false;
     "continue_threads_after_update" Kind::Bool, true, false;
     "enable_agent_browser_access" Kind::Bool, true, true;
+    "preview_zoom" Kind::Number, 1, false;
+    "preview_appearance" Kind::OneOf(&["system", "light", "dark"]), "system", false;
+    "preview_profiles" Kind::List, [], false;
     "enable_agent_device_access" Kind::Bool, false, false;
     "auto_pull" Kind::Bool, false, true;
     "poll_pull_requests" Kind::Bool, true, false;
