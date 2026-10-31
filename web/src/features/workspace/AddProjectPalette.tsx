@@ -6,6 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
+import { dropTrailingSlash, expandHome, replaceHomePrefix, shortenHome, splitPath, withSlash } from "./pathInput";
 
 type View = "sources" | "browse" | "new" | "clone";
 
@@ -43,23 +44,6 @@ async function followClone(id: string, onDone: (project: Project) => void) {
     return;
   }
 }
-
-const SEP = /[\\/]/;
-
-const lastSep = (value: string) => Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
-
-export function splitPath(value: string): { dir: string; leaf: string } {
-  const at = lastSep(value);
-  return { dir: value.slice(0, at + 1), leaf: value.slice(at + 1) };
-}
-
-const withSlash = (path: string) => (SEP.test(path.slice(-1)) ? path : `${path}/`);
-
-const shorten = (path: string, home: string) =>
-  path === home ? "~/" : path.startsWith(withSlash(home)) ? `~/${path.slice(withSlash(home).length)}` : path;
-
-const expand = (path: string, home: string) =>
-  path === "~" || path.startsWith("~/") ? `${withSlash(home)}${path.slice(2)}` : path;
 
 function Keys({ back, select }: { back: boolean; select: boolean }) {
   return (
@@ -228,7 +212,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
   }, []);
 
   const { dir, leaf } = splitPath(value);
-  const expanded = home === null ? null : expand(dir, home);
+  const expanded = home === null ? null : expandHome(dir, home);
   const listing = useAsync(`palette-browse:${expanded ?? ""}`, (signal) =>
     expanded === null ? Promise.resolve(null) : api.browse(expanded, signal),
   );
@@ -240,7 +224,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
   const rows = entries.length + (parent ? 1 : 0);
 
   const enter = (path: string) => {
-    setValue(withSlash(home ? shorten(path, home) : path));
+    setValue(withSlash(home ? shortenHome(path, home) : path));
     setActive(-1);
     setError(null);
   };
@@ -257,8 +241,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
   const typedPath = () => {
     const typed = value.trim();
     if (home === null && typed.startsWith("~")) return null;
-    const full = expand(typed, home ?? "");
-    return full.length > 1 ? full.replace(/[\\/]$/, "") : full;
+    return dropTrailingSlash(expandHome(typed, home ?? ""));
   };
   const addTyped = () => {
     const path = typedPath();
@@ -280,7 +263,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
         chip={{ label: "Add", onClick: addTyped, disabled: busy }}
         onBack={onBack}
         onChange={(next) => {
-          setValue(next);
+          setValue(replaceHomePrefix(next));
           setActive(-1);
           setError(null);
         }}
