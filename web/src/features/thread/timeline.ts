@@ -133,6 +133,15 @@ export function arrangeTimeline(
   return entries;
 }
 
+/** The row that shows a message, or the fold that holds it. */
+export function entryForMessage(entries: readonly TimelineEntry[], messageId: string): string | null {
+  const holds = (entry: TimelineEntry): boolean =>
+    entry.kind === "fold"
+      ? entry.entries.some(holds)
+      : entry.kind === "message" && (entry.key === `msg:${messageId}` || entry.key.endsWith(`:${messageId}`));
+  return entries.find(holds)?.key ?? null;
+}
+
 export const runningTools = (items: readonly ThreadItem[]): ToolItem[] =>
   items.filter((item): item is ToolItem => item.kind === "tool" && item.result === null && !item.done);
 

@@ -90,6 +90,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit, image, video, audio, PDF, font, hex and partial text from the raw route, Save file | Layout own; no office or ZIP view |
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
+| Palette | Messages | Source: all words, opens at the message | Messages group, Real, scrolls to the row or the fold that holds it | Word highlights not drawn |
 | Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward, reload, control, record, start page, Real on headless shell | Back and forward are this panel's own stack; no zoom, devices or profiles |
 | Diff | Sources | Source: turn, thread, branch, commits | All five, Real | Picker is a select |
 | Diff | Options | Source: layout, collapse, whitespace, tests, find, copy path, status | Match, Real | Whitespace filtered in the client, find highlights lines not words |
