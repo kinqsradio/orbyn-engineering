@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  CircleCheck,
   PanelBottom,
   PanelLeft,
   PanelRight,
@@ -12,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
 import type { Project, RunState, Thread } from "../../api/types";
-import { elapsed, runStateLabels } from "../../lib/format";
+import { elapsed, relativeTime, runStateLabels } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
 import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
@@ -117,15 +118,32 @@ function RunStatusLine({ thread }: { thread: Thread }) {
   const tools = useMemo(() => (active ? runningTools(log?.items ?? []) : []), [log, active]);
   const now = useNow(active !== null);
   const refreshAll = useWorkspace((store) => store.refreshAll);
+  const putThread = useWorkspace((store) => store.putThread);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!state) return <div className="thread-state" role="status" />;
   if (!active) {
     // Failed and cancelled runs already have a notice in the log.
+    const settledAt = thread.lifecycle?.settled_at;
     return (
       <div className="thread-state" role="status">
         <span className={state === "interrupted" ? "run-status" : "sr-only"}>{runStateLabels[state]}</span>
+        {settledAt ? (
+          <p className="settled-note">
+            <CircleCheck size={14} aria-hidden />
+            Settled {relativeTime(settledAt).toLowerCase()}
+            <button
+              type="button"
+              className="text-action"
+              onClick={() => {
+                void api.patchThread(thread.id, { settled: false }).then(putThread);
+              }}
+            >
+              Unsettle
+            </button>
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -357,6 +375,7 @@ export function ThreadView({ id }: { id: string }) {
                     profileName={profileName}
                     beforeSend={beforeSend}
                     onSendFailed={() => setDocked(false)}
+                    showContext={hero || !detailsShown}
                   />
                 </div>
               </div>

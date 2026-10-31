@@ -36,6 +36,7 @@ export function Composer({
   profileName,
   beforeSend,
   onSendFailed,
+  showContext,
 }: {
   thread: Thread;
   engine: EngineStatus | null;
@@ -43,6 +44,8 @@ export function Composer({
   /** Runs first and may hold the send, as the hero transition does. */
   beforeSend?(): Promise<void>;
   onSendFailed?(): void;
+  /** The checkout, branch and access row, shown when nothing else carries them. */
+  showContext: boolean;
 }) {
   const draft = useUi((state) => state.drafts[thread.id] ?? "");
   const setDraft = useUi((state) => state.setDraft);
@@ -301,7 +304,7 @@ export function Composer({
           </button>
         </div>
       </div>
-      <div className="composer-context">
+      <div className="composer-context" hidden={!showContext}>
         <dl>
           <div title={thread.cwd}>
             <dt className="sr-only">Checkout</dt>

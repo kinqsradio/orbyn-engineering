@@ -10,10 +10,18 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  --details-reserve: 0px;
 }
-.thread-main[data-details="reserved"] {
-  --details-reserve: calc(var(--details-w) + var(--details-gap));
+/* The column moves aside for the details card only when they'd collide. */
+.thread-main {
+  container-type: inline-size;
+}
+@container (width < 1322px) {
+  .thread-stage {
+    --details-reserve: 0px;
+  }
+  .thread-main[data-details="reserved"] > .thread-stage {
+    --details-reserve: calc(var(--details-w) + var(--details-gap));
+  }
 }
 .thread-stage {
   display: flex;
@@ -108,7 +116,7 @@
 }
 .msg-bubble {
   max-width: 80%;
-  padding: 13px 12px 14px;
+  padding: 12px;
   border-radius: var(--radius-xl);
   background: var(--color-message);
   white-space: pre-wrap;
@@ -216,6 +224,15 @@
 .run-status {
   color: var(--color-textSoft);
 }
+.settled-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 28px;
+  padding: 0 4px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
 .run-status-detail {
   min-width: 0;
   color: var(--color-faint);
@@ -245,7 +262,7 @@
 /* Markdown */
 .md {
   overflow-wrap: anywhere;
-  line-height: 1.6;
+  line-height: 1.625;
 }
 .md > :first-child {
   margin-top: 0;
@@ -271,7 +288,7 @@
   line-height: 1.3;
 }
 .md h2 {
-  font-size: var(--text-heading);
+  font-size: 18px;
 }
 .md h3 {
   font-size: var(--text-title);
@@ -299,10 +316,10 @@
   margin-bottom: 0;
 }
 .md :not(pre) > code {
-  padding: 1px 4px;
+  padding: 0.085em 0.3em;
   border-radius: var(--radius-xs);
-  background: var(--color-chip);
-  font-size: 0.9em;
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  font-size: 0.85em;
   overflow-wrap: anywhere;
 }
 .md pre {
@@ -687,7 +704,8 @@
 .composer textarea {
   display: block;
   min-height: 62px;
-  padding: 18px 16px 8px;
+  padding: 17px 16px 8px;
+  line-height: 1.625;
   border: 0;
   background: transparent;
   resize: none;

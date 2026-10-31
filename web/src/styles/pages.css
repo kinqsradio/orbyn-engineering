@@ -7,7 +7,6 @@
 }
 .settings-side {
   padding: 12px 8px;
-  border-right: 1px solid var(--color-divider);
 }
 .settings-side .back-link {
   padding: 0 8px;
@@ -57,10 +56,10 @@
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 760px;
+  gap: 20px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 16px 32px 48px;
+  padding: 24px 32px 64px;
 }
 .section-bar {
   display: flex;
@@ -80,15 +79,20 @@
 .setting-list {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--color-divider);
+  border-radius: var(--radius-xl);
+  background: var(--color-raised);
+  box-shadow: inset 0 0 0 1px var(--color-divider);
 }
 .setting-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-divider);
   min-width: 0;
+}
+.setting-row:last-child {
+  border-bottom: 0;
 }
 .engine-row-head {
   display: flex;
@@ -131,9 +135,11 @@
 }
 .facts-block {
   flex-direction: column;
-  padding: 10px 0;
-  border-top: 1px solid var(--color-divider);
-  border-bottom: 1px solid var(--color-divider);
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius-xl);
+  background: var(--color-raised);
+  box-shadow: inset 0 0 0 1px var(--color-divider);
 }
 .facts-block dt {
   width: 110px;
@@ -145,11 +151,10 @@
   font-size: var(--text-small);
 }
 .setting-form {
-  margin-top: 8px;
-  padding: 14px;
-  border: 1px solid var(--color-divider);
+  padding: 16px;
   border-radius: var(--radius-xl);
   background: var(--color-raised);
+  box-shadow: inset 0 0 0 1px var(--color-divider);
 }
 .skill-group {
   margin-top: 8px;

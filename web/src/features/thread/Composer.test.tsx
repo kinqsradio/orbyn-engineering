@@ -27,7 +27,7 @@ const box = () => screen.getByRole("textbox");
 
 function setup(over: Partial<Thread> = {}) {
   vi.spyOn(api, "thread").mockResolvedValue(thread);
-  return render(<Composer thread={{ ...thread, ...over }} engine={null} profileName={null} />);
+  return render(<Composer thread={{ ...thread, ...over }} engine={null} profileName={null} showContext />);
 }
 
 describe("Composer", () => {
@@ -150,7 +150,7 @@ describe("Composer", () => {
   });
 
   it("shows engine, model and profile", () => {
-    render(<Composer thread={thread} engine={null} profileName="Backend" />);
+    render(<Composer thread={thread} engine={null} profileName="Backend" showContext />);
     expect(screen.getByText("claude")).toBeInTheDocument();
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText("Backend")).toBeInTheDocument();

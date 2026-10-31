@@ -41,6 +41,7 @@ import { UpdatePill } from "./Updates";
 
 const DONE_WINDOW_MS = 5 * 60_000;
 const RECENT_LIMIT = 12;
+const SETTLED_LIMIT = 10;
 
 function RowStatus({ thread }: { thread: Thread }) {
   const active = thread.active_run;
@@ -138,7 +139,16 @@ function ThreadHoverCard({
   );
 }
 
-function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) {
+function ThreadRow({
+  thread,
+  selected,
+  compact,
+}: {
+  thread: Thread;
+  selected: boolean;
+  /** Settled threads are one quiet line. */
+  compact?: boolean;
+}) {
   const project = useWorkspace((state) =>
     state.projects.data?.find((p) => p.id === thread.project_id),
   );
@@ -171,7 +181,7 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
   return (
     <li>
       <a
-        className="thread-row"
+        className={compact ? "thread-row thread-row-compact" : "thread-row"}
         href={routeHref({ name: "thread", id: thread.id })}
         aria-current={selected ? "page" : undefined}
         onPointerEnter={(event) => {
@@ -191,6 +201,14 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
           setMenu({ x: event.clientX, y: event.clientY });
         }}
       >
+        {compact ? (
+          <>
+            <ProjectBadge name={projectName} />
+            <span className="thread-row-title">{thread.title}</span>
+            <RowStatus thread={thread} />
+          </>
+        ) : (
+          <>
         <span className="thread-row-line">
           <ProjectBadge name={projectName} />
           <span className="thread-row-project">{projectName}</span>
@@ -209,6 +227,8 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
           {unmanaged ? <Pill tone="warn">Unmanaged</Pill> : null}
           <EngineGlyph name={engineName} />
         </span>
+          </>
+        )}
       </a>
       {hover && !menu ? (
         <ThreadHoverCard
@@ -355,6 +375,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [query, setQuery] = useState("");
   const [needsAttention, setNeedsAttention] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [showAllSettled, setShowAllSettled] = useState(false);
   const nav = useRef<HTMLElement>(null);
   useLoopsWhileVisible(nav);
   const selectedThread = route.name === "thread" ? route.id : null;
@@ -384,6 +405,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const filtering = query.trim() !== "" || needsAttention;
   const selectedAt = groups.recent.findIndex((thread) => thread.id === selectedThread);
   const recentLimit = Math.max(RECENT_LIMIT, selectedAt + 1);
+  const settledRows = showAllSettled ? groups.settled : groups.settled.slice(0, SETTLED_LIMIT);
   const row = (thread: Thread) => (
     <ThreadRow key={thread.id} thread={thread} selected={thread.id === selectedThread} />
   );
@@ -484,7 +506,16 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           ) : null}
           {groups.settled.length > 0 ? (
             <Group id="settled" label="Settled" count={groups.settled.length} defaultOpen={false}>
-              {groups.settled.map(row)}
+              {settledRows.map((thread) => (
+                <ThreadRow key={thread.id} thread={thread} selected={thread.id === selectedThread} compact />
+              ))}
+              {groups.settled.length > settledRows.length ? (
+                <li>
+                  <button type="button" className="show-more" onClick={() => setShowAllSettled(true)}>
+                    Show {groups.settled.length - settledRows.length} more
+                  </button>
+                </li>
+              ) : null}
             </Group>
           ) : null}
         </div>

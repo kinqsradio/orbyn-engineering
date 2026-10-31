@@ -745,18 +745,19 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 320px;
+  width: 320px;
   padding: 8px 12px;
-  border-radius: var(--radius-md);
-  background: var(--color-raised);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-raised) 84%, transparent);
+  backdrop-filter: blur(16px);
   box-shadow:
     inset 0 0 0 1px var(--color-outline),
     0 18px 44px -18px var(--color-shadow);
   font-size: var(--text-meta);
   pointer-events: none;
   transition:
-    scale 100ms,
-    opacity 100ms;
+    scale 150ms,
+    opacity 150ms;
   transform-origin: left top;
 }
 @starting-style {

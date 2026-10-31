@@ -72,9 +72,9 @@
   display: flex;
   align-items: center;
   gap: 0;
-  height: 36px;
-  margin: 6px 0 4px;
-  padding: 0 8px 0 16px;
+  height: 28px;
+  margin: 10px 0 4px;
+  padding: 0 9px 0 18px;
   flex: none;
 }
 .sidebar-search .icon-btn {
@@ -172,6 +172,23 @@
 .group-list .thread-row {
   min-height: 78px;
 }
+.thread-row-compact {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  margin-bottom: 1px;
+  padding: 0 10px;
+  color: var(--color-faint);
+}
+.thread-row-compact .thread-row-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-body);
+}
+.group-head {
+  height: 32px;
+}
 .thread-row-line {
   display: flex;
   align-items: center;
@@ -203,7 +220,7 @@
   font-variant-numeric: tabular-nums;
 }
 .thread-row-title {
-  margin-top: 3px;
+  margin-top: 2px;
   overflow: hidden;
   font-size: var(--text-small);
   line-height: 1.45;
@@ -297,12 +314,14 @@ details[open] > summary > .chev {
   display: flex;
   align-items: center;
   flex: none;
-  gap: 8px;
+  gap: 4px;
   height: 40px;
-  padding: 0 12px 4px;
+  padding: 0 9px 4px 8px;
   padding-bottom: max(4px, env(safe-area-inset-bottom));
 }
 .sidebar-foot > .icon-btn {
+  width: 32px;
+  height: 32px;
   color: var(--color-muted);
 }
 .sidebar-foot > .icon-btn[aria-current="page"] {
