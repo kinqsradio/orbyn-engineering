@@ -19,7 +19,7 @@ impl TempDir {
     pub fn new() -> Self {
         let path = std::env::temp_dir().join(format!("orbynd-test-{}", orbyn_core::util::new_id()));
         std::fs::create_dir_all(&path).unwrap();
-        Self(std::fs::canonicalize(path).unwrap())
+        Self(orbyn_core::util::canonicalize(path).unwrap())
     }
 
     pub fn path(&self) -> &Path {
@@ -372,7 +372,7 @@ pub fn library(root: &Path) -> PathBuf {
     run_git(root, &["config", "user.name", "T"]);
     run_git(root, &["add", "."]);
     run_git(root, &["commit", "-q", "-m", "library"]);
-    std::fs::canonicalize(root).unwrap()
+    orbyn_core::util::canonicalize(root).unwrap()
 }
 
 /// A trusted project with a thread on `engine`.

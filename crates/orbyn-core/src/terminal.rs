@@ -373,6 +373,7 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
     // or the session would never drop.
     let reading = Arc::downgrade(&session);
     std::thread::spawn(move || {
+        let mut awaiting_cursor_query = cfg!(windows);
         let mut buffer = [0u8; 8192];
         while let Ok(read) = reader.read(&mut buffer) {
             if read == 0 {
@@ -381,7 +382,11 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
             let Some(session) = reading.upgrade() else {
                 break;
             };
-            let chunk = buffer[..read].to_vec();
+            let mut chunk = buffer[..read].to_vec();
+            if awaiting_cursor_query && take_cursor_query(&mut chunk) {
+                awaiting_cursor_query = false;
+                let _ = session.write(CURSOR_REPLY);
+            }
             let mut scrollback = lock(&session.scrollback);
             scrollback.push(&chunk, SCROLLBACK_BYTES, SCROLLBACK_LINES);
             let _ = session.output.send(chunk);
@@ -398,6 +403,22 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
         }
     });
     Ok(session)
+}
+
+/// ConPTY asks where the cursor is before it starts the child, and the child gets
+/// nothing until it hears back. A person's terminal might answer, but an engine run
+/// has no terminal attached, so the session answers and the question goes no further.
+const CURSOR_QUERY: &[u8] = b"\x1b[6n";
+const CURSOR_REPLY: &[u8] = b"\x1b[1;1R";
+
+fn take_cursor_query(chunk: &mut Vec<u8>) -> bool {
+    let found = chunk
+        .windows(CURSOR_QUERY.len())
+        .position(|part| part == CURSOR_QUERY);
+    if let Some(at) = found {
+        chunk.drain(at..at + CURSOR_QUERY.len());
+    }
+    found.is_some()
 }
 
 #[cfg(unix)]
@@ -457,6 +478,15 @@ pub fn shell_command(command: &str) -> (PathBuf, Vec<std::ffi::OsString>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cursor_query_is_taken_once_and_the_rest_of_the_output_stays() {
+        let mut chunk = b"\x1b[?9001h\x1b[6nready".to_vec();
+        assert!(take_cursor_query(&mut chunk));
+        assert_eq!(chunk, b"\x1b[?9001hready");
+        assert!(!take_cursor_query(&mut chunk));
+        assert_eq!(chunk, b"\x1b[?9001hready");
+    }
 
     #[test]
     fn windows_prefers_a_native_powershell_and_never_a_script_or_posix_path() {

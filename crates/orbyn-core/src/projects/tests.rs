@@ -99,7 +99,7 @@ async fn clone_lands_under_repo_and_a_failed_clone_leaves_nothing() {
         .clone_project(source.to_str().unwrap(), None, None)
         .await
         .unwrap();
-    assert!(project.path.ends_with("repo/upstream"));
+    assert!(Path::new(&project.path).ends_with(Path::new("repo").join("upstream")));
     assert!(Path::new(&project.path).join("a.txt").exists());
 
     let missing = dir.path().join("nowhere");
