@@ -26,7 +26,16 @@ const loadXterm = async () => {
   return { Terminal, FitAddon };
 };
 
-export function TerminalPanel({ threadId, terminalId }: { threadId: string; terminalId?: string }) {
+export function TerminalPanel({
+  threadId,
+  terminalId,
+  observe = false,
+}: {
+  threadId: string;
+  terminalId?: string;
+  /** Shows the output and sends nothing, so it can sit beside a running script. */
+  observe?: boolean;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [attempt, setAttempt] = useState(0);
@@ -61,7 +70,7 @@ export function TerminalPanel({ threadId, terminalId }: { threadId: string; term
         terminal.options.theme = terminalTheme();
       };
 
-      const socket = new WebSocket(terminalUrl(threadId, window.location, terminalId));
+      const socket = new WebSocket(terminalUrl(threadId, window.location, terminalId, observe));
       socket.binaryType = "arraybuffer";
       const encoder = new TextEncoder();
 
@@ -87,7 +96,7 @@ export function TerminalPanel({ threadId, terminalId }: { threadId: string; term
         terminal.write(typeof message.data === "string" ? message.data : new Uint8Array(message.data));
       };
       const input = terminal.onData((data) => {
-        if (socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
+        if (!observe && socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
       });
 
       let frame = 0;
@@ -112,7 +121,7 @@ export function TerminalPanel({ threadId, terminalId }: { threadId: string; term
       disposed = true;
       cleanup();
     };
-  }, [threadId, terminalId, attempt]);
+  }, [threadId, terminalId, attempt, observe]);
 
   return (
     <div className="terminal-panel">

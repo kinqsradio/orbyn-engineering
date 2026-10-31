@@ -29,6 +29,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Draft | Composer | Capture: x 80-816, y 469-580 | x 80.5-816.5, y 468-580 | 0.5 x, 1 y, re-measured |
 | Draft | Divider, pane | Capture: x 1189, 539 wide | x 1189, 539 wide | 0, re-measured |
 | Draft | Details card | Capture: 280, y 64-295 | 280, y 64-225 | Editor, script, commit rows hidden |
+| Draft | New worktree | Source: base branch picker | Base branch text box beside the purpose, Real | Typed, not picked |
 | Draft | Launcher | Live: 7 surfaces | Terminal, Diff, Activity | Others hidden, no backend |
 | Draft | No project state | Live: What should we work on?, No project picker below it, permissions alone under the composer | Match, Real | Scratch thread sent through the real service |
 | Draft | Project selected | Live: What should we build in, project as picker, or start without a project, checkout and branch left, permissions right | Match, Real | Heading to composer 49 |
@@ -50,6 +51,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Timeline | Error banner | Source: end-of-thread failure, dismiss for the session | Match, Real, with Retry | Inline notice stays for history |
 | Timeline | Changed files | Source: per-turn tree with open diff | Flat list, Real, opens and scrolls to the file | Flat, not a tree |
 | Timeline | Subagent bar | Source: model, effort, status, Runs on its own, Open parent | Match, Real on a delegated thread | Live activity not shown in the parent |
+| Thread details | Limits | Source: remaining windows row | Match, Real from the protocol double | Checked once in five minutes per page load |
+| Usage | Price and alias | Source: per-model rates, counts as | Dialog from the model row, Real | A failed save keeps the form; no Mixed price |
 | Timeline | Announcers | Source | Background threads live region, Real | Current-thread activity uses the status row |
 | Timeline | Markdown | Live: 14/22.75, p margin 10.4, h2 18/600 | Match | 0 |
 | Timeline | Inline code | Live: 11.9px, radius 4 | Match | 0 by ratio |
@@ -92,8 +95,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Pull requests | Linked panel | Source: multiple, stacks, unlink | Link, unlink, watch, Real on a stand-in gh | Layout own |
 | Git | Actions | Source: split control with commit, push, pull request and their combinations, phases | Git menu in the header, dialog, phase list, Real against real Git and a stand-in gh | Menu, not a split button; no generated commit message |
 | Git | Branches | Source: picker, search, create | Dialog from the branch row, Real | Dialog, not a popover |
-| Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
-| Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split and close | Tabs in a top row, reference has a side list; scripts menu not run |
+| Open in editor | Details row | Source: Open in preferred, menu of detected editors | Match, Real through a stand-in editor on the service's PATH | Layout own |
+| Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split, close, scripts menu and watch only | Tabs in a top row, reference has a side list |
 | Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit, image, video, audio, PDF, font, hex and partial text from the raw route, Save file | Layout own; no office or ZIP view |
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
@@ -113,7 +116,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | ACP registry | Source: search and add agents | Search, add, remove, Real against a local registry file | First listed install route only |
-| Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
+| Settings | Threads | Live name | Auto-settle, titles, snooze presets, Real | Presets are minutes only, no time of day |
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
 | Settings | Maintenance | Live name | Update checks, retention rules with preview and report, OTLP addresses with a test, Real | Contents unobserved; the 1 GiB notice ran on the real answer with one field raised |
 | Settings | Project settings | Source: per-project defaults | Dialog from each project, Real | Layout own; rows follow the service's project-scoped keys |

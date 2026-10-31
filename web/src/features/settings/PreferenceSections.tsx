@@ -324,6 +324,11 @@ export function SourceControlSection() {
         <ErrorState title="Couldn't check source control" failure={forges.error} onRetry={forges.reload} />
       ) : (
         <SettingGroup title="Hosts">
+          <SettingRow title="Check again" description="Finds a command line tool or sign-in that has changed.">
+            <Button small onClick={forges.reload}>
+              Rescan
+            </Button>
+          </SettingRow>
           {forges.data.map((forge) => (
             <SettingRow
               key={forge.id}

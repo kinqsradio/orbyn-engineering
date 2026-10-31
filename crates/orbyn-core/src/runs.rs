@@ -4,7 +4,7 @@
 
 mod shape;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -227,6 +227,9 @@ pub struct RunManager {
     base_url: String,
     runs_dir: PathBuf,
     active: Mutex<HashMap<String, ActiveRun>>,
+    /// Runs stopped because their parent was. Reporting back would start the parent
+    /// again, undoing the Stop.
+    stopped_with_parent: Mutex<HashSet<String>>,
 }
 
 /// How a run is asked to end. `cancel` lets the engine stop itself; `force` ends it
@@ -274,6 +277,7 @@ impl RunManager {
             base_url,
             runs_dir,
             active: Mutex::new(HashMap::new()),
+            stopped_with_parent: Mutex::new(HashSet::new()),
         }
     }
 
@@ -576,6 +580,10 @@ impl RunManager {
     /// A delegated thread with nothing left to do tells its parent, through the
     /// parent's queue, so the report waits its turn and wakes the parent.
     fn report_to_parent(self: &Arc<Self>, thread_id: &str, run_id: &str) {
+        let stopped = &self.stopped_with_parent;
+        if stopped.lock().is_ok_and(|mut held| held.remove(run_id)) {
+            return;
+        }
         let report = || -> Result<()> {
             let thread = self.store.thread(thread_id)?;
             let lifecycle = thread.lifecycle.as_ref();
@@ -602,6 +610,12 @@ impl RunManager {
         }
     }
 
+    fn note_stopped_with_parent(&self, run_id: &str) {
+        if let Ok(mut held) = self.stopped_with_parent.lock() {
+            held.insert(run_id.to_owned());
+        }
+    }
+
     /// Requests cancellation, with any delegated threads running under this one.
     /// The run reaches `cancelled` once its engine is down.
     pub fn cancel(&self, run_id: &str) -> Result<()> {
@@ -611,6 +625,7 @@ impl RunManager {
         }
         for child in self.store.child_threads(&run.thread_id)? {
             if let Some(active) = self.store.thread(&child)?.active_run {
+                self.note_stopped_with_parent(&active.id);
                 let _ = self.cancel(&active.id);
             }
         }
@@ -649,7 +664,8 @@ impl RunManager {
         })?;
         self.store.request_stop(&active.id)?;
         for child in self.store.child_threads(thread_id)? {
-            if self.store.thread(&child)?.active_run.is_some() {
+            if let Some(running) = self.store.thread(&child)?.active_run {
+                self.note_stopped_with_parent(&running.id);
                 Box::pin(self.force_stop(&child, actor)).await?;
             }
         }

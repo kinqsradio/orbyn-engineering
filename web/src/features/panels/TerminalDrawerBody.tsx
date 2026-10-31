@@ -1,4 +1,4 @@
-import { Columns2, Play, Plus, Rows2, X } from "lucide-react";
+import { Columns2, Eye, Play, Plus, Rows2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { request } from "../../api/client";
 import type { ProjectFileView, TerminalInfo } from "../../api/types";
@@ -28,6 +28,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
   );
   const [active, setActive] = useState(MAIN);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [watching, setWatching] = useState(false);
   const pushToast = useUi((state) => state.pushToast);
   const { reload } = terminals;
   const groups = useMemo(() => groupTerminals(terminals.data ?? []), [terminals.data]);
@@ -114,6 +115,9 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
             </IconButton>
           </>
         ) : null}
+        <IconButton label="Watch only" pressed={watching} onClick={() => setWatching(!watching)}>
+          <Eye size={14} aria-hidden />
+        </IconButton>
         <IconButton label="New terminal" onClick={() => void open({})}>
           <Plus size={14} aria-hidden />
         </IconButton>
@@ -138,11 +142,12 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
             <TerminalPanel
               key={terminal.id}
               threadId={threadId}
+              observe={watching}
               {...(terminal.id === MAIN ? {} : { terminalId: terminal.id })}
             />
           ))
         ) : (
-          <TerminalPanel threadId={threadId} />
+          <TerminalPanel threadId={threadId} observe={watching} />
         )}
       </div>
       {menu ? (

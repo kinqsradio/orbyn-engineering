@@ -1,7 +1,10 @@
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { ServerSettings } from "../../api/types";
+import type { SnoozePreset } from "../../generated/SnoozePreset";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { PreferenceGroups } from "./PreferenceRows";
@@ -13,6 +16,42 @@ const AFTER_DAYS: { value: number | null; label: string }[] = [
   { value: 7, label: "After 7 days" },
   { value: 30, label: "After 30 days" },
 ];
+
+const MAX_PRESETS = 8;
+const MAX_MINUTES = 30 * 24 * 60;
+
+/** The choices a thread's Snooze menu offers, in this order. */
+function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: SnoozePreset[]): void }) {
+  const [label, setLabel] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const valid = label.trim() !== "" && Number(minutes) > 0 && Number(minutes) <= MAX_MINUTES;
+  return (
+    <SettingGroup title="Snooze presets">
+      {presets.map((preset) => (
+        <SettingRow key={preset.label} title={preset.label} description={`${preset.minutes} minutes`}>
+          <IconButton label={`Remove ${preset.label}`} onClick={() => save(presets.filter((entry) => entry !== preset))}>
+            <Trash2 size={14} aria-hidden />
+          </IconButton>
+        </SettingRow>
+      ))}
+      <SettingRow title="Add a preset" description={`Up to ${MAX_PRESETS}, each up to 30 days.`}>
+        <input aria-label="Preset name" placeholder="Name" value={label} onChange={(event) => setLabel(event.target.value)} />
+        <input aria-label="Preset minutes" type="number" min="1" placeholder="Minutes" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+        <Button
+          small
+          disabled={!valid || presets.length >= MAX_PRESETS}
+          onClick={() => {
+            save([...presets, { label: label.trim(), minutes: Number(minutes) }]);
+            setLabel("");
+            setMinutes("");
+          }}
+        >
+          Add
+        </Button>
+      </SettingRow>
+    </SettingGroup>
+  );
+}
 
 export function ThreadsSection() {
   const settings = useAsync("server-settings", (signal) => api.settings(signal));
@@ -69,6 +108,7 @@ export function ThreadsSection() {
           />
         </SettingRow>
       </SettingGroup>
+      <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
       <SettingGroup title="Titles">
         <SettingRow title="Title instructions" description="Guidance used when a thread title is generated.">
           <textarea

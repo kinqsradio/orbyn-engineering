@@ -93,6 +93,8 @@ export interface Service {
   url: string;
   /** Where the service keeps its data. */
   dataDir: string;
+  /** A folder on the service's PATH, for stand-in tools. Only with `forge`. */
+  binDir: string;
   /** A plain folder outside any library, for the add-folder flow. */
   folder: string;
   /** A small Git repository outside the library. */
@@ -171,6 +173,7 @@ export async function startService(
   return {
     url: ready.url,
     dataDir: join(dir, "data"),
+    binDir: join(dir, "bin"),
     folder,
     repo,
     remote: join(dir, "github.com/o/r.git"),
