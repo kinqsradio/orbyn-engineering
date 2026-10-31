@@ -111,13 +111,13 @@ toward completion.
 - [ ] A76 Edit sent prompt: forks before that message into a new thread in the same folder and puts the text back in its composer; files are not rewound | docs/rewind.md | w d s | S | beyond T3
 
 ## B. Composer
-- [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done
+- [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done | web done
 - [x] B2 Large paste to attachment: 32 KiB or more becomes a file, shift-paste keeps it editable | docs/user/composer.md | w d | S
 - [ ] B3 Live Markdown styling: rich editor that keeps literal markers | apps/web/src/components/ComposerPromptEditorTiptap.tsx | w d m | L
 - [x] B4 List and quote editing: Shift+Enter continue, Tab nest | docs/user/composer.md | w d | M
 - [ ] B5 Code block editing: indent, language picker, exit rules | apps/web/src/components/chat/ComposerCodeBlockNodeView.tsx | w d | M
-- [x] B6 Attachments: 100 files; 10 MiB per image, 80 MiB images total, 50 MiB other | docs/user/composer.md | w d m s | L | server done
-- [x] B7 Upload lifecycle: starts on add, retry or remove, blocks send until done | apps/web/src/components/chat/ComposerAttachmentStrip.tsx | w d m | M | server done
+- [x] B6 Attachments: 100 files; 10 MiB per image, 80 MiB images total, 50 MiB other | docs/user/composer.md | w d m s | L | server done | web done
+- [x] B7 Upload lifecycle: starts on add, retry or remove, blocks send until done | apps/web/src/components/chat/ComposerAttachmentStrip.tsx | w d m | M | server done | web done
 - [ ] B8 HEIC conversion and resizing: JPEG conversion, shrinks oversized photos | docs/user/composer.md | w d m | M
 - [x] B9 Drag and paste images: intake into web composer | apps/web/src/components/chat/useComposerAttachmentIntake.ts | w d | S
 - [ ] B10 System share sheet: send files to T3 from other apps | apps/mobile/src/features/sharing/IncomingShareProvider.tsx | m | M
@@ -125,12 +125,12 @@ toward completion.
 - [x] B12 Send shortcut modes: Enter, Mod+Enter multiline only, Mod+Enter | packages/contracts/src/settings.ts | w d | S
 - [x] B13 Opposite action: modifier or long-press flips queue/steer | docs/user/composer.md | w d m | S
 - [x] B14 Queued messages: persisted on server, shown as dashed rows | apps/web/src/components/chat/QueuedRunsControl.tsx | w d m s | L
-- [x] B15 Queue actions: send now, edit in composer, remove | apps/web/src/components/chat/useQueuedRunEdit.ts | w d m s | M | server done
-- [x] B16 Held queue and resume: preserved after stop or restart | docs/user/composer.md | w d m s | M | server done
+- [x] B15 Queue actions: send now, edit in composer, remove | apps/web/src/components/chat/useQueuedRunEdit.ts | w d m s | M | server done | web done
+- [x] B16 Held queue and resume: preserved after stop or restart | docs/user/composer.md | w d m s | M | server done | web done
 - [x] B17 Steer oldest queued: shortcut, draft untouched | packages/contracts/src/keybindings.ts | w d | S
 - [ ] B18 Offline mobile queue: local copies, resumes on reconnect | docs/user/composer.md | m | L
 - [x] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S | web done
-- [x] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M | server done
+- [x] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M | server done | web done
 - [x] B21 Remembered model defaults: provider, model and options carry to new threads | docs/user/composer.md | w d m | S | web done
 - [x] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L
 - [x] B23 Model visibility and order: hide, reorder, favorite per instance | packages/contracts/src/settings.ts | w d s | M
@@ -144,10 +144,10 @@ toward completion.
 - [x] B31 Prompt stash: save/restore drafts, uploads kept 24 hours | apps/web/src/components/chat/ComposerStashMenu.tsx | w d | M
 - [ ] B32 iPhone voice input: on-device transcription, 5-minute limit, iOS 26+ | apps/mobile/src/features/voice-input/VoiceInputProvider.tsx | m | L
 - [ ] B33 Microphone ranking: priority across device kinds | apps/mobile/src/features/settings/SettingsMicrophoneRouteScreen.tsx | m | M
-- [x] B34 Slash commands: `/` menu with T3 and provider commands | apps/web/src/components/chat/ComposerCommandMenu.tsx | w d m | M | server done
-- [x] B35 Skills: `$` menu, also in slash menu by toggle | apps/web/src/components/chat/SkillInlineText.tsx | w d m | M | server done
+- [x] B34 Slash commands: `/` menu with T3 and provider commands | apps/web/src/components/chat/ComposerCommandMenu.tsx | w d m | M | server done | web done
+- [x] B35 Skills: `$` menu, also in slash menu by toggle | apps/web/src/components/chat/SkillInlineText.tsx | w d m | M | server done | web done
 - [ ] B36 Restart agent session: reloads skills, plugins and MCP config | apps/web/src/components/CommandPalette.tsx | w d s | S
-- [x] B37 `/compact`: manual compaction, also from context meter | docs/user/composer.md | w d m s | M | server done
+- [x] B37 `/compact`: manual compaction, also from context meter | docs/user/composer.md | w d m s | M | server done | web done
 - [ ] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L
 - [x] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
 - [ ] B40 Inline context chips: terminal, review comment, annotation, file at cursor | apps/web/src/components/ContextChip.tsx | w d m | L

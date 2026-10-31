@@ -1,4 +1,4 @@
-import { CornerDownRight, Send, X } from "lucide-react";
+import { CornerDownRight, Pencil, Send, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { QueuedMessage } from "../../api/types";
@@ -11,11 +11,14 @@ export function QueuedMessages({
   items,
   running,
   onChange,
+  onEdit,
 }: {
   threadId: string;
   items: QueuedMessage[];
   running: boolean;
   onChange(): void;
+  /** Takes the text back into the composer once it has left the queue. */
+  onEdit(prompt: string): void;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +46,12 @@ export function QueuedMessages({
               <CornerDownRight size={14} aria-hidden />
             </IconButton>
           ) : null}
+          <IconButton
+            label={`Edit: ${item.prompt}`}
+            onClick={() => act(api.removeQueued(item.id).then(() => onEdit(item.prompt)))}
+          >
+            <Pencil size={14} aria-hidden />
+          </IconButton>
           <IconButton label={`Send now: ${item.prompt}`} onClick={() => act(api.sendQueuedNow(item.id))}>
             <Send size={14} aria-hidden />
           </IconButton>

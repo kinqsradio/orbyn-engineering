@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -47,9 +47,14 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd,
 
 function makeLibrary(root: string): string {
   const library = join(root, "library");
-  mkdirSync(join(library, "skills"), { recursive: true });
+  mkdirSync(join(library, "skills/how"), { recursive: true });
   writeFileSync(join(library, "AGENTS.md"), "# Library\n");
-  writeFileSync(join(library, "skills/catalog.json"), '{"skills":[]}\n');
+  writeFileSync(join(library, "skills/catalog.json"), '{"skills":[{"name":"how","category":"Engineering practice"}]}\n');
+  writeFileSync(join(library, "skills/how/SKILL.md"), '---\nname: how\ndescription: "Trace behavior"\n---\n\n# how\n');
+  for (const host of [".claude", ".agents"]) {
+    mkdirSync(join(library, host, "skills"), { recursive: true });
+    symlinkSync("../../skills/how", join(library, host, "skills/how"));
+  }
   writeFileSync(join(library, ".gitignore"), "repo/\n");
   git(library, "init", "-q", "-b", "main");
   git(library, "add", ".");

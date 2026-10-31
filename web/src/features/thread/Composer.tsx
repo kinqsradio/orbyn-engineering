@@ -1,4 +1,6 @@
-import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, Square, X } from "lucide-react";
+import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, Square, X,
+  RotateCcw,
+} from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -11,7 +13,7 @@ import {
 } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
-import type { Attachment, EngineStatus, PermissionMode, Thread } from "../../api/types";
+import type { EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
@@ -44,10 +46,20 @@ interface Suggestion {
   insert?: string;
 }
 
-interface ShownAttachment extends Attachment {
+/** A file on its way to the service: `id` once kept, `failure` if it was refused. */
+interface ShownAttachment {
+  key: string;
+  file: File;
+  name: string;
   /** An object URL for images added here, so the shelf can show them. */
   preview: string | null;
+  id: string | null;
+  failure: string | null;
 }
+
+/** The service refuses longer messages; here the draft stays and says so first. */
+const MAX_PROMPT_CHARS = 120_000;
+const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
 const NO_STASHES: StashedPrompt[] = [];
 const LOCAL_COMMANDS: Suggestion[] = [
@@ -97,7 +109,6 @@ export function Composer({
   const stashes = useUi((state) => state.stashes[thread.id] ?? NO_STASHES);
   const log = useThreadLogs((state) => state.logs[thread.id]);
   const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
-  const [uploading, setUploading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [stoppedRun, setStoppedRun] = useState<string | null>(null);
   const refreshAll = useWorkspace((state) => state.refreshAll);
@@ -108,7 +119,9 @@ export function Composer({
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const busy = thread.active_run !== null;
-  const canSend = draft.trim() !== "" && !sending;
+  const uploading = attachments.some((file) => file.id === null);
+  const overBy = charactersOver(draft);
+  const canSend = draft.trim() !== "" && !sending && !uploading && overBy === 0;
   const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
   const reloadQueue = queue.reload;
   const runId = thread.active_run?.id ?? null;
@@ -206,7 +219,7 @@ export function Composer({
     try {
       await beforeSend?.();
       await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false)));
-      const ids = attachments.map((file) => file.id);
+      const ids = attachments.flatMap((file) => file.id ?? []);
       const run = busy ? null : await api.startRun(thread.id, prompt.trim(), ids);
       if (steering) await api.steer(thread.id, prompt.trim());
       else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
@@ -303,13 +316,13 @@ export function Composer({
     const files = [...event.clipboardData.files];
     if (files.length > 0) {
       event.preventDefault();
-      void upload(files);
+      upload(files);
       return;
     }
     const text = event.clipboardData.getData("text/plain");
     if (text.length >= LARGE_PASTE_BYTES && !shiftPaste.current) {
       event.preventDefault();
-      void upload([new File([text], "pasted-text.txt", { type: "text/plain" })]);
+      upload([new File([text], "pasted-text.txt", { type: "text/plain" })]);
     }
     shiftPaste.current = false;
   };
@@ -317,7 +330,7 @@ export function Composer({
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragging(false);
-    if (event.dataTransfer.files.length > 0) void upload([...event.dataTransfer.files]);
+    if (event.dataTransfer.files.length > 0) upload([...event.dataTransfer.files]);
   };
 
   const stash = () => {
@@ -364,24 +377,31 @@ export function Composer({
       .then(reloadQueue, (failure: unknown) => setError(`Couldn't steer. ${toFailure(failure).message}`));
   });
 
-  const upload = async (files: FileList | File[] | null) => {
+  const startUpload = (entry: ShownAttachment) => {
+    const settle = (patch: Partial<ShownAttachment>) =>
+      setAttachments((current) => current.map((file) => (file.key === entry.key ? { ...file, ...patch } : file)));
+    settle({ failure: null });
+    api.uploadAttachment(thread.id, entry.file).then(
+      (kept) => settle({ id: kept.id, name: kept.name }),
+      (failure: unknown) => settle({ failure: toFailure(failure).message }),
+    );
+  };
+
+  /** Each file starts at once and ends up kept or refused on its own. */
+  const upload = (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
-    setUploading(true);
     setError(null);
-    try {
-      const added = await Promise.all(
-        [...files].map(async (file) => ({
-          ...(await api.uploadAttachment(thread.id, file)),
-          preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
-        })),
-      );
-      setAttachments((current) => [...current, ...added]);
-    } catch (failure) {
-      setError(`Couldn't attach that. ${toFailure(failure).message}`);
-    } finally {
-      setUploading(false);
-      if (filePicker.current) filePicker.current.value = "";
-    }
+    const added = [...files].map((file) => ({
+      key: crypto.randomUUID(),
+      file,
+      name: file.name,
+      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+      id: null,
+      failure: null,
+    }));
+    setAttachments((current) => [...current, ...added]);
+    added.forEach(startUpload);
+    if (filePicker.current) filePicker.current.value = "";
   };
 
   const setAccess = async (mode: PermissionMode) => {
@@ -478,7 +498,13 @@ export function Composer({
           {error}
         </p>
       ) : null}
-      <QueuedMessages threadId={thread.id} items={queue.data ?? []} running={busy} onChange={reloadQueue} />
+      <QueuedMessages
+        threadId={thread.id}
+        items={queue.data ?? []}
+        running={busy}
+        onChange={reloadQueue}
+        onEdit={(prompt) => setDraft(thread.id, draft.trim() ? `${draft}\n\n${prompt}` : prompt)}
+      />
       <QuestionPanel threadId={thread.id} waiting={thread.active_run?.state === "awaiting_approval"} />
       <ComposerBanners engine={engine} />
       {runId !== null && runId === stoppedRun ? <StopNotice threadId={thread.id} runId={runId} /> : null}
@@ -519,19 +545,38 @@ export function Composer({
         {attachments.length > 0 ? (
           <ul className="attachment-strip" aria-label="Attachments">
             {attachments.map((file) => (
-              <li key={file.id}>
+              <li key={file.key} data-failed={file.failure !== null || undefined}>
                 {file.preview ? <img src={file.preview} alt="" className="attachment-thumb" /> : null}
-                <span>{file.name}</span>
+                <span title={file.failure ?? undefined}>{file.name}</span>
+                {file.failure ? (
+                  <>
+                    <span className="attachment-failure" role="alert">
+                      {file.failure}
+                    </span>
+                    <button type="button" aria-label={`Retry ${file.name}`} onClick={() => startUpload(file)}>
+                      <RotateCcw size={12} aria-hidden />
+                    </button>
+                  </>
+                ) : file.id === null ? (
+                  <span className="sr-only" role="status">
+                    Uploading
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   aria-label={`Remove ${file.name}`}
-                  onClick={() => setAttachments(attachments.filter((entry) => entry.id !== file.id))}
+                  onClick={() => setAttachments(attachments.filter((entry) => entry.key !== file.key))}
                 >
                   <X size={12} aria-hidden />
                 </button>
               </li>
             ))}
           </ul>
+        ) : null}
+        {overBy > 0 ? (
+          <p className="composer-over" role="alert">
+            {overBy.toLocaleString()} characters over the {MAX_PROMPT_CHARS.toLocaleString()} limit. Your message stays here.
+          </p>
         ) : null}
         <textarea
           ref={field}
@@ -566,11 +611,10 @@ export function Composer({
             multiple
             hidden
             aria-label="Attach files"
-            onChange={(event) => void upload(event.target.files)}
+            onChange={(event) => upload(event.target.files)}
           />
           <IconButton
-            label={uploading ? "Attaching" : "Attach files"}
-            disabled={uploading}
+            label="Attach files"
             onClick={() => filePicker.current?.click()}
           >
             <Paperclip size={16} aria-hidden />
@@ -598,7 +642,7 @@ export function Composer({
             <span>Plan</span>
           </button>
           <span className="composer-spacer" />
-          <ContextMeter threadId={thread.id} />
+          <ContextMeter threadId={thread.id} disabled={busy} />
           {engine ? (
             <ModelPickerTrigger
               engines={installed}
