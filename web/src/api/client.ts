@@ -1,5 +1,6 @@
 import { readToken } from "./token";
 import type {
+  SearchHit,
   EngineLimits,
   KeybindingsView,
   ApplyAllResult,
@@ -135,6 +136,8 @@ export const api = {
     request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
   threadLimits: (threadId: string, signal?: AbortSignal) =>
     request<EngineLimits>("GET", `/api/threads/${q(threadId)}/limits`, undefined, signal),
+  searchFiles: (threadId: string, query: string, content: boolean, signal?: AbortSignal) =>
+    request<SearchHit[]>("GET", `/api/threads/${q(threadId)}/files/search?q=${q(query)}&content=${content}`, undefined, signal),
   keybindings: (signal?: AbortSignal) =>
     request<KeybindingsView>("GET", "/api/keybindings", undefined, signal),
   threadItem: (threadId: string, itemId: string, signal?: AbortSignal) =>

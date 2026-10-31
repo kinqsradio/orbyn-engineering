@@ -186,6 +186,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
   const trace = traceTool(item);
   const failed = toolFailed(item);
   const Icon = ACTION_ICONS[trace.action];
+  const timestampFormat = useUi((state) => state.timestampFormat);
   return (
     <Collapsible
       className="trace"
@@ -200,7 +201,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
           {running ? <span className="sr-only">Running</span> : null}
           {failed ? <X size={14} className="trace-failed" role="img" aria-label="Tool call failed" /> : null}
           <span className="trace-time" aria-hidden>
-            {clockTime(item.ts)}
+            {clockTime(item.ts, timestampFormat)}
           </span>
           <ChevronRight size={14} className="chev trace-end" aria-hidden />
         </>

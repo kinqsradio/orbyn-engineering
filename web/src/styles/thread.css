@@ -263,6 +263,7 @@
 
 /* Markdown */
 .md {
+  font-size: var(--chat-size, var(--text-body));
   overflow-wrap: anywhere;
   line-height: 1.625;
 }

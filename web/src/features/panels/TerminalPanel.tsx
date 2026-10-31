@@ -50,7 +50,7 @@ export function TerminalPanel({ threadId, terminalId }: { threadId: string; term
         convertEol: false,
         cursorBlink: false,
         fontFamily: cssVar("--font-mono"),
-        fontSize: 13,
+        fontSize: useUi.getState().typography.terminalSize,
         scrollback: 5000,
         theme: terminalTheme(),
       });

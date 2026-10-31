@@ -100,6 +100,14 @@ function runShellCommand(command: string, route: Route): boolean {
     case "usage.open":
       navigate({ name: "usage" });
       return true;
+    case "filePicker.toggle":
+      if (route.name !== "thread") return false;
+      ui.setPalette(ui.palette ? null : "files");
+      return true;
+    case "projectSearch.toggle":
+      if (route.name !== "thread") return false;
+      ui.setPalette(ui.palette ? null : "search");
+      return true;
     case "navigation.back":
       window.history.back();
       return true;
@@ -252,6 +260,11 @@ function useGlobalKeys(route: Route) {
             return;
           }
         }
+      }
+      const digit = /^Digit([1-9])$/.exec(event.code);
+      if (digit && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+        if (runShellCommand(`thread.jump.${digit[1]}`, route)) event.preventDefault();
+        return;
       }
       if (!event.altKey || event.metaKey || event.ctrlKey) return;
       if (event.code === "KeyN") {

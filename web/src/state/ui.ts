@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings/themes";
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
@@ -50,6 +51,14 @@ interface Prefs {
   timestampFormat: "locale" | "12-hour" | "24-hour";
   sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
   followUpBehavior: "queue" | "steer";
+  /** A named palette over the base theme, for each scheme. */
+  lightPreset: string | null;
+  darkPreset: string | null;
+  /** Colours the person set themselves, which win over any preset. */
+  customColors: ThemeColors;
+  typography: Typography;
+  contrast: "normal" | "more";
+  fontSmoothing: boolean;
   /** Keeps checkout and branch under the composer after the first send. */
   persistentComposerContext: boolean;
   /** Lists skills in the `/` menu as well as under `$`. */
@@ -63,6 +72,16 @@ interface Prefs {
   confirmDelete: boolean;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
+}
+
+export interface Typography {
+  uiFont: string;
+  /** Interface size in px; everything scales from it. */
+  uiSize: number;
+  chatSize: number;
+  codeFont: string;
+  codeSize: number;
+  terminalSize: number;
 }
 
 export interface StashedPrompt {
@@ -85,7 +104,7 @@ export interface ThreadLayout {
 export const DRAFT_LAYOUT = "draft";
 const MAX_LAYOUTS = 200;
 
-export type PaletteStart = "root" | "add-project";
+export type PaletteStart = "root" | "add-project" | "files" | "search";
 
 export const DEFAULT_SIDEBAR_WIDTH = 208;
 const TOAST_MS = 4000;
@@ -125,6 +144,12 @@ const defaults: Prefs = {
   timestampFormat: "locale",
   sendShortcut: "enter",
   followUpBehavior: "queue",
+  lightPreset: null,
+  darkPreset: null,
+  customColors: {},
+  typography: { uiFont: "", uiSize: 16, chatSize: 14, codeFont: "", codeSize: 13, terminalSize: 12 },
+  contrast: "normal",
+  fontSmoothing: true,
   persistentComposerContext: false,
   skillsInSlashMenu: false,
   stashes: {},
@@ -234,6 +259,12 @@ const prefsOf = (state: Prefs): Prefs => ({
   timestampFormat: state.timestampFormat,
   sendShortcut: state.sendShortcut,
   followUpBehavior: state.followUpBehavior,
+  lightPreset: state.lightPreset,
+  darkPreset: state.darkPreset,
+  customColors: state.customColors,
+  typography: state.typography,
+  contrast: state.contrast,
+  fontSmoothing: state.fontSmoothing,
   persistentComposerContext: state.persistentComposerContext,
   skillsInSlashMenu: state.skillsInSlashMenu,
   stashes: state.stashes,
@@ -410,5 +441,23 @@ export function resolveTheme(choice: ThemeChoice): "light" | "dark" {
 }
 
 export function applyTheme(choice: ThemeChoice): void {
-  document.documentElement.dataset.theme = resolveTheme(choice);
+  const scheme = resolveTheme(choice);
+  const root = document.documentElement;
+  root.dataset.theme = scheme;
+  const { lightPreset, darkPreset, customColors, typography, contrast, fontSmoothing } = useUi.getState();
+  const preset = presetById(scheme === "dark" ? darkPreset : lightPreset);
+  for (const [token] of THEME_TOKENS) {
+    const value = customColors[token] ?? preset?.colors[token];
+    if (value) root.style.setProperty(token, value);
+    else root.style.removeProperty(token);
+  }
+  root.dataset.contrast = contrast;
+  root.dataset.smoothing = fontSmoothing ? "on" : "off";
+  root.style.setProperty("zoom", typography.uiSize === 16 ? "" : String(typography.uiSize / 16));
+  const set = (name: string, value: string) =>
+    value ? root.style.setProperty(name, value) : root.style.removeProperty(name);
+  set("--font-sans", typography.uiFont);
+  set("--font-mono", typography.codeFont);
+  root.style.setProperty("--chat-size", `${typography.chatSize}px`);
+  root.style.setProperty("--code-size", `${typography.codeSize}px`);
 }

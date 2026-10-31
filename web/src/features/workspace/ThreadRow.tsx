@@ -189,7 +189,10 @@ export function ThreadRow({
   highlighted,
   verb,
   actions,
+  jumpHint,
 }: {
+  /** Shown while the jump modifier is held. */
+  jumpHint?: number | null;
   thread: Thread;
   section: SidebarSection;
   selected: boolean;
@@ -334,6 +337,7 @@ export function ThreadRow({
     <li
       data-thread-item={thread.id}
       data-section={section}
+      data-jump-hint={jumpHint ?? undefined}
       data-dragging={dragging || undefined}
       data-selected={multiSelected || undefined}
       data-highlight={highlighted || undefined}
