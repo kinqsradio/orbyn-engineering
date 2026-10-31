@@ -2,6 +2,8 @@
   display: flex;
   height: 100%;
   min-height: 0;
+  /* Nothing here may hand .main something to scroll: each pane has its own scroller. */
+  overflow: clip;
 }
 .thread-main {
   position: relative;
@@ -88,10 +90,13 @@
   display: flex;
 }
 .transcript {
+  /* Positioned so absolute children, such as sr-only text, stay clipped by this box. */
+  position: relative;
   flex: 1;
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 .transcript-inner {
   display: flex;
@@ -158,9 +163,13 @@
   border-top: 1px solid var(--color-divider);
 }
 .work-log {
+  position: relative;
   display: flex;
   flex-direction: column;
+  max-height: min(18rem, 50dvh);
   margin: 4px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .tool-stack {
   display: flex;
@@ -476,8 +485,10 @@
   overflow-y: auto;
 }
 .tool-output {
+  position: relative;
   max-height: 320px;
   overflow: auto;
+  overscroll-behavior: contain;
   color: var(--color-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1066,6 +1077,7 @@
   width: var(--details-w);
   max-height: calc(100% - var(--topbar-h) - 24px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: var(--radius-xl);
   background: var(--color-raised);
   box-shadow: inset 0 0 0 1px var(--color-outline);
@@ -1172,6 +1184,8 @@ button.detail-row:hover {
   flex: none;
   flex-direction: column;
   height: 300px;
+  overflow: clip;
+  overscroll-behavior: contain;
   padding: 4px 12px 12px;
   border-top: 1px solid var(--color-border);
 }
@@ -1328,9 +1342,11 @@ button.detail-row:hover {
   flex-direction: column;
 }
 .tabpanel {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 8px 12px 16px;
 }
 .panel-bar {
@@ -1379,7 +1395,9 @@ button.detail-row:hover {
   padding: 8px;
 }
 .patch {
+  position: relative;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   font-family: var(--font-mono);
   font-size: var(--text-small);
   line-height: 1.5;
@@ -2115,10 +2133,12 @@ button.detail-row:hover {
   width: 12px;
 }
 .file-source {
+  position: relative;
   flex: 1;
   min-height: 0;
   margin: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   font-family: var(--font-mono);
   font-size: var(--text-meta);
   line-height: 1.5;
@@ -2656,6 +2676,8 @@ button.detail-row:hover {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .browser-tabs {
   display: flex;
@@ -2720,4 +2742,7 @@ button.detail-row:hover {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+.terminal-host .xterm-viewport {
+  overscroll-behavior: contain;
 }

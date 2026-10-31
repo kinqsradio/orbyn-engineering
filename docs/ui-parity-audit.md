@@ -80,6 +80,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Layout | Draft to thread | Source: a draft's id becomes the thread's, so its layout carries | Match, Real | Next draft starts fresh |
 | Layout | Pane width | Live: 360 default, resized per thread | Match, Real; double-click resets | Default follows the window, as measured before |
 | Layout | Narrow | Source: right panel becomes a sheet at 980 and under | Replaces the thread with Back to thread | Own shape below the wide breakpoint |
+| Layout | Independent scrolling | Source: each pane scrolls alone | Real at both ends, parked and during a run: details, Diff, Files, Terminal, Browser, sidebar | The cause was absolute children, such as sr-only text, escaping the transcript and giving `.main` something to scroll |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
 | Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |

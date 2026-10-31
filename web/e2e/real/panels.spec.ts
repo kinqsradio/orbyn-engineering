@@ -1,0 +1,131 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { send, settled, startProject, threadIdOf, type Service } from "./service";
+
+/** The chat, the panels and the sidebar scroll on their own. */
+const PORT = 5284;
+
+let service: Service;
+let projectId = "";
+
+const chat = (page: Page) => page.getByRole("log", { name: "Thread messages" });
+const chatTop = (page: Page) => chat(page).evaluate((element) => element.scrollTop);
+const mainTop = (page: Page) => page.locator("main").first().evaluate((element) => element.scrollTop);
+const gap = (page: Page) =>
+  chat(page).evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight);
+
+/** Wheels over a target to both ends and past them, as a trackpad overscroll would. */
+async function wheelBothEnds(page: Page, target: Locator) {
+  await target.hover();
+  for (const delta of [4000, 4000, 4000, -4000, -4000, -4000, 4000, 4000]) {
+    await page.mouse.wheel(0, delta);
+    await page.waitForTimeout(60);
+  }
+}
+
+async function expectChatUntouched(page: Page, target: Locator) {
+  const before = await chatTop(page);
+  await wheelBothEnds(page, target);
+  expect(await chatTop(page)).toBe(before);
+  expect(await mainTop(page)).toBe(0);
+}
+
+test.beforeAll(async () => {
+  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  const lines = Array.from({ length: 400 }, (_, at) => `line ${at}`).join("\n");
+  writeFileSync(join(service.repo, "big.txt"), `${lines}\n`);
+  execFileSync("git", ["add", "."], { cwd: service.repo });
+  execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-qm", "Big"], { cwd: service.repo });
+  writeFileSync(join(service.repo, "big.txt"), `${lines.replaceAll("line", "changed")}\n`);
+});
+test.afterAll(() => service.stop());
+
+async function longThread(page: Page, scene = "[scene:long]") {
+  await page.setViewportSize({ width: 1500, height: 520 });
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, scene);
+  await expect(page).toHaveURL(/#\/threads\//);
+}
+
+test("each panel scrolls alone, past both ends, with the chat parked mid-way", async ({ page }) => {
+  await longThread(page);
+  await settled(service, threadIdOf(page));
+  await expect(page.getByText("Paragraph 120 of a long answer.")).toBeVisible();
+  await chat(page).evaluate((element) => {
+    element.scrollTop = 600;
+  });
+  await page.waitForTimeout(100);
+
+  const parked = await chatTop(page);
+  await page.getByRole("button", { name: /^Changes/ }).click();
+  await page.locator("[data-diff-file='big.txt']").waitFor();
+  expect(await chatTop(page)).toBe(parked);
+  await expectChatUntouched(page, page.locator(".patch-line").nth(20));
+  const pane = page.getByRole("tabpanel");
+  expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  await page.keyboard.press("ControlOrMeta+p");
+  await page.getByRole("dialog", { name: "Command palette" }).getByRole("combobox", { name: "Search" }).fill("big.txt");
+  await page.getByRole("dialog", { name: "Command palette" }).getByRole("button", { name: /big\.txt/ }).click();
+  await expectChatUntouched(page, page.locator(".file-source"));
+
+});
+
+test("the details card and terminal keep the wheel to themselves", async ({ page }) => {
+  await longThread(page);
+  await settled(service, threadIdOf(page));
+  await chat(page).evaluate((element) => {
+    element.scrollTop = 600;
+  });
+  await expectChatUntouched(page, page.getByRole("complementary", { name: "Thread details" }));
+
+  await page.keyboard.press("ControlOrMeta+j");
+  const terminal = page.getByRole("region", { name: "Terminal" });
+  await expect(terminal).toBeVisible();
+  await page.waitForTimeout(300);
+  const before = await chatTop(page);
+  await wheelBothEnds(page, terminal);
+  expect(await chatTop(page)).toBeLessThanOrEqual(before);
+  expect(await mainTop(page)).toBe(0);
+});
+
+test("the Browser panel and the sidebar keep the wheel to themselves", async ({ page }) => {
+  await longThread(page);
+  await settled(service, threadIdOf(page));
+  for (const at of Array.from({ length: 30 }, (_, index) => index)) {
+    await service.api("POST", "/api/threads", {
+      project_id: projectId,
+      engine: (await service.api<{ id: string }[]>("GET", "/api/engines"))[0]?.id,
+      model: null,
+      title: `Filler ${at}`,
+      worktree: null,
+      skill_profile: null,
+    });
+  }
+  await expect(page.locator("li[data-thread-item]").filter({ hasText: "Filler 29" })).toBeVisible({ timeout: 10_000 });
+  await chat(page).evaluate((element) => {
+    element.scrollTop = 600;
+  });
+  await expectChatUntouched(page, page.locator(".sidebar-scroll"));
+
+  await page.getByRole("button", { name: "Surfaces" }).click();
+  await page.locator(".launcher").getByRole("button", { name: /^Browser/ }).click();
+  await expect(page.locator(".browser-panel")).toBeVisible();
+  await expectChatUntouched(page, page.locator(".browser-panel"));
+});
+
+test("wheeling a panel during a run leaves the chat stuck to the bottom", async ({ page }) => {
+  test.setTimeout(45_000);
+  await longThread(page, "[scene:stream]");
+  await expect(page.getByText("Streamed line 60.")).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /^Changes/ }).click();
+  await page.locator(".patch-line").nth(20).waitFor();
+  await wheelBothEnds(page, page.locator(".patch-line").nth(20));
+  await expect(page.getByText("Tick 30.")).toBeAttached({ timeout: 15_000 });
+  expect(await gap(page)).toBeLessThan(80);
+  await settled(service, threadIdOf(page));
+  await expect.poll(() => gap(page)).toBeLessThan(80);
+  expect(await mainTop(page)).toBe(0);
+});
