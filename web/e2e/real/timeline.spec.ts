@@ -212,7 +212,7 @@ test("the view follows new output until you scroll up, then offers the way back"
 test("a failed turn keeps its error in view and a command with no output says so", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:failure]");
-  await expect(page.getByRole("alert").filter({ hasText: "quota reached" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("alert").filter({ hasText: "disk full" })).toBeVisible({ timeout: 15_000 });
   await settled(service, threadIdOf(page));
   await send(page, "[scene:empty]");
   await page.getByRole("button", { name: /^Worked for/ }).last().click();
