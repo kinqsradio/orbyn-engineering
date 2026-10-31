@@ -60,6 +60,8 @@ interface ConfirmProps {
   confirmLabel: string;
   tone?: ButtonTone;
   confirmDisabled?: boolean;
+  /** `onConfirm` decides when to close, as a multi-step confirm does. */
+  keepOpen?: boolean;
   onConfirm(): Promise<void>;
   onClose(): void;
 }
@@ -70,6 +72,7 @@ export function ConfirmDialog({
   confirmLabel,
   tone = "primary",
   confirmDisabled,
+  keepOpen,
   onConfirm,
   onClose,
 }: ConfirmProps) {
@@ -80,7 +83,8 @@ export function ConfirmDialog({
     setError(null);
     try {
       await onConfirm();
-      onClose();
+      if (!keepOpen) onClose();
+      else setBusy(false);
     } catch (failure) {
       setError(toFailure(failure).message);
       setBusy(false);

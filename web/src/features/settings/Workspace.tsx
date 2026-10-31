@@ -1,7 +1,7 @@
 import { Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { api } from "../../api/client";
-import type { LibraryStatus, WorkspaceProject, WorkspaceStatus } from "../../api/workspace";
+import { ApiFailure, api } from "../../api/client";
+import type { LibraryStatus, TargetStatus } from "../../api/types";
 import { useWorkspace } from "../../state/workspace";
 import { Button, Pill } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
@@ -13,31 +13,25 @@ export function FallbackNotice() {
   return (
     <p className="banner banner-warn">
       <TriangleAlert size={16} aria-hidden />
-      Skill links weren't created here, so skills reach engines through the fallback route.
+      Skill links didn't materialize here, so skills are reaching engines through the fallback route.
     </p>
   );
 }
 
-/** Why the library can't change right now; null when it can. */
-export function libraryBlock(status: Pick<WorkspaceStatus, "active_runs">, library: LibraryStatus): string | null {
-  if (library.modified) return "The library has local changes. Commit or discard them first.";
-  if (status.active_runs > 0) {
-    return status.active_runs === 1
-      ? "1 run is active. Wait for it to finish or cancel it."
-      : `${status.active_runs} runs are active. Wait for them to finish or cancel them.`;
-  }
-  return null;
-}
-
-function Library({ status, library }: { status: WorkspaceStatus; library: LibraryStatus }) {
-  const putManaged = useWorkspace((state) => state.putManaged);
+function Library({ library }: { library: LibraryStatus }) {
+  const updates = useWorkspace((state) => state.updates.data);
+  const refreshManaged = useWorkspace((state) => state.refreshManaged);
   const refreshUpdates = useWorkspace((state) => state.refreshUpdates);
   const [dialog, setDialog] = useState<"update" | "rollback" | null>(null);
-  const blocked = libraryBlock(status, library);
+  const blocked =
+    updates?.library.blocked_reason ??
+    (library.dirty ? "The library has local changes. Commit or discard them first." : null);
   const canUpdate = blocked === null && library.behind > 0;
+  const refresh = () => Promise.all([refreshManaged(), refreshUpdates()]).then(() => undefined);
 
   return (
     <>
+      {library.problem ? <p className="banner banner-warn">{library.problem}</p> : null}
       <dl className="facts facts-block">
         <div>
           <dt>Library</dt>
@@ -53,11 +47,19 @@ function Library({ status, library }: { status: WorkspaceStatus; library: Librar
         </div>
         <div>
           <dt>Branch</dt>
-          <dd>{library.branch}</dd>
+          <dd>{library.branch ?? "Detached"}</dd>
         </div>
         <div>
           <dt>Changes</dt>
-          <dd>{library.modified ? <Pill tone="warn">Modified</Pill> : "None"}</dd>
+          <dd>
+            {library.dirty ? (
+              <Pill tone="warn">
+                {library.dirty_files.length === 1 ? "1 modified file" : `${library.dirty_files.length} modified files`}
+              </Pill>
+            ) : (
+              "None"
+            )}
+          </dd>
         </div>
         <div>
           <dt>Remote</dt>
@@ -89,19 +91,19 @@ function Library({ status, library }: { status: WorkspaceStatus; library: Librar
           confirmLabel="Update"
           onClose={() => setDialog(null)}
           onConfirm={async () => {
-            putManaged(await api.updateWorkspace());
-            await refreshUpdates();
+            await api.updateLibrary(true);
+            await refresh();
           }}
         >
           <p>
-            {library.incoming.length === 1
+            {updates?.library.incoming.length === 1
               ? "1 incoming commit:"
-              : `${library.incoming.length} incoming commits:`}
+              : `${updates?.library.incoming.length ?? library.behind} incoming commits:`}
           </p>
           <ul className="commit-list">
-            {library.incoming.map((commit) => (
-              <li key={commit.revision}>
-                <code>{short(commit.revision)}</code>
+            {(updates?.library.incoming ?? []).map((commit) => (
+              <li key={commit.sha}>
+                <code>{short(commit.sha)}</code>
                 <span>{commit.subject}</span>
               </li>
             ))}
@@ -113,7 +115,10 @@ function Library({ status, library }: { status: WorkspaceStatus; library: Librar
           title="Roll back the library?"
           confirmLabel="Roll back"
           onClose={() => setDialog(null)}
-          onConfirm={async () => putManaged(await api.rollbackWorkspace())}
+          onConfirm={async () => {
+            await api.rollbackLibrary();
+            await refresh();
+          }}
         >
           <p>
             The library returns to <code>{short(library.previous_revision)}</code>. New runs use that
@@ -125,128 +130,64 @@ function Library({ status, library }: { status: WorkspaceStatus; library: Librar
   );
 }
 
-function ProjectRow({ project }: { project: WorkspaceProject }) {
+function RemoveDialog({
+  target,
+  name,
+  onClose,
+  onKept,
+}: {
+  target: TargetStatus;
+  name: string;
+  onClose(): void;
+  onKept(note: string): void;
+}) {
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
   const dropProject = useWorkspace((state) => state.dropProject);
-  const [removing, setRemoving] = useState(false);
-  const [acknowledged, setAcknowledged] = useState(false);
-  const atRisk = project.modified || project.unpushed;
-
-  return (
-    <li className="setting-row">
-      <div className="engine-row-head">
-        <h3>{project.name}</h3>
-        {project.modified ? <Pill tone="warn">Modified</Pill> : null}
-        {project.unpushed ? <Pill tone="warn">Unpushed</Pill> : null}
-        <span className="engine-row-actions">
-          <Button
-            small
-            tone="quiet"
-            aria-label={`Remove ${project.name}`}
-            icon={<Trash2 size={16} aria-hidden />}
-            onClick={() => {
-              setAcknowledged(false);
-              setRemoving(true);
-            }}
-          />
-        </span>
-      </div>
-      <dl className="facts">
-        <div>
-          <dt>Git root</dt>
-          <dd>
-            <code>{project.git_root}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>Revision</dt>
-          <dd>
-            <code>{short(project.revision)}</code>
-          </dd>
-        </div>
-        {project.branch ? (
-          <div>
-            <dt>Branch</dt>
-            <dd>{project.branch}</dd>
-          </div>
-        ) : null}
-        <div>
-          <dt>Worktrees</dt>
-          <dd>{project.worktrees.length}</dd>
-        </div>
-      </dl>
-      {project.worktrees.length > 0 ? (
-        <ul className="plain-list">
-          {project.worktrees.map((worktree) => (
-            <li key={worktree.path}>
-              <code>{worktree.branch}</code> <span className="muted">{worktree.path}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {project.overlaps.length > 0 ? (
-        <p className="overlap-note">Same name as a library skill: {project.overlaps.join(", ")}</p>
-      ) : null}
-      {removing ? (
-        <RemoveDialog
-          project={project}
-          atRisk={atRisk}
-          acknowledged={acknowledged}
-          onAcknowledge={setAcknowledged}
-          onClose={() => setRemoving(false)}
-          onConfirm={async () => {
-            await api.removeProject(project.id, atRisk);
-            dropProject(project.id);
-            await refreshManaged();
-          }}
-        />
-      ) : null}
-    </li>
+  const [warning, setWarning] = useState<string | null>(
+    target.dirty ? "This checkout has uncommitted changes." : null,
   );
-}
+  const [acknowledged, setAcknowledged] = useState(false);
+  const projectId = target.project_id;
 
-function RemoveDialog({
-  project,
-  atRisk,
-  acknowledged,
-  onAcknowledge,
-  onClose,
-  onConfirm,
-}: {
-  project: WorkspaceProject;
-  atRisk: boolean;
-  acknowledged: boolean;
-  onAcknowledge(value: boolean): void;
-  onClose(): void;
-  onConfirm(): Promise<void>;
-}) {
-  const reasons = [
-    project.modified ? "uncommitted changes" : null,
-    project.unpushed ? "unpushed commits" : null,
-  ].filter(Boolean);
   return (
     <ConfirmDialog
-      title={`Remove ${project.name}?`}
+      title={`Remove ${name}?`}
       confirmLabel="Remove project"
       tone="danger"
-      confirmDisabled={atRisk && !acknowledged}
+      confirmDisabled={warning !== null && !acknowledged}
+      keepOpen
       onClose={onClose}
-      onConfirm={onConfirm}
+      onConfirm={async () => {
+        if (!projectId) return;
+        try {
+          const removal = await api.removeProject(projectId, acknowledged);
+          if (removal.kept_path) onKept(`${name} is removed. Its folder still holds work, so it stays at ${removal.kept_path}.`);
+          onClose();
+          dropProject(projectId);
+          await refreshManaged();
+        } catch (failure) {
+          if (failure instanceof ApiFailure && failure.code === "project_has_work") {
+            setWarning(failure.message);
+            return;
+          }
+          throw failure;
+        }
+      }}
     >
-      <p>Removes this checkout, its worktrees and its threads from the workspace.</p>
-      {atRisk ? (
+      <p>Removes it from the workspace, with its threads. Files go only when nothing would be lost.</p>
+      {warning ? (
         <>
           <p className="banner banner-warn">
             <TriangleAlert size={16} aria-hidden />
-            This checkout has {reasons.join(" and ")} that exist nowhere else.
+            {warning}
           </p>
           <label className="check">
             <input
               type="checkbox"
               checked={acknowledged}
-              onChange={(event) => onAcknowledge(event.target.checked)}
+              onChange={(event) => setAcknowledged(event.target.checked)}
             />
-            <span>I understand this work will be lost</span>
+            <span>Remove it anyway</span>
           </label>
         </>
       ) : null}
@@ -254,10 +195,82 @@ function RemoveDialog({
   );
 }
 
+function TargetRow({ target, onKept }: { target: TargetStatus; onKept(note: string): void }) {
+  const name = useWorkspace(
+    (state) =>
+      state.projects.data?.find((project) => project.id === target.project_id)?.name ??
+      target.path.split(/[\\/]/).filter(Boolean).at(-1) ??
+      target.path,
+  );
+  const [removing, setRemoving] = useState(false);
+
+  return (
+    <li className="setting-row">
+      <div className="engine-row-head">
+        <h3>{name}</h3>
+        {target.dirty ? <Pill tone="warn">Modified</Pill> : null}
+        {target.project_id ? (
+          <span className="engine-row-actions">
+            <Button
+              small
+              tone="quiet"
+              aria-label={`Remove ${name}`}
+              icon={<Trash2 size={16} aria-hidden />}
+              onClick={() => setRemoving(true)}
+            />
+          </span>
+        ) : null}
+      </div>
+      <dl className="facts">
+        <div>
+          <dt>Git root</dt>
+          <dd>
+            <code>{target.git_root ?? target.path}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Revision</dt>
+          <dd>
+            <code>{short(target.revision)}</code>
+          </dd>
+        </div>
+        {target.branch ? (
+          <div>
+            <dt>Branch</dt>
+            <dd>{target.branch}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>Worktrees</dt>
+          <dd>{target.worktrees.length}</dd>
+        </div>
+      </dl>
+      {target.worktrees.length > 0 ? (
+        <ul className="plain-list">
+          {target.worktrees.map((worktree) => (
+            <li key={worktree.path}>
+              <code>{worktree.branch ?? short(worktree.revision)}</code>{" "}
+              <span className="muted">{worktree.path}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {target.same_name_skills.length > 0 ? (
+        <p className="overlap-note">Same name as a library skill: {target.same_name_skills.join(", ")}</p>
+      ) : null}
+      {target.problem ? <p className="banner banner-warn">{target.problem}</p> : null}
+      {removing ? (
+        <RemoveDialog target={target} name={name} onClose={() => setRemoving(false)} onKept={onKept} />
+      ) : null}
+    </li>
+  );
+}
+
 export function WorkspaceSection() {
   const managed = useWorkspace((state) => state.managed);
   const unsupported = useWorkspace((state) => state.managedUnsupported);
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
+  const [keptNote, setKeptNote] = useState<string | null>(null);
 
   return (
     <>
@@ -274,16 +287,21 @@ export function WorkspaceSection() {
         <Loading label="Loading workspace" />
       ) : (
         <>
-          {managed.data.skill_delivery === "fallback" ? <FallbackNotice /> : null}
-          {managed.data.library ? <Library status={managed.data} library={managed.data.library} /> : null}
+          {managed.data.library?.native_skills === false ? <FallbackNotice /> : null}
+          {managed.data.library ? <Library library={managed.data.library} /> : null}
           <section className="section">
             <h2>Projects</h2>
-            {managed.data.projects.length === 0 ? (
+            {keptNote ? (
+              <p className="banner banner-warn" role="status">
+                {keptNote}
+              </p>
+            ) : null}
+            {managed.data.targets.length === 0 ? (
               <Empty title="No projects yet" />
             ) : (
               <ul className="setting-list">
-                {managed.data.projects.map((project) => (
-                  <ProjectRow key={project.id} project={project} />
+                {managed.data.targets.map((target) => (
+                  <TargetRow key={target.path} target={target} onKept={setKeptNote} />
                 ))}
               </ul>
             )}

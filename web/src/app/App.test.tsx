@@ -63,7 +63,11 @@ describe("App against the mock API", () => {
     };
 
     it("shows the button only when something is available", async () => {
-      mock.patchUpdates({ engines: [], library: null, app: null });
+      mock.patchUpdates({
+        engines: [],
+        library: { ...mock.updates.library, behind: 0, incoming: [] },
+        app: { ...mock.updates.app, latest: mock.updates.app.current },
+      });
       render(<App />);
       await screen.findByRole("navigation", { name: "Workspace" });
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -94,13 +98,17 @@ describe("App against the mock API", () => {
       const steps = within(dialog).getByRole("list", { name: "Update progress" }).querySelectorAll("li");
       expect([...steps].map((step) => step.getAttribute("data-state"))).toEqual(["done", "failed", "pending"]);
       await user.click(within(dialog).getByRole("button", { name: "Retry" }));
-      await waitFor(() => expect(mock.updates.progress).toBeNull(), { timeout: 3000 });
-      expect(mock.updates.app?.available).toBe(false);
+      await waitFor(() => expect(mock.updates.app.current).toBe("0.2.0"), { timeout: 3000 });
     });
 
     it("shows manual instructions and no button in server mode", async () => {
       mock.patchUpdates({
-        app: { ...mock.updates.app!, can_apply: false, manual_hint: "Replace the orbynd binary and restart." },
+        app: {
+          ...mock.updates.app,
+          mode: "server",
+          can_apply: false,
+          blocked_reason: "Replace the orbynd binary and restart.",
+        },
       });
       const user = userEvent.setup();
       render(<App />);
@@ -117,17 +125,18 @@ describe("App against the mock API", () => {
       const before = mock.updates.checked_at;
       await user.click(await screen.findByRole("button", { name: "Check for updates" }));
       await waitFor(() => expect(mock.updates.checked_at).not.toBe(before));
-      expect(mock.updates.engines[0]?.available).toBe(true);
-      await user.click(screen.getByRole("checkbox", { name: "Check in the background" }));
-      expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"backgroundChecks":false');
+      expect(mock.updates.engines[0]?.current).toBe("2.1.14");
+      const background = screen.getByRole("checkbox", { name: "Check in the background" });
+      await waitFor(() => expect(background).toBeEnabled());
+      await user.click(background);
+      await waitFor(() => expect(background).not.toBeChecked());
     });
 
     it("says when updates aren't set up for this build", async () => {
-      mock.patchUpdates({ configured: false });
+      mock.patchUpdates({ app: { ...mock.updates.app, latest: null, unconfigured: true } });
       go("#/settings/updates");
       render(<App />);
       expect(await screen.findByText("Updates aren't set up for this build")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /updates? available/ })).toBeNull();
     });
   });
 
@@ -140,13 +149,13 @@ describe("App against the mock API", () => {
     await user.click(await screen.findByRole("button", { name: "code" }));
     await user.click(await screen.findByRole("button", { name: /payments-service/ }));
     await waitFor(() => expect(screen.getByTitle("/Users/dev/code/payments-service")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Review import" }));
+    expect(screen.getByText(/original folder stays untouched/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import this folder" }));
 
-    const review = await screen.findByRole("region", { name: "Import review" });
-    expect(within(review).getByText(/original folder stays untouched/)).toBeInTheDocument();
-    expect(within(review).getByText("src/draft.rs")).toBeInTheDocument();
-    expect(within(review).getByText("spike/retry-queue")).toBeInTheDocument();
-    await user.click(within(review).getByRole("button", { name: "Import project" }));
+    const report = await screen.findByRole("region", { name: "Import result" });
+    expect(within(report).getByText("src/draft.rs")).toBeInTheDocument();
+    expect(within(report).getByText("spike/retry-queue")).toBeInTheDocument();
+    await user.click(within(report).getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
     expect(screen.getByText(/execute this repository's hooks/)).toBeInTheDocument();
@@ -188,7 +197,7 @@ describe("App against the mock API", () => {
     expect(await screen.findByRole("heading", { name: "Set up your workspace" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Workspace" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Set up workspace" }));
-    expect(await screen.findByText("Setup didn't finish", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByText("Setup didn't finish")).toBeInTheDocument();
     expect(screen.getByText(/couldn't be reached/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("heading", { name: "Add your first project" }, { timeout: 3000 })).toBeInTheDocument();
@@ -225,7 +234,7 @@ describe("App against the mock API", () => {
 
   it("disables library changes with the reason", async () => {
     mock.patchWorkspace({
-      library: { ...mock.workspace.library!, modified: true },
+      library: { ...mock.workspace.library!, dirty: true, dirty_files: ["skills/a.md"] },
     });
     go("#/settings/workspace");
     render(<App />);
@@ -240,16 +249,17 @@ describe("App against the mock API", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Remove marketing-site" }));
     const dialog = await screen.findByRole("dialog", { name: "Remove marketing-site?" });
-    expect(within(dialog).getByText(/exist nowhere else/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/uncommitted changes/)).toBeInTheDocument();
     const confirm = within(dialog).getByRole("button", { name: "Remove project" });
     expect(confirm).toBeDisabled();
     await user.click(within(dialog).getByRole("checkbox"));
     await user.click(confirm);
+    expect(await screen.findByText(/stays at \/Users\/dev\/code\/marketing-site/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("heading", { name: "marketing-site" })).toBeNull());
   });
 
   it("shows library revision, not a signature, and the fallback notice", async () => {
-    mock.patchWorkspace({ skill_delivery: "fallback" });
+    mock.patchWorkspace({ library: { ...mock.workspace.library!, native_skills: false } });
     go("#/settings/skills");
     render(<App />);
     expect(await screen.findByText("Library revision")).toBeInTheDocument();

@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api } from "../../api/client";
-import type { Project } from "../../api/types";
-import type { ImportPreview } from "../../api/workspace";
+import type { ImportReport, Project } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
@@ -109,38 +108,28 @@ function CreateForm() {
   );
 }
 
-function ImportReview({
-  preview,
-  busy,
-  error,
-  onImport,
-  onBack,
-}: {
-  preview: ImportPreview;
-  busy: boolean;
-  error: string | null;
-  onImport(): void;
-  onBack(): void;
-}) {
-  const lost = preview.uncommitted.length + preview.unpushed_branches.length;
+function ImportResult({ report, onContinue }: { report: ImportReport; onContinue(): void }) {
+  const left = report.dirty_files.length + report.unpushed_branches.length;
   return (
-    <section className="import-review" aria-label="Import review">
-      <code className="wrap-all">{preview.path}</code>
-      <p>The original folder stays untouched. Orbyn works from a new checkout in the managed workspace.</p>
-      {lost === 0 ? (
-        <p className="muted">Everything is committed and pushed, so nothing is left behind.</p>
+    <section className="import-review" aria-label="Import result">
+      <p>
+        Imported {report.project.name}. The original folder stayed untouched, and Orbyn works from
+        a new checkout.
+      </p>
+      {left === 0 ? (
+        <p className="muted">Everything was committed and pushed, so nothing was left behind.</p>
       ) : (
         <>
           <h3>Not carried over</h3>
-          {preview.uncommitted.length > 0 ? (
+          {report.dirty_files.length > 0 ? (
             <div>
               <p className="muted">
-                {preview.uncommitted.length === 1
+                {report.dirty_files.length === 1
                   ? "1 uncommitted file"
-                  : `${preview.uncommitted.length} uncommitted files`}
+                  : `${report.dirty_files.length} uncommitted files`}
               </p>
               <ul className="plain-list">
-                {preview.uncommitted.map((file) => (
+                {report.dirty_files.map((file) => (
                   <li key={file}>
                     <code>{file}</code>
                   </li>
@@ -148,15 +137,15 @@ function ImportReview({
               </ul>
             </div>
           ) : null}
-          {preview.unpushed_branches.length > 0 ? (
+          {report.unpushed_branches.length > 0 ? (
             <div>
               <p className="muted">
-                {preview.unpushed_branches.length === 1
+                {report.unpushed_branches.length === 1
                   ? "1 unpushed branch"
-                  : `${preview.unpushed_branches.length} unpushed branches`}
+                  : `${report.unpushed_branches.length} unpushed branches`}
               </p>
               <ul className="plain-list">
-                {preview.unpushed_branches.map((branch) => (
+                {report.unpushed_branches.map((branch) => (
                   <li key={branch}>
                     <code>{branch}</code>
                   </li>
@@ -166,17 +155,9 @@ function ImportReview({
           ) : null}
         </>
       )}
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
       <div className="form-actions">
-        <Button tone="primary" busy={busy} onClick={onImport}>
-          Import project
-        </Button>
-        <Button disabled={busy} onClick={onBack}>
-          Choose another folder
+        <Button tone="primary" onClick={onContinue}>
+          Continue
         </Button>
       </div>
     </section>
@@ -185,51 +166,30 @@ function ImportReview({
 
 function ImportForm() {
   const finish = useFinish();
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [report, setReport] = useState<ImportReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const review = async (path: string) => {
+  const start = async (path: string) => {
     setBusy(true);
     setError(null);
     try {
-      setPreview(await api.previewImport(path));
+      setReport(await api.importProject(path));
     } catch (failure) {
-      setError(`Couldn't read that folder. ${toFailure(failure).message}`);
+      setError(`Couldn't import it. ${toFailure(failure).message}`);
     } finally {
       setBusy(false);
     }
   };
 
-  const confirm = async () => {
-    if (!preview) return;
-    setBusy(true);
-    setError(null);
-    try {
-      finish((await api.importProject(preview.path)).project);
-    } catch (failure) {
-      setError(`Couldn't import it. ${toFailure(failure).message}`);
-      setBusy(false);
-    }
-  };
-
-  if (preview) {
-    return (
-      <ImportReview
-        preview={preview}
-        busy={busy}
-        error={error}
-        onImport={() => void confirm()}
-        onBack={() => {
-          setPreview(null);
-          setError(null);
-        }}
-      />
-    );
-  }
+  if (report) return <ImportResult report={report} onContinue={() => finish(report.project)} />;
   return (
     <>
-      <FolderBrowser actionLabel="Review import" busy={busy} onChoose={(path) => void review(path)} />
+      <p className="muted">
+        Makes a new checkout from committed work. The original folder stays untouched, and
+        uncommitted files and unpushed branches aren't carried over.
+      </p>
+      <FolderBrowser actionLabel="Import this folder" busy={busy} onChoose={(path) => void start(path)} />
       {error ? (
         <p className="field-error" role="alert">
           {error}

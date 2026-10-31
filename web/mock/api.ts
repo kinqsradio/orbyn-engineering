@@ -4,14 +4,16 @@
  */
 import type {
   AgUiEvent,
+  ApplyAllResult,
   Approval,
   EngineStatus,
   Project,
+  ServerSettings,
   Thread,
+  UpdateStatus,
   WireThreadEvent,
+  WorkspaceStatus,
 } from "../src/api/types.ts";
-import type { UpdateStatus } from "../src/api/updates.ts";
-import type { WorkspaceStatus } from "../src/api/workspace.ts";
 import * as fixtures from "./fixtures.ts";
 
 export interface MockResponse {
@@ -56,7 +58,8 @@ export function createMockApi(options: MockOptions = {}) {
   let rules = structuredClone(fixtures.rules);
   let managed: WorkspaceStatus = fixtures.workspaceStatus([]);
   let failNextSetup = false;
-  let updates: UpdateStatus = fixtures.updateStatus(managed.library);
+  let updates: UpdateStatus = fixtures.updateStatus(2);
+  let settings: ServerSettings = fixtures.serverSettings();
   let failStep: string | null = null;
   let failures: Failure[] = [];
   let delayMs = 0;
@@ -88,11 +91,10 @@ export function createMockApi(options: MockOptions = {}) {
     }
     managed = fixtures.workspaceStatus(projects);
     failNextSetup = false;
-    updates = fixtures.updateStatus(managed.library);
+    updates = fixtures.updateStatus(2);
+    settings = fixtures.serverSettings();
     failStep = null;
-    if (next === "first-run") {
-      managed = { ...managed, state: "unset", library: null, projects: [] };
-    }
+    if (next === "first-run") managed = fixtures.workspaceStatus([], false);
     engines = structuredClone(fixtures.engines);
     skills = structuredClone(fixtures.skills);
     profiles = structuredClone(fixtures.profiles);
@@ -231,94 +233,93 @@ export function createMockApi(options: MockOptions = {}) {
   }
 
   /** Project rows follow the live list; everything else is the fixture state. */
-  const workspaceBody = () => {
-    const rows = fixtures.workspaceStatus(projects).projects;
+  const workspaceBody = (): WorkspaceStatus => {
+    const rows = fixtures.workspaceStatus(projects).targets;
     return {
       ...managed,
-      projects: rows.map((row) => managed.projects.find((p) => p.id === row.id) ?? row),
-      active_runs: threads.filter((t) => t.active_run).length,
+      targets: managed.configured ? rows : [],
     };
   };
 
-  function setup(data: Record<string, unknown>): MockResponse {
-    if (data.mode === "adopt" && typeof data.path !== "string") {
-      return err(400, "invalid_path", "Choose a folder.");
+  function setup(): MockResponse {
+    if (failNextSetup) {
+      failNextSetup = false;
+      return err(502, "clone_failed", "The library remote couldn't be reached.");
     }
-    const failing = failNextSetup;
-    failNextSetup = false;
-    managed = { ...managed, state: "setting_up", step: "Cloning the skill library", error: null };
-    const timer = setTimeout(() => {
-      const ready = fixtures.workspaceStatus(projects);
-      managed = failing
-        ? { ...managed, state: "failed", step: null, error: "The library remote couldn't be reached." }
-        : { ...ready };
-    }, stepMs * 5);
-    timers.add(timer);
-    return { status: 202, body: workspaceBody() };
+    managed = fixtures.workspaceStatus(projects);
+    return { status: 200, body: workspaceBody() };
   }
 
-  const updatesBody = (): UpdateStatus => ({
-    ...updates,
-    active_runs: threads.filter((t) => t.active_run).length,
-    library: updates.library ? { ...updates.library, modified: managed.library?.modified ?? false } : null,
-  });
+  const activeRuns = () => threads.filter((t) => t.active_run).length;
 
-  function finishStep(id: string) {
-    if (id.startsWith("engine:")) {
+  /** The server sends the reason; the client only shows it. */
+  const updatesBody = (): UpdateStatus => {
+    const runs = activeRuns();
+    const dirty = managed.library?.dirty ?? false;
+    const runsReason = runs > 0 ? (runs === 1 ? "1 run is active." : `${runs} runs are active.`) : null;
+    const libraryReason = dirty ? "The library has local changes." : runsReason;
+    return {
+      ...updates,
+      engines: updates.engines.map((engine) => ({ ...engine, blocked_reason: runsReason })),
+      library: { ...updates.library, dirty, can_apply: libraryReason === null, blocked_reason: libraryReason },
+      app: {
+        ...updates.app,
+        blocked_reason: updates.app.mode === "server" ? updates.app.blocked_reason : runsReason,
+      },
+    };
+  };
+
+  function finishStep(target: string) {
+    if (target.startsWith("engine:")) {
       updates = {
         ...updates,
         engines: updates.engines.map((engine) =>
-          `engine:${engine.id}` === id ? { ...engine, current: engine.latest, available: false } : engine,
+          `engine:${engine.id}` === target ? { ...engine, current: engine.latest } : engine,
         ),
       };
-      const engine = engines.find((e) => `engine:${e.id}` === id);
+      const engine = engines.find((e) => `engine:${e.id}` === target);
       if (engine) engine.version = engine.latest;
-    } else if (id === "library" && updates.library) {
-      updates = { ...updates, library: { ...updates.library, available: false, incoming: [] } };
-      if (managed.library) managed = { ...managed, library: { ...managed.library, behind: 0, incoming: [] } };
-    } else if (id === "app" && updates.app) {
-      updates = { ...updates, app: { ...updates.app, current: updates.app.latest ?? updates.app.current, available: false } };
+    } else if (target === "library") {
+      updates = {
+        ...updates,
+        library: { ...updates.library, current: updates.library.latest, behind: 0, incoming: [] },
+      };
+      if (managed.library) {
+        managed = {
+          ...managed,
+          library: {
+            ...managed.library,
+            previous_revision: managed.library.revision,
+            revision: updates.library.latest ?? managed.library.revision,
+            behind: 0,
+          },
+        };
+      }
+    } else if (target === "app") {
+      updates = { ...updates, app: { ...updates.app, current: updates.app.latest ?? updates.app.current } };
     }
   }
 
   function applyAll(): MockResponse {
-    if (threads.some((t) => t.active_run)) return err(409, "runs_active", "Runs are active.");
-    if (managed.library?.modified) return err(409, "library_modified", "The library has local changes.");
-    const previous = updates.progress ?? [];
-    const steps: UpdateStatus["progress"] = [
-      ...updates.engines.filter((e) => e.available).map((e) => ({ id: `engine:${e.id}`, label: e.name })),
-      ...(updates.library?.available ? [{ id: "library", label: "Skills library" }] : []),
-      ...(updates.app?.available && updates.app.can_apply ? [{ id: "app", label: "App" }] : []),
-    ].map((step) => ({ ...step, state: "pending", error: null }));
-    const done = previous.filter((step) => step.state === "done");
-    updates = { ...updates, progress: [...done, ...steps] };
-    const set = (id: string, state: "running" | "done" | "failed", error: string | null = null) => {
-      updates = {
-        ...updates,
-        progress: (updates.progress ?? []).map((step) => (step.id === id ? { ...step, state, error } : step)),
-      };
-    };
-    const next = (at: number) => {
-      const step = steps[at];
-      if (!step) {
-        updates = { ...updates, progress: null };
-        return;
+    if (activeRuns() > 0) return err(409, "runs_active", "Runs are active.");
+    const targets = [
+      ...updates.engines
+        .filter((e) => e.can_apply && e.latest !== e.current)
+        .map((e) => `engine:${e.id}`),
+      ...(updates.library.behind > 0 ? ["library"] : []),
+      ...(updates.app.can_apply && updates.app.latest !== updates.app.current ? ["app"] : []),
+    ];
+    const result: ApplyAllResult = { steps: [] };
+    for (const target of targets) {
+      if (failStep === target) {
+        failStep = null;
+        result.steps.push({ target, ok: false, message: "The installer exited with status 1." });
+        break;
       }
-      set(step.id, "running");
-      const timer = setTimeout(() => {
-        if (failStep === step.id) {
-          failStep = null;
-          set(step.id, "failed", "The installer exited with status 1.");
-          return;
-        }
-        finishStep(step.id);
-        set(step.id, "done");
-        next(at + 1);
-      }, stepMs * 3);
-      timers.add(timer);
-    };
-    next(0);
-    return { status: 202, body: updatesBody() };
+      finishStep(target);
+      result.steps.push({ target, ok: true, message: null });
+    }
+    return { status: 200, body: result };
   }
 
   function newProject(path: string, trusted = false): Project {
@@ -354,46 +355,47 @@ export function createMockApi(options: MockOptions = {}) {
         if (seg[2] === "apply-all") return applyAll();
         if (seg[2] === "app") {
           finishStep("app");
-          return { status: 200, body: updatesBody() };
+          return { status: 202 };
         }
         break;
+      case "GET /api/settings":
+        return { status: 200, body: settings };
+      case "PUT /api/settings":
+        settings = data as ServerSettings;
+        return { status: 200, body: settings };
       case "GET /api/workspace":
         return { status: 200, body: workspaceBody() };
       case "POST /api/workspace":
-        if (seg[2] === "setup") return setup(data);
+        if (seg[2] === "setup") return setup();
         if (seg[2] === "update") {
-          if (managed.library?.modified) return err(409, "library_modified", "The library has local changes.");
-          if (managed.library) {
-            managed = {
-              ...managed,
-              library: {
-                ...managed.library,
-                previous_revision: managed.library.revision,
-                revision: managed.library.incoming[0]?.revision ?? managed.library.revision,
-                behind: 0,
-                incoming: [],
-              },
-            };
-          }
-          finishStep("library");
-          return { status: 200, body: workspaceBody() };
+          if (managed.library?.dirty) return err(409, "library_dirty", "The library has local changes.");
+          if (activeRuns() > 0) return err(409, "runs_active", "Runs are active.");
+          const list = updates.library.incoming;
+          if (data.apply === true) finishStep("library");
+          return {
+            status: 200,
+            body: {
+              applied: data.apply === true,
+              previous_revision: managed.library?.previous_revision ?? null,
+              revision: managed.library?.revision ?? "",
+              incoming: list,
+            },
+          };
         }
         if (seg[2] === "rollback" && managed.library?.previous_revision) {
-          managed = {
-            ...managed,
-            library: { ...managed.library, revision: managed.library.previous_revision, previous_revision: null },
-          };
-          return { status: 200, body: workspaceBody() };
+          const revision = managed.library.previous_revision;
+          managed = { ...managed, library: { ...managed.library, revision, previous_revision: null } };
+          return { status: 200, body: { applied: true, previous_revision: null, revision, incoming: [] } };
         }
         break;
       case "DELETE /api/projects": {
-        const row = workspaceBody().projects.find((p) => p.id === seg[2]);
-        if (row && (row.modified || row.unpushed) && query.get("force") !== "true") {
-          return err(409, "project_at_risk", "This checkout has work that exists nowhere else.");
+        const row = workspaceBody().targets.find((t) => t.project_id === seg[2]);
+        if (row?.dirty && query.get("confirm") !== "true") {
+          return err(409, "project_has_work", "This checkout has uncommitted changes.");
         }
         projects = projects.filter((p) => p.id !== seg[2]);
         threads = threads.filter((t) => t.project_id !== seg[2]);
-        return { status: 204 };
+        return { status: 200, body: { files_removed: !row?.dirty, kept_path: row?.dirty ? row.path : null } };
       }
       case "GET /api/info":
         return { status: 200, body: { ...fixtures.info, remote: scenario === "remote" } };
@@ -434,9 +436,7 @@ export function createMockApi(options: MockOptions = {}) {
           return { status: 201, body: newProject(`/Users/dev/orbyn/${String(data.name)}`, true) };
         }
         if (seg[2] === "import") {
-          const source = String(data.path ?? "");
-          if (data.dry_run === true) return { status: 200, body: fixtures.importPreview(source) };
-          return { status: 201, body: { project: newProject(source) } };
+          return { status: 201, body: fixtures.importReport(newProject(String(data.path ?? ""))) };
         }
         break;
       }

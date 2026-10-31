@@ -163,7 +163,7 @@ export function DetailsCard({
   );
   const togglePanel = useUi((state) => state.togglePanel);
   const projectBranch = useWorkspace(
-    (state) => state.managed.data?.projects.find((p) => p.id === thread.project_id)?.branch ?? null,
+    (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const copyPath = () => void navigator.clipboard?.writeText(thread.cwd).catch(() => undefined);

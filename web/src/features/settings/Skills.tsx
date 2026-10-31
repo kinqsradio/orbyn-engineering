@@ -11,7 +11,7 @@ import { FallbackNotice } from "./Workspace";
 
 function Pack({ pack, onChange }: { pack: SkillPackStatus; onChange(pack: SkillPackStatus): void }) {
   const library = useWorkspace((state) => state.managed.data?.library ?? null);
-  const fallback = useWorkspace((state) => state.managed.data?.skill_delivery === "fallback");
+  const fallback = library?.native_skills === false;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rebuild = async () => {
@@ -51,7 +51,7 @@ function Pack({ pack, onChange }: { pack: SkillPackStatus; onChange(pack: SkillP
         {library ? (
           <div>
             <dt>Changes</dt>
-            <dd>{library.modified ? <Pill tone="warn">Modified</Pill> : "None"}</dd>
+            <dd>{library.dirty ? <Pill tone="warn">Modified</Pill> : "None"}</dd>
           </div>
         ) : null}
         <div>

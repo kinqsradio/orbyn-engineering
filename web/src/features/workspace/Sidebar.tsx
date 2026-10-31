@@ -86,7 +86,7 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
   );
   const engine = useWorkspace((state) => engineById(state.engines.data, thread.engine));
   const projectBranch = useWorkspace(
-    (state) => state.managed.data?.projects.find((p) => p.id === thread.project_id)?.branch ?? null,
+    (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const unmanaged = engine?.capabilities.managed === false;

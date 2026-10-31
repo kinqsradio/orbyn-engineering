@@ -15,10 +15,12 @@ import type {
   WireAuditEvent,
   WireThreadEvent,
   AgUiEvent,
+  ImportReport,
   JsonValue,
+  ServerSettings,
+  UpdateStatus,
+  WorkspaceStatus,
 } from "../src/api/types.ts";
-import type { UpdateStatus } from "../src/api/updates.ts";
-import type { ImportPreview, WorkspaceStatus } from "../src/api/workspace.ts";
 
 /** Fixed under test. In the dev server, "now" at startup, so ages read realistically. */
 export const T0 = process.env.VITEST ? Date.UTC(2026, 9, 31, 9, 0, 0) : Date.now();
@@ -753,78 +755,94 @@ export function referenceState(now: number) {
 
 const rev = (seed: string) => `${seed}0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b`.slice(0, 40);
 
-export function workspaceStatus(list: Project[]): WorkspaceStatus {
+export const incoming = [
+  { sha: rev("a1b2c3d"), subject: "Add statechart review guidance" },
+  { sha: rev("d4e5f6a"), subject: "Tighten worktree cleanup rules" },
+];
+
+export function workspaceStatus(list: Project[], configured = true): WorkspaceStatus {
   return {
-    state: "ready",
-    step: null,
-    error: null,
-    library: {
-      path: "/Users/dev/Library/Application Support/Orbyn/orbyn-fullstack-skills",
-      revision: rev("8ede3c4"),
-      branch: "main",
-      modified: false,
-      ahead: 0,
-      behind: 2,
-      incoming: [
-        { revision: rev("a1b2c3d"), subject: "Add statechart review guidance" },
-        { revision: rev("d4e5f6a"), subject: "Tighten worktree cleanup rules" },
-      ],
-      previous_revision: rev("51fa223"),
-    },
-    projects: list.map((project, at) => ({
-      id: project.id,
-      name: project.name,
+    configured,
+    default_url: "https://example.com/orbyn/skills.git",
+    library: configured
+      ? {
+          path: "/Users/dev/Library/Application Support/Orbyn/workspace",
+          adopted: false,
+          revision: rev("8ede3c4"),
+          branch: "main",
+          dirty: false,
+          dirty_files: [],
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 2,
+          previous_revision: rev("51fa223"),
+          native_skills: true,
+          problem: null,
+        }
+      : null,
+    targets: list.map((project, at) => ({
+      project_id: project.id,
+      path: project.path,
       git_root: project.path,
       revision: rev(at === 0 ? "c16b80a" : "85a1821"),
       branch: "main",
-      modified: at === 1,
-      unpushed: at === 1,
+      dirty: at === 1,
       worktrees:
         at === 0
-          ? [{ path: "/Users/dev/code/orbyn-engineering-app-wt/approval-timeout", branch: "approval-timeout" }]
+          ? [
+              {
+                path: "/Users/dev/code/orbyn-engineering-app-wt/approval-timeout",
+                branch: "approval-timeout",
+                revision: rev("9c8d7e6"),
+                dirty: false,
+              },
+            ]
           : [],
-      overlaps: at === 0 ? ["tdd"] : [],
+      instructions: ["AGENTS.md"],
+      same_name_skills: at === 0 ? ["tdd"] : [],
+      problem: null,
     })),
-    active_runs: 0,
-    skill_delivery: "linked",
   };
 }
 
-export const importPreview = (path: string): ImportPreview => ({
-  path,
-  git_root: path,
-  branch: "main",
-  uncommitted: ["src/draft.rs", "notes/todo.md"],
+export const importReport = (project: Project): ImportReport => ({
+  project,
+  dirty_files: ["src/draft.rs", "notes/todo.md"],
   unpushed_branches: ["spike/retry-queue"],
 });
 
-export function updateStatus(library: WorkspaceStatus["library"]): UpdateStatus {
+export function updateStatus(behind: number): UpdateStatus {
   return {
-    configured: true,
     checked_at: new Date(T0 - 600_000).toISOString(),
-    checking: false,
-    active_runs: 0,
+    error: null,
     engines: [
-      { id: "claude", name: "Claude Code", current: "2.1.14", latest: "2.1.20", available: true },
-      { id: "codex", name: "Codex", current: "0.58.0", latest: "0.58.0", available: false },
+      { id: "claude", current: "2.1.14", latest: "2.1.20", support: "tested", can_apply: true, blocked_reason: null },
+      { id: "codex", current: "0.58.0", latest: "0.58.0", support: "untested", can_apply: false, blocked_reason: null },
     ],
-    library: library
-      ? {
-          current: library.revision,
-          latest: library.incoming[0]?.revision ?? library.revision,
-          available: library.behind > 0,
-          modified: library.modified,
-          incoming: library.incoming,
-        }
-      : null,
+    library: {
+      current: rev("8ede3c4"),
+      latest: rev("a1b2c3d"),
+      behind,
+      ahead: 0,
+      dirty: false,
+      incoming: behind > 0 ? incoming : [],
+      can_apply: true,
+      blocked_reason: null,
+    },
     app: {
       current: "0.1.0",
       latest: "0.2.0",
-      available: true,
       notes: "## Changes\n\n- Faster thread loading\n- Fixes terminal resize on Windows",
-      manual_hint: null,
+      mode: "desktop",
       can_apply: true,
+      blocked_reason: null,
+      unconfigured: false,
     },
-    progress: null,
   };
 }
+
+export const serverSettings = (): ServerSettings => ({
+  auto_settle: { after_days: null, on_merge: false, keep_pull_requests: true },
+  snooze_presets: [],
+  title_instructions: null,
+});

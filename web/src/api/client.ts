@@ -1,5 +1,6 @@
 import { readToken } from "./token";
 import type {
+  ApplyAllResult,
   Approval,
   ComputerStatus,
   CreatePolicyRule,
@@ -8,18 +9,23 @@ import type {
   EngineStatus,
   FileDiff,
   FsListing,
+  ImportReport,
   JsonValue,
+  LibraryUpdateResult,
   PolicyRule,
   Project,
+  ProjectRemoval,
   Run,
   ServerInfo,
+  ServerSettings,
   SkillPackStatus,
   SkillProfile,
   Thread,
+  UpdateStatus,
   WireAuditEvent,
+  WorkspaceSetup,
+  WorkspaceStatus,
 } from "./types";
-import type { UpdateStatus } from "./updates";
-import type { ImportPreview, ImportResult, WorkspaceSetup, WorkspaceStatus } from "./workspace";
 
 /** A failed request. `code` is the server's stable code, or a local one below. */
 export class ApiFailure extends Error {
@@ -108,23 +114,24 @@ const q = encodeURIComponent;
 export const api = {
   updates: (signal?: AbortSignal) => request<UpdateStatus>("GET", "/api/updates", undefined, signal),
   checkUpdates: () => request<UpdateStatus>("POST", "/api/updates/check"),
-  applyAppUpdate: () => request<UpdateStatus>("POST", "/api/updates/app/apply"),
-  applyAllUpdates: () => request<UpdateStatus>("POST", "/api/updates/apply-all"),
+  applyAppUpdate: () => request<void>("POST", "/api/updates/app/apply"),
+  applyAllUpdates: () => request<ApplyAllResult>("POST", "/api/updates/apply-all"),
+  settings: (signal?: AbortSignal) =>
+    request<ServerSettings>("GET", "/api/settings", undefined, signal),
+  putSettings: (body: ServerSettings) => request<ServerSettings>("PUT", "/api/settings", body),
 
   workspace: (signal?: AbortSignal) =>
     request<WorkspaceStatus>("GET", "/api/workspace", undefined, signal),
   setupWorkspace: (body: WorkspaceSetup) =>
     request<WorkspaceStatus>("POST", "/api/workspace/setup", body),
-  updateWorkspace: () => request<WorkspaceStatus>("POST", "/api/workspace/update"),
-  rollbackWorkspace: () => request<WorkspaceStatus>("POST", "/api/workspace/rollback"),
+  updateLibrary: (apply: boolean) =>
+    request<LibraryUpdateResult>("POST", "/api/workspace/update", { apply }),
+  rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
   cloneProject: (url: string) => request<Project>("POST", "/api/projects/clone", { url }),
   createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name }),
-  previewImport: (path: string) =>
-    request<ImportPreview>("POST", "/api/projects/import", { path, dry_run: true }),
-  importProject: (path: string) =>
-    request<ImportResult>("POST", "/api/projects/import", { path, dry_run: false }),
-  removeProject: (id: string, force: boolean) =>
-    request<void>("DELETE", `/api/projects/${q(id)}${force ? "?force=true" : ""}`),
+  importProject: (path: string) => request<ImportReport>("POST", "/api/projects/import", { path }),
+  removeProject: (id: string, confirm: boolean) =>
+    request<ProjectRemoval>("DELETE", `/api/projects/${q(id)}${confirm ? "?confirm=true" : ""}`),
 
   info: (signal?: AbortSignal) => request<ServerInfo>("GET", "/api/info", undefined, signal),
   signIn: (key: string) => request<void>("POST", "/auth/session", { key }),

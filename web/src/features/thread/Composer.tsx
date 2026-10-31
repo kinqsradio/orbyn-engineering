@@ -2,6 +2,7 @@ import { ArrowUp, Folder, GitBranch, ShieldCheck, ShieldOff } from "lucide-react
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
 import type { EngineStatus, SkillSummary, Thread } from "../../api/types";
+import type { PermissionMode } from "../../generated/PermissionMode";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
@@ -10,6 +11,13 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { insertMention, mentionAt } from "./skillMention";
+
+const accessLabels: Record<PermissionMode, string> = {
+  supervised: "Asks before acting",
+  auto_edits: "Auto edits",
+  auto: "Auto",
+  full_access: "Full access",
+};
 
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
@@ -41,7 +49,7 @@ export function Composer({
   const [menuDismissed, setMenuDismissed] = useState(false);
   const skills = useAsync("composer-skills", (signal) => api.skills(signal));
   const projectBranch = useWorkspace(
-    (state) => state.managed.data?.projects.find((p) => p.id === thread.project_id)?.branch ?? null,
+    (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const busy = thread.active_run !== null;
@@ -237,7 +245,7 @@ export function Composer({
             <dt className="sr-only">Access</dt>
             <dd className={unmanaged ? "tone-warn" : undefined}>
               {unmanaged ? <ShieldOff size={12} aria-hidden /> : <ShieldCheck size={12} aria-hidden />}
-              {unmanaged ? "Unmanaged" : "Asks before acting"}
+              {unmanaged ? "Unmanaged" : accessLabels[thread.lifecycle?.permission_mode ?? "supervised"]}
             </dd>
           </div>
         </dl>

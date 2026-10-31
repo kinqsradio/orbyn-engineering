@@ -61,7 +61,9 @@ describe("groupThreads", () => {
       position: 0,
       parent_thread_id: null,
       relation: null,
-    };
+      permission_mode: "supervised",
+      plan_mode: false,
+    } satisfies Thread["lifecycle"];
     const groups = groupThreads(
       [
         thread("kept", 300, { lifecycle }),

@@ -1,8 +1,14 @@
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
-import type { Approval, EngineStatus, Project, Thread } from "../api/types";
-import type { UpdateStatus } from "../api/updates";
-import type { WorkspaceStatus } from "../api/workspace";
+import type {
+  ApplyAllResult,
+  Approval,
+  EngineStatus,
+  Project,
+  Thread,
+  UpdateStatus,
+  WorkspaceStatus,
+} from "../api/types";
 import { toFailure } from "../lib/useAsync";
 
 export interface Loadable<T> {
@@ -28,7 +34,10 @@ interface WorkspaceState {
   managedUnsupported: boolean;
   updates: Loadable<UpdateStatus>;
   updatesUnsupported: boolean;
+  /** The Update all in progress, or the one that stopped. */
+  updateRun: UpdateRun | null;
 
+  runAllUpdates(): Promise<void>;
   refreshManaged(): Promise<void>;
   refreshUpdates(): Promise<void>;
   putUpdates(status: UpdateStatus): void;
@@ -54,6 +63,76 @@ const claim = (key: string) => {
   return () => generations.get(key) === next;
 };
 
+export type UpdateStepState = "pending" | "running" | "done" | "failed";
+
+export interface UpdateRunStep {
+  target: string;
+  label: string;
+  state: UpdateStepState;
+  error: string | null;
+}
+
+export interface UpdateRun {
+  running: boolean;
+  steps: UpdateRunStep[];
+  error: string | null;
+}
+
+const PROGRESS_POLL_MS = 1000;
+
+export const engineHasUpdate = (engine: UpdateStatus["engines"][number]) =>
+  engine.latest !== null && engine.latest !== engine.current;
+export const appHasUpdate = (status: UpdateStatus) =>
+  status.app.latest !== null && status.app.latest !== status.app.current;
+
+/** What Update all will run, in the server's order. */
+export function plannedSteps(status: UpdateStatus, engines: readonly EngineStatus[]): UpdateRunStep[] {
+  const step = (target: string, label: string): UpdateRunStep => ({
+    target,
+    label,
+    state: "pending",
+    error: null,
+  });
+  const planned = [
+    ...status.engines
+      .filter((engine) => engineHasUpdate(engine) && engine.can_apply)
+      .map((engine) =>
+        step(`engine:${engine.id}`, engines.find((e) => e.id === engine.id)?.name ?? engine.id),
+      ),
+    ...(status.library.behind > 0 ? [step("library", "Skills library")] : []),
+    ...(appHasUpdate(status) && status.app.can_apply ? [step("app", "App")] : []),
+  ];
+  return planned.map((entry, at) => (at === 0 ? { ...entry, state: "running" } : entry));
+}
+
+const stillAvailable = (target: string, status: UpdateStatus) => {
+  if (target === "library") return status.library.behind > 0;
+  if (target === "app") return appHasUpdate(status);
+  const engine = status.engines.find((e) => `engine:${e.id}` === target);
+  return engine ? engineHasUpdate(engine) : false;
+};
+
+/** Live progress from the status the server reports while it applies. */
+export function advanceSteps(steps: UpdateRunStep[], status: UpdateStatus): UpdateRunStep[] {
+  const done = steps.map((step) =>
+    stillAvailable(step.target, status) ? step : { ...step, state: "done" as const },
+  );
+  const next = done.findIndex((step) => step.state !== "done");
+  return done.map((step, at) =>
+    at === next ? { ...step, state: "running" } : step.state === "done" ? step : { ...step, state: "pending" },
+  );
+}
+
+export function settleSteps(planned: UpdateRunStep[], result: ApplyAllResult): UpdateRunStep[] {
+  return planned.map((step) => {
+    const ran = result.steps.find((entry) => entry.target === step.target);
+    if (!ran) return { ...step, state: "pending" };
+    return ran.ok
+      ? { ...step, state: "done" }
+      : { ...step, state: "failed", error: ran.message };
+  });
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   projects: idle(),
   threadIds: {},
@@ -66,6 +145,43 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   managedUnsupported: false,
   updates: idle(),
   updatesUnsupported: false,
+  updateRun: null,
+
+  async runAllUpdates() {
+    const { updates, engines, updateRun } = get();
+    if (!updates.data || updateRun?.running) return;
+    const planned = plannedSteps(updates.data, engines.data ?? []);
+    set({ updateRun: { running: true, steps: planned, error: null } });
+    const poll = setInterval(() => {
+      void get()
+        .refreshUpdates()
+        .then(() => {
+          const status = get().updates.data;
+          const run = get().updateRun;
+          if (status && run?.running) {
+            set({ updateRun: { ...run, steps: advanceSteps(run.steps, status) } });
+          }
+        });
+    }, PROGRESS_POLL_MS);
+    try {
+      const result = await api.applyAllUpdates();
+      const failed = result.steps.find((step) => !step.ok);
+      const steps = settleSteps(planned, result);
+      set({ updateRun: failed ? { running: false, steps, error: null } : null });
+    } catch (error) {
+      set({
+        updateRun: {
+          running: false,
+          steps: planned.map((step) => ({ ...step, state: "pending" })),
+          error: toFailure(error).message,
+        },
+      });
+    } finally {
+      clearInterval(poll);
+      const { refreshUpdates, refreshEngines, refreshManaged } = get();
+      await Promise.all([refreshUpdates(), refreshEngines(), refreshManaged()]);
+    }
+  },
 
   async refreshUpdates() {
     const current = claim("updates");

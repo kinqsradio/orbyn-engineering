@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { api } from "../../api/client";
 import { fullTime } from "../../lib/format";
-import { toFailure } from "../../lib/useAsync";
-import { useUi } from "../../state/ui";
-import { useWorkspace } from "../../state/workspace";
+import { toFailure, useAsync } from "../../lib/useAsync";
+import { appHasUpdate, useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { availableCount, UpdateEverythingDialog } from "../workspace/Updates";
@@ -13,8 +12,7 @@ export function UpdatesSection() {
   const unsupported = useWorkspace((state) => state.updatesUnsupported);
   const refreshUpdates = useWorkspace((state) => state.refreshUpdates);
   const putUpdates = useWorkspace((state) => state.putUpdates);
-  const background = useUi((state) => state.backgroundChecks);
-  const setBackground = useUi((state) => state.setBackgroundChecks);
+  const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
@@ -37,15 +35,13 @@ export function UpdatesSection() {
       <h1 tabIndex={-1} data-page-title>
         Updates
       </h1>
-      {status?.configured ? (
-        <Button small busy={checking} onClick={() => void check()}>
-          Check for updates
-        </Button>
-      ) : null}
+      <Button small busy={checking} onClick={() => void check()}>
+        Check for updates
+      </Button>
     </div>
   );
 
-  if (unsupported || status?.configured === false) {
+  if (unsupported) {
     return (
       <>
         {heading}
@@ -83,7 +79,12 @@ export function UpdatesSection() {
           <dt>Available</dt>
           <dd>{count === 0 ? "Everything is up to date" : count}</dd>
         </div>
+        <div>
+          <dt>App</dt>
+          <dd>{status.app.unconfigured ? "Updates aren't set up for this build" : status.app.current}</dd>
+        </div>
       </dl>
+      {status.error ? <p className="banner banner-warn">{status.error}</p> : null}
       {error ? (
         <p className="field-error" role="alert">
           {error}
@@ -92,13 +93,20 @@ export function UpdatesSection() {
       <label className="check">
         <input
           type="checkbox"
-          checked={background}
-          onChange={(event) => setBackground(event.target.checked)}
+          checked={settings.data?.background_update_checks !== false}
+          disabled={!settings.data}
+          onChange={(event) => {
+            if (!settings.data) return;
+            const next = { ...settings.data, background_update_checks: event.target.checked };
+            void api.putSettings(next).then(settings.setData, (failure: unknown) => {
+              setError(toFailure(failure).message);
+            });
+          }}
         />
         <span>Check in the background</span>
       </label>
       <p className="muted">Checks only look. Nothing is applied until you click Update.</p>
-      {count > 0 || status.app?.available ? (
+      {count > 0 || appHasUpdate(status) ? (
         <div className="form-actions">
           <Button tone="primary" small onClick={() => setReviewing(true)}>
             Review updates

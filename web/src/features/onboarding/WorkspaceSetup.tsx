@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { api } from "../../api/client";
-import type { WorkspaceSetup as SetupChoice, WorkspaceStatus } from "../../api/workspace";
+import type { WorkspaceSetup as SetupChoice } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { OrbynMark } from "../../ui/badges";
@@ -9,24 +9,13 @@ import { Button } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { FolderBrowser } from "./FolderBrowser";
 
-const POLL_MS = 1000;
-
-function Setup({ status }: { status: WorkspaceStatus }) {
+function Setup() {
   const putManaged = useWorkspace((state) => state.putManaged);
-  const refreshManaged = useWorkspace((state) => state.refreshManaged);
   const group = useId();
-  const [mode, setMode] = useState<SetupChoice["mode"]>("managed");
+  const [mode, setMode] = useState<"managed" | "adopt">("managed");
   const [last, setLast] = useState<SetupChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const running = status.state === "setting_up";
-  const failure = error ?? (status.state === "failed" ? (status.error ?? "Setup stopped.") : null);
-
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => void refreshManaged(), POLL_MS);
-    return () => clearInterval(timer);
-  }, [running, refreshManaged]);
 
   const start = async (choice: SetupChoice) => {
     setBusy(true);
@@ -36,7 +25,6 @@ function Setup({ status }: { status: WorkspaceStatus }) {
       putManaged(await api.setupWorkspace(choice));
     } catch (cause) {
       setError(toFailure(cause).message);
-    } finally {
       setBusy(false);
     }
   };
@@ -52,10 +40,10 @@ function Setup({ status }: { status: WorkspaceStatus }) {
           Set up your workspace
         </h1>
         <p className="lede">Orbyn keeps your skill library and project checkouts in one managed place.</p>
-        {running ? (
+        {busy ? (
           <p className="setup-progress" role="status">
             <Loader2 size={16} className="spin" aria-hidden />
-            {status.step ?? "Setting up"}
+            {last?.adopt_path ? "Checking the library folder" : "Cloning the skill library"}
           </p>
         ) : (
           <>
@@ -72,18 +60,18 @@ function Setup({ status }: { status: WorkspaceStatus }) {
                 <input type="radio" name={group} checked={mode === "adopt"} onChange={() => setMode("adopt")} />
                 <span className="choice-text">
                   <strong>Adopt an existing library</strong>
-                  <span>Uses a skill library folder you already have.</span>
+                  <span>Uses a skill library folder you already have. It stays where it is.</span>
                 </span>
               </label>
             </fieldset>
-            {failure ? (
+            {error ? (
               <div className="error-state" role="alert">
                 <div className="error-text">
                   <strong>Setup didn't finish</strong>
-                  <span>{failure}</span>
+                  <span>{error}</span>
                 </div>
                 {last ? (
-                  <Button small busy={busy} onClick={() => void start(last)}>
+                  <Button small onClick={() => void start(last)}>
                     Retry
                   </Button>
                 ) : null}
@@ -91,16 +79,12 @@ function Setup({ status }: { status: WorkspaceStatus }) {
             ) : null}
             {mode === "managed" ? (
               <div className="form-actions">
-                <Button tone="primary" busy={busy} onClick={() => void start({ mode: "managed" })}>
+                <Button tone="primary" onClick={() => void start({})}>
                   Set up workspace
                 </Button>
               </div>
             ) : (
-              <FolderBrowser
-                actionLabel="Adopt this folder"
-                busy={busy}
-                onChoose={(path) => void start({ mode: "adopt", path })}
-              />
+              <FolderBrowser actionLabel="Adopt this folder" onChoose={(path) => void start({ adopt_path: path })} />
             )}
           </>
         )}
@@ -119,8 +103,8 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
     void refreshManaged();
   }, [refreshManaged]);
 
-  if (unsupported || managed.data?.state === "ready") return children;
-  if (managed.data) return <Setup status={managed.data} />;
+  if (unsupported || managed.data?.configured) return children;
+  if (managed.data) return <Setup />;
   return (
     <main className="boot">
       {managed.error ? (
