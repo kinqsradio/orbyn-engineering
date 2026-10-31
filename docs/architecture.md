@@ -367,7 +367,10 @@ never matches a compound command (`;`, `|`, `&`, redirection, substitution), so
 ## Event stream
 
 Every run event is stored in `thread_events` with a per-thread `seq`, and followers
-are woken after commit. A follower carries only a position and always reads from
+are woken after commit. Text from an engine is merged for up to 33 ms or 8 KiB before it
+is written, and anything else flushes it first, so order holds. Tool traffic is bounded
+per tool: arguments at 16 KiB, output at 8 KiB with a notice, and after 64 tools a run
+keeps a tool's row and not its output. Raw items stay whole for the inspector. A follower carries only a position and always reads from
 the log, so replay and live are one loop. `GET /api/threads/:id/events` is SSE: it
 replays from `Last-Event-ID`, then follows live. Events use AG-UI 1.0 names.
 Delivery to clients is a projection of the log; a client that reconnects loses
