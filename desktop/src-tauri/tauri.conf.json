@@ -16,7 +16,8 @@
         "height": 820,
         "minWidth": 720,
         "minHeight": 480,
-        "url": "index.html"
+        "url": "index.html",
+        "create": false
       }
     ],
     "security": {
@@ -63,6 +64,13 @@
     "updater": {
       "pubkey": "",
       "endpoints": []
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "orbyn"
+        ]
+      }
     }
   }
 }

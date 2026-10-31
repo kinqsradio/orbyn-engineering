@@ -19,6 +19,7 @@ use crate::preview::PreviewManager;
 use crate::projects::ClonePool;
 use crate::questions::QuestionDesk;
 use crate::runs::{RunManager, RunServices};
+use crate::shell::ShellBridge;
 use crate::skills::SkillService;
 use crate::store::{NewThread, Recovery, Store};
 use crate::terminal::TerminalManager;
@@ -106,6 +107,7 @@ pub struct Core {
     pub runs: Arc<RunManager>,
     pub terminals: Arc<TerminalManager>,
     pub updates: Arc<UpdateCenter>,
+    pub shell: ShellBridge,
     pub usage: Arc<UsageCenter>,
     pub clones: ClonePool,
     pub previews: PreviewManager,
@@ -199,6 +201,7 @@ impl Core {
             runs,
             terminals,
             updates,
+            shell: ShellBridge::default(),
             usage,
             clones: ClonePool::default(),
             previews: PreviewManager::default(),

@@ -121,6 +121,11 @@ impl UpdateCenter {
         receiver
     }
 
+    /// The way to the shell's stdout, for what else needs to reach it.
+    pub fn shell_lines(&self) -> Option<mpsc::UnboundedSender<Value>> {
+        lock(&self.shell).clone()
+    }
+
     pub fn subscribe(&self) -> watch::Receiver<u64> {
         self.changes.subscribe()
     }
