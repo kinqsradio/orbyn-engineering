@@ -14,11 +14,11 @@ use orbyn_contracts::{
     AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, BatchThreads, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
     DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
-    GitAction, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
-    OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject, ReorderThreads,
-    RestoreChanges, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SetPreferences,
-    SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled,
-    UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
+    GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull,
+    MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject,
+    ReorderThreads, RestoreChanges, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings,
+    SetPreferences, SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine,
+    TaskEnabled, UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -1365,6 +1365,39 @@ pub async fn add_custom_engine(
         StatusCode::CREATED,
         Json(state.core.engines.status(&engine.id).await?),
     ))
+}
+
+#[derive(Deserialize)]
+pub struct RegistryQuery {
+    #[serde(default)]
+    q: String,
+}
+
+pub async fn search_acp_registry(
+    State(state): State<AppState>,
+    Query(query): Query<RegistryQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.search_acp_registry(&query.q).await?))
+}
+
+pub async fn install_acp_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<InstallAcpAgent>,
+) -> ApiResult<impl IntoResponse> {
+    let engine = state
+        .core
+        .install_acp_agent(&id, body.distribution.as_deref(), LOCAL_USER)
+        .await?;
+    Ok((StatusCode::CREATED, Json(engine)))
+}
+
+pub async fn remove_acp_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.remove_acp_agent(&id, LOCAL_USER).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_custom_engine(

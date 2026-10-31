@@ -2566,6 +2566,29 @@ pub struct CustomEngine {
 }
 
 wire! {
+/// An agent the ACP registry lists. Nothing here is installed by being listed.
+pub struct AcpRegistryEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    /// What this machine can install it through, best first: `binary`, `npx`, `uvx`.
+    pub installable: Vec<String>,
+    /// The engine it became, once installed.
+    pub engine: Option<String>,
+}
+}
+
+wire! {
+pub struct InstallAcpAgent {
+    /// `binary`, `npx` or `uvx`. Absent takes the best this machine can use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub distribution: Option<String>,
+}
+}
+
+wire! {
 pub struct ComputerAction {
     pub action: String,
     pub target: String,

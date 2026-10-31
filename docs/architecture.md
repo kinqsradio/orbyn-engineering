@@ -712,6 +712,19 @@ Nothing runs a shell or npm to learn these. On Windows a `.cmd` is followed to t
 it wraps, including pnpm's store and a same-named sibling, a `node.exe` beside the shim
 wins, and a shim that points at a shell is refused.
 
+## ACP registry
+
+`GET /api/acp/registry` reads the public registry on request, and installing an agent
+makes it a custom engine named `acp-<id>`, with no account and no credential: one that
+needs a login says so when run, under its own command. The registry is someone else's
+file, so an entry that does not parse is left out, and ids and versions that reach a
+path must be plain. `npx` and `uvx` agents install nothing here. A package name cannot
+read as a flag, and those tools fetch it on first run. A binary is taken only over `https`,
+with the digest the entry gives, and one with no digest is not installable. It is
+unpacked into a staging folder under `<data>/acp-agents`, a link leading out or a command
+outside the folder refuses it, and only then does it become the install. Removing one
+takes its files and engine, refused during a run, and threads keep their history.
+
 ## Command line
 
 `orbyn` is a client of a running service, with no rule of its own: `thread`, `project`,
@@ -728,7 +741,7 @@ did not complete, and 2 when no service is running. `--json` prints the API's an
 `--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
 `{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
-for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
+for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,
 `ORBYN_BROWSER_IN_PROCESS_GPU`, `ORBYN_OFFLINE`
@@ -862,6 +875,8 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
+| `GET /api/acp/registry?q=` | `AcpRegistryEntry[]`, with how this machine can install each; `502` if unreachable |
+| `POST, DELETE /api/acp/registry/:id` | `InstallAcpAgent` to `EngineStatus`, `422` if refused; remove, `409 engine_busy` |
 | `GET /api/skills`, `POST /api/skills/rebuild` | Library skills; rebuild only re-reads them |
 | `GET, POST /api/skills/profiles`, `DELETE /api/skills/profiles/:id` | Profiles |
 | `GET /api/usage?days=` | `UsageReport` from local history, rescanned on each read |

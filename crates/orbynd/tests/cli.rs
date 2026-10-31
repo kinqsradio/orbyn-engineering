@@ -5,7 +5,9 @@ mod support;
 use std::process::{Command, Output};
 
 use serde_json::Value;
-use support::{Options, Service, TempDir, setup};
+#[cfg(unix)]
+use support::Service;
+use support::{Options, TempDir, setup};
 
 const ORBYN: &str = env!("CARGO_BIN_EXE_orbyn");
 
@@ -142,6 +144,8 @@ async fn with_no_service_the_command_says_so_with_its_own_code() {
     assert_eq!(run(&data, &["status"]).await.status.code(), Some(1));
 }
 
+// Only Unix can ask a test's service to stop gracefully.
+#[cfg(unix)]
 #[tokio::test]
 async fn the_service_file_is_private_and_goes_when_the_service_does() {
     let dir = TempDir::new();
@@ -150,12 +154,9 @@ async fn the_service_file_is_private_and_goes_when_the_service_does() {
     let file = data.join("service.json");
     let found: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(found["token"], service.token.as_str());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&file).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
-    }
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
     service.stop().await;
     assert!(!file.exists());
 }

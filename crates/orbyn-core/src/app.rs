@@ -68,6 +68,8 @@ pub struct CoreConfig {
     pub approval_timeout: Duration,
     pub desktop_program: Option<String>,
     pub browser_path: Option<PathBuf>,
+    /// Where the ACP registry is read from.
+    pub acp_registry_url: String,
     pub browser_headless: bool,
     /// Forces `--in-process-gpu`, which the headless shell gets by itself.
     pub browser_in_process_gpu: bool,
@@ -84,6 +86,7 @@ impl CoreConfig {
             approval_timeout: DEFAULT_APPROVAL_TIMEOUT,
             desktop_program: None,
             browser_path: None,
+            acp_registry_url: crate::acp_registry::REGISTRY_URL.to_owned(),
             browser_headless: false,
             browser_in_process_gpu: false,
         }
@@ -106,6 +109,8 @@ pub struct Core {
     pub usage: Arc<UsageCenter>,
     pub clones: ClonePool,
     pub previews: PreviewManager,
+    /// For requests a person asked for, such as reading the ACP registry.
+    pub http: reqwest::Client,
     pub recovery: Recovery,
     _lock: File,
 }
@@ -178,7 +183,7 @@ impl Core {
             store.clone(),
             workspace.clone(),
             engines.clone(),
-            http,
+            http.clone(),
             config.update_manifest.clone(),
         ));
         let core = Self {
@@ -197,6 +202,7 @@ impl Core {
             usage,
             clones: ClonePool::default(),
             previews: PreviewManager::default(),
+            http,
             recovery,
             _lock: lock,
         };

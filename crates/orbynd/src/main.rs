@@ -125,6 +125,9 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
     }
     config.desktop_program = std::env::var("ORBYN_AGENT_DESKTOP").ok();
     config.browser_path = std::env::var_os("ORBYN_BROWSER").map(PathBuf::from);
+    if let Ok(url) = std::env::var("ORBYN_ACP_REGISTRY_URL") {
+        config.acp_registry_url = url;
+    }
     config.browser_headless = env_flag("ORBYN_BROWSER_HEADLESS");
     config.browser_in_process_gpu = env_flag("ORBYN_BROWSER_IN_PROCESS_GPU");
     Ok(config)
@@ -438,6 +441,11 @@ fn router(state: AppState) -> Router {
             axum::routing::delete(api::delete_custom_engine),
         )
         .route("/api/engines/{id}/update", post(api::update_engine))
+        .route("/api/acp/registry", get(api::search_acp_registry))
+        .route(
+            "/api/acp/registry/{id}",
+            post(api::install_acp_agent).delete(api::remove_acp_agent),
+        )
         .route("/api/skills", get(api::skills))
         .route("/api/skills/rebuild", post(api::skills))
         .route(
