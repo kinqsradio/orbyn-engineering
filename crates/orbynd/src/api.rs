@@ -6,7 +6,7 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
@@ -94,6 +94,28 @@ impl IntoResponse for ApiFailure {
 
 pub type ApiResult<T> = Result<T, ApiFailure>;
 
+/// A JSON body whose rejection is an `ApiError`, so every failure has a code.
+pub struct ApiJson<T>(pub T);
+
+impl<S, T> FromRequest<S> for ApiJson<T>
+where
+    S: Send + Sync,
+    Json<T>: FromRequest<S, Rejection = axum::extract::rejection::JsonRejection>,
+{
+    type Rejection = ApiFailure;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, ApiFailure> {
+        match Json::<T>::from_request(request, state).await {
+            Ok(Json(value)) => Ok(Self(value)),
+            Err(rejection) => Err(ApiFailure::new(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                &rejection.body_text(),
+            )),
+        }
+    }
+}
+
 pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
     Json(ServerInfo {
         version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -108,7 +130,7 @@ pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl Into
 
 pub async fn add_project(
     State(state): State<AppState>,
-    Json(body): Json<CreateProject>,
+    ApiJson(body): ApiJson<CreateProject>,
 ) -> ApiResult<impl IntoResponse> {
     Ok((
         StatusCode::CREATED,
@@ -144,7 +166,7 @@ pub async fn browse(Query(query): Query<BrowseQuery>) -> ApiResult<Json<FsListin
     if !requested.is_absolute() {
         return Err(CoreError::Invalid("Choose an absolute folder path.".into()).into());
     }
-    let path = std::fs::canonicalize(&requested)
+    let path = orbyn_core::util::canonicalize(&requested)
         .map_err(|_| CoreError::Invalid(format!("{} cannot be opened.", requested.display())))?;
     let reader = std::fs::read_dir(&path)
         .map_err(|_| CoreError::Invalid(format!("{} cannot be read.", path.display())))?;
@@ -188,7 +210,7 @@ pub async fn list_threads(
 
 pub async fn create_thread(
     State(state): State<AppState>,
-    Json(body): Json<CreateThread>,
+    ApiJson(body): ApiJson<CreateThread>,
 ) -> ApiResult<impl IntoResponse> {
     Ok((
         StatusCode::CREATED,
@@ -215,7 +237,7 @@ pub async fn delete_thread(
 pub async fn start_run(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(body): Json<StartRun>,
+    ApiJson(body): ApiJson<StartRun>,
 ) -> ApiResult<impl IntoResponse> {
     let run = state.core.runs.admit(&id, &body.prompt, LOCAL_USER)?;
     Ok((StatusCode::ACCEPTED, Json(run)))
@@ -251,7 +273,7 @@ pub async fn list_approvals(
 pub async fn decide_approval(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(body): Json<DecideApproval>,
+    ApiJson(body): ApiJson<DecideApproval>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.gate.decide(
         &id,
@@ -297,7 +319,7 @@ fn slug(name: &str) -> String {
 
 pub async fn add_custom_engine(
     State(state): State<AppState>,
-    Json(mut engine): Json<CustomEngine>,
+    ApiJson(mut engine): ApiJson<CustomEngine>,
 ) -> ApiResult<impl IntoResponse> {
     if engine.id.is_empty() {
         engine.id = slug(&engine.name);
@@ -348,7 +370,7 @@ pub async fn list_profiles(State(state): State<AppState>) -> ApiResult<impl Into
 
 pub async fn create_profile(
     State(state): State<AppState>,
-    Json(mut profile): Json<SkillProfile>,
+    ApiJson(mut profile): ApiJson<SkillProfile>,
 ) -> ApiResult<impl IntoResponse> {
     if profile.id == DEFAULT_PROFILE {
         return Err(CoreError::Invalid("The default profile is built in.".into()).into());
@@ -380,7 +402,7 @@ pub async fn list_rules(State(state): State<AppState>) -> ApiResult<impl IntoRes
 
 pub async fn create_rule(
     State(state): State<AppState>,
-    Json(rule): Json<CreatePolicyRule>,
+    ApiJson(rule): ApiJson<CreatePolicyRule>,
 ) -> ApiResult<impl IntoResponse> {
     if rule.pattern.is_empty() {
         return Err(CoreError::Invalid("Enter a pattern.".into()).into());
@@ -426,7 +448,7 @@ pub async fn computer_status(
 pub async fn computer_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(action): Json<ComputerAction>,
+    ApiJson(action): ApiJson<ComputerAction>,
 ) -> ApiResult<impl IntoResponse> {
     let thread = state.core.store.thread(&id)?;
     let result = match &thread.active_run {
@@ -457,7 +479,7 @@ pub struct SessionRequest {
 pub async fn open_session(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(body): Json<SessionRequest>,
+    ApiJson(body): ApiJson<SessionRequest>,
 ) -> ApiResult<Response> {
     let Some(session) = state.access.open_session(&body.key) else {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
@@ -482,7 +504,7 @@ pub async fn open_session(
 pub async fn mcp(
     State(state): State<AppState>,
     Path(token): Path<String>,
-    Json(message): Json<Value>,
+    ApiJson(message): ApiJson<Value>,
 ) -> Response {
     // Drop-safe in core: a client that disconnects mid-approval expires it.
     match state.core.mcp.handle(&token, &message).await {

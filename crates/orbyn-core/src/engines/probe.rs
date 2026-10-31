@@ -99,7 +99,7 @@ pub fn parse_version(text: &str) -> Option<String> {
 
 /// The symlink-free path used for ownership checks.
 pub(crate) fn real_path(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::util::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]

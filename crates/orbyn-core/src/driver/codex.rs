@@ -591,6 +591,15 @@ impl TurnMapper {
                     self.last_error = Some(message);
                 }
             }
+            "warning" => {
+                step.events.push(
+                    AgUiEvent::Custom {
+                        name: "engine.warning".into(),
+                        value: json!({ "message": text(params, "message") }),
+                    }
+                    .into(),
+                );
+            }
             "turn/completed" => {
                 let turn = params.get("turn").cloned().unwrap_or(Value::Null);
                 step.outcome = Some(match turn.get("status").and_then(Value::as_str) {

@@ -24,6 +24,7 @@ type Script = Arc<
 struct ScriptDriver {
     script: Script,
     capabilities: EngineCapabilities,
+    update_script: String,
 }
 
 fn capabilities() -> EngineCapabilities {
@@ -60,8 +61,8 @@ impl EngineDriver for ScriptDriver {
     async fn update_plan(&self, _: &EngineProbe) -> Option<UpdatePlan> {
         Some(UpdatePlan {
             installer: orbyn_contracts::InstallerKind::SelfManaged,
-            program: "/bin/echo".into(),
-            args: vec!["updated".into()],
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), self.update_script.clone()],
             lock_key: "script".into(),
         })
     }
@@ -84,15 +85,21 @@ struct Fixture {
 }
 
 async fn fixture(script: Script) -> Fixture {
+    fixture_with(script, "echo updated", Duration::from_secs(30)).await
+}
+
+async fn fixture_with(script: Script, update: &str, update_timeout: Duration) -> Fixture {
     let dir = TempDir::new();
     let project_dir = dir.path().join("project");
     std::fs::create_dir_all(&project_dir).unwrap();
     let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
     config.engines.lookup_latest = false;
+    config.engines.update_timeout = update_timeout;
     let core = Core::open(config).unwrap();
     core.engines.register(Arc::new(ScriptDriver {
         script,
         capabilities: capabilities(),
+        update_script: update.to_owned(),
     }));
     let project = core.add_project(project_dir.to_str().unwrap()).unwrap();
     core.store.trust_project(&project.id, "t").unwrap();
@@ -426,6 +433,7 @@ async fn mcp_token_lives_exactly_as_long_as_the_run() {
     assert!(reply.is_err());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn update_is_refused_during_a_run_and_admission_during_an_update() {
     let script: Script = Arc::new(|_, events, cancel| {
@@ -454,9 +462,64 @@ async fn update_is_refused_during_a_run_and_admission_during_an_update() {
         .filter(|action| action.starts_with("engine.update"))
         .collect();
     assert_eq!(positions, ["engine.update.result", "engine.update"]);
+}
 
-    let blocked = f.core.engines.admit_with("script", || Ok(()));
-    assert!(blocked.is_ok());
+#[cfg(unix)]
+#[tokio::test]
+async fn failed_update_keeps_its_output_and_clears_the_lock() {
+    let f = fixture_with(
+        finished(),
+        "echo broken registry >&2; exit 3",
+        Duration::from_secs(30),
+    )
+    .await;
+    let failed = f.core.engines.update("script", "t").await;
+    match failed {
+        Err(CoreError::UpdateFailed(output)) => assert!(output.contains("broken registry")),
+        other => panic!("{other:?}"),
+    }
+    assert!(f.core.engines.admit_with("script", || Ok(())).is_ok());
+    let audit = f.core.store.list_audit(None, 10).unwrap();
+    assert_eq!(audit[0].action, "engine.update.result");
+    assert_eq!(audit[0].detail["ok"], json!(false));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn hung_update_is_stopped_at_its_timeout_with_its_children() {
+    let dir = TempDir::new();
+    let marker = dir.path().join("survived");
+    let script = format!("(sleep 1; touch '{}') & wait", marker.display());
+    let f = fixture_with(finished(), &script, Duration::from_millis(100)).await;
+    let timed_out = f.core.engines.update("script", "t").await;
+    match timed_out {
+        Err(CoreError::UpdateFailed(output)) => assert!(output.contains("in time")),
+        other => panic!("{other:?}"),
+    }
+    tokio::time::sleep(Duration::from_millis(1300)).await;
+    assert!(!marker.exists(), "the update's child outlived its timeout");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn admission_is_refused_while_an_update_runs() {
+    let f = fixture_with(finished(), "sleep 1", Duration::from_secs(30)).await;
+    let engines = f.core.engines.clone();
+    let updating = tokio::spawn(async move { engines.update("script", "t").await });
+    for _ in 0..500 {
+        let statuses = f.core.engines.statuses(false).await.unwrap();
+        if statuses.iter().any(|status| status.updating) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert!(matches!(
+        f.core.runs.admit(&f.thread, "go", "t"),
+        Err(CoreError::EngineBusy(_))
+    ));
+    assert_eq!(f.core.store.latest_seq(&f.thread).unwrap(), 0);
+    assert!(updating.await.unwrap().is_ok());
+    assert!(f.core.runs.admit(&f.thread, "go", "t").is_ok());
 }
 
 #[tokio::test]

@@ -143,7 +143,7 @@ impl Core {
         if !path.is_absolute() {
             return Err(CoreError::Invalid("Choose an absolute folder path.".into()));
         }
-        let canonical = std::fs::canonicalize(path)
+        let canonical = crate::util::canonicalize(path)
             .map_err(|_| CoreError::Invalid(format!("{} does not exist.", path.display())))?;
         if !canonical.is_dir() {
             return Err(CoreError::Invalid(format!(

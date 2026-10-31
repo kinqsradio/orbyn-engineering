@@ -1,0 +1,308 @@
+{
+ "_source": "Derived from ag-ui spec/1.0/schema.json (MIT, CopilotKit AG-UI). Regenerate when the spec version changes.",
+ "events": {
+  "ACTIVITY_SNAPSHOT": {
+   "consts": {},
+   "properties": [
+    "activityType",
+    "content",
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "replace",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "activityType",
+    "content",
+    "messageId",
+    "type"
+   ]
+  },
+  "CUSTOM": {
+   "consts": {},
+   "properties": [
+    "metadata",
+    "name",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "type",
+    "value"
+   ],
+   "required": [
+    "name",
+    "type",
+    "value"
+   ]
+  },
+  "RAW": {
+   "consts": {},
+   "properties": [
+    "event",
+    "metadata",
+    "rawEvent",
+    "source",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "event",
+    "type"
+   ]
+  },
+  "REASONING_MESSAGE_CONTENT": {
+   "consts": {},
+   "properties": [
+    "delta",
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "delta",
+    "messageId",
+    "type"
+   ]
+  },
+  "REASONING_MESSAGE_END": {
+   "consts": {},
+   "properties": [
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "messageId",
+    "type"
+   ]
+  },
+  "REASONING_MESSAGE_START": {
+   "consts": {
+    "role": "reasoning"
+   },
+   "properties": [
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "role",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "messageId",
+    "role",
+    "type"
+   ]
+  },
+  "RUN_ERROR": {
+   "consts": {},
+   "properties": [
+    "code",
+    "message",
+    "metadata",
+    "rawEvent",
+    "timestamp",
+    "type",
+    "usage"
+   ],
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "RUN_FINISHED": {
+   "consts": {},
+   "properties": [
+    "metadata",
+    "outcome",
+    "rawEvent",
+    "result",
+    "runId",
+    "threadId",
+    "timestamp",
+    "type",
+    "usage"
+   ],
+   "required": [
+    "runId",
+    "threadId",
+    "type"
+   ]
+  },
+  "RUN_STARTED": {
+   "consts": {},
+   "properties": [
+    "input",
+    "metadata",
+    "parentRunId",
+    "protocolVersion",
+    "rawEvent",
+    "runId",
+    "threadId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "runId",
+    "threadId",
+    "type"
+   ]
+  },
+  "TEXT_MESSAGE_CONTENT": {
+   "consts": {},
+   "properties": [
+    "delta",
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "delta",
+    "messageId",
+    "type"
+   ]
+  },
+  "TEXT_MESSAGE_END": {
+   "consts": {},
+   "properties": [
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "messageId",
+    "type"
+   ]
+  },
+  "TEXT_MESSAGE_START": {
+   "consts": {},
+   "properties": [
+    "messageId",
+    "metadata",
+    "name",
+    "rawEvent",
+    "role",
+    "subagentRunId",
+    "timestamp",
+    "type"
+   ],
+   "required": [
+    "messageId",
+    "type"
+   ]
+  },
+  "TOOL_CALL_ARGS": {
+   "consts": {},
+   "properties": [
+    "delta",
+    "metadata",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "toolCallId",
+    "type"
+   ],
+   "required": [
+    "delta",
+    "toolCallId",
+    "type"
+   ]
+  },
+  "TOOL_CALL_END": {
+   "consts": {},
+   "properties": [
+    "metadata",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "toolCallId",
+    "type"
+   ],
+   "required": [
+    "toolCallId",
+    "type"
+   ]
+  },
+  "TOOL_CALL_RESULT": {
+   "consts": {
+    "role": "tool"
+   },
+   "properties": [
+    "content",
+    "messageId",
+    "metadata",
+    "rawEvent",
+    "role",
+    "subagentRunId",
+    "timestamp",
+    "toolCallId",
+    "type"
+   ],
+   "required": [
+    "content",
+    "messageId",
+    "toolCallId",
+    "type"
+   ]
+  },
+  "TOOL_CALL_START": {
+   "consts": {},
+   "properties": [
+    "metadata",
+    "parentMessageId",
+    "rawEvent",
+    "subagentRunId",
+    "timestamp",
+    "toolCallId",
+    "toolCallName",
+    "type"
+   ],
+   "required": [
+    "toolCallId",
+    "toolCallName",
+    "type"
+   ]
+  }
+ },
+ "interrupt_required": [
+  "id",
+  "reason"
+ ],
+ "outcomes": [
+  "cancelled",
+  "interrupt",
+  "success"
+ ],
+ "resume_entry": {
+  "required": [
+   "interruptId",
+   "status"
+  ],
+  "status": [
+   "resolved",
+   "cancelled"
+  ]
+ },
+ "run_agent_input_required": [
+  "threadId",
+  "runId",
+  "messages"
+ ]
+}

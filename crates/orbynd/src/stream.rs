@@ -6,7 +6,6 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -18,7 +17,7 @@ use orbyn_core::{Core, CoreError};
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
-use crate::api::{ApiResult, AppState, QueryMap};
+use crate::api::{ApiJson, ApiResult, AppState, QueryMap};
 
 const BATCH: u32 = 500;
 const KEEP_ALIVE: Duration = Duration::from_secs(15);
@@ -275,7 +274,7 @@ fn apply_resume(core: &Core, thread_id: &str, resume: &[Value]) -> Result<i64, S
 pub async fn agui_run(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(input): Json<Value>,
+    ApiJson(input): ApiJson<Value>,
 ) -> ApiResult<Response> {
     let core = state.core.clone();
     core.store.thread(&id)?;

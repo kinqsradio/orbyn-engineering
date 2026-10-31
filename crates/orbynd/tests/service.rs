@@ -456,6 +456,27 @@ async fn parent_stdin_close_stops_the_service_and_its_engines() {
 }
 
 #[tokio::test]
+async fn malformed_bodies_are_api_errors() {
+    let dir = TempDir::new();
+    let service = Service::start(&dir.path().join("data"), Options::default());
+    let response = service
+        .post("/api/projects")
+        .header("Content-Type", "application/json")
+        .body("{not json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 400);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "invalid_input");
+    let (status, body) = service
+        .send("/api/projects", json!({ "path": "relative" }))
+        .await;
+    assert_eq!(status, 400);
+    assert_eq!(body["code"], "invalid_input");
+}
+
+#[tokio::test]
 async fn delete_refuses_an_active_thread_then_removes_it() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
@@ -808,6 +829,7 @@ async fn git_worktree_and_diff_through_the_api() {
     assert!(!repo.join("b.txt").exists());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn terminal_websocket_echoes_and_resizes() {
     use futures_util::{SinkExt, StreamExt};
@@ -890,4 +912,141 @@ async fn update_without_provable_ownership_is_refused() {
     let (status, body) = service.send("/api/engines/codex/update", json!({})).await;
     assert_eq!(status, 422);
     assert_eq!(body["code"], "update_unavailable");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn desktop_action_passes_through_the_sidecar_envelope() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new();
+    let sidecar = dir.path().join("agent-desktop");
+    let log = dir.path().join("sidecar-log");
+    write(
+        &sidecar,
+        &format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\necho '{{\"version\":\"2.5\",\"ok\":true,\"command\":\"click\",\"data\":{{\"action\":\"click\"}}}}'\n",
+            log.display()
+        ),
+    );
+    std::fs::set_permissions(&sidecar, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (service, thread) = setup(
+        &dir,
+        Options {
+            env: vec![(
+                "ORBYN_AGENT_DESKTOP".into(),
+                sidecar.to_string_lossy().into_owned(),
+            )],
+            ..Options::default()
+        },
+        "codex",
+    )
+    .await;
+    let status = service.json("/api/computer").await;
+    assert_eq!(status["desktop_control"], true);
+
+    let action = json!({ "action": "desktop.click", "target": "@s1:e2", "args": null });
+    let path = format!("/api/threads/{thread}/computer");
+    let (code, _) = service.send(&path, action.clone()).await;
+    assert_eq!(code, 403);
+    assert!(!log.exists(), "a denied action must not reach the sidecar");
+
+    let (code, _) = service
+        .send(
+            "/api/policy/rules",
+            json!({ "effect": "allow", "kind": "computer", "pattern": "click *",
+                    "engine": null, "note": null }),
+        )
+        .await;
+    assert_eq!(code, 201);
+    let (code, result) = service.send(&path, action).await;
+    assert_eq!(code, 200, "{result}");
+    assert_eq!(result["data"]["action"], "click");
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap().trim(),
+        "click @s1:e2"
+    );
+    let audit = service.audit(&thread).await;
+    let actions: Vec<_> = audit
+        .iter()
+        .filter_map(|row| row["action"].as_str())
+        .collect();
+    assert_eq!(
+        actions[..3],
+        ["computer.result", "computer.act", "action.allow"]
+    );
+}
+
+/// Drives an installed Chrome or Edge. Run with `--ignored` where one exists.
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn real_browser_navigates_reads_clicks_and_captures() {
+    let dir = TempDir::new();
+    let ui = dir.path().join("ui");
+    write(
+        &ui.join("index.html"),
+        "<!doctype html><title>t</title><button id=go>go</button><p>hello-browser</p><script src=/app.js></script>",
+    );
+    // An external file, because this service's CSP refuses inline handlers.
+    write(
+        &ui.join("app.js"),
+        "document.getElementById('go').addEventListener('click', () => document.body.append('clicked-ok'));",
+    );
+    let (service, thread) = setup(
+        &dir,
+        Options {
+            args: vec!["--ui-dir".into(), ui.to_string_lossy().into_owned()],
+            env: vec![("ORBYN_BROWSER_HEADLESS".into(), "1".into())],
+            ..Options::default()
+        },
+        "codex",
+    )
+    .await;
+    assert_eq!(service.json("/api/computer").await["browser_control"], true);
+    service
+        .send(
+            "/api/policy/rules",
+            json!({ "effect": "allow", "kind": "browser", "pattern": "*",
+                    "engine": null, "note": null }),
+        )
+        .await;
+    let path = format!("/api/threads/{thread}/computer");
+    let act = |action: &'static str, target: String| {
+        let (service, path) = (&service, path.clone());
+        async move {
+            let (code, body) = service
+                .send(
+                    &path,
+                    json!({ "action": action, "target": target, "args": null }),
+                )
+                .await;
+            assert_eq!(code, 200, "{action}: {body}");
+            body
+        }
+    };
+    let opened = act("browser.navigate", format!("{}/", service.url)).await;
+    assert!(
+        opened["data"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with(&service.url)
+    );
+    let text = act("browser.text", String::new()).await;
+    assert!(
+        text["data"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("hello-browser")
+    );
+    assert!(text["target"].as_str().unwrap().starts_with(&service.url));
+    act("browser.click", "#go".to_owned()).await;
+    let after = act("browser.text", String::new()).await;
+    assert!(
+        after["data"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("clicked-ok")
+    );
+    let shot = act("browser.screenshot", String::new()).await;
+    assert!(shot["data"]["data"].as_str().unwrap().len() > 100);
+    service.stop().await;
 }

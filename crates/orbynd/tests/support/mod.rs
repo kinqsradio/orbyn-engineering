@@ -253,6 +253,21 @@ impl Service {
             .clone()
     }
 
+    /// Asks for a graceful exit by closing the parent pipe or sending SIGTERM.
+    pub async fn stop(mut self) {
+        #[cfg(unix)]
+        {
+            let pid = self.child.id().to_string();
+            let _ = Command::new("kill").args(["-TERM", &pid]).status();
+        }
+        for _ in 0..1000 {
+            if self.child.try_wait().unwrap().is_some() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     pub fn kill(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();

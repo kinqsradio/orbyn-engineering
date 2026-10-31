@@ -93,6 +93,20 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Resolves a path for use with other programs. Windows canonical paths carry a
+/// `\\?\` prefix that many tools, Git and Node among them, cannot read.
+pub fn canonicalize(path: &Path) -> std::io::Result<std::path::PathBuf> {
+    let resolved = std::fs::canonicalize(path)?;
+    Ok(strip_verbatim(&resolved.to_string_lossy()).into())
+}
+
+fn strip_verbatim(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
+}
+
 /// Keeps the tail of diagnostic output that is safe to bound.
 pub fn tail(text: &str, max_bytes: usize) -> String {
     if text.len() <= max_bytes {
@@ -122,6 +136,13 @@ mod tests {
         assert!(secrets_match("secret", &expected));
         assert!(!secrets_match("secreT", &expected));
         assert!(!secrets_match("secret", "not hex"));
+    }
+
+    #[test]
+    fn verbatim_prefixes_are_removed() {
+        assert_eq!(strip_verbatim(r"\\?\C:\repo"), r"C:\repo");
+        assert_eq!(strip_verbatim(r"\\?\UNC\host\share"), r"\\host\share");
+        assert_eq!(strip_verbatim("/usr/bin"), "/usr/bin");
     }
 
     #[test]
