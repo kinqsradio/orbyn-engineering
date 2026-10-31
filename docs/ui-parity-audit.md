@@ -97,6 +97,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Palette | Messages | Source: all words, opens at the message | Messages group, Real, scrolls to the row or the fold that holds it | Word highlights not drawn |
 | Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward from the page's history, reload, control, record, start page, the page follows the panel's size, Real on headless shell | No zoom, devices or profiles |
 | Diff | Sources | Source: turn, thread, branch, commits | All five, Real | Picker is a select |
+| Diff | Restore a file | Source | Per-file in Turn, Real, reports a later edit instead of overwriting it | Latest turn only |
 | Diff | Options | Source: layout, collapse, whitespace, tests, find, copy path, status | Match, Real | Whitespace filtered in the client, find highlights lines not words |
 | Timeline | Message actions | Live: Copy, Edit from here, Fork from this response | Match, Real on a turn through the protocol double | Copy prompt link hidden |
 | Thread | Find | Source: find bar with position | Built, Real count and steps | Highlights need the browser's Highlight API |

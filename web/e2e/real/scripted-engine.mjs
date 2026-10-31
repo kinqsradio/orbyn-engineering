@@ -5,6 +5,8 @@
  * in `scenes.mjs`, so the real service parses content the double has no scenario for.
  */
 import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
 import { setTimeout } from "node:timers";
@@ -23,6 +25,7 @@ if (args[0] !== "app-server") {
   let turn = 0;
   let waiting = null;
   let deaf = false;
+  let checkout = "";
 
   createInterface({ input: child.stdout }).on("line", (line) => {
     const message = JSON.parse(line);
@@ -40,6 +43,7 @@ if (args[0] !== "app-server") {
   const play = async (name, id) => {
     for (const step of scenes[name] ?? []) {
       if (step.wait) await delay(step.wait);
+      if (step.write) writeFileSync(join(checkout, step.write.path), step.write.text);
       if (step.hold) await new Promise((done) => (waiting = done));
       if (step.deaf) {
         deaf = true;
@@ -66,6 +70,7 @@ if (args[0] !== "app-server") {
       return;
     }
     turn += 1;
+    checkout = message.params.cwd;
     const id = `scene-${turn}`;
     send({ method: "turn/started", params: { threadId: thread, turn: { id, items: [], status: "inProgress" } } });
     send({ id: message.id, result: { turn: { id, items: [], status: "inProgress" } } });

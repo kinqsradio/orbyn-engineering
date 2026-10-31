@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
@@ -103,6 +103,22 @@ test("images, binaries and oversized text open from the raw route", async ({ pag
   await expect(page.getByText(/Showing 65,536 of 5,000,017 bytes/)).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
   await expect(page.getByText(/Showing 131,072 of/)).toBeVisible();
+});
+
+test("one file of a turn goes back to how the turn found it", async ({ page }) => {
+  const notes = join(service.repo, "notes.txt");
+  writeFileSync(notes, "as committed\n");
+  execFileSync("git", ["add", "notes.txt"], { cwd: service.repo });
+  execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-qm", "Notes"], { cwd: service.repo });
+  await longThread(page, "[scene:edit]");
+  await settled(service, threadIdOf(page));
+  expect(readFileSync(notes, "utf8")).toBe("changed by the agent\n");
+
+  await page.getByRole("button", { name: /^Changes/ }).click();
+  await page.getByRole("radiogroup", { name: "Diff source" }).getByRole("radio", { name: "Turn" }).click();
+  await page.getByRole("button", { name: "Restore notes.txt to before this turn" }).click();
+  await expect(page.getByText("notes.txt is back as it was before this turn")).toBeVisible();
+  expect(readFileSync(notes, "utf8")).toBe("as committed\n");
 });
 
 test("the details card and terminal keep the wheel to themselves", async ({ page }) => {
