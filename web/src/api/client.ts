@@ -271,6 +271,8 @@ export const api = {
     request<void>("POST", `/api/threads/${q(threadId)}/rewind`, { run_id: runId, restore_files: restoreFiles }),
   forkThread: (threadId: string, runId: string) =>
     request<Thread>("POST", `/api/threads/${q(threadId)}/fork`, { run_id: runId }),
+  forkBefore: (threadId: string, runId: string) =>
+    request<Thread>("POST", `/api/threads/${q(threadId)}/fork`, { run_id: runId, before: true }),
   startSideChat: (threadId: string) => request<Thread>("POST", `/api/threads/${q(threadId)}/fork`, { side: true }),
   bringBack: (sideId: string) => request<void>("POST", `/api/threads/${q(sideId)}/bring-back`),
 

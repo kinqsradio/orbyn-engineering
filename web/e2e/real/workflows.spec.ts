@@ -139,6 +139,25 @@ test("the editor menu lists what's installed and opens the chosen one", async ({
   await expect(page.getByRole("button", { name: "Open in VS Code" })).toBeVisible();
 });
 
+test("a file's menu opens it elsewhere, and dragging it mentions it", async ({ page }) => {
+  const log = join(service.binDir, "code-calls");
+  writeFileSync(join(service.binDir, "code"), `#!/bin/sh\necho "$@" >> '${log}'\n`, { mode: 0o755 });
+  const made = await thread("File menu");
+  await page.setViewportSize({ width: 1500, height: 900 });
+  await page.goto(`${service.page}#/threads/${made.id}`);
+  await page.getByRole("button", { name: "Surfaces" }).click();
+  await page.locator(".launcher").getByRole("button", { name: /Files/ }).click();
+  const file = page.locator(".file-tree button").filter({ hasText: "README.md" }).first();
+  await file.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Open", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Open in VS Code" }).click();
+  await expect.poll(() => (existsSync(log) ? readFileSync(log, "utf8") : "")).toContain("README.md");
+  const data = await page.evaluateHandle(() => new DataTransfer());
+  await file.dispatchEvent("dragstart", { dataTransfer: data });
+  await page.locator(".composer-box").first().dispatchEvent("drop", { dataTransfer: data });
+  await expect(page.getByRole("textbox", { name: /^Message/ }).first()).toHaveValue("@README.md ");
+});
+
 test("stopping a parent stops the child it delegated to", async ({ page }) => {
   const parent = await thread("Parent");
   await page.goto(`${service.page}#/threads/${parent.id}`);

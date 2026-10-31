@@ -41,7 +41,7 @@ import { effortOption, effortValue, resolveModel, useEngineModels } from "./mode
 import { QueuedMessages } from "./QueuedMessages";
 import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
-import { insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
+import { FILE_MENTION_TYPE, insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
 
 interface Suggestion {
   value: string;
@@ -400,7 +400,11 @@ export function Composer({
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragging(false);
-    if (event.dataTransfer.files.length > 0) upload([...event.dataTransfer.files]);
+    const mentioned = event.dataTransfer.getData(FILE_MENTION_TYPE);
+    if (mentioned) {
+      setDraft(thread.id, `${draft.trimEnd()}${draft.trim() ? " " : ""}@${mentioned} `);
+      field.current?.focus();
+    } else if (event.dataTransfer.files.length > 0) upload([...event.dataTransfer.files]);
   };
 
   const droppedHere = useDraftStore((state) => state.dropped[thread.id]);

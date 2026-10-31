@@ -217,6 +217,7 @@ impl Core {
             return Err(CoreError::ThreadBusy);
         }
         let through = match &request.run_id {
+            Some(run) if request.before => self.store.seq_before_run(id, run)?,
             Some(run) => self.store.last_seq_of_run(id, run)?,
             None => self.store.latest_seq(id)?,
         };

@@ -38,3 +38,6 @@ const label = (text: string) => text.replace(/[[\]]/g, "");
 export const threadToken = (id: string, title: string) => `[${label(title)}](orbyn://thread/${id})`;
 
 export const pullToken = (number: number, title: string, url: string) => `[#${number} ${label(title)}](${url})`;
+
+/** A file dragged from the Files tree, by its path in the checkout. */
+export const FILE_MENTION_TYPE = "application/x-orbyn-file";

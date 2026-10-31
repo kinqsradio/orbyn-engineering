@@ -32,6 +32,16 @@ toward completion.
   a self-hosted route, and Orbyn runs none of these services today.
 - `Q` rows need a React Native client, which this repository does not have.
 
+## Rows that stay open, and why
+
+These stay unticked on purpose. Each needs something this scope leaves out:
+
+- Rule 1: `[auth-risk]` rows, and B51, K33, M15 and N21's `request_secret`, would have Orbyn hold or broker a credential.
+- Remote and linked environments: A74, B52, D26, F50, F62, K1's environment half, K22, N22, O18, and the host keys in K41.
+- Hosted services: `[hosted]` rows such as K31, M10 and J22.
+- Providers with no CLI or protocol double here: I17, I22, I24 to I27, I46 to I50 and I62 can't be proved without a usage-spending engine.
+- No backing here: A54 has no earlier database to migrate. K38's star prompt is an upstream growth prompt, not product behaviour.
+
 ## A. Threads and sidebar
 - [x] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
 - [x] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S | web done
@@ -50,9 +60,9 @@ toward completion.
 - [x] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M
 - [ ] A16 Arrange threads sheet: mobile drag handles, plus move up/down | apps/mobile/src/features/threads/ThreadArrangementSheet.tsx | m | M
 - [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S
-- [ ] A18 Title instructions: per-environment or per-project guidance | apps/web/src/components/settings/ThreadTitleInstructionsSettings.tsx | w d s | S
+- [x] A18 Title instructions: per-environment or per-project guidance | apps/web/src/components/settings/ThreadTitleInstructionsSettings.tsx | w d s | S | web done
 - [x] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S
-- [ ] A20 Working section: folds threads waiting on subagents, watches, monitors | packages/contracts/src/settings.ts | w d m | M
+- [x] A20 Working section: folds threads waiting on subagents, watches, monitors | packages/contracts/src/settings.ts | w d m | M | web done
 - [x] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
 - [x] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
 - [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M
@@ -80,20 +90,20 @@ toward completion.
 - [x] A45 Bring back: sends side chat into the parent's next message | docs/user/thread-sidebar.md | w d | M | web done
 - [x] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L
 - [x] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L
-- [ ] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M
-- [ ] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M
-- [ ] A50 Customize details: show/hide rows, reset, right-click access | apps/web/src/components/settings/ThreadDetailsItemsRow.tsx | w d | S
+- [x] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M | web done
+- [x] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M | web done
+- [x] A50 Customize details: show/hide rows, reset, right-click access | apps/web/src/components/settings/ThreadDetailsItemsRow.tsx | w d | S | web done
 - [x] A51 Local servers list: thread's ports with open and stop | apps/web/src/components/chat/ThreadServersPanel.tsx | w d s | M | server done | web done
 - [x] A52 Timeline minimap: overview navigation strip | apps/web/src/components/chat/TimelineMinimap.tsx | w d | M
-- [ ] A53 Visit watermark: marks where you last read | apps/web/src/components/chat/ThreadVisitWatermark.tsx | w d s | S
+- [x] A53 Visit watermark: marks where you last read | apps/web/src/components/chat/ThreadVisitWatermark.tsx | w d s | S | web done
 - [ ] A54 V1 thread migration: copies old database, imports transcripts in stages | docs/user/thread-migration.md | s d | L
 - [x] A55 Limited state: shows provider limit stop, resume manually | apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx | w d m | M | web done
 - [x] A56 Resume at reset: scheduled continuation, default optional | packages/contracts/src/settings.ts | w d m s | M | web done
 - [x] A57 Snooze until reset: hides thread until allowance returns | packages/contracts/src/settings.ts | w d m s | S | web done
-- [ ] A58 Continue after restarts: resumes active threads, stops after 3 automatic tries | docs/user/updating.md | s | L
+- [x] A58 Continue after restarts: resumes active threads, stops after 3 automatic tries | docs/user/updating.md | s | L | web done
 - [x] A59 Force stop: kills unresponsive thread | apps/web/src/components/chat/useForceStopThread.ts | w d s | M | web done
 - [ ] A60 Background work view: mobile sheet of running background work | apps/mobile/src/features/threads/ThreadBackgroundWorkSheet.tsx | m | M
-- [ ] A61 Sidebar grouping and sort: repository/path/separate; project and thread sort; overrides | packages/contracts/src/settings.ts | w d m | M
+- [ ] A61 Sidebar grouping and sort: repository/path/separate; project and thread sort; overrides | packages/contracts/src/settings.ts | w d m | M | web: project and thread sort; grouping needs one project per repository across checkouts, which Orbyn does not model
 - [x] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M | server done | web done
 - [x] A63 Project filter menu: header button limits the thread list to one or several projects, with project search, Shift+Enter to add or remove a project, favicon stack on the button and a context-key shortcut to open that project's settings | apps/web/src/components/Sidebar.tsx | w d | M | web done
 - [x] A64 Project folder menu: right-click or pen button on a project folder offers new thread, copy path and project settings | apps/web/src/components/Sidebar.tsx | w d | S | web done
@@ -103,12 +113,12 @@ toward completion.
 - [x] A68 Older settled paging: settled shelf loads older threads in pages, shows hidden count and a show-more control | apps/web/src/components/Sidebar.tsx | w d m | M
 - [x] A69 Sidebar sizing and toggle: drag-resizable thread sidebar with remembered width, collapse toggle, and a header-docked toggle command | apps/web/src/components/threadSidebarWidth.ts | w d | S
 - [x] A70 Jump hints: number badges appear on the first nine rows while the jump modifier is held | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
-- [ ] A71 Provider update pill: sidebar capsule announces provider CLI updates with a dismiss control, separate from the desktop update pill | apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx | w d | S
+- [x] A71 Provider update pill: sidebar capsule announces provider CLI updates with a dismiss control, separate from the desktop update pill | apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx | w d | S | web done
 - [x] A72 Landing states: no-projects hero, no-active-thread state, hosted empty state and draft hero with project name and heading | apps/web/src/components/NoProjectsHero.tsx | w d | S
 - [x] A73 Header panel toggles: buttons for thread details panel, terminal drawer and right panel; right panel becomes a sheet at narrow widths | apps/web/src/components/chat/PanelLayoutControls.tsx | w d | S
-- [ ] A74 Hide environment threads: per-environment switch hides that server's threads from the sidebar, plus reconnect and disconnect failure banners | apps/web/src/components/chat/useSystemComposerBanners.tsx | w d | S
+- [ ] A74 Hide environment threads: per-environment switch hides that server's threads from the sidebar, plus reconnect and disconnect failure banners | apps/web/src/components/chat/useSystemComposerBanners.tsx | w d | S | out of scope: needs linked environments
 - [x] A75 Open thread holds its section: the thread you are in never jumps between Active, Finished and Settled until you leave it; a held thread that starts running becomes Active | src/sidebar-sections.ts | w d | S | beyond T3 | web done
-- [ ] A76 Edit sent prompt: forks before that message into a new thread in the same folder and puts the text back in its composer; files are not rewound | docs/rewind.md | w d s | S | beyond T3
+- [x] A76 Edit sent prompt: forks before that message into a new thread in the same folder and puts the text back in its composer; files are not rewound | docs/rewind.md | w d s | S | beyond T3 | web done
 
 ## B. Composer
 - [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done | web done
@@ -239,10 +249,10 @@ toward completion.
 - [x] D17 HTML file preview: sandboxed render plus source mode | apps/web/src/components/files/BrowserDocumentFrame.tsx | w d m | M
 - [ ] D18 ZIP browsing: up to 50 MB shown as folder list | docs/user/composer.md | w d m | M
 - [ ] D19 File comments: annotations feed review chips | apps/web/src/components/files/fileCommentAnnotations.ts | w d | M
-- [ ] D20 Tree drag mention: drag file into composer | apps/web/src/components/files/fileTreeDragMention.ts | w d | S
+- [x] D20 Tree drag mention: drag file into composer | apps/web/src/components/files/fileTreeDragMention.ts | w d | S | web done
 - [ ] D21 Outside-workspace files: read-only, isolated HTML | docs/user/composer.md | w d s | M
 - [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done | web done
-- [ ] D23 File context menu: Open, Reveal in Finder/File Explorer/Files (label by OS) and Open with any available editor | apps/web/src/fileContextMenu.ts | w d | S
+- [x] D23 File context menu: Open, Reveal in Finder/File Explorer/Files (label by OS) and Open with any available editor | apps/web/src/fileContextMenu.ts | w d | S | web done
 - [x] D24 Editor catalog: 20 editors plus the system file manager (Cursor, Trae, Kiro, VS Code, Insiders, VSCodium, Zed, Antigravity, ten JetBrains IDEs) detected per host by command, each with path, goto or line-column launch style | packages/contracts/src/editor.ts | s w d | M | server done | web done
 - [ ] D25 Favorite editor: last used editor remembered per browser, fallback to first available, menu shows its shortcut, hidden when the host cannot launch editors | apps/web/src/editorPreferences.ts | w d | S
 - [ ] D26 Open in editor over remote: for non-local environments the picker builds editor links (VS Code family, Cursor, Zed, JetBrains) to the host via SSH alias, Tailscale or mDNS name, or shows unavailable | apps/web/src/remoteOpen.ts | w d | M
@@ -337,14 +347,14 @@ toward completion.
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
 - [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done | web done
 - [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
-- [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
 
 ## G. Terminal
 - [x] G1 Thread terminals: per-thread drawer, persistent across switches | apps/web/src/components/ThreadTerminalDrawer.tsx | w d m s | L
 - [x] G2 Splits and tabs: horizontal, vertical, new, close | packages/contracts/src/keybindings.ts | w d | M
 - [x] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M | server done
-- [ ] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S
+- [x] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S | web done
 - [ ] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M
 - [ ] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S
 - [x] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M | server done | web done
@@ -352,7 +362,7 @@ toward completion.
 - [x] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S | server done
 - [x] G10 Project scripts control: run scripts, keybindings per script | apps/web/src/components/ProjectScriptsControl.tsx | w d m s | M | server done | web done
 - [ ] G11 Mobile terminal preferences: font size 6 to 14 in half steps, theme, paste handling, session menu with status labels, exit navigation | apps/mobile/src/features/terminal/terminalPreferences.ts | m | S
-- [x] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [x] G13 Terminal close order: end the process tree before closing the pseudo console so the close cannot hang | src-tauri/src/terminal.rs | s | S | server done
 - [ ] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3
 
@@ -401,7 +411,7 @@ toward completion.
 - [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
 - [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
 - [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
-- [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 
 ## I. Providers
 
@@ -498,7 +508,7 @@ are not built in.
 - [ ] J22 Tunnel usage: T3 Connect usage display | apps/web/src/components/cloud/TunnelUsage.tsx | w d | S | [hosted]
 - [ ] J23 Usage charts: per-provider chart and share bar | apps/web/src/components/usage/UsageProviderChart.tsx | w d | S
 - [ ] J24 Mobile usage page: daily chart, environment selection, pooled limits, ChatGPT summary | apps/mobile/src/features/usage/UsageRouteScreen.tsx | m | M
-- [ ] J25 Usage in thread details: setting shows usage row, off by default | packages/contracts/src/settings.ts | w d | S
+- [x] J25 Usage in thread details: setting shows usage row, off by default | packages/contracts/src/settings.ts | w d | S | web done
 - [x] J26 Resume at reset: when an engine reports a reset time, offer to send Continue at that time; overdue resumes recovered at startup before queued messages | src-tauri/src/providers/limits.rs | s w | M | beyond T3 | web done
 
 ## K. Settings, appearance and notifications

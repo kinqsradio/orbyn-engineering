@@ -528,6 +528,13 @@ fn with_run_state(conn: &Connection, mut thread: Thread) -> Result<Thread> {
             thread.active_run = Some(run);
         }
     }
+    if let Some(lifecycle) = thread.lifecycle.as_mut() {
+        lifecycle.watching = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM pull_watches WHERE thread_id = ?1)",
+            [&thread.id],
+            |row| row.get(0),
+        )?;
+    }
     Ok(thread)
 }
 
@@ -703,6 +710,8 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
             plan_mode: row.get("plan_mode")?,
             woke_at: row.get("woke_at")?,
             limit: limit_row(row)?,
+            visited_at: row.get("visited_at")?,
+            watching: false,
         }),
     })
 }

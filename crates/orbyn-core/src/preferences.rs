@@ -65,6 +65,7 @@ const DEFINITIONS: &[Definition] = defs![
     "add_project_base_directory" Kind::Text, "", false;
     "text_generation_model" Kind::Text, "", false;
     "auto_thread_titles" Kind::Bool, true, true;
+    "project_title_instructions" Kind::Text, "", true;
     "branch_naming_mode" Kind::OneOf(NAMING), "static", true;
     "branch_name_prefix" Kind::Text, "feat", true;
     "branch_name_instructions" Kind::Text, "", true;
