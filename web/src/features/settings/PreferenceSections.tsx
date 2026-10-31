@@ -133,6 +133,8 @@ export function ChatSection() {
   const sendShortcut = useUi((state) => state.sendShortcut);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
   const persistent = useUi((state) => state.persistentComposerContext);
+  const proactive = useUi((state) => state.proactivePanels);
+  const searchEngine = useUi((state) => state.previewSearchEngine);
   const skillsInSlash = useUi((state) => state.skillsInSlashMenu);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
@@ -155,6 +157,19 @@ export function ChatSection() {
         </SettingRow>
         <Toggle title="Word wrap" on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
         <Toggle title="Math rendering" on={math} set={(on) => setPrefs({ mathRendering: on })} />
+        <Toggle title="Open Changes after large turns" on={proactive} set={(on) => setPrefs({ proactivePanels: on })} />
+      </SettingGroup>
+      <SettingGroup title="Browser">
+        <SettingRow title="Search engine">
+          <select aria-label="Search engine" value={searchEngine} onChange={(event) => setPrefs({ previewSearchEngine: event.target.value })}>
+            <option value="duckduckgo">DuckDuckGo</option>
+            <option value="google">Google</option>
+            <option value="bing">Bing</option>
+            <option value="brave">Brave</option>
+            <option value="kagi">Kagi</option>
+            <option value="startpage">Startpage</option>
+          </select>
+        </SettingRow>
       </SettingGroup>
       <SettingGroup title="Composer">
         <Toggle title="Keep checkout and branch visible" on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />

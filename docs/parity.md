@@ -33,7 +33,7 @@ toward completion.
 - `Q` rows need a React Native client, which this repository does not have.
 
 ## A. Threads and sidebar
-- [ ] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
+- [x] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
 - [x] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S | web done
 - [x] A3 Thread without project: starts with no project, can move machine before send | docs/user/thread-sidebar.md | w d m | M
 - [x] A4 Scratch folders: dated per-thread folder kept after thread deletion | docs/user/thread-sidebar.md | s | S | server done
@@ -53,8 +53,8 @@ toward completion.
 - [ ] A18 Title instructions: per-environment or per-project guidance | apps/web/src/components/settings/ThreadTitleInstructionsSettings.tsx | w d s | S
 - [x] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S
 - [ ] A20 Working section: folds threads waiting on subagents, watches, monitors | packages/contracts/src/settings.ts | w d m | M
-- [ ] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
-- [ ] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
+- [x] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
+- [x] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
 - [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M
 - [x] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M | server done
 - [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S
@@ -74,7 +74,7 @@ toward completion.
 - [x] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M | web done
 - [x] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
 - [x] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
-- [ ] A42 Thread hover card: rich preview on hover | apps/web/src/components/ThreadHoverCard.tsx | w d | S
+- [x] A42 Thread hover card: rich preview on hover | apps/web/src/components/ThreadHoverCard.tsx | w d | S
 - [ ] A43 Status indicators: working, limited, needs-you, request states | apps/web/src/components/ThreadStatusIndicators.tsx | w d m | M
 - [ ] A44 Side chats: `/side`, `/btw` or + menu, separate tab with own permissions | apps/web/src/components/chat/SideChatPane.tsx | w d m | L
 - [ ] A45 Bring back: sends side chat into the parent's next message | docs/user/thread-sidebar.md | w d | M
@@ -97,14 +97,14 @@ toward completion.
 - [x] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M | server done
 - [x] A63 Project filter menu: header button limits the thread list to one or several projects, with project search, Shift+Enter to add or remove a project, favicon stack on the button and a context-key shortcut to open that project's settings | apps/web/src/components/Sidebar.tsx | w d | M | web done
 - [ ] A64 Project folder menu: right-click or pen button on a project folder offers new thread, copy path and project settings | apps/web/src/components/Sidebar.tsx | w d | S
-- [ ] A65 Thread menu extras: Find in thread, New thread on this branch, Filter by this project (toggles off when active), Copy branch, Copy path, Project settings shortcut | apps/web/src/components/threadActionMenu.logic.ts | w d m | S
+- [x] A65 Thread menu extras: Find in thread, New thread on this branch, Filter by this project (toggles off when active), Copy branch, Copy path, Project settings shortcut | apps/web/src/components/threadActionMenu.logic.ts | w d m | S
 - [ ] A66 Draft rows: unsent drafts show in the list with an unsent marker and a discard button; discard offers undo with text and attachments restored | apps/web/src/components/sidebar/SidebarDraftBlock.tsx | w d | S
 - [ ] A67 Wake now and dismiss Woke: snoozed rows have a wake-now button; a thread that woke early shows a dismissible Woke badge | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
-- [ ] A68 Older settled paging: settled shelf loads older threads in pages, shows hidden count and a show-more control | apps/web/src/components/Sidebar.tsx | w d m | M
-- [ ] A69 Sidebar sizing and toggle: drag-resizable thread sidebar with remembered width, collapse toggle, and a header-docked toggle command | apps/web/src/components/threadSidebarWidth.ts | w d | S
+- [x] A68 Older settled paging: settled shelf loads older threads in pages, shows hidden count and a show-more control | apps/web/src/components/Sidebar.tsx | w d m | M
+- [x] A69 Sidebar sizing and toggle: drag-resizable thread sidebar with remembered width, collapse toggle, and a header-docked toggle command | apps/web/src/components/threadSidebarWidth.ts | w d | S
 - [x] A70 Jump hints: number badges appear on the first nine rows while the jump modifier is held | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
 - [ ] A71 Provider update pill: sidebar capsule announces provider CLI updates with a dismiss control, separate from the desktop update pill | apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx | w d | S
-- [ ] A72 Landing states: no-projects hero, no-active-thread state, hosted empty state and draft hero with project name and heading | apps/web/src/components/NoProjectsHero.tsx | w d | S
+- [x] A72 Landing states: no-projects hero, no-active-thread state, hosted empty state and draft hero with project name and heading | apps/web/src/components/NoProjectsHero.tsx | w d | S
 - [x] A73 Header panel toggles: buttons for thread details panel, terminal drawer and right panel; right panel becomes a sheet at narrow widths | apps/web/src/components/chat/PanelLayoutControls.tsx | w d | S
 - [ ] A74 Hide environment threads: per-environment switch hides that server's threads from the sidebar, plus reconnect and disconnect failure banners | apps/web/src/components/chat/useSystemComposerBanners.tsx | w d | S
 - [ ] A75 Open thread holds its section: the thread you are in never jumps between Active, Finished and Settled until you leave it; a held thread that starts running becomes Active | src/sidebar-sections.ts | w d | S | beyond T3
@@ -206,10 +206,10 @@ toward completion.
 - [ ] C26 MCP App model context: latest note sent with next message | packages/contracts/src/mcpApps.ts | w d m s | M
 - [x] C27 Elapsed timers: per-turn agent timing | apps/web/src/components/chat/AgentElapsed.tsx | w d | S
 - [x] C28 Status line: current activity beneath the timeline | apps/web/src/components/chat/ThreadStatusLine.tsx | w d | S
-- [ ] C29 Accessibility announcers: activity and background thread announcements | apps/web/src/components/chat/ThreadActivityAnnouncer.tsx | w d | S
+- [x] C29 Accessibility announcers: activity and background thread announcements | apps/web/src/components/chat/ThreadActivityAnnouncer.tsx | w d | S
 - [x] C30 Word wrap and chat width: comfortable, wide, full | packages/contracts/src/settings.ts | w d | S
 - [ ] C31 Right panel tabs: add-tab menu (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Side chat), mute tab, close, maximize, resize handle, sheet on small screens | apps/web/src/components/RightPanelTabs.tsx | w d | M
-- [ ] C32 Proactive panels: opt-in setting opens the linked PR, or the Changes panel after a turn touching at least 3 files or 50 lines; a panel you opened or closed wins | apps/web/src/hooks/useProactivePanels.ts | w d | M
+- [x] C32 Proactive panels: opt-in setting opens the linked PR, or the Changes panel after a turn touching at least 3 files or 50 lines; a panel you opened or closed wins | apps/web/src/hooks/useProactivePanels.ts | w d | M
 - [ ] C33 Thread end lines: sync state, reconnect, goal and status lines at the end of the timeline share one family with icon, detail and actions | apps/web/src/components/chat/ThreadNow.tsx | w d m | S
 - [x] C34 Changed files tree in timeline: per-turn file list with open-diff action | apps/web/src/components/chat/ChangedFilesTree.tsx | w d | S
 - [x] C35 Error banner: thread-level error with dismiss and retry actions | apps/web/src/components/chat/ThreadErrorBanner.tsx | w d m | S
@@ -357,10 +357,10 @@ toward completion.
 - [ ] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3
 
 ## H. Browser preview and devices
-- [ ] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
-- [ ] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
+- [x] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
+- [x] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
 - [ ] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M
-- [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M | server done
+- [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M
 - [ ] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M
 - [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
 - [ ] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L
@@ -371,8 +371,8 @@ toward completion.
 - [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M
 - [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M
 - [ ] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
-- [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L | server done, local only
-- [ ] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
+- [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L, local only
+- [x] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
 - [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L
 - [ ] H18 Picture-in-picture: phone preview floats over apps | docs/user/remote-access.md | m | M
 - [ ] H19 Browser host setup: sandbox and library guidance | apps/server/src/cli/browser.ts | c s | M
@@ -393,7 +393,7 @@ toward completion.
 - [ ] H34 SnapShot setup by platform: accessibility data, GNOME, KDE, Hyprland, Niri, shortcut, sound | apps/desktop/src/snapShot/LinuxSnapShot.ts | d | L
 - [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M
 - [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M
-- [ ] H37 Preview start page: recent URL cards, discovered local server cards, unreachable page with mapped error messages | apps/web/src/components/preview/PreviewEmptyState.tsx | w d | S
+- [x] H37 Preview start page: recent URL cards, discovered local server cards, unreachable page with mapped error messages | apps/web/src/components/preview/PreviewEmptyState.tsx | w d | S
 - [ ] H38 Browser history and favicons: address bar suggestions from visited URLs, remembered tab icons | apps/web/src/browserHistoryStore.ts | w d | S
 - [ ] H39 Webview crash recovery: reloads a crashed page up to 3 times within 30 seconds with growing delay | apps/web/src/browser/webviewCrashRecovery.ts | d | S
 - [ ] H40 Incognito tabs: private tabs reopen only until reload or quit and reopen in a fresh session | docs/user/keybindings.md | w d | S
@@ -614,7 +614,7 @@ are not built in, and an agent that lists effort only after switching models nee
 - [ ] L51 Revoke other clients: one action revokes all sessions except the current one | apps/web/src/components/settings/AuthorizedClientsSettings.tsx | w d | S
 
 ## M. Automations, subagents and orchestration
-- [x] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L | server done
+- [x] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L
 - [ ] M2 Task manager UI: edit, pause, resume, run now, delete | apps/web/src/components/settings/ScheduledTasksSettings.tsx | w d m | M
 - [ ] M3 Thread automations panel: tasks tied to a thread | apps/web/src/components/chat/ThreadAutomationsPanel.tsx | w d | M
 - [x] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted] | server done, reachable only where the host is; no relay

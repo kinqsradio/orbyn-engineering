@@ -467,7 +467,7 @@ describe("App against the mock API", () => {
     const launcher = await screen.findByLabelText("Open a surface");
     expect(within(launcher).getByRole("button", { name: /Terminal/ })).toBeEnabled();
     expect(within(launcher).getByRole("button", { name: /Diff/ })).toBeDisabled();
-    expect(within(launcher).queryByRole("button", { name: /Browser/ })).toBeNull();
+    expect(within(launcher).getByRole("button", { name: /Browser/ })).toBeInTheDocument();
   });
 
   it("opens an empty thread as a draft, with the project in the heading", async () => {

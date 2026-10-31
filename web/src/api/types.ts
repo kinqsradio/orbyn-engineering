@@ -106,5 +106,7 @@ export type Diagnostics = Wired<DiagnosticsWire>;
 export type ScheduledTask = Wired<ScheduledTaskWire>;
 export type { KeybindingsView } from "../generated/KeybindingsView";
 export type { CommitInfo } from "../generated/CommitInfo";
+export type { PreviewTab } from "../generated/PreviewTab";
+export type { LocalServer } from "../generated/LocalServer";
 export type { KeybindingRule } from "../generated/KeybindingRule";
 export type { PreferenceView } from "../generated/PreferenceView";

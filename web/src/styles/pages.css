@@ -1201,3 +1201,18 @@ kbd {
   padding: 2px 8px;
   border-top: 1px solid var(--color-divider);
 }
+
+.task-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--text-small);
+}
+.task-days label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

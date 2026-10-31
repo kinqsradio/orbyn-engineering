@@ -3,7 +3,7 @@ import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
-export type RightTab = "diff" | "files" | "activity" | "pulls";
+export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser";
 export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
@@ -52,6 +52,10 @@ interface Prefs {
   sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
   followUpBehavior: "queue" | "steer";
   diffLayout: "stacked" | "split";
+  previewSearchEngine: string;
+  /** Opens Changes after a large turn. */
+  proactivePanels: boolean;
+  recentUrls: string[];
   diffFilesCollapsed: boolean;
   diffIgnoreWhitespace: boolean;
   diffHideTests: boolean;
@@ -149,6 +153,9 @@ const defaults: Prefs = {
   sendShortcut: "enter",
   followUpBehavior: "queue",
   diffLayout: "stacked",
+  previewSearchEngine: "duckduckgo",
+  proactivePanels: false,
+  recentUrls: [],
   diffFilesCollapsed: false,
   diffIgnoreWhitespace: false,
   diffHideTests: false,
@@ -268,6 +275,9 @@ const prefsOf = (state: Prefs): Prefs => ({
   sendShortcut: state.sendShortcut,
   followUpBehavior: state.followUpBehavior,
   diffLayout: state.diffLayout,
+  previewSearchEngine: state.previewSearchEngine,
+  proactivePanels: state.proactivePanels,
+  recentUrls: state.recentUrls,
   diffFilesCollapsed: state.diffFilesCollapsed,
   diffIgnoreWhitespace: state.diffIgnoreWhitespace,
   diffHideTests: state.diffHideTests,
