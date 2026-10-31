@@ -20,6 +20,7 @@ pub mod projects;
 pub mod questions;
 pub mod runs;
 pub mod scm;
+pub mod scratch;
 pub mod skills;
 pub mod sse;
 pub mod store;

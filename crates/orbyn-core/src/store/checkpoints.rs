@@ -189,15 +189,17 @@ impl Store {
             skill_profile: parent.skill_profile.clone(),
             parent_thread_id: Some(parent.id.clone()),
             relation: Some("fork".to_owned()),
+            scratch: parent.scratch,
         };
         self.commit(|tx, _| {
             let worktree = new.worktree.as_ref();
             tx.execute(
                 "INSERT INTO threads (id, project_id, title, engine, model, cwd, worktree_path,
                     worktree_branch, worktree_base, skill_profile, created_at, updated_at, position,
-                    parent_thread_id, relation, next_seq, handoff)
+                    parent_thread_id, relation, next_seq, handoff, scratch)
                  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11,
-                    (SELECT COALESCE(MIN(position), 0) - 1 FROM threads), ?12, ?13, ?14 + 1, ?15",
+                    (SELECT COALESCE(MIN(position), 0) - 1 FROM threads), ?12, ?13, ?14 + 1, ?15,
+                    ?16",
                 params![
                     id,
                     new.project_id,
@@ -214,6 +216,7 @@ impl Store {
                     new.relation,
                     through,
                     handoff,
+                    new.scratch,
                 ],
             )?;
             // A fork shows the conversation it came from, without the parent's runs.

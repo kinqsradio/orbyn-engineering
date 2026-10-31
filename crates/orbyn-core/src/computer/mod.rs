@@ -429,7 +429,15 @@ mod tests {
     fn fixture() -> Fixture {
         let dir = TempDir::new();
         let store = Arc::new(Store::open(&dir.path().join("db"), "e").unwrap());
-        let project = store.add_project("/r", "r", false).unwrap();
+        let project = store
+            .add_project(crate::store::NewProject {
+                path: "/r",
+                name: "r",
+                is_git: false,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
         store.trust_project(&project.id, "t").unwrap();
         let thread = store
             .create_thread(NewThread {
@@ -442,6 +450,7 @@ mod tests {
                 skill_profile: None,
                 parent_thread_id: None,
                 relation: None,
+                scratch: false,
             })
             .unwrap();
         let run = store

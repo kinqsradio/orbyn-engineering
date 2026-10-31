@@ -1,21 +1,21 @@
-//! Projects live at `<workspace>/repo/<slug>`, and only there. They arrive by
-//! clone, by `git init`, or by import, which clones a local folder and leaves it
-//! exactly as it was. Nothing here writes a file into a target.
+//! A project is any folder the person points at, registered where it is, or one
+//! Orbyn clones or creates, by default at `<workspace>/repo/<slug>`. Registering
+//! writes nothing into the folder, and only a folder Orbyn made can ever be deleted.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use orbyn_contracts::{CloneJob, CloneState, ImportReport, Project, ProjectRemoval};
+use orbyn_contracts::{CloneJob, CloneState, Project, ProjectRemoval};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::git::{git, is_git_repo, linked_worktrees, text};
-use crate::store::AuditRecord;
+use crate::store::{AuditRecord, NewProject};
 use crate::util::{canonicalize, new_id, now};
-use crate::workspace::check_target;
+use crate::workspace::{guard_library, resolve_project};
 
 const WORKTREE_SUFFIX: &str = "-wt";
 
@@ -85,12 +85,36 @@ impl Core {
     ) -> Result<orbyn_contracts::WorkspaceStatus> {
         self.workspace.setup(request).await?;
         let root = self.workspace.root()?;
-        self.register_project(&root, "Skills library")?;
+        self.register_project(&root, "Skills library", false)?;
         let projects = self.store.list_projects()?;
         self.workspace.status(&projects).await
     }
 
-    async fn slot(&self, name: &str) -> Result<(String, PathBuf)> {
+    /// Where a new project goes: the folder asked for, which must not hold anything
+    /// yet, or the next free slug under `repo/`.
+    async fn slot(&self, name: &str, chosen: Option<&str>) -> Result<(String, PathBuf)> {
+        if let Some(chosen) = chosen {
+            let chosen = Path::new(chosen);
+            let (Some(parent), Some(leaf), true) =
+                (chosen.parent(), chosen.file_name(), chosen.is_absolute())
+            else {
+                return Err(CoreError::Invalid("Choose an absolute folder path.".into()));
+            };
+            let parent = canonicalize(parent)
+                .map_err(|_| CoreError::Invalid(format!("{} does not exist.", parent.display())))?;
+            let path = parent.join(leaf);
+            guard_library(&self.workspace.root()?, &path)?;
+            let occupied = std::fs::read_dir(&path).is_ok_and(|mut items| items.next().is_some())
+                || path.is_file()
+                || std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink());
+            if occupied {
+                return Err(CoreError::Invalid(format!(
+                    "{} is not empty.",
+                    path.display()
+                )));
+            }
+            return Ok((slug_of(&leaf.to_string_lossy())?, path));
+        }
         let repo = self.workspace.repo_dir()?;
         let slug = slug_of(name)?;
         let path = repo.join(&slug);
@@ -102,18 +126,46 @@ impl Core {
         Ok((slug, path))
     }
 
-    /// Moves a finished staging checkout into place, then registers it. A
-    /// failure removes only the staging folder this call made.
     async fn adopt_staged(&self, staging: &Path, path: &Path, slug: &str) -> Result<Project> {
+        // An empty chosen folder gives way to the finished clone.
+        if path.is_dir() {
+            std::fs::remove_dir(path)?;
+        }
         std::fs::rename(staging, path)?;
-        let root = self.workspace.root()?;
-        check_target(&root, path).await?;
-        self.register_project(path, slug)
+        let resolved = resolve_project(&self.workspace.root()?, path).await?;
+        self.register_project(&resolved.path, slug, true)
     }
 
-    fn register_project(&self, path: &Path, name: &str) -> Result<Project> {
-        self.store
-            .add_project(&path.to_string_lossy(), name, is_git_repo(path))
+    fn register_project(&self, path: &Path, name: &str, managed: bool) -> Result<Project> {
+        self.store.add_project(NewProject {
+            path: &path.to_string_lossy(),
+            name,
+            is_git: is_git_repo(path),
+            managed,
+            scratch: false,
+        })
+    }
+
+    /// Registers an existing folder where it is. It starts untrusted, and nothing
+    /// is cloned, moved, copied or written. A folder already registered is refused
+    /// by its real path, so a symlink to it cannot make a second project.
+    pub async fn add_project(&self, path: &str) -> Result<Project> {
+        let root = self.workspace.root()?;
+        let resolved = resolve_project(&root, Path::new(path)).await?;
+        let known = self.store.list_projects()?;
+        let existing = known.iter().find(|project| {
+            canonicalize(Path::new(&project.path)).is_ok_and(|real| real == resolved.path)
+        });
+        if let Some(existing) = existing {
+            return Err(CoreError::ProjectExists(Box::new(existing.clone())));
+        }
+        let name = resolved.path.file_name().map_or_else(
+            || "Project".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let text = resolved.path.to_string_lossy().into_owned();
+        self.audit_project("project.add", &text, json!({ "is_git": resolved.is_git }))?;
+        self.register_project(&resolved.path, &name, false)
     }
 
     fn audit_project(&self, action: &str, target: &str, detail: serde_json::Value) -> Result<()> {
@@ -130,8 +182,13 @@ impl Core {
         Ok(())
     }
 
-    pub async fn clone_project(&self, url: &str, name: Option<&str>) -> Result<Project> {
-        self.clone_into_workspace(url, name)
+    pub async fn clone_project(
+        &self,
+        url: &str,
+        name: Option<&str>,
+        path: Option<&str>,
+    ) -> Result<Project> {
+        self.clone_into_workspace(url, name, path)
             .await
             .map(|(project, _)| project)
     }
@@ -139,15 +196,25 @@ impl Core {
     /// Clones into a staging folder that removes itself if this future is dropped,
     /// which is how a cancel leaves nothing behind. An SSH URL the server refuses
     /// is tried once over HTTPS.
-    async fn clone_into_workspace(&self, url: &str, name: Option<&str>) -> Result<(Project, bool)> {
+    async fn clone_into_workspace(
+        &self,
+        url: &str,
+        name: Option<&str>,
+        chosen: Option<&str>,
+    ) -> Result<(Project, bool)> {
         if url.starts_with('-') || url.trim().is_empty() {
             return Err(CoreError::Invalid("That URL is not valid.".into()));
         }
         let name = name
             .or_else(|| name_from_url(url))
             .ok_or_else(|| CoreError::Invalid("Name this project.".into()))?;
-        let (slug, path) = self.slot(name).await?;
-        let repo_dir = self.workspace.repo_dir()?;
+        let (slug, path) = self.slot(name, chosen).await?;
+        // Beside the destination, so finishing is a rename on one filesystem.
+        let repo_dir = path
+            .parent()
+            .ok_or_else(|| CoreError::Invalid("Choose a folder.".into()))?
+            .to_path_buf();
+        std::fs::create_dir_all(&repo_dir)?;
         let staging = Staging(repo_dir.join(format!(".incoming-{}", new_id())));
         self.audit_project("project.clone", url, json!({ "slug": slug }))?;
         let mut used_https = false;
@@ -169,7 +236,12 @@ impl Core {
     }
 
     /// Starts a clone and returns at once. Its job reports how it went.
-    pub fn start_clone(self: &Arc<Self>, url: &str, name: Option<&str>) -> Result<CloneJob> {
+    pub fn start_clone(
+        self: &Arc<Self>,
+        url: &str,
+        name: Option<&str>,
+        path: Option<&str>,
+    ) -> Result<CloneJob> {
         if url.starts_with('-') || url.trim().is_empty() {
             return Err(CoreError::Invalid("That URL is not valid.".into()));
         }
@@ -177,6 +249,7 @@ impl Core {
             id: new_id(),
             url: url.to_owned(),
             name: name.map(str::to_owned),
+            path: path.map(str::to_owned),
             state: CloneState::Running,
             project: None,
             error: None,
@@ -192,7 +265,8 @@ impl Core {
         self.clones.keep(job.clone(), stop.clone());
         let core = self.clone();
         tokio::spawn(async move {
-            let work = core.clone_into_workspace(&job.url, job.name.as_deref());
+            let work =
+                core.clone_into_workspace(&job.url, job.name.as_deref(), job.path.as_deref());
             let outcome = tokio::select! {
                 () = stop.cancelled() => None,
                 outcome = work => Some(outcome),
@@ -219,17 +293,22 @@ impl Core {
     }
 
     /// Starts an empty repository, with a README and first commit when asked.
-    pub async fn new_project(&self, name: &str, readme: bool) -> Result<Project> {
-        let (slug, path) = self.slot(name).await?;
+    pub async fn new_project(
+        &self,
+        name: &str,
+        readme: bool,
+        chosen: Option<&str>,
+    ) -> Result<Project> {
+        let (slug, path) = self.slot(name, chosen).await?;
         let path_text = path.to_string_lossy().into_owned();
         self.audit_project("project.create", &slug, serde_json::Value::Null)?;
-        git(
-            &self.workspace.repo_dir()?,
-            &["init", "--quiet", "-b", "main", &path_text],
-        )
-        .await?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| CoreError::Invalid("Choose a folder.".into()))?;
+        std::fs::create_dir_all(parent)?;
+        git(parent, &["init", "--quiet", "-b", "main", &path_text]).await?;
         let root = self.workspace.root()?;
-        check_target(&root, &path).await?;
+        let resolved = resolve_project(&root, &path).await?;
         if readme {
             std::fs::write(path.join("README.md"), format!("# {name}\n"))?;
             git(&path, &["add", "README.md"]).await?;
@@ -238,101 +317,18 @@ impl Core {
                 tracing::debug!(%error, "could not make the first commit");
             }
         }
-        self.register_project(&path, &slug)
+        self.register_project(&resolved.path, &slug, true)
     }
 
-    /// Clones a local folder into the workspace and keeps its origin URL. The
-    /// source is only read. What the clone could not carry is reported.
-    pub async fn import_project(&self, source: &str, name: Option<&str>) -> Result<ImportReport> {
-        let source = Path::new(source);
-        if !source.is_absolute() {
-            return Err(CoreError::Invalid("Choose an absolute folder path.".into()));
-        }
-        let source = canonicalize(source)
-            .map_err(|_| CoreError::Invalid(format!("{} does not exist.", source.display())))?;
-        let root = self.workspace.root()?;
-        if source.starts_with(&root) {
-            return Err(CoreError::Invalid(
-                "That folder is already in the workspace.".into(),
-            ));
-        }
-        let top = git(&source, &["rev-parse", "--show-toplevel"])
-            .await
-            .map_err(|_| CoreError::Invalid("Choose a Git repository to import.".into()))?;
-        if canonicalize(Path::new(&text(&top)))? != source {
-            return Err(CoreError::Invalid(
-                "Choose the repository's root folder.".into(),
-            ));
-        }
-        let fallback = source
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let (slug, path) = self.slot(name.unwrap_or(&fallback)).await?;
-        let dirty_files = strings(&source, &["status", "--porcelain"]).await?;
-        let unpushed = unpushed_branches(&source, true).await?;
-        let origin = git(&source, &["remote", "get-url", "origin"])
-            .await
-            .ok()
-            .map(|url| text(&url));
-        let source_text = source.to_string_lossy().into_owned();
-        self.audit_project("project.import", &source_text, json!({ "slug": slug }))?;
-
-        let staging = self
-            .workspace
-            .repo_dir()?
-            .join(format!(".incoming-{}", new_id()));
-        let staging_text = staging.to_string_lossy().into_owned();
-        let prepared = async {
-            git(
-                &self.workspace.repo_dir()?,
-                &[
-                    "-c",
-                    "core.symlinks=true",
-                    "clone",
-                    "--no-hardlinks",
-                    "--",
-                    &source_text,
-                    &staging_text,
-                ],
-            )
-            .await?;
-            // The clone's origin is the source folder. Point it where the source
-            // does, and drop tracking refs that described the folder, not the remote.
-            match &origin {
-                Some(url) => {
-                    git(&staging, &["remote", "set-url", "origin", url]).await?;
-                }
-                None => {
-                    git(&staging, &["remote", "remove", "origin"]).await?;
-                }
-            }
-            for reference in strings(
-                &staging,
-                &["for-each-ref", "--format=%(refname)", "refs/remotes"],
-            )
-            .await?
-            {
-                git(&staging, &["update-ref", "-d", &reference]).await?;
-            }
-            Ok::<_, CoreError>(())
-        }
-        .await;
-        if let Err(error) = prepared {
-            let _ = std::fs::remove_dir_all(&staging);
-            return Err(error);
-        }
-        let project = self.adopt_staged(&staging, &path, &slug).await?;
-        Ok(ImportReport {
-            project,
-            dirty_files,
-            unpushed_branches: unpushed,
-        })
-    }
-
-    /// Removes a project from the app. Its files go only when they hold nothing
-    /// to lose; anything else stays on disk and is reported. Nothing is force-cleaned.
-    pub async fn remove_project(&self, id: &str, confirm: bool) -> Result<ProjectRemoval> {
+    /// Forgets a project and its threads. The folder stays, always, unless Orbyn
+    /// made it, `delete_files` asks, and it holds nothing to lose. Dirty or unpushed
+    /// work then needs `confirm`, and even that only keeps the folder.
+    pub async fn remove_project(
+        &self,
+        id: &str,
+        confirm: bool,
+        delete_files: bool,
+    ) -> Result<ProjectRemoval> {
         let project = self.store.project(id)?;
         let path = PathBuf::from(&project.path);
         if self.workspace.root().is_ok_and(|root| root == path) {
@@ -340,11 +336,16 @@ impl Core {
                 "The skills library cannot be removed.".into(),
             ));
         }
+        if delete_files && !project.managed {
+            return Err(CoreError::Invalid(
+                "Orbyn did not create this folder, so it can only be removed from the list.".into(),
+            ));
+        }
         let threads = self.store.list_all_threads(id)?;
         if threads.iter().any(|thread| thread.active_run.is_some()) {
             return Err(CoreError::ThreadBusy);
         }
-        let git_ok = path.exists() && is_git_repo(&path);
+        let git_ok = delete_files && path.exists() && is_git_repo(&path);
         let dirty = if git_ok {
             strings(&path, &["status", "--porcelain"]).await?
         } else {
@@ -355,7 +356,7 @@ impl Core {
         } else {
             Vec::new()
         };
-        if !confirm && !(dirty.is_empty() && unpushed.is_empty()) {
+        if delete_files && !confirm && !(dirty.is_empty() && unpushed.is_empty()) {
             return Err(CoreError::ProjectHasWork {
                 message: "This project has unsaved work. Confirm to remove it from Orbyn.".into(),
                 detail: json!({ "dirty_files": dirty, "unpushed_branches": unpushed }),
@@ -374,7 +375,7 @@ impl Core {
         self.audit_project(
             "project.remove",
             &project.path,
-            json!({ "confirmed": confirm }),
+            json!({ "confirmed": confirm, "delete_files": delete_files }),
         )?;
         for thread in threads {
             for deleted in self.store.delete_thread(&thread.id, "user")? {

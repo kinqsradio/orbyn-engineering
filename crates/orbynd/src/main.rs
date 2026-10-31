@@ -156,7 +156,9 @@ fn router(state: AppState) -> Router {
         .route("/api/clones", get(api::list_clones).post(api::start_clone))
         .route("/api/clones/{id}/cancel", post(api::cancel_clone))
         .route("/api/clones/{id}/retry", post(api::retry_clone))
-        .route("/api/projects/import", post(api::import_project))
+        .route("/api/projects/add", post(api::add_project))
+        .route("/api/threads/{id}/project", post(api::move_thread))
+        .route("/api/threads/{id}/adopt", post(api::adopt_scratch))
         .route(
             "/api/projects/{id}",
             axum::routing::delete(api::remove_project),

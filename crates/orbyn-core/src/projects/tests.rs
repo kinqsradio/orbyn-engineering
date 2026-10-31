@@ -74,13 +74,13 @@ fn slugs_are_plain_and_never_a_worktree_root() {
 async fn create_makes_a_nested_repository() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("App", false).await.unwrap();
+    let project = core.new_project("App", false, None).await.unwrap();
     let path = PathBuf::from(&project.path);
     assert_eq!(path, core.workspace.repo_dir().unwrap().join("app"));
     assert!(path.join(".git").exists());
     assert!(!project.trusted);
     assert!(
-        core.new_project("app", false).await.is_err(),
+        core.new_project("app", false, None).await.is_err(),
         "slugs are unique"
     );
 }
@@ -91,7 +91,7 @@ async fn clone_lands_under_repo_and_a_failed_clone_leaves_nothing() {
     let core = core(&dir).await;
     let source = source_repo(&dir.path().join("upstream"));
     let project = core
-        .clone_project(source.to_str().unwrap(), None)
+        .clone_project(source.to_str().unwrap(), None, None)
         .await
         .unwrap();
     assert!(project.path.ends_with("repo/upstream"));
@@ -99,7 +99,7 @@ async fn clone_lands_under_repo_and_a_failed_clone_leaves_nothing() {
 
     let missing = dir.path().join("nowhere");
     assert!(
-        core.clone_project(missing.to_str().unwrap(), None)
+        core.clone_project(missing.to_str().unwrap(), None, None)
             .await
             .is_err()
     );
@@ -110,99 +110,79 @@ async fn clone_lands_under_repo_and_a_failed_clone_leaves_nothing() {
         .collect();
     assert!(leftovers.is_empty());
     assert!(
-        core.clone_project("--upload-pack=evil", None)
+        core.clone_project("--upload-pack=evil", None, None)
             .await
             .is_err()
     );
 }
 
 #[tokio::test]
-async fn import_leaves_the_source_byte_identical_and_reports_what_stayed() {
+async fn adding_registers_in_place_untrusted_and_touches_nothing() {
     let dir = TempDir::new();
     let core = core(&dir).await;
     let source = source_repo(&dir.path().join("mine"));
-    run_git(
-        &source,
-        &["remote", "add", "origin", "https://example.com/o/mine.git"],
-    );
-    run_git(&source, &["checkout", "-q", "-b", "side"]);
-    std::fs::write(source.join("side.txt"), "x").unwrap();
-    commit_all(&source, "side work");
-    run_git(&source, &["checkout", "-q", "main"]);
-    std::fs::write(source.join("a.txt"), "changed\n").unwrap();
-    std::fs::write(source.join("new.txt"), "untracked").unwrap();
+    std::fs::create_dir_all(source.join("sub")).unwrap();
+    std::fs::write(source.join("new.txt"), "dirty").unwrap();
     let before = snapshot(&source);
-
-    let report = core
-        .import_project(source.to_str().unwrap(), None)
-        .await
-        .unwrap();
-
+    let picked = source.join("sub");
+    let project = core.add_project(picked.to_str().unwrap()).await.unwrap();
+    assert_eq!(
+        PathBuf::from(&project.path),
+        source,
+        "the Git root is the project"
+    );
+    assert!(!project.trusted);
+    assert!(!project.managed);
     assert_eq!(snapshot(&source), before);
-    assert_eq!(report.dirty_files.len(), 2, "{:?}", report.dirty_files);
-    assert_eq!(report.unpushed_branches, ["side"]);
-    let path = PathBuf::from(&report.project.path);
-    assert_eq!(
-        text(&git(&path, &["remote", "get-url", "origin"]).await.unwrap()),
-        "https://example.com/o/mine.git"
-    );
-    assert_eq!(
-        std::fs::read_to_string(path.join("a.txt")).unwrap(),
-        "one\n"
-    );
-    assert!(!path.join("new.txt").exists());
-    assert!(
-        strings(&path, &["for-each-ref", "refs/remotes"])
-            .await
-            .unwrap()
-            .is_empty()
-    );
-}
-
-#[tokio::test]
-async fn import_refuses_folders_it_should_not_take() {
-    let dir = TempDir::new();
-    let core = core(&dir).await;
+    let repeat = core.add_project(source.to_str().unwrap()).await;
+    assert!(matches!(repeat, Err(CoreError::ProjectExists(_))));
     let plain = dir.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
     assert!(
-        core.import_project(plain.to_str().unwrap(), None)
+        !core
+            .add_project(plain.to_str().unwrap())
             .await
-            .is_err()
+            .unwrap()
+            .is_git
     );
-    let source = source_repo(&dir.path().join("mine"));
-    std::fs::create_dir_all(source.join("sub")).unwrap();
-    assert!(
-        core.import_project(source.join("sub").to_str().unwrap(), None)
-            .await
-            .is_err()
-    );
-    assert!(core.import_project("relative", None).await.is_err());
-    let root = core.workspace.root().unwrap();
-    assert!(
-        core.import_project(root.to_str().unwrap(), None)
-            .await
-            .is_err()
-    );
+    assert!(core.add_project("relative").await.is_err());
 }
 
 #[tokio::test]
-async fn an_external_path_cannot_be_registered() {
+async fn a_chosen_folder_takes_a_clone_or_a_new_project_and_stays_managed() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let outside = source_repo(&dir.path().join("outside"));
+    let source = source_repo(&dir.path().join("upstream"));
+    let chosen = dir.path().join("chosen");
+    let project = core
+        .clone_project(
+            source.to_str().unwrap(),
+            None,
+            Some(chosen.to_str().unwrap()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(PathBuf::from(&project.path), chosen);
+    assert!(project.managed);
+    assert!(chosen.join("a.txt").exists());
+    let again = core
+        .new_project("x", false, Some(chosen.to_str().unwrap()))
+        .await;
+    assert!(again.is_err(), "a folder with files is not a destination");
     let root = core.workspace.root().unwrap();
-    assert!(matches!(
-        check_target(&root, &outside).await,
-        Err(CoreError::WorkspaceRefused(_))
-    ));
+    let inside = root.join("skills/new");
+    assert!(
+        core.new_project("x", false, Some(inside.to_str().unwrap()))
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
 async fn removing_a_dirty_or_unpushed_project_needs_confirmation_and_never_cleans() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("app", false).await.unwrap();
+    let project = core.new_project("app", false, None).await.unwrap();
     let path = PathBuf::from(&project.path);
     run_git(&path, &["config", "user.email", "t@example.com"]);
     run_git(&path, &["config", "user.name", "T"]);
@@ -210,7 +190,7 @@ async fn removing_a_dirty_or_unpushed_project_needs_confirmation_and_never_clean
     commit_all(&path, "unpushed");
     std::fs::write(path.join("b.txt"), "dirty").unwrap();
 
-    match core.remove_project(&project.id, false).await {
+    match core.remove_project(&project.id, false, true).await {
         Err(CoreError::ProjectHasWork { detail, .. }) => {
             assert_eq!(detail["unpushed_branches"][0], "main");
             assert_eq!(detail["dirty_files"].as_array().unwrap().len(), 1);
@@ -219,7 +199,7 @@ async fn removing_a_dirty_or_unpushed_project_needs_confirmation_and_never_clean
     }
     assert!(core.store.project(&project.id).is_ok());
 
-    let removal = core.remove_project(&project.id, true).await.unwrap();
+    let removal = core.remove_project(&project.id, true, true).await.unwrap();
     assert!(!removal.files_removed);
     assert_eq!(removal.kept_path.as_deref(), Some(project.path.as_str()));
     assert!(
@@ -235,10 +215,10 @@ async fn a_clean_pushed_project_is_removed_with_its_files() {
     let core = core(&dir).await;
     let source = source_repo(&dir.path().join("upstream"));
     let project = core
-        .clone_project(source.to_str().unwrap(), None)
+        .clone_project(source.to_str().unwrap(), None, None)
         .await
         .unwrap();
-    let removal = core.remove_project(&project.id, false).await.unwrap();
+    let removal = core.remove_project(&project.id, false, true).await.unwrap();
     assert!(removal.files_removed);
     assert!(!Path::new(&project.path).exists());
 }
@@ -247,7 +227,7 @@ async fn a_clean_pushed_project_is_removed_with_its_files() {
 async fn nothing_is_added_to_a_target_by_being_a_project() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("app", false).await.unwrap();
+    let project = core.new_project("app", false, None).await.unwrap();
     let path = PathBuf::from(&project.path);
     let before = snapshot(&path);
     core.workspace
@@ -277,7 +257,7 @@ fn ssh_urls_have_an_https_form_and_others_do_not() {
 async fn a_new_project_can_start_with_a_readme_and_first_commit() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("Notes", true).await.unwrap();
+    let project = core.new_project("Notes", true, None).await.unwrap();
     let path = Path::new(&project.path);
     assert_eq!(
         std::fs::read_to_string(path.join("README.md")).unwrap(),
@@ -290,13 +270,17 @@ async fn a_background_clone_finishes_and_a_failed_one_can_retry() {
     let dir = TempDir::new();
     let core = Arc::new(core(&dir).await);
     let source = source_repo(&dir.path().join("upstream"));
-    let job = core.start_clone(source.to_str().unwrap(), None).unwrap();
+    let job = core
+        .start_clone(source.to_str().unwrap(), None, None)
+        .unwrap();
     let finished = until_settled(&core, &job.id).await;
     assert_eq!(finished.state, CloneState::Done);
     assert!(finished.project.is_some());
 
     let missing = dir.path().join("later");
-    let job = core.start_clone(missing.to_str().unwrap(), None).unwrap();
+    let job = core
+        .start_clone(missing.to_str().unwrap(), None, None)
+        .unwrap();
     let failed = until_settled(&core, &job.id).await;
     assert_eq!(failed.state, CloneState::Failed);
     assert!(failed.error.is_some());

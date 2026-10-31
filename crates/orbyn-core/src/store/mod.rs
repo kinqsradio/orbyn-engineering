@@ -67,6 +67,16 @@ pub struct NewThread {
     pub skill_profile: Option<String>,
     pub parent_thread_id: Option<String>,
     pub relation: Option<String>,
+    pub scratch: bool,
+}
+
+/// A folder to register.
+pub struct NewProject<'a> {
+    pub path: &'a str,
+    pub name: &'a str,
+    pub is_git: bool,
+    pub managed: bool,
+    pub scratch: bool,
 }
 
 impl Store {
@@ -128,12 +138,13 @@ impl Store {
         Ok(value)
     }
 
-    pub fn add_project(&self, path: &str, name: &str, is_git: bool) -> Result<Project> {
+    /// Registers a folder, untrusted, or returns the row it already has.
+    pub fn add_project(&self, new: NewProject<'_>) -> Result<Project> {
         self.commit(|tx, _| {
             let existing = tx
                 .query_row(
                     "SELECT * FROM projects WHERE path = ?1",
-                    [path],
+                    [new.path],
                     project_row,
                 )
                 .optional()?;
@@ -142,21 +153,28 @@ impl Store {
             }
             let project = Project {
                 id: new_id(),
-                name: name.to_owned(),
-                path: path.to_owned(),
-                trusted: false,
-                is_git,
+                name: new.name.to_owned(),
+                path: new.path.to_owned(),
+                // Orbyn made a scratch folder itself, so there is nothing to vouch for.
+                trusted: new.scratch,
+                is_git: new.is_git,
                 created_at: now(),
+                managed: new.managed,
+                scratch: new.scratch,
             };
             tx.execute(
-                "INSERT INTO projects (id, name, path, trusted, is_git, created_at)
-                 VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+                "INSERT INTO projects (id, name, path, trusted, is_git, created_at, managed,
+                    scratch)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     project.id,
                     project.name,
                     project.path,
+                    project.trusted,
                     project.is_git,
-                    project.created_at
+                    project.created_at,
+                    project.managed,
+                    project.scratch
                 ],
             )?;
             Ok(project)
@@ -165,7 +183,8 @@ impl Store {
 
     pub fn list_projects(&self) -> Result<Vec<Project>> {
         let conn = self.reader();
-        let mut statement = conn.prepare("SELECT * FROM projects ORDER BY created_at DESC")?;
+        let mut statement =
+            conn.prepare("SELECT * FROM projects WHERE scratch = 0 ORDER BY created_at DESC")?;
         let rows = statement.query_map([], project_row)?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
@@ -227,9 +246,9 @@ impl Store {
             tx.execute(
                 "INSERT INTO threads (id, project_id, title, engine, model, cwd,
                     worktree_path, worktree_branch, worktree_base, skill_profile,
-                    created_at, updated_at, position, parent_thread_id, relation)
+                    created_at, updated_at, position, parent_thread_id, relation, scratch)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11,
-                    (SELECT COALESCE(MIN(position), 0) - 1 FROM threads), ?12, ?13)",
+                    (SELECT COALESCE(MIN(position), 0) - 1 FROM threads), ?12, ?13, ?14)",
                 params![
                     id,
                     new.project_id,
@@ -244,11 +263,56 @@ impl Store {
                     stamp,
                     new.parent_thread_id,
                     new.relation,
+                    new.scratch,
                 ],
             )?;
             Ok(())
         })?;
         self.thread(&id)
+    }
+
+    /// Points a thread with no runs at another folder. A scratch project nobody
+    /// uses any more goes; its folder stays.
+    pub fn move_thread(&self, id: &str, target: &Project) -> Result<Thread> {
+        self.commit(|tx, _| {
+            let runs: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM runs WHERE thread_id = ?1",
+                [id],
+                |row| row.get(0),
+            )?;
+            if runs > 0 {
+                return Err(CoreError::Invalid(
+                    "A thread can change project only before its first message.".into(),
+                ));
+            }
+            let moved = tx.execute(
+                "UPDATE threads SET project_id = ?2, cwd = ?3, scratch = ?4,
+                    worktree_path = NULL, worktree_branch = NULL, worktree_base = NULL
+                 WHERE id = ?1",
+                params![id, target.id, target.path, target.scratch],
+            )?;
+            if moved == 0 {
+                return Err(CoreError::NotFound("thread".into()));
+            }
+            prune_scratch(tx)
+        })?;
+        self.thread(id)
+    }
+
+    /// Makes a scratch folder an ordinary project for every thread in it.
+    pub fn adopt_scratch(&self, project_id: &str, name: &str) -> Result<Project> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "UPDATE projects SET scratch = 0, name = ?2 WHERE id = ?1",
+                params![project_id, name],
+            )?;
+            tx.execute(
+                "UPDATE threads SET scratch = 0 WHERE project_id = ?1",
+                [project_id],
+            )?;
+            Ok(())
+        })?;
+        self.project(project_id)
     }
 
     pub fn thread(&self, id: &str) -> Result<Thread> {
@@ -313,6 +377,7 @@ impl Store {
             if deleted == 0 {
                 return Err(CoreError::NotFound("thread".into()));
             }
+            prune_scratch(tx)?;
             Ok(family)
         })?;
         for member in &deleted {
@@ -392,6 +457,16 @@ fn refuse_newer(conn: &Connection) -> Result<()> {
     if found > supported {
         return Err(CoreError::DatabaseTooNew { found, supported });
     }
+    Ok(())
+}
+
+/// Forgets scratch projects with no thread left. The folders stay on disk.
+fn prune_scratch(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute(
+        "DELETE FROM projects WHERE scratch = 1
+         AND id NOT IN (SELECT project_id FROM threads)",
+        [],
+    )?;
     Ok(())
 }
 
@@ -530,6 +605,8 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
         trusted: row.get("trusted")?,
         is_git: row.get("is_git")?,
         created_at: row.get("created_at")?,
+        managed: row.get("managed")?,
+        scratch: row.get("scratch")?,
     })
 }
 
@@ -551,6 +628,7 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
         goal: row
             .get::<_, Option<String>>("goal")?
             .and_then(|text| serde_json::from_str(&text).ok()),
+        scratch: row.get("scratch")?,
         cwd: row.get("cwd")?,
         worktree,
         skill_profile: row.get("skill_profile")?,

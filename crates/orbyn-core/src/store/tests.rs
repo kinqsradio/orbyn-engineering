@@ -21,7 +21,15 @@ fn fixture() -> Fixture {
     let dir = TempDir::new();
     let path = dir.path().join("orbyn.sqlite3");
     let store = Store::open(&path, "epoch-a").unwrap();
-    let project = store.add_project("/repo", "repo", true).unwrap();
+    let project = store
+        .add_project(crate::store::NewProject {
+            path: "/repo",
+            name: "repo",
+            is_git: true,
+            managed: false,
+            scratch: false,
+        })
+        .unwrap();
     store.trust_project(&project.id, "tester").unwrap();
     let thread = thread_in(&store, &project.id);
     Fixture {
@@ -44,6 +52,7 @@ fn thread_in(store: &Store, project: &str) -> String {
             skill_profile: None,
             parent_thread_id: None,
             relation: None,
+            scratch: false,
         })
         .unwrap()
         .id
@@ -127,7 +136,16 @@ fn racing_admissions_produce_exactly_one_run() {
 #[test]
 fn untrusted_folder_is_refused_at_admission() {
     let f = fixture();
-    let project = f.store.add_project("/other", "other", false).unwrap();
+    let project = f
+        .store
+        .add_project(crate::store::NewProject {
+            path: "/other",
+            name: "other",
+            is_git: false,
+            managed: false,
+            scratch: false,
+        })
+        .unwrap();
     let thread = thread_in(&f.store, &project.id);
     assert!(matches!(
         admit(&f.store, &thread),
@@ -507,6 +525,7 @@ fn a_running_thread_or_child_never_auto_settles() {
             skill_profile: None,
             parent_thread_id: Some(f.thread.clone()),
             relation: Some("subagent".into()),
+            scratch: false,
         })
         .unwrap();
     let run = running(&f.store, &child.id);

@@ -19,13 +19,20 @@ use crate::util::new_id;
 #[derive(Clone, Debug)]
 pub struct WriteScope {
     pub checkout: PathBuf,
-    /// Relative paths resolve from here.
+    /// Where this engine resolves a relative path: the library for Claude, which
+    /// runs there, and the checkout for an engine whose turn runs in it.
     pub engine_cwd: PathBuf,
     /// Inside `checkout` but still off limits: a library thread's `repo/`.
     pub excluded: Vec<PathBuf>,
 }
 
 impl WriteScope {
+    /// `path` as this engine means it, so a person reads the real target and a
+    /// relative path can never be taken for one in the checkout.
+    pub fn absolute(&self, path: &str) -> String {
+        self.engine_cwd.join(path).to_string_lossy().into_owned()
+    }
+
     /// True when `path` lands inside the checkout after resolving `..` and any
     /// symlink in the part of the path that exists.
     pub fn permits(&self, path: &str) -> bool {
@@ -178,7 +185,14 @@ impl ApprovalGate {
         ))))
     }
 
-    async fn request_inner(&self, scope: &RunScope, ask: ActionAsk) -> Result<Verdict> {
+    async fn request_inner(&self, scope: &RunScope, mut ask: ActionAsk) -> Result<Verdict> {
+        if let (ActionKind::FileChange, Some(write_scope)) = (ask.kind, &scope.write_scope)
+            && Path::new(&ask.target).is_relative()
+        {
+            let absolute = write_scope.absolute(&ask.target);
+            ask.summary = ask.summary.replace(&ask.target, &absolute);
+            ask.target = absolute;
+        }
         if let Some(denied) = self.outside_scope(scope, &ask)? {
             return Ok(denied);
         }
@@ -339,7 +353,15 @@ mod tests {
     fn fixture() -> Fixture {
         let dir = TempDir::new();
         let store = Arc::new(Store::open(&dir.path().join("db"), "e").unwrap());
-        let project = store.add_project("/r", "r", false).unwrap();
+        let project = store
+            .add_project(crate::store::NewProject {
+                path: "/r",
+                name: "r",
+                is_git: false,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
         store.trust_project(&project.id, "t").unwrap();
         let thread = store
             .create_thread(NewThread {
@@ -352,6 +374,7 @@ mod tests {
                 skill_profile: None,
                 parent_thread_id: None,
                 relation: None,
+                scratch: false,
             })
             .unwrap();
         let run = store
@@ -646,5 +669,39 @@ mod tests {
             .unwrap();
         gate.settle(&expired);
         assert!(!waiting.await.unwrap().is_allowed());
+    }
+
+    #[test]
+    fn relative_paths_mean_what_the_engine_means_and_symlinks_cannot_escape() {
+        let dir = crate::testing::TempDir::new();
+        let library = dir.path().join("library");
+        let checkout = dir.path().join("work/app");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::create_dir_all(&checkout).unwrap();
+        let claude = WriteScope {
+            checkout: checkout.clone(),
+            engine_cwd: library.clone(),
+            excluded: Vec::new(),
+        };
+        let codex = WriteScope {
+            checkout: checkout.clone(),
+            engine_cwd: checkout.clone(),
+            excluded: Vec::new(),
+        };
+        assert!(!claude.permits("a.txt"), "that is the library's a.txt");
+        assert!(codex.permits("a.txt"));
+        assert!(claude.permits(checkout.join("a.txt").to_str().unwrap()));
+        assert!(!codex.permits("../other/a.txt"));
+        assert!(!codex.permits(library.join("a.txt").to_str().unwrap()));
+        assert_eq!(
+            claude.absolute("a.txt"),
+            library.join("a.txt").to_string_lossy()
+        );
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&library, checkout.join("escape")).unwrap();
+            assert!(!codex.permits("escape/a.txt"));
+            assert!(!claude.permits(checkout.join("escape/a.txt").to_str().unwrap()));
+        }
     }
 }

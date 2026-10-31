@@ -29,9 +29,11 @@ only on generated types and the HTTP API. Nothing in `web` may import Tauri APIs
 4. Orbyn writes nothing into target repositories or engine user config: no skills,
    instructions, excludes or context maps. The project file is read-only to Orbyn.
 5. A folder must be trusted before an engine, project script or terminal runs in
-   it. Starting `claude -p` at the library root does not load a target's
-   `.mcp.json` (`claude mcp list` 2.1.150: absent there, present inside the target),
-   but an engine still acts on the target, so trust stays the gate.
+   it, and a folder added by path starts untrusted. Claude 2.1.150 run at the
+   library with `--add-dir <checkout>` loads the checkout's skills but not its
+   `.mcp.json` or hooks: both fired from the cwd and neither through `--add-dir`. Its
+   `CLAUDE.md` was not observed either way, and an engine still acts on the target,
+   so trust stays the gate.
 6. Audit rows are written before the effect they describe, and are append-only.
    Policy and audit are internal safety, not a user feature.
 7. Anything unknown fails closed: an unreachable approver means deny.
@@ -148,7 +150,9 @@ Each run snapshots the checkout before it starts and when it ends, through a
 temporary index, into `refs/orbyn/checkpoints/<thread>/<run>/{start,end}`. The real
 index, HEAD and working files stay untouched, ignored files are not captured, and a
 failed snapshot costs that checkpoint, not the run. This Git metadata is the one
-thing Orbyn adds under a target, and it never reaches a working file or a push.
+thing a run adds under a target, in that repository's own `.git`, whether it was
+cloned here or registered in place, and removing a project leaves it there. It never
+reaches a working file or a push.
 
 Restoring takes a safety snapshot first, then makes the files match, leaving HEAD,
 the index and ignored files alone. It refuses while another live thread shares the
@@ -270,12 +274,19 @@ Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
 - Claude starts at the workspace root and discovers `.claude/skills` and the
   library's `AGENTS.md` natively. It has no `--plugin-dir`, and gets a per-run
-  `--mcp-config` and `--permission-prompt-tool mcp__orbyn_engineering__approve`.
+  `--mcp-config`, `--permission-prompt-tool mcp__orbyn_engineering__approve` and
+  `--add-dir <checkout>`. Its working directory is the library, so a relative path
+  means the library, and the bootstrap tells it to use absolute paths and run
+  commands from the checkout.
 - Codex's process and `thread/start` use the workspace root for `.agents/skills`
-  and `AGENTS.md`. Codex always lets a turn write to its own cwd (observed on 0.166.0
-  through `command/exec`), so each `turn/start` sets `cwd` and
-  `sandboxPolicy.writableRoots` to the selected checkout. It has a per-thread
-  `mcp_servers.orbyn_engineering` config and app-server approval requests.
+  and `AGENTS.md`, and each `turn/start` sets `cwd` and
+  `sandboxPolicy.writableRoots` to the selected checkout. The turn's `cwd` must stay
+  the checkout: a real 0.166.0 turn against a local stub provider, with no model
+  involved, wrote to the checkout and was denied the library, but with the library
+  as its `cwd` it wrote to the library and relative paths landed there.
+  `command/exec` is not the same: it also let the app-server's own cwd be written,
+  and engines do not use it. It has a per-thread `mcp_servers.orbyn_engineering`
+  config and app-server approval requests.
 - Non-native engines start in the checkout and reach skills through the MCP server,
   or through the skill list in the bootstrap.
 
@@ -289,23 +300,49 @@ projects wait for this step (`409 workspace_required`).
 ```text
 <workspace>/                 library Git root; engines start here
   AGENTS.md, skills/, .claude/skills, .agents/skills
-  repo/                      ignored; independent Git histories
+  repo/                      ignored; the default home of cloned and created projects
     <slug>/                  target primary clone
     <slug>-wt/<purpose>/     target worktree on a neutral `feat/<purpose>` branch
+<any folder>/                a project registered where it is
+<any folder>-wt/<purpose>/   its worktrees
 ```
 
 Boundaries are checked with Git metadata only and no project code runs. A library
 must be a real Git root with `skills/catalog.json` and `AGENTS.md`, and an ignored,
-untracked `repo/`. A target must be its own Git root under `repo/`, reached with no
-symlink, with its common Git directory inside `repo/`, and ignored by the library.
+untracked `repo/`.
 
-Projects arrive one way each: `clone`, `create` (`git init`) or `import`. Import
-clones a local repository with no hardlinks, keeps its `origin` URL, leaves the
-source byte-identical, and reports the dirty files and unpushed branches it did not
-carry. An external path cannot be registered. A custom worktree location is not
-offered, and a registered worktree for a purpose is reused. Removing a project
-refuses dirty or unpushed work unless confirmed, and even then only unregisters it:
-files are deleted only when nothing is dirty, unpushed, ignored or in a worktree.
+A project is any folder the person names, registered where it is: nothing is cloned,
+moved, copied or written, and it starts untrusted, so trust is a required step.
+`POST /api/projects/add` resolves the real path, following links, then the Git root,
+which becomes the project. Both must clear the library: the library itself, anything
+inside it and any folder containing it are refused, as is a linked worktree of the
+library. `repo/` is the exception, and a folder under it still has to meet the nested
+rules: its own Git root, its Git data under `repo/`, and ignored by the library. A
+folder already registered is `409 project_exists` by its real path, so a link to it
+cannot make a second project. A folder outside Git is allowed, and works without
+worktrees, diffs, checkpoints or forge features. This differs on purpose from the
+library's `workspace.py check --in-place`, which requires a Git root. The same check
+runs again before each run, because a folder can change between runs.
+
+Clone and create are the routes that make a folder, at `<workspace>/repo/<slug>` by
+default or at a chosen absolute path that holds nothing yet. A clone works in a
+staging folder beside its destination. Those projects are `managed`.
+
+Removing a project unregisters it and deletes its threads, and leaves the folder
+exactly as it was. `?delete_files=true` is refused for a folder Orbyn did not create.
+For one it did, dirty or unpushed work needs `confirm`, and files go only when nothing
+is dirty, unpushed, ignored or in a worktree.
+
+Worktrees sit beside the primary clone at `<repo>-wt/<purpose>/`, wherever that repo
+lives, on a neutral `feat/<purpose>` branch, and a registered worktree for a purpose
+is reused. A custom worktree location is not offered.
+
+A thread with no project gets a dated folder, `<data>/scratch/<date>-<id>`, behind a
+hidden project, so it passes through the same trust, write scope and launch as any
+other thread. Orbyn made the folder, so it starts trusted. It stays on disk after the
+thread is deleted. Until its first run a thread can move to another project or a new
+scratch folder, after which `400`. `POST /api/threads/:id/adopt` makes the folder a
+project where it is, along with every thread in it.
 
 The library changes only through the app. An update fetches, shows incoming commits
 and fast-forwards. It refuses local edits (`409 library_dirty`), active runs
@@ -315,14 +352,18 @@ update, only from exactly where that update left the library. Admission and a
 library move share a lock, so neither can pass the other's check.
 
 Each run's prompt starts with a short context block naming the library path and
-revision, the target Git root, the selected checkout and branch, and that the agent
+revision, the target Git root, the selected checkout, branch and revision, and that
+the agent
 must read the target's instructions itself because discovery across a Git boundary
 is not guaranteed and target rules specialize shared methods. The event log keeps
 the user's prompt alone.
 
 A run writes only inside its selected checkout. The gate denies a file change
-outside it before policy runs, resolving `..` and symlinks, so no rule or person can
-widen it. Codex's sandbox enforces the same root. Claude's Bash has no OS sandbox,
+outside it before policy runs, comparing canonical absolute paths after resolving
+`..` and symlinks, so no rule or person can widen it. A relative path is resolved
+where the engine resolves it: from the library for Claude and from the checkout for
+the others. An approval shows it as an absolute path, so a person sees the real
+target. Diffs, checkpoints and file routes always use the thread's checkout. Codex's sandbox enforces the same root. Claude's Bash has no OS sandbox,
 so a command is governed by policy and approval, not by this check. The library is
 read-only to engines unless a thread is opened on the library's own project, which
 needs trust and never reaches `repo/`.
@@ -421,10 +462,13 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |
 | `POST /api/workspace/rollback` | Back to the revision before the last update |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
-| `POST /api/projects/clone`, `/create`, `/import` | The only ways to add a project; `create` takes `readme` for a first commit |
-| `DELETE /api/projects/:id?confirm=` | `ProjectRemoval`; `409 project_has_work` |
+| `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
+| `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
+| `DELETE /api/projects/:id?delete_files=&confirm=` | `ProjectRemoval`: unregisters; `delete_files` is `400` unless Orbyn made the folder, and can be `409 project_has_work` |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
-| `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads |
+| `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads; no `project_id` on create makes a scratch folder |
+| `POST /api/threads/:id/project` | `MoveThread`, before the first run; no `project_id` means a new scratch folder |
+| `POST /api/threads/:id/adopt` | `AdoptScratch`: the scratch folder becomes a project in place |
 | `PATCH /api/threads/:id` | `UpdateThread`: rename, pin, archive, settle, snooze, wake, unread, auto-settle |
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
 | `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
@@ -455,7 +499,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/git/action` | `GitAction` to `GitActionResult`: commit, push, pull request |
 | `GET, POST /api/threads/:id/branches`, `POST .../branches/switch` | List, create and switch |
 | `GET /api/forges` | `ForgeStatus[]`; never cached, so it is also the rescan |
-| `GET /api/clones`, `POST /api/clones` | `CloneJob[]`; start a background clone (`202`) |
+| `GET /api/clones`, `POST /api/clones` | `CloneJob[]`; start a background clone (`202`), with an optional `path` |
 | `POST /api/clones/:id/cancel`, `/retry` | Stop a running clone; run a failed or cancelled one again |
 | `GET, POST /api/threads/:id/pulls`, `POST .../pulls/refresh` | Linked pull requests; refresh also links the branch's own |
 | `GET /api/threads/:id/watches`, `POST, DELETE /api/threads/:id/pulls/:number/watch` | `PullWatch`; `400` on a settled, archived or subagent thread |

@@ -1,7 +1,7 @@
 //! Expected failures and their stable client codes. Transport maps `status` and
 //! `code` directly to `ApiError`, so a client can branch without parsing prose.
 
-use orbyn_contracts::{Approval, QuestionRequest};
+use orbyn_contracts::{Approval, Project, QuestionRequest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -15,6 +15,8 @@ pub enum CoreError {
     FolderUntrusted,
     #[error("this approval was already decided")]
     AlreadyDecided(Box<Approval>),
+    #[error("This folder is already a project.")]
+    ProjectExists(Box<Project>),
     #[error("this question was already closed")]
     QuestionClosed(Box<QuestionRequest>),
     #[error("{0} has an active run or update")]
@@ -113,6 +115,7 @@ impl CoreError {
             Self::DatabaseTooNew { .. } => "database_too_new",
             Self::DataDirLocked => "data_dir_locked",
             Self::PackTampered(_) => "pack_tampered",
+            Self::ProjectExists(_) => "project_exists",
             Self::SessionLost => "session_lost",
             Self::Computer(_) => "computer_failed",
             Self::Git(_) => "git_failed",
@@ -129,6 +132,7 @@ impl CoreError {
             Self::ThreadBusy
             | Self::AlreadyDecided(_)
             | Self::QuestionClosed(_)
+            | Self::ProjectExists(_)
             | Self::ThreadArchived
             | Self::WorkspaceRequired
             | Self::LibraryDirty(_)

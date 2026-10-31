@@ -215,6 +215,12 @@ pub trait EngineDriver: Send + Sync {
 
     async fn probe(&self) -> EngineProbe;
 
+    /// True when a relative path in this engine's tool calls means the checkout.
+    /// Claude runs at the library, so its relative paths mean the library.
+    fn resolves_from_checkout(&self) -> bool {
+        true
+    }
+
     /// The update this driver would run for `probe`, when ownership is provable.
     async fn update_plan(&self, _probe: &EngineProbe) -> Option<UpdatePlan> {
         None

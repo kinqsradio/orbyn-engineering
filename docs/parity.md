@@ -23,9 +23,9 @@ surfaces on that row stay open.
 ## A. Threads and sidebar
 - [ ] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
 - [ ] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S
-- [ ] A3 Thread without project: starts with no project, can move machine before send | docs/user/thread-sidebar.md | w d m | M
-- [ ] A4 Scratch folders: dated per-thread folder kept after thread deletion | docs/user/thread-sidebar.md | s | S
-- [ ] A5 Turn into project: adopts the folder in place, with sibling threads | packages/contracts/src/orchestrationV2.ts | w d s | M
+- [x] A3 Thread without project: starts with no project, can move machine before send | docs/user/thread-sidebar.md | w d m | M | server done
+- [x] A4 Scratch folders: dated per-thread folder kept after thread deletion | docs/user/thread-sidebar.md | s | S | server done
+- [x] A5 Turn into project: adopts the folder in place, with sibling threads | packages/contracts/src/orchestrationV2.ts | w d s | M | server done
 - [ ] A6 Start in background: sends and opens another draft, one worktree each | docs/user/thread-sidebar.md | w d | M
 - [ ] A7 Send and new thread: keyed send that leaves a fresh draft | packages/contracts/src/keybindings.ts | w d | S
 - [ ] A8 Multi-model fan-out: shift-click models, one thread and worktree each | apps/web/src/components/chat/useMultipleModelSend.ts | w d | M
@@ -258,7 +258,7 @@ surfaces on that row stay open.
 - [ ] F9 GitCafe: API token or cafe login | packages/source-control-gitcafe/src/GitCafeApi.ts | w d s | M
 - [x] F10 Rescan: rediscover hosts and auth | packages/contracts/src/rpc.ts | w d s | S | server done
 - [x] F11 New project: repo with README, icon, first commit, optional private publish | docs/user/source-control.md | w d m s | M | server done
-- [ ] F12 Add existing folder: picker with filesystem browse | apps/web/src/components/CommandPaletteAddProject.tsx | w d m s | M
+- [x] F12 Add existing folder: picker with filesystem browse | apps/web/src/components/CommandPaletteAddProject.tsx | w d m s | M | server done
 - [x] F13 Clone project: background clone, prompt early, retry and cancel | apps/web/src/components/ProjectCloneToastCoordinator.tsx | w d m s | L | server done
 - [x] F14 Clone SSH fallback: HTTPS when SSH is refused | docs/user/source-control.md | s | S | server done
 - [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done

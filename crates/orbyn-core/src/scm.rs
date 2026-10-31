@@ -888,6 +888,7 @@ impl Core {
             skill_profile: None,
             parent_thread_id: None,
             relation: None,
+            scratch: false,
         })?;
         self.store.link_pull(&thread.id, &pull)?;
         Ok(thread)

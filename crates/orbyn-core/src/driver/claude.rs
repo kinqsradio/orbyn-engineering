@@ -58,6 +58,13 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
     .map(OsString::from)
     .collect();
     args.push(mcp_config.into());
+    // Reach for the checkout without moving the session: skills and instructions
+    // still load from the library. On 2.1.150 this loads the checkout's skills, and
+    // not its hooks or `.mcp.json`, which ran only when placed in the cwd.
+    if spec.checkout != spec.cwd {
+        args.push("--add-dir".into());
+        args.push(spec.checkout.clone().into());
+    }
     args.push("--permission-prompt-tool".into());
     args.push(CLAUDE_APPROVE_TOOL.into());
     if let Some(model) = &spec.model {
@@ -96,6 +103,10 @@ impl EngineDriver for ClaudeDriver {
                 goal_control: false,
             },
         }
+    }
+
+    fn resolves_from_checkout(&self) -> bool {
+        false
     }
 
     async fn probe(&self) -> EngineProbe {
@@ -707,6 +718,8 @@ mod tests {
                 "default",
                 "--mcp-config",
                 "/run/mcp.json",
+                "--add-dir",
+                "/workspace/repo/app",
                 "--permission-prompt-tool",
                 "mcp__orbyn_engineering__approve",
                 "--model",
@@ -720,6 +733,20 @@ mod tests {
                 .iter()
                 .any(|arg| arg == "--bare" || arg == "--plugin-dir")
         );
+    }
+
+    #[test]
+    fn the_checkout_is_added_by_path_and_only_when_it_is_elsewhere() {
+        let mut elsewhere = spec();
+        elsewhere.cwd = "/library".into();
+        elsewhere.checkout = "/work/app".into();
+        let args = run_args(&elsewhere, Path::new("/tmp/mcp.json"));
+        let at = args.iter().position(|arg| arg == "--add-dir").unwrap();
+        assert_eq!(args[at + 1], "/work/app");
+        let mut same = spec();
+        same.checkout = same.cwd.clone();
+        let args = run_args(&same, Path::new("/tmp/mcp.json"));
+        assert!(!args.iter().any(|arg| arg == "--add-dir"));
     }
 
     #[test]

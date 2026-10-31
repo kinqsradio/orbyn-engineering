@@ -10,7 +10,16 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (6, PULL_REQUESTS),
     (7, MODELS_AND_QUESTIONS),
     (8, PULL_WATCHES),
+    (9, IN_PLACE_PROJECTS),
 ];
+
+// Until now every project was cloned or created by Orbyn, so all are managed.
+const IN_PLACE_PROJECTS: &str = r#"
+ALTER TABLE projects ADD COLUMN managed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE projects ADD COLUMN scratch INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE threads ADD COLUMN scratch INTEGER NOT NULL DEFAULT 0;
+UPDATE projects SET managed = 1;
+"#;
 
 const PULL_WATCHES: &str = r#"
 CREATE TABLE pull_watches (

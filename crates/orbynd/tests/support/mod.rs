@@ -152,7 +152,7 @@ impl Service {
         self.ensure_workspace(path.parent().unwrap()).await;
         let name = path.file_name().unwrap().to_str().unwrap();
         let (status, body) = if path.join(".git/HEAD").exists() {
-            self.send("/api/projects/import", json!({ "path": path }))
+            self.send("/api/projects/add", json!({ "path": path }))
                 .await
         } else {
             self.send("/api/projects/create", json!({ "name": name }))

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::error::{CoreError, Result};
-use crate::git::{git, git_raw, linked_worktrees, text};
+use crate::git::{git, git_raw, is_git_repo, linked_worktrees, text};
 use crate::store::{AuditRecord, Store};
 use crate::util::{canonicalize, new_id};
 
@@ -127,22 +127,38 @@ pub async fn validate_library(path: &Path) -> Result<PathBuf> {
     Ok(root)
 }
 
-/// The target boundary. Refuses external paths, the `repo/` folder itself, a
-/// subdirectory or ancestor of a Git root, and a linked worktree whose common Git
-/// directory lies outside the workspace.
-pub async fn check_target(root: &Path, target: &Path) -> Result<PathBuf> {
-    let repo = root.join("repo");
-    let target = real_path(target)?;
-    if target == repo || !target.starts_with(&repo) {
+/// A project folder and whether Git tracks it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectRoot {
+    pub path: PathBuf,
+    pub is_git: bool,
+}
+
+/// Refuses the library, anything inside it and anything containing it. `repo/` is
+/// the one exception: its children are independent repositories, not the library.
+pub fn guard_library(root: &Path, candidate: &Path) -> Result<()> {
+    if root.starts_with(candidate) {
         return Err(refused(
-            "Projects live under the workspace's repo/ folder. Import this folder instead.",
+            "This is the skills library, or a folder containing it.",
         ));
     }
-    if top_level(&target).await? != target {
+    let repo = root.join("repo");
+    let nested = candidate.starts_with(&repo) && candidate != repo;
+    if candidate.starts_with(root) && !nested {
+        return Err(refused("This folder is inside the skills library."));
+    }
+    Ok(())
+}
+
+/// The nested layout's rules, for a folder under `repo/`: its own Git root, with
+/// its Git data inside `repo/`, and hidden from the library by its ignore rules.
+async fn check_nested(root: &Path, target: &Path) -> Result<()> {
+    let repo = root.join("repo");
+    if top_level(target).await? != target {
         return Err(refused("Choose the project's Git root."));
     }
     let common = git(
-        &target,
+        target,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
     )
     .await?;
@@ -160,7 +176,57 @@ pub async fn check_target(root: &Path, target: &Path) -> Result<PathBuf> {
     if !is_ignored(root, &relative).await? {
         return Err(refused("The library's ignore rules expose this checkout."));
     }
-    Ok(target)
+    Ok(())
+}
+
+/// Resolves a folder to register in place: its real path, then its Git root when
+/// it has one. A folder outside Git stands as it is. Both the path and the Git root
+/// must clear the library, and so must a linked worktree's primary clone. Only Git
+/// metadata is read, so no project code runs.
+pub async fn resolve_project(root: &Path, path: &Path) -> Result<ProjectRoot> {
+    if !path.is_absolute() {
+        return Err(refused("Use an absolute path."));
+    }
+    let real =
+        canonicalize(path).map_err(|_| refused(format!("{} does not exist.", path.display())))?;
+    if !real.is_dir() {
+        return Err(refused(format!("{} is not a folder.", real.display())));
+    }
+    guard_library(root, &real)?;
+    let Ok(top) = top_level(&real).await else {
+        return Ok(ProjectRoot {
+            path: real,
+            is_git: false,
+        });
+    };
+    guard_library(root, &top)?;
+    let common = git(
+        &top,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .await?;
+    let primary = canonicalize(Path::new(&text(&common)))?
+        .parent()
+        .map(Path::to_path_buf);
+    if primary.as_deref() == Some(root) {
+        return Err(refused("This is a worktree of the skills library."));
+    }
+    if top.starts_with(root) {
+        check_nested(root, &top).await?;
+    }
+    Ok(ProjectRoot {
+        path: top,
+        is_git: true,
+    })
+}
+
+/// A thread's checkout, checked again before each run because a folder can change
+/// between runs. Returns its real path.
+pub async fn check_target(root: &Path, target: &Path) -> Result<PathBuf> {
+    let real = canonicalize(target)
+        .map_err(|_| refused(format!("{} does not exist.", target.display())))?;
+    resolve_project(root, &real).await?;
+    Ok(real)
 }
 
 /// True when every skill entry under the host link roots is a real link. Windows
@@ -640,7 +706,9 @@ async fn target_status(root: &Path, project: &orbyn_contracts::Project) -> Targe
         problem: None,
     };
     match check_target(root, path).await {
-        Ok(checked) => status.git_root = Some(checked.to_string_lossy().into_owned()),
+        Ok(checked) => {
+            status.git_root = is_git_repo(path).then(|| checked.to_string_lossy().into_owned());
+        }
         Err(error) => {
             status.problem = Some(error.to_string());
             return status;
@@ -789,18 +857,20 @@ mod tests {
         run_git(&outside, &["init", "-q"]);
         let escape = path.join("repo/escape");
         std::os::unix::fs::symlink(&outside, &escape).unwrap();
-        assert!(matches!(
-            check_target(&path, &escape).await,
-            Err(CoreError::WorkspaceRefused(_))
-        ));
+        // A link is followed to its real folder, and the real folder is what counts.
+        assert_eq!(
+            check_target(&path, &escape).await.unwrap(),
+            canonicalize(&outside).unwrap()
+        );
     }
 
     #[tokio::test]
-    async fn targets_must_be_nested_git_roots_with_git_data_inside() {
+    async fn the_library_is_refused_from_every_side() {
         let dir = TempDir::new();
         let root = library(&dir.path().join("mine"));
         let repo = root.join("repo");
         std::fs::create_dir_all(repo.join("app/src")).unwrap();
+        std::fs::create_dir_all(root.join("skills/how/inner")).unwrap();
         run_git(&repo.join("app"), &["init", "-q"]);
         run_git(
             &repo.join("app"),
@@ -811,26 +881,57 @@ mod tests {
             &repo.join("app"),
             &["commit", "-q", "--allow-empty", "-m", "x"],
         );
-        assert!(check_target(&root, &repo.join("app")).await.is_ok());
+        let nested = resolve_project(&root, &repo.join("app")).await.unwrap();
+        assert_eq!(nested.path, repo.join("app"));
 
-        let outside = dir.path().join("outside");
-        std::fs::create_dir_all(&outside).unwrap();
         for bad in [
-            outside.clone(),
-            repo.clone(),
-            repo.join("app/src"),
             root.clone(),
+            root.join("skills/how/inner"),
+            repo.clone(),
+            dir.path().to_path_buf(),
         ] {
             assert!(
                 matches!(
-                    check_target(&root, &bad).await,
+                    resolve_project(&root, &bad).await,
                     Err(CoreError::WorkspaceRefused(_))
                 ),
                 "{bad:?}"
             );
         }
 
-        // A linked worktree of an external clone has its Git data outside.
+        // A folder in a repository resolves to its Git root.
+        let picked = resolve_project(&root, &repo.join("app/src")).await.unwrap();
+        assert_eq!(picked.path, repo.join("app"));
+
+        // Any folder outside is fine, in Git or not.
+        let plain = dir.path().join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(!resolve_project(&root, &plain).await.unwrap().is_git);
+        assert!(resolve_project(&root, Path::new("relative")).await.is_err());
+
+        // A link into the library is the library.
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&root, &link).unwrap();
+        assert!(resolve_project(&root, &link).await.is_err());
+
+        // A linked worktree of the library is the library's history elsewhere.
+        run_git(&root, &["config", "user.email", "t@example.com"]);
+        run_git(&root, &["config", "user.name", "T"]);
+        let worktree = dir.path().join("library-wt");
+        run_git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "side",
+                worktree.to_str().unwrap(),
+            ],
+        );
+        assert!(resolve_project(&root, &worktree).await.is_err());
+
+        // An external clone's worktree parked under repo/ keeps its Git data outside.
         let external = dir.path().join("external");
         std::fs::create_dir_all(&external).unwrap();
         run_git(&external, &["init", "-q"]);
@@ -843,7 +944,7 @@ mod tests {
             &["worktree", "add", "-q", linked.to_str().unwrap()],
         );
         assert!(matches!(
-            check_target(&root, &linked).await,
+            resolve_project(&root, &linked).await,
             Err(CoreError::WorkspaceRefused(_))
         ));
     }

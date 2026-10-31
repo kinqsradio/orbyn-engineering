@@ -10,12 +10,13 @@ use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    AnswerQuestion, ApiError, ApprovalState, CloneProject, ComputerAction, CreateBranch,
-    CreatePolicyRule, CreateThread, CustomEngine, DecideApproval, EditQueuedMessage, EngineTier,
-    EnqueueMessage, ForkThread, FsEntry, FsListing, GitAction, ImportProject, LibraryUpdateRequest,
-    LinkPull, MergePull, NewProject, OpenInEditor, PublishProject, QuestionState, ReorderThreads,
-    RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SkillProfile, StartRun, SteerRun,
-    SubmitReview, SwitchBranch, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
+    AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, CloneProject,
+    ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
+    EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing, GitAction,
+    LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject, OpenInEditor,
+    PublishProject, QuestionState, ReorderThreads, RestoreWorkspace, RewindThread, ServerInfo,
+    ServerSettings, SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine,
+    UpdateThread, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -77,6 +78,7 @@ impl From<CoreError> for ApiFailure {
         let detail = match &error {
             CoreError::AlreadyDecided(existing) => serde_json::to_value(existing).ok(),
             CoreError::QuestionClosed(existing) => serde_json::to_value(existing).ok(),
+            CoreError::ProjectExists(existing) => serde_json::to_value(existing).ok(),
             CoreError::ProjectHasWork { detail, .. } => Some(detail.clone()),
             CoreError::FileConflict { revision } => Some(json!({ "revision": revision })),
             _ => None,
@@ -140,7 +142,7 @@ pub async fn clone_project(
 ) -> ApiResult<impl IntoResponse> {
     let project = state
         .core
-        .clone_project(&body.url, body.name.as_deref())
+        .clone_project(&body.url, body.name.as_deref(), body.path.as_deref())
         .await?;
     Ok((StatusCode::CREATED, Json(project)))
 }
@@ -153,7 +155,9 @@ pub async fn start_clone(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<CloneProject>,
 ) -> ApiResult<impl IntoResponse> {
-    let job = state.core.start_clone(&body.url, body.name.as_deref())?;
+    let job = state
+        .core
+        .start_clone(&body.url, body.name.as_deref(), body.path.as_deref())?;
     Ok((StatusCode::ACCEPTED, Json(job)))
 }
 
@@ -178,24 +182,47 @@ pub async fn create_project(
 ) -> ApiResult<impl IntoResponse> {
     Ok((
         StatusCode::CREATED,
-        Json(state.core.new_project(&body.name, body.readme).await?),
+        Json(
+            state
+                .core
+                .new_project(&body.name, body.readme, body.path.as_deref())
+                .await?,
+        ),
     ))
 }
 
-pub async fn import_project(
+pub async fn add_project(
     State(state): State<AppState>,
-    ApiJson(body): ApiJson<ImportProject>,
+    ApiJson(body): ApiJson<AddProject>,
 ) -> ApiResult<impl IntoResponse> {
-    let report = state
-        .core
-        .import_project(&body.path, body.name.as_deref())
-        .await?;
-    Ok((StatusCode::CREATED, Json(report)))
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.add_project(&body.path).await?),
+    ))
+}
+
+pub async fn move_thread(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<MoveThread>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state.core.move_thread(&id, body.project_id.as_deref())?,
+    ))
+}
+
+pub async fn adopt_scratch(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<AdoptScratch>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.adopt_scratch(&id, body.name.as_deref())?))
 }
 
 #[derive(Deserialize)]
 pub struct RemoveQuery {
     confirm: Option<bool>,
+    delete_files: Option<bool>,
 }
 
 pub async fn remove_project(
@@ -206,7 +233,11 @@ pub async fn remove_project(
     Ok(Json(
         state
             .core
-            .remove_project(&id, query.confirm.unwrap_or(false))
+            .remove_project(
+                &id,
+                query.confirm.unwrap_or(false),
+                query.delete_files.unwrap_or(false),
+            )
             .await?,
     ))
 }

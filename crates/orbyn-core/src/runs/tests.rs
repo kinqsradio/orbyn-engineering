@@ -112,11 +112,11 @@ async fn fixture_with(script: Script, update: &str, update_timeout: Duration) ->
         })
         .await
         .unwrap();
-    let project = core.new_project("project", false).await.unwrap();
+    let project = core.new_project("project", false, None).await.unwrap();
     core.store.trust_project(&project.id, "t").unwrap();
     let thread = core
         .create_thread(CreateThread {
-            project_id: project.id,
+            project_id: Some(project.id),
             engine: "script".into(),
             model: None,
             title: None,

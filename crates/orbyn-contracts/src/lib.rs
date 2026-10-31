@@ -30,8 +30,15 @@ pub struct Project {
     pub path: String,
     /// Engines refuse to start until a person trusts this folder.
     pub trusted: bool,
+    /// False for a folder that is not in Git, which works without Git's features.
     pub is_git: bool,
     pub created_at: String,
+    /// Orbyn cloned or created this folder. Only such a folder can ever be deleted.
+    #[serde(default)]
+    pub managed: bool,
+    /// A thread's dated folder under app data, hidden from project lists.
+    #[serde(default)]
+    pub scratch: bool,
 }
 }
 
@@ -61,6 +68,9 @@ pub struct Thread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub goal: Option<ThreadGoal>,
+    /// This thread works in a scratch folder rather than a project.
+    #[serde(default)]
+    pub scratch: bool,
 }
 }
 
@@ -1649,6 +1659,10 @@ pub struct CloneProject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub name: Option<String>,
+    /// Absolute folder to clone into; absent means `<workspace>/repo/<slug>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub path: Option<String>,
 }
 }
 
@@ -1658,6 +1672,10 @@ pub struct NewProject {
     /// Adds a README and makes the first commit.
     #[serde(default)]
     pub readme: bool,
+    /// Absolute folder to create; absent means `<workspace>/repo/<slug>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub path: Option<String>,
 }
 }
 
@@ -1676,6 +1694,7 @@ pub struct CloneJob {
     pub id: String,
     pub url: String,
     pub name: Option<String>,
+    pub path: Option<String>,
     pub state: CloneState,
     pub project: Option<Project>,
     pub error: Option<String>,
@@ -1686,20 +1705,27 @@ pub struct CloneJob {
 }
 
 wire! {
-pub struct ImportProject {
+/// Registers an existing folder where it is. Nothing is cloned, moved or written.
+pub struct AddProject {
     pub path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub name: Option<String>,
 }
 }
 
 wire! {
-pub struct ImportReport {
-    pub project: Project,
-    /// Changes in the source that the import did not carry.
-    pub dirty_files: Vec<String>,
-    pub unpushed_branches: Vec<String>,
+/// Moves a thread with no runs yet. No `project_id` gives it a scratch folder.
+pub struct MoveThread {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+}
+}
+
+wire! {
+/// Turns a scratch folder into a project, in place, with its threads.
+pub struct AdoptScratch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
 }
 }
 
@@ -1815,7 +1841,10 @@ pub struct CreateProject {
 
 wire! {
 pub struct CreateThread {
-    pub project_id: String,
+    /// Absent starts the thread in its own scratch folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
     pub engine: String,
     pub model: Option<String>,
     pub title: Option<String>,

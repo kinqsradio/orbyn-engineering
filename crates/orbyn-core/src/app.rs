@@ -170,7 +170,12 @@ impl Core {
     /// hooks, so it needs a trusted folder like an engine does.
     pub async fn create_thread(&self, request: orbyn_contracts::CreateThread) -> Result<Thread> {
         self.workspace.root()?;
-        let project = self.store.project(&request.project_id)?;
+        let project = match self.scratch_request(&request)? {
+            Some(scratch) => scratch,
+            None => self
+                .store
+                .project(request.project_id.as_deref().unwrap_or_default())?,
+        };
         self.engines.driver(&request.engine)?;
         if let Some(profile) = request.skill_profile.as_deref()
             && profile != crate::skills::DEFAULT_PROFILE
@@ -205,6 +210,7 @@ impl Core {
             skill_profile: request.skill_profile,
             parent_thread_id: None,
             relation: None,
+            scratch: project.scratch,
         })?;
         self.run_hook_scripts(&thread.id, |script| script.run_on_worktree_create);
         Ok(thread)

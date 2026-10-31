@@ -37,11 +37,11 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_BUFFER: usize = 1024;
 
 /// Where a thread's run may write: its checkout, and on a library thread never
-/// the nested projects.
-fn write_scope(root: &Path, checkout: &Path) -> WriteScope {
+/// the nested projects. `engine_cwd` is where the engine's relative paths land.
+fn write_scope(root: &Path, checkout: &Path, from_checkout: bool) -> WriteScope {
     WriteScope {
         checkout: checkout.to_path_buf(),
-        engine_cwd: root.to_path_buf(),
+        engine_cwd: if from_checkout { checkout } else { root }.to_path_buf(),
         excluded: if checkout == root {
             vec![root.join("repo")]
         } else {
@@ -55,6 +55,11 @@ async fn branch_name(checkout: &Path) -> Option<String> {
         .await
         .ok()?;
     Some(text(&name))
+}
+
+async fn checkout_revision(checkout: &Path) -> Option<String> {
+    let head = git(checkout, &["rev-parse", "HEAD"]).await.ok()?;
+    Some(text(&head))
 }
 
 /// A worktree's target Git root is its primary clone.
@@ -77,6 +82,10 @@ struct RunContext<'a> {
     target_root: &'a Path,
     checkout: &'a Path,
     branch: Option<&'a str>,
+    /// `None` outside Git.
+    checkout_revision: Option<&'a str>,
+    /// The engine's working directory is the library, not the checkout.
+    runs_at_library: bool,
     library_thread: bool,
     route: &'a SkillRoute,
     plan: bool,
@@ -89,7 +98,7 @@ struct RunContext<'a> {
 fn run_context(context: &RunContext<'_>) -> String {
     let mut text = format!(
         "<orbyn_context>\nShared library: {} at {}{}.\nTarget Git root: {}.\n\
-         Selected checkout: {} on {}.\n",
+         Selected checkout: {} on {}{}.\n",
         context.library.display(),
         context.revision,
         if context.dirty {
@@ -99,7 +108,16 @@ fn run_context(context: &RunContext<'_>) -> String {
         },
         context.target_root.display(),
         context.checkout.display(),
-        context.branch.unwrap_or("a detached HEAD"),
+        context
+            .branch
+            .unwrap_or(if context.checkout_revision.is_some() {
+                "a detached HEAD"
+            } else {
+                "no branch"
+            }),
+        context
+            .checkout_revision
+            .map_or_else(String::new, |revision| format!(" at {revision}")),
     );
     if context.library_thread {
         text.push_str("This thread works on the library itself. Leave repo/ alone.\n");
@@ -109,6 +127,12 @@ fn run_context(context: &RunContext<'_>) -> String {
              Read the target's root and applicable nested instructions directly (AGENTS.md, \
              AGENT.md, CLAUDE.md, codex.md, .cursorrules, CONTRIBUTING.md): discovery across a \
              Git boundary is not guaranteed. Target rules specialize shared methods.\n",
+        );
+    }
+    if context.runs_at_library && !context.library_thread {
+        text.push_str(
+            "Your working directory is the library, not the checkout: use absolute paths under \
+             the selected checkout, and run commands from there.\n",
         );
     }
     if !context.route.native {
@@ -265,7 +289,11 @@ impl RunManager {
         root: &Path,
     ) -> Result<()> {
         let files = self.attachment_files(&thread.id, attachments)?;
-        let scope = write_scope(root, Path::new(&thread.cwd));
+        let from_checkout = self
+            .engines
+            .driver(&thread.engine)?
+            .resolves_from_checkout();
+        let scope = write_scope(root, Path::new(&thread.cwd), from_checkout);
         let cancel = CancellationToken::new();
         // Registered before the task starts, so a cancel cannot miss it.
         self.lock().insert(
@@ -658,6 +686,8 @@ impl RunManager {
             target_root: &target_root(&checkout).await,
             checkout: &checkout,
             branch: branch_name(&checkout).await.as_deref(),
+            checkout_revision: checkout_revision(&checkout).await.as_deref(),
+            runs_at_library: !driver.resolves_from_checkout(),
             library_thread,
             route: &route,
             plan: scope.plan,

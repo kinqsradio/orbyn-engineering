@@ -283,7 +283,10 @@ async fn update_is_refused_while_a_run_is_active_and_removal_with_work_needs_con
     std::fs::write(std::path::Path::new(checkout).join("wip"), "x").unwrap();
     let response = service
         .client
-        .delete(format!("{}/api/projects/{id}", service.url))
+        .delete(format!(
+            "{}/api/projects/{id}?delete_files=true",
+            service.url
+        ))
         .bearer_auth(&service.token)
         .send()
         .await
