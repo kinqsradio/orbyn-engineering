@@ -1,10 +1,12 @@
 import { TriangleAlert, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { EngineLimits, EngineStatus, JsonValue } from "../../api/types";
 import { relativeTime } from "../../lib/format";
-import { useAsync } from "../../lib/useAsync";
+import { toFailure, useAsync } from "../../lib/useAsync";
 import { useThreadLogs } from "../../state/threadLogs";
-import { IconButton } from "../../ui/controls";
+import { useWorkspace } from "../../state/workspace";
+import { Button, IconButton } from "../../ui/controls";
 import type { StashedPrompt } from "../../state/ui";
 
 const usageShare = (usage: JsonValue | null | undefined): { used: number; window: number } | null => {
@@ -30,6 +32,41 @@ export function ContextMeter({ threadId }: { threadId: string }) {
         <circle cx="10" cy="10" r="8" pathLength="100" strokeDasharray={`${percent} 100`} />
       </svg>
     </span>
+  );
+}
+
+/** How long a run gets to answer Stop before Force stop is offered. */
+export const FORCE_STOP_AFTER_MS = 3000;
+
+/** A Stop the engine has not finished, and the way out once it stops answering. */
+export function StopNotice({ threadId, runId }: { threadId: string; runId: string }) {
+  const [late, setLate] = useState(false);
+  const [forcing, setForcing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setLate(true), FORCE_STOP_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [runId]);
+  if (!late) return null;
+  const force = () => {
+    setForcing(true);
+    setError(null);
+    api.forceStop(threadId).then(
+      () => void useWorkspace.getState().refreshThread(threadId),
+      (failure: unknown) => {
+        setError(`Couldn't force stop. ${toFailure(failure).message}`);
+        setForcing(false);
+      },
+    );
+  };
+  return (
+    <p className="composer-banner" role="status">
+      <TriangleAlert size={14} aria-hidden />
+      <span>{error ?? "Agent not responding to Stop. Force stop kills its processes."}</span>
+      <Button small tone="quiet" disabled={forcing} onClick={force}>
+        {forcing ? "Force stopping..." : "Force stop"}
+      </Button>
+    </p>
   );
 }
 
