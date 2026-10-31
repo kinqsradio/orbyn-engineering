@@ -652,6 +652,19 @@ the window, and everything else goes to the windows as a `command`, the same one
 run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
 is kept beside the window state in the app's config folder.
 
+The service owns the rule for running work and sends `activity` when it changes: the
+counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
+The shell applies it. The Dock badge counts only runs waiting on a person, the tray shows
+the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
+`SetThreadExecutionState` on Windows. The display can still sleep and a closed lid still
+sleeps.
+
+The shell reports `shell_facts` at start and whenever its window takes focus, since a
+permission changes in System Settings: the `orbyn` command's path and whether it is there,
+and on macOS Accessibility and Screen Recording, read without prompting. Install puts a
+link in `~/.local/bin` on macOS and a `.cmd` under `%LOCALAPPDATA%\Orbyn\bin` on Windows,
+never touches `PATH`, and neither replaces nor removes a file the app didn't put there.
+
 The shell passes no data folder, so `orbynd` and the `orbyn` command agree on it, and it
 sets no `PATH`: `child_env` widens that for every child without sourcing a shell.
 

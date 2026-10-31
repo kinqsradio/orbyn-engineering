@@ -1988,6 +1988,10 @@ pub enum ShellEvent {
     Navigate { href: String },
     /// Run this keybinding command, as if its keys were pressed.
     Command { command: String },
+    /// `ShellStatus` has changed.
+    Changed,
+    /// Something a window asked for could not be done.
+    Failed { message: String },
 }
 }
 
@@ -1998,6 +2002,37 @@ pub enum ShellAction {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    InstallCli,
+    RemoveCli,
+    OpenAccessibilitySettings,
+    OpenScreenRecordingSettings,
+}
+}
+
+wire! {
+pub struct ShellCli {
+    /// Where the `orbyn` command goes, or is.
+    pub path: String,
+    pub installed: bool,
+}
+}
+
+wire! {
+pub struct ShellPermission {
+    /// `accessibility` or `screen_recording`.
+    pub id: String,
+    pub granted: bool,
+}
+}
+
+wire! {
+/// What only the shell can see. Empty until it has said.
+#[derive(Default)]
+pub struct ShellFacts {
+    #[serde(default)]
+    pub cli: Option<ShellCli>,
+    #[serde(default)]
+    pub permissions: Vec<ShellPermission>,
 }
 }
 
@@ -2013,6 +2048,7 @@ pub struct ShellStatus {
     pub attached: bool,
     /// How many windows are following shell events.
     pub windows: usize,
+    pub facts: ShellFacts,
 }
 }
 

@@ -9,6 +9,7 @@ import { Button, Pill } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
+import { DesktopApp } from "./DesktopApp";
 import { PreferenceGroups } from "./PreferenceRows";
 
 const heading = (title: string) => (
@@ -38,6 +39,7 @@ export function GeneralSection() {
   return (
     <>
       {heading("General")}
+      <DesktopApp />
       <SettingGroup title="Notifications">
         <SettingRow
           title="Thread notifications"

@@ -168,7 +168,8 @@ async fn a_link_waits_for_the_window_and_arrives_as_a_route() {
     let dir = TempDir::new();
     let (mut service, _thread) = setup(&dir, desktop(), "codex").await;
     let status = service.json("/api/shell").await;
-    assert_eq!(status, json!({ "attached": true, "windows": 0 }));
+    assert_eq!(status["attached"], true);
+    assert_eq!(status["windows"], 0);
     say(
         &mut service,
         r#"{"type":"open_link","url":"orbyn://run/start"}"#,

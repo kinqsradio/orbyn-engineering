@@ -4,4 +4,4 @@
  * What a window may ask the desktop shell to do. The list is closed: no path, URL
  * or command comes through here.
  */
-export type ShellAction = "zoom_in" | "zoom_out" | "zoom_reset";
+export type ShellAction = "zoom_in" | "zoom_out" | "zoom_reset" | "install_cli" | "remove_cli" | "open_accessibility_settings" | "open_screen_recording_settings";

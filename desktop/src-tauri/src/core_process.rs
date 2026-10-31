@@ -42,6 +42,10 @@ pub enum ShellAction {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    InstallCli,
+    RemoveCli,
+    OpenAccessibilitySettings,
+    OpenScreenRecordingSettings,
 }
 
 pub struct CoreProcess {

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use orbyn_contracts::{RunState, ShellAction, ShellEvent, ShellStatus};
+use orbyn_contracts::{RunState, ShellAction, ShellEvent, ShellFacts, ShellStatus};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, mpsc};
 
@@ -27,6 +27,7 @@ pub struct ShellBridge {
     events: broadcast::Sender<ShellEvent>,
     held: Mutex<VecDeque<ShellEvent>>,
     windows: Arc<AtomicUsize>,
+    facts: Mutex<ShellFacts>,
 }
 
 /// One window following events. Dropping it stops counting that window.
@@ -50,6 +51,7 @@ impl Default for ShellBridge {
             events: broadcast::channel(32).0,
             held: Mutex::new(VecDeque::new()),
             windows: Arc::default(),
+            facts: Mutex::default(),
         }
     }
 }
@@ -88,6 +90,7 @@ impl ShellBridge {
         ShellStatus {
             attached: lock(&self.lines).is_some(),
             windows: self.windows.load(Ordering::SeqCst),
+            facts: lock(&self.facts).clone(),
         }
     }
 
@@ -130,6 +133,25 @@ impl ShellBridge {
                 if let Some(command) = text("command") {
                     self.publish(ShellEvent::Command {
                         command: command.to_owned(),
+                    });
+                }
+                true
+            }
+            Some("shell_facts") => {
+                match serde_json::from_value::<ShellFacts>(message.clone()) {
+                    Ok(facts) => {
+                        *lock(&self.facts) = facts;
+                        // Windows reread the status on connecting, so none need holding.
+                        let _ = self.events.send(ShellEvent::Changed);
+                    }
+                    Err(error) => tracing::debug!(%error, "ignoring shell facts"),
+                }
+                true
+            }
+            Some("shell_failed") => {
+                if let Some(message) = text("message") {
+                    self.publish(ShellEvent::Failed {
+                        message: message.to_owned(),
                     });
                 }
                 true
@@ -283,6 +305,21 @@ mod tests {
             out.try_recv().unwrap(),
             json!({ "type": "shell_action", "action": "zoom_reset" })
         );
+    }
+
+    #[test]
+    fn facts_replace_what_was_known_and_tell_the_windows() {
+        let shell = ShellBridge::default();
+        let mut watch = shell.watch();
+        let line = r#"{"type":"shell_facts","cli":{"path":"/x/orbyn","installed":true},
+            "permissions":[{"id":"accessibility","granted":false}]}"#;
+        assert!(shell.on_line(&line.replace('\n', "")));
+        assert_eq!(watch.events.try_recv().unwrap(), ShellEvent::Changed);
+        let facts = shell.status().facts;
+        assert!(facts.cli.unwrap().installed);
+        assert_eq!(facts.permissions.len(), 1);
+        assert!(shell.on_line(r#"{"type":"shell_facts"}"#));
+        assert_eq!(shell.status().facts, ShellFacts::default());
     }
 
     #[test]
