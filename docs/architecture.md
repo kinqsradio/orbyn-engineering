@@ -474,6 +474,22 @@ page actions resolve to the current page URL, so rules match where the action
 lands. An action with no active run cannot wait for a person, so `ask` refuses and
 only an explicit allow rule passes.
 
+## Preview
+
+A preview tab is a headless Chrome with its own profile, apart from the governed
+browser agents use, and needs a trusted folder and an `http` or `https` URL. Up to
+four run at once, and they close when their thread settles, archives or is deleted.
+Frames are polled about five times a second, only while someone watches or records,
+and a frame that did not change is not sent. `/ws/preview` sends each as base64 JPEG
+text. Watching gives no control: input needs a person to take the page first.
+Recording keeps the changed frames as numbered JPEG files in
+`<data>/browser-artifacts`, with no video encoder. Agents do not act on a preview tab
+yet, so taking control only guards against a watcher's stray input.
+
+`/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout,
+through `lsof`. Windows has no such check through `netstat`, so there it lists every
+listener with `in_checkout: false`, and none of those can be stopped from here.
+
 ## Service access
 
 - Binds `127.0.0.1` by default on a random port. A per-launch token is required
@@ -610,6 +626,12 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/rewind` | `RewindThread`: continue from before a run |
 | `POST /api/threads/:id/fork` | `ForkThread`: a child thread with the log up to a run |
 | `POST /api/threads/:id/switch-engine` | `SwitchEngine`: hand the conversation to another engine |
+| `GET, POST /api/threads/:id/previews` | `PreviewTab[]`; `OpenPreview` |
+| `DELETE /api/threads/:id/previews/:tab` | Close the tab and its browser |
+| `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
+| `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
+| `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
+| `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |
 | `GET /ws/terminal/:thread_id` | Main PTY: binary in/out, JSON text frame `{cols,rows}` resizes |
 | `GET /ws/terminal/:thread_id/:terminal?observe=` | Attach to a named terminal; `observe` is read-only |
 | `GET, POST /api/threads/:id/terminals` | `TerminalInfo[]`; `OpenTerminal` with `split_of` and `direction` |

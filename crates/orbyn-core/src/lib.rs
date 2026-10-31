@@ -19,6 +19,7 @@ pub mod mcp;
 pub mod mcp_tools;
 pub mod policy;
 pub mod preferences;
+pub mod preview;
 pub mod process;
 pub mod project_file;
 pub mod projects;

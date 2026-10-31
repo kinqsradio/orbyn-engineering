@@ -22,6 +22,7 @@ impl Core {
         let thread = self.store.update_thread(id, patch, actor)?;
         if patch.settled == Some(true) || patch.archived == Some(true) {
             self.terminals.close(id);
+            self.previews.close_thread(id);
         }
         if patch.settled == Some(true) {
             self.run_hook_scripts(id, |script| script.run_on_settle);
@@ -33,6 +34,7 @@ impl Core {
         let files = self.store.family_attachment_paths(id)?;
         for deleted in self.store.delete_thread(id, actor)? {
             self.terminals.close(&deleted);
+            self.previews.close_thread(&deleted);
         }
         for file in files {
             let _ = std::fs::remove_file(file);
@@ -88,6 +90,7 @@ impl Core {
         })?;
         for id in &report.settled {
             self.terminals.close(id);
+            self.previews.close_thread(id);
             self.run_hook_scripts(id, |script| script.run_on_settle);
         }
         Ok(report)

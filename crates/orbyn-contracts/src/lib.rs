@@ -1618,6 +1618,76 @@ pub struct BatchThreadResult {
 }
 }
 
+wire! {
+pub struct LocalServer {
+    pub port: u16,
+    pub pid: u32,
+    pub process: String,
+    /// False where Orbyn cannot tell which folder a process runs in, as on Windows.
+    pub in_checkout: bool,
+}
+}
+
+wire! {
+pub struct PreviewTab {
+    pub id: String,
+    pub thread_id: String,
+    pub url: String,
+    /// `human` while a person holds the page, `none` otherwise.
+    pub control: String,
+    pub recording: bool,
+    pub viewers: usize,
+}
+}
+
+wire! {
+pub struct OpenPreview {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub height: Option<u32>,
+}
+}
+
+wire! {
+pub struct NavigatePreview {
+    pub url: String,
+}
+}
+
+wire! {
+pub struct PreviewControl {
+    /// True takes the page; false hands it back.
+    pub human: bool,
+}
+}
+
+wire! {
+pub struct PreviewInput {
+    /// `click`, `move`, `scroll`, `key` or `text`.
+    pub kind: String,
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+    #[serde(default)]
+    pub delta_y: f64,
+    /// A key name for `key`, or the text for `text`.
+    #[serde(default)]
+    pub text: String,
+}
+}
+
+wire! {
+pub struct PreviewRecording {
+    pub path: String,
+    pub frames: u64,
+}
+}
+
 wire_enum! {
 pub enum ActionKind {
     Command,

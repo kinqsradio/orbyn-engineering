@@ -2,6 +2,7 @@
 
 mod access;
 mod api;
+mod preview_routes;
 mod pulls;
 mod stream;
 mod terminal_ws;
@@ -379,6 +380,36 @@ fn router(state: AppState) -> Router {
         .route("/api/tasks/{id}/deliveries", get(api::task_deliveries))
         .route("/api/threads/{id}/delegate", post(api::delegate))
         .route("/api/threads/batch", post(api::batch_threads))
+        .route(
+            "/api/threads/{id}/previews",
+            get(preview_routes::list).post(preview_routes::open),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}",
+            axum::routing::delete(preview_routes::close),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/navigate",
+            post(preview_routes::navigate),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/control",
+            post(preview_routes::control),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/input",
+            post(preview_routes::input),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/recording",
+            post(preview_routes::start_recording).delete(preview_routes::stop_recording),
+        )
+        .route("/ws/preview/{id}/{tab}", get(preview_routes::stream))
+        .route("/api/threads/{id}/servers", get(preview_routes::servers))
+        .route(
+            "/api/threads/{id}/servers/{pid}/stop",
+            post(preview_routes::stop_server),
+        )
         .route("/api/threads/{id}/runs", post(api::start_run))
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/events", get(stream::thread_events))

@@ -13,6 +13,7 @@ use crate::engines::{EngineConfig, EngineManager};
 use crate::error::{CoreError, Result};
 use crate::git;
 use crate::mcp::McpService;
+use crate::preview::PreviewManager;
 use crate::projects::ClonePool;
 use crate::questions::QuestionDesk;
 use crate::runs::{RunManager, RunServices};
@@ -74,6 +75,7 @@ pub struct Core {
     pub updates: Arc<UpdateCenter>,
     pub usage: Arc<UsageCenter>,
     pub clones: ClonePool,
+    pub previews: PreviewManager,
     pub recovery: Recovery,
     _lock: File,
 }
@@ -93,6 +95,8 @@ impl Core {
     pub fn open_with(config: CoreConfig, backend: Arc<dyn ComputerBackend>) -> Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
         let lock = take_owner_lock(&config.data_dir)?;
+        // A preview outlives no process, so any profile here is a leftover.
+        let _ = std::fs::remove_dir_all(config.data_dir.join("preview-profiles"));
         // A new epoch per process start fences anything the last process left.
         let epoch = new_id();
         let store = Arc::new(Store::open(&config.data_dir.join("orbyn.sqlite3"), epoch)?);
@@ -161,6 +165,7 @@ impl Core {
             updates,
             usage,
             clones: ClonePool::default(),
+            previews: PreviewManager::default(),
             recovery,
             _lock: lock,
         })
@@ -266,6 +271,7 @@ impl Core {
     pub async fn shutdown(&self) {
         self.runs.shutdown().await;
         self.terminals.close_all();
+        self.previews.close_all();
         self.computer.shutdown().await;
     }
 }

@@ -287,6 +287,35 @@ impl BrowserSession {
         Ok(json!({ "format": "png", "data": reply.get("data") }))
     }
 
+    /// One frame for a preview, as base64 JPEG.
+    pub async fn frame(&mut self, quality: u32) -> Result<String> {
+        let reply = self
+            .call(
+                "Page.captureScreenshot",
+                json!({ "format": "jpeg", "quality": quality }),
+            )
+            .await?;
+        reply
+            .get("data")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| failed("the browser returned no frame"))
+    }
+
+    pub async fn set_viewport(&mut self, width: u32, height: u32) -> Result<()> {
+        self.call(
+            "Emulation.setDeviceMetricsOverride",
+            json!({ "width": width, "height": height, "deviceScaleFactor": 1, "mobile": false }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// A DevTools input call, for a person driving a preview.
+    pub async fn input(&mut self, method: &str, params: Value) -> Result<()> {
+        self.call(method, params).await.map(|_| ())
+    }
+
     /// Clicks through input events, so the page sees a trusted click.
     pub async fn click(&mut self, selector: &str) -> Result<Value> {
         let locate = format!(

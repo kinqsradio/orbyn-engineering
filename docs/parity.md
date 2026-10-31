@@ -83,7 +83,7 @@ toward completion.
 - [ ] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M
 - [ ] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M
 - [ ] A50 Customize details: show/hide rows, reset, right-click access | apps/web/src/components/settings/ThreadDetailsItemsRow.tsx | w d | S
-- [ ] A51 Local servers list: thread's ports with open and stop | apps/web/src/components/chat/ThreadServersPanel.tsx | w d s | M
+- [x] A51 Local servers list: thread's ports with open and stop | apps/web/src/components/chat/ThreadServersPanel.tsx | w d s | M | server done
 - [ ] A52 Timeline minimap: overview navigation strip | apps/web/src/components/chat/TimelineMinimap.tsx | w d | M
 - [ ] A53 Visit watermark: marks where you last read | apps/web/src/components/chat/ThreadVisitWatermark.tsx | w d s | S
 - [ ] A54 V1 thread migration: copies old database, imports transcripts in stages | docs/user/thread-migration.md | s d | L
@@ -341,19 +341,19 @@ toward completion.
 - [ ] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
 - [ ] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
 - [ ] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M
-- [ ] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M
+- [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M | server done
 - [ ] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M
 - [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
 - [ ] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L
-- [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L
+- [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L | server: changed frames as JPEG files; no overlays or video
 - [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L
 - [ ] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M
 - [ ] H11 Browser import: cookies from other browsers, one time | apps/desktop/src/preview/BrowserImport/BrowserImport.ts | d | L
 - [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M
 - [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M
 - [ ] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
-- [ ] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L
-- [ ] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L
+- [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L | server done, local only
+- [ ] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
 - [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L
 - [ ] H18 Picture-in-picture: phone preview floats over apps | docs/user/remote-access.md | m | M
 - [ ] H19 Browser host setup: sandbox and library guidance | apps/server/src/cli/browser.ts | c s | M
