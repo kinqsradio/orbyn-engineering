@@ -10,11 +10,12 @@ use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    ApiError, ApprovalState, CloneProject, ComputerAction, CreatePolicyRule, CreateThread,
-    CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread,
-    FsEntry, FsListing, ImportProject, LibraryUpdateRequest, NewProject, OpenInEditor,
-    ReorderThreads, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SkillProfile,
-    StartRun, SteerRun, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
+    ApiError, ApprovalState, CloneProject, ComputerAction, CreateBranch, CreatePolicyRule,
+    CreateThread, CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage,
+    ForkThread, FsEntry, FsListing, GitAction, ImportProject, LibraryUpdateRequest, LinkPull,
+    MergePull, NewProject, OpenInEditor, PublishProject, ReorderThreads, RestoreWorkspace,
+    RewindThread, ServerInfo, ServerSettings, SkillProfile, StartRun, SteerRun, SubmitReview,
+    SwitchBranch, SwitchEngine, UpdateThread, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -431,6 +432,134 @@ pub async fn open_in_editor(
     ApiJson(body): ApiJson<OpenInEditor>,
 ) -> ApiResult<StatusCode> {
     state.core.open_in_editor(&id, &body, LOCAL_USER).await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn git_action(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<GitAction>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.git_action(&id, &body, LOCAL_USER).await?))
+}
+
+pub async fn branches(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.branches(&id).await?))
+}
+
+pub async fn create_branch(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<CreateBranch>,
+) -> ApiResult<StatusCode> {
+    state.core.create_branch(&id, &body, LOCAL_USER).await?;
+    Ok(StatusCode::CREATED)
+}
+
+pub async fn switch_branch(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<SwitchBranch>,
+) -> ApiResult<StatusCode> {
+    state
+        .core
+        .switch_branch(&id, &body.name, LOCAL_USER)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn linked_pulls(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.thread(&id)?;
+    Ok(Json(state.core.store.linked_pulls(&id)?))
+}
+
+pub async fn link_pull(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<LinkPull>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.link_pull(&id, body.number).await?),
+    ))
+}
+
+pub async fn unlink_pull(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+) -> ApiResult<StatusCode> {
+    state.core.store.unlink_pull(&id, number)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn refresh_pulls(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.refresh_pulls(&id).await?))
+}
+
+pub async fn pull_detail(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.pull_detail(&id, number).await?))
+}
+
+pub async fn review_pull(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+    ApiJson(body): ApiJson<SubmitReview>,
+) -> ApiResult<StatusCode> {
+    state
+        .core
+        .review_pull(&id, number, &body, LOCAL_USER)
+        .await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn merge_pull(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+    ApiJson(body): ApiJson<MergePull>,
+) -> ApiResult<StatusCode> {
+    state
+        .core
+        .merge_pull(&id, number, &body.method, LOCAL_USER)
+        .await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[derive(Deserialize)]
+pub struct PullListQuery {
+    state: Option<String>,
+}
+
+pub async fn project_pulls(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<PullListQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state
+            .core
+            .project_pulls(&id, query.state.as_deref().unwrap_or("open"))
+            .await?,
+    ))
+}
+
+pub async fn publish_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<PublishProject>,
+) -> ApiResult<StatusCode> {
+    state.core.publish_project(&id, &body, LOCAL_USER).await?;
     Ok(StatusCode::ACCEPTED)
 }
 

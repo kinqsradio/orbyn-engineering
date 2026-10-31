@@ -219,6 +219,34 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/rewind", post(api::rewind_thread))
         .route("/api/threads/{id}/fork", post(api::fork_thread))
         .route("/api/threads/{id}/switch-engine", post(api::switch_engine))
+        .route("/api/threads/{id}/git/action", post(api::git_action))
+        .route(
+            "/api/threads/{id}/branches",
+            get(api::branches).post(api::create_branch),
+        )
+        .route(
+            "/api/threads/{id}/branches/switch",
+            post(api::switch_branch),
+        )
+        .route(
+            "/api/threads/{id}/pulls",
+            get(api::linked_pulls).post(api::link_pull),
+        )
+        .route("/api/threads/{id}/pulls/refresh", post(api::refresh_pulls))
+        .route(
+            "/api/threads/{id}/pulls/{number}",
+            get(api::pull_detail).delete(api::unlink_pull),
+        )
+        .route(
+            "/api/threads/{id}/pulls/{number}/review",
+            post(api::review_pull),
+        )
+        .route(
+            "/api/threads/{id}/pulls/{number}/merge",
+            post(api::merge_pull),
+        )
+        .route("/api/projects/{id}/pulls", get(api::project_pulls))
+        .route("/api/projects/{id}/publish", post(api::publish_project))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(

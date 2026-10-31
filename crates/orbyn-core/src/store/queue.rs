@@ -1,7 +1,7 @@
 //! Queued messages and attachment records. A queued message becomes a run in one
 //! transaction, so it can neither start twice nor vanish between the two steps.
 
-use orbyn_contracts::{Attachment, QueuedMessage, Run};
+use orbyn_contracts::{Attachment, PullRequest, QueuedMessage, Run};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::runs::admit_in;
@@ -18,6 +18,18 @@ fn queued_row(row: &Row<'_>) -> rusqlite::Result<QueuedMessage> {
         attachment_ids: parse_json(3, &ids)?,
         held: row.get("held")?,
         created_at: row.get("created_at")?,
+    })
+}
+
+fn pull_row(row: &Row<'_>) -> rusqlite::Result<PullRequest> {
+    Ok(PullRequest {
+        number: row.get::<_, i64>("number")? as u64,
+        title: row.get("title")?,
+        url: row.get("url")?,
+        state: row.get("state")?,
+        head: row.get("head")?,
+        base: row.get("base")?,
+        author: row.get("author")?,
     })
 }
 
@@ -190,6 +202,61 @@ impl Store {
             conn.prepare_cached("SELECT * FROM attachments WHERE thread_id = ?1 ORDER BY rowid")?;
         let rows = statement.query_map([thread_id], attachment_row)?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn link_pull(&self, thread_id: &str, pull: &PullRequest) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "INSERT INTO thread_pull_requests
+                    (thread_id, number, url, title, state, head, base, author)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT (thread_id, number) DO UPDATE SET url = excluded.url,
+                    title = excluded.title, state = excluded.state, head = excluded.head,
+                    base = excluded.base, author = excluded.author",
+                params![
+                    thread_id,
+                    pull.number as i64,
+                    pull.url,
+                    pull.title,
+                    pull.state,
+                    pull.head,
+                    pull.base,
+                    pull.author
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn linked_pulls(&self, thread_id: &str) -> Result<Vec<PullRequest>> {
+        let conn = self.reader();
+        let mut statement = conn.prepare_cached(
+            "SELECT * FROM thread_pull_requests WHERE thread_id = ?1 ORDER BY number",
+        )?;
+        let rows = statement.query_map([thread_id], pull_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Threads with a pull request not yet known to be finished.
+    pub fn threads_with_open_pulls(&self) -> Result<Vec<String>> {
+        let conn = self.reader();
+        let mut statement = conn
+            .prepare("SELECT DISTINCT thread_id FROM thread_pull_requests WHERE state = 'open'")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn unlink_pull(&self, thread_id: &str, number: u64) -> Result<()> {
+        self.commit(|tx, _| {
+            let changed = tx.execute(
+                "DELETE FROM thread_pull_requests WHERE thread_id = ?1 AND number = ?2",
+                params![thread_id, number as i64],
+            )?;
+            if changed == 0 {
+                return Err(CoreError::NotFound("pull request".into()));
+            }
+            Ok(())
+        })
     }
 
     /// Stored files of a thread and its descendants, for cleanup after deletion.

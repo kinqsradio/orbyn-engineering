@@ -42,7 +42,7 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
 - [ ] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
 - [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M | server done
-- [ ] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M
+- [x] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M | server done
 - [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S | server done
 - [ ] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M
 - [ ] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S
@@ -220,7 +220,7 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] F3 Multi-account host picker: account per host, host off | apps/web/src/components/settings/SourceControlHostSettings.tsx | w d s | M
 - [ ] F4 GitHub app sign-in: in-app access and notices | packages/source-control-github/src/GitHubAppSignIn.ts | w d s | M
 - [ ] F5 Forgejo/Gitea: fj then tea, Codeberg included | packages/source-control-forgejo/src/ForgejoCli.ts | s | M
-- [ ] F6 GitLab: glab-based merge requests | packages/source-control-gitlab/src/GitLabCli.ts | s | M
+- [x] F6 GitLab: glab-based merge requests | packages/source-control-gitlab/src/GitLabCli.ts | s | M | server done
 - [ ] F7 Bitbucket: access token or account email plus API token | packages/source-control-bitbucket/src/BitbucketApi.ts | w d s | M
 - [ ] F8 Azure DevOps: az CLI integration | packages/source-control-azure-devops/src/AzureDevOpsCli.ts | s | M
 - [ ] F9 GitCafe: API token or cafe login | packages/source-control-gitcafe/src/GitCafeApi.ts | w d s | M
@@ -229,12 +229,12 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] F12 Add existing folder: picker with filesystem browse | apps/web/src/components/CommandPaletteAddProject.tsx | w d m s | M
 - [ ] F13 Clone project: background clone, prompt early, retry and cancel | apps/web/src/components/ProjectCloneToastCoordinator.tsx | w d m s | L
 - [ ] F14 Clone SSH fallback: HTTPS when SSH is refused | docs/user/source-control.md | s | S
-- [ ] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M
-- [ ] F16 Initialize Git: vcs init from project | packages/contracts/src/rpc.ts | w d s | S
-- [ ] F17 Git actions: commit, push, create PR and combinations with phases | apps/web/src/components/GitActionsControl.tsx | w d m s | L
+- [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done
+- [x] F16 Initialize Git: vcs init from project | packages/contracts/src/rpc.ts | w d s | S | server done
+- [x] F17 Git actions: commit, push, create PR and combinations with phases | apps/web/src/components/GitActionsControl.tsx | w d m s | L | server done
 - [ ] F18 AI commit and PR text: generated messages, titles, descriptions | apps/server/src/textGeneration/TextGeneration.ts | s | M
 - [ ] F19 Writing style: repo conventions or custom, follows templates | apps/web/src/components/settings/SourceControlWritingSettings.tsx | w d m s | M
-- [ ] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M
+- [x] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M | server done
 - [ ] F21 Environment mode selector: local vs new worktree, environment choice | apps/web/src/components/BranchToolbarEnvModeSelector.tsx | w d m | M
 - [ ] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M

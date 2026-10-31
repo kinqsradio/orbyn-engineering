@@ -129,6 +129,7 @@ impl CoreError {
             | Self::FileConflict { .. }
             | Self::SharedDirectory(_)
             | Self::RunsActive
+            | Self::Git(_)
             | Self::ProjectHasWork { .. }
             | Self::EngineBusy(_)
             | Self::StaleOwner

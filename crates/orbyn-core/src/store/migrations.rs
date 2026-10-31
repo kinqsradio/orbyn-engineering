@@ -7,6 +7,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (3, COMPOSER),
     (4, TIMELINE),
     (5, CHECKPOINTS),
+    (6, PULL_REQUESTS),
 ];
 
 const THREAD_LIFECYCLE: &str = r#"
@@ -75,6 +76,20 @@ CREATE TABLE checkpoints (
 CREATE INDEX checkpoints_by_thread ON checkpoints(thread_id, created_at);
 -- Conversation carried into the next run when no engine session can continue it.
 ALTER TABLE threads ADD COLUMN handoff TEXT;
+"#;
+
+const PULL_REQUESTS: &str = r#"
+CREATE TABLE thread_pull_requests (
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL,
+    head TEXT NOT NULL,
+    base TEXT NOT NULL,
+    author TEXT,
+    PRIMARY KEY (thread_id, number)
+);
 "#;
 
 const INITIAL: &str = r#"

@@ -298,7 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn load_stays_inside_an_allowed_skill() {
-        let (dir, service) = fixture().await;
+        let (_dir, service) = fixture().await;
         let allowed = vec!["how".to_owned()];
         assert!(
             service
@@ -316,8 +316,8 @@ mod tests {
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(
-                dir.path().join("library/AGENTS.md"),
-                dir.path().join("library/skills/how/escape.md"),
+                _dir.path().join("library/AGENTS.md"),
+                _dir.path().join("library/skills/how/escape.md"),
             )
             .unwrap();
             assert!(service.load("how", Some("escape.md"), &allowed).is_err());

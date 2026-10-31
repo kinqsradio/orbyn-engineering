@@ -104,6 +104,17 @@ that goes to the next run once. The log stays whole; a rewind is logged as `CUST
 thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
 is not used.
 
+## Source control
+
+Forge work goes through the user's own `gh` or `glab`, chosen from the origin host,
+so Orbyn holds no forge credential. A missing CLI is `422 unsupported`. Arguments are
+passed directly and no shell parses them. A git action runs commit, push and pull
+request in order, logs each phase as `CUSTOM git.phase`, and stops at the first
+failure; earlier phases stand. These are the user's own commands, so unlike Orbyn's
+internal reads they run commit hooks. All of it needs a trusted folder, and writes
+wait for the thread's run to end. Linked pull requests are polled every two minutes.
+A merge settles the thread when `on_merge` is set and the thread has not opted out.
+
 ## Files
 
 File routes need a trusted folder and share the engines' write scope, so `..` and
@@ -344,6 +355,13 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |
 | `GET, PUT /api/threads/:id/files/content` | `FileContent`; a stale `base_revision` is `409 file_conflict` |
 | `POST /api/threads/:id/files/open`, `GET /api/editors` | Open a file in a known installed editor |
+| `POST /api/threads/:id/git/action` | `GitAction` to `GitActionResult`: commit, push, pull request |
+| `GET, POST /api/threads/:id/branches`, `POST .../branches/switch` | List, create and switch |
+| `GET, POST /api/threads/:id/pulls`, `POST .../pulls/refresh` | Linked pull requests |
+| `GET, DELETE /api/threads/:id/pulls/:number` | `PullRequestDetail`; unlink |
+| `POST /api/threads/:id/pulls/:number/review`, `/merge` | Review and merge through the forge CLI |
+| `GET /api/projects/:id/pulls?state=` | `PullRequest[]` |
+| `POST /api/projects/:id/publish` | Create the remote and push, with `gh` |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |

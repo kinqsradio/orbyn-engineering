@@ -11,6 +11,8 @@ use crate::util::unix_now;
 
 const TITLE_CONTEXT_CHARS: usize = 8_000;
 const TITLE_MAX_CHARS: usize = 80;
+/// Linked pull requests are polled every second lifecycle tick.
+const PULL_WATCH_TICKS: u32 = 2;
 
 impl Core {
     pub fn update_thread(&self, id: &str, patch: &UpdateThread, actor: &str) -> Result<Thread> {
@@ -87,12 +89,17 @@ impl Core {
     /// Runs the periodic rules until `stop` fires.
     pub async fn run_lifecycle(&self, stop: tokio_util::sync::CancellationToken) {
         let mut ticks = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut watched: u32 = 0;
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
                 _ = ticks.tick() => {
                     if let Err(error) = self.lifecycle_tick(unix_now()) {
                         tracing::warn!(%error, "lifecycle tick failed");
+                    }
+                    watched += 1;
+                    if watched.is_multiple_of(PULL_WATCH_TICKS) {
+                        self.watch_pulls().await;
                     }
                 }
             }

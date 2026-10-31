@@ -271,6 +271,126 @@ pub struct SwitchEngine {
 }
 
 wire! {
+pub struct PullRequestDraft {
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base: Option<String>,
+}
+}
+
+wire! {
+/// Any combination of commit, push and open a pull request, in that order.
+pub struct GitAction {
+    /// Commits every change with this message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub commit_message: Option<String>,
+    #[serde(default)]
+    pub push: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pull_request: Option<PullRequestDraft>,
+}
+}
+
+wire! {
+pub struct GitPhase {
+    /// `commit`, `push` or `pull_request`.
+    pub name: String,
+    pub ok: bool,
+    pub message: Option<String>,
+    pub url: Option<String>,
+}
+}
+
+wire! {
+pub struct GitActionResult {
+    /// Phases that ran. A failed phase is the last one.
+    pub phases: Vec<GitPhase>,
+}
+}
+
+wire! {
+pub struct BranchInfo {
+    pub name: String,
+    pub current: bool,
+    pub remote: bool,
+}
+}
+
+wire! {
+pub struct CreateBranch {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start: Option<String>,
+}
+}
+
+wire! {
+pub struct SwitchBranch {
+    pub name: String,
+}
+}
+
+wire! {
+pub struct PullRequest {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    /// `open`, `merged` or `closed`.
+    pub state: String,
+    pub head: String,
+    pub base: String,
+    pub author: Option<String>,
+}
+}
+
+wire! {
+pub struct PullRequestDetail {
+    pub pull: PullRequest,
+    pub body: String,
+    /// The forge's own records, which differ by forge.
+    pub checks: Value,
+    pub comments: Value,
+}
+}
+
+wire! {
+pub struct SubmitReview {
+    /// `approve`, `request_changes` or `comment`.
+    pub event: String,
+    #[serde(default)]
+    pub body: String,
+}
+}
+
+wire! {
+pub struct MergePull {
+    /// `merge`, `squash` or `rebase`.
+    pub method: String,
+}
+}
+
+wire! {
+pub struct LinkPull {
+    pub number: u64,
+}
+}
+
+wire! {
+pub struct PublishProject {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    pub private: bool,
+}
+}
+
+wire! {
 pub struct Mentions {
     pub skills: Vec<String>,
     /// Paths relative to the checkout.

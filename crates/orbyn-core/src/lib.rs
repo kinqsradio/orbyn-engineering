@@ -16,6 +16,7 @@ pub mod policy;
 pub mod process;
 pub mod projects;
 pub mod runs;
+pub mod scm;
 pub mod skills;
 pub mod sse;
 pub mod store;
