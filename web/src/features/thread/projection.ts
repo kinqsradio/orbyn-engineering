@@ -228,6 +228,16 @@ interface Fold {
   usage: JsonValue | null;
 }
 
+/** Things that happened to the conversation rather than in it. */
+const LIFECYCLE_NOTES: Record<string, string> = {
+  "engine.session_restarted": "Agent session restarted.",
+  "engine.session_lost": "The engine lost this conversation, so it continues in a new session.",
+  "engine.switched": "Continued on another engine.",
+  "context.compacted": "Context compacted.",
+  "thread.rewound": "Rewound to an earlier point.",
+  "steer.failed": "The engine refused a message mid-turn, so it moved to the queue.",
+};
+
 function put(fold: Fold, item: ThreadItem): void {
   const at = fold.index.get(item.key);
   if (at === undefined) {
@@ -411,7 +421,11 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       break;
     }
     case "CUSTOM":
-      if (event.name === "engine.retrying") {
+      if (LIFECYCLE_NOTES[event.name]) {
+        const text = LIFECYCLE_NOTES[event.name] ?? "";
+        put(fold, { ...base, key: `notice:${wire.seq}`, kind: "notice", tone: "neutral", text, code: null });
+        log(text, null);
+      } else if (event.name === "engine.retrying") {
         const message = record(event.value)?.message;
         log("Engine retrying", typeof message === "string" ? message : null, "attention");
       } else if (event.name === "tool.output") {

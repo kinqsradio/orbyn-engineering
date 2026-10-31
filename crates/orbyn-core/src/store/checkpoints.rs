@@ -160,6 +160,45 @@ impl Store {
         })
     }
 
+    /// Joins the text to what the next run already carries, keeping the engine session.
+    pub fn add_to_handoff(&self, thread_id: &str, text: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "UPDATE threads SET handoff = CASE WHEN handoff IS NULL OR handoff = '' THEN ?2
+                    ELSE handoff || char(10) || ?2 END WHERE id = ?1",
+                params![thread_id, text],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// What was said in a side chat itself, not the conversation it started from.
+    pub fn side_transcript(&self, thread_id: &str) -> Result<String> {
+        let reader = self.reader();
+        let mut statement = reader.prepare(
+            "SELECT role, text FROM thread_messages
+             WHERE thread_id = ?1
+                AND run_key IN (SELECT id FROM runs WHERE thread_id = ?1)
+             ORDER BY seq",
+        )?;
+        let lines = statement
+            .query_map([thread_id], |row| {
+                Ok(format!(
+                    "{}: {}",
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let text = lines.join("\n");
+        let count = text.chars().count();
+        Ok(if count > HANDOFF_BUDGET_CHARS {
+            text.chars().skip(count - HANDOFF_BUDGET_CHARS).collect()
+        } else {
+            text
+        })
+    }
+
     /// Hands the text to one run only.
     /// The handoff waiting for a run. It stays until a run has finished with it.
     pub fn pending_handoff(&self, thread_id: &str) -> Result<Option<String>> {
@@ -210,7 +249,13 @@ impl Store {
     }
 
     /// Creates a child thread holding the parent's log up to `through`.
-    pub fn fork_thread(&self, parent: &Thread, through: i64, title: &str) -> Result<Thread> {
+    pub fn fork_thread(
+        &self,
+        parent: &Thread,
+        through: i64,
+        title: &str,
+        relation: &str,
+    ) -> Result<Thread> {
         let id = new_id();
         let stamp = now();
         let handoff = self.handoff_text(&parent.id, through)?;
@@ -224,7 +269,7 @@ impl Store {
             worktree: parent.worktree.clone(),
             skill_profile: parent.skill_profile.clone(),
             parent_thread_id: Some(parent.id.clone()),
-            relation: Some("fork".to_owned()),
+            relation: Some(relation.to_owned()),
             scratch: parent.scratch,
         };
         self.commit(|tx, _| {

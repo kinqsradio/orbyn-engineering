@@ -4,4 +4,8 @@ export type ForkThread = {
 /**
  * Fork after this run; absent forks the whole conversation.
  */
-run_id?: string, title?: string, };
+run_id?: string, title?: string, 
+/**
+ * A side chat: allowed while the parent runs, and kept out of the thread list.
+ */
+side: boolean, };

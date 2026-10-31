@@ -1,4 +1,5 @@
 import { readToken } from "./token";
+import type { SteerResult } from "../generated/SteerResult";
 import type {
   BranchInfo,
   GitAction,
@@ -70,6 +71,13 @@ export function setUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
 
+const SLOW_REQUEST_MS = 10_000;
+
+let onSlowRequest: () => void = () => undefined;
+export function setSlowRequestHandler(handler: () => void): void {
+  onSlowRequest = handler;
+}
+
 export function authHeaders(): Record<string, string> {
   const token = readToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -103,6 +111,7 @@ export async function request<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
+  const slow = setTimeout(() => onSlowRequest(), SLOW_REQUEST_MS);
   try {
     response = await fetch(path, {
       method,
@@ -117,6 +126,8 @@ export async function request<T>(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiFailure(NETWORK_ERROR, "Can't reach the Orbyn service.", 0);
+  } finally {
+    clearTimeout(slow);
   }
   if (!response.ok) {
     const failure = await failureFrom(response);
@@ -142,7 +153,8 @@ export const api = {
   removeQueued: (id: string) => request<void>("DELETE", `/api/queue/${q(id)}`),
   sendQueuedNow: (id: string) => request<void>("POST", `/api/queue/${q(id)}/send-now`),
   steer: (threadId: string, prompt: string) =>
-    request<void>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
+    request<SteerResult>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
+  restartSession: (threadId: string) => request<void>("POST", `/api/threads/${q(threadId)}/restart-session`),
   patchThread: (id: string, body: UpdateThread) =>
     request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
   threadLimits: (threadId: string, signal?: AbortSignal) =>
@@ -259,11 +271,13 @@ export const api = {
     request<void>("POST", `/api/threads/${q(threadId)}/rewind`, { run_id: runId, restore_files: restoreFiles }),
   forkThread: (threadId: string, runId: string) =>
     request<Thread>("POST", `/api/threads/${q(threadId)}/fork`, { run_id: runId }),
+  startSideChat: (threadId: string) => request<Thread>("POST", `/api/threads/${q(threadId)}/fork`, { side: true }),
+  bringBack: (sideId: string) => request<void>("POST", `/api/threads/${q(sideId)}/bring-back`),
 
   pendingApprovals: (signal?: AbortSignal) =>
     request<Approval[]>("GET", "/api/approvals?state=pending", undefined, signal),
-  decideApproval: (id: string, allow: boolean, remember: boolean) =>
-    request<Approval>("POST", `/api/approvals/${q(id)}/decide`, { allow, remember }),
+  decideApproval: (id: string, allow: boolean, remember: boolean, feedback?: string) =>
+    request<Approval>("POST", `/api/approvals/${q(id)}/decide`, { allow, remember, ...(feedback ? { feedback } : {}) }),
 
   engines: (signal?: AbortSignal) =>
     request<EngineStatus[]>("GET", "/api/engines", undefined, signal),

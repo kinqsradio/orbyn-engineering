@@ -132,6 +132,8 @@ impl Verdict {
 pub struct ApprovalGate {
     store: Arc<Store>,
     waiters: Mutex<HashMap<String, oneshot::Sender<ApprovalState>>>,
+    /// Words for the engine, between a denial and its waiter reading them.
+    feedback: Mutex<HashMap<String, String>>,
     timeout: Duration,
 }
 
@@ -140,6 +142,7 @@ impl ApprovalGate {
         Self {
             store,
             waiters: Mutex::new(HashMap::new()),
+            feedback: Mutex::new(HashMap::new()),
             timeout,
         }
     }
@@ -276,14 +279,35 @@ impl ApprovalGate {
         };
         Ok(match state {
             ApprovalState::Allowed => Verdict::Allow,
-            ApprovalState::Denied => Verdict::Deny("Denied in Orbyn.".to_owned()),
+            ApprovalState::Denied => Verdict::Deny(
+                self.take_feedback(&id)
+                    .unwrap_or_else(|| "Denied in Orbyn.".to_owned()),
+            ),
             _ => Verdict::Deny("The approval expired without a decision.".to_owned()),
         })
     }
 
     /// Records a decision and wakes the waiter. The durable state changes first.
     pub fn decide(&self, id: &str, allow: bool, remember: bool, actor: &str) -> Result<Approval> {
+        self.decide_with(id, allow, remember, None, actor)
+    }
+
+    /// As `decide`, with words for the engine when this is a denial.
+    pub fn decide_with(
+        &self,
+        id: &str,
+        allow: bool,
+        remember: bool,
+        feedback: Option<String>,
+        actor: &str,
+    ) -> Result<Approval> {
         let approval = self.store.decide_approval(id, allow, remember, actor)?;
+        if let Some(words) = feedback.filter(|words| !allow && !words.trim().is_empty()) {
+            self.feedback
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(id.to_owned(), words);
+        }
         self.wake(&approval.id, approval.state);
         Ok(approval)
     }
@@ -304,6 +328,13 @@ impl ApprovalGate {
         for approval in approvals {
             self.wake(&approval.id, approval.state);
         }
+    }
+
+    fn take_feedback(&self, id: &str) -> Option<String> {
+        self.feedback
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(id)
     }
 
     fn wake(&self, id: &str, state: ApprovalState) {

@@ -314,6 +314,9 @@ fn claude(args: &[String]) {
             .unwrap_or("{}");
         let decision: Value = serde_json::from_str(text).unwrap_or(Value::Null);
         let behavior = decision["behavior"].as_str().unwrap_or("none").to_owned();
+        if let Some(words) = decision["message"].as_str() {
+            record_launch("claude-denied", &[words.to_owned()]);
+        }
         send(&json!({
             "type": "user",
             "message": { "role": "user", "content": [{

@@ -1531,3 +1531,18 @@ kbd {
 .pull-quick .icon-btn[aria-pressed="true"] {
   opacity: 1;
 }
+.settings-folded-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.settings-folded-head[aria-expanded="true"] .chev {
+  transform: rotate(90deg);
+}

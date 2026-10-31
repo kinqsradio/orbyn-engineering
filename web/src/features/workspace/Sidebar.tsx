@@ -2,6 +2,7 @@ import {
   ChartColumn,
   ChevronRight,
   Copy,
+  FilePen,
   FolderPlus,
   GitPullRequest,
   PanelLeft,
@@ -24,7 +25,9 @@ import {
 import { api } from "../../api/client";
 import type { Project, ServerSettings, Thread } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
+import { DRAFT_KEY, useDraftStore } from "../onboarding/draftStore";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
+import { threadToken } from "../thread/skillMention";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
@@ -54,6 +57,7 @@ import { ProjectFilter } from "./ProjectFilter";
 import {
   copyText,
   deleteThreads,
+  dismissWoke,
   reorderThreads,
   settleThreads,
   unpinThreads,
@@ -62,7 +66,7 @@ import {
 } from "./threadActions";
 import { bulkMenuItems, CustomSnoozeDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
 import { ThreadRow, type RowActions } from "./ThreadRow";
-import { undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
+import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
 import { UpdatePill } from "./Updates";
 
 const SETTLED_PAGE = 10;
@@ -90,6 +94,51 @@ function EmptyProjectRow({ project }: { project: Project }) {
           )}
         </span>
         <span className="thread-row-empty">No threads yet</span>
+      </a>
+    </li>
+  );
+}
+
+/** The unsent draft, reachable from anywhere; discarding it keeps it for the undo. */
+function DraftRow({ route }: { route: Route }) {
+  const text = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
+  const projectId = useUi((state) => state.draftProject);
+  const files = useDraftStore((state) => state.files);
+  if (route.name === "new" || route.name === "home" || (!text.trim() && files.length === 0)) return null;
+  const discard = () => {
+    const { setDraft } = useUi.getState();
+    const { setFiles } = useDraftStore.getState();
+    setDraft(DRAFT_KEY, "");
+    setFiles([]);
+    pushUndo("Discarded", async () => {
+      setDraft(DRAFT_KEY, text);
+      setFiles(files);
+    });
+  };
+  return (
+    <li className="draft-row">
+      <a className="thread-row thread-row-compact" href={routeHref({ name: "new", projectId })}>
+        <FilePen size={14} aria-hidden />
+        <span className="thread-row-title">{text.trim().split("\n")[0] || `${files.length} files`}</span>
+        <span className="row-trailing">
+          <span className="row-rest">
+            <span className="row-age">Unsent</span>
+          </span>
+          <span className="row-actions">
+            <button
+              type="button"
+              className="row-action"
+              aria-label="Discard draft"
+              title="Discard draft"
+              onClick={(event) => {
+                event.preventDefault();
+                discard();
+              }}
+            >
+              <X size={14} aria-hidden />
+            </button>
+          </span>
+        </span>
       </a>
     </li>
   );
@@ -428,7 +477,15 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     return projectFilter.length === 0 ? all : all.filter((thread) => projectFilter.includes(thread.project_id));
   }, [threads, projectFilter]);
 
-  const sections = arrangeThreads(scoped, Date.now(), selectedThread);
+  const hold = useRef<{ id: string; section: SidebarSection | null } | null>(null);
+  if (hold.current?.id !== selectedThread || (hold.current && hold.current.section === null)) {
+    const open = selectedThread ? threads[selectedThread] : undefined;
+    hold.current =
+      selectedThread === null
+        ? null
+        : { id: selectedThread, section: open ? sectionOf(open, Date.now(), selectedThread) : null };
+  }
+  const sections = arrangeThreads(scoped, Date.now(), selectedThread, hold.current?.section ?? null);
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
   const orderedRef = useRef<Thread[]>([]);
   orderedRef.current = threadsFlat(sections);
@@ -447,7 +504,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     const needle = query.trim().toLowerCase();
     if (!needle) return [];
     return scoped
-      .filter((thread) => !thread.lifecycle?.archived_at)
+      .filter((thread) => !thread.lifecycle?.archived_at && thread.lifecycle?.relation !== "side")
       .filter((thread) =>
         searchFields(thread, list.find((p) => p.id === thread.project_id)?.name ?? "").includes(needle),
       )
@@ -511,6 +568,15 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     }
   };
 
+  /** A thread dropped on a composer becomes a link the agent can read. */
+  const mentionInComposer = (rows: Thread[]) => {
+    const key = selectedThread ?? DRAFT_KEY;
+    const { drafts, setDraft } = useUi.getState();
+    const links = rows.map((row) => threadToken(row.id, row.title)).join(" ");
+    const before = drafts[key] ?? "";
+    setDraft(key, before ? `${before.trimEnd()} ${links} ` : `${links} `);
+  };
+
   const actions: RowActions = {
     onClick(event, thread) {
       const mod = /mac/i.test(navigator.platform) ? event.metaKey : event.ctrlKey;
@@ -560,9 +626,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           );
           follow();
         },
-        onEnd: () => {
+        onEnd: (at) => {
           reset();
-          if (target) void finishDrop(thread, section, target);
+          const composer = document.elementFromPoint(at.x, at.y)?.closest(".composer");
+          if (composer) mentionInComposer(selection.has(thread.id) ? orderedRef.current.filter((row) => selection.has(row.id)) : [thread]);
+          else if (target) void finishDrop(thread, section, target);
         },
         onCancel: reset,
       });
@@ -642,6 +710,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       });
     },
     onRowFocus: setFocusId,
+    onDismissWoke: (thread) => void dismissWoke(thread),
+    onFiles(thread, files) {
+      useDraftStore.getState().drop(thread.id, files);
+      navigate({ name: "thread", id: thread.id });
+    },
   };
 
   const onTreeKey = (event: React.KeyboardEvent) => {
@@ -834,6 +907,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         ) : (
           <>
             <ul className="thread-list">
+              <DraftRow route={route} />
               {dragging ? <DragBoundary label="Pinned" section="pinned" active={dragTarget === "pinned"} /> : null}
               {shown.pinned.map((thread) => row(thread, "pinned", false))}
               {dragging ? <DragBoundary label="Active" section="active" active={dragTarget === "active"} /> : null}

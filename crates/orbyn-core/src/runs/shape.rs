@@ -46,9 +46,18 @@ pub struct EventShaper {
     args: HashMap<String, usize>,
     output: HashMap<String, usize>,
     snapshots: HashSet<String>,
+    /// Keeps a reply's text back until it ends, for the `turn` streaming setting.
+    whole_messages: bool,
 }
 
 impl EventShaper {
+    pub fn new(whole_messages: bool) -> Self {
+        Self {
+            whole_messages,
+            ..Self::default()
+        }
+    }
+
     /// When the merged text has to go out, if any is waiting.
     pub fn due(&self) -> Option<Instant> {
         self.due
@@ -81,7 +90,8 @@ impl EventShaper {
             Some(text) => text.push_str(&delta),
             None => {
                 ready = self.flush();
-                self.due = Some(Instant::now() + FLUSH_AFTER);
+                self.due =
+                    (reasoning || !self.whole_messages).then(|| Instant::now() + FLUSH_AFTER);
                 self.pending = Some(if reasoning {
                     Pending::Reasoning { id, text: delta }
                 } else {
@@ -93,7 +103,7 @@ impl EventShaper {
             Some(Pending::Text { text, .. } | Pending::Reasoning { text, .. }) => text.len(),
             None => 0,
         };
-        if size >= FLUSH_BYTES {
+        if size >= FLUSH_BYTES && (reasoning || !self.whole_messages) {
             ready.extend(self.flush());
         }
         ready
@@ -192,6 +202,30 @@ impl EventShaper {
             kept.to_owned()
         };
         Some(json!({ "toolCallId": tool, "delta": shown }))
+    }
+}
+
+#[cfg(test)]
+mod whole_message_tests {
+    use super::*;
+
+    #[test]
+    fn whole_messages_keep_text_until_the_message_ends() {
+        let mut shaper = EventShaper::new(true);
+        let text = |delta: &str| AgUiEvent::TextMessageContent {
+            message_id: "m".into(),
+            delta: delta.into(),
+        };
+        assert!(shaper.push(text("one ")).is_empty());
+        assert_eq!(shaper.due(), None);
+        assert!(shaper.push(text("two")).is_empty());
+        let out = shaper.push(AgUiEvent::TextMessageEnd {
+            message_id: "m".into(),
+        });
+        assert_eq!(out.len(), 2);
+        assert!(
+            matches!(&out[0], AgUiEvent::TextMessageContent { delta, .. } if delta == "one two")
+        );
     }
 }
 

@@ -131,7 +131,7 @@ test("the minimap goes to a prompt and the error banner retries and dismisses", 
   const id = threadIdOf(page);
   await settled(service, id);
   await send(page, "[scene:failure] second prompt");
-  await expect(page.locator(".thread-error")).toContainText("quota reached", { timeout: 15_000 });
+  await expect(page.locator(".thread-error")).toContainText("disk full", { timeout: 15_000 });
   await settled(service, id);
   const map = page.getByRole("navigation", { name: "Prompts in this thread" });
   await expect(map.getByRole("button")).toHaveCount(2);
@@ -212,7 +212,7 @@ test("the view follows new output until you scroll up, then offers the way back"
 test("a failed turn keeps its error in view and a command with no output says so", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:failure]");
-  await expect(page.getByRole("alert").filter({ hasText: "quota reached" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("alert").filter({ hasText: "disk full" })).toBeVisible({ timeout: 15_000 });
   await settled(service, threadIdOf(page));
   await send(page, "[scene:empty]");
   await page.getByRole("button", { name: /^Worked for/ }).last().click();

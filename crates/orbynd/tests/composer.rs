@@ -212,13 +212,14 @@ async fn steering_reaches_claude_and_is_refused_when_idle_or_unsupported() {
     assert_eq!(code, 400);
     service.admit(&thread, "[hang]").await;
     until_running(&service, &thread).await;
-    let (code, _) = service
+    let (code, body) = service
         .send(
             &format!("/api/threads/{thread}/steer"),
             json!({ "prompt": "go left" }),
         )
         .await;
     assert_eq!(code, 202);
+    assert_eq!(body["state"], "delivered");
     assert_eq!(service.finished(&thread).await, "completed");
     assert_eq!(
         text_of(&service.all_events(&thread).await),

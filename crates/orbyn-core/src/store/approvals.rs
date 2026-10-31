@@ -109,10 +109,7 @@ impl Store {
                 ],
             )?;
             // A question for you ends a snooze early.
-            tx.execute(
-                "UPDATE threads SET snoozed_until = NULL WHERE id = ?1",
-                [&guard.thread_id],
-            )?;
+            super::threads::wake_early(tx, &guard.thread_id)?;
             match guard.state {
                 RunState::Starting => set_state(
                     tx,

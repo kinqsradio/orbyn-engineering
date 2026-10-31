@@ -161,6 +161,13 @@ pub enum EngineOutcome {
 #[derive(Debug)]
 pub enum EngineEvent {
     Agui(AgUiEvent),
+    /// The engine refused a message sent mid-turn.
+    SteerFailed(String),
+    /// The engine says the turn stopped on a usage or rate limit.
+    Limited {
+        /// Unix seconds, when it says.
+        resets_at: Option<i64>,
+    },
     /// The engine's resumable session id.
     Session(String),
     Permission(PermissionRequest),
