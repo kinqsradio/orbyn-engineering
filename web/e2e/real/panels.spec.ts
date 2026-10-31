@@ -124,6 +124,12 @@ test("one file of a turn goes back to how the turn found it", async ({ page }) =
 test("the details card and terminal keep the wheel to themselves", async ({ page }) => {
   await longThread(page);
   await settled(service, threadIdOf(page));
+  // A turn folds as it ends, which would move the position this test sets.
+  await expect(async () => {
+    const height = await chat(page).evaluate((element) => element.scrollHeight);
+    await page.waitForTimeout(400);
+    expect(await chat(page).evaluate((element) => element.scrollHeight)).toBe(height);
+  }).toPass();
   await chat(page).evaluate((element) => {
     element.scrollTop = 600;
   });
