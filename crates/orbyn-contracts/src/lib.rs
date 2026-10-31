@@ -2469,6 +2469,11 @@ pub struct LibraryStatus {
     pub path: String,
     /// True when the user chose an existing checkout, which is never moved.
     pub adopted: bool,
+    /// True while this is the snapshot the app shipped with, not yet a clone. Only a
+    /// clone can receive updates.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(optional, as = "Option<bool>")]
+    pub snapshot: bool,
     pub revision: String,
     pub branch: Option<String>,
     pub dirty: bool,
@@ -2512,7 +2517,8 @@ pub struct TargetStatus {
 
 wire! {
 pub struct WorkspaceStatus {
-    /// False until setup finishes; engines and projects wait for it.
+    /// True once the library is in place, which startup sees to. Only a failure to
+    /// write the data folder leaves it false.
     pub configured: bool,
     pub default_url: String,
     pub library: Option<LibraryStatus>,
@@ -2521,7 +2527,8 @@ pub struct WorkspaceStatus {
 }
 
 wire! {
-/// Exactly one of `url` and `adopt_path`, or neither for the default library.
+/// Nothing needs this. `adopt_path` uses an existing library; `url`, or neither, asks
+/// for the clone now instead of in the background.
 pub struct WorkspaceSetup {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

@@ -36,6 +36,12 @@ fn listed() -> Vec<NetworkRequest> {
             UPDATE_CHECKS,
         ),
         row(
+            "Skills library first clone (git clone)",
+            "The library's URL",
+            "Soon after first launch, then less often until it lands",
+            UPDATE_CHECKS,
+        ),
+        row(
             "App update check",
             "The configured update endpoint or manifest",
             "At startup and every six hours",

@@ -72,9 +72,12 @@ struct ServeArgs {
     /// Release manifest to compare against when no desktop shell is attached.
     #[arg(long, env = "ORBYN_UPDATE_MANIFEST")]
     update_manifest: Option<String>,
-    /// Where a first-run clone of the skills library comes from.
+    /// Where the clone that replaces the shipped snapshot comes from.
     #[arg(long, env = "ORBYN_WORKSPACE_URL")]
     workspace_url: Option<String>,
+    /// The folder holding the library snapshot that ships with the app.
+    #[arg(long, env = "ORBYN_LIBRARY_BUNDLE")]
+    library_bundle: Option<PathBuf>,
     /// Bind every interface. Requires `--tls-terminated`.
     #[arg(long)]
     remote: bool,
@@ -107,6 +110,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
     if let Some(url) = &args.workspace_url {
         config.workspace_url.clone_from(url);
     }
+    config.library_bundle.clone_from(&args.library_bundle);
     let defaults = EngineConfig::default();
     let sandbox = std::env::var("ORBYN_CODEX_SANDBOX").unwrap_or(defaults.codex_sandbox);
     if !SANDBOX_MODES.contains(&sandbox.as_str()) {
@@ -650,6 +654,15 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     );
     core.mcp.bind_host(&core);
     orbyn_core::diagnostics::start_sampling();
+    // Before the service answers anything. If the disk refuses, the background
+    // attempt tries again, and the service still serves what needs no library.
+    let library = match core.workspace.provision().await {
+        Ok(()) => core.ensure_library_project(),
+        Err(error) => Err(error),
+    };
+    if let Err(error) = library {
+        tracing::error!("the skills library is not in place: {error}");
+    }
     let token = random_token().map_err(|error| error.to_string())?;
     let (key_digest, new_key) = if args.remote {
         let (digest, key) = remote_key(&core).map_err(|error| error.to_string())?;
@@ -693,6 +706,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         wait
     });
     tokio::spawn(wait_for_stop(parent, stop.clone()));
+    {
+        let (core, stop) = (core.clone(), stop.clone());
+        tokio::spawn(async move { core.run_library_upgrades(stop).await });
+    }
     let checks = {
         let (updates, stop) = (core.updates.clone(), stop.clone());
         tokio::spawn(async move { updates.run_checks(stop).await })

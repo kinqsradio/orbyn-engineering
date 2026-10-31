@@ -245,7 +245,7 @@ mod tests {
         let data = dir.path().join("data");
         std::fs::create_dir_all(&data).unwrap();
         let store = Arc::new(Store::open(&data.join("db"), "e").unwrap());
-        let workspace = Arc::new(Workspace::new(store.clone(), data, "u".into()).unwrap());
+        let workspace = Arc::new(Workspace::new(store.clone(), data, "u".into(), None).unwrap());
         workspace
             .setup(WorkspaceSetup {
                 url: None,

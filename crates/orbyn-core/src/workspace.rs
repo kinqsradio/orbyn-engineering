@@ -3,6 +3,8 @@
 //! and no file is ever written into a target. Library updates are fast-forward only
 //! and happen only when asked for.
 
+mod provision;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -47,12 +49,21 @@ struct WorkspaceState {
     adopted: bool,
     url: Option<String>,
     rollback: Option<Rollback>,
+    /// The revision of the snapshot this still is, until a clone replaces it.
+    #[serde(default)]
+    snapshot: Option<String>,
 }
 
 pub struct Workspace {
     store: Arc<Store>,
     data_dir: PathBuf,
     default_url: String,
+    /// The folder of the library snapshot that ships with the app.
+    bundle: Option<PathBuf>,
+    /// One replacement at a time, whoever started it.
+    upgrading: tokio::sync::Mutex<()>,
+    upgrade_wake: tokio::sync::Notify,
+    idle_poll: std::time::Duration,
     state: RwLock<Option<WorkspaceState>>,
     /// True while the library is moving. Admission takes this lock too, so a run
     /// and an update can never slip past each other's check.
@@ -298,7 +309,12 @@ async fn incoming(root: &Path) -> Result<Vec<IncomingCommit>> {
 }
 
 impl Workspace {
-    pub fn new(store: Arc<Store>, data_dir: PathBuf, default_url: String) -> Result<Self> {
+    pub fn new(
+        store: Arc<Store>,
+        data_dir: PathBuf,
+        default_url: String,
+        bundle: Option<PathBuf>,
+    ) -> Result<Self> {
         let state = store
             .setting(STATE_KEY)?
             .and_then(|text| serde_json::from_str(&text).ok());
@@ -306,6 +322,10 @@ impl Workspace {
             store,
             data_dir,
             default_url,
+            bundle,
+            upgrading: tokio::sync::Mutex::new(()),
+            upgrade_wake: tokio::sync::Notify::new(),
+            idle_poll: provision::idle_poll(),
             state: RwLock::new(state),
             moving: Mutex::new(false),
             installing: AtomicBool::new(false),
@@ -353,34 +373,56 @@ impl Workspace {
         Ok(())
     }
 
-    /// Clones the library, or adopts a checkout the user chose. Adoption leaves
-    /// the checkout where it is and only ensures its ignored `repo/` exists.
+    /// Nothing needs this: the library is always there. Adopting uses a checkout the
+    /// person chose, leaving it where it is apart from its ignored `repo/`, and can be
+    /// done at any time no run is active. A URL, or nothing, asks for the clone now
+    /// rather than whenever the background attempt next gets to it.
     pub async fn setup(&self, request: WorkspaceSetup) -> Result<WorkspaceStatus> {
-        if self.current().is_some() {
+        if request.url.is_some() && request.adopt_path.is_some() {
             return Err(CoreError::Invalid(
-                "The workspace is already set up.".into(),
+                "Choose a URL or a folder, not both.".into(),
             ));
         }
-        let state = match (request.url, request.adopt_path) {
-            (Some(_), Some(_)) => {
+        if let Some(path) = request.adopt_path {
+            return self.adopt(Path::new(&path)).await;
+        }
+        let state = match self.current() {
+            Some(mut state) if state.snapshot.is_some() => {
+                state.url = request.url.or(state.url);
+                self.save(state)?;
+                self.upgrade_snapshot(false).await?;
+                return self.status(&[]).await;
+            }
+            Some(_) if request.url.is_none() => return self.status(&[]).await,
+            Some(_) => {
                 return Err(CoreError::Invalid(
-                    "Choose a URL or a folder, not both.".into(),
+                    "The library is already a clone. Adopt a folder to use another.".into(),
                 ));
             }
-            (_, Some(path)) => {
-                let root = validate_library(Path::new(&path)).await?;
-                WorkspaceState {
-                    root,
-                    adopted: true,
-                    url: None,
-                    rollback: None,
-                }
-            }
-            (url, None) => {
-                let url = url.unwrap_or_else(|| self.default_url.clone());
+            None => {
+                let url = request.url.unwrap_or_else(|| self.default_url.clone());
                 self.clone_library(&url).await?
             }
         };
+        self.install_state(state).await
+    }
+
+    async fn adopt(&self, path: &Path) -> Result<WorkspaceStatus> {
+        let root = validate_library(path).await?;
+        if !self.store.active_runs()?.is_empty() {
+            return Err(CoreError::RunsActive);
+        }
+        self.install_state(WorkspaceState {
+            root,
+            adopted: true,
+            url: None,
+            rollback: None,
+            snapshot: None,
+        })
+        .await
+    }
+
+    async fn install_state(&self, state: WorkspaceState) -> Result<WorkspaceStatus> {
         std::fs::create_dir_all(state.root.join("repo"))?;
         // Recheck: a concurrent writer could have changed the boundary.
         validate_library(&state.root).await?;
@@ -426,6 +468,7 @@ impl Workspace {
             adopted: false,
             url: Some(url.to_owned()),
             rollback: None,
+            snapshot: None,
         })
     }
 
@@ -441,9 +484,10 @@ impl Workspace {
 
     /// Reads the library's identity for prompts and the skills view.
     pub async fn identity(&self) -> Result<(String, bool)> {
-        let root = self.root()?;
-        let dirty = !dirty_files(&root).await?.is_empty();
-        Ok((head(&root).await?, dirty))
+        let state = self.current().ok_or(CoreError::WorkspaceRequired)?;
+        let in_git = state.root.join(".git").exists();
+        let dirty = in_git && !dirty_files(&state.root).await?.is_empty();
+        Ok((revision_of(&state).await?, dirty))
     }
 
     /// Runs `admit` while the library cannot start moving.
@@ -498,6 +542,7 @@ impl Workspace {
     pub async fn fetch(&self) -> Result<Vec<IncomingCommit>> {
         let root = self.root()?;
         if upstream_of(&root).await.is_none() {
+            self.wake_upgrade();
             return Ok(Vec::new());
         }
         git(&root, &["fetch", "--quiet", "--no-recurse-submodules"]).await?;
@@ -518,7 +563,8 @@ impl Workspace {
     pub async fn update(&self, apply: bool) -> Result<LibraryUpdateResult> {
         let root = self.root()?;
         let pending = self.fetch().await?;
-        let revision = head(&root).await?;
+        let state = self.current().ok_or(CoreError::WorkspaceRequired)?;
+        let revision = revision_of(&state).await?;
         if !apply || pending.is_empty() {
             return Ok(LibraryUpdateResult {
                 applied: false,
@@ -629,9 +675,22 @@ impl Drop for MoveGuard<'_> {
     }
 }
 
+/// What the library is, in the upstream's terms: a snapshot's own commit is local.
+async fn revision_of(state: &WorkspaceState) -> Result<String> {
+    match &state.snapshot {
+        Some(revision) => Ok(revision.clone()),
+        None => head(&state.root).await,
+    }
+}
+
 async fn library_status(state: &WorkspaceState) -> LibraryStatus {
     let root = &state.root;
-    let problem = validate_library(root).await.err().map(|e| e.to_string());
+    let plain_snapshot = state.snapshot.is_some() && !root.join(".git").exists();
+    let problem = if plain_snapshot {
+        None
+    } else {
+        validate_library(root).await.err().map(|e| e.to_string())
+    };
     let dirty = dirty_files(root).await.unwrap_or_default();
     let upstream = upstream_of(root).await;
     let (ahead, behind) = if upstream.is_some() {
@@ -650,7 +709,8 @@ async fn library_status(state: &WorkspaceState) -> LibraryStatus {
     LibraryStatus {
         path: root.to_string_lossy().into_owned(),
         adopted: state.adopted,
-        revision: head(root).await.unwrap_or_default(),
+        snapshot: state.snapshot.is_some(),
+        revision: revision_of(state).await.unwrap_or_default(),
         branch: branch_of(root).await,
         dirty: !dirty.is_empty(),
         dirty_files: dirty,
@@ -747,7 +807,7 @@ mod tests {
         let data = dir.path().join("data");
         std::fs::create_dir_all(&data).unwrap();
         let store = Arc::new(Store::open(&data.join("db"), "e").unwrap());
-        Workspace::new(store, data, DEFAULT_LIBRARY_URL.into()).unwrap()
+        Workspace::new(store, data, DEFAULT_LIBRARY_URL.into(), None).unwrap()
     }
 
     fn adopt(path: &Path) -> WorkspaceSetup {
@@ -778,27 +838,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn everything_waits_for_setup() {
+    async fn clone_lands_in_data_and_a_second_url_is_refused() {
         let dir = TempDir::new();
-        let workspace = service(&dir).await;
-        assert!(matches!(
-            workspace.root(),
-            Err(CoreError::WorkspaceRequired)
-        ));
-        assert!(!workspace.status(&[]).await.unwrap().configured);
-    }
-
-    #[tokio::test]
-    async fn clone_lands_in_data_and_a_second_setup_is_refused() {
-        let dir = TempDir::new();
-        let (workspace, upstream) = cloned(&dir).await;
+        let (workspace, _) = cloned(&dir).await;
         let root = workspace.root().unwrap();
         assert_eq!(
             root,
             canonicalize(&dir.path().join("data/workspace")).unwrap()
         );
         assert!(root.join("repo").is_dir());
-        let again = workspace.setup(adopt(&upstream)).await;
+        let again = workspace
+            .setup(WorkspaceSetup {
+                url: Some("elsewhere".into()),
+                adopt_path: None,
+            })
+            .await;
         assert!(matches!(again, Err(CoreError::Invalid(_))));
     }
 
