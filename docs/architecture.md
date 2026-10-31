@@ -457,8 +457,15 @@ what to do.
 
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
 random per run, is passed only to that run's engine, and is revoked at run end.
-Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, and the
-governed `computer_*` tools. `approve` is listed only for Claude.
+Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
+governed `computer_*` tools and `orbyn_*` tools for threads, projects, pull requests,
+delegation and scheduling. `approve` is listed only for Claude.
+
+An `orbyn_*` tool reaches only the caller's project; anything else reads as not found.
+Claude's permission prompt passes Orbyn's own tools without asking, so each tool with
+an effect goes through the gate itself as a `tool` action, which needs a person unless
+the thread is in full access or a rule allows it. Every call is audited first. A
+delegated thread cannot delegate further, so one run cannot fan out without limit.
 
 ## Computer gateway
 

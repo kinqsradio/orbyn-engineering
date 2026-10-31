@@ -540,6 +540,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     let core = Arc::new(
         Core::open(core_config(&args, base_url.clone())?).map_err(|error| error.to_string())?,
     );
+    core.mcp.bind_host(&core);
     let token = random_token().map_err(|error| error.to_string())?;
     let (key_digest, new_key) = if args.remote {
         let (digest, key) = remote_key(&core).map_err(|error| error.to_string())?;

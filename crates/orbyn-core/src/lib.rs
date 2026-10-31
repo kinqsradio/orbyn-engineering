@@ -16,6 +16,7 @@ pub mod git;
 pub mod keybindings;
 pub mod maintenance;
 pub mod mcp;
+pub mod mcp_tools;
 pub mod policy;
 pub mod preferences;
 pub mod process;

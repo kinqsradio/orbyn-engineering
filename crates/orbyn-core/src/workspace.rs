@@ -864,6 +864,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn the_library_is_refused_from_every_side() {
         let dir = TempDir::new();

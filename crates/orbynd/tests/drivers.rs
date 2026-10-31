@@ -193,7 +193,7 @@ async fn codex_gets_the_mcp_server_without_approve() {
     service.finished(&thread).await;
     assert_eq!(
         text_of(&service.all_events(&thread).await),
-        "mcp 200 tools 7"
+        "mcp 200 tools 32"
     );
 }
 

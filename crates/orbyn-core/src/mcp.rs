@@ -2,11 +2,12 @@
 //! A token is random per run, reaches only that run's engine and dies with the run.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use orbyn_contracts::{ActionKind, ComputerAction, Question, QuestionOption};
 use serde_json::{Value, json};
 
+use crate::app::Core;
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, Verdict};
 use crate::computer::{Caller, ComputerGateway};
 use crate::driver::MCP_SERVER_NAME;
@@ -41,6 +42,9 @@ pub struct McpService {
     questions: Arc<QuestionDesk>,
     skills: Arc<SkillService>,
     computer: Arc<ComputerGateway>,
+    /// Set once the core exists, which is built after this service. Weak, since
+    /// the core owns this service.
+    host: OnceLock<Weak<Core>>,
 }
 
 impl McpService {
@@ -56,7 +60,13 @@ impl McpService {
             questions,
             skills,
             computer,
+            host: OnceLock::new(),
         }
+    }
+
+    /// Connects Orbyn's own tools. Until then they refuse rather than guess.
+    pub fn bind_host(&self, core: &Arc<Core>) {
+        let _ = self.host.set(Arc::downgrade(core));
     }
 
     pub fn register(&self, binding: McpBinding) -> Result<String> {
@@ -149,6 +159,18 @@ impl McpService {
                 let file = text_arg("file");
                 match self.skills.load(&skill, file.as_deref(), &binding.skills) {
                     Ok(text) => Ok(text_result(&text, false)),
+                    Err(error) => Ok(text_result(&error.public_message(), true)),
+                }
+            }
+            other if crate::mcp_tools::is_tool(other) => {
+                let Some(core) = self.host.get().and_then(Weak::upgrade) else {
+                    return Ok(text_result("This service is not ready.", true));
+                };
+                if let Err(error) = core.note_tool(binding, other) {
+                    tracing::warn!(%error, "could not record a tool call");
+                }
+                match core.call_orbyn_tool(binding, other, &args).await {
+                    Ok(result) => Ok(text_result(&result.to_string(), false)),
                     Err(error) => Ok(text_result(&error.public_message(), true)),
                 }
             }
@@ -323,7 +345,8 @@ fn computer_action(tool: &str, args: &Value) -> Option<ComputerAction> {
 
 fn tool_list(permission_prompt: bool) -> Vec<Value> {
     let object = |properties: Value, required: Value| json!({ "type": "object", "properties": properties, "required": required });
-    let mut tools = vec![
+    let mut tools: Vec<Value> = crate::mcp_tools::tool_specs().collect();
+    tools.extend([
         json!({
             "name": "skill_search",
             "description": "Search this project's Orbyn engineering skills by keyword.",
@@ -369,7 +392,7 @@ fn tool_list(permission_prompt: bool) -> Vec<Value> {
                 json!(["command"]),
             ),
         }),
-    ];
+    ]);
     if permission_prompt {
         tools.insert(
             0,

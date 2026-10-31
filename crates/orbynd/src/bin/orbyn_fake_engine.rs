@@ -595,6 +595,28 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         )
         .expect("write");
     }
+    // `[mcp-call:<tool>]<json args>[/mcp-call]` calls one tool and answers with it.
+    if let Some(rest) = prompt.split("[mcp-call:").nth(1)
+        && let Some((name, rest)) = rest.split_once(']')
+        && let Some((arguments, _)) = rest.split_once("[/mcp-call]")
+    {
+        let url = state.mcp_url.as_deref().expect("mcp url");
+        let arguments: Value = serde_json::from_str(arguments).expect("tool arguments");
+        let (_, reply) = mcp_call(
+            url,
+            1,
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        );
+        answer = format!(
+            "tool error={} {}",
+            reply.pointer("/result/isError").is_some(),
+            reply
+                .pointer("/result/content/0/text")
+                .and_then(Value::as_str)
+                .unwrap_or("none"),
+        );
+    }
     if has(prompt, "mcp-tools") {
         let url = state.mcp_url.as_deref().expect("mcp url");
         let (status, reply) = mcp_call(url, 1, "tools/list", json!({}));
