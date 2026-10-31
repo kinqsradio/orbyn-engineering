@@ -56,6 +56,7 @@ const DEFINITIONS: &[Definition] = defs![
     "default_model" Kind::Text, "", true;
     "prefer_saved_login" Kind::Bool, false, false;
     "app_update_mode" Kind::OneOf(&["automatic", "notify", "off"]), "notify", false;
+    "keep_awake_during_runs" Kind::Bool, true, false;
     "default_engine" Kind::Text, "", true;
     "fallback_model" Kind::Text, "", false;
     "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;

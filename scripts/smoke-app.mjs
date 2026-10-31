@@ -73,7 +73,7 @@ function install() {
   mkdirSync(installed);
   const app = join(installed, "Orbyn Engineering.app");
   cpSync(bundle, app, { recursive: true, verbatimSymlinks: true });
-  const [exe] = find(join(app, "Contents/MacOS"), (name) => !name.startsWith("orbyn") || name === "orbyn-engineering");
+  const [exe] = find(join(app, "Contents/MacOS"), (name) => !/^orbynd?$/.test(name));
   if (!exe) throw new Error("The bundle has no app executable.");
   return exe;
 }

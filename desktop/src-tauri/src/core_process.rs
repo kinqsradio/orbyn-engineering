@@ -24,6 +24,15 @@ pub enum ServiceMessage {
     CheckAppUpdate,
     InstallAppUpdate,
     ShellAction { action: ShellAction },
+    Activity(Activity),
+}
+
+/// Running work, and whether the machine should stay awake for it.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+pub struct Activity {
+    pub running: u32,
+    pub waiting: u32,
+    pub keep_awake: bool,
 }
 
 /// The closed list in `ShellAction` on the service's side. A newer one is ignored.
@@ -33,6 +42,10 @@ pub enum ShellAction {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    InstallCli,
+    RemoveCli,
+    OpenAccessibilitySettings,
+    OpenScreenRecordingSettings,
 }
 
 pub struct CoreProcess {

@@ -35,7 +35,8 @@
       "nsis"
     ],
     "externalBin": [
-      "binaries/orbynd"
+      "binaries/orbynd",
+      "binaries/orbyn"
     ],
     "resources": {
       "../../build/ui": "ui"

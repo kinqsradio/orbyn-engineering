@@ -15,7 +15,7 @@ const host = /host: (\S+)/.exec(
 const target = process.env.ORBYN_TARGET ?? host;
 
 run("npm", ["run", "build"], join(root, "web"));
-run("cargo", ["build", "--release", "-p", "orbynd", "--target", target], root);
+run("cargo", ["build", "--release", "-p", "orbynd", "--bin", "orbynd", "--bin", "orbyn", "--target", target], root);
 
 const build = join(root, "build");
 rmSync(build, { recursive: true, force: true });
@@ -23,7 +23,9 @@ mkdirSync(join(root, "desktop/src-tauri/binaries"), { recursive: true });
 cpSync(join(root, "web/dist"), join(build, "ui"), { recursive: true });
 
 const suffix = target.includes("windows") ? ".exe" : "";
-cpSync(
-  join(root, "target", target, "release", `orbynd${suffix}`),
-  join(root, "desktop/src-tauri/binaries", `orbynd-${target}${suffix}`),
-);
+for (const program of ["orbynd", "orbyn"]) {
+  cpSync(
+    join(root, "target", target, "release", `${program}${suffix}`),
+    join(root, "desktop/src-tauri/binaries", `${program}-${target}${suffix}`),
+  );
+}
