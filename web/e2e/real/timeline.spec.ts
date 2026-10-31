@@ -218,3 +218,12 @@ test("a failed turn keeps its error in view and a command with no output says so
   await page.getByRole("button", { name: /^true/ }).click();
   await expect(page.getByText("No output.")).toBeVisible();
 });
+
+test("a link to a commit here opens it in Diff", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:commitlink]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  await page.getByRole("link", { name: "this commit" }).click();
+  await expect(page.getByRole("radiogroup", { name: "Diff source" }).getByRole("radio", { name: "Commit" })).toBeChecked();
+  await expect(page.getByRole("combobox", { name: /commit/i })).toContainText("First");
+});

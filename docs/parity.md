@@ -267,7 +267,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [x] E3 Full thread diff: cumulative view | packages/contracts/src/orchestrationV2.ts | w d m s | M
 - [x] E4 Branch comparison: everything against base | apps/server/src/review/ReviewService.ts | w d m s | M
 - [x] E5 Commits source: newest 100, one commit at a time | docs/user/source-control.md | w d s | M
-- [ ] E6 Commit link routing: opens local commit in Diff pane | docs/user/source-control.md | w d | M
+- [x] E6 Commit link routing: opens local commit in Diff pane | docs/user/source-control.md | w d | M | web done: other commits go to the host
 - [x] E7 Diff layout: stacked or split | packages/contracts/src/settings.ts | w d | S
 - [x] E8 Diff preferences: collapse files, ignore whitespace, color scheme | packages/contracts/src/settings.ts | w d | S
 - [x] E9 Diff file tree: navigable with hide-tests filter | apps/web/src/components/diffs/DiffFileTree.tsx | w d | M

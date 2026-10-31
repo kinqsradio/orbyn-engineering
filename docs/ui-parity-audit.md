@@ -54,7 +54,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Timeline | Command output | Live: highlighted command, italic No output; source: follows while near the end, 320 max | Match, Real, ANSI colour, exit code, failed mark | Earlier output not shown notice absent, no truncation signal |
 | Timeline | Item inspector | Source: inside the expanded row | Inspect item, dialog of the raw record, Real | Field layout own |
 | Timeline | Rich Markdown | Source: math opt-in, Mermaid, file, thread and external links, details, table copy | Match, Real | Thread links use orbyn://thread/id; images remote only, no local media route |
-| Timeline | Proposed plan | Source: Plan badge, clip over 900 chars or 20 lines, menu, Save to workspace, Plan ready banner | Match, Real via a proposed_plan tag | The driver has no plan item, so Claude plan mode is not carded |
+| Timeline | Proposed plan | Source: Plan badge, clip over 900 chars or 20 lines, menu, Save to workspace, Plan ready banner | Match, Real via a proposed_plan tag | Claude plan mode cards through ExitPlanMode |
 | Timeline | Minimap | Live and source: tick per prompt, 8 spacing, min(natural, 100vh - 18rem) | Match, Real | Wheel passthrough absent |
 | Timeline | Error banner | Source: end-of-thread failure, dismiss for the session | Match, Real, with Retry | Inline notice stays for history |
 | Timeline | Changed files | Source: per-turn tree with open diff | Flat list, Real, opens and scrolls to the file | Flat, not a tree |
