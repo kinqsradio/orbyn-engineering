@@ -22,6 +22,7 @@ import type { ScheduledTask as ScheduledTaskWire } from "../generated/ScheduledT
 import type { ThreadEvent } from "../generated/ThreadEvent";
 import type { UsageReport as UsageReportWire } from "../generated/UsageReport";
 
+export type { AcpRegistryEntry } from "../generated/AcpRegistryEntry";
 export type { ActionKind } from "../generated/ActionKind";
 export type { AgUiEvent } from "../generated/AgUiEvent";
 export type { ApiError } from "../generated/ApiError";
