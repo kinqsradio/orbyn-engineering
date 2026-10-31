@@ -110,7 +110,7 @@ async fn codex_thread_discovers_at_the_root_and_turns_write_in_the_checkout() {
     service.admit(&thread, "hi").await;
     assert_eq!(service.finished(&thread).await, "completed");
     let root = dir.path().join("library");
-    let checkout = root.join("repo/project");
+    let checkout = root.join("repo").join("project");
     // The first launch can be the short one that reads the model list.
     let run = launches(&file, "codex");
     assert_eq!(run.last().unwrap()["cwd"], root.to_str().unwrap());

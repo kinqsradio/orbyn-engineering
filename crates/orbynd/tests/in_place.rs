@@ -397,7 +397,8 @@ async fn a_thread_without_a_project_gets_a_dated_folder_that_outlives_it() {
     assert_eq!(service.finished(thread).await, "completed");
     let launch = &launches(&launch_file, "claude")[0];
     assert_eq!(launch["cwd"], library.to_str().unwrap());
-    assert!(launch.to_string().contains(cwd.to_str().unwrap()));
+    let quoted = json!(cwd.to_str().unwrap()).to_string();
+    assert!(launch.to_string().contains(quoted.trim_matches('"')));
     let gone = service
         .client
         .delete(format!("{}/api/threads/{thread}", service.url))

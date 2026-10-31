@@ -749,7 +749,7 @@ async fn git_worktree_and_diff_through_the_api() {
         )
         .await;
     assert_eq!(status, 201, "{thread}");
-    let path = dir.path().join("repo-wt/feature-x");
+    let path = dir.path().join("repo-wt").join("feature-x");
     assert_eq!(thread["cwd"], path.to_str().unwrap());
     assert_eq!(thread["worktree"]["branch"], "feat/feature-x");
     std::fs::write(path.join("b.txt"), "new\n").unwrap();

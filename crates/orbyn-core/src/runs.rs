@@ -78,7 +78,8 @@ async fn target_root(checkout: &Path) -> PathBuf {
     .await;
     common
         .ok()
-        .and_then(|path| PathBuf::from(text(&path)).parent().map(Path::to_path_buf))
+        .and_then(|path| crate::util::canonicalize(Path::new(&text(&path))).ok())
+        .and_then(|path| path.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| checkout.to_path_buf())
 }
 

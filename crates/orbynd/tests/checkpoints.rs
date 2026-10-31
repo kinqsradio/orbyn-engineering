@@ -36,6 +36,8 @@ fn seed(dir: &TempDir) {
     let checkout = dir.path().join("library/repo/project");
     run_git(&checkout, &["config", "user.email", "t@example.com"]);
     run_git(&checkout, &["config", "user.name", "T"]);
+    // Bytes are compared below; Git on Windows may convert line endings by default.
+    run_git(&checkout, &["config", "core.autocrlf", "false"]);
     std::fs::write(checkout.join("base.txt"), "base\n").unwrap();
     run_git(&checkout, &["add", "."]);
     run_git(&checkout, &["commit", "-q", "-m", "first"]);
