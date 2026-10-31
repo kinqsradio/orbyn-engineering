@@ -121,6 +121,6 @@ ${Array.from({ length: 30 }, (_, at) => `- Step ${at + 1}`).join("\n")}
   ],
   failure: [
     ...message("partial", "Starting."),
-    { end: "failed", error: { message: "The engine stopped: quota reached" } },
+    { end: "failed", error: { message: "The engine stopped: disk full" } },
   ],
 };
