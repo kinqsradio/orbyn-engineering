@@ -2759,10 +2759,17 @@ button.detail-row:hover {
   flex: 1;
   min-width: 0;
 }
+.browser-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 .browser-frame {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
+  object-position: top left;
   background: var(--color-raised);
 }
 .browser-frame[data-human] {
@@ -2808,4 +2815,30 @@ button.detail-row:hover {
 }
 .terminal-host .xterm-viewport {
   overscroll-behavior: contain;
+}
+.acp-search {
+  display: flex;
+  gap: 8px;
+}
+.acp-search input {
+  flex: 1;
+  min-width: 0;
+}
+.acp-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.acp-results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.acp-results p {
+  margin: 0;
+  font-size: var(--text-small);
 }

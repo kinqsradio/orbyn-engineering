@@ -23,6 +23,24 @@ const SAFE_CONFIG: &[&str] = &[
     "diff.external=",
 ];
 
+/// Checkpoints hold the files' own bytes. Line-ending settings and attributes would
+/// rewrite them on the way in or out, so neither applies to a snapshot or a restore.
+const BYTE_EXACT: &[&str] = &[
+    "-c",
+    "core.autocrlf=false",
+    "-c",
+    "core.safecrlf=false",
+    "-c",
+    "core.attributesFile=",
+];
+
+/// The repository's own empty tree. Reading attributes from it hides `.gitattributes`.
+async fn no_attributes(cwd: &Path) -> Result<String> {
+    Ok(text(
+        &git(cwd, &["hash-object", "-t", "tree", "--stdin"]).await?,
+    ))
+}
+
 pub(crate) async fn git(cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
     let output = git_raw(cwd, args).await?;
     if !output.status.success() {
@@ -240,17 +258,21 @@ async fn worktree_start(repo: &Path, options: &WorktreeOptions) -> Option<String
 /// file alone. Ignored files are not captured.
 pub async fn snapshot(cwd: &Path, reference: Option<&str>, index: &Path) -> Result<String> {
     let index_text = index.to_string_lossy().into_owned();
+    let attributes = no_attributes(cwd).await?;
     let with_index = |args: Vec<String>| {
         let index_text = index_text.clone();
+        let attributes = attributes.clone();
         let cwd = cwd.to_path_buf();
         async move {
             let mut command = Command::new("git");
             command
                 .args(SAFE_CONFIG)
+                .args(BYTE_EXACT)
                 .args(["-c", "user.name=Orbyn", "-c", "user.email=orbyn@localhost"])
                 .args(&args)
                 .current_dir(&cwd)
                 .env("GIT_INDEX_FILE", &index_text)
+                .env("GIT_ATTR_SOURCE", &attributes)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -366,17 +388,32 @@ pub async fn restore_worktree(cwd: &Path, current: &str, target: &str) -> Result
         let path = cwd.join(String::from_utf8_lossy(path).as_ref());
         std::fs::remove_file(path)?;
     }
-    git(
-        cwd,
-        &[
+    let mut command = Command::new("git");
+    command
+        .args(SAFE_CONFIG)
+        .args(BYTE_EXACT)
+        .args([
             "restore",
             &format!("--source={target}"),
             "--worktree",
             "--",
             ".",
-        ],
-    )
-    .await?;
+        ])
+        .current_dir(cwd)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_ATTR_SOURCE", no_attributes(cwd).await?)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    crate::child_env::for_tool(command.as_std_mut());
+    let output = command
+        .output()
+        .await
+        .map_err(|error| CoreError::Git(format!("Could not run git: {error}")))?;
+    if !output.status.success() {
+        return Err(CoreError::Git(text(&output.stderr)));
+    }
     Ok(())
 }
 

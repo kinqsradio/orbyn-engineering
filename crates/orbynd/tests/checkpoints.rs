@@ -174,6 +174,40 @@ async fn restore_returns_files_keeps_ignored_ones_and_can_be_undone() {
 }
 
 #[tokio::test]
+async fn restored_bytes_match_the_checkpoint_whatever_git_would_convert() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, options(&dir, false), "codex").await;
+    seed(&dir);
+    let checkout = dir.path().join("library/repo/project");
+    run_git(&checkout, &["config", "core.autocrlf", "true"]);
+    std::fs::write(checkout.join(".gitattributes"), "*.crlf text eol=crlf\n").unwrap();
+    let kept: [(&str, &[u8]); 4] = [
+        ("base.txt", b"line ending\n"),
+        ("windows.txt", b"carriage\r\nreturn\r\n"),
+        ("mixed.txt", b"one\r\ntwo\n"),
+        ("attr.crlf", b"forced\n"),
+    ];
+    for (name, bytes) in kept {
+        std::fs::write(checkout.join(name), bytes).unwrap();
+    }
+    let id = run(&service, &thread, "[write:one.txt]").await;
+    for (name, _) in kept {
+        std::fs::write(checkout.join(name), "changed later\n").unwrap();
+    }
+
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/restore"),
+            json!({ "run_id": id, "point": "start" }),
+        )
+        .await;
+    assert_eq!(code, 204, "{body}");
+    for (name, bytes) in kept {
+        assert_eq!(std::fs::read(checkout.join(name)).unwrap(), bytes, "{name}");
+    }
+}
+
+#[tokio::test]
 async fn restore_refuses_a_shared_folder_and_a_busy_thread() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, options(&dir, false), "codex").await;

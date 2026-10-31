@@ -9,6 +9,7 @@ import { useWorkspace } from "../../state/workspace";
 import { arrangeModels, modelKey, useEngineModels } from "../thread/modelStore";
 import { Button, CopyCommand, Field, Pill, type PillTone, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
+import { AcpRegistry } from "./AcpRegistry";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 
 const POLL_WHILE_UPDATING_MS = 1500;
@@ -342,6 +343,7 @@ export function ProvidersSection() {
           ))}
         </ul>
       )}
+      <AcpRegistry />
       <CustomEngineForm />
     </>
   );
