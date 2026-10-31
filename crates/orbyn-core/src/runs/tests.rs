@@ -805,11 +805,14 @@ async fn run_context_names_the_checkout_and_the_prompt_stays_clean_in_the_log() 
     for needle in [
         root.to_str().unwrap(),
         spec.checkout.to_str().unwrap(),
-        "Target rules specialize shared methods",
-        "discovery across a Git boundary",
-        "Skills in scope: how",
+        "open its files directly",
+        "They specialize shared methods",
+        "skill_search",
     ] {
         assert!(spec.prompt.contains(needle), "{needle}");
+    }
+    for limit in ["read-only", "not guaranteed", "Selected checkout"] {
+        assert!(!spec.prompt.contains(limit), "{limit}");
     }
     assert_eq!(
         f.core.store.transcript(&f.thread, 1000).unwrap().trim(),

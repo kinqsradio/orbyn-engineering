@@ -123,7 +123,10 @@ async fn codex_thread_discovers_at_the_root_and_turns_write_in_the_checkout() {
     assert_eq!(turn["sandboxPolicy"]["type"], "workspaceWrite");
     assert_eq!(turn["sandboxPolicy"]["writableRoots"], json!([checkout]));
     let text = turn["input"][0]["text"].as_str().unwrap();
-    assert!(text.contains("Selected checkout"));
+    assert!(text.contains("Checkout: "), "{text}");
+    assert!(text.contains("open its files directly"), "{text}");
+    assert!(text.contains("skill_search"), "{text}");
+    assert!(text.len() < 1_000, "the first turn stays short: {text}");
     assert!(text.ends_with("hi"));
 }
 

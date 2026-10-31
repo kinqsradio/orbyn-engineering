@@ -64,10 +64,9 @@ impl EngineDriver for CodexDriver {
                 mcp: true,
                 sandbox: true,
                 managed: true,
-                skill_delivery: vec![
-                    SkillDelivery::NativeSkillRoot,
-                    SkillDelivery::McpSkillServer,
-                ],
+                // A turn builds its skill list from its own cwd, the checkout, so the
+                // library's `.agents/skills` never reach the model.
+                skill_delivery: vec![SkillDelivery::McpSkillServer],
                 goal_control: true,
             },
         }
