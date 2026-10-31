@@ -6,8 +6,94 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
+import { FilePreview, previewKind } from "./FilePreview";
 
 const q = encodeURIComponent;
+
+function Source({ text, line }: { text: string; line: number | null }) {
+  return (
+    <pre tabIndex={0} className="file-source" ref={scrollToMarkedLine}>
+      {text.split("\n").map((row, at) => (
+        <span key={at} data-line={at + 1 === line || undefined}>
+          <i>{at + 1}</i>
+          {row}
+          {"\n"}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+/** Reads a file by what it holds, with the source a click away and edits saved safely. */
+function FileBody({
+  threadId,
+  path,
+  file,
+  line,
+  onSaved,
+}: {
+  threadId: string;
+  path: string;
+  file: FileContent;
+  line: number | null;
+  onSaved(): void;
+}) {
+  const kind = previewKind(path);
+  const [mode, setMode] = useState<"preview" | "source" | "edit">(kind && !line ? "preview" : "source");
+  const [text, setText] = useState(file.content);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await request("PUT", `/api/threads/${q(threadId)}/files/content`, {
+        path,
+        content: text,
+        base_revision: file.revision,
+      });
+      setMode(kind ? "preview" : "source");
+      onSaved();
+    } catch (failure) {
+      const known = toFailure(failure);
+      setError(known.status === 409 ? "This file changed on disk. Reload it before saving." : `Couldn't save. ${known.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <div className="file-modes segment" role="radiogroup" aria-label="View">
+        {kind ? (
+          <button type="button" role="radio" aria-checked={mode === "preview"} onClick={() => setMode("preview")}>
+            Preview
+          </button>
+        ) : null}
+        <button type="button" role="radio" aria-checked={mode === "source"} onClick={() => setMode("source")}>
+          Source
+        </button>
+        <button type="button" role="radio" aria-checked={mode === "edit"} onClick={() => setMode("edit")}>
+          Edit
+        </button>
+      </div>
+      {mode === "preview" && kind ? <FilePreview kind={kind} text={file.content} /> : null}
+      {mode === "source" ? <Source text={file.content} line={line} /> : null}
+      {mode === "edit" ? (
+        <div className="file-editor">
+          <textarea aria-label={`Edit ${path}`} value={text} spellCheck={false} onChange={(event) => setText(event.target.value)} />
+          {error ? (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <Button small disabled={saving || text === file.content} onClick={() => void save()}>
+            Save
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 const scrollToMarkedLine = (element: HTMLPreElement | null) => {
   element?.querySelector("[data-line]")?.scrollIntoView({ block: "center" });
@@ -46,16 +132,10 @@ function Viewer({ threadId, path, line, onBack }: { threadId: string; path: stri
         <ErrorState compact title="Couldn't read this file" failure={file.error} onRetry={file.reload} />
       ) : file.data.binary ? (
         <p className="muted">This is a binary file.</p>
+      ) : file.data.truncated ? (
+        <p className="muted">This file is too large to show here.</p>
       ) : (
-        <pre tabIndex={0} className="file-source" ref={scrollToMarkedLine}>
-          {file.data.content.split("\n").map((text, at) => (
-            <span key={at} data-line={at + 1 === line || undefined}>
-              <i>{at + 1}</i>
-              {text}
-              {"\n"}
-            </span>
-          ))}
-        </pre>
+        <FileBody threadId={threadId} path={path} file={file.data} line={line} onSaved={file.reload} />
       )}
     </div>
   );

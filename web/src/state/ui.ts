@@ -51,6 +51,10 @@ interface Prefs {
   timestampFormat: "locale" | "12-hour" | "24-hour";
   sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
   followUpBehavior: "queue" | "steer";
+  diffLayout: "stacked" | "split";
+  diffFilesCollapsed: boolean;
+  diffIgnoreWhitespace: boolean;
+  diffHideTests: boolean;
   /** A named palette over the base theme, for each scheme. */
   lightPreset: string | null;
   darkPreset: string | null;
@@ -144,6 +148,10 @@ const defaults: Prefs = {
   timestampFormat: "locale",
   sendShortcut: "enter",
   followUpBehavior: "queue",
+  diffLayout: "stacked",
+  diffFilesCollapsed: false,
+  diffIgnoreWhitespace: false,
+  diffHideTests: false,
   lightPreset: null,
   darkPreset: null,
   customColors: {},
@@ -259,6 +267,10 @@ const prefsOf = (state: Prefs): Prefs => ({
   timestampFormat: state.timestampFormat,
   sendShortcut: state.sendShortcut,
   followUpBehavior: state.followUpBehavior,
+  diffLayout: state.diffLayout,
+  diffFilesCollapsed: state.diffFilesCollapsed,
+  diffIgnoreWhitespace: state.diffIgnoreWhitespace,
+  diffHideTests: state.diffHideTests,
   lightPreset: state.lightPreset,
   darkPreset: state.darkPreset,
   customColors: state.customColors,

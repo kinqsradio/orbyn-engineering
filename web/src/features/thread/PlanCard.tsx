@@ -34,7 +34,7 @@ function SaveDialog({ threadId, text, name, onClose }: { threadId: string; text:
       await request("PUT", `/api/threads/${encodeURIComponent(threadId)}/files/content`, {
         path: path.trim(),
         content: text,
-        expected_revision: null,
+        base_revision: null,
       });
       pushToast(`Saved ${path.trim()}`);
       onClose();

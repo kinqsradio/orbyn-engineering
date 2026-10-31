@@ -2554,3 +2554,98 @@ button.detail-row:hover {
   display: flex;
   flex-direction: column;
 }
+
+/* Diff options and file views */
+.diff-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 8px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.diff-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.diff-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 4px;
+  font-size: var(--text-small);
+}
+.diff-find input {
+  flex: 1;
+  min-width: 0;
+}
+.diff-commit {
+  margin: 4px 8px;
+  max-width: calc(100% - 16px);
+}
+.diff-file-head {
+  display: flex;
+  align-items: center;
+}
+.diff-file-head .diff-file-row {
+  flex: 1;
+  min-width: 0;
+}
+.diff-status {
+  flex: none;
+  width: 14px;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.diff-status[data-status="added"] {
+  color: var(--color-success);
+}
+.diff-status[data-status="deleted"] {
+  color: var(--color-danger);
+}
+.diff-status[data-status="renamed"] {
+  color: var(--color-info);
+}
+.patch-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.patch-line[data-hit] {
+  outline: 1px solid var(--color-warn);
+  outline-offset: -1px;
+}
+.file-modes {
+  margin: 4px 8px;
+}
+.file-preview,
+.file-notebook {
+  padding: 8px 12px;
+  overflow: auto;
+}
+.file-table {
+  margin: 8px;
+  overflow: auto;
+}
+.file-frame {
+  width: 100%;
+  height: calc(100dvh - 180px);
+  border: 0;
+  background: var(--color-raised);
+}
+.file-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+.file-editor textarea {
+  width: 100%;
+  min-height: 320px;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+.patch-empty {
+  background: var(--color-sunken);
+}

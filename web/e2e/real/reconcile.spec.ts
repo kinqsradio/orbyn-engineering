@@ -97,7 +97,7 @@ test("the palette finds a thread by project and offers settings", async ({ page 
   await page.keyboard.press("ControlOrMeta+p");
   await palette.getByRole("combobox", { name: "Search" }).fill("README");
   await palette.getByRole("button", { name: /README\.md/ }).click();
-  await expect(page.locator(".file-source")).toContainText("# Repo");
+  await expect(page.locator(".file-preview")).toContainText("Repo");
   await page.keyboard.press("ControlOrMeta+Shift+f");
   await palette.getByRole("combobox", { name: "Search" }).fill("Repo");
   await expect(palette.getByRole("button", { name: /README\.md:1/ })).toBeVisible();

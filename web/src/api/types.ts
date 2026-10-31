@@ -105,5 +105,6 @@ export type { TerminalInfo } from "../generated/TerminalInfo";
 export type Diagnostics = Wired<DiagnosticsWire>;
 export type ScheduledTask = Wired<ScheduledTaskWire>;
 export type { KeybindingsView } from "../generated/KeybindingsView";
+export type { CommitInfo } from "../generated/CommitInfo";
 export type { KeybindingRule } from "../generated/KeybindingRule";
 export type { PreferenceView } from "../generated/PreferenceView";
