@@ -10,6 +10,7 @@ import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
+import { SkillsNotice } from "./SkillsNotice";
 import { NoProjects } from "./NoProjects";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { IconButton } from "../../ui/controls";
@@ -369,6 +370,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                   </button>
                 )}
               </p>
+              <SkillsNotice />
             </div>
             <form
               className="composer"

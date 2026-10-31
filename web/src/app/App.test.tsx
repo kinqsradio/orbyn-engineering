@@ -223,27 +223,37 @@ describe("App against the mock API", () => {
     expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
   });
 
-  it("blocks everything on first run until setup finishes", async () => {
+  it("opens straight on the draft flow, with nothing to set up", async () => {
     mock.reset("first-run");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "What should we work on?" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.queryByText(/set up/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Skill library settings" })).toBeNull();
+  });
+
+  it("says so quietly when skills are unavailable, and Settings can try again", async () => {
+    mock.reset("no-skills");
     mock.failSetup();
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Set up your workspace" })).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "Workspace" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Set up workspace" }));
-    expect(await screen.findByText("Setup didn't finish")).toBeInTheDocument();
-    expect(screen.getByText(/couldn't be reached/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("heading", { name: "What should we work on?" }, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we work on?" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("link", { name: "Skill library settings" }));
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't be reached/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Try again" })).toBeNull(), { timeout: 3000 });
+    expect(screen.queryByRole("link", { name: "Skill library settings" })).toBeNull();
   });
 
-  it("adopts an existing library folder", async () => {
-    mock.reset("first-run");
+  it("adopts another library from Settings", async () => {
     const user = userEvent.setup();
+    go("#/settings/maintenance");
     render(<App />);
-    await user.click(await screen.findByRole("radio", { name: /Adopt an existing library/ }));
-    await user.click(await screen.findByRole("button", { name: "Adopt this folder" }));
-    expect(await screen.findByRole("heading", { name: "What should we work on?" }, { timeout: 3000 })).toBeInTheDocument();
+    await user.click(await screen.findByText("Advanced"));
+    await user.click(await screen.findByRole("button", { name: "Use this folder" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use this folder" })).toBeEnabled(), { timeout: 3000 });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("reviews incoming commits before updating the library", async () => {

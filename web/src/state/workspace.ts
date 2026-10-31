@@ -82,6 +82,8 @@ export interface UpdateRun {
 }
 
 const PROGRESS_POLL_MS = 1000;
+/** Nothing to list yet, which the quiet notice explains; not a failure to show on every surface. */
+const LIBRARY_MISSING = "workspace_required";
 
 export const engineHasUpdate = (engine: UpdateStatus["engines"][number]) =>
   engine.latest !== null && engine.latest !== engine.current;
@@ -234,11 +236,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const data = await api.projects();
       if (current()) set({ projects: { data, error: null, loading: false } });
     } catch (error) {
-      if (current()) {
-        set((state) => ({
-          projects: { data: state.projects.data, error: toFailure(error), loading: false },
-        }));
-      }
+      if (!current()) return;
+      const failure = toFailure(error);
+      if (failure.code === LIBRARY_MISSING) set({ projects: { data: [], error: null, loading: false } });
+      else set((state) => ({ projects: { data: state.projects.data, error: failure, loading: false } }));
     }
   },
 
@@ -328,11 +329,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const data = await api.engines();
       if (current()) set({ engines: { data, error: null, loading: false } });
     } catch (error) {
-      if (current()) {
-        set((state) => ({
-          engines: { data: state.engines.data, error: toFailure(error), loading: false },
-        }));
-      }
+      if (!current()) return;
+      const failure = toFailure(error);
+      if (failure.code === LIBRARY_MISSING) set({ engines: { data: [], error: null, loading: false } });
+      else set((state) => ({ engines: { data: state.engines.data, error: failure, loading: false } }));
     }
   },
 

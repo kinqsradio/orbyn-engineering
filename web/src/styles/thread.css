@@ -1612,6 +1612,12 @@ button.detail-row:hover {
   font-size: var(--text-title);
   font-weight: 600;
 }
+.skills-notice {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+  text-align: center;
+}
 .no-projects-actions {
   display: flex;
   flex-wrap: wrap;

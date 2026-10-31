@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
+import { SkillsNotice } from "./SkillsNotice";
 
 /** The app with nothing to work on yet. */
 export function NoProjects() {
@@ -20,6 +21,7 @@ export function NoProjects() {
           Start without a project
         </Button>
       </div>
+      <SkillsNotice />
     </div>
   );
 }

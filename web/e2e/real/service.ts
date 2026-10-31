@@ -208,10 +208,16 @@ export async function startService(
   };
 }
 
-/** A signed-in workspace on one trusted repository, for specs that start from a thread. */
+/** The service provisions its own library; this only covers one that hasn't. */
+export async function libraryReady(service: Service) {
+  const { configured } = await service.api<{ configured: boolean }>("GET", "/api/workspace");
+  if (!configured) await service.api("POST", "/api/workspace/setup", {});
+}
+
+/** A running service with one trusted repository, for specs that start from a thread. */
 export async function startProject(port: number, options: ServiceOptions = {}) {
   const service = await startService(port, options);
-  await service.api("POST", "/api/workspace/setup", {});
+  await libraryReady(service);
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });
   await service.api("POST", `/api/projects/${project.id}/trust`);
   const engines = await service.api<{ id: string; name: string }[]>("GET", "/api/engines");

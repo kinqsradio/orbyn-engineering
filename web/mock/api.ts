@@ -23,7 +23,7 @@ export interface MockResponse {
   body?: unknown;
 }
 
-export type Scenario = "default" | "empty" | "first-run" | "remote" | "offline" | "reference";
+export type Scenario = "default" | "empty" | "first-run" | "no-skills" | "remote" | "offline" | "reference";
 
 type Subscriber = (event: WireThreadEvent) => void;
 
@@ -79,7 +79,7 @@ export function createMockApi(options: MockOptions = {}) {
     failures = [];
     clones = [];
     delayMs = 0;
-    const blank = next === "empty" || next === "first-run";
+    const blank = next === "empty" || next === "first-run" || next === "no-skills";
     projects = blank ? [] : structuredClone(fixtures.projects);
     threads = blank ? [] : fixtures.threads();
     approvals = blank ? [] : fixtures.pendingApprovals();
@@ -96,7 +96,7 @@ export function createMockApi(options: MockOptions = {}) {
     updates = fixtures.updateStatus(2);
     settings = fixtures.serverSettings();
     failStep = null;
-    if (next === "first-run") managed = fixtures.workspaceStatus([], false);
+    if (next === "no-skills") managed = fixtures.workspaceStatus([], false);
     engines = structuredClone(fixtures.engines);
   }
   reset();

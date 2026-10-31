@@ -541,7 +541,9 @@ Skills come from the workspace, in place. Nothing is copied, packed or signed.
 There is one managed workspace: a clone of the skills library at `<data>/workspace`
 (`--workspace-url`, `ORBYN_WORKSPACE_URL`), cloned with `core.symlinks=true`, or an
 existing checkout the user adopts in place and which is never moved. Engines and
-projects wait for this step (`409 workspace_required`).
+projects wait for this step (`409 workspace_required`). People are never asked to take
+it: the app opens on the draft flow, shows one calm line when `configured` is false,
+and keeps library choices in Settings.
 
 ```text
 <workspace>/                 library Git root; engines start here
@@ -871,7 +873,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | --- | --- |
 | `GET /api/info` | `ServerInfo` |
 | `GET /api/workspace` | `WorkspaceStatus` |
-| `POST /api/workspace/setup` | Clone or adopt the library (`WorkspaceSetup`) |
+| `POST /api/workspace/setup` | Clone or adopt the library (`WorkspaceSetup`). No first-run screen calls this: the web sends it only from Settings, `{}` to try again while `configured` is false and `{adopt_path}` to use another library |
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |
 | `POST /api/workspace/rollback` | Back to the revision before the last update |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |

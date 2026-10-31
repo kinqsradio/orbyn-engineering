@@ -6,6 +6,7 @@ import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
+import { LibraryChoice } from "./LibraryChoice";
 import { FallbackNotice, Library } from "./Projects";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
@@ -240,6 +241,7 @@ export function MaintenanceSection() {
       <TelemetryGroup />
       {library?.native_skills === false ? <FallbackNotice /> : null}
       {library ? <Library library={library} /> : null}
+      <LibraryChoice />
       <SettingGroup title="Updates">
         {unsupported || updates?.app.unconfigured ? (
           <SettingRow title="App updates" description="Updates aren't set up for this build." />
