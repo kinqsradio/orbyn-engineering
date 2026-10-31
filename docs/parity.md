@@ -635,27 +635,27 @@ are not built in.
 - [x] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M | server done
 
 ## N. MCP tools for agents
-- [ ] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M
-- [ ] N2 Worktree: `t3_worktree_handoff`, `_status`, `_list` | apps/server/src/mcp/toolkits/worktree/tools.ts | s | M
+- [x] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M | server done, as `orbyn_*`; a tool sets project preferences only
+- [x] N2 Worktree: `t3_worktree_handoff`, `_status`, `_list` | apps/server/src/mcp/toolkits/worktree/tools.ts | s | M | server done, as `orbyn_*`
 - [ ] N3 HTML: `html_preview`, `html_render` | apps/server/src/mcp/toolkits/html/tools.ts | s | M
-- [ ] N4 Attachments: `t3_attachment_prepare_upload`, `_discard`, `t3_thread_send_attachments` | apps/server/src/mcp/toolkits/attachment/tools.ts | s | M
-- [ ] N5 Preview controls: `t3_preview_list`, `t3_preview_close` | apps/server/src/mcp/toolkits/previewControls/tools.ts | s | S
-- [ ] N6 Projects: `t3_project_list`, `_read`, `_create`, `_update`, `_delete`, `_clone` | apps/server/src/mcp/toolkits/project/tools.ts | s | M
+- [x] N4 Attachments: `t3_attachment_prepare_upload`, `_discard`, `t3_thread_send_attachments` | apps/server/src/mcp/toolkits/attachment/tools.ts | s | M | server done, as `orbyn_attachment_add`, which takes a checkout file, `_discard` and `orbyn_thread_send`
+- [x] N5 Preview controls: `t3_preview_list`, `t3_preview_close` | apps/server/src/mcp/toolkits/previewControls/tools.ts | s | S | server done, as `orbyn_*`
+- [ ] N6 Projects: `t3_project_list`, `_read`, `_create`, `_update`, `_delete`, `_clone` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server: read and rename the caller's own project; create, clone and delete reach past it, so tools do not offer them
 - [x] N7 Thread launch: `t3_thread_launch` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server done, as `orbyn_*`
-- [ ] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L
+- [ ] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L | server: open, navigate, back, forward and resize; dialogs and appearance not built
 - [ ] N9 Browser inspection: `preview_snapshot`, `_act`, `_evaluate`, `_wait_for` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L
-- [ ] N10 Browser recording: `preview_recording_start`, `_stop` | apps/server/src/mcp/toolkits/preview/tools.ts | s | M
+- [x] N10 Browser recording: `preview_recording_start`, `_stop` | apps/server/src/mcp/toolkits/preview/tools.ts | s | M | server done, as `orbyn_*`: changed frames as JPEG files
 - [ ] N11 Devices: `device_list`, `_open`, `_screenshot`, `_close` | apps/server/src/mcp/toolkits/device/tools.ts | s | M
-- [ ] N12 Thread organize and config: `t3_thread_organize`, `t3_thread_configure`, `t3_thread_transfer` | apps/server/src/mcp/toolkits/thread/tools.ts | s | M
+- [ ] N12 Thread organize and config: `t3_thread_organize`, `t3_thread_configure`, `t3_thread_transfer` | apps/server/src/mcp/toolkits/thread/tools.ts | s | M | server: organize and configure; transfer reaches past the project
 - [x] N13 Queue and requests: `t3_queue`, `t3_pending_request` | apps/server/src/mcp/toolkits/thread/tools.ts | s | M | server done, as `orbyn_*`
 - [x] N14 Thread search: `t3_thread_search` | apps/server/src/mcp/toolkits/thread/tools.ts | s | S | server done, as `orbyn_*`
 - [x] N15 Thread lifecycle: `t3_thread_list`, `_read`, `_update`, `_send`, `_wait`, `_interrupt` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
 - [x] N16 PR links: `link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests` | apps/server/src/mcp/toolkits/pullRequests/tools.ts | s | M | server done, as `orbyn_*`, core calls tested through `gh`
 - [x] N17 PR watch: `watch_pull_request`, `unwatch_pull_request` | apps/server/src/mcp/toolkits/pullRequests/tools.ts | s | M | server done, as `orbyn_*`, core calls tested through `gh`
 - [ ] N18 Guides: `write_pull_request_guides`, `read_pull_request_guide` | apps/server/src/mcp/toolkits/pullRequests/tools.ts | s | M
-- [ ] N19 Delegation: `orchestrator_capabilities`, `delegate_task`, `task_status`, `task_cancel`, `t3_workflow_stop`, `t3_background_wait` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | L
+- [ ] N19 Delegation: `orchestrator_capabilities`, `delegate_task`, `task_status`, `task_cancel`, `t3_workflow_stop`, `t3_background_wait` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | L | server: all but workflow stop, since M13 is not built; `orbyn_thread_wait` is the background wait
 - [x] N20 Scheduling: `schedule_task`, `list_scheduled_tasks`, `delete_scheduled_task`, `run_scheduled_task_now` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
-- [ ] N21 Agent requests: `request_secret`, `create_threads` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | [auth-risk]
+- [ ] N21 Agent requests: `request_secret`, `create_threads` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | [auth-risk] | server: `orbyn_threads_create`; `request_secret` stays out under rule 1
 - [ ] N22 Links: `t3_environment_links`, `_link`, `_unlink` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
 - [x] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M | server done: 512 KiB requests, 256 KiB replies; the permission prompt keeps its own timeout
 

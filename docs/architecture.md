@@ -609,10 +609,14 @@ what to do.
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
 random per run, is passed only to that run's engine, and is revoked at run end.
 Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
-governed `computer_*` tools and `orbyn_*` tools for threads, projects, pull requests,
-delegation and scheduling. `approve` is listed only for Claude.
+governed `computer_*` tools and `orbyn_*` tools for threads, projects, worktrees,
+attachments, preview tabs, pull requests, delegation, scheduling and declaring writes.
+`approve` is listed only for Claude.
 
-An `orbyn_*` tool reaches only the caller's project; anything else reads as not found.
+An `orbyn_*` tool reaches only the caller's project, its thread's preview tabs and, for
+an attachment, its own checkout; anything else reads as not found. A preference a tool
+sets is the project's, never a global one. A project cannot be created, cloned or
+removed from a tool, since those reach past it.
 Claude's permission prompt passes Orbyn's own tools without asking, so each tool with
 an effect goes through the gate itself as a `tool` action, which needs a person unless
 the thread is in full access or a rule allows it. Every call is audited first. A
@@ -731,6 +735,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
+| `PATCH /api/projects/:id` | `RenameProject`: the name shown; the folder stays |
 | `DELETE /api/projects/:id?delete_files=&confirm=` | `ProjectRemoval`: unregisters; `delete_files` is `400` unless Orbyn made the folder, and can be `409 project_has_work` |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
 | `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads; no `project_id` on create makes a scratch folder |

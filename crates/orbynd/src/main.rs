@@ -164,7 +164,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/adopt", post(api::adopt_scratch))
         .route(
             "/api/projects/{id}",
-            axum::routing::delete(api::remove_project),
+            axum::routing::patch(api::rename_project).delete(api::remove_project),
         )
         .route("/api/workspace", get(api::workspace_status))
         .route("/api/workspace/setup", post(api::workspace_setup))

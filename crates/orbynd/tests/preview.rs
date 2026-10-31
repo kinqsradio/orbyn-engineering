@@ -218,6 +218,61 @@ async fn a_tab_streams_frames_and_a_person_must_take_it_to_click() {
 }
 
 #[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn an_agent_records_a_page_in_its_own_tab() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let (code, _) = service
+        .patch(&thread, json!({ "permission_mode": "full_access" }))
+        .await;
+    assert_eq!(code, 200);
+    let port = serve_page();
+    let mut seen = None;
+    let mut call = async |name: &str, args: serde_json::Value| {
+        service
+            .admit(&thread, &format!("[mcp-call:{name}]{args}[/mcp-call]"))
+            .await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        service.finished(&thread).await;
+        let text = support::text_of(&events);
+        assert!(text.contains("tool error=false"), "{name}: {text}");
+        let reply = text.rsplit("tool error=false ").next().unwrap().trim();
+        serde_json::from_str::<serde_json::Value>(reply).unwrap()
+    };
+    let tab = call(
+        "orbyn_preview_open",
+        json!({ "url": format!("http://127.0.0.1:{port}/") }),
+    )
+    .await;
+    let id = tab["id"].as_str().unwrap().to_owned();
+    let listed = call("orbyn_preview_list", json!({})).await;
+    assert_eq!(listed[0]["id"], id.as_str());
+    call("orbyn_preview_recording_start", json!({ "tab_id": id })).await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let done = call("orbyn_preview_recording_stop", json!({ "tab_id": id })).await;
+    assert!(done["frames"].as_u64().unwrap() >= 1, "{done}");
+    let moved = call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "url": format!("http://127.0.0.1:{port}/two") }),
+    )
+    .await;
+    assert_eq!(moved["can_go_back"], true);
+    let back = call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "back": true }),
+    )
+    .await;
+    assert_eq!(back["url"], format!("http://127.0.0.1:{port}/"));
+    call("orbyn_preview_close", json!({ "tab_id": id })).await;
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn preview_controls_refuse_an_unknown_tab_and_a_bad_size() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;

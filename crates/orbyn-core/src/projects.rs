@@ -76,6 +76,8 @@ async fn unpushed_branches(repo: &Path, skip_current: bool) -> Result<Vec<String
     Ok(found)
 }
 
+const MAX_PROJECT_NAME: usize = 120;
+
 impl Core {
     /// Sets up the workspace and registers the library as a project of its own,
     /// which is how a thread is explicitly opened on it.
@@ -149,6 +151,17 @@ impl Core {
     /// Registers an existing folder where it is. It starts untrusted, and nothing
     /// is cloned, moved, copied or written. A folder already registered is refused
     /// by its real path, so a symlink to it cannot make a second project.
+    /// Only the name Orbyn shows changes. The folder stays where it is.
+    pub fn rename_project(&self, id: &str, name: &str) -> Result<Project> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > MAX_PROJECT_NAME {
+            return Err(CoreError::Invalid(format!(
+                "A project name is 1 to {MAX_PROJECT_NAME} characters."
+            )));
+        }
+        self.store.rename_project(id, name)
+    }
+
     pub async fn add_project(&self, path: &str) -> Result<Project> {
         let root = self.workspace.root()?;
         let resolved = resolve_project(&root, Path::new(path)).await?;

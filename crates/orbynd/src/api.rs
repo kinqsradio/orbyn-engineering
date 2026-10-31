@@ -15,10 +15,10 @@ use orbyn_contracts::{
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
     DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
     GitAction, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
-    OpenInEditor, OtlpCheck, PublishProject, QuestionState, ReorderThreads, RestoreChanges,
-    RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile,
-    StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread,
-    UpsertTask, WorkspaceSetup, WriteFile,
+    OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject, ReorderThreads,
+    RestoreChanges, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings, SetPreferences,
+    SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled,
+    UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -1159,6 +1159,14 @@ pub async fn search_messages(
         limit: query.limit,
     };
     Ok(Json(state.core.store.search_messages(&query.q, &scope)?))
+}
+
+pub async fn rename_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<RenameProject>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.rename_project(&id, &body.name)?))
 }
 
 pub async fn force_stop(

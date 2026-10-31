@@ -1793,6 +1793,12 @@ pub struct ForcedStop {
 }
 
 wire! {
+pub struct RenameProject {
+    pub name: String,
+}
+}
+
+wire! {
 pub struct TaskEnabled {
     pub enabled: bool,
 }

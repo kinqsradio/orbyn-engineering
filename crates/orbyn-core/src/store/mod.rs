@@ -201,6 +201,19 @@ impl Store {
     }
 
     /// Records the trust decision, audit first, in one transaction.
+    pub fn rename_project(&self, id: &str, name: &str) -> Result<Project> {
+        let changed = self.commit(|tx, _| {
+            Ok(tx.execute(
+                "UPDATE projects SET name = ?2 WHERE id = ?1",
+                params![id, name],
+            )?)
+        })?;
+        if changed == 0 {
+            return Err(CoreError::NotFound("project".into()));
+        }
+        self.project(id)
+    }
+
     pub fn trust_project(&self, id: &str, actor: &str) -> Result<Project> {
         self.commit(|tx, _| {
             let path: String = tx
