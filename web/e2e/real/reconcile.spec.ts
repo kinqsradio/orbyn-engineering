@@ -196,6 +196,7 @@ test("the keybindings page rebinds and the new key runs", async ({ page }) => {
 
 test("project defaults, scripts and the worktree settings save", async ({ page }) => {
   await page.goto(`${service.page}#/settings/worktrees`);
+  await page.getByRole("dialog", { name: "Settings" }).getByRole("button", { name: "Advanced" }).click();
   await page.getByRole("combobox", { name: "Naming" }).selectOption("semantic");
   await expect
     .poll(async () => {
