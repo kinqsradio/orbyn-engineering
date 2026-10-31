@@ -151,8 +151,8 @@ toward completion.
 - [ ] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L
 - [x] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
 - [ ] B40 Inline context chips: terminal, review comment, annotation, file at cursor | apps/web/src/components/ContextChip.tsx | w d m | L
-- [ ] B41 PR chips: `#` browse, number and text search | docs/user/composer.md | w d | M
-- [ ] B42 Thread chips: `@` lookup, on-demand read by the agent | apps/web/src/components/ThreadContextChip.tsx | w d m | M
+- [x] B41 PR chips: `#` browse, number and text search | docs/user/composer.md | w d | M | web done: a Markdown link in the prompt, not a chip
+- [x] B42 Thread chips: `@` lookup, on-demand read by the agent | apps/web/src/components/ThreadContextChip.tsx | w d m | M | web done: a Markdown link in the prompt, not a chip
 - [ ] B43 Drag threads to composer: multi-select, cross-environment transcript file | apps/web/src/components/chat/composerThreadImport.ts | w d | M
 - [x] B44 Image shelf and chips: thumbnails plus inline references | apps/web/src/components/chat/ComposerImageThumbnail.tsx | w d | M
 - [ ] B45 Chip clipboard: copy/paste keeps chips, refetches files | packages/contracts/src/composerContextClipboard.ts | w d | L
