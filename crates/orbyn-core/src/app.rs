@@ -195,7 +195,7 @@ impl Core {
         let cwd = worktree
             .as_ref()
             .map_or_else(|| project.path.clone(), |worktree| worktree.path.clone());
-        self.store.create_thread(NewThread {
+        let thread = self.store.create_thread(NewThread {
             project_id: project.id,
             title: request.title.unwrap_or_else(|| "New thread".to_owned()),
             engine: request.engine,
@@ -205,7 +205,9 @@ impl Core {
             skill_profile: request.skill_profile,
             parent_thread_id: None,
             relation: None,
-        })
+        })?;
+        self.run_hook_scripts(&thread.id, |script| script.run_on_worktree_create);
+        Ok(thread)
     }
 
     pub async fn thread_diff(&self, thread_id: &str) -> Result<Vec<orbyn_contracts::FileDiff>> {

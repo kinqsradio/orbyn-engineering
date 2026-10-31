@@ -389,6 +389,26 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/computer", post(api::computer_action))
         .route("/agui/threads/{id}", post(stream::agui_run))
         .route("/ws/terminal/{thread_id}", get(terminal_ws::terminal))
+        .route(
+            "/ws/terminal/{thread_id}/{terminal}",
+            get(terminal_ws::attach),
+        )
+        .route(
+            "/api/threads/{id}/terminals",
+            get(terminal_ws::list).post(terminal_ws::open),
+        )
+        .route(
+            "/api/threads/{id}/terminals/{terminal}",
+            axum::routing::patch(terminal_ws::rename).delete(terminal_ws::close),
+        )
+        .route(
+            "/api/threads/{id}/terminals/{terminal}/scrollback",
+            get(terminal_ws::scrollback).delete(terminal_ws::clear),
+        )
+        .route(
+            "/api/threads/{id}/scripts",
+            get(terminal_ws::scripts).post(terminal_ws::run_script),
+        )
         .route_layer(from_fn_with_state(access.clone(), access::require_auth));
     Router::new()
         .merge(protected)

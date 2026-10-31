@@ -15,7 +15,7 @@ use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, RunHandle, RunSpec,
 };
 use crate::error::Result;
-use crate::terminal::{PtySpec, TerminalManager};
+use crate::terminal::{MAIN_TERMINAL, PtySpec, TerminalManager};
 
 pub struct TerminalDriver {
     engine: CustomEngine,
@@ -97,7 +97,7 @@ impl EngineDriver for TerminalDriver {
                 .await;
             let outcome = tokio::select! {
                 () = stop.cancelled() => {
-                    terminals.close(&thread_id);
+                    let _ = terminals.close_one(&thread_id, MAIN_TERMINAL);
                     EngineOutcome::Cancelled
                 }
                 code = wait_for_exit(&mut exited) => match code {

@@ -15,6 +15,7 @@ pub mod git;
 pub mod mcp;
 pub mod policy;
 pub mod process;
+pub mod project_file;
 pub mod projects;
 pub mod questions;
 pub mod runs;

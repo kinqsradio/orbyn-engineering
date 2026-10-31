@@ -191,6 +191,23 @@ A background clone is a job kept in memory until the service stops. Its staging
 folder removes itself when the job is cancelled. An SSH URL the server refuses is
 tried once over HTTPS, and the job says so.
 
+## Terminals
+
+A thread holds up to 32 terminals, each with 5,000 lines and 8 MiB of scrollback kept
+here. Terminals sharing a `group` are a split. The `main` terminal is what a plain
+socket opens and a terminal-tier run uses, and a plain one nobody returns to closes
+after a minute. Named terminals stay until closed. Settling or archiving closes them
+all. `?observe=true` attaches read-only: input and resizes are dropped. Fish starts
+with `no-query-term` so it does not wait on terminal replies.
+
+The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
+the checkout's root. Orbyn only reads it, and a bad file is reported and never half
+applied. A script runs in its own terminal through the login shell, or `cmd /C` on
+Windows. The command comes from the file, never the request, and it needs a trusted
+folder. `run_on_worktree_create` and `run_on_settle` scripts run only in a worktree;
+one that cannot start is logged and does not undo the change that triggered it, and
+Orbyn does not hold a run for a setup script to finish.
+
 ## Files
 
 File routes need a trusted folder and share the engines' write scope, so `..` and
@@ -474,7 +491,12 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/rewind` | `RewindThread`: continue from before a run |
 | `POST /api/threads/:id/fork` | `ForkThread`: a child thread with the log up to a run |
 | `POST /api/threads/:id/switch-engine` | `SwitchEngine`: hand the conversation to another engine |
-| `GET /ws/terminal/:thread_id` | PTY: binary in/out, JSON text frame `{cols,rows}` resizes |
+| `GET /ws/terminal/:thread_id` | Main PTY: binary in/out, JSON text frame `{cols,rows}` resizes |
+| `GET /ws/terminal/:thread_id/:terminal?observe=` | Attach to a named terminal; `observe` is read-only |
+| `GET, POST /api/threads/:id/terminals` | `TerminalInfo[]`; `OpenTerminal` with `split_of` and `direction` |
+| `PATCH, DELETE /api/threads/:id/terminals/:terminal` | Rename, close |
+| `GET, DELETE /api/threads/:id/terminals/:terminal/scrollback` | `TerminalScrollback`; clear |
+| `GET, POST /api/threads/:id/scripts` | `ProjectFileView`; `RunScript` to `TerminalInfo` |
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |

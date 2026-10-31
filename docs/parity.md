@@ -47,7 +47,7 @@ surfaces on that row stay open.
 - [x] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M | server done
 - [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S | server done
 - [x] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M | web done
-- [ ] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S
+- [x] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S | server done
 - [x] A28 Snooze presets: up to 8 duration or time-of-day options | apps/web/src/components/settings/SnoozePresetsSettings.tsx | w d m s | M | server done
 - [x] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S | web done
 - [x] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S | web done
@@ -313,16 +313,16 @@ surfaces on that row stay open.
 - [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
 
 ## G. Terminal
-- [ ] G1 Thread terminals: per-thread drawer, persistent across switches | apps/web/src/components/ThreadTerminalDrawer.tsx | w d m s | L
-- [ ] G2 Splits and tabs: horizontal, vertical, new, close | packages/contracts/src/keybindings.ts | w d | M
-- [ ] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M
+- [x] G1 Thread terminals: per-thread drawer, persistent across switches | apps/web/src/components/ThreadTerminalDrawer.tsx | w d m s | L | server done
+- [x] G2 Splits and tabs: horizontal, vertical, new, close | packages/contracts/src/keybindings.ts | w d | M | server done
+- [x] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M | server done
 - [ ] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S
 - [ ] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M
 - [ ] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S
-- [ ] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M
+- [x] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M | server done
 - [ ] G8 Native mobile terminal: dedicated surface with paste and menu | apps/mobile/src/features/terminal/NativeTerminalSurface.tsx | m | L
-- [ ] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S
-- [ ] G10 Project scripts control: run scripts, keybindings per script | apps/web/src/components/ProjectScriptsControl.tsx | w d m s | M
+- [x] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S | server done
+- [x] G10 Project scripts control: run scripts, keybindings per script | apps/web/src/components/ProjectScriptsControl.tsx | w d m s | M | server done
 - [ ] G11 Mobile terminal preferences: font size 6 to 14 in half steps, theme, paste handling, session menu with status labels, exit navigation | apps/mobile/src/features/terminal/terminalPreferences.ts | m | S
 
 ## H. Browser preview and devices
@@ -461,7 +461,7 @@ surfaces on that row stay open.
 - [ ] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
 - [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
-- [ ] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M
+- [x] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M | server done
 - [ ] K9 Project actions: run on worktree create, settle, async, preview URL | apps/web/src/components/settings/ProjectActionsSettings.tsx | w d s | M
 - [ ] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L
 - [ ] K11 Keybindings file: lenient JSON with late defaults | apps/server/src/keybindings.ts | s | M

@@ -20,6 +20,9 @@ impl Core {
         if patch.settled == Some(true) || patch.archived == Some(true) {
             self.terminals.close(id);
         }
+        if patch.settled == Some(true) {
+            self.run_hook_scripts(id, |script| script.run_on_settle);
+        }
         Ok(thread)
     }
 
@@ -82,6 +85,7 @@ impl Core {
         })?;
         for id in &report.settled {
             self.terminals.close(id);
+            self.run_hook_scripts(id, |script| script.run_on_settle);
         }
         Ok(report)
     }

@@ -1,19 +1,50 @@
-//! PTY sessions, one per thread at most. portable-pty uses ConPTY on Windows.
+//! PTY sessions, any number per thread. portable-pty uses ConPTY on Windows.
 //! Output is broadcast to any attached client and kept in a bounded scrollback,
-//! so a reconnecting client sees recent output.
+//! so a reconnecting client sees recent output. A thread's `main` terminal is the
+//! one a plain socket opens; the others are named by the client.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use orbyn_contracts::TerminalInfo;
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use tokio::sync::{broadcast, watch};
 
 use crate::error::{CoreError, Result};
 use crate::process::ProcessTree;
 
-const SCROLLBACK_BYTES: usize = 256 * 1024;
+const SCROLLBACK_BYTES: usize = 8 * 1024 * 1024;
+const SCROLLBACK_LINES: usize = 5_000;
+const MAX_TERMINALS: usize = 32;
+
+/// The terminal a thread's plain socket and a terminal-tier run use.
+pub const MAIN_TERMINAL: &str = "main";
+
+/// Recent output, cut at whichever of the byte and line limits comes first.
+#[derive(Default)]
+struct Scrollback {
+    bytes: VecDeque<u8>,
+    lines: usize,
+}
+
+impl Scrollback {
+    fn push(&mut self, chunk: &[u8], max_bytes: usize, max_lines: usize) {
+        self.bytes.extend(chunk.iter().copied());
+        self.lines += chunk.iter().filter(|byte| **byte == b'\n').count();
+        let overflow = self.bytes.len().saturating_sub(max_bytes);
+        let cut: Vec<u8> = self.bytes.drain(..overflow).collect();
+        self.lines -= cut.iter().filter(|byte| **byte == b'\n').count();
+        while self.lines > max_lines {
+            let Some(end) = self.bytes.iter().position(|byte| *byte == b'\n') else {
+                break;
+            };
+            self.bytes.drain(..=end);
+            self.lines -= 1;
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct PtySpec {
@@ -28,7 +59,7 @@ pub struct PtySession {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     output: broadcast::Sender<Vec<u8>>,
-    scrollback: Mutex<VecDeque<u8>>,
+    scrollback: Mutex<Scrollback>,
     exit: watch::Sender<Option<i32>>,
     tree: ProcessTree,
 }
@@ -57,7 +88,19 @@ impl PtySession {
     pub fn attach(&self) -> (Vec<u8>, broadcast::Receiver<Vec<u8>>) {
         let scrollback = lock(&self.scrollback);
         let receiver = self.output.subscribe();
-        (scrollback.iter().copied().collect(), receiver)
+        (scrollback.bytes.iter().copied().collect(), receiver)
+    }
+
+    pub fn scrollback(&self) -> Vec<u8> {
+        lock(&self.scrollback).bytes.iter().copied().collect()
+    }
+
+    pub fn clear(&self) {
+        *lock(&self.scrollback) = Scrollback::default();
+    }
+
+    pub fn exit_code(&self) -> Option<i32> {
+        *self.exit.borrow()
     }
 
     pub fn exited(&self) -> watch::Receiver<Option<i32>> {
@@ -89,42 +132,191 @@ fn lock<T: ?Sized>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+struct Entry {
+    info: TerminalInfo,
+    session: Arc<PtySession>,
+}
+
+type Key = (String, String);
+
 #[derive(Default)]
 pub struct TerminalManager {
-    sessions: Mutex<HashMap<String, Arc<PtySession>>>,
+    sessions: Mutex<HashMap<Key, Entry>>,
+}
+
+/// What a new terminal is called and where it sits.
+#[derive(Clone, Debug, Default)]
+pub struct TerminalLabel {
+    pub title: Option<String>,
+    pub group: Option<String>,
+    pub direction: Option<String>,
+    pub script: Option<String>,
+}
+
+fn key(thread_id: &str, id: &str) -> Key {
+    (thread_id.to_owned(), id.to_owned())
+}
+
+fn current(entry: &Entry) -> TerminalInfo {
+    TerminalInfo {
+        alive: entry.session.is_alive(),
+        exit_code: entry.session.exit_code(),
+        clients: entry.session.attached_clients(),
+        ..entry.info.clone()
+    }
 }
 
 impl TerminalManager {
-    /// Returns the thread's live session, or starts one from `spec`.
+    /// Returns the thread's live main terminal, or starts one from `spec`.
     pub fn open(&self, thread_id: &str, spec: PtySpec) -> Result<Arc<PtySession>> {
         let mut sessions = lock(&self.sessions);
-        if let Some(existing) = sessions.get(thread_id).filter(|s| s.is_alive()) {
-            return Ok(existing.clone());
+        if let Some(existing) = sessions
+            .get(&key(thread_id, MAIN_TERMINAL))
+            .filter(|entry| entry.session.is_alive())
+        {
+            return Ok(existing.session.clone());
         }
+        let label = TerminalLabel {
+            title: Some("Terminal".to_owned()),
+            ..TerminalLabel::default()
+        };
         let session = spawn(spec)?;
-        sessions.insert(thread_id.to_owned(), session.clone());
+        insert(
+            &mut sessions,
+            thread_id,
+            MAIN_TERMINAL,
+            label,
+            session.clone(),
+        );
         Ok(session)
     }
 
-    /// The live session for a thread, if any.
-    pub fn session(&self, thread_id: &str) -> Option<Arc<PtySession>> {
-        lock(&self.sessions)
-            .get(thread_id)
-            .filter(|session| session.is_alive())
-            .cloned()
+    /// Starts another terminal on this thread, replacing an ended one of that id.
+    pub fn open_named(
+        &self,
+        thread_id: &str,
+        id: &str,
+        label: TerminalLabel,
+        spec: PtySpec,
+    ) -> Result<TerminalInfo> {
+        let mut sessions = lock(&self.sessions);
+        let open = sessions
+            .keys()
+            .filter(|(owner, _)| owner == thread_id)
+            .count();
+        if open >= MAX_TERMINALS {
+            return Err(CoreError::Invalid(format!(
+                "A thread can hold {MAX_TERMINALS} terminals."
+            )));
+        }
+        if let Some(entry) = sessions.remove(&key(thread_id, id)) {
+            entry.session.kill();
+        }
+        let session = spawn(spec)?;
+        let info = insert(&mut sessions, thread_id, id, label, session);
+        Ok(info)
     }
 
+    /// The live main terminal for a thread, if any.
+    pub fn session(&self, thread_id: &str) -> Option<Arc<PtySession>> {
+        self.named(thread_id, MAIN_TERMINAL)
+            .filter(|session| session.is_alive())
+    }
+
+    /// A terminal by id, ended or not, so its last output can still be read.
+    pub fn named(&self, thread_id: &str, id: &str) -> Option<Arc<PtySession>> {
+        lock(&self.sessions)
+            .get(&key(thread_id, id))
+            .map(|entry| entry.session.clone())
+    }
+
+    /// The group a terminal belongs to, so a split can join it.
+    pub fn group_of(&self, thread_id: &str, id: &str) -> Option<String> {
+        lock(&self.sessions)
+            .get(&key(thread_id, id))
+            .map(|entry| entry.info.group.clone())
+    }
+
+    pub fn list(&self, thread_id: &str) -> Vec<TerminalInfo> {
+        let sessions = lock(&self.sessions);
+        let mut list: Vec<TerminalInfo> = sessions
+            .iter()
+            .filter(|((owner, _), _)| owner == thread_id)
+            .map(|(_, entry)| current(entry))
+            .collect();
+        list.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+        list
+    }
+
+    pub fn rename(&self, thread_id: &str, id: &str, title: &str) -> Result<TerminalInfo> {
+        let mut sessions = lock(&self.sessions);
+        let entry = sessions
+            .get_mut(&key(thread_id, id))
+            .ok_or_else(|| CoreError::NotFound("terminal".into()))?;
+        title.clone_into(&mut entry.info.title);
+        Ok(current(entry))
+    }
+
+    pub fn close_one(&self, thread_id: &str, id: &str) -> Result<()> {
+        let entry = lock(&self.sessions)
+            .remove(&key(thread_id, id))
+            .ok_or_else(|| CoreError::NotFound("terminal".into()))?;
+        entry.session.kill();
+        Ok(())
+    }
+
+    /// Closes every terminal of a thread.
     pub fn close(&self, thread_id: &str) {
-        if let Some(session) = lock(&self.sessions).remove(thread_id) {
-            session.kill();
-        }
+        lock(&self.sessions).retain(|(owner, _), entry| {
+            let keep = owner != thread_id;
+            if !keep {
+                entry.session.kill();
+            }
+            keep
+        });
     }
 
     pub fn close_all(&self) {
-        for (_, session) in lock(&self.sessions).drain() {
-            session.kill();
+        for (_, entry) in lock(&self.sessions).drain() {
+            entry.session.kill();
         }
     }
+}
+
+fn insert(
+    sessions: &mut HashMap<Key, Entry>,
+    thread_id: &str,
+    id: &str,
+    label: TerminalLabel,
+    session: Arc<PtySession>,
+) -> TerminalInfo {
+    let info = TerminalInfo {
+        id: id.to_owned(),
+        thread_id: thread_id.to_owned(),
+        title: label.title.unwrap_or_else(|| "Terminal".to_owned()),
+        group: label.group.unwrap_or_else(|| id.to_owned()),
+        direction: label.direction,
+        alive: true,
+        exit_code: None,
+        clients: 0,
+        script: label.script,
+        created_at: crate::util::now(),
+    };
+    let entry = Entry { info, session };
+    let shown = current(&entry);
+    sessions.insert(key(thread_id, id), entry);
+    shown
+}
+
+/// Fish asks the terminal questions at startup, and waits on the replies.
+fn fish_features(program: &std::path::Path) -> Option<String> {
+    if program.file_stem().and_then(|name| name.to_str()) != Some("fish") {
+        return None;
+    }
+    Some(std::env::var("fish_features").map_or_else(
+        |_| "no-query-term".to_owned(),
+        |existing| format!("{existing},no-query-term"),
+    ))
 }
 
 fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
@@ -142,6 +334,9 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
     let mut command = CommandBuilder::new(&spec.program);
     command.args(&spec.args);
     command.cwd(&spec.cwd);
+    if let Some(features) = fish_features(&spec.program) {
+        command.env("fish_features", features);
+    }
     let mut child = pty.slave.spawn_command(command).map_err(failed)?;
     drop(pty.slave);
     let pid = child.process_id().unwrap_or(0);
@@ -153,7 +348,7 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
         writer: Mutex::new(writer),
         master: Mutex::new(pty.master),
         output,
-        scrollback: Mutex::new(VecDeque::with_capacity(SCROLLBACK_BYTES)),
+        scrollback: Mutex::new(Scrollback::default()),
         exit,
         tree: tree_for(pid),
     });
@@ -171,10 +366,7 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
             };
             let chunk = buffer[..read].to_vec();
             let mut scrollback = lock(&session.scrollback);
-            let overflow = (scrollback.len() + read).saturating_sub(SCROLLBACK_BYTES);
-            let dropped = overflow.min(scrollback.len());
-            scrollback.drain(..dropped);
-            scrollback.extend(chunk.iter().copied());
+            scrollback.push(&chunk, SCROLLBACK_BYTES, SCROLLBACK_LINES);
             let _ = session.output.send(chunk);
         }
     });
@@ -211,5 +403,42 @@ pub fn default_shell() -> PathBuf {
     #[cfg(not(windows))]
     {
         std::env::var_os("SHELL").map_or_else(|| "/bin/sh".into(), PathBuf::from)
+    }
+}
+
+/// The shell invocation that runs one command line.
+pub fn shell_command(command: &str) -> (PathBuf, Vec<std::ffi::OsString>) {
+    let shell = default_shell();
+    #[cfg(windows)]
+    let args = vec!["/C".into(), command.into()];
+    #[cfg(not(windows))]
+    let args = vec!["-lc".into(), command.into()];
+    (shell, args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrollback_is_cut_at_lines_and_at_bytes() {
+        let mut back = Scrollback::default();
+        back.push(b"one\ntwo\nthree\n", 100, 2);
+        assert_eq!(
+            back.bytes.iter().copied().collect::<Vec<u8>>(),
+            b"two\nthree\n"
+        );
+        assert_eq!(back.lines, 2);
+        let mut back = Scrollback::default();
+        back.push(b"aaaa\nbbbb\n", 6, 100);
+        assert_eq!(back.bytes.iter().copied().collect::<Vec<u8>>(), b"\nbbbb\n");
+        assert_eq!(back.lines, 2);
+    }
+
+    #[test]
+    fn only_fish_gets_the_startup_flag() {
+        assert!(fish_features(std::path::Path::new("/bin/zsh")).is_none());
+        let flag = fish_features(std::path::Path::new("/usr/bin/fish")).unwrap();
+        assert!(flag.ends_with("no-query-term"));
     }
 }
