@@ -142,6 +142,8 @@ pub struct WorktreeOptions {
     pub from_origin: bool,
     /// `recursive`, `top_level` or `skip`.
     pub submodules: String,
+    /// An absolute folder for new worktrees, instead of beside the repository.
+    pub directory: Option<PathBuf>,
 }
 
 impl Default for WorktreeOptions {
@@ -151,6 +153,7 @@ impl Default for WorktreeOptions {
             base: None,
             from_origin: false,
             submodules: "skip".to_owned(),
+            directory: None,
         }
     }
 }
@@ -168,17 +171,37 @@ pub async fn create_worktree(
             "Use lowercase letters, digits and hyphens for the worktree name.".into(),
         ));
     }
-    let path = worktree_path(repo, purpose)?;
+    let path = match &options.directory {
+        Some(directory) if !directory.is_absolute() => {
+            return Err(CoreError::Invalid(
+                "The worktree location must be an absolute path.".into(),
+            ));
+        }
+        Some(directory) => {
+            let name = repo
+                .file_name()
+                .ok_or_else(|| CoreError::Git("This repository has no folder name.".into()))?;
+            directory.join(name).join(purpose)
+        }
+        None => worktree_path(repo, purpose)?,
+    };
     let path_text = path.to_string_lossy().into_owned();
     let head = text(&git(repo, &["rev-parse", "HEAD"]).await?);
     for registered in linked_worktrees(repo).await? {
-        if crate::util::canonicalize(&registered.path).ok().as_ref()
-            == crate::util::canonicalize(&path).ok().as_ref()
-            && path.exists()
+        // One made before the location changed is still this purpose's worktree.
+        if registered.path.exists()
+            && registered.path.file_name() == Some(std::ffi::OsStr::new(purpose))
         {
             let base = text(&git(repo, &["merge-base", "HEAD", &registered.revision]).await?);
+            // Git's spelling of a path differs on Windows, so keep ours when it is the same place.
+            let same = crate::util::canonicalize(&registered.path).ok().as_ref()
+                == crate::util::canonicalize(&path).ok().as_ref();
             return Ok(Worktree {
-                path: path_text,
+                path: if same {
+                    path_text
+                } else {
+                    registered.path.to_string_lossy().into_owned()
+                },
                 branch: registered.branch.unwrap_or_else(|| "HEAD".to_owned()),
                 base,
             });
@@ -568,6 +591,34 @@ mod tests {
         git(&repo, &["add", "."]).await.unwrap();
         git(&repo, &["commit", "-q", "-m", "first"]).await.unwrap();
         repo
+    }
+
+    #[tokio::test]
+    async fn a_worktree_location_is_used_and_earlier_worktrees_stay_found() {
+        let dir = TempDir::new();
+        let repo = repo(dir.path()).await;
+        let earlier = create_worktree(&repo, "before", &WorktreeOptions::default())
+            .await
+            .unwrap();
+        let elsewhere = WorktreeOptions {
+            directory: Some(dir.path().join("elsewhere")),
+            ..WorktreeOptions::default()
+        };
+        let made = create_worktree(&repo, "fresh", &elsewhere).await.unwrap();
+        assert_eq!(
+            Path::new(&made.path),
+            dir.path().join("elsewhere/project/fresh")
+        );
+        let kept = create_worktree(&repo, "before", &elsewhere).await.unwrap();
+        assert_eq!(
+            crate::util::canonicalize(Path::new(&kept.path)).unwrap(),
+            crate::util::canonicalize(Path::new(&earlier.path)).unwrap()
+        );
+        let relative = WorktreeOptions {
+            directory: Some(PathBuf::from("not/absolute")),
+            ..WorktreeOptions::default()
+        };
+        assert!(create_worktree(&repo, "other", &relative).await.is_err());
     }
 
     #[tokio::test]
