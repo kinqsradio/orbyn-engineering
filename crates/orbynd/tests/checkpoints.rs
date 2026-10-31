@@ -244,6 +244,47 @@ async fn rewind_drops_the_session_and_hands_the_earlier_conversation_on_once() {
 }
 
 #[tokio::test]
+async fn a_handoff_survives_a_failed_run_and_goes_only_with_a_finished_one() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
+    seed(&dir);
+    run(&service, &thread, "remember the first thing").await;
+    let second = run(&service, &thread, "second thing").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/rewind"),
+            json!({ "run_id": second, "restore_files": false }),
+        )
+        .await;
+    assert_eq!(code, 204, "{body}");
+    // A bare command has no way to carry the earlier conversation.
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "/compact" }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    assert_eq!(body["code"], "unsupported");
+
+    service.admit(&thread, "[fail] third").await;
+    assert_eq!(service.finished(&thread).await, "failed");
+    service.admit(&thread, "fourth").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    service.admit(&thread, "fifth").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
+    let starts: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains(r#""mode":"codex-turn""#))
+        .collect();
+    let at = |prompt: &str| starts.iter().find(|turn| turn.contains(prompt)).unwrap();
+    assert!(at("third").contains("remember the first thing"));
+    assert!(at("fourth").contains("remember the first thing"), "kept");
+    assert!(!at("fifth").contains("remember the first thing"), "cleared");
+}
+
+#[tokio::test]
 async fn fork_shows_the_history_up_to_its_point_and_leaves_the_parent_alone() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, options(&dir, false), "codex").await;

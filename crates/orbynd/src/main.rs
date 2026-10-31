@@ -475,7 +475,12 @@ fn router(state: AppState) -> Router {
         .merge(protected)
         .route("/auth/session", post(api::open_session))
         .route("/hooks/{id}/{token}", post(api::webhook))
-        .route("/mcp/{thread_token}", post(api::mcp).get(api::mcp_get))
+        .route(
+            "/mcp/{thread_token}",
+            post(api::mcp)
+                .get(api::mcp_get)
+                .layer(DefaultBodyLimit::max(orbyn_core::mcp::MAX_REQUEST_BYTES)),
+        )
         .fallback(ui::serve)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(from_fn_with_state(access, access::guard_origin))

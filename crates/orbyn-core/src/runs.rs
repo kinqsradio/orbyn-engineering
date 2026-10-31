@@ -261,10 +261,16 @@ impl RunManager {
     /// without it refuses here rather than reading the words as a prompt.
     fn check_goal_action(&self, thread: &Thread, prompt: &str) -> Result<()> {
         let driver = self.engines.driver(&thread.engine)?;
-        let held = matches!(
-            RunKind::parse(prompt),
-            RunKind::Goal(GoalAction::Pause | GoalAction::Resume)
-        );
+        let kind = RunKind::parse(prompt);
+        // These reach the engine bare, so earlier conversation has no way along.
+        if kind != RunKind::Turn && self.store.pending_handoff(&thread.id)?.is_some() {
+            return Err(CoreError::Unsupported(
+                "Send a message first: this thread's earlier conversation has not reached \
+                 the engine yet."
+                    .into(),
+            ));
+        }
+        let held = matches!(kind, RunKind::Goal(GoalAction::Pause | GoalAction::Resume));
         if held && !driver.descriptor().capabilities.goal_control {
             return Err(CoreError::Unsupported(
                 "This engine cannot pause or resume a goal.".into(),
@@ -412,6 +418,7 @@ impl RunManager {
         {
             return Err(CoreError::ThreadArchived);
         }
+        self.check_goal_action(&thread, prompt)?;
         self.attachment_files(thread_id, attachments)?;
         let chosen = selection::merged(&selection::of_thread(&thread), wanted);
         self.engines.check_selection(&thread.engine, &chosen)?;
@@ -594,7 +601,12 @@ impl RunManager {
             tracing::warn!(%error, "could not remove a run directory");
         }
         let (state, message) = match outcome {
-            EngineOutcome::Completed => (RunState::Completed, None),
+            EngineOutcome::Completed => {
+                if let Err(error) = self.store.clear_handoff(&scope.thread_id) {
+                    tracing::warn!(%error, "could not clear a used handoff");
+                }
+                (RunState::Completed, None)
+            }
             EngineOutcome::Cancelled => (RunState::Cancelled, None),
             EngineOutcome::Failed(message) => {
                 let sign_in = self.engines.driver(&scope.engine).ok();
@@ -774,7 +786,7 @@ impl RunManager {
             return Ok(None);
         }
         let (revision, dirty) = self.workspace.identity().await?;
-        let handoff = self.store.take_handoff(&thread.id)?;
+        let handoff = self.store.pending_handoff(&thread.id)?;
         let context = run_context(&RunContext {
             library: &root,
             revision: &revision,

@@ -127,7 +127,9 @@ in a temp folder with no prompt sent.
 
 Claude's list is kept until its CLI version or login changes, which is compared at most
 once a minute. Other lists are kept five minutes, a stand-in 30 seconds, and `?refresh=
-true` always asks. A failure is reported with the list empty rather than as an error.
+true` always asks. A failure, a stand-in or an answer with no models never replaces a good list: the last
+one stays, with `error` saying why, and a read of Claude stops at 4 MiB. With no list
+yet, a failure is reported with the list empty rather than as an error.
 
 A selection is a model, an effort and `options` by `ModelOption` id: `service_tier`
 (`default` is Standard), `fast_mode` (`on`, `off`), `mode` and `config:<id>` for ACP.
@@ -223,7 +225,10 @@ Restoring takes a safety snapshot first, then makes the files match, leaving HEA
 the index and ignored files alone. It refuses while another live thread shares the
 folder. A rewind, a fork and an engine switch cannot carry an engine session, so each
 ends it and leaves a handoff of up to 16,000 characters, oldest text dropped first,
-that goes to the next run once. The log stays whole; a rewind is logged as `CUSTOM
+for the next run. Dropping the session and writing the handoff share a transaction. It
+stays until a run that carried it completes, so a failed start, a stop or a restart
+leaves it pending, and until then `/compact` and `/goal`, which reach an engine bare, are
+`422 unsupported`. The log stays whole; a rewind is logged as `CUSTOM
 thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
 is not used.
 
@@ -559,6 +564,14 @@ yet, so taking control only guards against a watcher's stray input.
 through `lsof`. Windows has no such check, so there it lists loopback and wildcard
 listeners, named through a PowerShell query with `netstat` behind it, with `in_checkout:
 false`, and none of those can be stopped from here.
+
+## Tool budgets
+
+A tool call answers within 45 seconds, under the minute engines allow, and one that
+can wait on a person gets 240. Going over drops the call, and a dropped wait expires its
+approval, so a late answer does nothing. Claude's `approve` is a run's permission prompt
+and stays on `ORBYN_APPROVAL_TIMEOUT_SECS`. `orbyn_thread_wait` waits at most 40 seconds
+and reports `ended: false`. A request can be 512 KiB and a reply is cut at 256 KiB.
 
 ## Service access
 

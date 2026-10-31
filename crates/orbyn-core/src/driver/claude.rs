@@ -36,6 +36,8 @@ use crate::util::{new_id, write_private};
 const EXIT_GRACE: Duration = Duration::from_secs(3);
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 const INITIALIZE_ID: &str = "orbyn-capabilities";
+/// More than any real reply. A process that keeps talking is not answering.
+const MAX_INITIALIZE_BYTES: usize = 4 * 1024 * 1024;
 /// Efforts the docs name, for the stand-in list only.
 const DOCUMENTED_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
@@ -305,8 +307,13 @@ impl ClaudeDriver {
 /// `parse_capabilities` names leave this file.
 async fn read_initialize(stdout: tokio::process::ChildStdout) -> Option<Value> {
     let mut stream = lines(stdout);
+    let mut seen = 0;
     while let Some(line) = stream.next().await {
         let Ok(line) = line else { continue };
+        seen += line.len();
+        if seen > MAX_INITIALIZE_BYTES {
+            return None;
+        }
         let Ok(frame) = serde_json::from_str::<Value>(&line) else {
             continue;
         };

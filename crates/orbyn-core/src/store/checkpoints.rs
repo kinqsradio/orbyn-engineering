@@ -149,18 +149,24 @@ impl Store {
     }
 
     /// Hands the text to one run only.
-    pub fn take_handoff(&self, thread_id: &str) -> Result<Option<String>> {
+    /// The handoff waiting for a run. It stays until a run has finished with it.
+    pub fn pending_handoff(&self, thread_id: &str) -> Result<Option<String>> {
+        Ok(self.reader().query_row(
+            "SELECT handoff FROM threads WHERE id = ?1",
+            [thread_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// Ends a handoff once a run that carried it has finished and been kept, so a
+    /// failed start, a stop or a restart leaves it for the next run.
+    pub fn clear_handoff(&self, thread_id: &str) -> Result<()> {
         self.commit(|tx, _| {
-            let text: Option<String> = tx.query_row(
-                "SELECT handoff FROM threads WHERE id = ?1",
-                [thread_id],
-                |row| row.get(0),
-            )?;
             tx.execute(
                 "UPDATE threads SET handoff = NULL WHERE id = ?1",
                 [thread_id],
             )?;
-            Ok(text)
+            Ok(())
         })
     }
 
@@ -170,14 +176,22 @@ impl Store {
         id: &str,
         engine: &str,
         selection: &ModelSelection,
+        handoff: &str,
     ) -> Result<()> {
         let options = serde_json::to_string(&selection.options)?;
         self.commit(|tx, _| {
             tx.execute(
                 "UPDATE threads SET engine = ?2, model = ?3, effort = ?4, options = ?5,
-                    engine_session = NULL
+                    engine_session = NULL, handoff = ?6
                  WHERE id = ?1",
-                params![id, engine, selection.model, selection.effort, options],
+                params![
+                    id,
+                    engine,
+                    selection.model,
+                    selection.effort,
+                    options,
+                    handoff
+                ],
             )?;
             Ok(())
         })

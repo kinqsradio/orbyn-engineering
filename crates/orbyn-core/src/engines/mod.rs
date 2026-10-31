@@ -215,6 +215,15 @@ impl EngineManager {
                 Some("The engine did not list its models in time.".to_owned()),
             ),
         };
+        // An answer that lost every model says less than the list already held, so it
+        // cannot replace it. Nor can a stand-in or a failure.
+        if !refresh_can_replace(&catalog, &error)
+            && let Some(known) = lock(&self.known_models).get(id)
+        {
+            let mut kept = known.clone();
+            kept.error = catalog.fallback.or(error);
+            return Ok(kept);
+        }
         let fallback = catalog.fallback.is_some();
         let models = EngineModels {
             engine: id.to_owned(),
@@ -432,6 +441,10 @@ impl EngineManager {
             _ => Err(CoreError::UpdateFailed(tail(&text, 1024))),
         }
     }
+}
+
+fn refresh_can_replace(catalog: &ModelCatalog, error: &Option<String>) -> bool {
+    error.is_none() && catalog.fallback.is_none() && !catalog.models.is_empty()
 }
 
 fn empty_catalog() -> ModelCatalog {

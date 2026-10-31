@@ -211,7 +211,6 @@ impl Core {
                 "to": request.engine,
             }),
         )?;
-        self.store.set_handoff(id, &handoff)?;
         // What was asked for, then what was last chosen on that engine, then its
         // defaults. Admission checks the result, as it does any selection.
         let last = if request.engine == thread.engine {
@@ -228,7 +227,7 @@ impl Core {
             },
         );
         self.store
-            .switch_thread_engine(id, &request.engine, &chosen)?;
+            .switch_thread_engine(id, &request.engine, &chosen, &handoff)?;
         self.store.thread(id)
     }
 }

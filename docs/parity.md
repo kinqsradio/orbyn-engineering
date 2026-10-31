@@ -657,7 +657,7 @@ are not built in, and an agent that lists effort only after switching models nee
 - [x] N20 Scheduling: `schedule_task`, `list_scheduled_tasks`, `delete_scheduled_task`, `run_scheduled_task_now` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
 - [ ] N21 Agent requests: `request_secret`, `create_threads` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | [auth-risk]
 - [ ] N22 Links: `t3_environment_links`, `_link`, `_unlink` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
-- [ ] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M
+- [x] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M | server done: 512 KiB requests, 256 KiB replies; the permission prompt keeps its own timeout
 
 ## O. CLI
 - [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M

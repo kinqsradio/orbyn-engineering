@@ -16,7 +16,8 @@ use crate::error::{CoreError, Result};
 use crate::mcp::McpBinding;
 use crate::store::AuditRecord;
 
-const MAX_WAIT_SECONDS: u64 = 300;
+/// Under the 45 seconds a tool has to answer, so the caller hears `ended: false`.
+const MAX_WAIT_SECONDS: u64 = 40;
 const MAX_SEARCH_CHARS: usize = 200_000;
 const MAX_HITS: usize = 50;
 
@@ -245,6 +246,10 @@ pub(crate) fn tool_specs() -> impl Iterator<Item = Value> {
     })
 }
 
+pub(crate) fn has_effect(name: &str) -> bool {
+    TOOLS.iter().any(|tool| tool.name == name && tool.effect)
+}
+
 pub(crate) fn is_tool(name: &str) -> bool {
     TOOLS.iter().any(|tool| tool.name == name)
 }
@@ -376,7 +381,7 @@ impl Core {
                         "A thread cannot wait for itself.".into(),
                     ));
                 }
-                let seconds = args.get("seconds").and_then(Value::as_u64).unwrap_or(60);
+                let seconds = args.get("seconds").and_then(Value::as_u64).unwrap_or(30);
                 let deadline = std::time::Instant::now()
                     + std::time::Duration::from_secs(seconds.min(MAX_WAIT_SECONDS));
                 loop {
