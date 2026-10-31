@@ -21,6 +21,7 @@ use crate::testing::{TempDir, library, run_git};
 struct Fake {
     update: &'static str,
     version: &'static str,
+    probes: std::sync::atomic::AtomicU64,
 }
 
 #[async_trait]
@@ -46,7 +47,13 @@ impl EngineDriver for Fake {
     async fn probe(&self) -> EngineProbe {
         EngineProbe {
             path: Some("/bin/sh".into()),
-            version: Some(self.version.into()),
+            // Each read differs, as a real update's would: see `update` in engines.
+            version: Some(format!(
+                "{}.{}",
+                self.version,
+                self.probes
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            )),
             ..EngineProbe::default()
         }
     }
@@ -101,6 +108,7 @@ async fn fixture(update: &'static str) -> Fixture {
     core.engines.register(Arc::new(Fake {
         update,
         version: "1.0.0",
+        probes: Default::default(),
     }));
     core.setup_workspace(WorkspaceSetup {
         url: Some(upstream.to_string_lossy().into_owned()),
@@ -348,6 +356,36 @@ async fn install_is_refused_during_a_run_then_holds_admission_until_failure() {
     let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
     f.core.runs.cancel(&run.id).unwrap();
     wait_stopped(&f.core, &run.id).await;
+}
+
+#[tokio::test]
+async fn an_automatic_install_waits_for_the_mode_an_idle_person_and_no_runs() {
+    let f = fixture("exit 0").await;
+    let updates = &f.core.updates;
+    let mut lines = updates.attach_shell();
+    updates.on_shell_line(r#"{"type":"app_update_available","version":"99.0.0"}"#);
+    let idle = Duration::from_millis(40);
+
+    assert!(!updates.auto_install_after("notify", Duration::ZERO).await);
+    updates.note_activity();
+    assert!(
+        !updates.auto_install_after("automatic", idle).await,
+        "just active"
+    );
+
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    tokio::time::sleep(idle * 2).await;
+    assert!(
+        !updates.auto_install_after("automatic", idle).await,
+        "a run is active"
+    );
+    f.core.runs.cancel(&run.id).unwrap();
+    wait_stopped(&f.core, &run.id).await;
+    while lines.try_recv().is_ok() {}
+
+    tokio::time::sleep(idle * 2).await;
+    assert!(updates.auto_install_after("automatic", idle).await);
+    assert_eq!(lines.recv().await.unwrap()["type"], "install_app_update");
 }
 
 #[tokio::test]

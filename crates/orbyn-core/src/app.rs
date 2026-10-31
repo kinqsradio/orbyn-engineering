@@ -1,6 +1,7 @@
 //! Assembles the core from its parts and owns process-wide startup rules.
 
 use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -312,16 +313,52 @@ impl Core {
 
 /// One live owner per data directory: a second process must not fence the first.
 fn take_owner_lock(data_dir: &Path) -> Result<File> {
-    let file = File::options()
+    let path = data_dir.join("orbynd.lock");
+    let mut file = File::options()
         .create(true)
         .truncate(false)
+        .read(true)
         .write(true)
-        .open(data_dir.join("orbynd.lock"))?;
-    match file.try_lock() {
-        Ok(()) => Ok(file),
-        Err(std::fs::TryLockError::WouldBlock) => Err(CoreError::DataDirLocked),
-        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+        .open(&path)?;
+    let give_up = std::time::Instant::now() + OWNER_LOCK_WAIT;
+    loop {
+        match file.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                let owner = std::fs::read_to_string(&path).ok();
+                if owner_is_alive(owner.as_deref()) || std::time::Instant::now() >= give_up {
+                    return Err(CoreError::DataDirLocked);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+        }
     }
+    file.set_len(0)?;
+    file.write_all(std::process::id().to_string().as_bytes())?;
+    Ok(file)
+}
+
+/// How long a lock whose owner has died may stay held. A child caught between fork and
+/// exec when its parent died shares the lock until the exec finishes, and on macOS a
+/// first exec can be scanned for seconds.
+const OWNER_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// True when the lock file names a live process, or says nothing usable.
+#[cfg(unix)]
+fn owner_is_alive(owner: Option<&str>) -> bool {
+    let Some(pid) = owner.and_then(|text| text.trim().parse::<i32>().ok()) else {
+        return true;
+    };
+    // SAFETY: signal 0 delivers nothing; it only asks whether the process exists.
+    let result = unsafe { libc::kill(pid, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+/// Windows drops the lock with the process, and a child does not inherit it.
+#[cfg(not(unix))]
+fn owner_is_alive(_owner: Option<&str>) -> bool {
+    true
 }
 
 /// Run directories can hold an MCP token, which died with its process anyway.
@@ -330,5 +367,47 @@ fn clean_stale_run_dirs(runs_dir: &Path) {
         && error.kind() != std::io::ErrorKind::NotFound
     {
         tracing::warn!(%error, "could not clear old run directories");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lock_left_by_a_dead_owner_clears_and_a_live_owner_refuses_at_once() {
+        let dir = crate::testing::TempDir::new();
+        let path = dir.path().join("orbynd.lock");
+        let holder = File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        holder.lock().unwrap();
+
+        std::fs::write(&path, std::process::id().to_string()).unwrap();
+        let started = std::time::Instant::now();
+        assert!(matches!(
+            take_owner_lock(dir.path()),
+            Err(CoreError::DataDirLocked)
+        ));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+
+        let mut gone = std::process::Command::new("true").spawn().unwrap();
+        let dead = gone.id();
+        gone.wait().unwrap();
+        std::fs::write(&path, dead.to_string()).unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(holder);
+        });
+        let file = take_owner_lock(dir.path()).unwrap();
+        release.join().unwrap();
+        drop(file);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            std::process::id().to_string()
+        );
     }
 }

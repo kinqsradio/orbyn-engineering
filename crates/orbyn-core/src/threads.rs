@@ -112,6 +112,9 @@ impl Core {
                         self.watch_pulls().await;
                     }
                     self.run_due_tasks().await;
+                    if let Ok(mode) = self.preference("app_update_mode", None) {
+                        self.updates.auto_install(mode.as_str().unwrap_or_default()).await;
+                    }
                     if watched.is_multiple_of(AUTO_PULL_TICKS) {
                         self.auto_pull().await;
                     }

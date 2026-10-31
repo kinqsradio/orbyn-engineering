@@ -388,6 +388,14 @@ impl EngineManager {
                 "The update ran, but the engine no longer reports a version.".into(),
             ));
         }
+        // An installer's exit code says it finished, not that anything changed.
+        if after.version == before.version {
+            self.invalidate().await;
+            return Err(CoreError::UpdateFailed(format!(
+                "The update ran, but this is still version {}.",
+                after.version.unwrap_or_default()
+            )));
+        }
         self.invalidate().await;
         self.status(id).await
     }

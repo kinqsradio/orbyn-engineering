@@ -470,6 +470,7 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/scripts",
             get(terminal_ws::scripts).post(terminal_ws::run_script),
         )
+        .route_layer(from_fn_with_state(state.clone(), api::note_activity))
         .route_layer(from_fn_with_state(access.clone(), access::require_auth));
     Router::new()
         .merge(protected)

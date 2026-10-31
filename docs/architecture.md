@@ -64,7 +64,9 @@ admitted -> starting -> running <-> awaiting_approval
 - A run owner is fenced by `(run_id, owner_epoch)`. `owner_epoch` is a value
   chosen at process start; a stale owner's writes are rejected.
 - A file lock gives each data directory one live `orbynd`, because a second
-  process's recovery would fence runs that are still alive.
+  process's recovery would fence runs that are still alive. The lock file names its
+  owner: a live one refuses at once, and a dead one's lock gets a few seconds to clear,
+  since a child caught mid-exec can hold it briefly after a crash.
 - Pending approvals expire in the same transaction that ends a run.
 
 ## Thread lifecycle
@@ -507,7 +509,11 @@ at startup, every six hours and on demand, unless the `background_update_checks`
 setting is `false`. A check only reads: `git fetch` of the library, engine latest
 versions and the app's release. A network failure never blocks startup; it keeps
 the earlier results and sets `error`, and `checked_at` stays at the last full
-success. Nothing applies automatically, ever.
+success. Engines and the library never apply on their own. The app does only with the
+`app_update_mode` preference at `automatic` (the default is `notify`), no active run, an
+install the shell can make and no request that changes anything for two minutes. An
+engine update counts only when the version read back afterwards has changed, since an
+installer's exit code says only that it finished.
 
 `POST /api/updates/apply-all` runs engines, then the library, then the app, stops at
 the first failure, and is refused while any run is active (`409 runs_active`). Every
