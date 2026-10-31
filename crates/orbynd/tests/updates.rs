@@ -231,7 +231,7 @@ async fn a_window_reaches_the_shell_only_through_listed_actions() {
 async fn the_shell_hears_when_work_starts_and_ends() {
     let dir = TempDir::new();
     let (mut service, thread) = setup(&dir, desktop(), "codex").await;
-    let mut activity = async |service: &mut Service, running: u64| {
+    let activity = async |service: &mut Service, running: u64| {
         let mut line = String::new();
         loop {
             line.clear();
