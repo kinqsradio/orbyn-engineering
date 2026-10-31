@@ -1,3 +1,4 @@
+import { chooseDraftEngine } from "../onboarding/draftEngine";
 import { Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { request } from "../../api/client";
@@ -25,7 +26,7 @@ function NewTask({ onClose, onSaved }: { onClose(): void; onSaved(): void }) {
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [project, setProject] = useState(projects[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
-  const engine = engines.find((entry) => entry.installed)?.id ?? "";
+  const engine = chooseDraftEngine(engines.filter((entry) => entry.installed), null, false)?.id ?? "";
   const save = async () => {
     try {
       await request("POST", "/api/tasks", {

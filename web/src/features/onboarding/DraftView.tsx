@@ -1,3 +1,4 @@
+import { chooseDraftEngine } from "./draftEngine";
 import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { create } from "zustand";
@@ -91,6 +92,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const lastModel = useUi((state) => state.lastModel);
   const setPrefs = useUi((state) => state.setPrefs);
   const [choice, setChoice] = useState(lastModel);
+  const [pickedHere, setPickedHere] = useState(false);
   const [access, setAccess] = useState<PermissionMode>("supervised");
   const [extras, setExtras] = useState<Record<string, string>>({});
   const prompt = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
@@ -122,11 +124,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     ? null
     : (projects.find((p) => p.id === chosenProject) ?? projects[0] ?? null);
   const installed = engines.filter((e) => e.installed);
-  const engine =
-    installed.find((e) => e.id === choice?.engine) ??
-    installed.find((e) => e.capabilities.managed) ??
-    installed[0] ??
-    null;
+  const engine = chooseDraftEngine(installed, choice?.engine ?? null, pickedHere);
   const unmanaged = engine !== null && !engine.capabilities.managed;
 
   if (!project && !scratch) return <NoProjects />;
@@ -161,6 +159,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         skill_profile: null,
       });
       putThread(thread);
+      setPrefs({ lastModel: { engine: engine.id, model: pickedModel, effort: pickedEffort } });
       adoptLayout(thread.id);
       const attached = await Promise.all(files.map((file) => api.uploadAttachment(thread.id, file)));
       const run = await api.startRun(
@@ -319,6 +318,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         onModel={(next) => {
                           const picked = { ...next, effort: pickedEffort };
                           setExtras({});
+                          setPickedHere(true);
                           setChoice(picked);
                           setPrefs({ lastModel: picked });
                         }}
