@@ -32,6 +32,9 @@ fn source_repo(path: &Path) -> PathBuf {
     run_git(path, &["init", "-q", "-b", "main"]);
     run_git(path, &["config", "user.email", "t@example.com"]);
     run_git(path, &["config", "user.name", "T"]);
+    // Background maintenance would change `.git` while a test snapshots it.
+    run_git(path, &["config", "gc.auto", "0"]);
+    run_git(path, &["config", "maintenance.auto", "false"]);
     std::fs::write(path.join("a.txt"), "one\n").unwrap();
     commit_all(path, "first");
     crate::util::canonicalize(path).unwrap()
@@ -45,7 +48,7 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
             let kind = entry.file_type().unwrap();
             if kind.is_dir() {
                 walk(&path, into);
-            } else if kind.is_file() {
+            } else if kind.is_file() && path.extension().is_none_or(|e| e != "lock") {
                 into.insert(path.clone(), std::fs::read(&path).unwrap());
             }
         }
