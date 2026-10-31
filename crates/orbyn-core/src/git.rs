@@ -193,8 +193,15 @@ pub async fn create_worktree(
             && registered.path.file_name() == Some(std::ffi::OsStr::new(purpose))
         {
             let base = text(&git(repo, &["merge-base", "HEAD", &registered.revision]).await?);
+            // Git's spelling of a path differs on Windows, so keep ours when it is the same place.
+            let same = crate::util::canonicalize(&registered.path).ok().as_ref()
+                == crate::util::canonicalize(&path).ok().as_ref();
             return Ok(Worktree {
-                path: registered.path.to_string_lossy().into_owned(),
+                path: if same {
+                    path_text
+                } else {
+                    registered.path.to_string_lossy().into_owned()
+                },
                 branch: registered.branch.unwrap_or_else(|| "HEAD".to_owned()),
                 base,
             });
@@ -603,7 +610,10 @@ mod tests {
             dir.path().join("elsewhere/project/fresh")
         );
         let kept = create_worktree(&repo, "before", &elsewhere).await.unwrap();
-        assert_eq!(kept.path, earlier.path);
+        assert_eq!(
+            crate::util::canonicalize(Path::new(&kept.path)).unwrap(),
+            crate::util::canonicalize(Path::new(&earlier.path)).unwrap()
+        );
         let relative = WorktreeOptions {
             directory: Some(PathBuf::from("not/absolute")),
             ..WorktreeOptions::default()
