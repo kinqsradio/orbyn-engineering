@@ -71,6 +71,12 @@ export const scenes = {
     { hold: true },
   ],
   deaf: [...command("d1", "sleep 100", "tick\n", 0), { deaf: true }],
+  edit: [
+    started(item("e1", "fileChange", { status: "inProgress", changes: [{ path: "notes.txt", kind: { type: "update" }, diff: "" }] })),
+    { write: { path: "notes.txt", text: "changed by the agent\n" } },
+    completed(item("e1", "fileChange", { status: "completed", changes: [{ path: "notes.txt", kind: { type: "update" }, diff: "" }] })),
+    ...message("e2", "Edited."),
+  ],
   markdown: message("md", MARKDOWN),
   empty: command("q1", "true", "", 0),
   subagent: [
