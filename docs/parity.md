@@ -303,35 +303,35 @@ toward completion.
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
 - [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done | web done
 - [x] F30 Storage cleanup: worktree rules, keep-when policy, reports | apps/server/src/storageCleanup.ts | w d m s | L | server done | web done
-- [x] F31 PR list page: grouped filters across environments, quick actions | apps/web/src/components/pullRequest/PullRequestsPage.tsx | w d m s | L | server done
-- [x] F32 PR summary tab: description, state, editing | apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx | w d m | M | server done
-- [x] F33 PR timeline: activity with filters | apps/web/src/components/pullRequest/PullRequestTimelineTab.tsx | w d m | M | server done
-- [x] F34 PR code tab: file review with revisions | apps/web/src/components/pullRequest/PullRequestCodeTab.tsx | w d m | L | server done
-- [x] F35 Checks popover: status detail, fork workflow approval | apps/web/src/components/pullRequest/PullRequestChecksPopover.tsx | w d m | M | server done
-- [x] F36 Review submission: line drafts, submit review | apps/web/src/components/pullRequest/PullRequestReviewForm.tsx | w d m s | L | server done
-- [x] F37 Comments and threads: reply, edit, resolve, react | apps/web/src/components/pullRequest/PullRequestCommentForm.tsx | w d m s | L | server done
-- [x] F38 Reviewers and labels: search and set | apps/web/src/components/pullRequest/PullRequestReviewerPicker.tsx | w d m s | M | server done
-- [x] F39 Merge actions: method choice, auto-merge, revert PR, bulk close | apps/web/src/components/pullRequest/PullRequestDetailActions.tsx | w d m s | L | server done
-- [x] F40 Remove agent credits: strips agent lines on merge | packages/source-control-core/src/mergeMessage.ts | w d m s | S | server done
-- [x] F41 Files viewed: GitHub-synced or server-kept marks | apps/web/src/components/pullRequest/filesViewedStore.ts | w d m s | M | server done
+- [x] F31 PR list page: grouped filters across environments, quick actions | apps/web/src/components/pullRequest/PullRequestsPage.tsx | w d m s | L | server done | web done
+- [x] F32 PR summary tab: description, state, editing | apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx | w d m | M | server done | web done
+- [x] F33 PR timeline: activity with filters | apps/web/src/components/pullRequest/PullRequestTimelineTab.tsx | w d m | M | server done | web done
+- [x] F34 PR code tab: file review with revisions | apps/web/src/components/pullRequest/PullRequestCodeTab.tsx | w d m | L | server done | web: files, viewed marks and line comments; no revision picker
+- [x] F35 Checks popover: status detail, fork workflow approval | apps/web/src/components/pullRequest/PullRequestChecksPopover.tsx | w d m | M | server done | web done
+- [x] F36 Review submission: line drafts, submit review | apps/web/src/components/pullRequest/PullRequestReviewForm.tsx | w d m s | L | server done | web done
+- [x] F37 Comments and threads: reply, edit, resolve, react | apps/web/src/components/pullRequest/PullRequestCommentForm.tsx | w d m s | L | server done | web done
+- [x] F38 Reviewers and labels: search and set | apps/web/src/components/pullRequest/PullRequestReviewerPicker.tsx | w d m s | M | server done | web done
+- [x] F39 Merge actions: method choice, auto-merge, revert PR, bulk close | apps/web/src/components/pullRequest/PullRequestDetailActions.tsx | w d m s | L | server done | web done
+- [x] F40 Remove agent credits: strips agent lines on merge | packages/source-control-core/src/mergeMessage.ts | w d m s | S | server done | web done
+- [x] F41 Files viewed: GitHub-synced or server-kept marks | apps/web/src/components/pullRequest/filesViewedStore.ts | w d m s | M | server done | web done
 - [ ] F42 Review guides beta: AI stop-by-stop tour, shared on server | apps/web/src/components/pullRequest/PullRequestGuideTab.tsx | w d m s | L
 - [ ] F43 Guide instructions and model: override per project | packages/contracts/src/settings.ts | w d s | S
 - [ ] F44 Ask about stop: opens thread seeded with guide stop | docs/user/source-control.md | w | M
-- [x] F45 Linked PRs panel: multiple PRs, stacks, unlink | apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx | w d m s | L | server done
+- [x] F45 Linked PRs panel: multiple PRs, stacks, unlink | apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx | w d m s | L | server done | web done
 - [x] F46 Automatic link: branch PR found, plus `gh`/`glab` detection | docs/user/source-control.md | s | M | server done
-- [x] F47 PR watch: 2-minute polling wakes agent, with stop rules | apps/server/src/pullRequest | w d s | L | server done
-- [x] F48 GitHub stacks: position badge, layer navigation | apps/web/src/components/pullRequest/PullRequestStackHeader.tsx | w d m s | L | server done
-- [x] F49 Merge and rebase stack: submit or rebase layers | packages/source-control-github/src/githubStackActions.ts | w d s | L | server done
+- [x] F47 PR watch: 2-minute polling wakes agent, with stop rules | apps/server/src/pullRequest | w d s | L | server done | web done
+- [x] F48 GitHub stacks: position badge, layer navigation | apps/web/src/components/pullRequest/PullRequestStackHeader.tsx | w d m s | L | server done | web done
+- [x] F49 Merge and rebase stack: submit or rebase layers | packages/source-control-github/src/githubStackActions.ts | w d s | L | server done | web done
 - [ ] F50 PR routing: Read/Read-and-act via another environment | apps/web/src/components/settings/PullRequestRoutingSettings.tsx | w d m s | L
-- [x] F51 Work on PR: draft thread prepares branch worktree | apps/web/src/components/chat/usePullRequestDraftThread.ts | w d m s | M | server done
+- [x] F51 Work on PR: draft thread prepares branch worktree | apps/web/src/components/chat/usePullRequestDraftThread.ts | w d m s | M | server done | web done
 - [ ] F52 Offline PR cache: mobile keeps loaded reviews readable | docs/user/source-control.md | m | M
-- [x] F53 PR quick actions: Close, Reopen, Merge, Ready for review buttons on rows and detail header | apps/web/src/components/pullRequest/PullRequestSpeedActions.tsx | w d m s | M | server done
-- [x] F54 PR draft state: Convert to draft and Ready for review from the actions menu | apps/web/src/components/pullRequest/PullRequestActionsMenu.tsx | w d m s | S | server done
-- [x] F55 PR branch actions: Delete branch (with reconnect prompt), Revert changes, Allow edits from maintainers toggle | apps/web/src/components/pullRequest/PullRequestActionsMenu.tsx | w d s | M | server done
-- [x] F56 PR title and base: inline title editing with save error, base branch change, stacked marker, Update branch and Update with rebase | apps/web/src/components/pullRequest/PullRequestBaseBranch.tsx | w d s | M | server done
-- [x] F57 PR list filters: checks, draft, review state (approved, changes requested, review required, none), author, label, project and text; sort saved in the URL; compact menu on narrow widths; empty and unavailable states | apps/web/src/components/pullRequest/PullRequestListFilters.tsx | w d m | M | server done
-- [x] F58 Manual PR link: dialog with candidate picker by number or search to link a PR to a thread | apps/web/src/components/pullRequest/LinkPullRequestDialog.tsx | w d s | S | server done
-- [x] F59 PR checkout: check out in a worktree or locally, with a warning toast when the checkout is not on the latest commit | apps/web/src/components/pullRequest/PullRequestDetailActions.tsx | w d s | M | server done
+- [x] F53 PR quick actions: Close, Reopen, Merge, Ready for review buttons on rows and detail header | apps/web/src/components/pullRequest/PullRequestSpeedActions.tsx | w d m s | M | server done | web done
+- [x] F54 PR draft state: Convert to draft and Ready for review from the actions menu | apps/web/src/components/pullRequest/PullRequestActionsMenu.tsx | w d m s | S | server done | web done
+- [x] F55 PR branch actions: Delete branch (with reconnect prompt), Revert changes, Allow edits from maintainers toggle | apps/web/src/components/pullRequest/PullRequestActionsMenu.tsx | w d s | M | server done | web done
+- [x] F56 PR title and base: inline title editing with save error, base branch change, stacked marker, Update branch and Update with rebase | apps/web/src/components/pullRequest/PullRequestBaseBranch.tsx | w d s | M | server done | web done
+- [x] F57 PR list filters: checks, draft, review state (approved, changes requested, review required, none), author, label, project and text; sort saved in the URL; compact menu on narrow widths; empty and unavailable states | apps/web/src/components/pullRequest/PullRequestListFilters.tsx | w d m | M | server done | web done
+- [x] F58 Manual PR link: dialog with candidate picker by number or search to link a PR to a thread | apps/web/src/components/pullRequest/LinkPullRequestDialog.tsx | w d s | S | server done | web done
+- [x] F59 PR checkout: check out in a worktree or locally, with a warning toast when the checkout is not on the latest commit | apps/web/src/components/pullRequest/PullRequestDetailActions.tsx | w d s | M | server done | web done
 - [ ] F60 PR link menu: right-click a PR link for Copy link and Open on the host; hover preview card | apps/web/src/components/pullRequest/pullRequestLinkContextMenu.ts | w d | S
 - [ ] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S

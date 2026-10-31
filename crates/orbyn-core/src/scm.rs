@@ -830,11 +830,19 @@ impl Core {
             .await
             .map_err(|_| CoreError::Git("The pull request's branch name is not valid.".into()))?;
         self.scm_audit(actor, "git.pull_checkout", &number.to_string(), None)?;
-        let spec = format!("+refs/{}/{number}/head:refs/heads/{head}", pull_ref(forge));
-        let fetched = git_user(&cwd, &["fetch", "origin", &spec], PUSH_TIMEOUT).await;
-        if fetched.is_err() {
-            let spec = format!("+refs/heads/{head}:refs/heads/{head}");
-            git_user(&cwd, &["fetch", "origin", &spec], PUSH_TIMEOUT).await?;
+        // Git won't move a branch a checkout is on; the warning below says if it's behind.
+        let worktrees = git(&cwd, &["worktree", "list", "--porcelain"]).await?;
+        let held = format!("branch refs/heads/{head}");
+        if !String::from_utf8_lossy(&worktrees)
+            .lines()
+            .any(|line| line == held)
+        {
+            let spec = format!("+refs/{}/{number}/head:refs/heads/{head}", pull_ref(forge));
+            let fetched = git_user(&cwd, &["fetch", "origin", &spec], PUSH_TIMEOUT).await;
+            if fetched.is_err() {
+                let spec = format!("+refs/heads/{head}:refs/heads/{head}");
+                git_user(&cwd, &["fetch", "origin", &spec], PUSH_TIMEOUT).await?;
+            }
         }
         let path = if request.worktree {
             let purpose = format!("pr-{number}");

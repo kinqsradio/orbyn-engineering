@@ -62,7 +62,7 @@ function standInGh(dir: string, pulls: PullFixture[]): { bin: string; state: str
   const state = join(dir, "gh-state.json");
   const log = join(dir, "gh-calls.log");
   writeFileSync(log, "");
-  writeFileSync(state, JSON.stringify({ pulls: pulls.map(pullRow), repos: [], next: 100, template: pullRow({ number: 0, title: "" }) }));
+  writeFileSync(state, JSON.stringify({ pulls: pulls.map(pullRow), repos: [], next: 100, people: ["ada", "grace"], labels: ["bug", "docs"], template: pullRow({ number: 0, title: "" }) }));
   symlinkSync(STAND_IN_GH, join(bin, "gh"));
   return { bin, state, log };
 }
@@ -101,6 +101,8 @@ export interface Service {
   stop(): void;
   /** What the stand-in `gh` was asked, oldest first. */
   ghCalls(): string[][];
+  /** What the stand-in holds for one pull request now. */
+  ghPull(number: number): Record<string, unknown>;
   /** The stand-in's bare remote, for specs that read what was pushed. */
   remote: string;
 }
@@ -159,20 +161,21 @@ export async function startService(
   git(repo, "add", ".");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "First");
   if (options.forge) {
-    git(repo, "remote", "add", "origin", "https://github.com/o/r.git");
-    // Reads name the forge, pushes land in a bare repository next to the checkout.
-    const remote = join(dir, "remote.git");
+    // A real remote on disk, named so the service takes it for GitHub.
+    const remote = join(dir, "github.com/o/r.git");
     execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote]);
-    git(repo, "config", "url." + remote + ".pushInsteadOf", "https://github.com/o/r.git");
+    git(repo, "remote", "add", "origin", remote);
     git(repo, "push", "-q", "origin", "main");
-    git(repo, "fetch", "-q", remote, "+refs/heads/*:refs/remotes/origin/*");
+    git(repo, "fetch", "-q", "origin");
   }
   return {
     url: ready.url,
     dataDir: join(dir, "data"),
     folder,
     repo,
-    remote: join(dir, "remote.git"),
+    remote: join(dir, "github.com/o/r.git"),
+    ghPull: (number) =>
+      (JSON.parse(readFileSync(forge?.state ?? "", "utf8")) as { pulls: PullFixture[] }).pulls.find((pull) => pull.number === number) ?? {},
     ghCalls: () =>
       forge
         ? readFileSync(forge.log, "utf8")

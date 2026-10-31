@@ -23,7 +23,93 @@ const fail = (message) => {
 const out = (value) => process.stdout.write(typeof value === "string" ? `${value}\n` : `${JSON.stringify(value)}\n`);
 const pull = (number) => state.pulls.find((entry) => entry.number === Number(number)) ?? fail("no pull request");
 
+/** The fields only `gh pr view` shows, on top of a list row. */
+const view = (entry) => ({
+  comments: [],
+  reviews: [],
+  mergeable: "MERGEABLE",
+  reviewRequests: (entry.reviewers ?? []).map((login) => ({ login })),
+  headRefOid: "aaaaaaa",
+  baseRefOid: "bbbbbbb",
+  additions: 3,
+  deletions: 1,
+  changedFiles: 1,
+  maintainerCanModify: false,
+  autoMergeRequest: null,
+  ...entry,
+});
+
+const threads = (number) => ({
+  data: { repository: { pullRequest: { reviewThreads: { nodes: pull(number).threads ?? [] } } } },
+});
+
+const allThreads = () => state.pulls.flatMap((entry) => entry.threads ?? []);
+const commentById = (id) =>
+  state.pulls.flatMap((entry) => [...(entry.issueComments ?? []), ...(entry.threads ?? []).flatMap((thread) => thread.comments.nodes)]).find((comment) => String(comment.id ?? comment.databaseId) === id);
+
+/** REST and GraphQL through `gh api`. Field flags are `key=value` strings. */
+function apiCall() {
+  const field = (name) => {
+    for (let at = 0; at < args.length - 1; at += 1) {
+      if ((args[at] === "-f" || args[at] === "-F") && args[at + 1].startsWith(`${name}=`)) return args[at + 1].slice(name.length + 1);
+    }
+    return undefined;
+  };
+  const method = flag("-X") ?? "GET";
+  const path = args.find((arg, at) => at > 0 && /^(repos|graphql)/.test(arg)) ?? "";
+  if (path === "graphql") {
+    const query = field("query") ?? "";
+    if (query.includes("reviewThreads")) return out(threads(field("number")));
+    const thread = allThreads().find((entry) => entry.id === field("id"));
+    if (thread) {
+      thread.isResolved = query.includes("resolveReviewThread") && !query.includes("unresolve");
+      save();
+    }
+    return out({ data: {} });
+  }
+  const local = path.replace("repos/{owner}/{repo}/", "");
+  let match;
+  if (local.startsWith("assignees")) return out(state.people.map((login) => ({ login })));
+  if ((match = /^issues\/(\d+)\/comments/.exec(local))) return out(pull(match[1]).issueComments ?? []);
+  if ((match = /^issues\/(\d+)\/timeline/.exec(local))) return out(pull(match[1]).timeline ?? []);
+  if ((match = /^pulls\/(\d+)\/files/.exec(local))) return out(pull(match[1]).files ?? []);
+  if ((match = /^pulls\/(\d+)\/comments\/(\d+)\/replies/.exec(local))) {
+    const thread = (pull(match[1]).threads ?? []).find((entry) => entry.comments.nodes.some((comment) => String(comment.databaseId) === match[2]));
+    thread.comments.nodes.push({ databaseId: state.next++, body: field("body"), author: { login: "me" } });
+    save();
+    return out({});
+  }
+  if ((match = /^(issues|pulls)\/comments\/(\d+)\/reactions/.exec(local))) {
+    const comment = commentById(match[2]);
+    comment.reactions = [...(comment.reactions ?? []), field("content")];
+    save();
+    return out({});
+  }
+  if ((match = /^(issues|pulls)\/comments\/(\d+)$/.exec(local))) {
+    commentById(match[2]).body = field("body");
+    save();
+    return out({});
+  }
+  if ((match = /^pulls\/(\d+)\/reviews/.exec(local))) {
+    pull(match[1]).submitted = JSON.parse(readFileSync(0, "utf8"));
+    save();
+    return out({});
+  }
+  if ((match = /^pulls\/(\d+)$/.exec(local)) && method === "PATCH") {
+    pull(match[1]).maintainerCanModify = field("maintainer_can_modify") === "true";
+    save();
+    return out({});
+  }
+  if (/^actions\/runs\/\d+\/approve/.test(local)) return out({});
+  if (/^git\/refs\/heads\//.test(local) && method === "DELETE") return out({});
+  return fail(`stand-in gh has no api answer for: ${args.join(" ")}`);
+}
+
 const route = `${args[0]} ${args[1]}`;
+if (args[0] === "api") {
+  apiCall();
+  process.exit(0);
+}
 switch (route) {
   case "auth status":
     process.stderr.write("Logged in to github.com\n");
@@ -33,11 +119,17 @@ switch (route) {
     save();
     out(`https://github.com/o/${args[2]}`);
     break;
+  case "label list":
+    out(state.labels.map((name) => ({ name, description: `About ${name}` })));
+    break;
   case "pr list":
     out(state.pulls.filter((entry) => (flag("--state") === "all" ? true : entry.state.toLowerCase() === flag("--state"))));
     break;
   case "pr view":
-    out(pull(args[2]));
+    out(view(pull(args[2])));
+    break;
+  case "pr checks":
+    out(pull(args[2]).checks ?? []);
     break;
   case "pr create": {
     const number = state.next++;
@@ -54,6 +146,49 @@ switch (route) {
     out(`https://github.com/o/r/pull/${number}`);
     break;
   }
+  case "pr edit": {
+    const entry = pull(args[2]);
+    if (flag("--title")) entry.title = flag("--title");
+    if (flag("--body") !== undefined) entry.body = flag("--body");
+    if (flag("--base")) entry.baseRefName = flag("--base");
+    if (flag("--add-reviewer")) entry.reviewers = [...(entry.reviewers ?? []), ...flag("--add-reviewer").split(",")];
+    if (flag("--remove-reviewer")) entry.reviewers = (entry.reviewers ?? []).filter((name) => !flag("--remove-reviewer").split(",").includes(name));
+    if (flag("--add-label")) entry.labels = [...entry.labels, ...flag("--add-label").split(",").map((name) => ({ name }))];
+    if (flag("--remove-label")) entry.labels = entry.labels.filter((label) => !flag("--remove-label").split(",").includes(label.name));
+    save();
+    break;
+  }
+  case "pr ready":
+    pull(args[2]).isDraft = args.includes("--undo");
+    save();
+    break;
+  case "pr close":
+    pull(args[2]).state = "CLOSED";
+    save();
+    break;
+  case "pr reopen":
+    pull(args[2]).state = "OPEN";
+    save();
+    break;
+  case "pr merge":
+    if (args.includes("--auto")) pull(args[2]).autoMergeRequest = {};
+    else pull(args[2]).state = "MERGED";
+    pull(args[2]).mergeBody = flag("--body");
+    save();
+    break;
+  case "pr comment": {
+    const entry = pull(args[2]);
+    entry.issueComments = [...(entry.issueComments ?? []), { id: state.next++, body: flag("--body"), user: { login: "me" } }];
+    save();
+    break;
+  }
+  case "pr review":
+    pull(args[2]).reviewed = args.find((arg) => /^--(approve|request-changes|comment)$/.test(arg));
+    save();
+    break;
+  case "pr revert":
+  case "pr update-branch":
+    break;
   default:
     fail(`stand-in gh has no answer for: ${args.join(" ")}`);
 }
