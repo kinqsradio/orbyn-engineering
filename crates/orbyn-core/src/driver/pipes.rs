@@ -26,12 +26,29 @@ pub(crate) struct EngineProcess {
     pub stderr: StderrTail,
 }
 
-#[derive(Clone, Default)]
-pub(crate) struct StderrTail(Arc<Mutex<String>>);
+/// A grandchild can hold stderr open long after the engine exits, so a final read
+/// waits only this long.
+const STDERR_DRAIN: std::time::Duration = std::time::Duration::from_millis(500);
+
+#[derive(Clone)]
+pub(crate) struct StderrTail {
+    buffer: Arc<Mutex<String>>,
+    drained: tokio::sync::watch::Sender<bool>,
+}
+
+impl Default for StderrTail {
+    fn default() -> Self {
+        Self {
+            buffer: Arc::default(),
+            drained: tokio::sync::watch::channel(false).0,
+        }
+    }
+}
 
 impl StderrTail {
     fn start(self, mut stderr: impl AsyncRead + Unpin + Send + 'static) -> Self {
-        let tail_buffer = self.0.clone();
+        let tail_buffer = self.buffer.clone();
+        let drained = self.drained.clone();
         tokio::spawn(async move {
             let mut chunk = [0u8; 4096];
             while let Ok(read) = stderr.read(&mut chunk).await {
@@ -46,13 +63,21 @@ impl StderrTail {
                     *buffer = tail(&buffer, STDERR_TAIL_BYTES);
                 }
             }
+            drained.send_replace(true);
         });
         self
     }
 
+    /// Waits for the reader to reach the end, because an exit can be observed
+    /// before the reason for it has been read.
+    pub async fn drained(&self) {
+        let mut done = self.drained.subscribe();
+        let _ = tokio::time::timeout(STDERR_DRAIN, done.wait_for(|finished| *finished)).await;
+    }
+
     pub fn text(&self) -> String {
         let buffer = self
-            .0
+            .buffer
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         tail(&buffer, 1024)
@@ -107,10 +132,9 @@ pub(crate) async fn one_shot_cli(program: &str, args: &[&str], prompt: &str) -> 
         .await
         .map_err(|_| CoreError::EngineUnavailable("The engine did not answer in time.".into()))??;
     if !status.success() {
-        return Err(CoreError::EngineUnavailable(exit_message(
-            Some(status),
-            &process.stderr,
-        )));
+        return Err(CoreError::EngineUnavailable(
+            exit_message(Some(status), &process.stderr).await,
+        ));
     }
     Ok(output)
 }
@@ -122,10 +146,11 @@ pub(crate) fn lines(
 }
 
 /// Failure text for an engine that ended without finishing its protocol.
-pub(crate) fn exit_message(
+pub(crate) async fn exit_message(
     status: Option<std::process::ExitStatus>,
     stderr: &StderrTail,
 ) -> String {
+    stderr.drained().await;
     let code = status.map_or_else(
         || "an unknown status".to_owned(),
         |status| {

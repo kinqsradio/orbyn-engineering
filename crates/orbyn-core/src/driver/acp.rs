@@ -149,7 +149,7 @@ async fn run_protocol(
                         }
                         let status = tokio::time::timeout(CANCEL_GRACE, process.child.wait()).await;
                         let status = status.ok().and_then(Result::ok);
-                        break EngineOutcome::Failed(exit_message(status, &process.stderr));
+                        break EngineOutcome::Failed(exit_message(status, &process.stderr).await);
                     }
                 }
             }

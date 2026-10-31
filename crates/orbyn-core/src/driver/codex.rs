@@ -163,7 +163,7 @@ async fn run_protocol(
                 let exited = status.ok().and_then(Result::ok);
                 match exited {
                     Some(status) => {
-                        EngineOutcome::Failed(exit_message(Some(status), &process.stderr))
+                        EngineOutcome::Failed(exit_message(Some(status), &process.stderr).await)
                     }
                     None => EngineOutcome::Failed(error.to_string()),
                 }
@@ -211,7 +211,7 @@ async fn run_protocol(
                     }
                     let status = tokio::time::timeout(EXIT_WAIT, process.child.wait()).await;
                     let status = status.ok().and_then(Result::ok);
-                    break EngineOutcome::Failed(exit_message(status, &process.stderr));
+                    break EngineOutcome::Failed(exit_message(status, &process.stderr).await);
                 };
                 match message {
                     Inbound::Notification { method, params } => {

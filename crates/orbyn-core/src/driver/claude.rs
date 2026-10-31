@@ -227,7 +227,7 @@ async fn run_protocol(
     let outcome = match (outcome, cancelled, stream_ended) {
         (_, true, _) => EngineOutcome::Cancelled,
         (Some(result), _, _) => result,
-        _ => EngineOutcome::Failed(exit_message(status, &process.stderr)),
+        _ => EngineOutcome::Failed(exit_message(status, &process.stderr).await),
     };
     let _ = events.send(EngineEvent::Finished(outcome)).await;
 }
