@@ -598,6 +598,9 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.composer-branch {
+  gap: 4px;
+}
 .composer-right {
   flex: none;
   max-width: 60%;

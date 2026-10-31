@@ -59,11 +59,20 @@ interface ConfirmProps {
   children: ReactNode;
   confirmLabel: string;
   tone?: ButtonTone;
+  confirmDisabled?: boolean;
   onConfirm(): Promise<void>;
   onClose(): void;
 }
 
-export function ConfirmDialog({ title, children, confirmLabel, tone = "primary", onConfirm, onClose }: ConfirmProps) {
+export function ConfirmDialog({
+  title,
+  children,
+  confirmLabel,
+  tone = "primary",
+  confirmDisabled,
+  onConfirm,
+  onClose,
+}: ConfirmProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirm = async () => {
@@ -87,7 +96,7 @@ export function ConfirmDialog({ title, children, confirmLabel, tone = "primary",
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button tone={tone} busy={busy} onClick={() => void confirm()}>
+          <Button tone={tone} busy={busy} disabled={confirmDisabled} onClick={() => void confirm()}>
             {confirmLabel}
           </Button>
         </>

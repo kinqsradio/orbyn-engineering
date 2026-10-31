@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
 import type { Approval, EngineStatus, Project, Thread } from "../api/types";
+import type { WorkspaceStatus } from "../api/workspace";
 import { toFailure } from "../lib/useAsync";
 
 export interface Loadable<T> {
@@ -21,7 +22,12 @@ interface WorkspaceState {
   /** Decisions this client received, so a card shows its outcome at once. */
   receipts: Record<string, Approval>;
   engines: Loadable<EngineStatus[]>;
+  managed: Loadable<WorkspaceStatus>;
+  /** The service predates the workspace API, so there's nothing to set up. */
+  managedUnsupported: boolean;
 
+  refreshManaged(): Promise<void>;
+  putManaged(status: WorkspaceStatus): void;
   refreshProjects(): Promise<void>;
   refreshThreads(projectId: string): Promise<void>;
   refreshThread(id: string): Promise<void>;
@@ -29,6 +35,7 @@ interface WorkspaceState {
   refreshEngines(): Promise<void>;
   refreshAll(): Promise<void>;
   putProject(project: Project): void;
+  dropProject(projectId: string): void;
   putThread(thread: Thread): void;
   dropThread(thread: Thread): void;
   putReceipt(approval: Approval): void;
@@ -50,6 +57,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   approvals: idle(),
   receipts: {},
   engines: idle(),
+  managed: idle(),
+  managedUnsupported: false,
+
+  async refreshManaged() {
+    const current = claim("managed");
+    set((state) => ({ managed: { ...state.managed, loading: true } }));
+    try {
+      const data = await api.workspace();
+      if (current()) set({ managed: { data, error: null, loading: false } });
+    } catch (error) {
+      if (!current()) return;
+      const failure = toFailure(error);
+      set((state) => ({
+        managed: { data: state.managed.data, error: failure, loading: false },
+        managedUnsupported: failure.status === 404,
+      }));
+    }
+  },
+
+  putManaged(status) {
+    claim("managed");
+    set({ managed: { data: status, error: null, loading: false } });
+  },
 
   async refreshProjects() {
     const current = claim("projects");
@@ -148,10 +178,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async refreshAll() {
-    const { refreshProjects, refreshThreads, refreshApprovals } = get();
+    const { refreshProjects, refreshThreads, refreshApprovals, refreshManaged } = get();
     await refreshProjects();
     const projects = get().projects.data ?? [];
-    await Promise.all([...projects.map((p) => refreshThreads(p.id)), refreshApprovals()]);
+    await Promise.all([
+      ...projects.map((p) => refreshThreads(p.id)),
+      refreshApprovals(),
+      refreshManaged(),
+    ]);
   },
 
   putProject(project) {
@@ -163,6 +197,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ...state.projects,
           data: known ? list.map((p) => (p.id === project.id ? project : p)) : [...list, project],
         },
+      };
+    });
+  },
+
+  dropProject(projectId) {
+    set((state) => {
+      const { [projectId]: _gone, ...threadIds } = state.threadIds;
+      return {
+        projects: {
+          ...state.projects,
+          data: (state.projects.data ?? []).filter((p) => p.id !== projectId),
+        },
+        threadIds,
+        threads: Object.fromEntries(
+          Object.entries(state.threads).filter(([, thread]) => thread.project_id !== projectId),
+        ),
       };
     });
   },

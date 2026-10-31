@@ -10,6 +10,7 @@ import type {
   Thread,
   WireThreadEvent,
 } from "../src/api/types.ts";
+import type { WorkspaceStatus } from "../src/api/workspace.ts";
 import * as fixtures from "./fixtures.ts";
 
 export interface MockResponse {
@@ -17,7 +18,7 @@ export interface MockResponse {
   body?: unknown;
 }
 
-export type Scenario = "default" | "empty" | "remote" | "offline" | "reference";
+export type Scenario = "default" | "empty" | "first-run" | "remote" | "offline" | "reference";
 
 type Subscriber = (event: WireThreadEvent) => void;
 
@@ -52,6 +53,8 @@ export function createMockApi(options: MockOptions = {}) {
   let skills = structuredClone(fixtures.skills);
   let profiles = structuredClone(fixtures.profiles);
   let rules = structuredClone(fixtures.rules);
+  let managed: WorkspaceStatus = fixtures.workspaceStatus([]);
+  let failNextSetup = false;
   let failures: Failure[] = [];
   let delayMs = 0;
   let idCounter = 0;
@@ -68,16 +71,22 @@ export function createMockApi(options: MockOptions = {}) {
     idCounter = 0;
     failures = [];
     delayMs = 0;
-    projects = next === "empty" ? [] : structuredClone(fixtures.projects);
-    threads = next === "empty" ? [] : fixtures.threads();
-    approvals = next === "empty" ? [] : fixtures.pendingApprovals();
-    logs = next === "empty" ? {} : fixtures.logs();
+    const blank = next === "empty" || next === "first-run";
+    projects = blank ? [] : structuredClone(fixtures.projects);
+    threads = blank ? [] : fixtures.threads();
+    approvals = blank ? [] : fixtures.pendingApprovals();
+    logs = blank ? {} : fixtures.logs();
     if (next === "reference") {
       const state = fixtures.referenceState(Date.now());
       projects = state.projects;
       threads = state.threads;
       logs = state.logs;
       approvals = [];
+    }
+    managed = fixtures.workspaceStatus(projects);
+    failNextSetup = false;
+    if (next === "first-run") {
+      managed = { ...managed, state: "unset", library: null, projects: [] };
     }
     engines = structuredClone(fixtures.engines);
     skills = structuredClone(fixtures.skills);
@@ -216,6 +225,46 @@ export function createMockApi(options: MockOptions = {}) {
     return { status: 200, body: decided };
   }
 
+  /** Project rows follow the live list; everything else is the fixture state. */
+  const workspaceBody = () => {
+    const rows = fixtures.workspaceStatus(projects).projects;
+    return {
+      ...managed,
+      projects: rows.map((row) => managed.projects.find((p) => p.id === row.id) ?? row),
+      active_runs: threads.filter((t) => t.active_run).length,
+    };
+  };
+
+  function setup(data: Record<string, unknown>): MockResponse {
+    if (data.mode === "adopt" && typeof data.path !== "string") {
+      return err(400, "invalid_path", "Choose a folder.");
+    }
+    const failing = failNextSetup;
+    failNextSetup = false;
+    managed = { ...managed, state: "setting_up", step: "Cloning the skill library", error: null };
+    const timer = setTimeout(() => {
+      const ready = fixtures.workspaceStatus(projects);
+      managed = failing
+        ? { ...managed, state: "failed", step: null, error: "The library remote couldn't be reached." }
+        : { ...ready };
+    }, stepMs * 5);
+    timers.add(timer);
+    return { status: 202, body: workspaceBody() };
+  }
+
+  function newProject(path: string, trusted = false): Project {
+    const project: Project = {
+      id: nextId("p"),
+      name: path.split("/").at(-1)?.replace(/\.git$/, "") ?? path,
+      path,
+      trusted,
+      is_git: true,
+      created_at: now(),
+    };
+    projects = [...projects, project];
+    return project;
+  }
+
   function route(method: string, path: string, query: URLSearchParams, body: unknown): MockResponse {
     const seg = path.split("/").filter(Boolean).map(decodeURIComponent);
     const key = `${method} /${seg.slice(0, 2).join("/")}`;
@@ -226,6 +275,43 @@ export function createMockApi(options: MockOptions = {}) {
     }
 
     switch (key) {
+      case "GET /api/workspace":
+        return { status: 200, body: workspaceBody() };
+      case "POST /api/workspace":
+        if (seg[2] === "setup") return setup(data);
+        if (seg[2] === "update") {
+          if (managed.library?.modified) return err(409, "library_modified", "The library has local changes.");
+          if (managed.library) {
+            managed = {
+              ...managed,
+              library: {
+                ...managed.library,
+                previous_revision: managed.library.revision,
+                revision: managed.library.incoming[0]?.revision ?? managed.library.revision,
+                behind: 0,
+                incoming: [],
+              },
+            };
+          }
+          return { status: 200, body: workspaceBody() };
+        }
+        if (seg[2] === "rollback" && managed.library?.previous_revision) {
+          managed = {
+            ...managed,
+            library: { ...managed.library, revision: managed.library.previous_revision, previous_revision: null },
+          };
+          return { status: 200, body: workspaceBody() };
+        }
+        break;
+      case "DELETE /api/projects": {
+        const row = workspaceBody().projects.find((p) => p.id === seg[2]);
+        if (row && (row.modified || row.unpushed) && query.get("force") !== "true") {
+          return err(409, "project_at_risk", "This checkout has work that exists nowhere else.");
+        }
+        projects = projects.filter((p) => p.id !== seg[2]);
+        threads = threads.filter((t) => t.project_id !== seg[2]);
+        return { status: 204 };
+      }
       case "GET /api/info":
         return { status: 200, body: { ...fixtures.info, remote: scenario === "remote" } };
       case "POST /auth/session":
@@ -256,21 +342,20 @@ export function createMockApi(options: MockOptions = {}) {
       case "GET /api/projects":
         return { status: 200, body: projects };
       case "POST /api/projects": {
-        if (seg[2]) break;
-        const projectPath = String(data.path ?? "");
-        if (!projectPath.startsWith("/")) return err(400, "invalid_path", "Enter an absolute folder path.");
-        const existing = projects.find((p) => p.path === projectPath);
-        if (existing) return { status: 200, body: existing };
-        const project: Project = {
-          id: nextId("p"),
-          name: projectPath.split("/").at(-1) ?? projectPath,
-          path: projectPath,
-          trusted: false,
-          is_git: true,
-          created_at: now(),
-        };
-        projects = [...projects, project];
-        return { status: 201, body: project };
+        if (seg[2] === "clone") {
+          const url = String(data.url ?? "");
+          if (!/^(https?:\/\/|git@)/.test(url)) return err(400, "invalid_url", "Enter a Git URL.");
+          return { status: 201, body: newProject(`/Users/dev/orbyn/${url.split("/").at(-1)}`) };
+        }
+        if (seg[2] === "create") {
+          return { status: 201, body: newProject(`/Users/dev/orbyn/${String(data.name)}`, true) };
+        }
+        if (seg[2] === "import") {
+          const source = String(data.path ?? "");
+          if (data.dry_run === true) return { status: 200, body: fixtures.importPreview(source) };
+          return { status: 201, body: { project: newProject(source) } };
+        }
+        break;
       }
       case "GET /api/threads": {
         if (seg[2]) {
@@ -486,8 +571,16 @@ export function createMockApi(options: MockOptions = {}) {
       set.add(subscriber);
       return () => set.delete(subscriber);
     },
-    /** Drops every open stream, so clients exercise reconnect. */
-    closeStreams: () => undefined as void,
+    /** Makes the next setup attempt end in the failed state. */
+    failSetup() {
+      failNextSetup = true;
+    },
+    patchWorkspace(patch: Partial<WorkspaceStatus>) {
+      managed = { ...managed, ...patch };
+    },
+    get workspace() {
+      return managed;
+    },
   };
 }
 

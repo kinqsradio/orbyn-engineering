@@ -18,6 +18,7 @@ import type {
   Thread,
   WireAuditEvent,
 } from "./types";
+import type { ImportPreview, ImportResult, WorkspaceSetup, WorkspaceStatus } from "./workspace";
 
 /** A failed request. `code` is the server's stable code, or a local one below. */
 export class ApiFailure extends Error {
@@ -104,11 +105,25 @@ export async function request<T>(
 const q = encodeURIComponent;
 
 export const api = {
+  workspace: (signal?: AbortSignal) =>
+    request<WorkspaceStatus>("GET", "/api/workspace", undefined, signal),
+  setupWorkspace: (body: WorkspaceSetup) =>
+    request<WorkspaceStatus>("POST", "/api/workspace/setup", body),
+  updateWorkspace: () => request<WorkspaceStatus>("POST", "/api/workspace/update"),
+  rollbackWorkspace: () => request<WorkspaceStatus>("POST", "/api/workspace/rollback"),
+  cloneProject: (url: string) => request<Project>("POST", "/api/projects/clone", { url }),
+  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name }),
+  previewImport: (path: string) =>
+    request<ImportPreview>("POST", "/api/projects/import", { path, dry_run: true }),
+  importProject: (path: string) =>
+    request<ImportResult>("POST", "/api/projects/import", { path, dry_run: false }),
+  removeProject: (id: string, force: boolean) =>
+    request<void>("DELETE", `/api/projects/${q(id)}${force ? "?force=true" : ""}`),
+
   info: (signal?: AbortSignal) => request<ServerInfo>("GET", "/api/info", undefined, signal),
   signIn: (key: string) => request<void>("POST", "/auth/session", { key }),
 
   projects: (signal?: AbortSignal) => request<Project[]>("GET", "/api/projects", undefined, signal),
-  addProject: (path: string) => request<Project>("POST", "/api/projects", { path }),
   trustProject: (id: string) => request<Project>("POST", `/api/projects/${q(id)}/trust`),
   browse: (path: string | null, signal?: AbortSignal) =>
     request<FsListing>("GET", `/api/fs/browse${path ? `?path=${q(path)}` : ""}`, undefined, signal),

@@ -81,11 +81,19 @@ test("Escape closes a dialog and returns focus to its opener", async ({ page }) 
 test("keyboard focus is visible and reduced motion stops animation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/#/threads/t-approval");
-  await expect(page.locator(".thread-state")).toHaveText("Waiting for you");
+  await expect(page.locator(".thread-state")).toContainText("Waiting for your approval");
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   const outline = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineStyle);
   expect(outline).toBe("solid");
   const duration = await page.evaluate(() => getComputedStyle(document.querySelector(".spin") as Element).animationDuration);
   expect(Number.parseFloat(duration)).toBeLessThan(0.01);
+});
+
+test("first run blocks the workspace until setup completes", async ({ page }) => {
+  await page.goto("/__mock/scenario/first-run");
+  await expect(page.getByRole("heading", { name: "Set up your workspace" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Workspace" })).toBeHidden();
+  await page.getByRole("button", { name: "Set up workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible({ timeout: 8000 });
 });

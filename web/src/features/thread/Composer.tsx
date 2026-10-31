@@ -1,4 +1,4 @@
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, GitBranch } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
 import type { EngineStatus, SkillSummary, Thread } from "../../api/types";
@@ -36,6 +36,10 @@ export function Composer({
   const [highlight, setHighlight] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const skills = useAsync("composer-skills", (signal) => api.skills(signal));
+  const projectBranch = useWorkspace(
+    (state) => state.managed.data?.projects.find((p) => p.id === thread.project_id)?.branch ?? null,
+  );
+  const branch = thread.worktree?.branch ?? projectBranch;
   const busy = thread.active_run !== null;
   const canSend = draft.trim() !== "" && !busy && !sending;
 
@@ -177,6 +181,15 @@ export function Composer({
         </span>
         <div className="composer-bar">
           <dl className="composer-left">
+            {branch ? (
+              <div title={thread.cwd}>
+                <dt className="sr-only">Checkout</dt>
+                <dd className="composer-branch">
+                  <GitBranch size={14} aria-hidden />
+                  {branch}
+                </dd>
+              </div>
+            ) : null}
             {profileName ? (
               <div>
                 <dt className="sr-only">Skill profile</dt>

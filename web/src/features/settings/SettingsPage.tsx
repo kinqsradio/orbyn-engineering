@@ -10,9 +10,11 @@ import { ComputerSection } from "./Computer";
 import { EnginesSection } from "./Engines";
 import { PolicySection } from "./Policy";
 import { SkillsSection } from "./Skills";
+import { WorkspaceSection } from "./Workspace";
 
 const labels: Record<SettingsSection, string> = {
   engines: "Engines",
+  workspace: "Workspace",
   skills: "Skills",
   policy: "Policy",
   audit: "Audit",
@@ -23,6 +25,7 @@ const labels: Record<SettingsSection, string> = {
 
 const views: Record<SettingsSection, () => React.JSX.Element | null> = {
   engines: EnginesSection,
+  workspace: WorkspaceSection,
   skills: SkillsSection,
   policy: PolicySection,
   audit: AuditSection,

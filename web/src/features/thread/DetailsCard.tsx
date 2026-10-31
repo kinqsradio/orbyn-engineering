@@ -2,6 +2,7 @@ import {
   Activity,
   Copy,
   FileDiff,
+  Folder,
   GitBranch,
   Monitor,
   SquareTerminal,
@@ -162,6 +163,10 @@ export function DetailsCard({
     [log, thread.active_run],
   );
   const togglePanel = useUi((state) => state.togglePanel);
+  const projectBranch = useWorkspace(
+    (state) => state.managed.data?.projects.find((p) => p.id === thread.project_id)?.branch ?? null,
+  );
+  const branch = thread.worktree?.branch ?? projectBranch;
   const copyPath = () => void navigator.clipboard?.writeText(thread.cwd).catch(() => undefined);
 
   return (
@@ -186,12 +191,17 @@ export function DetailsCard({
         </div>
       </div>
       <div className="details-section">
-        {thread.worktree ? (
-          <div className="detail-row detail-row-static" title={thread.worktree.path}>
+        {branch ? (
+          <div className="detail-row detail-row-static" title={thread.cwd}>
             <GitBranch size={16} aria-hidden />
-            <span>{thread.worktree.branch}</span>
+            <span>{branch}</span>
           </div>
         ) : null}
+        <div className="detail-row detail-row-static" title={thread.cwd}>
+          <Folder size={16} aria-hidden />
+          <span className="detail-dim">{thread.worktree ? "Worktree" : "Project folder"}</span>
+          <span className="detail-meta detail-meta-text">{thread.cwd.split(/[\\/]/).filter(Boolean).at(-1)}</span>
+        </div>
         {profileName ? (
           <div className="detail-row detail-row-static">
             <span className="detail-dim detail-label">Skill profile</span>

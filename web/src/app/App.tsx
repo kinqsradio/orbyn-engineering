@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiFailure, api, setUnauthorizedHandler } from "../api/client";
 import { SignIn } from "../features/onboarding/SignIn";
+import { WorkspaceGate } from "../features/onboarding/WorkspaceSetup";
 import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
@@ -60,6 +61,10 @@ export function App() {
         </main>
       );
     case "ready":
-      return <Shell />;
+      return (
+        <WorkspaceGate>
+          <Shell />
+        </WorkspaceGate>
+      );
   }
 }

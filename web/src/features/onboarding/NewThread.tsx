@@ -217,11 +217,11 @@ export function NewThread({ projectId }: { projectId: string | null }) {
 
         {selectedProject?.is_git !== false ? (
           <Field
-            label="Isolated worktree (optional)"
+            label="Worktree purpose (optional)"
             hint={
               purpose
-                ? `Works on its own branch, ${purpose}.`
-                : "Name a purpose to work on a separate branch. Empty works in the project folder."
+                ? `Works in its own checkout on branch ${purpose}.`
+                : "Name a purpose for a separate checkout. Empty works in the project folder."
             }
           >
             {(props) => (

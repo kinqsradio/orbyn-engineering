@@ -17,6 +17,7 @@ import type {
   AgUiEvent,
   JsonValue,
 } from "../src/api/types.ts";
+import type { ImportPreview, WorkspaceStatus } from "../src/api/workspace.ts";
 
 /** Fixed under test. In the dev server, "now" at startup, so ages read realistically. */
 export const T0 = process.env.VITEST ? Date.UTC(2026, 9, 31, 9, 0, 0) : Date.now();
@@ -748,3 +749,50 @@ export function referenceState(now: number) {
   const log = events.map((event, index) => at(stamps[index] ?? 18, event, index + 1));
   return { projects: refProjects, threads: refThreads, logs: { "rt-active": log } as Record<string, WireThreadEvent[]> };
 }
+
+const rev = (seed: string) => `${seed}0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b`.slice(0, 40);
+
+export function workspaceStatus(list: Project[]): WorkspaceStatus {
+  return {
+    state: "ready",
+    step: null,
+    error: null,
+    library: {
+      path: "/Users/dev/Library/Application Support/Orbyn/orbyn-fullstack-skills",
+      revision: rev("8ede3c4"),
+      branch: "main",
+      modified: false,
+      ahead: 0,
+      behind: 2,
+      incoming: [
+        { revision: rev("a1b2c3d"), subject: "Add statechart review guidance" },
+        { revision: rev("d4e5f6a"), subject: "Tighten worktree cleanup rules" },
+      ],
+      previous_revision: rev("51fa223"),
+    },
+    projects: list.map((project, at) => ({
+      id: project.id,
+      name: project.name,
+      git_root: project.path,
+      revision: rev(at === 0 ? "c16b80a" : "85a1821"),
+      branch: "main",
+      modified: at === 1,
+      unpushed: at === 1,
+      worktrees:
+        at === 0
+          ? [{ path: "/Users/dev/code/orbyn-engineering-app-wt/approval-timeout", branch: "approval-timeout" }]
+          : [],
+      overlaps: at === 0 ? ["tdd"] : [],
+    })),
+    active_runs: 0,
+    skill_delivery: "linked",
+  };
+}
+
+export const importPreview = (path: string): ImportPreview => ({
+  path,
+  git_root: path,
+  branch: "main",
+  uncommitted: ["src/draft.rs", "notes/todo.md"],
+  unpushed_branches: ["spike/retry-queue"],
+});

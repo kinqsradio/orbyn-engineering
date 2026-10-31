@@ -83,6 +83,10 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
     state.projects.data?.find((p) => p.id === thread.project_id),
   );
   const engine = useWorkspace((state) => engineById(state.engines.data, thread.engine));
+  const projectBranch = useWorkspace(
+    (state) => state.managed.data?.projects.find((p) => p.id === thread.project_id)?.branch ?? null,
+  );
+  const branch = thread.worktree?.branch ?? projectBranch;
   const unmanaged = engine?.capabilities.managed === false;
   const projectName = project?.name ?? "Unknown project";
   return (
@@ -100,10 +104,10 @@ function ThreadRow({ thread, selected }: { thread: Thread; selected: boolean }) 
         <span className="thread-row-title">{thread.title}</span>
         <span className="thread-row-line thread-row-foot">
           <span className="thread-row-branch">
-            {thread.worktree ? (
+            {branch ? (
               <>
                 <GitBranch size={12} aria-hidden />
-                {thread.worktree.branch}
+                {branch}
               </>
             ) : null}
           </span>

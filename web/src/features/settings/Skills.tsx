@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldX, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { api } from "../../api/client";
 import type { SkillPackStatus, SkillProfile } from "../../api/types";
@@ -6,8 +6,12 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button, Field, Pill } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Empty, ErrorState, Loading } from "../../ui/states";
+import { useWorkspace } from "../../state/workspace";
+import { FallbackNotice } from "./Workspace";
 
 function Pack({ pack, onChange }: { pack: SkillPackStatus; onChange(pack: SkillPackStatus): void }) {
+  const library = useWorkspace((state) => state.managed.data?.library ?? null);
+  const fallback = useWorkspace((state) => state.managed.data?.skill_delivery === "fallback");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rebuild = async () => {
@@ -36,27 +40,20 @@ function Pack({ pack, onChange }: { pack: SkillPackStatus; onChange(pack: SkillP
           {error}
         </p>
       ) : null}
+      {fallback ? <FallbackNotice /> : null}
       <dl className="facts facts-block">
         <div>
-          <dt>Pack version</dt>
-          <dd>{pack.version}</dd>
-        </div>
-        <div>
-          <dt>Signature</dt>
+          <dt>Library revision</dt>
           <dd>
-            {pack.signature_valid ? (
-              <Pill>
-                <ShieldCheck size={16} aria-hidden />
-                Valid
-              </Pill>
-            ) : (
-              <Pill tone="danger">
-                <ShieldX size={16} aria-hidden />
-                Not valid
-              </Pill>
-            )}
+            <code>{library?.revision.slice(0, 8) ?? pack.version}</code>
           </dd>
         </div>
+        {library ? (
+          <div>
+            <dt>Changes</dt>
+            <dd>{library.modified ? <Pill tone="warn">Modified</Pill> : "None"}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Source</dt>
           <dd>

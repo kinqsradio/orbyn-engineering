@@ -66,10 +66,17 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Import local folder" }));
     await user.click(await screen.findByRole("button", { name: "code" }));
     await user.click(await screen.findByRole("button", { name: /payments-service/ }));
     await waitFor(() => expect(screen.getByTitle("/Users/dev/code/payments-service")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Use this folder" }));
+    await user.click(screen.getByRole("button", { name: "Review import" }));
+
+    const review = await screen.findByRole("region", { name: "Import review" });
+    expect(within(review).getByText(/original folder stays untouched/)).toBeInTheDocument();
+    expect(within(review).getByText("src/draft.rs")).toBeInTheDocument();
+    expect(within(review).getByText("spike/retry-queue")).toBeInTheDocument();
+    await user.click(within(review).getByRole("button", { name: "Import project" }));
 
     expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
     expect(screen.getByText(/execute this repository's hooks/)).toBeInTheDocument();
@@ -78,6 +85,113 @@ describe("App against the mock API", () => {
     expect(await screen.findByRole("heading", { name: "New thread" })).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Create thread" }));
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/threads\//));
+  });
+
+  it("clones from a URL and keeps it on failure", async () => {
+    mock.fail("/api/projects/clone", 1, 502, "clone_failed", "The remote refused.");
+    const user = userEvent.setup();
+    go("#/add-project");
+    render(<App />);
+    await user.type(await screen.findByLabelText("Repository URL"), "https://example.com/team/repo.git");
+    await user.click(screen.getByRole("button", { name: "Clone project" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The remote refused.");
+    expect(screen.getByLabelText("Repository URL")).toHaveValue("https://example.com/team/repo.git");
+    await user.click(screen.getByRole("button", { name: "Retry clone" }));
+    expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
+  });
+
+  it("creates a new project", async () => {
+    const user = userEvent.setup();
+    go("#/add-project");
+    render(<App />);
+    await user.click(await screen.findByRole("tab", { name: "Create new" }));
+    await user.type(screen.getByLabelText("Project name"), "fresh-idea");
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+    expect(await screen.findByRole("heading", { name: "New thread" })).toBeInTheDocument();
+  });
+
+  it("blocks everything on first run until setup finishes", async () => {
+    mock.reset("first-run");
+    mock.failSetup();
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Set up your workspace" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Workspace" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Set up workspace" }));
+    expect(await screen.findByText("Setup didn't finish", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText(/couldn't be reached/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("heading", { name: "Add your first project" }, { timeout: 3000 })).toBeInTheDocument();
+  });
+
+  it("adopts an existing library folder", async () => {
+    mock.reset("first-run");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("radio", { name: /Adopt an existing library/ }));
+    await user.click(await screen.findByRole("button", { name: "Adopt this folder" }));
+    expect(await screen.findByRole("heading", { name: "Add your first project" }, { timeout: 3000 })).toBeInTheDocument();
+  });
+
+  it("reviews incoming commits before updating the library", async () => {
+    for (const thread of mock.threads) thread.active_run = null;
+    const user = userEvent.setup();
+    go("#/settings/workspace");
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Review update" }));
+    const dialog = await screen.findByRole("dialog", { name: "Update the library?" });
+    expect(within(dialog).getByText("Add statechart review guidance")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Update" }));
+    expect(await screen.findByText("The library is up to date.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
+  });
+
+  it("disables library updates while runs are active", async () => {
+    go("#/settings/workspace");
+    render(<App />);
+    expect(await screen.findByText(/runs are active/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
+  });
+
+  it("disables library changes with the reason", async () => {
+    mock.patchWorkspace({
+      library: { ...mock.workspace.library!, modified: true },
+    });
+    go("#/settings/workspace");
+    render(<App />);
+    expect(await screen.findByText(/local changes/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Roll back" })).toBeDisabled();
+  });
+
+  it("blocks removing a project with unpushed work until acknowledged", async () => {
+    const user = userEvent.setup();
+    go("#/settings/workspace");
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Remove marketing-site" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove marketing-site?" });
+    expect(within(dialog).getByText(/exist nowhere else/)).toBeInTheDocument();
+    const confirm = within(dialog).getByRole("button", { name: "Remove project" });
+    expect(confirm).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(confirm);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "marketing-site" })).toBeNull());
+  });
+
+  it("shows library revision, not a signature, and the fallback notice", async () => {
+    mock.patchWorkspace({ skill_delivery: "fallback" });
+    go("#/settings/skills");
+    render(<App />);
+    expect(await screen.findByText("Library revision")).toBeInTheDocument();
+    expect(screen.getByText(/fallback route/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/signature/i);
+  });
+
+  it("shows the selected branch in the thread", async () => {
+    go("#/threads/t-approval");
+    render(<App />);
+    const composer = (await screen.findByLabelText(/^Message/)).closest("form");
+    expect(within(composer as HTMLElement).getByText("approval-timeout")).toBeInTheDocument();
   });
 
   it("offers sign-in when the service asks for it, then opens", async () => {
