@@ -320,6 +320,9 @@ impl Core {
                 Some(choice) => choice,
                 None => text("worktree_submodules")?,
             },
+            directory: Some(text("worktree_location")?)
+                .filter(|location| !location.trim().is_empty())
+                .map(std::path::PathBuf::from),
         })
     }
 
