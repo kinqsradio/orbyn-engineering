@@ -5,4 +5,8 @@ export type EngineCapabilities = { streaming: boolean, approvals: boolean, resum
 /**
  * False means Orbyn cannot gate this engine's actions.
  */
-managed: boolean, skill_delivery: Array<SkillDelivery>, };
+managed: boolean, skill_delivery: Array<SkillDelivery>, 
+/**
+ * The engine can pause and resume a goal, not only set and clear it.
+ */
+goal_control: boolean, };

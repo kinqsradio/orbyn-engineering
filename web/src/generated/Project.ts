@@ -4,4 +4,16 @@ export type Project = { id: string, name: string, path: string,
 /**
  * Engines refuse to start until a person trusts this folder.
  */
-trusted: boolean, is_git: boolean, created_at: string, };
+trusted: boolean, 
+/**
+ * False for a folder that is not in Git, which works without Git's features.
+ */
+is_git: boolean, created_at: string, 
+/**
+ * Orbyn cloned or created this folder. Only such a folder can ever be deleted.
+ */
+managed: boolean, 
+/**
+ * A thread's dated folder under app data, hidden from project lists.
+ */
+scratch: boolean, };

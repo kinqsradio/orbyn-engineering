@@ -4,4 +4,12 @@ export type PullRequest = { number: bigint, title: string, url: string,
 /**
  * `open`, `merged` or `closed`.
  */
-state: string, head: string, base: string, author: string | null, };
+state: string, head: string, base: string, author: string | null, draft: boolean, updated_at: string | null, labels: Array<string>, 
+/**
+ * `approved`, `changes_requested`, `review_required` or `none`.
+ */
+review_state: string | null, 
+/**
+ * `pass`, `fail`, `pending` or `none`.
+ */
+checks_state: string | null, };

@@ -161,6 +161,7 @@ async fn the_library_and_duplicates_are_refused_however_they_are_named() {
         .await;
     assert_eq!(code, 403);
     let repo = external_repo(&dir.path().join("app"));
+    #[cfg_attr(not(unix), allow(unused_variables))]
     let project = added(&service, &repo).await;
     #[cfg(unix)]
     {

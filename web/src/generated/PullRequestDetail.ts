@@ -6,4 +6,8 @@ export type PullRequestDetail = { pull: PullRequest, body: string,
 /**
  * The forge's own records, which differ by forge.
  */
-checks: JsonValue, comments: JsonValue, };
+checks: JsonValue, comments: JsonValue, 
+/**
+ * `mergeable`, `conflicting` or `unknown`.
+ */
+mergeable: string | null, reviewers: Array<string>, head_sha: string | null, base_sha: string | null, additions: bigint | null, deletions: bigint | null, changed_files: bigint | null, maintainer_can_modify: boolean | null, auto_merge: boolean, };

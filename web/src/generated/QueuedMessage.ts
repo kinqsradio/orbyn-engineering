@@ -4,4 +4,8 @@ export type QueuedMessage = { id: string, thread_id: string, prompt: string, att
 /**
  * Held messages wait for a resume after a stop, failure or restart.
  */
-held: boolean, created_at: string, };
+held: boolean, created_at: string, 
+/**
+ * What this message sets on the thread when it starts.
+ */
+model?: string, effort?: string, options?: { [key in string]?: string }, };

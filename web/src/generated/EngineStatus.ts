@@ -9,4 +9,12 @@ export type EngineStatus = { id: string, name: string, tier: EngineTier, capabil
 /**
  * Present only when the owning installer can update this binary.
  */
-update_command: string | null, manual_hint: string | null, sign_in_command: string | null, updating: boolean, problem: string | null, };
+update_command: string | null, manual_hint: string | null, sign_in_command: string | null, updating: boolean, problem: string | null, 
+/**
+ * Credential variables this engine would inherit, by name only.
+ */
+inherited_credentials?: Array<string>, 
+/**
+ * The origin of an inherited endpoint override, with no path or user info.
+ */
+endpoint_origin?: string, };
