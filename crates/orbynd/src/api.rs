@@ -17,8 +17,8 @@ use orbyn_contracts::{
     GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull,
     MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject,
     ReorderThreads, RestoreChanges, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings,
-    SetPreferences, SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine,
-    TaskEnabled, UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
+    SetPreferences, SkillProfile, StartRun, SteerResult, SteerRun, SubmitReview, SwitchBranch,
+    SwitchEngine, TaskEnabled, UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -1004,14 +1004,14 @@ pub async fn steer(
     State(state): State<AppState>,
     Path(id): Path<String>,
     ApiJson(body): ApiJson<SteerRun>,
-) -> ApiResult<StatusCode> {
+) -> ApiResult<impl IntoResponse> {
     let wanted = ModelSelection {
         model: body.model,
         effort: body.effort,
         options: body.options,
     };
     state.core.check_turn(&id, &wanted).await?;
-    state.core.runs.steer(&id, &body.prompt)?;
+    let delivered = state.core.runs.steer(&id, &body.prompt)?;
     if !selection::is_empty(&wanted) {
         let patch = UpdateThread {
             model: wanted.model,
@@ -1021,7 +1021,7 @@ pub async fn steer(
         };
         state.core.update_thread(&id, &patch, LOCAL_USER)?;
     }
-    Ok(StatusCode::ACCEPTED)
+    Ok((StatusCode::ACCEPTED, Json(SteerResult { state: delivered })))
 }
 
 #[derive(Deserialize)]
@@ -1214,10 +1214,11 @@ pub async fn decide_approval(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<DecideApproval>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.gate.decide(
+    Ok(Json(state.core.gate.decide_with(
         &id,
         body.allow,
         body.remember,
+        body.feedback,
         LOCAL_USER,
     )?))
 }
@@ -1300,6 +1301,14 @@ pub async fn fork_thread(
         StatusCode::CREATED,
         Json(state.core.fork_thread(&id, &body, LOCAL_USER)?),
     ))
+}
+
+pub async fn restart_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.restart_session(&id, LOCAL_USER)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn bring_back(

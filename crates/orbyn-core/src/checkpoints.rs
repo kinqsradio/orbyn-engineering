@@ -237,6 +237,19 @@ impl Core {
         self.store.fork_thread(&parent, through, &title, relation)
     }
 
+    /// The next run starts a fresh engine process and session, so it reads skills,
+    /// plugins and MCP config again, and carries the conversation as a handoff.
+    pub fn restart_session(&self, id: &str, actor: &str) -> Result<()> {
+        if self.store.thread(id)?.active_run.is_some() {
+            return Err(CoreError::ThreadBusy);
+        }
+        self.audit_thread(actor, "thread.restart_session", id, json!({}))?;
+        let handoff = self.store.recovery_handoff(id)?;
+        self.store.set_handoff(id, &handoff)?;
+        self.store
+            .note_thread_event(id, "engine.session_restarted", json!({}))
+    }
+
     /// Gives a side chat's own messages to its parent's next run. It joins whatever
     /// the next run already carries, and the parent keeps its engine session.
     pub fn bring_back(&self, side_id: &str, actor: &str) -> Result<()> {
@@ -334,6 +347,10 @@ impl Core {
         );
         self.store
             .switch_thread_engine(id, &request.engine, &chosen, &handoff)?;
+        if request.engine != thread.engine {
+            self.store
+                .note_thread_event(id, "engine.switched", json!({ "to": request.engine }))?;
+        }
         self.store.thread(id)
     }
 }

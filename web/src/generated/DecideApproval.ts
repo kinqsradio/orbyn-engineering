@@ -4,4 +4,8 @@ export type DecideApproval = { allow: boolean,
 /**
  * Also store an allow rule for this exact target.
  */
-remember: boolean, };
+remember: boolean, 
+/**
+ * Sent back with a denial, on engines that can hear it.
+ */
+feedback?: string, };

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use orbyn_contracts::{
     AgUiEvent, EngineTier, ForcedStop, ModelSelection, PermissionMode, QueuedMessage, Run,
-    RunState, Thread, ThreadGoal,
+    RunState, SteerState, Thread, ThreadGoal,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -546,7 +546,7 @@ impl RunManager {
     }
 
     /// Adds text to the running turn, for engines that accept it.
-    pub fn steer(&self, thread_id: &str, prompt: &str) -> Result<()> {
+    pub fn steer(self: &Arc<Self>, thread_id: &str, prompt: &str) -> Result<SteerState> {
         check_prompt(prompt)?;
         let run = self
             .store
@@ -559,8 +559,11 @@ impl RunManager {
         let input = self
             .lock()
             .get(&run.id)
-            .and_then(|active| active.input.clone())
-            .ok_or_else(|| CoreError::Unsupported("This engine cannot be steered.".into()))?;
+            .and_then(|active| active.input.clone());
+        let Some(input) = input else {
+            self.enqueue(thread_id, prompt, &[])?;
+            return Ok(SteerState::Queued);
+        };
         let message_id = format!("{}:{}:prompt", run.id, new_id());
         for event in [
             AgUiEvent::TextMessageStart {
@@ -577,7 +580,24 @@ impl RunManager {
         }
         input
             .send(prompt.to_owned())
-            .map_err(|_| CoreError::RunClosed)
+            .map_err(|_| CoreError::RunClosed)?;
+        Ok(SteerState::Delivered)
+    }
+
+    /// The engine refused a message it was handed mid-turn, so it goes in the queue.
+    fn requeue_steer(&self, scope: &RunScope, prompt: &str) {
+        let note = self.store.note_thread_event(
+            &scope.thread_id,
+            "steer.failed",
+            json!({ "prompt": prompt }),
+        );
+        let queued = note.and_then(|()| {
+            self.store
+                .enqueue(&scope.thread_id, prompt, &[], &ModelSelection::default())
+        });
+        if let Err(error) = queued {
+            tracing::warn!(%error, "could not requeue a steered message");
+        }
     }
 
     /// A delegated thread with nothing left to do tells its parent, through the
@@ -1106,7 +1126,10 @@ impl RunManager {
     ) -> EngineOutcome {
         let cancel = &stops.cancel;
         let mut cancelling = false;
-        let mut shaper = EventShaper::default();
+        let whole =
+            crate::preferences::stored_preference(&self.store, "response_streaming_mode", None)
+                .is_ok_and(|mode| mode == "turn");
+        let mut shaper = EventShaper::new(whole);
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
         tokio::pin!(stop_deadline);
         // Only a delegated run, which nobody is watching, is stopped for going quiet.
@@ -1176,6 +1199,9 @@ impl RunManager {
                             if let Some(outcome) = self.write_events(scope, shaper.push(event)) {
                                 break outcome;
                             }
+                        }
+                        EngineEvent::SteerFailed(prompt) => {
+                            self.requeue_steer(scope, &prompt);
                         }
                         EngineEvent::Limited { resets_at } => {
                             self.limit_signals().insert(scope.run_id.clone(), resets_at);

@@ -2175,6 +2175,9 @@ pub struct EngineCapabilities {
     /// The engine can pause and resume a goal, not only set and clear it.
     #[serde(default)]
     pub goal_control: bool,
+    /// A denied action can carry your words back to the engine.
+    #[serde(default)]
+    pub decline_feedback: bool,
 }
 }
 
@@ -2571,6 +2574,25 @@ pub struct DecideApproval {
     pub allow: bool,
     /// Also store an allow rule for this exact target.
     pub remember: bool,
+    /// Sent back with a denial, on engines that can hear it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub feedback: Option<String>,
+}
+}
+
+wire_enum! {
+pub enum SteerState {
+    /// Handed to the running turn.
+    Delivered,
+    /// This engine takes no mid-turn input, so the message waits for the next turn.
+    Queued,
+}
+}
+
+wire! {
+pub struct SteerResult {
+    pub state: SteerState,
 }
 }
 

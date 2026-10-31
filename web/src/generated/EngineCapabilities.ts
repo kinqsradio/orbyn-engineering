@@ -9,4 +9,8 @@ managed: boolean, skill_delivery: Array<SkillDelivery>,
 /**
  * The engine can pause and resume a goal, not only set and clear it.
  */
-goal_control: boolean, };
+goal_control: boolean, 
+/**
+ * A denied action can carry your words back to the engine.
+ */
+decline_feedback: boolean, };

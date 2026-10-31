@@ -48,7 +48,7 @@ function RowStatus({ thread }: { thread: Thread }) {
         </span>
       );
     }
-    const label = active.state === "admitted" ? "Queued" : "Working";
+    const label = active.state === "admitted" ? "Queued" : thread.goal ? "Goal" : "Working";
     return (
       <span className="row-status tone-info">
         <CircleDashed size={14} className="spin" aria-hidden />

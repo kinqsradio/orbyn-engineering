@@ -68,6 +68,7 @@ impl EngineDriver for CodexDriver {
                 // library's `.agents/skills` never reach the model.
                 skill_delivery: vec![SkillDelivery::McpSkillServer],
                 goal_control: true,
+                decline_feedback: false,
             },
         }
     }
@@ -441,9 +442,11 @@ async fn run_protocol(
                         "expectedTurnId": turn,
                         "input": [{ "type": "text", "text": text, "text_elements": [] }],
                     });
+                    let refused = events.clone();
                     tokio::spawn(async move {
                         if let Err(error) = rpc.call("turn/steer", params, CALL_TIMEOUT).await {
                             tracing::debug!(%error, "could not steer the run");
+                            let _ = refused.send(EngineEvent::SteerFailed(text)).await;
                         }
                     });
                 }
@@ -1047,6 +1050,13 @@ impl TurnMapper {
                     .push(EngineEvent::Goal(params.get("goal").map(parse_goal)));
             }
             "thread/goal/cleared" => step.events.push(EngineEvent::Goal(None)),
+            "thread/compacted" => step.events.push(
+                AgUiEvent::Custom {
+                    name: "context.compacted".into(),
+                    value: Value::Null,
+                }
+                .into(),
+            ),
             "warning" => {
                 step.events.push(
                     AgUiEvent::Custom {

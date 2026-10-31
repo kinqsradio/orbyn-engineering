@@ -27,6 +27,7 @@ import type { Project, ServerSettings, Thread } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
 import { DRAFT_KEY, useDraftStore } from "../onboarding/draftStore";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
+import { threadToken } from "../thread/skillMention";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
@@ -567,6 +568,15 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     }
   };
 
+  /** A thread dropped on a composer becomes a link the agent can read. */
+  const mentionInComposer = (rows: Thread[]) => {
+    const key = selectedThread ?? DRAFT_KEY;
+    const { drafts, setDraft } = useUi.getState();
+    const links = rows.map((row) => threadToken(row.id, row.title)).join(" ");
+    const before = drafts[key] ?? "";
+    setDraft(key, before ? `${before.trimEnd()} ${links} ` : `${links} `);
+  };
+
   const actions: RowActions = {
     onClick(event, thread) {
       const mod = /mac/i.test(navigator.platform) ? event.metaKey : event.ctrlKey;
@@ -616,9 +626,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           );
           follow();
         },
-        onEnd: () => {
+        onEnd: (at) => {
           reset();
-          if (target) void finishDrop(thread, section, target);
+          const composer = document.elementFromPoint(at.x, at.y)?.closest(".composer");
+          if (composer) mentionInComposer(selection.has(thread.id) ? orderedRef.current.filter((row) => selection.has(row.id)) : [thread]);
+          else if (target) void finishDrop(thread, section, target);
         },
         onCancel: reset,
       });
