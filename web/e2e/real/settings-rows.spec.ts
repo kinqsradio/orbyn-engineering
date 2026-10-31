@@ -49,7 +49,8 @@ test("Labs turns Plan off, and Shift+Tab flips it while it is on", async ({ page
   await settled(service, id);
   await box(page).focus();
   await page.keyboard.press("Shift+Tab");
-  await expect.poll(async () => (await service.api<{ lifecycle: { plan_mode: boolean } }>("GET", `/api/threads/${id}`)).lifecycle.plan_mode).toBe(true);
+  // The key flips what the composer shows, so the next press waits for it to show.
+  await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Shift+Tab");
   await expect.poll(async () => (await service.api<{ lifecycle: { plan_mode: boolean } }>("GET", `/api/threads/${id}`)).lifecycle.plan_mode).toBe(false);
   await page.goto(`${service.page}#/settings/labs`);
@@ -93,10 +94,11 @@ test("a user's rules reach effort steps and the stop command", async ({ page }) 
   await page.keyboard.press("ControlOrMeta+Shift+y");
   await expect.poll(effort).toBe("xhigh");
   // The composer steps from what it shows, so each press waits for the last to land.
-  await page.waitForTimeout(300);
+  const shown = page.locator("[data-effort-trigger]");
+  await expect(shown).toContainText(/xhigh/i);
   await page.keyboard.press("ControlOrMeta+Shift+y");
   await expect.poll(effort).toBe("medium");
-  await page.waitForTimeout(300);
+  await expect(shown).toContainText(/medium/i);
   await page.keyboard.press("ControlOrMeta+Shift+u");
   await expect.poll(effort).toBe("xhigh");
   await send(page, "[hang]");
