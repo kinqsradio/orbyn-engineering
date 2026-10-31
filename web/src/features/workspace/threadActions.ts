@@ -82,6 +82,9 @@ export function snoozeThreads(threads: readonly Thread[], until: Date) {
   );
 }
 
+export const dismissWoke = (thread: Thread) =>
+  each([thread], "dismiss that", () => ({ dismiss_woke: true }));
+
 export const wakeThreads = (threads: readonly Thread[]) =>
   each(threads, "wake the thread", () => ({ wake: true }));
 

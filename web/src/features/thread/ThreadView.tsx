@@ -34,7 +34,7 @@ import { composerSettled, useComposerDock } from "./heroTransition";
 import { runningTools } from "./timeline";
 import { implementPrompt, planTitle, proposedPlanIn } from "./proposedPlan";
 import { SubagentBar } from "./SubagentBar";
-import { ThreadErrorBanner } from "./ThreadBanners";
+import { LimitBanner, ThreadErrorBanner } from "./ThreadBanners";
 import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
 
@@ -376,6 +376,7 @@ export function ThreadView({ id }: { id: string }) {
             />
           )}
           <ThreadErrorBanner thread={thread} />
+          <LimitBanner thread={thread} />
           <div className="composer-lane">
             <div ref={mover} className="composer-group">
               <div className="composer-stack">

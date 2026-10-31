@@ -49,7 +49,18 @@ Hidden detail
 </details>
 `;
 
+const LIMIT_TEXT = "You've hit your usage limit.";
+const limitStop = (resetsAt) => [
+  { method: "error", params: { willRetry: false, error: { message: LIMIT_TEXT, codexErrorInfo: "usageLimitExceeded", resetsAt } } },
+  { end: "failed" },
+];
+
 export const scenes = {
+  limit: limitStop(4102444800),
+  "limit-open": limitStop(undefined),
+  get "limit-soon"() {
+    return limitStop(Math.floor(Date.now() / 1000) + 2);
+  },
   timeline: [
     started(item("rs1", "reasoning", {})),
     { method: "item/reasoning/summaryTextDelta", params: { itemId: "rs1", summaryIndex: 0, delta: "planning" } },

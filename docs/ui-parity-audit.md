@@ -23,6 +23,10 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Sidebar | Footer | Live: 32px at x 8, 44, 80; update x 167 | Settings, update only | x 166; Pull requests and Usage hidden |
 | Sidebar | Working status | Live: spinner, blue "Working Ns" | Match | Spin 1000 ms |
 | Sidebar | Approval status | Live: warn "Approval" | Match, Real | Dot, not their icon |
+| Sidebar | Limited and Question | Source: request states on the row | Limited, Question, Real | Own label for a question |
+| Sidebar | Woke | Source: dismissible badge after an early wake | Match, Real | Badge text only, no icon |
+| Sidebar | Draft row | Source: unsent marker, discard, undo with attachments | Match, Real | One draft at a time, not one per project |
+| Timeline | Limit stop | Source: Limited, Resume, Resume at reset, Snooze until reset | Banner above the composer, Real | Layout own |
 | Sidebar | Multi-line rows | Live: selected row, three lines | Built | Unread title weight unobserved |
 | Hover card | Older thread | Live: 165 ms to show, x +4, width 320, radius 6, 150 ms | Match | Delay 150 ms set |
 | Draft | Heading | Live: 30px, -0.75px, line 36 | Match, own wording removed | Same wording as reference |

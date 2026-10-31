@@ -905,6 +905,8 @@ struct TurnMapper {
     delivered_text: HashMap<String, bool>,
     file_paths: HashMap<String, Vec<String>>,
     last_error: Option<String>,
+    /// When the window that has run out resets, from the last limits update.
+    limit_reset: Option<i64>,
 }
 
 impl TurnMapper {
@@ -915,6 +917,7 @@ impl TurnMapper {
             delivered_text: HashMap::new(),
             file_paths: HashMap::new(),
             last_error: None,
+            limit_reset: None,
         }
     }
 
@@ -1010,9 +1013,19 @@ impl TurnMapper {
                         .into(),
                     );
                 } else {
+                    let limited = params
+                        .pointer("/error/codexErrorInfo")
+                        .is_some_and(|info| info.to_string().contains("usageLimitExceeded"));
+                    if limited {
+                        let said = params.pointer("/error/resetsAt").and_then(Value::as_i64);
+                        step.events.push(EngineEvent::Limited {
+                            resets_at: said.or(self.limit_reset),
+                        });
+                    }
                     self.last_error = Some(message);
                 }
             }
+            "account/rateLimits/updated" => self.limit_reset = spent_window_reset(params),
             "thread/tokenUsage/updated" => {
                 let usage = params.get("tokenUsage").cloned().unwrap_or(Value::Null);
                 let report = ThreadUsage {
@@ -1346,6 +1359,22 @@ fn tool_output(item: &Value) -> String {
         )
 }
 
+/// The latest reset among windows at their limit.
+fn spent_window_reset(params: &Value) -> Option<i64> {
+    ["primary", "secondary"]
+        .iter()
+        .filter_map(|name| params.pointer(&format!("/rateLimits/{name}")))
+        .filter(|window| {
+            window
+                .get("usedPercent")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+                >= 100.0
+        })
+        .filter_map(|window| window.get("resetsAt").and_then(Value::as_i64))
+        .max()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1551,6 +1580,25 @@ mod tests {
         );
         // The raw item and the end, with no second copy of the text.
         assert_eq!(done.events.len(), 2);
+    }
+
+    #[test]
+    fn a_usage_limit_stop_carries_its_reset() {
+        let mut mapper = mapper();
+        mapper.on_notification(
+            "account/rateLimits/updated",
+            &json!({ "rateLimits": { "primary": { "usedPercent": 100, "resetsAt": 500 } } }),
+        );
+        let step = mapper.on_notification(
+            "error",
+            &json!({ "threadId": "thread", "willRetry": false, "error": { "message": "Out", "codexErrorInfo": "usageLimitExceeded" } }),
+        );
+        assert!(step.events.iter().any(|event| matches!(
+            event,
+            EngineEvent::Limited {
+                resets_at: Some(500)
+            }
+        )));
     }
 
     #[test]

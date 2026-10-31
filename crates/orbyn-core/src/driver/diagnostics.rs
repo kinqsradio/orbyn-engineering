@@ -121,6 +121,20 @@ pub fn clean(text: &str) -> String {
     kept.join("\n").trim().to_owned()
 }
 
+/// True for how the engines put a usage or rate limit stop into words.
+pub fn is_limit_failure(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    [
+        "usage limit",
+        "rate limit",
+        "hit your limit",
+        "limit reached",
+        "quota",
+    ]
+    .iter()
+    .any(|phrase| lower.contains(phrase))
+}
+
 /// True for how the engines say they have no usable login.
 pub fn is_sign_in_failure(text: &str) -> bool {
     let lower = text.to_lowercase();

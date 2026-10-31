@@ -80,9 +80,17 @@ Settling removes a pin and ends a snooze; it needs no active run and closes the
 thread's terminals. Un-settling returns a thread to the top and holds off automatic
 settling until new activity. Archiving hides a thread and refuses new runs. Your
 message, an approval request and a run ending all wake a snoozed thread; those
-wakes share the transaction that caused them. Thread activity never changes the
+wakes share the transaction that caused them. Any wake but your own message or a
+manual one leaves `woke_at` until dismissed. Thread activity never changes the
 saved order. A running thread or descendant is never settled automatically or
 deleted. Lifecycle changes are logged as `CUSTOM thread.updated`.
+
+A run that fails on a usage or rate limit leaves a limit on its thread: the engine's
+words, when it stopped and the reset if the engine gave one. Any new run, settle or
+archive clears it. With a reset in the future, `auto_resume_limited_threads` schedules a
+continuation and `snooze_limited_threads` snoozes until then; each can also be chosen on
+the thread. Due continuations start from the lifecycle pass, so an overdue one starts on
+the first pass after a restart, and a held queue stays held until that run ends.
 
 ## Composer
 

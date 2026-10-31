@@ -56,6 +56,7 @@ import { ProjectFilter } from "./ProjectFilter";
 import {
   copyText,
   deleteThreads,
+  dismissWoke,
   reorderThreads,
   settleThreads,
   unpinThreads,
@@ -697,6 +698,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       });
     },
     onRowFocus: setFocusId,
+    onDismissWoke: (thread) => void dismissWoke(thread),
     onFiles(thread, files) {
       useDraftStore.getState().drop(thread.id, files);
       navigate({ name: "thread", id: thread.id });
