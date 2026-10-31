@@ -584,11 +584,13 @@ fn index_message(
     text: &str,
 ) -> Result<()> {
     tx.execute(
-        "INSERT INTO thread_messages (thread_id, message_id, seq, role, ts, text)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT (thread_id, message_id) DO UPDATE SET text = text || excluded.text",
+        "INSERT INTO thread_messages (thread_id, run_key, message_id, seq, role, ts, text)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT (thread_id, run_key, message_id)
+         DO UPDATE SET text = text || excluded.text",
         params![
             record.thread_id,
+            record.run_id.as_deref().unwrap_or(""),
             message_id,
             record.seq,
             role,

@@ -265,8 +265,9 @@ impl Store {
                 params![id, new.parent_thread_id, through],
             )?;
             tx.execute(
-                "INSERT INTO thread_messages (thread_id, message_id, seq, role, ts, text)
-                 SELECT ?1, message_id, seq, role, ts, text FROM thread_messages
+                "INSERT INTO thread_messages
+                    (thread_id, run_key, message_id, seq, role, ts, text)
+                 SELECT ?1, run_key, message_id, seq, role, ts, text FROM thread_messages
                  WHERE thread_id = ?2 AND seq <= ?3",
                 params![id, new.parent_thread_id, through],
             )?;

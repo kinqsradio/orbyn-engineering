@@ -723,6 +723,30 @@ fn every_word_must_be_in_one_message_even_across_events() {
 }
 
 #[test]
+fn an_id_reused_on_a_later_turn_is_a_second_message() {
+    let f = fixture();
+    let first = running(&f.store, &f.thread);
+    say(&f.store, &first, "msg", "assistant", &["alpha words"]);
+    f.store
+        .finish_run(&first, RunState::Completed, None)
+        .unwrap();
+    let second = running(&f.store, &f.thread);
+    say(&f.store, &second, "msg", "assistant", &["bravo words"]);
+    let scope = crate::search::SearchScope::default();
+    assert_eq!(
+        f.store.search_messages("words", &scope).unwrap().hits.len(),
+        2
+    );
+    assert!(
+        f.store
+            .search_messages("alpha bravo", &scope)
+            .unwrap()
+            .hits
+            .is_empty()
+    );
+}
+
+#[test]
 fn search_folds_any_script_and_short_queries_read_nothing() {
     let f = fixture();
     let run = running(&f.store, &f.thread);

@@ -595,6 +595,42 @@ async fn a_follow_up_can_ask_for_success_and_cannot_follow_itself() {
 }
 
 #[tokio::test]
+async fn the_gate_keeps_a_files_old_bytes_before_a_write_it_allows() {
+    let script: Script = Arc::new(|spec, events, _| {
+        tokio::spawn(async move {
+            let path = spec.checkout.join("a.txt").to_string_lossy().into_owned();
+            let verdict = crate::driver::ask_paths(
+                &events,
+                ActionKind::FileChange,
+                path.clone(),
+                "Edit".into(),
+                Value::Null,
+                Vec::new(),
+            )
+            .await;
+            if verdict.is_allowed() {
+                std::fs::write(&path, "new").unwrap();
+                let _ = events.send(EngineEvent::Files(vec![path])).await;
+            }
+            let _ = events
+                .send(EngineEvent::Finished(EngineOutcome::Completed))
+                .await;
+        })
+    });
+    let f = fixture(script).await;
+    let cwd = f.core.store.thread(&f.thread).unwrap().cwd;
+    std::fs::write(Path::new(&cwd).join("a.txt"), "old").unwrap();
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    let approval = until_pending(&f.core, &f.thread).await;
+    f.core.gate.decide(&approval.id, true, false, "t").unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+    let kept = f.core.changed_file(&f.thread, &run.id, "a.txt").unwrap();
+    assert_eq!(kept.before.as_deref(), Some("old"));
+    assert_eq!(kept.after.as_deref(), Some("new"));
+    assert_eq!(kept.status, orbyn_contracts::ChangeStatus::Modified);
+}
+
+#[tokio::test]
 async fn panicking_engine_task_fails_the_run() {
     let script: Script = Arc::new(|_, _events, _| {
         tokio::spawn(async move {

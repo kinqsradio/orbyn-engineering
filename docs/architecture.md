@@ -453,8 +453,8 @@ Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
-`engine.retrying`, `engine.selection`, `engine.sign_in_required` and
-`engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
+`engine.retrying`, `engine.selection`, `engine.sign_in_required`,
+`engine.session_lost` and `run.force_stopped`. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on

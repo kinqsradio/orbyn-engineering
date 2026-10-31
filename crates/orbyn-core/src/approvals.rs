@@ -149,10 +149,10 @@ impl ApprovalGate {
     /// precedes the effect. The future can be dropped safely: an abandoned
     /// approval expires rather than staying pending.
     pub async fn request(&self, scope: &RunScope, ask: ActionAsk) -> Verdict {
-        let writes = if ask.kind == ActionKind::FileChange {
-            ask.paths.clone()
-        } else {
-            Vec::new()
+        let writes = match (ask.kind, ask.paths.is_empty()) {
+            (ActionKind::FileChange, false) => ask.paths.clone(),
+            (ActionKind::FileChange, true) => vec![ask.target.clone()],
+            _ => Vec::new(),
         };
         match self.request_inner(scope, ask).await {
             Ok(verdict) => {

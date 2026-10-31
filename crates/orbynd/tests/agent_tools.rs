@@ -493,7 +493,7 @@ async fn a_thread_is_organized_and_configured_inside_its_project_only() {
     let changed = service.json(&format!("/api/threads/{sibling}")).await;
     assert_eq!(changed["effort"], "high");
     assert_eq!(changed["lifecycle"]["plan_mode"], true);
-    assert!(!changed["lifecycle"]["pinned_at"].is_null() || changed["lifecycle"]["pinned"] == true);
+    assert!(changed["lifecycle"]["pinned_at"].is_string(), "{changed}");
 
     let elsewhere = dir.path().join("elsewhere");
     std::fs::create_dir_all(&elsewhere).unwrap();
