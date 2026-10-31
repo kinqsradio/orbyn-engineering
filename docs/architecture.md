@@ -876,6 +876,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST /api/workspace/setup` | Clone or adopt the library (`WorkspaceSetup`). No first-run screen calls this: the web sends it only from Settings, `{}` to try again while `configured` is false and `{adopt_path}` to use another library |
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |
 | `POST /api/workspace/rollback` | Back to the revision before the last update |
+| `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
