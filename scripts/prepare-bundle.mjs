@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const windows = process.platform === "win32";
-const run = (command, args, cwd) =>
-  execFileSync(command, args, { cwd, stdio: "inherit", shell: windows });
+const run = (command, args, cwd, env = process.env) =>
+  execFileSync(command, args, { cwd, stdio: "inherit", shell: windows, env });
 
 const host = /host: (\S+)/.exec(
   execFileSync("rustc", ["-vV"], { encoding: "utf8" }),
@@ -15,7 +15,16 @@ const host = /host: (\S+)/.exec(
 const target = process.env.ORBYN_TARGET ?? host;
 
 run("npm", ["run", "build"], join(root, "web"));
-run("cargo", ["build", "--release", "-p", "orbynd", "--bin", "orbynd", "--bin", "orbyn", "--target", target], root);
+// A static C runtime, so the installer needs no redistributable.
+const flags = target.includes("windows-msvc")
+  ? { RUSTFLAGS: `${process.env.RUSTFLAGS ?? ""} -C target-feature=+crt-static`.trim() }
+  : {};
+run(
+  "cargo",
+  ["build", "--release", "-p", "orbynd", "--bin", "orbynd", "--bin", "orbyn", "--target", target],
+  root,
+  { ...process.env, ...flags },
+);
 
 const build = join(root, "build");
 rmSync(build, { recursive: true, force: true });

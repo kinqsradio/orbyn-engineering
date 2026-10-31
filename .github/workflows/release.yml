@@ -57,8 +57,18 @@ jobs:
         working-directory: desktop
       - run: npm run prepare-bundle
         working-directory: desktop
-      - run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Build with updater files
         working-directory: desktop
+        shell: bash
+        run: >
+          npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          --config '{"bundle":{"createUpdaterArtifacts":true},"plugins":{"updater":{"pubkey":"${{ vars.ORBYN_UPDATE_PUBKEY }}"}}}'
+      - name: Check notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bundle="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          scripts/verify-macos-release.sh "$bundle"/macos/*.app "$bundle"/dmg/*.dmg
       - name: Sign Windows bundle
         if: runner.os == 'Windows'
         shell: bash
@@ -69,3 +79,16 @@ jobs:
         run: |
           echo "Azure Trusted Signing must be configured before this job can pass." >&2
           test -n "$AZURE_CODESIGN_ENDPOINT"
+      - name: Write checksums and inventory
+        shell: bash
+        run: |
+          bundle="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.tar.gz' -o -name '*.sig' \) -print0 > assets
+          xargs -0 node scripts/release-evidence.mjs release-evidence < assets
+          xargs -0 -I{} cp {} release-evidence/ < assets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bundle-${{ matrix.target }}
+          path: release-evidence
+          if-no-files-found: error
+          retention-days: 14
