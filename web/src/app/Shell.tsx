@@ -21,13 +21,13 @@ import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
-import { api } from "../api/client";
+import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
-import { DRAFT_LAYOUT, useUi, type ContextTab } from "../state/ui";
+import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
 
@@ -50,6 +50,8 @@ function RouteView({ route, needsProject }: { route: PageRoute; needsProject: bo
       return <TrustFolder projectId={route.projectId} threadId={route.threadId} />;
   }
 }
+
+const NEXT_THEME: Record<ThemeChoice, ThemeChoice> = { system: "light", light: "dark", dark: "system" };
 
 const PANEL_KEYS: Record<string, ContextTab> = {
   Digit1: "diff",
@@ -101,6 +103,13 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "usage.open":
       navigate({ name: "usage" });
+      return true;
+    case "appearance.cycle":
+      ui.setTheme(NEXT_THEME[ui.theme]);
+      return true;
+    case "theme.select":
+    case "themeEditor.toggle":
+      navigate(route.name === "settings" ? { name: "home" } : { name: "settings", section: "appearance" });
       return true;
     case "filePicker.toggle":
       if (route.name !== "thread") return false;
@@ -154,6 +163,10 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "threadPanel.toggle":
       ui.toggleDetails();
+      return true;
+    case "thread.stop":
+      if (!thread?.active_run) return false;
+      void api.cancelRun(thread.active_run.id);
       return true;
     case "thread.settle":
       if (!thread) return false;
@@ -297,7 +310,23 @@ function useThreadNotifications(openId: string | null) {
   }, [openId]);
 }
 
+const SLOW_TOAST_GAP_MS = 60_000;
+
+/** Says so when the service is slow, once a minute at most. */
+function useSlowRequestToast() {
+  useEffect(() => {
+    let last = 0;
+    setSlowRequestHandler(() => {
+      if (Date.now() - last < SLOW_TOAST_GAP_MS) return;
+      last = Date.now();
+      useUi.getState().pushToast("The Orbyn service is taking a while to answer.");
+    });
+    return () => setSlowRequestHandler(() => undefined);
+  }, []);
+}
+
 function useGlobalKeys(route: Route) {
+  useSlowRequestToast();
   const keymap = useAsync("keybindings", (signal) => api.keybindings(signal));
   const reload = keymap.reload;
   useCommand("keybindings.reload", reload);

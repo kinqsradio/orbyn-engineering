@@ -73,6 +73,10 @@ interface Prefs {
   persistentComposerContext: boolean;
   /** Lists skills in the `/` menu as well as under `$`. */
   skillsInSlashMenu: boolean;
+  /** Offers Plan with its button, commands and Shift+Tab. */
+  planControls: boolean;
+  /** The circle in the composer showing how full the context is. */
+  contextMeter: boolean;
   /** Saved prompts by thread, newest first. */
   stashes: Record<string, StashedPrompt[]>;
   threadNotifications: boolean;
@@ -175,6 +179,8 @@ const defaults: Prefs = {
   fontSmoothing: true,
   persistentComposerContext: false,
   skillsInSlashMenu: false,
+  planControls: true,
+  contextMeter: true,
   stashes: {},
   threadNotifications: false,
   threadSound: false,
@@ -306,6 +312,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   fontSmoothing: state.fontSmoothing,
   persistentComposerContext: state.persistentComposerContext,
   skillsInSlashMenu: state.skillsInSlashMenu,
+  planControls: state.planControls,
+  contextMeter: state.contextMeter,
   stashes: state.stashes,
   threadNotifications: state.threadNotifications,
   threadSound: state.threadSound,

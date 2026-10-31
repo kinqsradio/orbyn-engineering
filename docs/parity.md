@@ -296,7 +296,7 @@ toward completion.
 - [ ] F21 Environment mode selector: local vs new worktree, environment choice | apps/web/src/components/BranchToolbarEnvModeSelector.tsx | w d m | M
 - [x] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L | server done | web done
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
-- [ ] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S
+- [x] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S | web done
 - [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
 - [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
 - [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done | web done
@@ -505,7 +505,7 @@ are not built in.
 - [ ] K1 Settings scope: choose project and environments, fan-out edit | apps/web/src/components/settings/SettingsScopeSentence.tsx | w d m | L
 - [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
 - [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
-- [ ] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S
+- [x] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S | web done
 - [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients | web done
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
 - [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
@@ -513,7 +513,7 @@ are not built in.
 - [ ] K9 Project actions: run on worktree create, settle, async, preview URL | apps/web/src/components/settings/ProjectActionsSettings.tsx | w d s | M
 - [x] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L
 - [x] K11 Keybindings file: lenient JSON with late defaults | apps/server/src/keybindings.ts | s | M | server done
-- [ ] K12 Workspace focus: F6 area cycling, tree navigation | docs/user/keyboard-focus.md | w d | M
+- [x] K12 Workspace focus: F6 area cycling, tree navigation | docs/user/keyboard-focus.md | w d | M | web done
 - [x] K13 Command palette: threads, actions, projects, settings, submenus | apps/web/src/components/CommandPalette.tsx | w d m | L
 - [x] K14 Themes: built-in, per-light/dark selection | apps/web/src/components/settings/ThemeSettings.tsx | w d m | M
 - [x] K15 Theme editor: palette editing with element inspector | apps/web/src/components/settings/ThemeEditorPanel.tsx | w d | L
@@ -529,7 +529,7 @@ are not built in.
 - [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S
 - [x] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
-- [ ] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S
+- [x] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S | web done
 - [ ] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server: counts and database only; no process or trace views
 - [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done | web done
 - [ ] K31 Product telemetry: hashed usage events, env opt-out | docs/user/telemetry.md | s d | M | [hosted]
@@ -538,27 +538,27 @@ are not built in.
 - [ ] K34 Triage: playbook thread with source for server version | apps/server/src/triage/TriageService.ts | w d m c s | M
 - [ ] K35 Welcome wizard: computers, agents, project import | apps/web/src/components/onboarding/WelcomeWizard.tsx | w d | L
 - [ ] K36 Agent history import: scans Claude, Codex, Pi with limits | packages/contracts/src/agentSessions.ts | w d s | L
-- [ ] K37 Open source licenses: in-app legal list | apps/web/src/components/settings/OpenSourceLicenses.tsx | w d m | S
+- [x] K37 Open source licenses: in-app legal list | apps/web/src/components/settings/OpenSourceLicenses.tsx | w d m | S | web done
 - [ ] K38 GitHub star prompt: occasional prompt | apps/web/src/components/GitHubStarPrompt.tsx | w d | S
-- [ ] K39 Thread shortcuts: stop turn (unbound), steer first queued, edit queued, previous and next, jump 1 to 9 (desktop only), copy reference, settle, pin, global undo with mod+z | packages/contracts/src/keybindings.ts | w d | M
+- [x] K39 Thread shortcuts: stop turn (unbound), steer first queued, edit queued, previous and next, jump 1 to 9 (desktop only), copy reference, settle, pin, global undo with mod+z | packages/contracts/src/keybindings.ts | w d | M | web done
 - [x] K40 Model picker shortcuts: toggle, previous and next provider, jump 1 to 9 inside the picker, Left or Shift+Tab to the provider list | docs/user/keybindings.md | w d | S | web done
-- [ ] K41 Composer menu shortcuts: model, host, cycle host, effort, step effort up and down (wrapping), permissions, workspace, previous worktree, branch, stash | docs/user/keybindings.md | w d | M
+- [ ] K41 Composer menu shortcuts: model, host, cycle host, effort, step effort up and down (wrapping), permissions, workspace, previous worktree, branch, stash | docs/user/keybindings.md | w d | M | web done except host and cycle host, which need remote environments
 - [x] K42 Panel and navigation shortcuts: sidebar toggle, back and forward, right panel toggle, new, maximize, close, thread panel toggle, reopen closed tab, diff toggle, terminal toggle, split, new, close | packages/contracts/src/keybindings.ts | w d | M
 - [ ] K43 Preview shortcuts: toggle, refresh, focus URL, zoom in, out and reset | packages/contracts/src/keybindings.ts | w d | S
 - [x] K44 Search and new-thread shortcuts: palette, file picker, project search, find in thread, new thread, local new thread, new without project, open favorite editor, copy PR number | packages/contracts/src/keybindings.ts | w d | S
-- [ ] K45 Theme shortcuts: pick theme, cycle appearance, toggle theme editor, open usage | packages/contracts/src/keybindings.ts | w d | S
+- [x] K45 Theme shortcuts: pick theme, cycle appearance, toggle theme editor, open usage | packages/contracts/src/keybindings.ts | w d | S | web done
 - [x] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M
 - [x] K47 Keybinding file notices: toast when file reloads or is invalid, warning when it cannot be opened | apps/web/src/components/KeybindingsUpdateToast.tsx | w d | S | web done
 - [ ] K48 Reserved keys: mod+w never closes the desktop window; browsers need alt+w style rebind | docs/user/keybindings.md | w d | S
 - [ ] K49 Snap Shot settings: shortcut (including both Shift keys), sound choice, flash, animations, include accessibility data, setup dialog | apps/web/src/components/settings/SnapShotSettings.tsx | d | M
-- [ ] K50 Legacy features: legacy sidebar, Build/Plan with /plan, /default and Shift+Tab, context meter | apps/web/src/components/settings/SettingsPanels.tsx | w d | S
-- [ ] K51 Health toasts: slow requests, host frozen, legacy thread migration, permission update | apps/web/src/components/SlowRpcRequestToastCoordinator.tsx | w d m | S
+- [x] K50 Legacy features: legacy sidebar, Build/Plan with /plan, /default and Shift+Tab, context meter | apps/web/src/components/settings/SettingsPanels.tsx | w d | S | web done
+- [ ] K51 Health toasts: slow requests, host frozen, legacy thread migration, permission update | apps/web/src/components/SlowRpcRequestToastCoordinator.tsx | w d m | S | web: slow requests, which also covers a frozen host; the other two have no event here
 - [x] K52 Provider update checks: toggle checking CLIs and model catalogs for updates | packages/contracts/src/settings.ts | w d s | S
 - [ ] K53 Default theme and environment icon: default theme preference with set time, machine-kind icon picker | apps/web/src/components/settings/EnvironmentIconPicker.tsx | w d | S
 - [x] K54 New projects base directory: default parent folder for new and cloned projects | packages/contracts/src/settings.ts | w d s | S
 - [x] K55 Settings navigation: sidebar nav, breadcrumb, section deep links across 24 settings pages | apps/web/src/components/settings/SettingsSidebarNav.tsx | w d | M
 - [ ] K56 Capability inventory: read-only list of each engine's commands, MCP server names, hook event names, plugin names and skill folders; no secrets, bodies or absolute config paths | docs/capabilities.md | w d s | M | beyond T3
-- [ ] K57 Network disclosure: Settings lists every automatic outbound request with host and cadence | README.md | w d | S | beyond T3 | server: `GET /api/network` with each request's switch and state; Settings not built
+- [x] K57 Network disclosure: Settings lists every automatic outbound request with host and cadence | README.md | w d | S | beyond T3 | web done
 
 ## L. Remote access, pairing and auth
 - [ ] L1 T3 Connect tunnel: reach host without port forwarding | docs/user/remote-access.md | w d m c s | L | [hosted]

@@ -1,6 +1,6 @@
 import { chooseDraftEngine } from "./draftEngine";
 import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Project } from "../../api/types";
@@ -21,7 +21,7 @@ import { ACCESS, EffortTrigger, useTraitsMenu } from "../thread/ComposerTraits";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
 import { resolveModel, useEngineModels } from "../thread/modelStore";
 import { DraftProjectPicker } from "./DraftProjectPicker";
-import { DRAFT_KEY, SCRATCH, useDraftStore } from "./draftStore";
+import { DRAFT_KEY, SCRATCH, useDraftStore, worktreePurpose } from "./draftStore";
 
 type OpenMenu = { kind: "checkout"; x: number; y: number };
 
@@ -31,6 +31,13 @@ interface ModelChoice {
   engine: string;
   model: string | null;
 }
+
+const MAX_PREVIOUS_WORKTREES = 5;
+
+const useThreadList = () => {
+  const threads = useWorkspace((state) => state.threads);
+  return useMemo(() => Object.values(threads), [threads]);
+};
 
 const sameChoice = (a: ModelChoice, b: ModelChoice) => a.engine === b.engine && a.model === b.model;
 
@@ -100,6 +107,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const projects = useVisibleProjects();
   const engines = useWorkspace((state) => state.engines.data);
   const putThread = useWorkspace((state) => state.putThread);
+  const threads = useThreadList();
   const targets = useWorkspace((state) => state.managed.data?.targets);
   const addPrompt = useThreadLogs((state) => state.addPrompt);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -130,6 +138,17 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const [extraModels, setExtraModels] = useState<ModelChoice[]>([]);
   const sendBackground = useRef<() => boolean>(() => false);
   useCommand("composer.sendBackground", () => sendBackground.current());
+  const checkoutButton = useRef<HTMLButtonElement>(null);
+  const previousWorktrees = useRef<string[]>([]);
+  useCommand("composer.workspace", () => {
+    if (!checkoutButton.current) return false;
+    checkoutButton.current.click();
+  });
+  useCommand("composer.previousWorktree", () => {
+    const latest = previousWorktrees.current[0];
+    if (!latest) return false;
+    setReused(latest);
+  });
   const [baseBranch, setBaseBranch] = useState("");
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [busy, setBusy] = useState(false);
@@ -161,6 +180,16 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const pickedModel = choice?.engine === engine?.id ? (choice?.model ?? null) : null;
   const pickedEffort = choice?.engine === engine?.id ? (choice?.effort ?? null) : null;
   const AccessIcon = ACCESS[access].icon;
+
+  const earlier = [
+    ...new Set(
+      threads
+        .filter((thread) => thread.project_id === project?.id && thread.worktree)
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+        .map((thread) => worktreePurpose(thread.worktree?.path ?? "")),
+    ),
+  ].slice(0, MAX_PREVIOUS_WORKTREES);
+  previousWorktrees.current = earlier;
 
   const open = (kind: OpenMenu["kind"], element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
@@ -455,6 +484,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                       <dt className="sr-only">Checkout</dt>
                       <dd>
                         <button
+                          ref={checkoutButton}
                           type="button"
                           className="context-action"
                           aria-haspopup="menu"
@@ -554,6 +584,12 @@ export function DraftView({ projectId }: { projectId: string | null }) {
               selected: worktree !== null && worktree !== reused,
               onSelect: () => setWorktree(""),
             },
+            ...earlier.map((purpose, at) => ({
+              label: purpose,
+              separatorBefore: at === 0,
+              selected: worktree === purpose && purpose === reused,
+              onSelect: () => setReused(purpose),
+            })),
           ]}
         />
       ) : null}
