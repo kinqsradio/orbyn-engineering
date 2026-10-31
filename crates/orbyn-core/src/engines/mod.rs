@@ -1,6 +1,8 @@
 //! Engine registry, status and updates. Updates run only through the installer
 //! that provably owns the binary, and never while that engine has a run.
 
+pub mod instances;
+pub mod known;
 pub mod maintenance;
 pub mod manifest;
 pub mod probe;
@@ -12,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
     AuthState, CustomEngine, EngineModels, EngineStatus, EngineTier, InstallerKind, ModelSelection,
-    VersionSupport,
+    ProviderInstance, VersionSupport,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -28,6 +30,7 @@ use crate::process::{ManagedChild, engine_command, resolve};
 use crate::store::{AuditRecord, Store};
 use crate::terminal::TerminalManager;
 use crate::util::tail;
+use known::{KNOWN_ENGINES, known_engine};
 use manifest::TestedManifest;
 
 const LATEST_TIMEOUT: Duration = Duration::from_secs(4);
@@ -118,8 +121,18 @@ impl EngineManager {
     }
 
     fn custom_driver(&self, engine: CustomEngine) -> Result<Arc<dyn EngineDriver>> {
+        let id = engine.id.clone();
+        self.custom_driver_for(engine, &id)
+    }
+
+    /// `engine`, launched the way the known engine `base` has to be, if it is one.
+    fn custom_driver_for(&self, engine: CustomEngine, base: &str) -> Result<Arc<dyn EngineDriver>> {
+        let known = known_engine(base);
         match engine.tier {
-            EngineTier::Acp => Ok(Arc::new(AcpDriver::new(engine))),
+            EngineTier::Acp => Ok(Arc::new(match known {
+                Some(known) => AcpDriver::known(engine, known),
+                None => AcpDriver::new(engine),
+            })),
             EngineTier::Agui => Ok(Arc::new(AguiDriver::new(engine, self.http.clone()))),
             EngineTier::Terminal => Ok(Arc::new(TerminalDriver::new(
                 engine,
@@ -132,25 +145,117 @@ impl EngineManager {
     }
 
     pub fn driver(&self, id: &str) -> Result<Arc<dyn EngineDriver>> {
+        if let Some(driver) = self.base_driver(id)? {
+            return Ok(driver);
+        }
+        let instance = self
+            .instances()?
+            .into_iter()
+            .find(|instance| instance.id == id)
+            .ok_or_else(|| CoreError::NotFound(format!("engine {id}")))?;
+        self.instance_driver(&instance)
+    }
+
+    /// A built-in, custom or known engine: anything that is not an instance. Custom
+    /// comes before known, so a person's own launch of an agent wins.
+    fn base_driver(&self, id: &str) -> Result<Option<Arc<dyn EngineDriver>>> {
         if let Some(driver) = lock(&self.drivers)
             .iter()
             .find(|driver| driver.descriptor().id == id)
         {
-            return Ok(driver.clone());
+            return Ok(Some(driver.clone()));
         }
-        let engine = self
+        let custom = self
             .store
             .list_custom_engines()?
             .into_iter()
-            .find(|engine| engine.id == id)
-            .ok_or_else(|| CoreError::NotFound(format!("engine {id}")))?;
-        self.custom_driver(engine)
+            .find(|engine| engine.id == id);
+        match custom.or_else(|| known_engine(id).map(known::KnownEngine::as_custom)) {
+            Some(engine) => self.custom_driver(engine).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    fn instance_driver(&self, instance: &ProviderInstance) -> Result<Arc<dyn EngineDriver>> {
+        let base = self
+            .base_driver(&instance.driver)?
+            .ok_or_else(|| CoreError::NotFound(format!("engine {}", instance.driver)))?;
+        if let Some(driver) = base.instance(instance) {
+            return Ok(driver);
+        }
+        let custom = self
+            .store
+            .list_custom_engines()?
+            .into_iter()
+            .find(|engine| engine.id == instance.driver)
+            .or_else(|| known_engine(&instance.driver).map(known::KnownEngine::as_custom))
+            .ok_or_else(|| {
+                CoreError::Invalid(format!("{} cannot have instances.", instance.driver))
+            })?;
+        let mut args = custom.args;
+        args.extend(instance.args.iter().cloned());
+        let target = instance.program.clone().unwrap_or(custom.target);
+        let name = instance.name.clone().unwrap_or(custom.name);
+        self.custom_driver_for(
+            CustomEngine {
+                id: instance.id.clone(),
+                name,
+                tier: custom.tier,
+                target,
+                args,
+            },
+            &instance.driver,
+        )
+    }
+
+    fn instances(&self) -> Result<Vec<ProviderInstance>> {
+        let value =
+            crate::preferences::stored_preference(&self.store, instances::PREFERENCE, None)?;
+        instances::parse(&value)
+    }
+
+    /// Refuses a list of instances that could not launch as written.
+    pub fn check_instances(&self, list: &[ProviderInstance]) -> Result<()> {
+        instances::check(list, |id| {
+            self.base_driver(id)
+                .ok()
+                .flatten()
+                .map(|driver| driver.descriptor().tier)
+        })
+    }
+
+    /// Refuses a new run on an instance that was turned off.
+    pub fn check_enabled(&self, id: &str) -> Result<()> {
+        let off = self
+            .instances()?
+            .iter()
+            .any(|instance| instance.id == id && !instance.enabled);
+        if off {
+            return Err(CoreError::Invalid(format!("{id} is turned off.")));
+        }
+        Ok(())
     }
 
     fn all_drivers(&self) -> Result<Vec<Arc<dyn EngineDriver>>> {
         let mut drivers = lock(&self.drivers).clone();
-        for engine in self.store.list_custom_engines()? {
+        let custom = self.store.list_custom_engines()?;
+        for engine in KNOWN_ENGINES {
+            if engine.is_installed() && !custom.iter().any(|own| own.id == engine.id) {
+                drivers.push(self.custom_driver(engine.as_custom())?);
+            }
+        }
+        for engine in custom {
             drivers.push(self.custom_driver(engine)?);
+        }
+        for instance in self.instances()? {
+            if !instance.enabled {
+                continue;
+            }
+            // A driver since removed leaves the instance listed nowhere, not the
+            // whole engine list failed.
+            if let Ok(driver) = self.instance_driver(&instance) {
+                drivers.push(driver);
+            }
         }
         Ok(drivers)
     }
@@ -285,9 +390,9 @@ impl EngineManager {
             }
             _ => None,
         };
+        let family = driver.family();
         let support = if descriptor.tier == EngineTier::Native {
-            self.manifest
-                .support(&descriptor.id, probe.version.as_deref())
+            self.manifest.support(&family, probe.version.as_deref())
         } else {
             VersionSupport::Unknown
         };
@@ -296,9 +401,15 @@ impl EngineManager {
         } else {
             None
         };
-        let (inherited_credentials, endpoint_origin) =
-            crate::child_env::inherited_login(&descriptor.id);
+        let (inherited_credentials, endpoint_origin) = crate::child_env::inherited_login(&family);
+        let instance = self
+            .instances()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|instance| instance.id == descriptor.id);
         EngineStatus {
+            instance_of: instance.as_ref().map(|one| one.driver.clone()),
+            accent: instance.and_then(|one| one.accent),
             inherited_credentials,
             endpoint_origin,
             id: descriptor.id,

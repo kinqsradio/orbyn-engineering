@@ -2418,7 +2418,47 @@ pub struct EngineStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub endpoint_origin: Option<String>,
+    /// The engine this one is a named setup of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub instance_of: Option<String>,
+    /// A color for telling instances apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub accent: Option<String>,
 }
+}
+
+wire! {
+/// A named setup of an engine, which threads pick like any engine. It holds what
+/// launches and nothing about an account: no environment, no credential, no config
+/// folder.
+pub struct ProviderInstance {
+    pub id: String,
+    /// The engine this runs: a built-in, custom or detected one, not an instance.
+    pub driver: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub accent: Option<String>,
+    /// A turned-off instance is not listed and refuses new runs.
+    #[serde(default = "enabled_by_default")]
+    pub enabled: bool,
+    /// Runs this program instead of the driver's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub program: Option<String>,
+    /// Added after the driver's own arguments. ACP, terminal and AG-UI engines only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub args: Vec<String>,
+}
+}
+
+fn enabled_by_default() -> bool {
+    true
 }
 
 wire! {

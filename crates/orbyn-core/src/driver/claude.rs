@@ -6,13 +6,14 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use orbyn_contracts::{
     AgUiEvent, EngineAgent, EngineCapabilities, EngineTier, ModelInfo, ModelOption,
-    ModelOptionValue, SkillDelivery, ThreadUsage,
+    ModelOptionValue, ProviderInstance, SkillDelivery, ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
@@ -44,11 +45,16 @@ const DOCUMENTED_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 pub struct ClaudeDriver {
     program: String,
+    /// The id and name of an instance, when this is one.
+    named: Option<(String, String)>,
 }
 
 impl ClaudeDriver {
     pub fn new(program: String) -> Self {
-        Self { program }
+        Self {
+            program,
+            named: None,
+        }
     }
 }
 
@@ -145,9 +151,13 @@ const CAPABILITY_ENV: &[(&str, &str)] = &[
 #[async_trait]
 impl EngineDriver for ClaudeDriver {
     fn descriptor(&self) -> EngineDescriptor {
+        let (id, name) = self
+            .named
+            .clone()
+            .unwrap_or_else(|| ("claude".into(), "Claude Code".into()));
         EngineDescriptor {
-            id: "claude".into(),
-            name: "Claude Code".into(),
+            id,
+            name,
             tier: EngineTier::Native,
             capabilities: EngineCapabilities {
                 streaming: true,
@@ -164,6 +174,20 @@ impl EngineDriver for ClaudeDriver {
                 decline_feedback: true,
             },
         }
+    }
+
+    fn family(&self) -> String {
+        "claude".into()
+    }
+
+    fn instance(&self, instance: &ProviderInstance) -> Option<Arc<dyn EngineDriver>> {
+        Some(Arc::new(Self {
+            program: instance.program.clone().unwrap_or(self.program.clone()),
+            named: Some((
+                instance.id.clone(),
+                instance.name.clone().unwrap_or(instance.id.clone()),
+            )),
+        }))
     }
 
     fn resolves_from_checkout(&self) -> bool {

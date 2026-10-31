@@ -853,6 +853,12 @@ pub async fn set_preferences(
     ApiJson(body): ApiJson<SetPreferences>,
 ) -> ApiResult<impl IntoResponse> {
     state.core.set_preferences(None, &body.values)?;
+    if body
+        .values
+        .contains_key(orbyn_core::engines::instances::PREFERENCE)
+    {
+        state.core.engines.invalidate().await;
+    }
     Ok(Json(state.core.preferences(None)?))
 }
 
@@ -1535,6 +1541,7 @@ pub async fn computer_action(
                 run_id: run.id.clone(),
                 thread_id: thread.id.clone(),
                 engine: thread.engine.clone(),
+                family: thread.engine.clone(),
                 write_scope: None,
                 mode: orbyn_contracts::PermissionMode::Supervised,
                 plan: false,

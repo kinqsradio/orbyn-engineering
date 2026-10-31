@@ -88,6 +88,8 @@ pub struct RunScope {
     pub run_id: String,
     pub thread_id: String,
     pub engine: String,
+    /// The engine an instance is a setup of, which is what a rule names.
+    pub family: String,
     /// `None` only for callers with no file access at all.
     pub write_scope: Option<WriteScope>,
     pub mode: PermissionMode,
@@ -218,7 +220,7 @@ impl ApprovalGate {
             return Ok(Verdict::Deny("Plan mode changes nothing.".to_owned()));
         }
         let rules = self.store.list_rules()?;
-        let mut decision = policy::evaluate(&rules, ask.kind, &ask.target, &scope.engine);
+        let mut decision = policy::evaluate(&rules, ask.kind, &ask.target, &scope.family);
         if decision.effect == PolicyEffect::Ask
             && decision.rule_id.is_none()
             && mode_accepts(scope.mode, ask.kind)
@@ -439,6 +441,7 @@ mod tests {
                 run_id: run.id,
                 thread_id: thread.id,
                 engine: "fake".into(),
+                family: "fake".into(),
                 write_scope: None,
                 mode: PermissionMode::Supervised,
                 plan: false,

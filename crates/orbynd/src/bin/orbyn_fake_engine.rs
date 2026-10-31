@@ -34,7 +34,10 @@ fn main() {
             record_launch("claude", &args);
             claude(&args);
         }
-        "acp" => acp(),
+        "acp" => {
+            record_launch("acp", &args);
+            acp();
+        }
         "agui" => agui(&args),
         "pty" => pty(),
         other => {

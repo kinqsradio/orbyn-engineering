@@ -210,7 +210,7 @@ impl Core {
         for agent in self.store.engine_agents(&thread.engine)? {
             push(&agent.name, &agent.description, "agent");
         }
-        for folder in command_folders(&thread.engine, Path::new(&thread.cwd)) {
+        for folder in command_folders(&driver.family(), Path::new(&thread.cwd)) {
             for (name, description) in command_files(&folder) {
                 push(&name, &description, "engine");
             }

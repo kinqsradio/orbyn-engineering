@@ -346,8 +346,17 @@ preferences, each with a default and a shape: an unknown key or a wrong shape is
 then global, then default, and only those marked `project_scoped` can be set per
 project. The catalog holds no secret: provider environments and tokens stay out under
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
-and reordered models apply in `/api/engines/:id/models`. `provider_instances` is
-stored for clients and changes no launch yet.
+and reordered models apply in `/api/engines/:id/models`.
+
+`provider_instances` holds named setups of an engine, each its own engine to threads,
+with its own models and sessions, so changing a thread's instance is an engine switch. An
+instance has an id, a `driver`, and optionally a name, an accent, `enabled` and a `program`
+that replaces the driver's. ACP, AG-UI and terminal instances also take `args`, added after
+the driver's. Claude and Codex take a program only, because a flag can switch off the gate.
+A turned-off instance is not listed and refuses new runs, and threads keep their history.
+An instance of Claude is still Claude to the permission prompt, rules, version checks and
+custom commands. Nothing here holds an account: no environment, no config folder, so a
+second login stays out under rule 1. The list is global, so no tool can reach it.
 
 A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
 `new_worktrees_start_from_origin` is on, falling back to HEAD, and
@@ -507,6 +516,14 @@ protocol into `EngineEvent`s and answers `PermissionRequest`s. Drivers hold no
 store, policy or UI logic. Tiers: `native` (Claude, Codex), `acp` (one shared
 driver), `agui` (one shared driver, also the OpenBot connector) and `terminal`
 (PTY only, always unmanaged).
+
+`engines/known.rs` lists CLIs that speak ACP from their own binary, with what each needs
+to start: Antigravity, Cline, Command Code, GitHub Copilot, Cursor, DeepSeek, Devin, Grok
+Build, Hermes, Kilo, Kimi and OpenCode. One is listed only when its program is found, and
+a custom engine of the same id wins. Grok is started with `--permission-mode default` and
+OpenCode with `{"permission":{"*":"ask"}}`, since either can otherwise act without asking.
+DeepSeek cannot ask before an edit, so it is labelled unmanaged under rule 8. Each keeps its
+own login, and only the launch has been tested, with the fake agent under those names.
 
 Skills come from the workspace, in place. Nothing is copied, packed or signed.
 

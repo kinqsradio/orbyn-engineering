@@ -417,8 +417,8 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 
 Surveyed against PandaCode 0.3.85's engine list. Any ACP agent runs here as a custom
 engine, with its models, modes and config options read from `session/new`. Engines with
-no row of their own are in I62. Per-engine launch flags, environment and login checks
-are not built in.
+no row of their own are in I62. A CLI that speaks ACP is found and launched by itself, per
+`engines/known.rs`; its login checks are not built in.
 
 - [ ] I1 Codex CLI login: existing install and login | docs/user/providers-codex.md | s | M | [auth-risk]
 - [ ] I2 Connect ChatGPT: managed sign-in with sharing | apps/server/src/provider/CodexChatGptAuth.ts | w d s | L | [auth-risk] [hosted]
@@ -453,8 +453,8 @@ are not built in.
 - [ ] I31 ACP v1/v2 negotiation: preview protocol with fallback | packages/provider-acp/src/AcpSessionRuntime.ts | s | L
 - [ ] I32 ACP sign-in: browser or terminal methods, sign out | apps/web/src/components/settings/ProviderAuthTerminal.tsx | w d m s | M | [auth-risk]
 - [ ] I33 ACP native sessions: list, import, delete | apps/web/src/components/settings/AcpSessionManagementSection.tsx | w d s | M
-- [ ] I34 Named ACP agents: Claude, Copilot, Devin, Droid adapters | packages/provider-acp-registry/src/droidAcp.ts | s | M
-- [ ] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L | server: stored only, no launch effect
+- [ ] I34 Named ACP agents: Claude, Copilot, Devin, Droid adapters | packages/provider-acp-registry/src/droidAcp.ts | s | M | server: Copilot and Devin launch when found; Claude runs natively, and Droid comes through the registry
+- [x] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L | server done: `provider_instances` launches its own program and arguments; the model picker lists them as engines, and no settings page edits them yet
 - [ ] I36 Instance environment: variables with sensitive marking | packages/provider-core/src/instanceEnvironment.ts | w d s | M | [auth-risk]
 - [ ] I37 Provider credential store: server-side secret storage | apps/server/src/provider/ProviderCredentialStore.ts | s | L | [auth-risk]
 - [ ] I38 Provider install flow: start, cancel, subscribe, remove | apps/web/src/components/settings/ProviderSetupSection.tsx | w d s | M
@@ -472,7 +472,7 @@ are not built in.
 - [ ] I50 Cursor behavior: per-instance sign-in, API key override, Change account and Sign out stop that instance's threads, `auto` maps to default model, read-only task sub-agent threads, interrupt-and-restart steering, Windows sandbox rules | docs/user/cursor.md | s w d m | M | [auth-risk]
 - [ ] I51 Version compatibility warning: provider card flags versions with known problems and offers recommended version install | docs/user/install.md | w d m s | M
 - [ ] I52 Update route by installer: Homebrew, npm, pnpm, Yarn, Bun, Volta, Vite+ detected; mise handled manually; Cursor and Antigravity update with the app | docs/user/install.md | s w d | M
-- [ ] I53 Provider discovery: server-host PATH lookup, binary path override, Cursor `cursor-agent` name | docs/user/faq.md | s w | S
+- [x] I53 Provider discovery: server-host PATH lookup, binary path override, Cursor `cursor-agent` name | docs/user/faq.md | s w | S | server done: the override is an instance's `program`
 - [x] I54 Child environment hygiene: remove AppImage variables, the nested-session marker and vendor desktop markers from every engine spawn | src-tauri/src/child_env.rs | s | S | server done
 - [x] I55 Prefer saved login: scrub inherited credential and endpoint variables so the engine uses its own login; report only variable names and endpoint origin | src-tauri/src/providers/claude_auth.rs | s w | M | beyond T3 | server done | web done
 - [x] I56 Login probe without secrets: run the engine's own status command with settings sources empty, time and size bounded, output wiped; map to signed in, not signed in, other credentials, unknown | src-tauri/src/providers/claude_auth.rs | s | S | server done: three states, with inherited keys reported by I55 rather than a fourth
@@ -481,7 +481,7 @@ are not built in.
 - [x] I59 Discovery without leftovers: engines that report per-model options only after a switch are probed in throwaway sessions that are deleted afterwards | src-tauri/src/providers/devin.rs | s | M | server done
 - [ ] I60 Model health pauses: a failing model is paused with a cooldown that survives restart; same model on another engine is offered as failover; Settings can allow it now | src-tauri/src/model_health.rs | s w | M | beyond T3
 - [ ] I61 Warm next turn: start the next Claude process in the background and adopt it only when every launch input matches | src-tauri/src/providers/warm.rs | s | M | beyond T3
-- [ ] I62 Extra engines: Kimi Code, DeepSeek, Command Code, Cline, Kilo Code, Hermes Agent and ZCode with their documented quirks (Cline effort by flag, ZCode private protocol) | docs/providers.md | s | L | beyond T3
+- [ ] I62 Extra engines: Kimi Code, DeepSeek, Command Code, Cline, Kilo Code, Hermes Agent and ZCode with their documented quirks (Cline effort by flag, ZCode private protocol) | docs/providers.md | s | L | beyond T3 | server: all but ZCode launch over ACP when found, proved with the fake agent only; Cline's effort flag and ZCode's protocol are not built
 
 ## J. Usage and limits
 - [x] J1 Usage page: tokens, cache savings, estimated cost | apps/web/src/components/usage/UsagePage.tsx | w d m s | L
