@@ -4,4 +4,12 @@ export type MergePull = {
 /**
  * `merge`, `squash` or `rebase`.
  */
-method: string, };
+method: string, 
+/**
+ * Merge when requirements pass, rather than now.
+ */
+auto: boolean, delete_branch: boolean, subject?: string, body?: string, 
+/**
+ * Removes agent credit lines from the merge commit body.
+ */
+strip_credits: boolean, };

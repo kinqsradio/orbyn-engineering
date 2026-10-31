@@ -5,4 +5,16 @@ export type StartRun = { prompt: string, attachment_ids?: Array<string>,
 /**
  * Sets the thread's mode for this turn and the ones after it.
  */
-permission_mode?: PermissionMode, };
+permission_mode?: PermissionMode, 
+/**
+ * Sets the thread's model for this turn and the ones after it.
+ */
+model?: string, 
+/**
+ * Sets the thread's effort for this turn and the ones after it.
+ */
+effort?: string, 
+/**
+ * Merged into the thread's options for this turn and the ones after it.
+ */
+options?: { [key in string]?: string }, };

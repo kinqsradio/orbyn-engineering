@@ -17,4 +17,16 @@ wake?: boolean, unread?: boolean,
 /**
  * `null` clears the thread's own choice.
  */
-auto_settle?: AutoSettleChoice, permission_mode?: PermissionMode, plan_mode?: boolean, };
+auto_settle?: AutoSettleChoice, permission_mode?: PermissionMode, plan_mode?: boolean, 
+/**
+ * An empty string goes back to the engine's default.
+ */
+model?: string, 
+/**
+ * An empty string goes back to the engine's default.
+ */
+effort?: string, 
+/**
+ * Merged by key; an empty value goes back to the engine's default.
+ */
+options?: { [key in string]?: string }, };
