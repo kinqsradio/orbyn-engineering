@@ -180,31 +180,31 @@ toward completion.
 ## C. Timeline and rendered output
 - [ ] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L
 - [ ] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
-- [ ] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
+- [x] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
 - [ ] C4 Orchestrator summaries: action-specific wording, failures not counted | docs/user/activity-log.md | w d | M
-- [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M | server done
-- [ ] C6 Open diff from tool row: review a file change | docs/user/activity-log.md | w d | S
-- [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M | server done
+- [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M
+- [x] C6 Open diff from tool row: review a file change | docs/user/activity-log.md | w d | S
+- [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M
 - [ ] C8 Proposed plan card: collapse, copy, save/download, follow-up | apps/web/src/components/chat/ProposedPlanCard.tsx | w d m | M
 - [ ] C9 Plan follow-up banner: implement plan from a banner | apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx | w d | M
 - [ ] C10 Claude task lists: Tasks row via env flag | docs/user/providers-claude.md | w d | S
 - [x] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M | server done
-- [ ] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
-- [ ] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
-- [ ] C14 Math: opt-in TeX, inline and block | apps/web/src/components/chat/MarkdownMath.tsx | w d m | M
-- [ ] C15 Mermaid: rendered diagrams | apps/web/src/components/chat/MermaidDiagram.tsx | w d | M
-- [ ] C16 File links: line-aware opening in viewer | apps/web/src/components/chat/MarkdownFileLink.tsx | w d m | M
-- [ ] C17 Thread links: render and navigate | apps/web/src/components/chat/MarkdownThreadLink.tsx | w d | S
-- [ ] C18 External link menu: open target and context actions | apps/web/src/components/chat/MarkdownExternalLink.tsx | w d | S
+- [x] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
+- [x] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
+- [x] C14 Math: opt-in TeX, inline and block | apps/web/src/components/chat/MarkdownMath.tsx | w d m | M
+- [x] C15 Mermaid: rendered diagrams | apps/web/src/components/chat/MermaidDiagram.tsx | w d | M
+- [x] C16 File links: line-aware opening in viewer | apps/web/src/components/chat/MarkdownFileLink.tsx | w d m | M
+- [x] C17 Thread links: render and navigate | apps/web/src/components/chat/MarkdownThreadLink.tsx | w d | S
+- [x] C18 External link menu: open target and context actions | apps/web/src/components/chat/MarkdownExternalLink.tsx | w d | S
 - [ ] C19 Media in messages: image gallery, video, save/copy path | apps/web/src/components/chat/ChatMarkdownMedia.tsx | w d m | M
-- [ ] C20 Image lightbox: zoomable expanded view | apps/web/src/components/chat/ExpandedImageDialog.tsx | w d | S
+- [x] C20 Image lightbox: zoomable expanded view | apps/web/src/components/chat/ExpandedImageDialog.tsx | w d | S
 - [ ] C21 HTML renders: sandboxed agent pages with theme and zoom | apps/web/src/components/chat/HtmlRenderFrame.tsx | w d m s | L
 - [ ] C22 Render publish: embeds local images, deleted with thread | apps/server/src/htmlRender | s | M
 - [ ] C23 Render verification: headless screenshots, one 120 MB browser download | docs/user/html-renders.md | s | M
 - [ ] C24 MCP Apps: interactive tool UI inline, Codex only today | apps/web/src/components/chat/McpAppFrame.tsx | w d m s | L
 - [ ] C25 MCP App controls: tool-call and message approvals, full screen | docs/user/html-renders.md | w d m | L
 - [ ] C26 MCP App model context: latest note sent with next message | packages/contracts/src/mcpApps.ts | w d m s | M
-- [ ] C27 Elapsed timers: per-turn agent timing | apps/web/src/components/chat/AgentElapsed.tsx | w d | S
+- [x] C27 Elapsed timers: per-turn agent timing | apps/web/src/components/chat/AgentElapsed.tsx | w d | S
 - [ ] C28 Status line: current activity beneath the timeline | apps/web/src/components/chat/ThreadStatusLine.tsx | w d | S
 - [ ] C29 Accessibility announcers: activity and background thread announcements | apps/web/src/components/chat/ThreadActivityAnnouncer.tsx | w d | S
 - [ ] C30 Word wrap and chat width: comfortable, wide, full | packages/contracts/src/settings.ts | w d | S
@@ -632,7 +632,7 @@ are not built in, and an agent that lists effort only after switching models nee
 - [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
 - [ ] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M
 - [ ] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S
-- [ ] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M
+- [x] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M | server done
 
 ## N. MCP tools for agents
 - [ ] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M

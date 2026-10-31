@@ -131,6 +131,8 @@ export const api = {
     request<void>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
   patchThread: (id: string, body: UpdateThread) =>
     request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
+  threadItem: (threadId: string, itemId: string, signal?: AbortSignal) =>
+    request<unknown>("GET", `/api/threads/${q(threadId)}/items/${q(itemId)}`, undefined, signal),
   regenerateTitle: (id: string) => request<Thread>("POST", `/api/threads/${q(id)}/title`),
   reorderThreads: (ids: string[]) => request<void>("POST", "/api/threads/order", { ids }),
   archivedThreads: (projectId: string, signal?: AbortSignal) =>

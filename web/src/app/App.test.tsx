@@ -328,7 +328,7 @@ describe("App against the mock API", () => {
     go("#/threads/t-approval");
     render(<App />);
     expect(await screen.findByText(/the engine hangs/)).toBeInTheDocument();
-    expect(await screen.findByText("Grep")).toBeInTheDocument();
+    expect(await screen.findByText(/Searched code for expire_open/)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
     expect(await screen.findByRole("article", { name: "Run the core test suite" })).toBeInTheDocument();
     expect(document.querySelector(".thread-state")).toHaveTextContent("Approval");

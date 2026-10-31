@@ -33,6 +33,8 @@ export interface ToolItem extends ItemBase {
   output: string;
   result: string | null;
   done: boolean;
+  /** What a command exited with, when the engine reports it. */
+  exitCode: number | null;
 }
 export interface ApprovalItem extends ItemBase {
   kind: "approval";
@@ -80,6 +82,21 @@ export interface TimelineEntry {
   tone: "neutral" | "error" | "attention";
 }
 
+/** One turn's span and how it ended, read from its own events. */
+export interface RunSpan {
+  startedAt: string;
+  endedAt: string | null;
+  outcome: "success" | "cancelled" | "failed" | null;
+}
+
+/** A delegated agent the engine reported on this thread's stream. */
+export interface SubagentActivity {
+  id: string;
+  tool: string | null;
+  status: string | null;
+  agentPath: string | null;
+}
+
 export interface ThreadLog {
   /** Every accepted event, ascending by seq. */
   events: readonly WireThreadEvent[];
@@ -87,6 +104,10 @@ export interface ThreadLog {
   lastSeq: number;
   items: readonly ThreadItem[];
   timeline: readonly TimelineEntry[];
+  runs: Readonly<Record<string, RunSpan>>;
+  subagents: readonly SubagentActivity[];
+  /** The latest usage report, as the engine sent it. */
+  usage: JsonValue | null;
 }
 
 export const emptyLog: ThreadLog = {
@@ -95,6 +116,9 @@ export const emptyLog: ThreadLog = {
   lastSeq: 0,
   items: [],
   timeline: [],
+  runs: {},
+  subagents: [],
+  usage: null,
 };
 
 function record(value: JsonValue | undefined): { [key in string]?: JsonValue } | null {
@@ -197,6 +221,9 @@ interface Fold {
   items: ThreadItem[];
   index: Map<string, number>;
   timeline: TimelineEntry[];
+  runs: Record<string, RunSpan>;
+  subagents: SubagentActivity[];
+  usage: JsonValue | null;
 }
 
 function put(fold: Fold, item: ThreadItem): void {
@@ -228,13 +255,21 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
   const base = { seq: wire.seq, ts: wire.ts, runId: wire.run_id };
   const log = (label: string, detail: string | null, tone: TimelineEntry["tone"] = "neutral") =>
     fold.timeline.push({ seq: wire.seq, ts: wire.ts, label, detail, tone });
+  const endRun = (outcome: RunSpan["outcome"]) => {
+    const id = wire.run_id;
+    if (!id) return;
+    const span = fold.runs[id];
+    fold.runs[id] = { startedAt: span?.startedAt ?? wire.ts, endedAt: wire.ts, outcome };
+  };
 
   switch (event.type) {
     case "RUN_STARTED":
+      if (wire.run_id) fold.runs[wire.run_id] = { startedAt: wire.ts, endedAt: null, outcome: null };
       log("Run started", null);
       break;
     case "RUN_FINISHED": {
       const outcome = outcomeType(event.outcome);
+      endRun(outcome === "cancelled" ? "cancelled" : "success");
       if (outcome === "cancelled") {
         put(fold, {
           ...base,
@@ -249,6 +284,7 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       break;
     }
     case "RUN_ERROR":
+      endRun("failed");
       put(fold, {
         ...base,
         key: `notice:${wire.seq}`,
@@ -306,6 +342,7 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         output: "",
         result: null,
         done: false,
+        exitCode: null,
       });
       log(`Tool: ${event.toolCallName}`, null);
       break;
@@ -382,6 +419,25 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
             output: item.output + delta,
           }));
         }
+      } else if (event.name === "tool.finished") {
+        const body = record(event.value);
+        const code = body?.exitCode;
+        if (typeof body?.toolCallId === "string" && typeof code === "number") {
+          patch(fold, `tool:${body.toolCallId}`, "tool", (item) => ({ ...item, exitCode: code }));
+        }
+      } else if (event.name === "subagent.activity") {
+        const body = record(event.value);
+        const text = (key: string) => {
+          const value = body?.[key];
+          return typeof value === "string" ? value : null;
+        };
+        const id = text("id");
+        if (id) {
+          const next = { id, tool: text("tool"), status: text("status"), agentPath: text("agentPath") };
+          fold.subagents = [...fold.subagents.filter((agent) => agent.id !== id), next];
+        }
+      } else if (event.name === "usage") {
+        fold.usage = event.value;
       }
       break;
     case "RAW":
@@ -399,17 +455,21 @@ function fold(
   log: ThreadLog,
   events: readonly WireThreadEvent[],
   incremental: boolean,
-): Pick<ThreadLog, "items" | "timeline"> {
+): Pick<ThreadLog, "items" | "timeline" | "runs" | "subagents" | "usage"> {
   const working: Fold = incremental
     ? {
         threadId,
         items: [...log.items],
         index: new Map(log.items.map((item, at) => [item.key, at])),
         timeline: [...log.timeline],
+        runs: { ...log.runs },
+        subagents: [...log.subagents],
+        usage: log.usage,
       }
-    : { threadId, items: [], index: new Map(), timeline: [] };
+    : { threadId, items: [], index: new Map(), timeline: [], runs: {}, subagents: [], usage: null };
   for (const event of events) applyEvent(working, event);
-  return { items: working.items, timeline: working.timeline };
+  const { items, timeline, runs, subagents, usage } = working;
+  return { items, timeline, runs, subagents, usage };
 }
 
 /**

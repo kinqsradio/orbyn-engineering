@@ -42,6 +42,14 @@ interface Prefs {
   modelOrder: string[];
   effortDisplay: "label" | "bars";
   preferredEditor: string | null;
+  /** TeX in rendered Markdown, off unless asked for. */
+  mathRendering: boolean;
+  chatWidth: "comfortable" | "wide" | "full";
+  /** Wraps long lines in code and diffs. */
+  wordWrap: boolean;
+  timestampFormat: "locale" | "12-hour" | "24-hour";
+  sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
+  followUpBehavior: "queue" | "steer";
   threadNotifications: boolean;
   inAppNotifications: boolean;
   confirmUnpin: boolean;
@@ -99,6 +107,12 @@ const defaults: Prefs = {
   modelOrder: [],
   effortDisplay: "label",
   preferredEditor: null,
+  mathRendering: false,
+  chatWidth: "comfortable",
+  wordWrap: false,
+  timestampFormat: "locale",
+  sendShortcut: "enter",
+  followUpBehavior: "queue",
   threadNotifications: false,
   inAppNotifications: false,
   confirmUnpin: false,
@@ -117,6 +131,9 @@ interface UiState extends Prefs {
   dismissToast(id: number): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
+  /** A file the Files surface should open next, with the line to reveal. */
+  fileReveal: { path: string; line: number | null; nonce: number } | null;
+  revealFile(path: string, line: number | null): void;
   togglePanel(tab: ContextTab): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
@@ -135,27 +152,7 @@ interface UiState extends Prefs {
   setSidebarWidth(width: number): void;
   toggleGroup(group: string, fallback: boolean): void;
   setPrefs(
-    prefs: Partial<
-      Pick<
-        Prefs,
-        | "projectFilter"
-        | "projectFolders"
-        | "multilineRows"
-        | "threadSort"
-        | "projectSort"
-        | "modelFavorites"
-        | "modelHidden"
-        | "modelOrder"
-        | "effortDisplay"
-        | "preferredEditor"
-        | "threadNotifications"
-        | "inAppNotifications"
-        | "confirmUnpin"
-        | "confirmArchive"
-        | "confirmDelete"
-        | "lastModel"
-      >
-    >,
+    prefs: Partial<Omit<Prefs, "layouts" | "layoutKey">>,
   ): void;
   setDraft(threadId: string, text: string): void;
   setLastThread(threadId: string): void;
@@ -213,6 +210,12 @@ const prefsOf = (state: Prefs): Prefs => ({
   modelOrder: state.modelOrder,
   effortDisplay: state.effortDisplay,
   preferredEditor: state.preferredEditor,
+  mathRendering: state.mathRendering,
+  chatWidth: state.chatWidth,
+  wordWrap: state.wordWrap,
+  timestampFormat: state.timestampFormat,
+  sendShortcut: state.sendShortcut,
+  followUpBehavior: state.followUpBehavior,
   threadNotifications: state.threadNotifications,
   inAppNotifications: state.inAppNotifications,
   confirmUnpin: state.confirmUnpin,
@@ -259,6 +262,16 @@ export const useUi = create<UiState>((set, get) => {
     setTheme(theme) {
       set({ theme });
       savePrefs();
+    },
+    fileReveal: null,
+    revealFile(path, line) {
+      const { openSurfaces } = get();
+      set({
+        fileReveal: { path, line, nonce: Date.now() },
+        panelOpen: true,
+        panelTab: "files",
+        openSurfaces: openSurfaces.includes("files") ? openSurfaces : [...openSurfaces, "files"],
+      });
     },
     togglePanel(tab) {
       if (tab === "terminal") {

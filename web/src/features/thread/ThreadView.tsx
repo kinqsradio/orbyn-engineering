@@ -318,6 +318,7 @@ export function ThreadView({ id }: { id: string }) {
           ) : null}
           {hero ? null : (
             <Transcript
+              activeRunId={thread.active_run?.id ?? null}
               threadId={id}
               active={thread.active_run !== null}
                 footer={<RunStatusLine thread={thread} />}

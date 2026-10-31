@@ -4,11 +4,12 @@ import { useThreadLogs, type LocalPrompt } from "../../state/threadLogs";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
-import { ThreadItemView, WorkGroupView } from "./items";
+import { TimelineRow, TimelineThread } from "./items";
 import type { MessageItem, ThreadItem } from "./projection";
-import { groupWork } from "./timeline";
+import { arrangeTimeline, runningTools } from "./timeline";
 
 const NEAR_BOTTOM = 80;
+const NO_RUNS = {};
 /** Scroll position per thread, kept while switching threads in one visit. */
 const scrollMemory = new Map<string, number>();
 
@@ -43,10 +44,12 @@ export function withLocalPrompts(
 export function Transcript({
   threadId,
   active,
+  activeRunId,
   footer,
 }: {
   threadId: string;
   active: boolean;
+  activeRunId?: string | null;
   /** The run status line, which sits at the end of the conversation. */
   footer?: ReactNode;
 }) {
@@ -58,7 +61,11 @@ export function Transcript({
     [log, prompts],
   );
 
-  const entries = useMemo(() => groupWork(items), [items]);
+  const entries = useMemo(
+    () => arrangeTimeline(items, log?.runs ?? NO_RUNS, activeRunId ?? null),
+    [items, log?.runs, activeRunId],
+  );
+  const tools = useMemo(() => (active ? runningTools(items) : []), [items, active]);
 
   const scroller = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
@@ -139,15 +146,13 @@ export function Transcript({
               <p>Describe the task below to start a run.</p>
             </Empty>
           ) : (
-            entries.map((entry, at) => (
-              <div key={entry.key} className={`item item-${entry.kind}`}>
-                {entry.kind === "work" ? (
-                  <WorkGroupView group={entry} live={active} latest={at >= entries.length - 2} />
-                ) : (
-                  <ThreadItemView item={entry} live={active} />
-                )}
-              </div>
-            ))
+            <TimelineThread value={threadId}>
+              {entries.map((entry) => (
+                <div key={entry.key} className={`item item-${entry.kind}`}>
+                  <TimelineRow entry={entry} live={active} tools={tools} />
+                </div>
+              ))}
+            </TimelineThread>
           )}
           {footer}
         </div>

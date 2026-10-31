@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { IconButton } from "../../ui/controls";
 import { highlight, type Token } from "./codeHighlight";
 
-export function CodeBlock({ code, lang }: { code: string; lang: string }) {
+/** `bare` drops the header, for a command shown above its output. */
+export function CodeBlock({ code, lang, bare = false }: { code: string; lang: string; bare?: boolean }) {
   const [tokens, setTokens] = useState<{ code: string; lines: Token[][] } | null>(null);
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -39,7 +40,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }) {
   const lines = tokens?.code === code ? tokens.lines : null;
   return (
     <div className="code-card" data-wrap={wrap || undefined}>
-      <div className="code-head">
+      {bare ? null : <div className="code-head">
         <span className="code-lang">{lang}</span>
         <span className="code-actions">
           <IconButton label={wrap ? "Disable line wrap" : "Enable line wrap"} pressed={wrap} onClick={() => setWrap(!wrap)}>
@@ -49,7 +50,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }) {
             {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
           </IconButton>
         </span>
-      </div>
+      </div>}
       <pre tabIndex={0} data-lang={lang || undefined}>
         {lines ? (
           <code>

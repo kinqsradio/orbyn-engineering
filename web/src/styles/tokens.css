@@ -1,6 +1,22 @@
 /* Theme tokens. Light is :root; dark is the default, set on <html data-theme="dark">. */
 :root {
   color-scheme: light;
+  --ansi-black: #27272a;
+  --ansi-red: #b91c1c;
+  --ansi-green: #15803d;
+  --ansi-yellow: #a16207;
+  --ansi-blue: #1d4ed8;
+  --ansi-magenta: #a21caf;
+  --ansi-cyan: #0e7490;
+  --ansi-white: #52525b;
+  --ansi-bright-black: #71717a;
+  --ansi-bright-red: #dc2626;
+  --ansi-bright-green: #16a34a;
+  --ansi-bright-yellow: #ca8a04;
+  --ansi-bright-blue: #2563eb;
+  --ansi-bright-magenta: #c026d3;
+  --ansi-bright-cyan: #0891b2;
+  --ansi-bright-white: #3f3f46;
   --color-background: oklch(99.2% 0 0);
   --color-surface: oklch(99.2% 0 0);
   --color-raised: #ffffff;
@@ -119,6 +135,22 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --ansi-black: #3f3f46;
+  --ansi-red: #f87171;
+  --ansi-green: #4ade80;
+  --ansi-yellow: #facc15;
+  --ansi-blue: #60a5fa;
+  --ansi-magenta: #e879f9;
+  --ansi-cyan: #22d3ee;
+  --ansi-white: #d4d4d8;
+  --ansi-bright-black: #a1a1aa;
+  --ansi-bright-red: #fca5a5;
+  --ansi-bright-green: #86efac;
+  --ansi-bright-yellow: #fde047;
+  --ansi-bright-blue: #93c5fd;
+  --ansi-bright-magenta: #f0abfc;
+  --ansi-bright-cyan: #67e8f9;
+  --ansi-bright-white: #3f3f46;
   --color-background: #000000;
   --color-surface: #000000;
   --color-raised: #0e0e0e;
