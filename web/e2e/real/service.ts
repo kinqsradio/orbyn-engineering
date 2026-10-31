@@ -29,6 +29,20 @@ function previewBrowser(dir: string): string {
   return wrapper;
 }
 
+/** Answers `gh pr list` like the real CLI, so forge routes run with no network. */
+function standInGh(dir: string): string {
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const pull = (number: number, title: string) =>
+    JSON.stringify({ number, title, url: `https://github.com/o/r/pull/${number}`, state: "OPEN", headRefName: "h", baseRefName: "main", author: { login: "a" }, isDraft: false, updatedAt: "2026-10-01T00:00:00Z", labels: [], reviewDecision: "", statusCheckRollup: [] });
+  writeFileSync(
+    join(bin, "gh"),
+    `#!/bin/sh\ncase "$1 $2" in\n  "pr list") echo '[${pull(42, "Fix the login")},${pull(77, "Tidy the docs")}]' ;;\n  "auth status") echo "Logged in to github.com" >&2 ;;\nesac\n`,
+    { mode: 0o755 },
+  );
+  return bin;
+}
+
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
 
 function makeLibrary(root: string): string {
@@ -57,7 +71,7 @@ export interface Service {
 /** A real `orbynd` on a fresh data directory, with the dev UI proxied to it. */
 export async function startService(
   port: number,
-  options: { fakeEngines?: boolean; scenes?: boolean } = {},
+  options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean } = {},
 ): Promise<Service> {
   if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
   const dir = mkdtempSync(join(tmpdir(), "orbyn-e2e-"));
@@ -67,9 +81,10 @@ export async function startService(
     : options.fakeEngines
       ? { ORBYN_CLAUDE_BIN: fake, ORBYN_CODEX_BIN: fake }
       : {};
+  const forgePath = options.forge ? `${standInGh(dir)}:` : "";
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, PATH: `${forgePath}${process.env.PATH}`, ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
@@ -94,6 +109,7 @@ export async function startService(
   git(repo, "init", "-q", "-b", "main");
   git(repo, "add", ".");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "First");
+  if (options.forge) git(repo, "remote", "add", "origin", "https://github.com/o/r.git");
   return {
     folder,
     repo,
@@ -120,7 +136,7 @@ export async function startService(
 }
 
 /** A signed-in workspace on one trusted repository, for specs that start from a thread. */
-export async function startProject(port: number, options: { fakeEngines?: boolean; scenes?: boolean } = {}) {
+export async function startProject(port: number, options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean } = {}) {
   const service = await startService(port, options);
   await service.api("POST", "/api/workspace/setup", {});
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });

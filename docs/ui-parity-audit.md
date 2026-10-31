@@ -66,6 +66,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Permission modes | Live: four icon segments 65.5x24 in the effort menu, with one description line; the control under the composer opens the same menu at Permissions | Match, Real, all four saved by the server | Default stays Supervised |
 | Composer | Approval placeholder | Live | Match | Declines, then queues |
 | Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
+| Composer | Pull requests, threads | Source: # browse and search, @ lookup, chips | Menu Real against a stand-in gh; inserts a Markdown link | Link text, no chip until the rich editor |
 | Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double | Long-press flip absent |
 | Composer | Send shortcut | Source: Enter, Mod+Enter multiline, Mod+Enter | Match, Real | 0 |
 | Composer | Recall, stash, large paste, drop | Source | Match, Real | Stash keeps text only, attachments are not stashed |

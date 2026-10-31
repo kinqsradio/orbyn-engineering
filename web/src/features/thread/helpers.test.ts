@@ -5,7 +5,7 @@ import { arrangeThreads } from "../workspace/groups";
 import { touchesOf } from "./approvalDetail";
 import { percentLabel } from "./ComposerExtras";
 import type { ThreadItem } from "./projection";
-import { insertToken, triggerAt } from "./skillMention";
+import { insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
 import { outputSpans } from "./ansi";
 import type { ToolItem } from "./projection";
 import { arrangeTimeline, groupWork } from "./timeline";
@@ -211,4 +211,21 @@ describe("percentLabel", () => {
     expect(percentLabel(3)).toBe("3%");
     expect(percentLabel(42.6)).toBe("43%");
   });
+});
+
+describe("references", () => {
+  it("finds # mid-prompt", () => {
+    expect(triggerAt("see #12", 7)).toEqual({ char: "#", start: 4, query: "12" });
+  });
+  it("leaves a heading's # alone once a space follows", () => {
+    expect(triggerAt("# Title", 7)).toBeNull();
+  });
+  it("replaces the typed token with the reference", () => {
+    const trigger = { char: "#", start: 4, query: "12" } as const;
+    expect(insertToken("see #12", 7, trigger, "12", pullToken(12, "Fix [it]", "u"))).toEqual({
+      text: "see [#12 Fix it](u) ",
+      caret: 20,
+    });
+  });
+  it("links a thread", () => expect(threadToken("t1", "A title")).toBe("[A title](orbyn://thread/t1)"));
 });

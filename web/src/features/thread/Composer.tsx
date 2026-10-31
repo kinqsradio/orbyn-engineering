@@ -34,11 +34,14 @@ import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
 import { resolveModel, useEngineModels } from "./modelStore";
 import { QueuedMessages } from "./QueuedMessages";
-import { insertToken, triggerAt } from "./skillMention";
+import { pullsApi } from "../pulls/pullsApi";
+import { insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
 
 interface Suggestion {
   value: string;
   detail: string | null;
+  /** What goes in the prompt, when it isn't the trigger and the value. */
+  insert?: string;
 }
 
 interface ShownAttachment extends Attachment {
@@ -130,9 +133,26 @@ export function Composer({
         ...skills.map((value) => ({ value, detail: "Skill" })),
       ];
     }
+    if (trigger.char === "#") {
+      const digits = /^\d+$/.test(trigger.query);
+      const pulls = await pullsApi.projectPulls(thread.project_id, digits ? "" : trigger.query, signal);
+      return pulls
+        .filter((pull) => !digits || String(pull.number).includes(trigger.query))
+        .map((pull) => ({
+          value: String(pull.number),
+          detail: pull.title,
+          insert: pullToken(pull.number, pull.title, pull.url),
+        }));
+    }
     const found = await api.mentions(thread.id, trigger.query, signal);
-    const values = trigger.char === "$" ? found.skills : found.files;
-    return values.map((value) => ({ value, detail: null }));
+    if (trigger.char === "$") return found.skills.map((value) => ({ value, detail: null }));
+    const threads = found.threads.map((other) => ({
+      value: other.title,
+      detail: "Thread",
+      insert: threadToken(other.id, other.title),
+    }));
+    const files = found.files.slice(0, Math.max(MENU_ROWS - threads.length, 2));
+    return [...files.map((value) => ({ value, detail: null })), ...threads];
   });
   const matches = useMemo(() => (trigger ? (lookup.data ?? []).slice(0, MENU_ROWS) : []), [trigger, lookup.data]);
   const menuOpen = matches.length > 0;
@@ -149,7 +169,7 @@ export function Composer({
   const pick = (suggestion: Suggestion) => {
     if (!trigger) return;
     if (runLocal(`/${suggestion.value}`)) return;
-    const next = insertToken(draft, caret, trigger, suggestion.value);
+    const next = insertToken(draft, caret, trigger, suggestion.value, suggestion.insert);
     setDraft(thread.id, next.text);
     setCaret(next.caret);
     requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));

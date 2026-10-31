@@ -42,6 +42,8 @@ export const pullsApi = {
     request<void>("POST", `${base(projectId, number)}/action`, { action }),
   work: (projectId: string, number: number) =>
     request<{ id: string }>("POST", `${base(projectId, number)}/work`, {}),
+  projectPulls: (projectId: string, query: string, signal?: AbortSignal) =>
+    request<PullRequest[]>("GET", `/api/projects/${q(projectId)}/pulls?state=open&q=${q(query)}`, undefined, signal),
   linked: (threadId: string, signal?: AbortSignal) =>
     request<PullRequest[]>("GET", `/api/threads/${q(threadId)}/pulls`, undefined, signal),
   refreshLinked: (threadId: string) =>

@@ -8,7 +8,7 @@ let service: Service;
 let projectId = "";
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject(PORT, { scenes: true, forge: true }));
 });
 test.afterAll(() => service.stop());
 
@@ -45,6 +45,28 @@ test("a run that ignores Stop can be force stopped", async ({ page }) => {
   await force.click();
   await settled(service, id);
   await expect(force).toBeHidden();
+});
+
+test("# finds a pull request and @ finds another thread", async ({ page }) => {
+  const other = await service.api<{ id: string }>("POST", "/api/threads", {
+    project_id: projectId,
+    engine: (await service.api<{ id: string }[]>("GET", "/api/engines")).find((engine) => engine.id === "codex")?.id,
+    title: "Payment retries",
+    model: null,
+    worktree: null,
+    skill_profile: null,
+  });
+  await newThread(page);
+  await box(page).pressSequentially("see #7");
+  await expect(page.getByRole("option", { name: /#77/ })).toBeVisible();
+  await box(page).press("Enter");
+  await expect(box(page)).toHaveValue("see [#77 Tidy the docs](https://github.com/o/r/pull/77) ");
+  await box(page).pressSequentially("and @Payment");
+  await page.getByRole("option", { name: /Payment retries/ }).click();
+  await expect(box(page)).toHaveValue(
+    `see [#77 Tidy the docs](https://github.com/o/r/pull/77) and [Payment retries](orbyn://thread/${other.id}) `,
+  );
+  await box(page).fill("");
 });
 
 test("send shortcut modes follow the setting", async ({ page }) => {
