@@ -189,6 +189,10 @@ interface UiState extends Prefs {
   /** A file the Files surface should open next, with the line to reveal. */
   fileReveal: { path: string; line: number | null; nonce: number } | null;
   revealFile(path: string, line: number | null): void;
+  /** A message to scroll to when its thread is showing. */
+  messageReveal: { threadId: string; messageId: string } | null;
+  revealMessage(threadId: string, messageId: string): void;
+  clearMessageReveal(): void;
   /** A file the Diff surface should scroll to. */
   diffReveal: { path: string; nonce: number } | null;
   revealDiff(path: string): void;
@@ -348,6 +352,13 @@ export const useUi = create<UiState>((set, get) => {
       });
     },
     fileReveal: null,
+    messageReveal: null,
+    revealMessage(threadId, messageId) {
+      set({ messageReveal: { threadId, messageId } });
+    },
+    clearMessageReveal() {
+      set({ messageReveal: null });
+    },
     revealFile(path, line) {
       const { openSurfaces } = get();
       set({

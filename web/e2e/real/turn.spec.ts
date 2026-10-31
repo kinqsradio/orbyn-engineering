@@ -65,6 +65,25 @@ test("a draft sends, then forks, rewinds and shows the turn's diff", async ({ pa
   await expect(page.getByText(/Couldn't/)).toHaveCount(0);
 });
 
+test("the palette finds a message in another thread and opens at it", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "remember the zebrafish plan");
+  await expect(page).toHaveURL(/#\/threads\//);
+  const id = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
+  await expect.poll(async () => (await service.api<Thread>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 }).toBeNull();
+  await page.goto(`${service.page}#/new/${projectId}`);
+
+  await expect(page.locator(".hero-project")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox", { name: "Search" }).fill("zebrafish");
+  await expect(palette.getByText("Messages")).toBeVisible();
+  await palette.getByRole("button", { name: /zebrafish/ }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/threads/${id}`));
+  await expect(page.locator("[data-revealed]")).toContainText("zebrafish");
+});
+
 test("a question and an approval are answered from the composer", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[question] which one");

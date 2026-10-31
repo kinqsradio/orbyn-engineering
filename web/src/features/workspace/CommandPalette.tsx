@@ -1,4 +1,4 @@
-import { File, FolderPlus, MessageSquare, Search, Settings, SquarePen, SunMoon } from "lucide-react";
+import { File, FolderPlus, MessageSquare, Search, Settings, SquarePen, SunMoon, TextSearch } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api } from "../../api/client";
 import { compactAge } from "../../lib/format";
@@ -17,7 +17,13 @@ interface Entry {
   icon: ReactNode;
   /** Extra words that find this entry, such as a thread's project and branch. */
   search?: string;
-  route: Route | "add-project" | "new-in" | "toggle-theme" | { file: string; line: number | null };
+  route:
+    | Route
+    | "add-project"
+    | "new-in"
+    | "toggle-theme"
+    | { file: string; line: number | null }
+    | { message: string; thread: string };
 }
 
 const title = (section: string) =>
@@ -37,6 +43,21 @@ function useCheckoutSearch(start: PaletteStart, query: string) {
   const hits = useAsync(key, async (signal) => {
     if (!threadId || !query.trim() || !searchTitle[start]) return [];
     return api.searchFiles(threadId, query.trim(), content, signal);
+  });
+  return hits.data ?? [];
+}
+
+const MESSAGE_SEARCH_MIN = 2;
+const MESSAGE_SEARCH_DELAY_MS = 150;
+
+/** Whole messages across threads. The service decides when a query is long enough. */
+function useMessageSearch(query: string, enabled: boolean) {
+  const needle = query.trim();
+  const hits = useAsync(`palette:messages:${enabled ? needle : ""}`, async (signal) => {
+    if (!enabled || needle.length < MESSAGE_SEARCH_MIN) return [];
+    await new Promise((done) => setTimeout(done, MESSAGE_SEARCH_DELAY_MS));
+    if (signal.aborted) return [];
+    return (await api.searchMessages(needle, signal)).hits;
   });
   return hits.data ?? [];
 }
@@ -63,6 +84,7 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
   }, []);
 
   const hits = useCheckoutSearch(start, query);
+  const messages = useMessageSearch(query, !searchTitle[start] && !newIn);
   const entries = useMemo<Entry[]>(() => {
     if (searchTitle[start]) {
       return hits.map((hit) => ({
@@ -113,8 +135,16 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       const text = `${entry.label} ${entry.search ?? ""}`.toLowerCase();
       return words.every((word) => text.includes(word));
     };
-    return (needle ? all.filter(found) : all).slice(0, 50);
-  }, [threads, query, newIn, projects, allProjects, hits, start]);
+    const inMessages: Entry[] = messages.map((hit) => ({
+      key: `message:${hit.thread_id}:${hit.message_id}:${hit.seq}`,
+      group: "Messages",
+      label: hit.snippet,
+      meta: hit.thread_title,
+      icon: <TextSearch size={16} aria-hidden />,
+      route: { message: hit.message_id, thread: hit.thread_id },
+    }));
+    return [...(needle ? all.filter(found) : all).slice(0, 50), ...inMessages];
+  }, [threads, query, newIn, projects, allProjects, hits, start, messages]);
 
   const choose = (entry: Entry | undefined) => {
     if (!entry) return;
@@ -131,6 +161,12 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
     if (typeof entry.route === "object" && "file" in entry.route) {
       useUi.getState().revealFile(entry.route.file, entry.route.line);
       onClose();
+      return;
+    }
+    if (typeof entry.route === "object" && "message" in entry.route) {
+      useUi.getState().revealMessage(entry.route.thread, entry.route.message);
+      onClose();
+      navigate({ name: "thread", id: entry.route.thread });
       return;
     }
     if (entry.route === "new-in") {

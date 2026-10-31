@@ -101,6 +101,7 @@ export type { ProjectFileView } from "../generated/ProjectFileView";
 export type { Question } from "../generated/Question";
 export type { QuestionRequest } from "../generated/QuestionRequest";
 export type { SearchHit } from "../generated/SearchHit";
+export type { MessageSearch } from "../generated/MessageSearch";
 export type { TerminalInfo } from "../generated/TerminalInfo";
 export type Diagnostics = Wired<DiagnosticsWire>;
 export type ScheduledTask = Wired<ScheduledTaskWire>;

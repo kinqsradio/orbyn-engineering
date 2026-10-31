@@ -1,6 +1,7 @@
 import { readToken } from "./token";
 import type {
   CommitInfo,
+  MessageSearch,
   SearchHit,
   EngineLimits,
   KeybindingsView,
@@ -231,6 +232,8 @@ export const api = {
       ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
       ...turn,
     }),
+  searchMessages: (query: string, signal?: AbortSignal) =>
+    request<MessageSearch>("GET", `/api/search/messages?q=${q(query)}&limit=20`, undefined, signal),
   cancelRun: (runId: string) => request<void>("POST", `/api/runs/${q(runId)}/cancel`),
   forceStop: (threadId: string) => request<unknown>("POST", `/api/threads/${q(threadId)}/force-stop`, {}),
   diff: (threadId: string, signal?: AbortSignal, scope?: string) =>

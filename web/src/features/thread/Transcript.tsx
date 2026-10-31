@@ -1,16 +1,18 @@
 import { ArrowDown } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useThreadLogs, type LocalPrompt } from "../../state/threadLogs";
+import { useUi } from "../../state/ui";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { TimelineRow, TimelineThread } from "./items";
 import { Minimap } from "./Minimap";
 import type { MessageItem, ThreadItem } from "./projection";
-import { arrangeTimeline, runningTools } from "./timeline";
+import { arrangeTimeline, entryForMessage, runningTools } from "./timeline";
 
 const NEAR_BOTTOM = 80;
 const NO_RUNS = {};
+const REVEAL_MS = 2000;
 /** Scroll position per thread, kept while switching threads in one visit. */
 const scrollMemory = new Map<string, number>();
 
@@ -111,6 +113,21 @@ export function Transcript({
     };
   }, [threadId]);
 
+  const reveal = useUi((state) => (state.messageReveal?.threadId === threadId ? state.messageReveal : null));
+  const clearReveal = useUi((state) => state.clearMessageReveal);
+  useEffect(() => {
+    if (!reveal || entries.length === 0) return;
+    const key = entryForMessage(entries, reveal.messageId);
+    if (!key) return;
+    const row = scroller.current?.querySelector(`[data-entry="${CSS.escape(key)}"]`);
+    row?.scrollIntoView({ block: "center" });
+    row?.setAttribute("data-revealed", "true");
+    pinned.current = false;
+    clearReveal();
+    const timer = setTimeout(() => row?.removeAttribute("data-revealed"), REVEAL_MS);
+    return () => clearTimeout(timer);
+  }, [reveal, entries, clearReveal]);
+
   const onScroll = () => {
     const element = scroller.current;
     if (!element) return;
@@ -153,7 +170,7 @@ export function Transcript({
           ) : (
             <TimelineThread value={threadId}>
               {entries.map((entry) => (
-                <div key={entry.key} className={`item item-${entry.kind}`}>
+                <div key={entry.key} className={`item item-${entry.kind}`} data-entry={entry.key}>
                   <TimelineRow entry={entry} live={active} tools={tools} />
                 </div>
               ))}
