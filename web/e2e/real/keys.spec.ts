@@ -69,10 +69,13 @@ test("Shift+PageUp reads scrollback without leaving the terminal", async ({ page
   await settled(service, threadIdOf(page));
   await page.getByRole("button", { name: "Terminal" }).click();
   const input = page.locator(".terminal-drawer-body .xterm-helper-textarea").first();
-  await input.focus();
-  await page.keyboard.type("for i in $(seq 1 300); do echo line$i; done\n");
   const rows = page.locator(".terminal-drawer-body .xterm-rows").first();
-  await expect(rows).toContainText("line300");
+  // A shell still starting can lose what is typed, so this tries again until it answers.
+  await expect(async () => {
+    await input.focus();
+    await page.keyboard.type("for i in $(seq 1 300); do echo line$i; done\n");
+    await expect(rows).toContainText("line300", { timeout: 4000 });
+  }).toPass({ timeout: 25_000 });
   await input.focus();
   await page.keyboard.press("Shift+PageUp");
   await expect(rows).not.toContainText("line300");
@@ -104,7 +107,10 @@ test("usage period keys come from the rules", async ({ page }) => {
 });
 
 test("a keybindings file that changes or breaks says so when you come back", async ({ page }) => {
+  // The toast compares with what the page already read, so the first read has to land.
+  const read = page.waitForResponse((response) => response.url().endsWith("/api/keybindings"));
   await page.goto(service.page);
+  await read;
   const view = await service.api<{ path: string }>("GET", "/api/keybindings");
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   writeFileSync(view.path, JSON.stringify([{ key: "mod+shift+y", command: "sidebar.toggle" }]));

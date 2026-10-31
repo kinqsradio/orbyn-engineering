@@ -170,5 +170,10 @@ try {
   await main();
   console.log("App smoke passed.");
 } finally {
-  rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  // Windows can hold a closing webview's folder a while longer. A leftover temp folder is no failure.
+  try {
+    rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  } catch (error) {
+    console.warn(`Left ${sandbox} behind: ${error.message}`);
+  }
 }
