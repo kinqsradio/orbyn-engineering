@@ -3,31 +3,40 @@
  * Answers the `gh` calls the service makes, from a JSON file, so forge routes run with
  * no network. ORBYN_GH_STATE names the file; ORBYN_GH_LOG collects each call.
  */
-import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
 const args = process.argv.slice(2);
 const statePath = process.env.ORBYN_GH_STATE;
 
 // The service runs several of these at once, and each edits one file: without the
-// lock a read sees a half-written file and two edits lose one.
+// lock a read sees a half-written file and two edits lose one. The service kills a
+// call whose request went away, so a holder that has died no longer counts.
 const lock = `${statePath}.lock`;
-const STALE_MS = 10_000;
 const pause = new Int32Array(new SharedArrayBuffer(4));
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 for (;;) {
   try {
-    mkdirSync(lock);
+    writeFileSync(lock, String(process.pid), { flag: "wx" });
     break;
   } catch {
     try {
-      if (Date.now() - statSync(lock).mtimeMs > STALE_MS) rmSync(lock, { recursive: true, force: true });
+      const holder = Number(readFileSync(lock, "utf8"));
+      if (holder && !alive(holder)) rmSync(lock, { force: true });
     } catch {
       // Released between the two calls.
     }
     Atomics.wait(pause, 0, 0, 10);
   }
 }
-process.on("exit", () => rmSync(lock, { recursive: true, force: true }));
+process.on("exit", () => rmSync(lock, { force: true }));
 
 const state = JSON.parse(readFileSync(statePath, "utf8"));
 appendFileSync(process.env.ORBYN_GH_LOG, `${JSON.stringify(args)}\n`);
