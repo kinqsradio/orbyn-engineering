@@ -155,7 +155,8 @@ that outlived a model; that run fails with the same message.
 in the order mode, model, options before the prompt, and a mode or option the session
 no longer lists fails the turn. Fast mode reaches Claude as `fastMode` through
 `--settings`, the settings key its schema names, only on a model reporting
-`supportsFastMode`. Reported only when signed in, so this path has no live evidence yet.
+`supportsFastMode`. A logged-out 2.1.150 lists it for `default` once the child
+environment is clean, but no live turn has run with it.
 Codex keeps a turn's values for later turns, so every `turn/start` states model, effort
 and tier, filled from the catalog when unset, and Standard is a `null` tier. A new model
 on a Codex thread goes through `thread/resume` and `turn/start`, keeping the same
