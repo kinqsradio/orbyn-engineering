@@ -685,10 +685,13 @@ The headless shell's separate GPU process exits once a page composites, which en
 browser, so a binary named as that shell gets `--in-process-gpu` on macOS and Linux.
 `ORBYN_BROWSER_IN_PROCESS_GPU` forces it for one behind a wrapper.
 
-`/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout,
-through `lsof`. Windows has no such check, so there it lists loopback and wildcard
-listeners, named through a PowerShell query with `netstat` behind it, with `in_checkout:
-false`, and none of those can be stopped from here.
+`/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout.
+`lsof` finds them on macOS, and on Windows a PowerShell query with `netstat` behind it
+finds loopback and wildcard listeners. Each process's folder is read from the OS, so
+both platforms apply one rule: a server in the checkout can be stopped, one in another
+folder isn't listed, and one whose folder can't be read, like a system service, shows
+with `in_checkout: false` and can't be stopped. Stopping on Windows ends the process and
+its children by force, since a server has no window to ask.
 
 ## Tool budgets
 

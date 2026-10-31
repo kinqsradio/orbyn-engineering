@@ -1926,7 +1926,8 @@ pub struct LocalServer {
     pub port: u16,
     pub pid: u32,
     pub process: String,
-    /// False where Orbyn cannot tell which folder a process runs in, as on Windows.
+    /// False where the OS will not say which folder a process runs in, as for a
+    /// system service. Only a server in the checkout can be stopped.
     pub in_checkout: bool,
 }
 }
