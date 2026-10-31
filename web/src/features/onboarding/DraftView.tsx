@@ -1,4 +1,4 @@
-import { ArrowUp, Bot, Folder, GitBranch, Paperclip, X } from "lucide-react";
+import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { api } from "../../api/client";
@@ -10,7 +10,10 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { NoProjects } from "./NoProjects";
+import { useLayoutWidth } from "../../lib/useLayout";
 import { IconButton } from "../../ui/controls";
+import { ProjectBadge } from "../../ui/badges";
+import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
 import { Loading } from "../../ui/states";
 import { ACCESS, EffortTrigger, useTraitsMenu } from "../thread/ComposerTraits";
@@ -91,6 +94,12 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const files = useDraftFiles((state) => state.files);
   const setFiles = useDraftFiles((state) => state.set);
   const fileInput = useRef<HTMLInputElement>(null);
+  const adoptLayout = useUi((state) => state.adoptDraftLayout);
+  const panelPref = useUi((state) => state.panelOpen);
+  const setPanelOpen = useUi((state) => state.setPanelOpen);
+  const panelWidth = useUi((state) => state.panelWidth);
+  const layoutWidth = useLayoutWidth();
+  const paneShown = panelPref === true && layoutWidth !== "narrow";
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
   const [worktree, setWorktree] = useState<string | null>(null);
@@ -147,6 +156,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         skill_profile: null,
       });
       putThread(thread);
+      adoptLayout(thread.id);
       const attached = await Promise.all(files.map((file) => api.uploadAttachment(thread.id, file)));
       const run = await api.startRun(
         thread.id,
@@ -168,6 +178,25 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   };
 
   return (
+    <div className="draft-layout">
+      <section className="draft-main thread-main" aria-label="New thread">
+        <header className="topbar">
+          <div className="crumbs">
+            {project ? <ProjectBadge name={project.name} /> : <SquareDashed size={14} aria-hidden />}
+            <span className="crumb-project">{project?.name ?? "No project"}</span>
+            <span className="crumb-slash" aria-hidden>
+              /
+            </span>
+            <span className="crumb-title">New thread</span>
+          </div>
+          <div className="layout-toggles" role="group" aria-label="Layout">
+            {paneShown ? null : (
+              <IconButton label="Surfaces" onClick={() => setPanelOpen(true)}>
+                <PanelRight size={16} aria-hidden />
+              </IconButton>
+            )}
+          </div>
+        </header>
     <div className="thread-stage draft-stage" data-hero>
       <div className="composer-lane">
         <div className="composer-group">
@@ -397,6 +426,31 @@ export function DraftView({ projectId }: { projectId: string | null }) {
             setPalette("add-project");
           }}
         />
+      ) : null}
+    </div>
+      </section>
+      {paneShown ? (
+        <aside
+          className="context"
+          aria-label="Thread context"
+          style={panelWidth !== null ? { width: panelWidth } : undefined}
+        >
+          <PaneResizer />
+          <header className="context-head">
+            <div className="layout-toggles">
+              <IconButton label="Close surfaces" pressed onClick={() => setPanelOpen(false)}>
+                <PanelRight size={16} aria-hidden />
+              </IconButton>
+            </div>
+          </header>
+          <div className="context-body">
+            <div className="launcher">
+              <div className="launcher-inner">
+                <h2>Open a surface</h2>
+              </div>
+            </div>
+          </div>
+        </aside>
       ) : null}
     </div>
   );

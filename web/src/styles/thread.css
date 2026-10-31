@@ -57,7 +57,8 @@
   flex: none;
   color: var(--color-faint);
 }
-.crumbs h1 {
+.crumbs h1,
+.crumb-title {
   min-width: 0;
   overflow: hidden;
   font-size: var(--text-body);
@@ -1130,6 +1131,7 @@ button.detail-row:hover {
 
 /* Context panel */
 .context {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: none;
@@ -1849,4 +1851,32 @@ button.detail-row:hover {
     flex: 0 1 auto;
     min-width: 0;
   }
+}
+.pane-resizer {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.pane-resizer:hover {
+  background: var(--color-divider);
+}
+.draft-layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.draft-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.draft-main > .draft-stage {
+  flex: 1;
+  min-height: 0;
 }

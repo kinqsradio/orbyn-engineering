@@ -54,6 +54,11 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Command palette | Open | Live: y 90, 576x420, radius 16, blur 16, items 32 radius 4 | Match | Fewer actions |
 | Dialogs | Backdrop | Live: 64% black, blur 4, 200 ms | Match | 0 |
 | Menus | Popover | Live: radius 8, 150 ms scale and opacity | 100 ms | 50 ms |
+| Layout | Per-thread restore | Live and source: open state, active surface, surfaces and maximize per thread in one saved store, width per thread in its own key, terminal per thread in another, thread details per thread; all survive reload | Match, Real: three threads and a reload | One saved record per thread, capped at 200 |
+| Layout | Draft to thread | Source: a draft's id becomes the thread's, so its layout carries | Match, Real | Next draft starts fresh |
+| Layout | Pane width | Live: 360 default, resized per thread | Match, Real; double-click resets | Default follows the window, as measured before |
+| Layout | Narrow | Source: right panel becomes a sheet at 980 and under | Replaces the thread with Back to thread | Own shape below the wide breakpoint |
+| Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Terminal drawer | Open | Unobserved | Built | Unknown |
 | Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
 | Settings | Sections | Live: 17 sections | 7 backed, Real | Others hidden |

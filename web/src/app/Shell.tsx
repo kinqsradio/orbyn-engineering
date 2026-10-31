@@ -1,5 +1,5 @@
 import { PanelLeft } from "lucide-react";
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { NoProjects } from "../features/onboarding/NoProjects";
 import { DraftView } from "../features/onboarding/DraftView";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
@@ -21,7 +21,7 @@ import { Toasts } from "../ui/Toasts";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
-import { useUi, type ContextTab } from "../state/ui";
+import { DRAFT_LAYOUT, useUi, type ContextTab } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
 
@@ -165,6 +165,11 @@ export function Shell() {
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
 
+  const layoutKey =
+    route.name === "thread" ? route.id : route.name === "new" || route.name === "home" ? DRAFT_LAYOUT : null;
+  useLayoutEffect(() => {
+    if (layoutKey) useUi.getState().setLayoutKey(layoutKey);
+  }, [layoutKey]);
   const palette = useUi((state) => state.palette);
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);

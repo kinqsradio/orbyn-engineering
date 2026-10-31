@@ -82,6 +82,43 @@ function Launcher({ thread }: { thread: Thread }) {
   );
 }
 
+const MIN_PANE = 360;
+const MIN_MAIN = 420;
+
+/** Saves this thread's pane width when the drag ends. */
+export function PaneResizer() {
+  const setWidth = useUi((state) => state.setPanelWidth);
+  const clamp = (right: number, x: number) =>
+    Math.max(MIN_PANE, Math.min(right - MIN_MAIN, Math.round(right - x)));
+  return (
+    <div
+      className="pane-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize panel"
+      title="Drag to resize"
+      onDoubleClick={() => setWidth(null)}
+      onPointerDown={(event) => {
+        const pane = event.currentTarget.parentElement;
+        if (!pane) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const right = pane.getBoundingClientRect().right;
+        const handle = event.currentTarget;
+        const move = (moved: PointerEvent) => {
+          pane.style.width = `${clamp(right, moved.clientX)}px`;
+        };
+        const stop = () => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("lostpointercapture", stop);
+          setWidth(Math.round(pane.getBoundingClientRect().width));
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("lostpointercapture", stop);
+      }}
+    />
+  );
+}
+
 export function SurfacePane({
   thread,
   overlay,
@@ -104,6 +141,7 @@ export function SurfacePane({
   const showLauncher = useUi((state) => state.showLauncher);
   const closeSurface = useUi((state) => state.closeSurface);
   const terminalOpen = useUi((state) => state.terminalOpen);
+  const width = useUi((state) => state.panelWidth);
 
   return (
     <aside
@@ -111,7 +149,9 @@ export function SurfacePane({
       aria-label="Thread context"
       data-closing={closing || undefined}
       data-maximized={maximized || undefined}
+      style={width !== null && !overlay && !maximized ? { width } : undefined}
     >
+      {overlay || maximized ? null : <PaneResizer />}
       <header className="context-head">
         {overlay ? (
           <Button small tone="quiet" icon={<ArrowLeft size={16} aria-hidden />} onClick={onReturn}>

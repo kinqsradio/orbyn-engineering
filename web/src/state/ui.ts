@@ -18,6 +18,12 @@ interface Prefs {
   detailsOpen: boolean;
   /** The terminal drawer under the conversation. */
   terminalOpen: boolean;
+  panelMaximized: boolean;
+  /** The pane's width for this thread; null follows the window. */
+  panelWidth: number | null;
+  /** The current thread's layout is the fields above; others wait here. */
+  layouts: Record<string, ThreadLayout>;
+  layoutKey: string;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   /** Sidebar groups the viewer has opened or closed. */
@@ -39,6 +45,20 @@ interface Prefs {
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
 }
 
+/** What each thread remembers of its layout. Drafts share the `draft` key until sent. */
+export interface ThreadLayout {
+  panelOpen: boolean | null;
+  panelTab: RightTab | null;
+  openSurfaces: RightTab[];
+  detailsOpen: boolean;
+  terminalOpen: boolean;
+  panelMaximized: boolean;
+  panelWidth: number | null;
+}
+
+export const DRAFT_LAYOUT = "draft";
+const MAX_LAYOUTS = 200;
+
 export type PaletteStart = "root" | "add-project";
 
 export const DEFAULT_SIDEBAR_WIDTH = 208;
@@ -56,6 +76,10 @@ const defaults: Prefs = {
   panelAnimationMs: 0,
   detailsOpen: true,
   terminalOpen: false,
+  panelMaximized: false,
+  panelWidth: null,
+  layouts: {},
+  layoutKey: DRAFT_LAYOUT,
   sidebarCollapsed: false,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   groups: {},
@@ -89,6 +113,12 @@ interface UiState extends Prefs {
   closeSurface(tab: RightTab): void;
   setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
+  setPanelMaximized(maximized: boolean): void;
+  setPanelWidth(width: number | null): void;
+  /** Shows another thread's layout, restoring what it last had. */
+  setLayoutKey(key: string): void;
+  /** A sent draft keeps its layout as a thread, and the next draft starts fresh. */
+  adoptDraftLayout(threadId: string): void;
   toggleSidebar(): void;
   setSidebarWidth(width: number): void;
   toggleGroup(group: string, fallback: boolean): void;
@@ -113,6 +143,33 @@ interface UiState extends Prefs {
   setLastThread(threadId: string): void;
 }
 
+const layoutDefaults: ThreadLayout = {
+  panelOpen: defaults.panelOpen,
+  panelTab: defaults.panelTab,
+  openSurfaces: defaults.openSurfaces,
+  detailsOpen: defaults.detailsOpen,
+  terminalOpen: defaults.terminalOpen,
+  panelMaximized: defaults.panelMaximized,
+  panelWidth: defaults.panelWidth,
+};
+
+const currentLayout = (state: Prefs): ThreadLayout => ({
+  panelOpen: state.panelOpen,
+  panelTab: state.panelTab,
+  openSurfaces: state.openSurfaces,
+  detailsOpen: state.detailsOpen,
+  terminalOpen: state.terminalOpen,
+  panelMaximized: state.panelMaximized,
+  panelWidth: state.panelWidth,
+});
+
+/** The newest layouts stay; object order is insertion order. */
+function withLayout(layouts: Record<string, ThreadLayout>, key: string, layout: ThreadLayout) {
+  const { [key]: _old, ...others } = layouts;
+  const entries = Object.entries({ ...others, [key]: layout });
+  return Object.fromEntries(entries.slice(-MAX_LAYOUTS));
+}
+
 const prefsOf = (state: Prefs): Prefs => ({
   theme: state.theme,
   panelOpen: state.panelOpen,
@@ -121,6 +178,10 @@ const prefsOf = (state: Prefs): Prefs => ({
   panelAnimationMs: state.panelAnimationMs,
   detailsOpen: state.detailsOpen,
   terminalOpen: state.terminalOpen,
+  panelMaximized: state.panelMaximized,
+  panelWidth: state.panelWidth,
+  layouts: state.layouts,
+  layoutKey: state.layoutKey,
   sidebarCollapsed: state.sidebarCollapsed,
   sidebarWidth: state.sidebarWidth,
   groups: state.groups,
@@ -140,11 +201,16 @@ const prefsOf = (state: Prefs): Prefs => ({
 function savedPrefs(): Partial<Prefs> {
   const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
   const panelTab = saved.panelTab === "diff" || saved.panelTab === "activity" ? saved.panelTab : null;
-  return { ...saved, panelTab };
+  return { ...saved, panelTab, layouts: saved.layouts ?? {} };
 }
 
 export const useUi = create<UiState>((set, get) => {
-  const savePrefs = () => writeJson(PREFS_KEY, prefsOf(get()));
+  const savePrefs = () => {
+    const state = get();
+    const layouts = withLayout(state.layouts, state.layoutKey, currentLayout(state));
+    set({ layouts });
+    writeJson(PREFS_KEY, prefsOf({ ...state, layouts }));
+  };
   return {
     ...defaults,
     ...savedPrefs(),
@@ -212,6 +278,28 @@ export const useUi = create<UiState>((set, get) => {
     },
     toggleDetails() {
       set((state) => ({ detailsOpen: !state.detailsOpen }));
+      savePrefs();
+    },
+    setPanelMaximized(maximized) {
+      set({ panelMaximized: maximized });
+      savePrefs();
+    },
+    setPanelWidth(width) {
+      set({ panelWidth: width });
+      savePrefs();
+    },
+    setLayoutKey(key) {
+      const state = get();
+      if (key === state.layoutKey) return;
+      const layouts = withLayout(state.layouts, state.layoutKey, currentLayout(state));
+      set({ layouts, layoutKey: key, ...(layouts[key] ?? layoutDefaults) });
+      savePrefs();
+    },
+    adoptDraftLayout(threadId) {
+      const state = get();
+      if (state.layoutKey !== DRAFT_LAYOUT) return;
+      const { [DRAFT_LAYOUT]: _draft, ...others } = state.layouts;
+      set({ layouts: others, layoutKey: threadId });
       savePrefs();
     },
     toggleSidebar() {

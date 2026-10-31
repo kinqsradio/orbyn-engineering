@@ -216,7 +216,8 @@ export function ThreadView({ id }: { id: string }) {
   const layout = useLayoutWidth();
   const wide = isWide(layout);
   const [detailsOverlay, setDetailsOverlay] = useState(false);
-  const [maximized, setMaximized] = useState(false);
+  const maximized = useUi((state) => state.panelMaximized);
+  const setMaximized = useUi((state) => state.setPanelMaximized);
   const [docked, setDocked] = useState(false);
   const stream = useThreadLogs((state) => state.streams[id]?.status);
   const hasContent = useThreadLogs(

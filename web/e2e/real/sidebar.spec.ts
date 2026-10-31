@@ -193,3 +193,43 @@ test("the composer picks model and effort, sets access, and keeps favourites", a
   await expect(page.getByRole("button", { name: "Permissions: Full access", exact: true })).toBeVisible();
   await service.api("PATCH", `/api/threads/${id}`, { permission_mode: "supervised" });
 });
+
+test("each thread restores its own panel across switches and a reload", async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 900 });
+  const open = (title: string) => row(page, title).click();
+  const pane = page.getByRole("complementary", { name: "Thread context" });
+  const newest = await page.locator("li[data-section=active] .thread-row-title").allInnerTexts();
+  const [first, second, third] = newest;
+  if (!first || !second || !third) throw new Error("needs three threads");
+
+  await open(first);
+  await expect(page.getByRole("heading", { name: first })).toBeVisible();
+  await page.getByRole("button", { name: "Surfaces" }).click();
+  await expect(pane).toBeVisible();
+  const handle = await pane.getByRole("separator", { name: "Resize panel" }).boundingBox();
+  await page.mouse.move((handle?.x ?? 0) + 3, 300);
+  await page.mouse.down();
+  await page.mouse.move((handle?.x ?? 0) - 60, 300, { steps: 4 });
+  await page.mouse.up();
+  const wide = (await pane.boundingBox())?.width ?? 0;
+
+  await open(second);
+  await expect(page.getByRole("heading", { name: second })).toBeVisible();
+  await expect(pane).toBeHidden();
+  await page.getByRole("button", { name: "Terminal" }).click();
+
+  await open(third);
+  await expect(page.getByRole("heading", { name: third })).toBeVisible();
+  await expect(pane).toBeHidden();
+  await expect(page.getByRole("region", { name: /Terminal/ })).toBeHidden();
+
+  await open(first);
+  await expect(pane).toBeVisible();
+  expect((await pane.boundingBox())?.width).toBe(wide);
+
+  await page.reload();
+  await expect(pane).toBeVisible();
+  expect((await pane.boundingBox())?.width).toBe(wide);
+  await open(third);
+  await expect(pane).toBeHidden();
+});
