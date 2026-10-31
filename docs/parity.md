@@ -36,10 +36,12 @@ toward completion.
 
 These stay unticked on purpose. Each needs something this scope leaves out:
 
-- Rule 1: `[auth-risk]` rows, and B51, K33, M15 and N21's `request_secret`, would have Orbyn hold or broker a credential.
+- Rule 1: `[auth-risk]` rows, and B51, K33, M15 and N21's `request_secret` (its `create_threads` half is `orbyn_threads_create`), would have Orbyn hold or broker a credential.
 - Remote and linked environments: A74, B52, D26, F50, F62, K1's environment half, K22, N22, O18, and the host keys in K41.
 - Hosted services: `[hosted]` rows such as K31, M10 and J22.
 - Providers with no CLI or protocol double here: I17, I22, I24 to I27, I46 to I50 and I62 can't be proved without a usage-spending engine.
+- Reach past a project: N6's create, clone and delete and N12's transfer. A tool reaches only its caller's project, which is the point of the per-thread token.
+- Engine workflow tools: M13 and N19's workflow stop show a run an engine's own workflow tool started, and no engine here reports one.
 - No backing here: A54 has no earlier database to migrate. K38's star prompt is an upstream growth prompt, not product behaviour.
 
 ## A. Threads and sidebar
@@ -652,7 +654,7 @@ are not built in.
 - [x] N5 Preview controls: `t3_preview_list`, `t3_preview_close` | apps/server/src/mcp/toolkits/previewControls/tools.ts | s | S | server done, as `orbyn_*`
 - [ ] N6 Projects: `t3_project_list`, `_read`, `_create`, `_update`, `_delete`, `_clone` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server: read and rename the caller's own project; create, clone and delete reach past it, so tools do not offer them
 - [x] N7 Thread launch: `t3_thread_launch` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server done, as `orbyn_*`
-- [ ] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L | server: open, navigate, back, forward and resize; dialogs and appearance not built
+- [x] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L | server done: all six, under `orbyn_preview_*`, with back and forward
 - [ ] N9 Browser inspection: `preview_snapshot`, `_act`, `_evaluate`, `_wait_for` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L
 - [x] N10 Browser recording: `preview_recording_start`, `_stop` | apps/server/src/mcp/toolkits/preview/tools.ts | s | M | server done, as `orbyn_*`: changed frames as JPEG files
 - [ ] N11 Devices: `device_list`, `_open`, `_screenshot`, `_close` | apps/server/src/mcp/toolkits/device/tools.ts | s | M

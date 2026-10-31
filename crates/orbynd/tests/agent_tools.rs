@@ -394,6 +394,15 @@ async fn attachments_come_from_this_checkout_and_previews_from_this_thread() {
             json!({ "thread_id": sibling, "path": "../outside.txt" }),
         ),
         ("orbyn_preview_close", json!({ "tab_id": "not-mine" })),
+        ("orbyn_preview_status", json!({ "tab_id": "not-mine" })),
+        (
+            "orbyn_preview_dialog",
+            json!({ "tab_id": "not-mine", "accept": true }),
+        ),
+        (
+            "orbyn_preview_set_appearance",
+            json!({ "tab_id": "not-mine", "appearance": "dark" }),
+        ),
         (
             "orbyn_preview_resize",
             json!({ "tab_id": "not-mine", "width": 300, "height": 300 }),

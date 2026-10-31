@@ -399,6 +399,19 @@ impl PreviewManager {
         Ok(tab.view())
     }
 
+    /// Answers a dialog the page opened. A page blocked on one does nothing else.
+    pub async fn answer_dialog(
+        &self,
+        thread_id: &str,
+        id: &str,
+        accept: bool,
+        text: Option<&str>,
+    ) -> Result<bool> {
+        let tab = self.tab(thread_id, id)?;
+        let mut session = tab.session.lock().await;
+        session.answer_dialog(accept, text).await
+    }
+
     pub async fn reload(&self, thread_id: &str, id: &str, hard: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
         tab.session.lock().await.reload(hard).await?;

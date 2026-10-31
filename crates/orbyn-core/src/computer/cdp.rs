@@ -439,6 +439,19 @@ impl BrowserSession {
         .map(|_| ())
     }
 
+    /// Answers the page's open `alert`, `confirm` or `prompt`. False if none was open.
+    pub async fn answer_dialog(&mut self, accept: bool, text: Option<&str>) -> Result<bool> {
+        let mut params = json!({ "accept": accept });
+        if let Some(text) = text {
+            params["promptText"] = json!(text);
+        }
+        match self.call("Page.handleJavaScriptDialog", params).await {
+            Ok(_) => Ok(true),
+            Err(error) if error.to_string().contains("No dialog is showing") => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+
     /// `light` or `dark` for `prefers-color-scheme`; anything else follows the system.
     pub async fn set_appearance(&mut self, appearance: &str) -> Result<()> {
         let value = if matches!(appearance, "light" | "dark") {
