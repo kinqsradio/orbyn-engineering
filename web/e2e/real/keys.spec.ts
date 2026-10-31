@@ -55,9 +55,13 @@ test("alt+up takes the last queued message back, and terminal keys split and clo
   await page.locator(".terminal-drawer-body .xterm-helper-textarea").first().focus();
   await page.keyboard.press("ControlOrMeta+n");
   await expect.poll(async () => (await service.api<unknown[]>("GET", `/api/threads/${threadIdOf(page)}/terminals`)).length).toBeGreaterThan(1);
-  await page.locator(".terminal-splits .xterm-helper-textarea").first().focus();
-  await page.keyboard.press("ControlOrMeta+d");
-  await expect(page.locator(".terminal-splits .xterm")).toHaveCount(2);
+  // The new tab's terminal loads after its row appears, and takes focus when it does.
+  await expect(async () => {
+    await page.locator(".terminal-splits .xterm-helper-textarea").first().focus();
+    await expect(page.locator(".terminal-splits .xterm-helper-textarea").first()).toBeFocused({ timeout: 500 });
+    await page.keyboard.press("ControlOrMeta+d");
+    await expect(page.locator(".terminal-splits .xterm")).toHaveCount(2, { timeout: 1000 });
+  }).toPass();
 });
 
 test("F6 walks the window's areas", async ({ page }) => {
