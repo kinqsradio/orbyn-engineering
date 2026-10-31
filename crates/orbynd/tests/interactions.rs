@@ -305,6 +305,59 @@ async fn the_configured_tier_is_the_default_and_goes_out_with_a_turn() {
 }
 
 #[tokio::test]
+async fn leaving_full_access_is_stated_on_the_resume_and_the_turn() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(false, &launch_file), "codex").await;
+    service
+        .patch(&thread, json!({ "permission_mode": "full_access" }))
+        .await;
+    service.admit(&thread, "one").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    service
+        .patch(
+            &thread,
+            json!({ "permission_mode": "supervised", "plan_mode": true }),
+        )
+        .await;
+    service.admit(&thread, "two").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let parsed = |mode: &str| -> Vec<Value> {
+        launches(&launch_file, mode)
+            .iter()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    };
+    let (threads, turns) = (parsed("codex-thread"), parsed("codex-turn"));
+    assert_eq!(threads[0]["approvalPolicy"], "never");
+    assert_eq!(turns[0]["approvalPolicy"], "never");
+    assert_eq!(threads[1]["threadId"], turns[0]["threadId"], "a resume");
+    assert_eq!(threads[1]["approvalPolicy"], "on-request");
+    assert_eq!(threads[1]["sandbox"], "read-only");
+    assert_eq!(turns[1]["approvalPolicy"], "on-request");
+    assert_eq!(turns[1]["sandboxPolicy"]["type"], "readOnly");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_missing_login_points_at_the_vendors_command() {
+    let dir = TempDir::new();
+    let mut options = engines(true, &dir.path().join("l"));
+    options
+        .env
+        .push(("ORBYN_FAKE_NOT_LOGGED_IN".to_owned(), "1".to_owned()));
+    let (service, thread) = setup(&dir, options, "claude").await;
+    service.admit(&thread, "hi").await;
+    assert_eq!(service.finished(&thread).await, "failed");
+    let events = service.all_events(&thread).await;
+    let shown = serde_json::to_string(&events).unwrap();
+    assert!(shown.contains("claude auth login"), "{shown}");
+    assert!(!shown.contains("sk-ant"), "{shown}");
+    assert!(shown.contains("engine.sign_in_required"), "{shown}");
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn a_selection_follows_the_queue_a_fork_and_new_threads() {
     let dir = TempDir::new();
     let launch_file = dir.path().join("l");

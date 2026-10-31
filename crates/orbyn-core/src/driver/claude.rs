@@ -166,6 +166,10 @@ impl EngineDriver for ClaudeDriver {
         false
     }
 
+    fn sign_in_command(&self) -> Option<&str> {
+        Some("claude auth login")
+    }
+
     async fn probe(&self) -> EngineProbe {
         let mut probe = probe_cli(&self.program, &["--version"]).await;
         if probe.path.is_some() {
@@ -1032,6 +1036,47 @@ mod tests {
         assert_eq!(catalog.commands[0].0, "review");
         assert_eq!(catalog.agents[0].name, "Explore");
         assert_eq!(catalog.output_styles, ["default", "Learning"]);
+    }
+
+    /// A real 2.1.150 reply to `initialize`, read logged out from an empty config
+    /// folder, with its account block and pid removed.
+    const RECORDED: &str = include_str!("fixtures/claude-2.1.150-initialize.json");
+
+    #[test]
+    fn a_recorded_reply_parses_as_the_live_one_will() {
+        let frame: Value = serde_json::from_str(RECORDED).unwrap();
+        assert_eq!(frame["type"], "control_response");
+        assert_eq!(frame["response"]["request_id"], INITIALIZE_ID);
+        let catalog = parse_capabilities(&frame["response"]["response"]);
+        assert!(catalog.models.iter().any(|model| model.is_default));
+        let sonnet = catalog
+            .models
+            .iter()
+            .find(|model| model.id == "sonnet")
+            .unwrap();
+        assert_eq!(sonnet.options[0].id, "effort");
+        assert!(!sonnet.options[0].values.is_empty());
+        let haiku = catalog
+            .models
+            .iter()
+            .find(|model| model.id == "haiku")
+            .unwrap();
+        assert!(haiku.options.is_empty());
+        assert!(!catalog.output_styles.is_empty());
+        assert!(!catalog.agents.is_empty());
+    }
+
+    /// `cargo test -p orbyn-core live_ -- --ignored`. Needs the CLI, spends no usage.
+    #[tokio::test]
+    #[ignore = "needs a real Claude Code"]
+    async fn live_catalog_is_the_engines_own() {
+        let catalog = ClaudeDriver::new("claude".into())
+            .models()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(catalog.source, "engine", "{:?}", catalog.fallback);
+        assert!(!catalog.models.is_empty());
     }
 
     #[test]

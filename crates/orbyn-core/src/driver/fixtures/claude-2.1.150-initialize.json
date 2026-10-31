@@ -1,0 +1,103 @@
+{
+ "type": "control_response",
+ "response": {
+  "subtype": "success",
+  "request_id": "orbyn-capabilities",
+  "response": {
+   "commands": [
+    {
+     "name": "update-config",
+     "description": "Use this skill to configure the Claude Code harness via settings.json. Automated behaviors (\"from now on when X\", \"each time X\", \"whenever X\", \"before/after X\") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions (\"allow X\", \"add permission\", \"move permission to\"), env vars (\"set X=Y\"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: \"allow npm commands\", \"add bq permission to global settings\", \"move permission to user settings\", \"set DEBUG=true\", \"when claude stops show X\". For simple settings like theme/model, suggest the /config command.",
+     "argumentHint": ""
+    },
+    {
+     "name": "verify",
+     "description": "Verify that a code change actually does what it's supposed to by running the app and observing behavior. Use when asked to verify a PR, confirm a fix works, test a change manually, check that a feature works, or validate local changes before pushing.",
+     "argumentHint": ""
+    }
+   ],
+   "agents": [
+    {
+     "name": "claude",
+     "description": "Catch-all for any task that doesn't fit a more specific agent. FleetView's default when no agent name is typed."
+    },
+    {
+     "name": "Explore",
+     "description": "Fast read-only search agent for locating code. Use it to find files by pattern (eg. \"src/components/**/*.tsx\"), grep for symbols or keywords (eg. \"API endpoints\"), or answer \"where is X defined / which files reference Y.\" Do NOT use it for code review, design-doc auditing, cross-file consistency checks, or open-ended analysis — it reads excerpts rather than whole files and will miss content past its read window. When calling, specify search breadth: \"quick\" for a single targeted lookup, \"medium\" for moderate exploration, or \"very thorough\" to search across multiple locations and naming conventions.",
+     "model": "haiku"
+    },
+    {
+     "name": "general-purpose",
+     "description": "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you."
+    },
+    {
+     "name": "Plan",
+     "description": "Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs."
+    },
+    {
+     "name": "statusline-setup",
+     "description": "Use this agent to configure the user's Claude Code status line setting.",
+     "model": "sonnet"
+    }
+   ],
+   "output_style": "default",
+   "available_output_styles": [
+    "default",
+    "Proactive",
+    "Explanatory",
+    "Learning"
+   ],
+   "models": [
+    {
+     "value": "default",
+     "displayName": "Default (recommended)",
+     "description": "Use the default model (currently Opus 4.7 (1M context)) · $5/$25 per Mtok",
+     "supportsEffort": true,
+     "supportedEffortLevels": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ],
+     "supportsAdaptiveThinking": true,
+     "supportsFastMode": true,
+     "supportsAutoMode": true
+    },
+    {
+     "value": "sonnet",
+     "displayName": "Sonnet",
+     "description": "Sonnet 4.6 · Best for everyday tasks · $3/$15 per Mtok",
+     "supportsEffort": true,
+     "supportedEffortLevels": [
+      "low",
+      "medium",
+      "high",
+      "max"
+     ],
+     "supportsAdaptiveThinking": true,
+     "supportsAutoMode": true
+    },
+    {
+     "value": "sonnet[1m]",
+     "displayName": "Sonnet (1M context)",
+     "description": "Sonnet 4.6 for long sessions · $3/$15 per Mtok",
+     "supportsEffort": true,
+     "supportedEffortLevels": [
+      "low",
+      "medium",
+      "high",
+      "max"
+     ],
+     "supportsAdaptiveThinking": true,
+     "supportsAutoMode": true
+    },
+    {
+     "value": "haiku",
+     "displayName": "Haiku",
+     "description": "Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok"
+    }
+   ]
+  }
+ }
+}

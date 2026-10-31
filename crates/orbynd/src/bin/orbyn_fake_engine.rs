@@ -203,6 +203,13 @@ fn claude(args: &[String]) {
         }));
         return;
     }
+    if std::env::var_os("ORBYN_FAKE_NOT_LOGGED_IN").is_some() {
+        send(&json!({
+            "type": "result", "subtype": "error_during_execution", "is_error": true,
+            "errors": ["Not logged in · Please run /login\nkey sk-ant-do-not-show"],
+        }));
+        return;
+    }
     let session = resume.unwrap_or_else(|| "claude-session-1".to_owned());
     send(&json!({
         "type": "system", "subtype": "init", "session_id": session, "model": "fake",

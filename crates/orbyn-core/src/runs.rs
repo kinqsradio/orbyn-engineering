@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, WriteScope};
 use crate::checkpoints::checkpoint_ref;
 use crate::composer::check_prompt;
+use crate::driver::diagnostics;
 use crate::driver::{
     EngineDriver, EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunHandle, RunKind,
     RunSpec,
@@ -594,7 +595,22 @@ impl RunManager {
         let (state, message) = match outcome {
             EngineOutcome::Completed => (RunState::Completed, None),
             EngineOutcome::Cancelled => (RunState::Cancelled, None),
-            EngineOutcome::Failed(message) => (RunState::Failed, Some(message)),
+            EngineOutcome::Failed(message) => {
+                let sign_in = self.engines.driver(&scope.engine).ok();
+                let sign_in = sign_in.as_ref().and_then(|driver| driver.sign_in_command());
+                if diagnostics::is_sign_in_failure(&message) {
+                    let note = json!({ "command": sign_in });
+                    if let Err(error) = self.store.note_thread_event(
+                        &scope.thread_id,
+                        "engine.sign_in_required",
+                        note,
+                    ) {
+                        tracing::debug!(%error, "could not note a sign-in failure");
+                    }
+                }
+                let message = diagnostics::failure_message(&message, sign_in);
+                (RunState::Failed, Some(message))
+            }
             EngineOutcome::SessionLost => (
                 RunState::Failed,
                 Some("The engine lost this conversation.".to_owned()),

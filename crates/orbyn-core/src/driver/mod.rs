@@ -6,6 +6,7 @@ pub mod acp;
 pub mod agui;
 pub mod claude;
 pub mod codex;
+pub mod diagnostics;
 mod pipes;
 pub mod rpc;
 pub mod terminal;
@@ -286,6 +287,11 @@ pub trait EngineDriver: Send + Sync {
     /// What a cached list depends on. An engine with a key keeps its list until the
     /// key changes; without one the list simply ages out.
     async fn catalog_key(&self) -> Option<String> {
+        None
+    }
+
+    /// The vendor's own sign-in command, to name when a run fails for want of a login.
+    fn sign_in_command(&self) -> Option<&str> {
         None
     }
 

@@ -86,6 +86,10 @@ impl EngineDriver for CodexDriver {
         maintenance::plan_update(probe, &maintenance::CODEX).await
     }
 
+    fn sign_in_command(&self) -> Option<&str> {
+        Some("codex login")
+    }
+
     fn manual_hint(&self) -> Option<String> {
         Some("Update Codex with the installer you used, then refresh.".into())
     }
@@ -519,10 +523,12 @@ async fn open_turn(
     .await?;
     rpc.notify("initialized", None).await?;
     let config = thread_config(spec);
+    // Said on every resume too: a saved session keeps the policy it last had, so
+    // leaving full access has to be stated to take effect.
     let mut params = json!({
         "cwd": spec.cwd,
-        "approvalPolicy": "on-request",
-        "sandbox": sandbox,
+        "approvalPolicy": approval_policy(spec.mode),
+        "sandbox": if spec.plan { "read-only" } else { sandbox },
         "config": config,
     });
     if let Some(model) = &spec.model {
@@ -1351,6 +1357,39 @@ mod tests {
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
         model
+    }
+
+    /// Two real entries from a 0.166.0 `model/list`.
+    const RECORDED: &str = include_str!("fixtures/codex-0.166.0-model-list.json");
+
+    #[test]
+    fn a_recorded_list_parses_as_the_live_one_will() {
+        let page: Value = serde_json::from_str(RECORDED).unwrap();
+        let models: Vec<ModelInfo> = page["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(parse_model)
+            .collect();
+        assert_eq!(models.len(), 2);
+        for model in &models {
+            let effort = model.options.iter().find(|option| option.id == "effort");
+            let effort = effort.unwrap();
+            assert_eq!(
+                effort.values.iter().filter(|value| value.default).count(),
+                1
+            );
+            assert!(!model.input_modalities.is_empty());
+        }
+    }
+
+    /// `cargo test -p orbyn-core live_ -- --ignored`. Needs the CLI, spends no usage.
+    #[tokio::test]
+    #[ignore = "needs a real Codex"]
+    async fn live_catalog_is_the_engines_own() {
+        let driver = CodexDriver::new("codex".into(), "workspace-write".into());
+        let catalog = driver.models().await.unwrap().unwrap();
+        assert!(!catalog.models.is_empty());
     }
 
     #[test]

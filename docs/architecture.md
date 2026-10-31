@@ -166,6 +166,23 @@ reaches Codex as an empty answer set and Claude as a denial. Questions are logge
 `QuestionRequest`. A secret answer goes to the engine and is stored only as
 `[hidden]`, so it never reaches the database or the event log.
 
+## Engine failures
+
+Failure text is cleaned before anyone sees it: terminal codes go, and a line that looks
+like a credential, by key name, vendor prefix or shape, is dropped whole. A run that
+failed for want of a login says so and names the vendor's command, such as `claude auth
+login`, and logs `CUSTOM engine.sign_in_required`. Orbyn only names the command, under
+rule 1. Status commands are bounded by time and to 256 KiB, and `claude auth status` is
+read for its logged-in flag alone.
+
+Mode is stated on every launch: Claude's `--permission-mode`, and Codex's approval policy
+and sandbox on `thread/start`, `thread/resume` and `turn/start`, because a saved session
+otherwise keeps the policy it last had.
+
+Parsers are tested against recorded real frames in `driver/fixtures`, named by version.
+`cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
+with no prompt.
+
 ## Session recovery
 
 An engine that no longer has the session a run tried to resume reports
@@ -348,7 +365,8 @@ Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
-`engine.retrying`, `engine.selection` and `engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
+`engine.retrying`, `engine.selection`, `engine.sign_in_required` and
+`engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on

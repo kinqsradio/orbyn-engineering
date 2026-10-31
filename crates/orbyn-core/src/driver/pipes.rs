@@ -171,7 +171,7 @@ pub(crate) async fn exit_message(
                 .map_or("a signal".to_owned(), |c| format!("code {c}"))
         },
     );
-    let detail = stderr.text();
+    let detail = super::diagnostics::clean(&stderr.text());
     if detail.is_empty() {
         format!("The engine exited with {code} before finishing.")
     } else {

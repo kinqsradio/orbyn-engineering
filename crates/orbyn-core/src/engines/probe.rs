@@ -6,12 +6,15 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use orbyn_contracts::AuthState;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use super::super::driver::EngineProbe;
 use crate::process::{ResolvedCommand, resolve};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// A status command has no reason to print more than this.
+const MAX_CAPTURE: u64 = 256 * 1024;
 
 pub(crate) struct Captured {
     pub status: i32,
@@ -35,14 +38,35 @@ pub(crate) async fn capture(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     crate::child_env::for_engine(builder.as_std_mut());
-    let output = tokio::time::timeout(timeout, builder.output())
-        .await
-        .ok()?
-        .ok()?;
+    let mut child = builder.spawn().ok()?;
+    let (stdout, stderr) = (child.stdout.take()?, child.stderr.take()?);
+    let read = async {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let (mut limited_out, mut limited_err) =
+            (stdout.take(MAX_CAPTURE), stderr.take(MAX_CAPTURE));
+        let (first, second) = tokio::join!(
+            limited_out.read_to_end(&mut out),
+            limited_err.read_to_end(&mut err)
+        );
+        first.ok()?;
+        second.ok()?;
+        // Past the limit the rest goes unread, so this ends it rather than waiting.
+        let status = match child.try_wait().ok()? {
+            Some(status) => status,
+            None if out.len() as u64 >= MAX_CAPTURE || err.len() as u64 >= MAX_CAPTURE => {
+                child.start_kill().ok()?;
+                child.wait().await.ok()?
+            }
+            None => child.wait().await.ok()?,
+        };
+        Some((status, out, err))
+    };
+    let (status, out, err) = tokio::time::timeout(timeout, read).await.ok()??;
     Some(Captured {
-        status: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        status: status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&out).into_owned(),
+        stderr: String::from_utf8_lossy(&err).into_owned(),
     })
 }
 
