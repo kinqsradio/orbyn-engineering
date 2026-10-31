@@ -15,7 +15,7 @@ serde_json = "1"
 ts-rs = { version = "11", features = ["serde-json-impl"] }
 async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 ed25519-dalek = "2"
 futures-util = "0.3"
 getrandom = "0.3"
@@ -32,6 +32,11 @@ tokio-util = { version = "0.7", features = ["codec", "rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
 ulid = "1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects"] }
+
+# Pack verification hashes every file; keep debug builds and tests quick.
+[profile.dev.package.sha2]
+opt-level = 2
 
 [profile.release]
 codegen-units = 1

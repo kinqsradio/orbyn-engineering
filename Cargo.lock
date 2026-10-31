@@ -981,6 +981,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "ulid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

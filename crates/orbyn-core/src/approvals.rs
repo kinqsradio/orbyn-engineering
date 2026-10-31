@@ -1,0 +1,385 @@
+//! The single gate every engine action passes: policy first, then a person.
+//! Any failure on this path is a denial.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use orbyn_contracts::{ActionKind, Approval, ApprovalState, PolicyEffect};
+use serde_json::{Value, json};
+use tokio::sync::oneshot;
+
+use crate::error::Result;
+use crate::policy;
+use crate::store::{AuditRecord, NewApproval, Store};
+use crate::util::new_id;
+
+/// Identifies the run an action belongs to.
+#[derive(Clone, Debug)]
+pub struct RunScope {
+    pub run_id: String,
+    pub thread_id: String,
+    pub engine: String,
+}
+
+/// One action an engine wants to take.
+#[derive(Clone, Debug)]
+pub struct ActionAsk {
+    pub kind: ActionKind,
+    pub target: String,
+    pub summary: String,
+    pub detail: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    Allow,
+    Deny(String),
+}
+
+impl Verdict {
+    pub fn is_allowed(&self) -> bool {
+        matches!(self, Self::Allow)
+    }
+}
+
+pub struct ApprovalGate {
+    store: Arc<Store>,
+    waiters: Mutex<HashMap<String, oneshot::Sender<ApprovalState>>>,
+    timeout: Duration,
+}
+
+impl ApprovalGate {
+    pub fn new(store: Arc<Store>, timeout: Duration) -> Self {
+        Self {
+            store,
+            waiters: Mutex::new(HashMap::new()),
+            timeout,
+        }
+    }
+
+    /// Decides an action, waiting for a person when policy says ask. The audit
+    /// row for the outcome is committed before this returns, so it always
+    /// precedes the effect. The future can be dropped safely: an abandoned
+    /// approval expires rather than staying pending.
+    pub async fn request(&self, scope: &RunScope, ask: ActionAsk) -> Verdict {
+        match self.request_inner(scope, ask).await {
+            Ok(verdict) => verdict,
+            Err(error) => {
+                tracing::warn!(%error, run_id = %scope.run_id, "approval path failed; denying");
+                Verdict::Deny("Orbyn could not reach its approval service.".to_owned())
+            }
+        }
+    }
+
+    async fn request_inner(&self, scope: &RunScope, ask: ActionAsk) -> Result<Verdict> {
+        let rules = self.store.list_rules()?;
+        let decision = policy::evaluate(&rules, ask.kind, &ask.target, &scope.engine);
+        if decision.effect != PolicyEffect::Ask {
+            self.store.append_audit(&AuditRecord {
+                actor: format!("engine:{}", scope.engine),
+                action: format!("action.{}", policy_verb(decision.effect)),
+                target: ask.target.clone(),
+                decision: Some(decision.effect),
+                source: decision.source.clone(),
+                thread_id: Some(scope.thread_id.clone()),
+                run_id: Some(scope.run_id.clone()),
+                detail: json!({
+                    "kind": ask.kind,
+                    "rule_id": decision.rule_id,
+                    "reason": decision.reason,
+                }),
+            })?;
+            return Ok(match decision.effect {
+                PolicyEffect::Allow => Verdict::Allow,
+                _ => Verdict::Deny(format!("Blocked by policy: {}", decision.reason)),
+            });
+        }
+
+        // The waiter must exist before the row does, or a fast decision is lost.
+        let id = new_id();
+        let (sender, receiver) = oneshot::channel();
+        self.lock().insert(id.clone(), sender);
+        let mut pending = PendingGuard {
+            gate: self,
+            id: id.clone(),
+            settled: false,
+        };
+        self.store.create_approval(NewApproval {
+            id: id.clone(),
+            run_id: scope.run_id.clone(),
+            engine: scope.engine.clone(),
+            kind: ask.kind,
+            target: ask.target,
+            summary: ask.summary,
+            detail: ask.detail,
+            decision,
+        })?;
+        let outcome = tokio::time::timeout(self.timeout, receiver).await;
+        pending.settled = true;
+        let state = match outcome {
+            Ok(Ok(state)) => state,
+            // Timeout, or a waiter dropped by shutdown: the store decides what stands.
+            _ => {
+                self.lock().remove(&id);
+                self.store.expire_approval(&id, "system:timeout")?.state
+            }
+        };
+        Ok(match state {
+            ApprovalState::Allowed => Verdict::Allow,
+            ApprovalState::Denied => Verdict::Deny("Denied in Orbyn.".to_owned()),
+            _ => Verdict::Deny("The approval expired without a decision.".to_owned()),
+        })
+    }
+
+    /// Records a decision and wakes the waiter. The durable state changes first.
+    pub fn decide(&self, id: &str, allow: bool, remember: bool, actor: &str) -> Result<Approval> {
+        let approval = self.store.decide_approval(id, allow, remember, actor)?;
+        self.wake(&approval.id, approval.state);
+        Ok(approval)
+    }
+
+    /// Expires every open approval of a run so a blocked engine hears a denial.
+    pub fn expire_run(&self, thread_id: &str, run_id: &str, actor: &str) -> Result<()> {
+        for approval in self.store.pending_for_thread(thread_id)? {
+            if approval.run_id == run_id {
+                let standing = self.store.expire_approval(&approval.id, actor)?;
+                self.wake(&standing.id, standing.state);
+            }
+        }
+        Ok(())
+    }
+
+    /// Wakes the waiters of approvals that `finish_run` expired.
+    pub fn settle(&self, approvals: &[Approval]) {
+        for approval in approvals {
+            self.wake(&approval.id, approval.state);
+        }
+    }
+
+    fn wake(&self, id: &str, state: ApprovalState) {
+        if let Some(sender) = self.lock().remove(id) {
+            let _ = sender.send(state);
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, oneshot::Sender<ApprovalState>>> {
+        self.waiters
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+fn policy_verb(effect: PolicyEffect) -> &'static str {
+    match effect {
+        PolicyEffect::Allow => "allow",
+        PolicyEffect::Ask => "ask",
+        PolicyEffect::Deny => "deny",
+    }
+}
+
+/// Expires the approval if `request` is dropped before an outcome, for example
+/// when an MCP client disconnects during its long poll.
+struct PendingGuard<'a> {
+    gate: &'a ApprovalGate,
+    id: String,
+    settled: bool,
+}
+
+impl Drop for PendingGuard<'_> {
+    fn drop(&mut self) {
+        if self.settled {
+            return;
+        }
+        self.gate.lock().remove(&self.id);
+        if let Err(error) = self
+            .gate
+            .store
+            .expire_approval(&self.id, "system:abandoned")
+        {
+            // A row that was never created is not an error here.
+            tracing::debug!(%error, "abandoned approval had nothing to expire");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::{Admission, NewThread};
+    use crate::testing::TempDir;
+    use orbyn_contracts::{CreatePolicyRule, RunState};
+
+    struct Fixture {
+        _dir: TempDir,
+        store: Arc<Store>,
+        scope: RunScope,
+    }
+
+    fn fixture() -> Fixture {
+        let dir = TempDir::new();
+        let store = Arc::new(Store::open(&dir.path().join("db"), "e").unwrap());
+        let project = store.add_project("/r", "r", false).unwrap();
+        store.trust_project(&project.id, "t").unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                project_id: project.id,
+                title: "t".into(),
+                engine: "fake".into(),
+                model: None,
+                cwd: "/r".into(),
+                worktree: None,
+                skill_profile: None,
+            })
+            .unwrap();
+        let run = store
+            .admit_run(Admission {
+                thread_id: &thread.id,
+                prompt: "p",
+                actor: "t",
+            })
+            .unwrap();
+        store.mark_starting(&run.id).unwrap();
+        store.mark_running(&run.id).unwrap();
+        Fixture {
+            _dir: dir,
+            store,
+            scope: RunScope {
+                run_id: run.id,
+                thread_id: thread.id,
+                engine: "fake".into(),
+            },
+        }
+    }
+
+    fn ask() -> ActionAsk {
+        ActionAsk {
+            kind: ActionKind::Command,
+            target: "ls".into(),
+            summary: "ls".into(),
+            detail: Value::Null,
+        }
+    }
+
+    fn rule(store: &Store, effect: PolicyEffect) {
+        store
+            .add_rule(
+                &CreatePolicyRule {
+                    effect,
+                    kind: ActionKind::Command,
+                    pattern: "*".into(),
+                    engine: None,
+                    note: None,
+                },
+                "t",
+            )
+            .unwrap();
+    }
+
+    async fn next_pending(store: &Store, thread: &str) -> Approval {
+        loop {
+            if let Some(approval) = store.pending_for_thread(thread).unwrap().pop() {
+                return approval;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn deny_rule_needs_no_person_and_is_audited() {
+        let f = fixture();
+        rule(&f.store, PolicyEffect::Deny);
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_secs(1));
+        assert!(!gate.request(&f.scope, ask()).await.is_allowed());
+        let audit = f.store.list_audit(Some(&f.scope.thread_id), 5).unwrap();
+        assert_eq!(audit[0].action, "action.deny");
+        assert_eq!(audit[0].decision, Some(PolicyEffect::Deny));
+    }
+
+    #[tokio::test]
+    async fn allow_rule_passes_without_a_person() {
+        let f = fixture();
+        rule(&f.store, PolicyEffect::Allow);
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_secs(1));
+        assert_eq!(gate.request(&f.scope, ask()).await, Verdict::Allow);
+        assert!(
+            f.store
+                .pending_for_thread(&f.scope.thread_id)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn person_decides_and_waiter_wakes() {
+        let f = fixture();
+        let gate = Arc::new(ApprovalGate::new(f.store.clone(), Duration::from_secs(5)));
+        let waiting = {
+            let (gate, scope) = (gate.clone(), f.scope.clone());
+            tokio::spawn(async move { gate.request(&scope, ask()).await })
+        };
+        let approval = next_pending(&f.store, &f.scope.thread_id).await;
+        gate.decide(&approval.id, true, false, "person").unwrap();
+        assert_eq!(waiting.await.unwrap(), Verdict::Allow);
+    }
+
+    #[tokio::test]
+    async fn timeout_denies_and_expires() {
+        let f = fixture();
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_millis(20));
+        assert!(!gate.request(&f.scope, ask()).await.is_allowed());
+        let expired = f
+            .store
+            .list_approvals(Some(ApprovalState::Expired))
+            .unwrap();
+        assert_eq!(expired.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn dropped_request_expires_its_approval() {
+        let f = fixture();
+        let gate = Arc::new(ApprovalGate::new(f.store.clone(), Duration::from_secs(5)));
+        let waiting = {
+            let (gate, scope) = (gate.clone(), f.scope.clone());
+            tokio::spawn(async move { gate.request(&scope, ask()).await })
+        };
+        let approval = next_pending(&f.store, &f.scope.thread_id).await;
+        waiting.abort();
+        let _ = waiting.await;
+        assert_eq!(
+            f.store.approval(&approval.id).unwrap().state,
+            ApprovalState::Expired
+        );
+        assert_eq!(
+            f.store.run(&f.scope.run_id).unwrap().state,
+            RunState::Running
+        );
+    }
+
+    #[tokio::test]
+    async fn finished_run_denies_immediately() {
+        let f = fixture();
+        f.store
+            .finish_run(&f.scope.run_id, RunState::Completed, None)
+            .unwrap();
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_secs(5));
+        assert!(!gate.request(&f.scope, ask()).await.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn run_end_wakes_waiters_with_denial() {
+        let f = fixture();
+        let gate = Arc::new(ApprovalGate::new(f.store.clone(), Duration::from_secs(5)));
+        let waiting = {
+            let (gate, scope) = (gate.clone(), f.scope.clone());
+            tokio::spawn(async move { gate.request(&scope, ask()).await })
+        };
+        next_pending(&f.store, &f.scope.thread_id).await;
+        let (_, expired) = f
+            .store
+            .finish_run(&f.scope.run_id, RunState::Failed, Some("exit"))
+            .unwrap();
+        gate.settle(&expired);
+        assert!(!waiting.await.unwrap().is_allowed());
+    }
+}
