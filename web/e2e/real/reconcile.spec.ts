@@ -140,8 +140,13 @@ test("new threads keep their project; the shelf pages; hover shows the card; lab
 
   await page.goto(`${service.page}#/settings/labs`);
   await page.getByRole("switch", { name: "Project folders" }).check();
+  await page.getByRole("switch", { name: "Multiline rows" }).check();
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.locator(".sidebar-scroll").getByText("my-repo").first()).toBeVisible();
+  await expect(page.locator("[data-multiline]").first()).toBeAttached();
+  await row(page, "Hover me").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Find in thread" }).click();
+  await expect(page.getByRole("textbox", { name: "Find in thread" })).toBeVisible();
   await page.goto(`${service.page}#/threads/${held.id}`);
   await expect(page.locator(".thread-main").getByRole("textbox", { name: /^Message/ })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+b");

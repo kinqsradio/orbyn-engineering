@@ -163,6 +163,47 @@ test("changed files list per turn and open the diff; a delegated thread runs on 
   await expect(page).toHaveURL(new RegExp(id));
 });
 
+test("a large turn opens Changes when asked to, and another thread's finish is announced", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.goto(`${service.page}#/settings/chat`);
+  await page.getByRole("switch", { name: "Open Changes after large turns" }).check();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:large]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  await expect(page.getByRole("radiogroup", { name: "Diff source" })).toBeVisible({ timeout: 15_000 });
+
+  const engines = await service.api<{ id: string }[]>("GET", "/api/engines");
+  const other = await service.api<{ id: string }>("POST", "/api/threads", {
+    project_id: projectId,
+    engine: engines[0]?.id,
+    model: null,
+    title: "Quiet one",
+    worktree: null,
+    skill_profile: null,
+  });
+  await expect(page.locator("li[data-thread-item]").filter({ hasText: "Quiet one" })).toBeVisible();
+  await service.api("POST", `/api/threads/${other.id}/runs`, { prompt: "[scene:usage] elsewhere" });
+  await expect(page.getByRole("status", { name: "Background threads" })).toHaveText(/^Quiet one (finished|failed)$/, { timeout: 20_000 });
+});
+
+test("the view follows new output until you scroll up, then offers the way back", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 420 });
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:plan] one");
+  await expect(page).toHaveURL(/#\/threads\//);
+  await settled(service, threadIdOf(page));
+  await page.getByRole("button", { name: "Expand plan" }).click();
+  const log = page.getByRole("log", { name: "Thread messages" });
+  await log.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.getByRole("button", { name: "Jump to latest" }).click();
+  await expect
+    .poll(() => log.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight))
+    .toBeLessThan(80);
+});
+
 test("a failed turn keeps its error in view and a command with no output says so", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:failure]");

@@ -179,7 +179,7 @@ toward completion.
 
 ## C. Timeline and rendered output
 - [ ] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L
-- [ ] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
+- [x] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
 - [x] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
 - [ ] C4 Orchestrator summaries: action-specific wording, failures not counted | docs/user/activity-log.md | w d | M
 - [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M
