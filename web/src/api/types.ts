@@ -19,6 +19,8 @@ export type { CustomEngine } from "../generated/CustomEngine";
 export type { EngineStatus } from "../generated/EngineStatus";
 export type { EngineTier } from "../generated/EngineTier";
 export type { FileDiff } from "../generated/FileDiff";
+export type { FsEntry } from "../generated/FsEntry";
+export type { FsListing } from "../generated/FsListing";
 export type { PolicyEffect } from "../generated/PolicyEffect";
 export type { PolicyRule } from "../generated/PolicyRule";
 export type { Project } from "../generated/Project";
@@ -39,18 +41,3 @@ export type WireAuditEvent = Int64AsNumber<AuditEvent, "id">;
 
 /** The generated JSON type, reached without naming its path under `crates`. */
 export type JsonValue = ApprovalWire["detail"];
-
-/**
- * `GET /api/fs/browse` has no generated type yet. Parsed at the boundary in
- * client.ts, so a differing server shape reads as an error rather than a crash.
- */
-export interface FsEntry {
-  name: string;
-  path: string;
-  is_git: boolean;
-}
-export interface FsListing {
-  path: string;
-  parent: string | null;
-  entries: FsEntry[];
-}

@@ -76,7 +76,7 @@ function RuleForm({ onAdded }: { onAdded(): void }) {
           )}
         </Field>
       </div>
-      <Field label="Target pattern" hint="Use * as a wildcard, for example cargo test*.">
+      <Field label="Target pattern" hint="Use * as a wildcard, as in cargo test*. Start with = to match one exact target.">
         {(props) => (
           <input
             {...props}
@@ -156,10 +156,11 @@ export function PolicySection() {
               <li key={rule.id} className="row rule">
                 <Pill tone={effect?.tone}>{effect?.label ?? rule.effect}</Pill>
                 <span className="row-grow">
-                  <code className="rule-pattern">{rule.pattern}</code>
+                  <code className="rule-pattern">{rule.pattern.replace(/^=/, "")}</code>
                   <span className="row-meta">
                     {[
                       actionLabels[rule.kind],
+                      rule.pattern.startsWith("=") ? "Exact target" : null,
                       rule.engine
                         ? (engines?.find((e) => e.id === rule.engine)?.name ?? rule.engine)
                         : "Any engine",
@@ -172,7 +173,7 @@ export function PolicySection() {
                 <Button
                   small
                   tone="quiet"
-                  aria-label={`Delete rule ${rule.pattern}`}
+                  aria-label={`Delete rule ${rule.pattern.replace(/^=/, "")}`}
                   icon={<Trash2 size={16} aria-hidden />}
                   onClick={() => setRemoving(rule)}
                 />
@@ -194,7 +195,7 @@ export function PolicySection() {
           }}
         >
           <p>
-            <code>{removing.pattern}</code> stops applying to new actions. Actions without a matching
+            <code>{removing.pattern.replace(/^=/, "")}</code> stops applying to new actions. Actions without a matching
             rule ask you first.
           </p>
         </ConfirmDialog>

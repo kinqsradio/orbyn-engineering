@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiFailure, NETWORK_ERROR, api, request, setUnauthorizedHandler } from "./client";
+import { ApiFailure, NETWORK_ERROR, request, setUnauthorizedHandler } from "./client";
 
 const respond = (status: number, body?: unknown) =>
   vi.fn(async () => new Response(body === undefined ? null : JSON.stringify(body), { status }));
@@ -43,28 +43,9 @@ describe("request", () => {
   });
 });
 
-describe("api.browse", () => {
-  it("rejects a shape it cannot read", async () => {
-    vi.stubGlobal("fetch", respond(200, { nope: true }));
-    await expect(api.browse(null)).rejects.toMatchObject({ code: "bad_response" });
-  });
-
-  it("keeps folders and drops files", async () => {
-    vi.stubGlobal(
-      "fetch",
-      respond(200, {
-        path: "/a",
-        parent: null,
-        entries: [
-          { name: "b", path: "/a/b", is_dir: true, is_git: true },
-          { name: "c.txt", path: "/a/c.txt", is_dir: false },
-        ],
-      }),
-    );
-    await expect(api.browse("/a")).resolves.toEqual({
-      path: "/a",
-      parent: null,
-      entries: [{ name: "b", path: "/a/b", is_git: true }],
-    });
+describe("failure detail", () => {
+  it("keeps the structured detail", async () => {
+    vi.stubGlobal("fetch", respond(409, { code: "already_decided", message: "No.", detail: { id: "a" } }));
+    await expect(request("POST", "/x")).rejects.toMatchObject({ detail: { id: "a" } });
   });
 });

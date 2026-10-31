@@ -91,11 +91,11 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
       <div className="trace-body">
         <h4>Arguments</h4>
         <pre tabIndex={0}>{prettyJson(item.args) || "None"}</pre>
-        {item.result !== null ? (
+        {item.result !== null || item.output ? (
           <>
-            <h4>Result</h4>
+            <h4>{item.result !== null ? "Result" : "Output"}</h4>
             <pre tabIndex={0} className="trace-result">
-              {item.result}
+              {item.result ?? item.output}
             </pre>
           </>
         ) : null}

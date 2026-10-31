@@ -60,6 +60,15 @@ describe("applyEvents", () => {
     expect(log.items[0]).toMatchObject({ kind: "tool", args: '{"a":1}', result: "ok", done: true });
   });
 
+  it("accumulates streamed tool output until the result arrives", () => {
+    const log = applyEvents("t", emptyLog, [
+      ev(1, { type: "TOOL_CALL_START", toolCallId: "c", toolCallName: "Bash" }),
+      ev(2, { type: "CUSTOM", name: "tool.output", value: { toolCallId: "c", delta: "line 1\n" } }),
+      ev(3, { type: "CUSTOM", name: "tool.output", value: { toolCallId: "c", delta: "line 2" } }),
+    ]);
+    expect(log.items[0]).toMatchObject({ output: "line 1\nline 2", result: null, done: false });
+  });
+
   it("replaces an approval snapshot in place, keeping its position", () => {
     const snapshot = (seq: number, state: string) =>
       ev(seq, {
@@ -114,6 +123,35 @@ describe("applyEvents", () => {
       "Run cancelled.",
     ]);
     expect(log.timeline.at(0)).toMatchObject({ tone: "error" });
+  });
+
+  it("keeps a reused activity id separate per run", () => {
+    const plan = (seq: number, run: string, step: string): WireThreadEvent => ({
+      ...ev(seq, {
+        type: "ACTIVITY_SNAPSHOT",
+        messageId: "plan",
+        activityType: "plan",
+        content: { steps: [step] },
+        replace: true,
+      }),
+      run_id: run,
+    });
+    const log = applyEvents("t", emptyLog, [plan(1, "r1", "A"), plan(2, "r1", "B"), plan(3, "r2", "C")]);
+    expect(log.items).toHaveLength(2);
+    expect(log.items[0]).toMatchObject({ steps: [{ text: "B" }] });
+  });
+
+  it("shows the unmanaged notice from a terminal run", () => {
+    const log = applyEvents("t", emptyLog, [
+      ev(1, {
+        type: "ACTIVITY_SNAPSHOT",
+        messageId: "unmanaged",
+        activityType: "unmanaged",
+        content: { message: "Orbyn cannot review its actions." },
+        replace: true,
+      }),
+    ]);
+    expect(log.items[0]).toMatchObject({ kind: "notice", text: "Orbyn cannot review its actions." });
   });
 
   it("ignores content for a message that never started", () => {

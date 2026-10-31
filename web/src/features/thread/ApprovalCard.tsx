@@ -1,12 +1,13 @@
 import { CircleAlert, CircleCheck, CircleSlash, Clock } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { Approval } from "../../api/types";
+import type { Approval, JsonValue } from "../../api/types";
 import { actionLabels, fullTime, relativeTime } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { Button, Pill } from "../../ui/controls";
 import { touchesOf } from "./approvalDetail";
+import { approvalFromContent } from "./projection";
 
 type Decision = "allow" | "deny" | "always";
 
@@ -41,8 +42,15 @@ export function ApprovalCard({
       putReceipt(decided);
     } catch (failure) {
       const known = toFailure(failure);
-      // The first decision won. The log and approvals list carry its outcome.
+      // The first decision won. The server returns that outcome with the refusal.
       if (known.code === "already_decided") {
+        const existing = approvalFromContent(
+          (known.detail ?? null) as JsonValue,
+          approval.thread_id,
+          approval.run_id,
+          approval.created_at,
+        );
+        if (existing) putReceipt(existing);
         setError("This approval was already decided.");
         void refreshApprovals();
       } else {

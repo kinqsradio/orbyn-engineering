@@ -29,6 +29,8 @@ export interface ToolItem extends ItemBase {
   kind: "tool";
   name: string;
   args: string;
+  /** Output streamed while the tool runs, until its final result arrives. */
+  output: string;
   result: string | null;
   done: boolean;
 }
@@ -301,6 +303,7 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         kind: "tool",
         name: event.toolCallName,
         args: "",
+        output: "",
         result: null,
         done: false,
       });
@@ -323,7 +326,8 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       }));
       break;
     case "ACTIVITY_SNAPSHOT": {
-      const key = `act:${event.messageId}`;
+      // Drivers reuse ids like "plan" between runs; each run keeps its own card.
+      const key = `act:${wire.run_id ?? ""}:${event.messageId}`;
       // AG-UI: `replace: false` keeps an activity that already exists.
       if (event.replace === false && fold.index.has(key)) break;
       const common = { ...base, key };
@@ -350,6 +354,12 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         log("Files changed", files.length === 1 ? "1 file" : `${files.length} files`);
         break;
       }
+      const message = record(event.content)?.message;
+      if (event.activityType === "unmanaged" && typeof message === "string") {
+        put(fold, { ...common, kind: "notice", tone: "neutral", text: message, code: null });
+        log("Unmanaged run", null, "attention");
+        break;
+      }
       put(fold, {
         ...common,
         kind: "activity",
@@ -360,6 +370,20 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       break;
     }
     case "CUSTOM":
+      if (event.name === "engine.retrying") {
+        const message = record(event.value)?.message;
+        log("Engine retrying", typeof message === "string" ? message : null, "attention");
+      } else if (event.name === "tool.output") {
+        const body = record(event.value);
+        const delta = body?.delta;
+        if (typeof body?.toolCallId === "string" && typeof delta === "string") {
+          patch(fold, `tool:${body.toolCallId}`, "tool", (item) => ({
+            ...item,
+            output: item.output + delta,
+          }));
+        }
+      }
+      break;
     case "RAW":
       break;
     default: {

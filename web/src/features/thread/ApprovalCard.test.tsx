@@ -61,12 +61,15 @@ describe("ApprovalCard", () => {
   it("says so when another decision already won", async () => {
     const decide = vi
       .spyOn(api, "decideApproval")
-      .mockRejectedValue(new ApiFailure("already_decided", "Already allowed.", 409));
+      .mockRejectedValue(
+        new ApiFailure("already_decided", "Already allowed.", 409, { ...approval, state: "allowed" }),
+      );
     const refresh = vi.spyOn(api, "pendingApprovals").mockResolvedValue([]);
     render(<ApprovalCard approval={approval} engine={null} />);
     await userEvent.click(screen.getByRole("button", { name: "Deny" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("already decided");
     expect(refresh).toHaveBeenCalled();
+    expect(useWorkspace.getState().receipts.a1?.state).toBe("allowed");
     decide.mockRestore();
     refresh.mockRestore();
   });
