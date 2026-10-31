@@ -73,7 +73,7 @@ impl EngineDriver for TerminalDriver {
                 rows: 32,
             },
         )?;
-        session.write(spec.prompt.as_bytes())?;
+        session.write(spec.user_prompt.as_bytes())?;
         session.write(b"\r")?;
         let cancel = CancellationToken::new();
         let stop = cancel.clone();

@@ -57,10 +57,6 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
     args.push(mcp_config.into());
     args.push("--permission-prompt-tool".into());
     args.push(CLAUDE_APPROVE_TOOL.into());
-    if let Some(plugin_dir) = &spec.skills.plugin_dir {
-        args.push("--plugin-dir".into());
-        args.push(plugin_dir.into());
-    }
     if let Some(model) = &spec.model {
         args.push("--model".into());
         args.push(model.into());
@@ -87,9 +83,8 @@ impl EngineDriver for ClaudeDriver {
                 sandbox: false,
                 managed: true,
                 skill_delivery: vec![
-                    SkillDelivery::NativePlugin,
+                    SkillDelivery::NativeSkillRoot,
                     SkillDelivery::McpSkillServer,
-                    SkillDelivery::PromptBootstrap,
                 ],
             },
         }
@@ -218,11 +213,7 @@ async fn run_protocol(
 }
 
 fn user_message(spec: &RunSpec) -> String {
-    let text = match &spec.skills.bootstrap {
-        Some(bootstrap) if spec.resume.is_none() => format!("{bootstrap}\n\n{}", spec.prompt),
-        _ => spec.prompt.clone(),
-    };
-    json!({ "type": "user", "message": { "role": "user", "content": text } }).to_string()
+    json!({ "type": "user", "message": { "role": "user", "content": spec.prompt } }).to_string()
 }
 
 fn parse_auth_status(status: i32, stdout: &str) -> orbyn_contracts::AuthState {
@@ -525,22 +516,19 @@ fn result_outcome(frame: &Value) -> EngineOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver::SkillPlan;
     use std::path::PathBuf;
 
     fn spec() -> RunSpec {
         RunSpec {
             run_id: "r".into(),
             thread_id: "t".into(),
-            cwd: PathBuf::from("/repo"),
+            cwd: PathBuf::from("/workspace"),
+            checkout: PathBuf::from("/workspace/repo/app"),
             prompt: "hello".into(),
+            user_prompt: "hello".into(),
             model: Some("sonnet".into()),
             resume: Some("sess".into()),
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
-            skills: SkillPlan {
-                plugin_dir: Some(PathBuf::from("/pack/claude-plugin")),
-                ..SkillPlan::default()
-            },
             run_dir: PathBuf::from("/run"),
         }
     }
@@ -567,15 +555,17 @@ mod tests {
                 "/run/mcp.json",
                 "--permission-prompt-tool",
                 "mcp__orbyn_engineering__approve",
-                "--plugin-dir",
-                "/pack/claude-plugin",
                 "--model",
                 "sonnet",
                 "--resume",
                 "sess",
             ]
         );
-        assert!(!args.iter().any(|arg| arg == "--bare"));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg == "--bare" || arg == "--plugin-dir")
+        );
     }
 
     #[test]

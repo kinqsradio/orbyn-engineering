@@ -11,6 +11,7 @@ pub mod git;
 pub mod mcp;
 pub mod policy;
 pub mod process;
+pub mod projects;
 pub mod runs;
 pub mod skills;
 pub mod sse;
@@ -18,6 +19,7 @@ pub mod store;
 pub mod terminal;
 pub mod threads;
 pub mod util;
+pub mod workspace;
 
 #[cfg(test)]
 mod testing;

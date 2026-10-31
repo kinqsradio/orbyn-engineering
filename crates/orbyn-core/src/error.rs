@@ -21,6 +21,21 @@ pub enum CoreError {
     EngineUnavailable(String),
     #[error("this thread is archived")]
     ThreadArchived,
+    #[error("set up the workspace first")]
+    WorkspaceRequired,
+    #[error("{0}")]
+    WorkspaceRefused(String),
+    #[error("{0}")]
+    LibraryDirty(String),
+    #[error("{0}")]
+    NotFastForward(String),
+    #[error("finish or stop active runs first")]
+    RunsActive,
+    #[error("{message}")]
+    ProjectHasWork {
+        message: String,
+        detail: serde_json::Value,
+    },
     #[error("{0}")]
     Unsupported(String),
     #[error("{0}")]
@@ -68,6 +83,12 @@ impl CoreError {
             Self::EngineBusy(_) => "engine_busy",
             Self::EngineUnavailable(_) => "engine_unavailable",
             Self::ThreadArchived => "thread_archived",
+            Self::WorkspaceRequired => "workspace_required",
+            Self::WorkspaceRefused(_) => "workspace_refused",
+            Self::LibraryDirty(_) => "library_dirty",
+            Self::NotFastForward(_) => "not_fast_forward",
+            Self::RunsActive => "runs_active",
+            Self::ProjectHasWork { .. } => "project_has_work",
             Self::Unsupported(_) => "unsupported",
             Self::UpdateUnavailable(_) => "update_unavailable",
             Self::UpdateFailed(_) => "update_failed",
@@ -88,10 +109,15 @@ impl CoreError {
         match self {
             Self::NotFound(_) => 404,
             Self::Invalid(_) => 400,
-            Self::FolderUntrusted | Self::PolicyDenied(_) => 403,
+            Self::FolderUntrusted | Self::PolicyDenied(_) | Self::WorkspaceRefused(_) => 403,
             Self::ThreadBusy
             | Self::AlreadyDecided(_)
             | Self::ThreadArchived
+            | Self::WorkspaceRequired
+            | Self::LibraryDirty(_)
+            | Self::NotFastForward(_)
+            | Self::RunsActive
+            | Self::ProjectHasWork { .. }
             | Self::EngineBusy(_)
             | Self::StaleOwner
             | Self::RunClosed

@@ -20,7 +20,7 @@ const SAFE_CONFIG: &[&str] = &[
     "diff.external=",
 ];
 
-async fn git(cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
+pub(crate) async fn git(cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
     let output = git_raw(cwd, args).await?;
     if !output.status.success() {
         return Err(CoreError::Git(
@@ -30,7 +30,7 @@ async fn git(cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
-async fn git_raw(cwd: &Path, args: &[&str]) -> Result<std::process::Output> {
+pub(crate) async fn git_raw(cwd: &Path, args: &[&str]) -> Result<std::process::Output> {
     let mut command = Command::new("git");
     command
         .args(SAFE_CONFIG)
@@ -47,7 +47,7 @@ async fn git_raw(cwd: &Path, args: &[&str]) -> Result<std::process::Output> {
         .map_err(|error| CoreError::Git(format!("Could not run git: {error}")))
 }
 
-fn text(bytes: &[u8]) -> String {
+pub(crate) fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).trim().to_owned()
 }
 
@@ -75,7 +75,46 @@ pub fn worktree_path(repo: &Path, purpose: &str) -> Result<PathBuf> {
     Ok(repo.with_file_name(root).join(purpose))
 }
 
-/// Creates a branch and worktree from the current HEAD.
+/// A registered worktree of a primary clone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisteredWorktree {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+    pub revision: String,
+}
+
+/// Linked worktrees, without the primary checkout.
+pub async fn linked_worktrees(repo: &Path) -> Result<Vec<RegisteredWorktree>> {
+    let listing = git(repo, &["worktree", "list", "--porcelain", "-z"]).await?;
+    let mut worktrees = Vec::new();
+    let mut current: Option<RegisteredWorktree> = None;
+    for field in listing.split(|byte| *byte == 0) {
+        let line = String::from_utf8_lossy(field);
+        if let Some(path) = line.strip_prefix("worktree ") {
+            worktrees.extend(current.take());
+            current = Some(RegisteredWorktree {
+                path: PathBuf::from(path),
+                branch: None,
+                revision: String::new(),
+            });
+        } else if let Some(entry) = current.as_mut() {
+            if let Some(head) = line.strip_prefix("HEAD ") {
+                entry.revision = head.to_owned();
+            } else if let Some(branch) = line.strip_prefix("branch refs/heads/") {
+                entry.branch = Some(branch.to_owned());
+            }
+        }
+    }
+    worktrees.extend(current);
+    if !worktrees.is_empty() {
+        worktrees.remove(0);
+    }
+    Ok(worktrees)
+}
+
+/// Finds or creates the purpose's worktree at `<repo>-wt/<purpose>`. A registered
+/// worktree already at that path is reused; its base is where it left the
+/// primary clone's HEAD.
 pub async fn create_worktree(repo: &Path, purpose: &str) -> Result<Worktree> {
     if !valid_purpose(purpose) {
         return Err(CoreError::Invalid(
@@ -83,6 +122,21 @@ pub async fn create_worktree(repo: &Path, purpose: &str) -> Result<Worktree> {
         ));
     }
     let path = worktree_path(repo, purpose)?;
+    let path_text = path.to_string_lossy().into_owned();
+    let head = text(&git(repo, &["rev-parse", "HEAD"]).await?);
+    for registered in linked_worktrees(repo).await? {
+        if crate::util::canonicalize(&registered.path).ok().as_ref()
+            == crate::util::canonicalize(&path).ok().as_ref()
+            && path.exists()
+        {
+            let base = text(&git(repo, &["merge-base", "HEAD", &registered.revision]).await?);
+            return Ok(Worktree {
+                path: path_text,
+                branch: registered.branch.unwrap_or_else(|| "HEAD".to_owned()),
+                base,
+            });
+        }
+    }
     if path.exists() {
         return Err(CoreError::Invalid(format!(
             "{} already exists.",
@@ -92,14 +146,12 @@ pub async fn create_worktree(repo: &Path, purpose: &str) -> Result<Worktree> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let base = text(&git(repo, &["rev-parse", "HEAD"]).await?);
-    let branch = format!("orbyn/{purpose}");
-    let path_text = path.to_string_lossy().into_owned();
-    git(repo, &["worktree", "add", "-b", &branch, &path_text, &base]).await?;
+    let branch = format!("feat/{purpose}");
+    git(repo, &["worktree", "add", "-b", &branch, &path_text, &head]).await?;
     Ok(Worktree {
         path: path_text,
         branch,
-        base,
+        base: head,
     })
 }
 
@@ -276,7 +328,9 @@ mod tests {
         let worktree = create_worktree(&repo, "fix-bug").await.unwrap();
         let path = PathBuf::from(&worktree.path);
         assert_eq!(path, dir.path().join("project-wt").join("fix-bug"));
-        assert_eq!(worktree.branch, "orbyn/fix-bug");
+        assert_eq!(worktree.branch, "feat/fix-bug");
+        let again = create_worktree(&repo, "fix-bug").await.unwrap();
+        assert_eq!(again, worktree, "a registered worktree is reused");
 
         std::fs::write(path.join("a.txt"), "one\ntwo\n").unwrap();
         std::fs::write(path.join("new file.txt"), "fresh\nlines\n").unwrap();

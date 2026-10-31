@@ -37,7 +37,6 @@ impl Drop for TempDir {
 pub struct Options {
     pub env: Vec<(String, String)>,
     pub args: Vec<String>,
-    pub skills: Option<PathBuf>,
 }
 
 pub struct Service {
@@ -62,18 +61,10 @@ impl Service {
             .env("ORBYN_CLAUDE_BIN", FAKE)
             .env("ORBYN_CODEX_BIN", FAKE)
             .env("ORBYN_OFFLINE", "1")
-            .env_remove("ORBYN_SKILLS_DIR")
             .current_dir(data.parent().unwrap_or(data))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // Without an explicit source the service would find the real library
-        // above this checkout and build a pack from it.
-        let skills = options
-            .skills
-            .clone()
-            .unwrap_or_else(|| data.join("no-skills"));
-        command.arg("--skills-dir").arg(skills);
         for (key, value) in &options.env {
             command.env(key, value);
         }
@@ -139,9 +130,36 @@ impl Service {
         (status, serde_json::from_str(&text).unwrap_or(Value::Null))
     }
 
+    /// Adopts a generated library unless the workspace is already set up.
+    pub async fn ensure_workspace(&self, parent: &Path) {
+        if self.json("/api/workspace").await["configured"] == true {
+            return;
+        }
+        let library = library(&parent.join("library"));
+        let (status, body) = self
+            .send("/api/workspace/setup", json!({ "adopt_path": library }))
+            .await;
+        assert_eq!(status, 200, "{body}");
+    }
+
+    /// Imports `path` when it is a real repository, otherwise creates a project
+    /// with its folder name.
     pub async fn project(&self, path: &Path, trusted: bool) -> String {
-        let (status, project) = self.send("/api/projects", json!({ "path": path })).await;
-        assert_eq!(status, 201, "{project}");
+        self.ensure_workspace(path.parent().unwrap()).await;
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let (status, body) = if path.join(".git/HEAD").exists() {
+            self.send("/api/projects/import", json!({ "path": path }))
+                .await
+        } else {
+            self.send("/api/projects/create", json!({ "name": name }))
+                .await
+        };
+        assert_eq!(status, 201, "{body}");
+        let project = if body.get("project").is_some() {
+            body["project"].clone()
+        } else {
+            body
+        };
         let id = project["id"].as_str().unwrap().to_owned();
         if trusted {
             let (status, _) = self
@@ -312,6 +330,45 @@ pub fn types_of(events: &[Value]) -> Vec<String> {
         .iter()
         .filter_map(|event| event["event"]["type"].as_str().map(str::to_owned))
         .collect()
+}
+
+pub fn run_git(cwd: &Path, args: &[&str]) {
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .stdout(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?}");
+}
+
+/// A minimal valid skills library with its host links.
+pub fn library(root: &Path) -> PathBuf {
+    std::fs::create_dir_all(root.join("skills/how")).unwrap();
+    std::fs::write(root.join("AGENTS.md"), "shared policy\n").unwrap();
+    std::fs::write(root.join(".gitignore"), "repo/\n").unwrap();
+    std::fs::write(
+        root.join("skills/catalog.json"),
+        r#"{"skills":[{"name":"how","category":"Engineering practice"}]}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("skills/how/SKILL.md"),
+        "---\nname: how\ndescription: \"Trace behavior\"\n---\n\n# how\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    for host in [".claude", ".agents"] {
+        let links = root.join(host).join("skills");
+        std::fs::create_dir_all(&links).unwrap();
+        std::os::unix::fs::symlink("../../skills/how", links.join("how")).unwrap();
+    }
+    run_git(root, &["init", "-q", "-b", "main"]);
+    run_git(root, &["config", "user.email", "t@example.com"]);
+    run_git(root, &["config", "user.name", "T"]);
+    run_git(root, &["add", "."]);
+    run_git(root, &["commit", "-q", "-m", "library"]);
+    std::fs::canonicalize(root).unwrap()
 }
 
 /// A trusted project with a thread on `engine`.

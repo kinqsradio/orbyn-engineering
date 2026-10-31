@@ -7,18 +7,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use orbyn_contracts::{Run, RunState, Thread};
+use orbyn_contracts::{EngineTier, Run, RunState, Thread};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::approvals::{ActionAsk, ApprovalGate, RunScope};
+use crate::approvals::{ActionAsk, ApprovalGate, RunScope, WriteScope};
 use crate::driver::{EngineEvent, EngineOutcome, PermissionRequest, RunHandle, RunSpec};
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
+use crate::git::{git, text};
 use crate::mcp::{McpBinding, McpService};
-use crate::skills::SkillService;
+use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, Store};
+use crate::workspace::{Workspace, check_target};
 
 /// Longest a driver gets to stop before its task is aborted, which drops the
 /// process owner and kills the tree.
@@ -26,11 +28,108 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_BUFFER: usize = 1024;
 const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
+/// Where a thread's run may write: its checkout, and on a library thread never
+/// the nested projects.
+fn write_scope(root: &Path, checkout: &Path) -> WriteScope {
+    WriteScope {
+        checkout: checkout.to_path_buf(),
+        engine_cwd: root.to_path_buf(),
+        excluded: if checkout == root {
+            vec![root.join("repo")]
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+async fn branch_name(checkout: &Path) -> Option<String> {
+    let name = git(checkout, &["symbolic-ref", "--short", "-q", "HEAD"])
+        .await
+        .ok()?;
+    Some(text(&name))
+}
+
+/// A worktree's target Git root is its primary clone.
+async fn target_root(checkout: &Path) -> PathBuf {
+    let common = git(
+        checkout,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .await;
+    common
+        .ok()
+        .and_then(|path| PathBuf::from(text(&path)).parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| checkout.to_path_buf())
+}
+
+struct RunContext<'a> {
+    library: &'a Path,
+    revision: &'a str,
+    dirty: bool,
+    target_root: &'a Path,
+    checkout: &'a Path,
+    branch: Option<&'a str>,
+    library_thread: bool,
+    route: &'a SkillRoute,
+}
+
+/// The short bootstrap in front of each run's prompt. Nesting does not prove an
+/// engine loaded a target's rules, so this tells it to read them.
+fn run_context(context: &RunContext<'_>) -> String {
+    let mut text = format!(
+        "<orbyn_context>\nShared library: {} at {}{}.\nTarget Git root: {}.\n\
+         Selected checkout: {} on {}.\n",
+        context.library.display(),
+        context.revision,
+        if context.dirty {
+            " with local edits"
+        } else {
+            ""
+        },
+        context.target_root.display(),
+        context.checkout.display(),
+        context.branch.unwrap_or("a detached HEAD"),
+    );
+    if context.library_thread {
+        text.push_str("This thread works on the library itself. Leave repo/ alone.\n");
+    } else {
+        text.push_str(
+            "Work and write only in the selected checkout. The library is read-only here.\n\
+             Read the target's root and applicable nested instructions directly (AGENTS.md, \
+             AGENT.md, CLAUDE.md, codex.md, .cursorrules, CONTRIBUTING.md): discovery across a \
+             Git boundary is not guaranteed. Target rules specialize shared methods.\n",
+        );
+    }
+    if !context.route.native {
+        text.push_str("Find skills with the skill_search and skill_load tools.\n");
+    }
+    if !context.route.selection.is_empty() {
+        text.push_str("Skills in scope: ");
+        text.push_str(&context.route.selection.join(", "));
+        text.push_str(".\n");
+    }
+    text.push_str("</orbyn_context>");
+    text
+}
+
+/// What the run manager is built from.
+pub struct RunServices {
+    pub store: Arc<Store>,
+    pub gate: Arc<ApprovalGate>,
+    pub engines: Arc<EngineManager>,
+    pub skills: Arc<SkillService>,
+    pub workspace: Arc<Workspace>,
+    pub mcp: Arc<McpService>,
+    pub base_url: String,
+    pub runs_dir: PathBuf,
+}
+
 pub struct RunManager {
     store: Arc<Store>,
     gate: Arc<ApprovalGate>,
     engines: Arc<EngineManager>,
     skills: Arc<SkillService>,
+    workspace: Arc<Workspace>,
     mcp: Arc<McpService>,
     base_url: String,
     runs_dir: PathBuf,
@@ -43,20 +142,23 @@ struct ActiveRun {
 }
 
 impl RunManager {
-    pub fn new(
-        store: Arc<Store>,
-        gate: Arc<ApprovalGate>,
-        engines: Arc<EngineManager>,
-        skills: Arc<SkillService>,
-        mcp: Arc<McpService>,
-        base_url: String,
-        runs_dir: PathBuf,
-    ) -> Self {
+    pub fn new(services: RunServices) -> Self {
+        let RunServices {
+            store,
+            gate,
+            engines,
+            skills,
+            workspace,
+            mcp,
+            base_url,
+            runs_dir,
+        } = services;
         Self {
             store,
             gate,
             engines,
             skills,
+            workspace,
             mcp,
             base_url,
             runs_dir,
@@ -75,11 +177,15 @@ impl RunManager {
         }
         let thread = self.store.thread(thread_id)?;
         self.engines.driver(&thread.engine)?;
-        let run = self.engines.admit_with(&thread.engine, || {
-            self.store.admit_run(Admission {
-                thread_id,
-                prompt,
-                actor,
+        let root = self.workspace.root()?;
+        let scope = write_scope(&root, Path::new(&thread.cwd));
+        let run = self.workspace.admit_with(|| {
+            self.engines.admit_with(&thread.engine, || {
+                self.store.admit_run(Admission {
+                    thread_id,
+                    prompt,
+                    actor,
+                })
             })
         })?;
         let cancel = CancellationToken::new();
@@ -100,7 +206,7 @@ impl RunManager {
                     let manager = manager.clone();
                     let run_id = run_id.clone();
                     tokio::spawn(async move {
-                        manager.execute(thread, run_id, prompt, cancel).await;
+                        manager.execute(thread, run_id, prompt, scope, cancel).await;
                     })
                 };
                 // A panic in the run must not strand it as active.
@@ -167,12 +273,14 @@ impl RunManager {
         thread: Thread,
         run_id: String,
         prompt: String,
+        write_scope: WriteScope,
         cancel: CancellationToken,
     ) {
         let scope = RunScope {
             run_id: run_id.clone(),
             thread_id: thread.id.clone(),
             engine: thread.engine.clone(),
+            write_scope: Some(write_scope),
         };
         let run_dir = self.runs_dir.join(&run_id);
         let mut token = None;
@@ -236,7 +344,14 @@ impl RunManager {
         self.store.mark_starting(&scope.run_id)?;
         let driver = self.engines.driver(&thread.engine)?;
         let descriptor = driver.descriptor();
-        let (skills, selection) = self.skills.plan(
+        let root = self.workspace.root()?;
+        let library_thread = Path::new(&thread.cwd) == root;
+        let checkout = if library_thread {
+            root.clone()
+        } else {
+            check_target(&root, Path::new(&thread.cwd)).await?
+        };
+        let route = self.skills.route(
             &descriptor.capabilities.skill_delivery,
             thread.skill_profile.as_deref(),
         )?;
@@ -245,7 +360,7 @@ impl RunManager {
             let issued = self.mcp.register(McpBinding {
                 scope: scope.clone(),
                 permission_prompt: descriptor.id == "claude",
-                skills: selection,
+                skills: route.selection.clone(),
             })?;
             let url = format!("{}/mcp/{issued}", self.base_url);
             *token = Some(issued);
@@ -256,15 +371,28 @@ impl RunManager {
         if cancel.is_cancelled() {
             return Ok(None);
         }
+        let (revision, dirty) = self.workspace.identity().await?;
+        let context = run_context(&RunContext {
+            library: &root,
+            revision: &revision,
+            dirty,
+            target_root: &target_root(&checkout).await,
+            checkout: &checkout,
+            branch: branch_name(&checkout).await.as_deref(),
+            library_thread,
+            route: &route,
+        });
+        let native = descriptor.tier == EngineTier::Native;
         let spec = RunSpec {
             run_id: scope.run_id.clone(),
             thread_id: thread.id.clone(),
-            cwd: PathBuf::from(&thread.cwd),
-            prompt,
+            cwd: if native { root } else { checkout.clone() },
+            checkout,
+            prompt: format!("{context}\n\n{prompt}"),
+            user_prompt: prompt,
             model: thread.model.clone(),
             resume: self.store.engine_session(&thread.id)?,
             mcp_url,
-            skills,
             run_dir: run_dir.to_path_buf(),
         };
         let (sender, receiver) = mpsc::channel(EVENT_BUFFER);
@@ -367,6 +495,7 @@ impl RunManager {
                 target,
                 summary,
                 detail,
+                paths,
                 reply,
             } = request;
             let ask = ActionAsk {
@@ -374,6 +503,7 @@ impl RunManager {
                 target,
                 summary,
                 detail,
+                paths,
             };
             let verdict = gate.request(&scope, ask).await;
             let _ = reply.send(verdict);

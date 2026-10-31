@@ -183,7 +183,7 @@ async fn untrusted_folder_refuses_runs_and_worktrees() {
     let dir = TempDir::new();
     let service = Service::start(&dir.path().join("data"), Options::default());
     let folder = dir.path().join("project");
-    std::fs::create_dir_all(folder.join(".git")).unwrap();
+    std::fs::create_dir_all(&folder).unwrap();
     let project = service.project(&folder, false).await;
     let thread = service.thread(&project, "codex").await;
     let (status, body) = service
@@ -204,7 +204,7 @@ async fn untrusted_folder_refuses_runs_and_worktrees() {
         )
         .await;
     assert_eq!(status, 403);
-    assert!(!dir.path().join("project-wt").exists());
+    assert!(!dir.path().join("library/repo/project-wt").exists());
 }
 
 #[tokio::test]
@@ -436,7 +436,6 @@ async fn parent_stdin_close_stops_the_service_and_its_engines() {
                 "ORBYN_FAKE_PID_FILE".into(),
                 pid_file.to_string_lossy().into_owned(),
             )],
-            ..Options::default()
         },
         "codex",
     )
@@ -460,7 +459,7 @@ async fn malformed_bodies_are_api_errors() {
     let dir = TempDir::new();
     let service = Service::start(&dir.path().join("data"), Options::default());
     let response = service
-        .post("/api/projects")
+        .post("/api/workspace/setup")
         .header("Content-Type", "application/json")
         .body("{not json")
         .send()
@@ -468,11 +467,6 @@ async fn malformed_bodies_are_api_errors() {
         .unwrap();
     assert_eq!(response.status(), 400);
     let body: Value = response.json().await.unwrap();
-    assert_eq!(body["code"], "invalid_input");
-    let (status, body) = service
-        .send("/api/projects", json!({ "path": "relative" }))
-        .await;
-    assert_eq!(status, 400);
     assert_eq!(body["code"], "invalid_input");
 }
 
@@ -518,72 +512,13 @@ fn write(path: &std::path::Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
-fn skill_library(root: &std::path::Path) -> std::path::PathBuf {
-    let source = root.join("library/skills");
-    write(
-        &source.join("catalog.json"),
-        r#"{"skills":[{"name":"how","category":"Engineering practice","related":[]}]}"#,
-    );
-    write(
-        &source.join("how/SKILL.md"),
-        "---\nname: how\ndescription: \"Trace behavior\"\n---\n\n# how\n",
-    );
-    source
-}
-
 #[tokio::test]
-async fn tampered_pack_is_reported_and_blocks_runs() {
+async fn profiles_keep_the_builtin_default_and_skills_show_the_revision() {
     let dir = TempDir::new();
-    let source = skill_library(dir.path());
-    let (service, thread) = setup(
-        &dir,
-        Options {
-            skills: Some(source),
-            ..Options::default()
-        },
-        "codex",
-    )
-    .await;
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
     let status = service.json("/api/skills").await;
-    assert_eq!(status["signature_valid"], true);
+    assert_eq!(status["digest"].as_str().unwrap().len(), 40);
     assert_eq!(status["skills"][0]["name"], "how");
-    service.admit(&thread, "ok").await;
-    assert_eq!(service.finished(&thread).await, "completed");
-
-    let packs = dir.path().join("data/skills/packs");
-    let pack = std::fs::read_dir(&packs)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .find(|path| path.join("manifest.json").exists())
-        .unwrap();
-    write(&pack.join("skills/how/SKILL.md"), "tampered");
-    assert_eq!(service.json("/api/skills").await["signature_valid"], false);
-    service.admit(&thread, "again").await;
-    assert_eq!(service.finished(&thread).await, "failed");
-    let events = service
-        .events_until(&thread, None, |event| event["event"]["type"] == "RUN_ERROR")
-        .await;
-    assert!(
-        events.last().unwrap()["event"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("verification")
-    );
-}
-
-#[tokio::test]
-async fn profiles_keep_the_builtin_default() {
-    let dir = TempDir::new();
-    let source = skill_library(dir.path());
-    let (service, _) = setup(
-        &dir,
-        Options {
-            skills: Some(source),
-            ..Options::default()
-        },
-        "codex",
-    )
-    .await;
     let (status, created) = service
         .send(
             "/api/skills/profiles",
@@ -814,8 +749,9 @@ async fn git_worktree_and_diff_through_the_api() {
         )
         .await;
     assert_eq!(status, 201, "{thread}");
-    let path = dir.path().join("repo-wt/feature-x");
+    let path = dir.path().join("library/repo/repo-wt/feature-x");
     assert_eq!(thread["cwd"], path.to_str().unwrap());
+    assert_eq!(thread["worktree"]["branch"], "feat/feature-x");
     std::fs::write(path.join("b.txt"), "new\n").unwrap();
     let diff = service
         .json(&format!(
@@ -996,7 +932,6 @@ async fn real_browser_navigates_reads_clicks_and_captures() {
         Options {
             args: vec!["--ui-dir".into(), ui.to_string_lossy().into_owned()],
             env: vec![("ORBYN_BROWSER_HEADLESS".into(), "1".into())],
-            ..Options::default()
         },
         "codex",
     )

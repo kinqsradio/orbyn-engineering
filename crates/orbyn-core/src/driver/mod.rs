@@ -68,28 +68,25 @@ impl UpdatePlan {
     }
 }
 
-/// How this run's engine receives skills.
-#[derive(Clone, Debug, Default)]
-pub struct SkillPlan {
-    pub plugin_dir: Option<PathBuf>,
-    pub skill_root: Option<PathBuf>,
-    /// Text placed before the first prompt when nothing better is supported.
-    pub bootstrap: Option<String>,
-}
-
 /// Everything a driver needs for one run.
 #[derive(Clone, Debug)]
 pub struct RunSpec {
     pub run_id: String,
     pub thread_id: String,
+    /// Where the engine process starts: the workspace root for native engines,
+    /// so they discover the library themselves; the checkout for all others.
     pub cwd: PathBuf,
+    /// The selected checkout, which is the only place this run may write.
+    pub checkout: PathBuf,
+    /// The prompt, with its workspace context already in front of it.
     pub prompt: String,
+    /// The prompt alone, for engines that cannot take context.
+    pub user_prompt: String,
     pub model: Option<String>,
     /// The engine's own session id from an earlier run of this thread.
     pub resume: Option<String>,
     /// Per-run MCP URL; the token inside it is revoked at run end.
     pub mcp_url: Option<String>,
-    pub skills: SkillPlan,
     /// Private scratch directory for this run, removed at run end.
     pub run_dir: PathBuf,
 }
@@ -101,6 +98,8 @@ pub struct PermissionRequest {
     pub target: String,
     pub summary: String,
     pub detail: Value,
+    /// Files a write touches; empty means `target` names the file.
+    pub paths: Vec<String>,
     pub reply: oneshot::Sender<Verdict>,
 }
 
@@ -178,12 +177,25 @@ pub(crate) async fn ask(
     summary: String,
     detail: Value,
 ) -> Verdict {
+    ask_paths(events, kind, target, summary, detail, Vec::new()).await
+}
+
+/// `ask` for a write with known file paths.
+pub(crate) async fn ask_paths(
+    events: &mpsc::Sender<EngineEvent>,
+    kind: ActionKind,
+    target: String,
+    summary: String,
+    detail: Value,
+    paths: Vec<String>,
+) -> Verdict {
     let (reply, verdict) = oneshot::channel();
     let request = PermissionRequest {
         kind,
         target,
         summary,
         detail,
+        paths,
         reply,
     };
     if events.send(EngineEvent::Permission(request)).await.is_err() {

@@ -20,7 +20,7 @@ use axum::routing::{get, post};
 use clap::{Args, Parser, Subcommand};
 use orbyn_core::engines::EngineConfig;
 use orbyn_core::util::{random_token, sha256_hex};
-use orbyn_core::{Core, CoreConfig, CoreError, skills};
+use orbyn_core::{Core, CoreConfig, CoreError};
 use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -54,9 +54,13 @@ struct ServeArgs {
     data_dir: Option<PathBuf>,
     #[arg(long)]
     ui_dir: Option<PathBuf>,
-    /// Skill library; also `ORBYN_SKILLS_DIR`.
-    #[arg(long, env = "ORBYN_SKILLS_DIR")]
+    /// Replaced by the managed workspace. Accepted and ignored so older shells
+    /// that still pass it keep starting.
+    #[arg(long, hide = true)]
     skills_dir: Option<PathBuf>,
+    /// Where a first-run clone of the skills library comes from.
+    #[arg(long, env = "ORBYN_WORKSPACE_URL")]
+    workspace_url: Option<String>,
     /// Bind every interface. Requires `--tls-terminated`.
     #[arg(long)]
     remote: bool,
@@ -103,7 +107,12 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
         .or_else(default_data_dir)
         .ok_or("Set --data-dir: no app-data directory could be found.")?;
     let mut config = CoreConfig::new(data_dir, base_url);
-    config.skills_dir = args.skills_dir.clone().or_else(skills::detect_source);
+    if args.skills_dir.is_some() {
+        tracing::warn!("--skills-dir is ignored: skills come from the managed workspace");
+    }
+    if let Some(url) = &args.workspace_url {
+        config.workspace_url.clone_from(url);
+    }
     let defaults = EngineConfig::default();
     let sandbox = std::env::var("ORBYN_CODEX_SANDBOX").unwrap_or(defaults.codex_sandbox);
     if !SANDBOX_MODES.contains(&sandbox.as_str()) {
@@ -134,10 +143,18 @@ fn router(state: AppState) -> Router {
     let access = state.access.clone();
     let protected = Router::new()
         .route("/api/info", get(api::info))
+        .route("/api/projects", get(api::list_projects))
+        .route("/api/projects/clone", post(api::clone_project))
+        .route("/api/projects/create", post(api::create_project))
+        .route("/api/projects/import", post(api::import_project))
         .route(
-            "/api/projects",
-            get(api::list_projects).post(api::add_project),
+            "/api/projects/{id}",
+            axum::routing::delete(api::remove_project),
         )
+        .route("/api/workspace", get(api::workspace_status))
+        .route("/api/workspace/setup", post(api::workspace_setup))
+        .route("/api/workspace/update", post(api::workspace_update))
+        .route("/api/workspace/rollback", post(api::workspace_rollback))
         .route("/api/projects/{id}/trust", post(api::trust_project))
         .route("/api/fs/browse", get(api::browse))
         .route(
@@ -171,7 +188,7 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/engines/{id}/update", post(api::update_engine))
         .route("/api/skills", get(api::skills))
-        .route("/api/skills/rebuild", post(api::rebuild_skills))
+        .route("/api/skills/rebuild", post(api::skills))
         .route(
             "/api/skills/profiles",
             get(api::list_profiles).post(api::create_profile),

@@ -110,10 +110,7 @@ async fn drive(
     spec: &RunSpec,
     events: &mpsc::Sender<EngineEvent>,
 ) -> EngineOutcome {
-    let text = match &spec.skills.bootstrap {
-        Some(bootstrap) if spec.resume.is_none() => format!("{bootstrap}\n\n{}", spec.prompt),
-        _ => spec.prompt.clone(),
-    };
+    let text = spec.prompt.clone();
     let mut resume: Vec<Value> = Vec::new();
     let mut mapper = FrameMapper::default();
     for _ in 0..MAX_RESUMES {

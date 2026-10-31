@@ -10,9 +10,10 @@ use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    ApiError, ApprovalState, ComputerAction, CreatePolicyRule, CreateProject, CreateThread,
-    CustomEngine, DecideApproval, EngineTier, FsEntry, FsListing, ReorderThreads, ServerInfo,
-    ServerSettings, SkillProfile, StartRun, UpdateThread,
+    ApiError, ApprovalState, CloneProject, ComputerAction, CreatePolicyRule, CreateThread,
+    CustomEngine, DecideApproval, EngineTier, FsEntry, FsListing, ImportProject,
+    LibraryUpdateRequest, NewProject, ReorderThreads, ServerInfo, ServerSettings, SkillProfile,
+    StartRun, UpdateThread, WorkspaceSetup,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -73,6 +74,7 @@ impl From<CoreError> for ApiFailure {
         }
         let detail = match &error {
             CoreError::AlreadyDecided(existing) => serde_json::to_value(existing).ok(),
+            CoreError::ProjectHasWork { detail, .. } => Some(detail.clone()),
             _ => None,
         };
         Self {
@@ -128,14 +130,77 @@ pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl Into
     Ok(Json(state.core.store.list_projects()?))
 }
 
-pub async fn add_project(
+pub async fn clone_project(
     State(state): State<AppState>,
-    ApiJson(body): ApiJson<CreateProject>,
+    ApiJson(body): ApiJson<CloneProject>,
+) -> ApiResult<impl IntoResponse> {
+    let project = state
+        .core
+        .clone_project(&body.url, body.name.as_deref())
+        .await?;
+    Ok((StatusCode::CREATED, Json(project)))
+}
+
+pub async fn create_project(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<NewProject>,
 ) -> ApiResult<impl IntoResponse> {
     Ok((
         StatusCode::CREATED,
-        Json(state.core.add_project(&body.path)?),
+        Json(state.core.new_project(&body.name).await?),
     ))
+}
+
+pub async fn import_project(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<ImportProject>,
+) -> ApiResult<impl IntoResponse> {
+    let report = state
+        .core
+        .import_project(&body.path, body.name.as_deref())
+        .await?;
+    Ok((StatusCode::CREATED, Json(report)))
+}
+
+#[derive(Deserialize)]
+pub struct RemoveQuery {
+    confirm: Option<bool>,
+}
+
+pub async fn remove_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<RemoveQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state
+            .core
+            .remove_project(&id, query.confirm.unwrap_or(false))
+            .await?,
+    ))
+}
+
+pub async fn workspace_status(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let projects = state.core.store.list_projects()?;
+    Ok(Json(state.core.workspace.status(&projects).await?))
+}
+
+pub async fn workspace_setup(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<WorkspaceSetup>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.setup_workspace(body).await?))
+}
+
+pub async fn workspace_update(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<LibraryUpdateRequest>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.workspace.update(body.apply).await?))
+}
+
+pub async fn workspace_rollback(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.workspace.rollback().await?))
 }
 
 pub async fn trust_project(
@@ -393,11 +458,7 @@ pub async fn delete_custom_engine(
 }
 
 pub async fn skills(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.skills.status()?))
-}
-
-pub async fn rebuild_skills(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.skills.rebuild()?))
+    Ok(Json(state.core.skills.status().await?))
 }
 
 pub async fn list_profiles(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
@@ -493,6 +554,7 @@ pub async fn computer_action(
                 run_id: run.id.clone(),
                 thread_id: thread.id.clone(),
                 engine: thread.engine.clone(),
+                write_scope: None,
             };
             state.core.computer.act(Caller::Run(&scope), action).await?
         }

@@ -18,7 +18,7 @@ use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
-    RunHandle, RunSpec, ask,
+    RunHandle, RunSpec, ask_paths,
 };
 use crate::approvals::Verdict;
 use crate::error::{CoreError, Result};
@@ -54,10 +54,7 @@ impl EngineDriver for AcpDriver {
                 mcp: true,
                 sandbox: false,
                 managed: true,
-                skill_delivery: vec![
-                    SkillDelivery::McpSkillServer,
-                    SkillDelivery::PromptBootstrap,
-                ],
+                skill_delivery: vec![SkillDelivery::McpSkillServer],
             },
         }
     }
@@ -108,13 +105,9 @@ async fn run_protocol(
             return;
         }
     };
-    let prompt_text = match &spec.skills.bootstrap {
-        Some(bootstrap) => format!("{bootstrap}\n\n{}", spec.prompt),
-        None => spec.prompt.clone(),
-    };
     let prompt_call = rpc.call(
         "session/prompt",
-        json!({ "sessionId": session, "prompt": [{ "type": "text", "text": prompt_text }] }),
+        json!({ "sessionId": session, "prompt": [{ "type": "text", "text": spec.prompt }] }),
         PROMPT_TIMEOUT,
     );
     tokio::pin!(prompt_call);
@@ -260,7 +253,12 @@ fn answer_request(
     let cancel = cancel.clone();
     tokio::spawn(async move {
         let (kind, target, summary) = classify(&params);
-        let verdict = ask(&events, kind, target, summary, params.clone()).await;
+        let paths = if kind == ActionKind::FileChange {
+            vec![target.clone()]
+        } else {
+            Vec::new()
+        };
+        let verdict = ask_paths(&events, kind, target, summary, params.clone(), paths).await;
         let outcome = permission_outcome(&params, &verdict, cancel.is_cancelled());
         let _ = rpc.respond(id, json!({ "outcome": outcome })).await;
     });

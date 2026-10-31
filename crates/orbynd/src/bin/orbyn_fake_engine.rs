@@ -23,10 +23,16 @@ fn main() {
         ),
         "auth" => println!("{}", json!({ "loggedIn": true, "authMethod": "fake" })),
         "login" => println!("Logged in using fake"),
-        "app-server" => codex(),
+        "app-server" => {
+            record_launch("codex", &args);
+            codex();
+        }
         "-p" if !args.iter().any(|arg| arg == "--input-format") => one_shot(),
         "exec" => one_shot(),
-        "-p" => claude(&args),
+        "-p" => {
+            record_launch("claude", &args);
+            claude(&args);
+        }
         "acp" => acp(),
         "agui" => agui(&args),
         "pty" => pty(),
@@ -38,6 +44,23 @@ fn main() {
 }
 
 /// Lets a test watch this process's lifetime.
+/// Lets a test assert how an engine was launched.
+fn record_launch(mode: &str, args: &[String]) {
+    if let Ok(path) = std::env::var("ORBYN_FAKE_LAUNCH_FILE") {
+        let entry = json!({
+            "mode": mode,
+            "args": args,
+            "cwd": std::env::current_dir().expect("cwd"),
+        });
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("launch file");
+        writeln!(file, "{entry}").expect("launch write");
+    }
+}
+
 fn record_pid() {
     if let Ok(path) = std::env::var("ORBYN_FAKE_PID_FILE") {
         let mut file = std::fs::OpenOptions::new()
@@ -284,9 +307,13 @@ fn codex() {
                 "platformFamily": "unix", "platformOs": "macos",
             }})),
             "initialized" => {}
-            "skills/extraRoots/set" => send(&json!({ "id": id, "result": {} })),
+            "skills/extraRoots/set" => {
+                eprintln!("skills come from native discovery");
+                std::process::exit(12);
+            }
             "thread/start" | "thread/resume" => {
                 let params = &message["params"];
+                record_launch("codex-thread", &[params.to_string()]);
                 if let Some(thread) = params["threadId"].as_str() {
                     state.thread = thread.to_owned();
                 }
@@ -300,6 +327,7 @@ fn codex() {
                 }}));
             }
             "turn/start" => {
+                record_launch("codex-turn", &[message["params"].to_string()]);
                 state.prompt = message["params"]["input"][0]["text"]
                     .as_str()
                     .unwrap_or_default()
@@ -408,6 +436,32 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         let code = reply.pointer("/error/code").unwrap_or(&Value::Null);
         let result = reply.get("result").unwrap_or(&Value::Null);
         answer = format!("token refresh error {code} result {result}");
+    }
+    if has(prompt, "outside-write") {
+        let target = std::env::var("ORBYN_FAKE_WRITE_PATH").expect("write path");
+        codex_note(
+            state,
+            "item/started",
+            json!({
+                "startedAtMs": 3,
+                "item": {
+                    "type": "fileChange", "id": "fc1", "status": "inProgress",
+                    "changes": [{ "path": target, "kind": { "type": "update" }, "diff": "" }],
+                },
+            }),
+        );
+        let reply = codex_request(
+            "item/fileChange/requestApproval",
+            json!({
+                "itemId": "fc1", "threadId": state.thread, "turnId": "turn-1", "startedAtMs": 3,
+            }),
+            lines,
+        );
+        let decision = reply
+            .pointer("/result/decision")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        answer = format!("write {decision}");
     }
     if has(prompt, "mcp-tools") {
         let url = state.mcp_url.as_deref().expect("mcp url");

@@ -200,6 +200,20 @@ impl Store {
         })
     }
 
+    pub fn delete_project(&self, id: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute("DELETE FROM projects WHERE id = ?1", [id])?;
+            Ok(())
+        })
+    }
+
+    /// Every thread of a project, archived ones included.
+    pub fn list_all_threads(&self, project_id: &str) -> Result<Vec<Thread>> {
+        let mut threads = self.list_threads(Some(project_id), false)?;
+        threads.extend(self.list_threads(Some(project_id), true)?);
+        Ok(threads)
+    }
+
     pub fn create_thread(&self, new: NewThread) -> Result<Thread> {
         let id = new_id();
         let stamp = now();

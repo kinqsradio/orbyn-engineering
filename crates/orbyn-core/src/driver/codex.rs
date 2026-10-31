@@ -17,7 +17,7 @@ use super::pipes::{EngineProcess, exit_message, one_shot_cli, resolve_engine, sp
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
-    RunHandle, RunSpec, UpdatePlan, ask, diff_activity,
+    RunHandle, RunSpec, UpdatePlan, ask_paths, diff_activity,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
@@ -60,7 +60,6 @@ impl EngineDriver for CodexDriver {
                 skill_delivery: vec![
                     SkillDelivery::NativeSkillRoot,
                     SkillDelivery::McpSkillServer,
-                    SkillDelivery::PromptBootstrap,
                 ],
             },
         }
@@ -258,14 +257,6 @@ async fn open_turn(
     )
     .await?;
     rpc.notify("initialized", None).await?;
-    if let Some(root) = &spec.skills.skill_root {
-        rpc.call(
-            "skills/extraRoots/set",
-            json!({ "extraRoots": [root] }),
-            CALL_TIMEOUT,
-        )
-        .await?;
-    }
     let config = thread_config(spec);
     let mut params = json!({
         "cwd": spec.cwd,
@@ -275,9 +266,6 @@ async fn open_turn(
     });
     if let Some(model) = &spec.model {
         params["model"] = json!(model);
-    }
-    if let Some(instructions) = &spec.skills.bootstrap {
-        params["developerInstructions"] = json!(instructions);
     }
     let thread = match &spec.resume {
         Some(session) => {
@@ -298,6 +286,8 @@ async fn open_turn(
             json!({
                 "threadId": session,
                 "input": [{ "type": "text", "text": spec.prompt, "text_elements": [] }],
+                "cwd": spec.checkout,
+                "sandboxPolicy": sandbox_policy(sandbox, &spec.checkout),
             }),
             CALL_TIMEOUT,
         )
@@ -307,6 +297,17 @@ async fn open_turn(
         .and_then(Value::as_str)
         .map(str::to_owned);
     Ok((session, turn_id))
+}
+
+/// Codex always lets a turn write to its own cwd. The thread therefore starts at
+/// the workspace root, for native discovery, and each turn moves its cwd and
+/// writable root to the selected checkout, keeping the library read-only.
+fn sandbox_policy(sandbox: &str, checkout: &std::path::Path) -> Value {
+    match sandbox {
+        "read-only" => json!({ "type": "readOnly" }),
+        "danger-full-access" => json!({ "type": "dangerFullAccess" }),
+        _ => json!({ "type": "workspaceWrite", "writableRoots": [checkout] }),
+    }
 }
 
 /// The per-run MCP server. Orbyn's tools carry their own policy gate, so Codex
@@ -343,12 +344,13 @@ fn answer_request(
     };
     let events = events.clone();
     tokio::spawn(async move {
-        let verdict = ask(
+        let verdict = ask_paths(
             &events,
             request.kind,
             request.target,
             request.summary,
             params.clone(),
+            request.paths,
         )
         .await;
         let result = approval_response(&method, &params, &verdict);
@@ -360,6 +362,7 @@ struct ClassifiedRequest {
     kind: ActionKind,
     target: String,
     summary: String,
+    paths: Vec<String>,
 }
 
 fn classify_request(
@@ -386,21 +389,23 @@ fn classify_request(
                 },
                 summary: format!("Run {target}"),
                 target,
+                paths: Vec::new(),
             })
         }
         "item/fileChange/requestApproval" => {
             let item = params.get("itemId").and_then(Value::as_str).unwrap_or("");
-            let target = mapper
-                .file_paths
-                .get(item)
-                .filter(|paths| !paths.is_empty())
-                .map(|paths| paths.join(" "))
-                .or_else(|| text(params, "grantRoot"))
-                .unwrap_or_else(|| "file changes".to_owned());
+            let mut paths = mapper.file_paths.get(item).cloned().unwrap_or_default();
+            paths.extend(text(params, "grantRoot"));
+            let target = if paths.is_empty() {
+                "file changes".to_owned()
+            } else {
+                paths.join(" ")
+            };
             Some(ClassifiedRequest {
                 kind: ActionKind::FileChange,
                 summary: format!("Change {target}"),
                 target,
+                paths,
             })
         }
         "item/permissions/requestApproval" => {
@@ -418,6 +423,7 @@ fn classify_request(
                 },
                 summary: format!("Grant permissions: {target}"),
                 target,
+                paths: Vec::new(),
             })
         }
         "execCommandApproval" => {
@@ -436,18 +442,25 @@ fn classify_request(
                 kind: ActionKind::Command,
                 summary: format!("Run {target}"),
                 target,
+                paths: Vec::new(),
             })
         }
         "applyPatchApproval" => {
-            let target = params
+            let paths: Vec<String> = params
                 .get("fileChanges")
                 .and_then(Value::as_object)
-                .map(|changes| changes.keys().cloned().collect::<Vec<_>>().join(" "))
-                .unwrap_or_else(|| "file changes".to_owned());
+                .map(|changes| changes.keys().cloned().collect())
+                .unwrap_or_default();
+            let target = if paths.is_empty() {
+                "file changes".to_owned()
+            } else {
+                paths.join(" ")
+            };
             Some(ClassifiedRequest {
                 kind: ActionKind::FileChange,
                 summary: format!("Change {target}"),
                 target,
+                paths,
             })
         }
         _ => None,
@@ -968,12 +981,13 @@ mod tests {
         let spec = RunSpec {
             run_id: "r".into(),
             thread_id: "t".into(),
-            cwd: "/repo".into(),
+            cwd: "/workspace".into(),
+            checkout: "/workspace/repo/app".into(),
             prompt: "p".into(),
+            user_prompt: "p".into(),
             model: None,
             resume: None,
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
-            skills: Default::default(),
             run_dir: "/run".into(),
         };
         let config = thread_config(&spec);
@@ -981,6 +995,17 @@ mod tests {
         assert_eq!(
             config["mcp_servers"]["orbyn_engineering"]["url"],
             "http://127.0.0.1:1/mcp/x"
+        );
+    }
+
+    #[test]
+    fn turns_write_only_to_the_selected_checkout() {
+        let policy = sandbox_policy("workspace-write", std::path::Path::new("/w/repo/app"));
+        assert_eq!(policy["type"], "workspaceWrite");
+        assert_eq!(policy["writableRoots"], json!(["/w/repo/app"]));
+        assert_eq!(
+            sandbox_policy("read-only", std::path::Path::new("/x"))["type"],
+            "readOnly"
         );
     }
 

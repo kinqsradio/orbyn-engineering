@@ -433,6 +433,138 @@ pub struct EngineStatus {
 }
 
 wire! {
+pub struct IncomingCommit {
+    pub sha: String,
+    pub subject: String,
+}
+}
+
+wire! {
+pub struct LibraryStatus {
+    pub path: String,
+    /// True when the user chose an existing checkout, which is never moved.
+    pub adopted: bool,
+    pub revision: String,
+    pub branch: Option<String>,
+    pub dirty: bool,
+    pub dirty_files: Vec<String>,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    /// The revision a rollback would return to.
+    pub previous_revision: Option<String>,
+    /// False when `.claude/skills` or `.agents/skills` did not materialize as
+    /// links, which sends this session to the MCP skill route.
+    pub native_skills: bool,
+    pub problem: Option<String>,
+}
+}
+
+wire! {
+pub struct TargetWorktree {
+    pub path: String,
+    pub branch: Option<String>,
+    pub revision: String,
+    pub dirty: bool,
+}
+}
+
+wire! {
+pub struct TargetStatus {
+    pub project_id: Option<String>,
+    pub path: String,
+    pub git_root: Option<String>,
+    pub revision: Option<String>,
+    pub branch: Option<String>,
+    pub dirty: bool,
+    pub worktrees: Vec<TargetWorktree>,
+    pub instructions: Vec<String>,
+    /// Target skills sharing a library skill's name. Both stay; neither is renamed.
+    pub same_name_skills: Vec<String>,
+    pub problem: Option<String>,
+}
+}
+
+wire! {
+pub struct WorkspaceStatus {
+    /// False until setup finishes; engines and projects wait for it.
+    pub configured: bool,
+    pub default_url: String,
+    pub library: Option<LibraryStatus>,
+    pub targets: Vec<TargetStatus>,
+}
+}
+
+wire! {
+/// Exactly one of `url` and `adopt_path`, or neither for the default library.
+pub struct WorkspaceSetup {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub adopt_path: Option<String>,
+}
+}
+
+wire! {
+pub struct LibraryUpdateRequest {
+    /// False only fetches and reports incoming commits.
+    pub apply: bool,
+}
+}
+
+wire! {
+pub struct LibraryUpdateResult {
+    pub applied: bool,
+    pub previous_revision: Option<String>,
+    pub revision: String,
+    pub incoming: Vec<IncomingCommit>,
+}
+}
+
+wire! {
+pub struct CloneProject {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+}
+}
+
+wire! {
+pub struct NewProject {
+    pub name: String,
+}
+}
+
+wire! {
+pub struct ImportProject {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+}
+}
+
+wire! {
+pub struct ImportReport {
+    pub project: Project,
+    /// Changes in the source that the import did not carry.
+    pub dirty_files: Vec<String>,
+    pub unpushed_branches: Vec<String>,
+}
+}
+
+wire! {
+pub struct ProjectRemoval {
+    pub files_removed: bool,
+    /// Set when the folder stays on disk because it still holds work.
+    pub kept_path: Option<String>,
+}
+}
+
+wire! {
 pub struct SkillSummary {
     pub name: String,
     pub category: String,
@@ -443,8 +575,11 @@ pub struct SkillSummary {
 
 wire! {
 pub struct SkillPackStatus {
+    /// Short library revision, with `-dirty` when it has local edits.
     pub version: String,
+    /// Full library revision.
     pub digest: String,
+    /// True when the workspace library is valid.
     pub signature_valid: bool,
     pub source: Option<String>,
     pub skills: Vec<SkillSummary>,

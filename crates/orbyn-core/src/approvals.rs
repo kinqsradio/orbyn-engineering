@@ -2,6 +2,7 @@
 //! Any failure on this path is a denial.
 
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -14,12 +15,70 @@ use crate::policy;
 use crate::store::{AuditRecord, NewApproval, Store};
 use crate::util::new_id;
 
+/// Where a run may write.
+#[derive(Clone, Debug)]
+pub struct WriteScope {
+    pub checkout: PathBuf,
+    /// Relative paths resolve from here.
+    pub engine_cwd: PathBuf,
+    /// Inside `checkout` but still off limits: a library thread's `repo/`.
+    pub excluded: Vec<PathBuf>,
+}
+
+impl WriteScope {
+    /// True when `path` lands inside the checkout after resolving `..` and any
+    /// symlink in the part of the path that exists.
+    pub fn permits(&self, path: &str) -> bool {
+        let full = self.engine_cwd.join(path);
+        let Some(resolved) = resolve_existing(&full) else {
+            return false;
+        };
+        let inside = crate::util::canonicalize(&self.checkout)
+            .is_ok_and(|checkout| resolved.starts_with(checkout));
+        inside
+            && !self.excluded.iter().any(|excluded| {
+                crate::util::canonicalize(excluded).is_ok_and(|e| resolved.starts_with(e))
+            })
+    }
+}
+
+/// Removes `.` and `..`, then canonicalizes the deepest existing ancestor.
+fn resolve_existing(path: &Path) -> Option<PathBuf> {
+    let mut plain = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::ParentDir => {
+                if !plain.pop() {
+                    return None;
+                }
+            }
+            Component::CurDir => {}
+            other => plain.push(other),
+        }
+    }
+    let mut existing = plain.as_path();
+    let mut rest = Vec::new();
+    loop {
+        if let Ok(real) = crate::util::canonicalize(existing) {
+            return Some(
+                rest.into_iter()
+                    .rev()
+                    .fold(real, |path, part| path.join(part)),
+            );
+        }
+        rest.push(existing.file_name()?.to_owned());
+        existing = existing.parent()?;
+    }
+}
+
 /// Identifies the run an action belongs to.
 #[derive(Clone, Debug)]
 pub struct RunScope {
     pub run_id: String,
     pub thread_id: String,
     pub engine: String,
+    /// `None` only for callers with no file access at all.
+    pub write_scope: Option<WriteScope>,
 }
 
 /// One action an engine wants to take.
@@ -29,6 +88,8 @@ pub struct ActionAsk {
     pub target: String,
     pub summary: String,
     pub detail: Value,
+    /// Files a write touches; empty means `target` names the file.
+    pub paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,7 +133,41 @@ impl ApprovalGate {
         }
     }
 
+    /// A write outside the selected checkout is denied before policy, so no rule
+    /// and no person can widen a run's reach. A write with no usable path fails closed.
+    fn outside_scope(&self, scope: &RunScope, ask: &ActionAsk) -> Result<Option<Verdict>> {
+        let (ActionKind::FileChange, Some(write_scope)) = (ask.kind, &scope.write_scope) else {
+            return Ok(None);
+        };
+        let single = [ask.target.clone()];
+        let paths = if ask.paths.is_empty() {
+            &single[..]
+        } else {
+            &ask.paths[..]
+        };
+        let Some(refused) = paths.iter().find(|path| !write_scope.permits(path)) else {
+            return Ok(None);
+        };
+        self.store.append_audit(&AuditRecord {
+            actor: format!("engine:{}", scope.engine),
+            action: "action.deny".into(),
+            target: refused.clone(),
+            decision: Some(PolicyEffect::Deny),
+            source: "write_scope".into(),
+            thread_id: Some(scope.thread_id.clone()),
+            run_id: Some(scope.run_id.clone()),
+            detail: json!({ "checkout": write_scope.checkout }),
+        })?;
+        Ok(Some(Verdict::Deny(format!(
+            "This run may write only inside {}.",
+            write_scope.checkout.display()
+        ))))
+    }
+
     async fn request_inner(&self, scope: &RunScope, ask: ActionAsk) -> Result<Verdict> {
+        if let Some(denied) = self.outside_scope(scope, &ask)? {
+            return Ok(denied);
+        }
         let rules = self.store.list_rules()?;
         let decision = policy::evaluate(&rules, ask.kind, &ask.target, &scope.engine);
         if decision.effect != PolicyEffect::Ask {
@@ -250,6 +345,7 @@ mod tests {
                 run_id: run.id,
                 thread_id: thread.id,
                 engine: "fake".into(),
+                write_scope: None,
             },
         }
     }
@@ -260,6 +356,7 @@ mod tests {
             target: "ls".into(),
             summary: "ls".into(),
             detail: Value::Null,
+            paths: Vec::new(),
         }
     }
 
@@ -285,6 +382,84 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
+    }
+
+    #[test]
+    fn write_scope_resolves_traversal_and_symlinks() {
+        let dir = TempDir::new();
+        let checkout = crate::util::canonicalize(dir.path())
+            .unwrap()
+            .join("repo/app");
+        std::fs::create_dir_all(checkout.join("src")).unwrap();
+        let root = checkout.parent().unwrap().parent().unwrap().to_path_buf();
+        let scope = WriteScope {
+            checkout: checkout.clone(),
+            engine_cwd: root.clone(),
+            excluded: Vec::new(),
+        };
+        assert!(scope.permits(checkout.join("src/new.rs").to_str().unwrap()));
+        assert!(scope.permits("repo/app/deep/new/file.rs"));
+        assert!(!scope.permits("AGENTS.md"));
+        assert!(!scope.permits("repo/app/../../skills/x"));
+        assert!(!scope.permits(root.join("skills/x").to_str().unwrap()));
+        assert!(!scope.permits("/etc/hosts"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&root, checkout.join("escape")).unwrap();
+            assert!(!scope.permits("repo/app/escape/AGENTS.md"));
+        }
+    }
+
+    #[tokio::test]
+    async fn write_outside_the_checkout_is_denied_even_with_an_allow_rule() {
+        let mut f = fixture();
+        let dir = TempDir::new();
+        std::fs::create_dir_all(dir.path().join("checkout")).unwrap();
+        f.scope.write_scope = Some(WriteScope {
+            checkout: dir.path().join("checkout"),
+            engine_cwd: dir.path().to_path_buf(),
+            excluded: Vec::new(),
+        });
+        f.store
+            .add_rule(
+                &CreatePolicyRule {
+                    effect: PolicyEffect::Allow,
+                    kind: ActionKind::FileChange,
+                    pattern: "*".into(),
+                    engine: None,
+                    note: None,
+                },
+                "t",
+            )
+            .unwrap();
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_secs(1));
+        let write = |path: &str, paths: Vec<String>| ActionAsk {
+            kind: ActionKind::FileChange,
+            target: path.to_owned(),
+            summary: "w".into(),
+            detail: Value::Null,
+            paths,
+        };
+        assert!(
+            !gate
+                .request(&f.scope, write("skills/x", Vec::new()))
+                .await
+                .is_allowed()
+        );
+        let mixed = vec!["checkout/ok".to_owned(), "skills/x".to_owned()];
+        assert!(
+            !gate
+                .request(&f.scope, write("many", mixed))
+                .await
+                .is_allowed()
+        );
+        assert!(
+            gate.request(&f.scope, write("checkout/ok", Vec::new()))
+                .await
+                .is_allowed()
+        );
+        let audit = f.store.list_audit(Some(&f.scope.thread_id), 5).unwrap();
+        assert!(audit.iter().any(|row| row.source == "write_scope"));
     }
 
     #[tokio::test]

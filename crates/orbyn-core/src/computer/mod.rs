@@ -91,6 +91,7 @@ impl ComputerGateway {
             target: resolved.target.clone(),
             summary: resolved.summary.clone(),
             detail: json!({ "action": action.action, "target": resolved.target, "args": action.args }),
+            paths: Vec::new(),
         };
         let (thread_id, run_id, actor) = match &caller {
             Caller::Run(scope) => {
@@ -469,6 +470,7 @@ mod tests {
                 run_id: run.id,
                 thread_id: thread.id,
                 engine: "fake".into(),
+                write_scope: None,
             },
         }
     }

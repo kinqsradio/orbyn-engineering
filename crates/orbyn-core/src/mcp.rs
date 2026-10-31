@@ -236,6 +236,7 @@ pub fn classify_tool(tool: &str, input: &Value) -> ActionAsk {
         target,
         summary,
         detail: json!({ "tool": tool, "input": input }),
+        paths: Vec::new(),
     }
 }
 

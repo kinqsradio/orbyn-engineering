@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use orbyn_contracts::{Project, Thread};
+use orbyn_contracts::Thread;
 
 use crate::approvals::ApprovalGate;
 use crate::computer::{ComputerBackend, ComputerConfig, ComputerGateway, LocalBackend};
@@ -13,11 +13,12 @@ use crate::engines::{EngineConfig, EngineManager};
 use crate::error::{CoreError, Result};
 use crate::git;
 use crate::mcp::McpService;
-use crate::runs::RunManager;
+use crate::runs::{RunManager, RunServices};
 use crate::skills::SkillService;
 use crate::store::{NewThread, Recovery, Store};
 use crate::terminal::TerminalManager;
 use crate::util::new_id;
+use crate::workspace::Workspace;
 
 /// A wait of this length covers an unattended person without a run hanging forever.
 pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -27,7 +28,8 @@ pub struct CoreConfig {
     pub data_dir: PathBuf,
     /// Loopback origin the per-run MCP URL is built from.
     pub base_url: String,
-    pub skills_dir: Option<PathBuf>,
+    /// Where a first-run clone of the library comes from.
+    pub workspace_url: String,
     pub engines: EngineConfig,
     pub approval_timeout: Duration,
     pub desktop_program: Option<String>,
@@ -40,7 +42,7 @@ impl CoreConfig {
         Self {
             data_dir,
             base_url,
-            skills_dir: None,
+            workspace_url: crate::workspace::DEFAULT_LIBRARY_URL.to_owned(),
             engines: EngineConfig::default(),
             approval_timeout: DEFAULT_APPROVAL_TIMEOUT,
             desktop_program: None,
@@ -55,6 +57,7 @@ pub struct Core {
     pub store: Arc<Store>,
     pub gate: Arc<ApprovalGate>,
     pub engines: Arc<EngineManager>,
+    pub workspace: Arc<Workspace>,
     pub skills: Arc<SkillService>,
     pub computer: Arc<ComputerGateway>,
     pub mcp: Arc<McpService>,
@@ -98,35 +101,35 @@ impl Core {
             http,
             config.engines.clone(),
         ));
-        let skills = Arc::new(SkillService::new(
+        let workspace = Arc::new(Workspace::new(
             store.clone(),
-            &config.data_dir,
-            config.skills_dir.clone(),
-        ));
-        if let Err(error) = skills.startup() {
-            tracing::warn!(%error, "skill pack is unavailable");
-        }
+            config.data_dir.clone(),
+            config.workspace_url.clone(),
+        )?);
+        let skills = Arc::new(SkillService::new(store.clone(), workspace.clone()));
         let computer = Arc::new(ComputerGateway::new(store.clone(), gate.clone(), backend));
         let mcp = Arc::new(McpService::new(
             gate.clone(),
             skills.clone(),
             computer.clone(),
         ));
-        let runs = Arc::new(RunManager::new(
-            store.clone(),
-            gate.clone(),
-            engines.clone(),
-            skills.clone(),
-            mcp.clone(),
-            config.base_url.clone(),
-            config.data_dir.join("runs"),
-        ));
+        let runs = Arc::new(RunManager::new(RunServices {
+            store: store.clone(),
+            gate: gate.clone(),
+            engines: engines.clone(),
+            skills: skills.clone(),
+            workspace: workspace.clone(),
+            mcp: mcp.clone(),
+            base_url: config.base_url.clone(),
+            runs_dir: config.data_dir.join("runs"),
+        }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
         Ok(Self {
             config,
             store,
             gate,
             engines,
+            workspace,
             skills,
             computer,
             mcp,
@@ -137,33 +140,10 @@ impl Core {
         })
     }
 
-    /// Registers a folder. Nothing runs in it; trust is a separate step.
-    pub fn add_project(&self, path: &str) -> Result<Project> {
-        let path = Path::new(path);
-        if !path.is_absolute() {
-            return Err(CoreError::Invalid("Choose an absolute folder path.".into()));
-        }
-        let canonical = crate::util::canonicalize(path)
-            .map_err(|_| CoreError::Invalid(format!("{} does not exist.", path.display())))?;
-        if !canonical.is_dir() {
-            return Err(CoreError::Invalid(format!(
-                "{} is not a folder.",
-                canonical.display()
-            )));
-        }
-        let name = canonical
-            .file_name()
-            .map_or_else(|| "root".to_owned(), |n| n.to_string_lossy().into_owned());
-        self.store.add_project(
-            &canonical.to_string_lossy(),
-            &name,
-            git::is_git_repo(&canonical),
-        )
-    }
-
     /// Creates a thread, with a worktree when asked. `git worktree add` runs repo
     /// hooks, so it needs a trusted folder like an engine does.
     pub async fn create_thread(&self, request: orbyn_contracts::CreateThread) -> Result<Thread> {
+        self.workspace.root()?;
         let project = self.store.project(&request.project_id)?;
         self.engines.driver(&request.engine)?;
         if let Some(profile) = request.skill_profile.as_deref()

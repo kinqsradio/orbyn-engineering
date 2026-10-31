@@ -12,6 +12,7 @@ credentials.
 | Wire contract | `crates/orbyn-contracts` | Serialized types shared with the UI; generated TS in `web/src/generated` |
 | Core | `crates/orbyn-core` | Store, run lifecycle, policy, audit, skills, engines, git, terminal, computer gateway |
 | Service | `crates/orbynd` | HTTP/SSE/WebSocket transport, static UI, access control, CLI entry point |
+| Workspace | `crates/orbyn-core` `workspace`, `projects` | Library checkout, target boundaries, library updates, project intake |
 | UI | `web` | Task flows only; it holds no authority and no lifecycle rules |
 | Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads its loopback URL, tray and app updates |
 
@@ -25,9 +26,12 @@ only on generated types and the HTTP API. Nothing in `web` may import Tauri APIs
 2. The Codex driver never calls `account/login/*`. It reads `account/read` only.
 3. Claude uses the CLI, never the Agent SDK. `--bare` is forbidden on subscription
    sessions because it ignores OAuth login.
-4. Orbyn writes nothing into target repositories or engine user config for skills.
-5. A folder must be trusted before any engine runs in it, because `claude -p`
-   runs repo hooks and `.mcp.json` without its own trust dialog.
+4. Orbyn writes nothing into target repositories or engine user config: no skills,
+   instructions, excludes or context maps. The project file is read-only to Orbyn.
+5. A folder must be trusted before an engine, project script or terminal runs in
+   it. Starting `claude -p` at the library root does not load a target's
+   `.mcp.json` (`claude mcp list` 2.1.150: absent there, present inside the target),
+   but an engine still acts on the target, so trust stays the gate.
 6. Audit rows are written before the effect they describe, and are append-only.
 7. Anything unknown fails closed: an unreachable approver means deny.
 8. An engine that cannot ask permission is labelled unmanaged in every surface.
@@ -113,17 +117,71 @@ store, policy or UI logic. Tiers: `native` (Claude, Codex), `acp` (one shared
 driver), `agui` (one shared driver, also the OpenBot connector) and `terminal`
 (PTY only, always unmanaged).
 
-Skill delivery order: native plugin, native skill root, MCP skill server, prompt
-bootstrap. A driver declares what it supports and core chooses the first match.
-Packs are built into app data with root and per-skill license notices, and each
-use re-verifies the ed25519-signed manifest and every file. A pack that fails
-verification stops the run. The signing key sits beside the pack, so this catches
-changes by anything that cannot read the key, not a process running as the user.
+Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
-- Claude: `--plugin-dir <pack>/claude-plugin`, per-thread `--mcp-config`,
-  `--permission-prompt-tool mcp__orbyn_engineering__approve`.
-- Codex: `skills/extraRoots/set`, per-thread `mcp_servers.orbyn_engineering` config,
-  app-server approval requests.
+- Claude starts at the workspace root and discovers `.claude/skills` and the
+  library's `AGENTS.md` natively. It has no `--plugin-dir`, and gets a per-run
+  `--mcp-config` and `--permission-prompt-tool mcp__orbyn_engineering__approve`.
+- Codex's process and `thread/start` use the workspace root for `.agents/skills`
+  and `AGENTS.md`. Codex always lets a turn write to its own cwd (observed on 0.166.0
+  through `command/exec`), so each `turn/start` sets `cwd` and
+  `sandboxPolicy.writableRoots` to the selected checkout. It has a per-thread
+  `mcp_servers.orbyn_engineering` config and app-server approval requests.
+- Non-native engines start in the checkout and reach skills through the MCP server,
+  or through the skill list in the bootstrap.
+
+## Workspace
+
+There is one managed workspace: a clone of the skills library at `<data>/workspace`
+(`--workspace-url`, `ORBYN_WORKSPACE_URL`), cloned with `core.symlinks=true`, or an
+existing checkout the user adopts in place and which is never moved. Engines and
+projects wait for this step (`409 workspace_required`).
+
+```text
+<workspace>/                 library Git root; engines start here
+  AGENTS.md, skills/, .claude/skills, .agents/skills
+  repo/                      ignored; independent Git histories
+    <slug>/                  target primary clone
+    <slug>-wt/<purpose>/     target worktree on a neutral `feat/<purpose>` branch
+```
+
+Boundaries are checked with Git metadata only and no project code runs. A library
+must be a real Git root with `skills/catalog.json` and `AGENTS.md`, and an ignored,
+untracked `repo/`. A target must be its own Git root under `repo/`, reached with no
+symlink, with its common Git directory inside `repo/`, and ignored by the library.
+
+Projects arrive one way each: `clone`, `create` (`git init`) or `import`. Import
+clones a local repository with no hardlinks, keeps its `origin` URL, leaves the
+source byte-identical, and reports the dirty files and unpushed branches it did not
+carry. An external path cannot be registered. A custom worktree location is not
+offered, and a registered worktree for a purpose is reused. Removing a project
+refuses dirty or unpushed work unless confirmed, and even then only unregisters it:
+files are deleted only when nothing is dirty, unpushed, ignored or in a worktree.
+
+The library changes only through the app. An update fetches, shows incoming commits
+and fast-forwards. It refuses local edits (`409 library_dirty`), active runs
+(`409 runs_active`) and diverged history (`409 not_fast_forward`). Local edits are
+shown as dirty and never reset. A rollback returns to the revision before the last
+update, only from exactly where that update left the library. Admission and a
+library move share a lock, so neither can pass the other's check.
+
+Each run's prompt starts with a short context block naming the library path and
+revision, the target Git root, the selected checkout and branch, and that the agent
+must read the target's instructions itself because discovery across a Git boundary
+is not guaranteed and target rules specialize shared methods. The event log keeps
+the user's prompt alone.
+
+A run writes only inside its selected checkout. The gate denies a file change
+outside it before policy runs, resolving `..` and symlinks, so no rule or person can
+widen it. Codex's sandbox enforces the same root. Claude's Bash has no OS sandbox,
+so a command is governed by policy and approval, not by this check. The library is
+read-only to engines unless a thread is opened on the library's own project, which
+needs trust and never reaches `repo/`.
+
+A skill's identity is the library revision plus its dirty flag. Profiles filter what
+the MCP server and the bootstrap list. On Windows `.claude/skills` and
+`.agents/skills` are Git symlinks; if they did not materialize, status says so and
+that session uses the MCP route. The tree is never rewritten.
 
 ## Per-thread MCP server
 
@@ -164,10 +222,10 @@ non-administrator users. Orbyn does not set its own ACL.
 
 ## Service configuration
 
-`orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--skills-dir`, `--remote`,
+`orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
-`{url, token}` on stdout once it can serve. Environment: `ORBYN_SKILLS_DIR`,
-`ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
+`{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
+for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`, `ORBYN_OFFLINE`
 (skip latest-version lookups) and `ORBYN_LOG`.
@@ -181,7 +239,13 @@ accept `?token=` because browsers cannot set headers on them.
 | Method and path | Purpose |
 | --- | --- |
 | `GET /api/info` | `ServerInfo` |
-| `GET, POST /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
+| `GET /api/workspace` | `WorkspaceStatus` |
+| `POST /api/workspace/setup` | Clone or adopt the library (`WorkspaceSetup`) |
+| `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |
+| `POST /api/workspace/rollback` | Back to the revision before the last update |
+| `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
+| `POST /api/projects/clone`, `/create`, `/import` | The only ways to add a project |
+| `DELETE /api/projects/:id?confirm=` | `ProjectRemoval`; `409 project_has_work` |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
 | `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads |
 | `PATCH /api/threads/:id` | `UpdateThread`: rename, pin, archive, settle, snooze, wake, unread, auto-settle |
@@ -197,7 +261,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
-| `GET /api/skills`, `POST /api/skills/rebuild` | Skill pack |
+| `GET /api/skills`, `POST /api/skills/rebuild` | Library skills; rebuild only re-reads them |
 | `GET, POST /api/skills/profiles`, `DELETE /api/skills/profiles/:id` | Profiles |
 | `GET, POST /api/policy/rules`, `DELETE /api/policy/rules/:id` | Policy |
 | `GET /api/audit?thread_id=&limit=` | Audit, newest first |

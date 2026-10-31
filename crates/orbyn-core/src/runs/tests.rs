@@ -90,8 +90,7 @@ async fn fixture(script: Script) -> Fixture {
 
 async fn fixture_with(script: Script, update: &str, update_timeout: Duration) -> Fixture {
     let dir = TempDir::new();
-    let project_dir = dir.path().join("project");
-    std::fs::create_dir_all(&project_dir).unwrap();
+    let root = crate::testing::library(&dir.path().join("library"));
     let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
     config.engines.lookup_latest = false;
     config.engines.update_timeout = update_timeout;
@@ -101,7 +100,14 @@ async fn fixture_with(script: Script, update: &str, update_timeout: Duration) ->
         capabilities: capabilities(),
         update_script: update.to_owned(),
     }));
-    let project = core.add_project(project_dir.to_str().unwrap()).unwrap();
+    core.workspace
+        .setup(orbyn_contracts::WorkspaceSetup {
+            url: None,
+            adopt_path: Some(root.to_string_lossy().into_owned()),
+        })
+        .await
+        .unwrap();
+    let project = core.new_project("project").await.unwrap();
     core.store.trust_project(&project.id, "t").unwrap();
     let thread = core
         .create_thread(CreateThread {
@@ -295,6 +301,7 @@ async fn engine_exit_during_approval_fails_the_run_and_expires() {
                     target: "ls".into(),
                     summary: "ls".into(),
                     detail: Value::Null,
+                    paths: Vec::new(),
                     reply,
                 }))
                 .await;
@@ -520,6 +527,56 @@ async fn admission_is_refused_while_an_update_runs() {
     assert_eq!(f.core.store.latest_seq(&f.thread).unwrap(), 0);
     assert!(updating.await.unwrap().is_ok());
     assert!(f.core.runs.admit(&f.thread, "go", "t").is_ok());
+}
+
+#[tokio::test]
+async fn run_context_names_the_checkout_and_the_prompt_stays_clean_in_the_log() {
+    let seen: Arc<Mutex<Option<RunSpec>>> = Arc::default();
+    let script: Script = {
+        let seen = seen.clone();
+        Arc::new(move |spec, events, _| {
+            *seen.lock().unwrap() = Some(spec);
+            tokio::spawn(async move {
+                let _ = events
+                    .send(EngineEvent::Finished(EngineOutcome::Completed))
+                    .await;
+            })
+        })
+    };
+    let f = fixture(script).await;
+    let run = f.core.runs.admit(&f.thread, "do the thing", "t").unwrap();
+    until_terminal(&f.core, &run.id).await;
+    let spec = seen.lock().unwrap().clone().unwrap();
+    let root = f.core.workspace.root().unwrap();
+    assert_eq!(spec.checkout, root.join("repo/project"));
+    assert_eq!(
+        spec.cwd, spec.checkout,
+        "a non-native engine works in the checkout"
+    );
+    assert!(spec.prompt.ends_with("do the thing"));
+    assert_eq!(spec.user_prompt, "do the thing");
+    for needle in [
+        root.to_str().unwrap(),
+        spec.checkout.to_str().unwrap(),
+        "Target rules specialize shared methods",
+        "discovery across a Git boundary",
+        "Skills in scope: how",
+    ] {
+        assert!(spec.prompt.contains(needle), "{needle}");
+    }
+    assert_eq!(
+        f.core.store.transcript(&f.thread, 1000).unwrap().trim(),
+        "do the thing"
+    );
+}
+
+#[tokio::test]
+async fn a_moved_checkout_fails_the_run_instead_of_escaping() {
+    let f = fixture(finished()).await;
+    let thread = f.core.store.thread(&f.thread).unwrap();
+    std::fs::remove_dir_all(&thread.cwd).unwrap();
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Failed);
 }
 
 #[tokio::test]
