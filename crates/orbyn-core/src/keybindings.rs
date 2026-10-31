@@ -58,6 +58,21 @@ const DEFAULTS: &[(&str, &str, &str)] = &[
         "composer.sendAlternate",
         "composerFocus && turnRunning",
     ),
+    (
+        "mod+enter",
+        "composer.sendBackground",
+        "composerFocus && draftRoute",
+    ),
+    (
+        "mod+alt+enter",
+        "composer.sendBackground",
+        "composerFocus && draftRoute",
+    ),
+    (
+        "mod+alt+enter",
+        "composer.sendAndNewThread",
+        "composerFocus && !draftRoute",
+    ),
     ("mod+n", "chat.new", "!terminalFocus"),
     ("mod+shift+n", "chat.newLocal", "!terminalFocus"),
     ("mod+alt+n", "chat.newWithoutProject", "!terminalFocus"),

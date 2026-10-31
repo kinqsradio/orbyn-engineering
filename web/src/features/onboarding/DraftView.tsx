@@ -1,8 +1,8 @@
 import { chooseDraftEngine } from "./draftEngine";
 import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { create } from "zustand";
 import { api } from "../../api/client";
+import { useCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Project } from "../../api/types";
 import { slugify } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
@@ -21,17 +21,22 @@ import { ACCESS, EffortTrigger, useTraitsMenu } from "../thread/ComposerTraits";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
 import { resolveModel, useEngineModels } from "../thread/modelStore";
 import { DraftProjectPicker } from "./DraftProjectPicker";
+import { DRAFT_KEY, SCRATCH, useDraftStore } from "./draftStore";
 
 type OpenMenu = { kind: "checkout"; x: number; y: number };
 
-const DRAFT_KEY = "new-thread";
-export const SCRATCH = "scratch";
+export { SCRATCH } from "./draftStore";
 
-/** Files wait here until a thread exists, so a project switch or the trust step keeps them. */
-const useDraftFiles = create<{ files: File[]; set(files: File[]): void }>((set) => ({
-  files: [],
-  set: (files) => set({ files }),
-}));
+interface ModelChoice {
+  engine: string;
+  model: string | null;
+}
+
+const sameChoice = (a: ModelChoice, b: ModelChoice) => a.engine === b.engine && a.model === b.model;
+
+/** A worktree purpose nothing else has, so each background send gets its own checkout. */
+const uniquePurpose = (base: string, tag: string | null) =>
+  [slugify(base) || "thread", tag ? slugify(tag) : null, crypto.randomUUID().slice(0, 6)].filter(Boolean).join("-");
 
 function DraftModelControls({
   engines,
@@ -40,8 +45,10 @@ function DraftModelControls({
   effort,
   extras,
   access,
+  extraModels,
   register,
   onModel,
+  onToggleExtra,
   onEffort,
   onOption,
   onAccess,
@@ -52,8 +59,10 @@ function DraftModelControls({
   effort: string | null;
   extras: Record<string, string>;
   access: PermissionMode | null;
+  extraModels: ModelChoice[];
   register(open: () => (element: HTMLElement) => void): void;
-  onModel(next: { engine: string; model: string | null }): void;
+  onModel(next: ModelChoice): void;
+  onToggleExtra(next: ModelChoice): void;
   onEffort(value: string): void;
   onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
@@ -68,7 +77,13 @@ function DraftModelControls({
   }, [register]);
   return (
     <>
-      <ModelPickerTrigger engines={engines} selected={{ engine, model }} onPick={onModel} />
+      <ModelPickerTrigger
+        engines={engines}
+        selected={{ engine, model }}
+        extra={extraModels}
+        onPick={onModel}
+        onToggleExtra={onToggleExtra}
+      />
       <EffortTrigger
         model={resolved}
         effort={effort}
@@ -98,8 +113,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const prompt = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
   const setDraft = useUi((state) => state.setDraft);
   const setPalette = useUi((state) => state.setPalette);
-  const files = useDraftFiles((state) => state.files);
-  const setFiles = useDraftFiles((state) => state.set);
+  const files = useDraftStore((state) => state.files);
+  const setFiles = useDraftStore((state) => state.setFiles);
+  const reused = useDraftStore((state) => state.reuseWorktree);
+  const setReused = useDraftStore((state) => state.setReuseWorktree);
   const fileInput = useRef<HTMLInputElement>(null);
   const adoptLayout = useUi((state) => state.adoptDraftLayout);
   const panelPref = useUi((state) => state.panelOpen);
@@ -109,7 +126,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const paneShown = panelPref === true && layoutWidth !== "narrow";
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
-  const [worktree, setWorktree] = useState<string | null>(null);
+  const [worktree, setWorktree] = useState<string | null>(reused);
+  const [extraModels, setExtraModels] = useState<ModelChoice[]>([]);
+  const sendBackground = useRef<() => boolean>(() => false);
+  useCommand("composer.sendBackground", () => sendBackground.current());
   const [baseBranch, setBaseBranch] = useState("");
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [busy, setBusy] = useState(false);
@@ -118,6 +138,12 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   useLayoutEffect(() => {
     field.current?.focus();
   }, []);
+  useEffect(() => {
+    setPrefs({ draftProject: chosenProject });
+  }, [chosenProject, setPrefs]);
+  useEffect(() => {
+    if (reused) setWorktree(reused);
+  }, [reused]);
 
   if (!projects || !engines) return <div className="page"><Loading label="Loading" rows={3} /></div>;
   const scratch = chosenProject === SCRATCH;
@@ -141,47 +167,116 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     setMenu({ kind, x: rect.left, y: rect.bottom + 4 });
   };
 
+  const untrusted = () => {
+    if (!project || project.trusted) return false;
+    navigate({ name: "trust", projectId: project.id, threadId: null });
+    return true;
+  };
+
+  /** Creates and starts one thread, leaving the draft and the route alone. */
+  const launch = async (choice: ModelChoice, purpose: string | null, text: string, picked: boolean) => {
+    const thread = await api.createThread({
+      ...(project ? { project_id: project.id } : {}),
+      engine: choice.engine,
+      model: choice.model,
+      title: null,
+      worktree: purpose,
+      ...(purpose !== null && purpose !== reused && baseBranch.trim() ? { base_branch: baseBranch.trim() } : {}),
+      skill_profile: null,
+    });
+    putThread(thread);
+    const attached = await Promise.all(files.map((file) => api.uploadAttachment(thread.id, file)));
+    const run = await api.startRun(
+      thread.id,
+      text,
+      attached.map((file) => file.id),
+      {
+        ...(picked && pickedEffort ? { effort: pickedEffort } : {}),
+        ...(picked && Object.keys(extras).length > 0 ? { options: extras } : {}),
+        ...(access === "supervised" ? {} : { permission_mode: access }),
+      },
+    );
+    addPrompt(thread.id, { runId: run.id, text });
+    return thread;
+  };
+
   const send = async () => {
     const text = prompt.trim();
-    if (!text || busy || !engine) return;
-    if (project && !project.trusted) {
-      navigate({ name: "trust", projectId: project.id, threadId: null });
+    if (!text || busy || !engine || untrusted()) return;
+    if (extraModels.length > 0) {
+      void sendEach(text);
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const thread = await api.createThread({
-        ...(project ? { project_id: project.id } : {}),
-        engine: engine.id,
-        model: pickedModel,
-        title: null,
-        worktree: worktree ? slugify(worktree) : null,
-        ...(worktree && baseBranch.trim() ? { base_branch: baseBranch.trim() } : {}),
-        skill_profile: null,
-      });
-      putThread(thread);
+      const purpose = worktree === null ? null : worktree === reused ? worktree : slugify(worktree);
+      const thread = await launch({ engine: engine.id, model: pickedModel }, purpose, text, true);
       setPrefs({ lastModel: { engine: engine.id, model: pickedModel, effort: pickedEffort } });
       adoptLayout(thread.id);
-      const attached = await Promise.all(files.map((file) => api.uploadAttachment(thread.id, file)));
-      const run = await api.startRun(
-        thread.id,
-        text,
-        attached.map((file) => file.id),
-        {
-          ...(pickedEffort ? { effort: pickedEffort } : {}),
-          ...(Object.keys(extras).length > 0 ? { options: extras } : {}),
-          ...(access === "supervised" ? {} : { permission_mode: access }),
-        },
-      );
-      addPrompt(thread.id, { runId: run.id, text });
       setPrompt("");
       setFiles([]);
+      setReused(null);
       navigate({ name: "thread", id: thread.id });
     } catch (failure) {
       setError(toFailure(failure).message);
       setBusy(false);
     }
+  };
+
+  /** Starts without leaving: the next draft keeps its checkout choice, each send its own worktree. */
+  const startInBackground = async () => {
+    const text = prompt.trim();
+    if (!text || busy || !engine || untrusted()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const purpose =
+        worktree === null ? null : worktree === reused ? worktree : uniquePurpose(worktree, null);
+      const thread = await launch({ engine: engine.id, model: pickedModel }, purpose, text, true);
+      setPrompt("");
+      setFiles([]);
+      useUi.getState().pushToast(`Started ${thread.title}`);
+    } catch (failure) {
+      setError(toFailure(failure).message);
+    } finally {
+      setBusy(false);
+      field.current?.focus();
+    }
+  };
+
+  /** One thread and one worktree for each model picked. */
+  const sendEach = async (text: string) => {
+    if (!engine) return;
+    if (!project?.is_git) {
+      setError("Sending to several models needs a Git project.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const choices = [{ engine: engine.id, model: pickedModel }, ...extraModels];
+    const results = await Promise.allSettled(
+      choices.map((choice, at) =>
+        launch(choice, uniquePurpose(worktree ?? "multi", choice.model ?? choice.engine), text, at === 0),
+      ),
+    );
+    setBusy(false);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed) {
+      setError(toFailure(failed.reason).message);
+      return;
+    }
+    setPrompt("");
+    setFiles([]);
+    setExtraModels([]);
+    useUi.getState().pushToast(`Started ${choices.length} threads`);
+    field.current?.focus();
+  };
+
+  sendBackground.current = () => {
+    if (!prompt.trim() || busy || !engine) return false;
+    void (extraModels.length > 0 ? send() : startInBackground());
+    return true;
   };
 
   return (
@@ -285,10 +380,11 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                     placeholder="Ask anything. @ files, $ skills, / commands"
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                        event.preventDefault();
-                        void send();
-                      }
+                      if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                      // With a modifier the shell's rules decide, which start in the background.
+                      if (event.metaKey || event.ctrlKey) return;
+                      event.preventDefault();
+                      void send();
                     }}
                   />
                   <div className="composer-bar">
@@ -316,9 +412,18 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         effort={pickedEffort}
                         extras={extras}
                         access={unmanaged ? null : access}
+                        extraModels={extraModels}
                         register={setOpenTraits}
+                        onToggleExtra={(next) =>
+                          setExtraModels(
+                            extraModels.some((entry) => sameChoice(entry, next))
+                              ? extraModels.filter((entry) => !sameChoice(entry, next))
+                              : [...extraModels, next],
+                          )
+                        }
                         onModel={(next) => {
                           const picked = { ...next, effort: pickedEffort };
+                          setExtraModels([]);
                           setExtras({});
                           setPickedHere(true);
                           setChoice(picked);
@@ -356,7 +461,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                           onClick={(event) => open("checkout", event.currentTarget)}
                         >
                           <Folder size={12} aria-hidden />
-                          {worktree === null ? "Current checkout" : "New worktree"}
+                          {worktree === null ? "Current checkout" : worktree === reused ? "This worktree" : "New worktree"}
                         </button>
                       </dd>
                     </div>
@@ -374,18 +479,22 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         <dt className="sr-only">Worktree purpose</dt>
                         <dd>
                           <GitBranch size={12} aria-hidden />
-                          <input
-                            className="worktree-purpose"
-                            aria-label="Worktree purpose"
-                            placeholder="purpose"
-                            value={worktree}
-                            spellCheck={false}
-                            onChange={(event) => setWorktree(event.target.value)}
-                          />
+                          {worktree === reused ? (
+                            worktree
+                          ) : (
+                            <input
+                              className="worktree-purpose"
+                              aria-label="Worktree purpose"
+                              placeholder="purpose"
+                              value={worktree}
+                              spellCheck={false}
+                              onChange={(event) => setWorktree(event.target.value)}
+                            />
+                          )}
                         </dd>
                       </div>
                     ) : null}
-                    {worktree !== null ? (
+                    {worktree !== null && worktree !== reused ? (
                       <div>
                         <dt className="sr-only">Base branch</dt>
                         <dd>
@@ -431,8 +540,20 @@ export function DraftView({ projectId }: { projectId: string | null }) {
           label={menu.kind}
           onClose={() => setMenu(null)}
           items={[
-            { label: "Current checkout", selected: worktree === null, onSelect: () => setWorktree(null) },
-            { label: "New worktree", selected: worktree !== null, onSelect: () => setWorktree("") },
+            {
+              label: "Current checkout",
+              selected: worktree === null,
+              onSelect: () => {
+                setWorktree(null);
+                setReused(null);
+              },
+            },
+            ...(reused ? [{ label: "This worktree", selected: worktree === reused, onSelect: () => setWorktree(reused) }] : []),
+            {
+              label: "New worktree",
+              selected: worktree !== null && worktree !== reused,
+              onSelect: () => setWorktree(""),
+            },
           ]}
         />
       ) : null}

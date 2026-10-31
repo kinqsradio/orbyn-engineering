@@ -8,6 +8,7 @@ import {
   FolderTree,
   GitBranch,
   Hash,
+  Link,
   MailOpen,
   Pencil,
   Pin,
@@ -24,11 +25,13 @@ import { useState } from "react";
 import type { Thread } from "../../api/types";
 import type { SnoozePreset } from "../../generated/SnoozePreset";
 import { navigate } from "../../state/route";
+import { useDraftStore, worktreePurpose } from "../onboarding/draftStore";
 import { Button, Field } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import type { MenuItem } from "../../ui/Menu";
 import {
   archiveThreads,
+  copyReference,
   copyText,
   pinThreads,
   regenerateTitles,
@@ -88,6 +91,18 @@ export function threadMenuItems(input: ThreadMenuInput): MenuItem[] {
             label: `New thread on ${branch}`,
             icon: icon(SquarePen),
             onSelect: () => navigate({ name: "new", projectId: thread.project_id }),
+          },
+        ]
+      : []),
+    ...(thread.worktree
+      ? [
+          {
+            label: "New thread in this worktree",
+            icon: icon(SquarePen),
+            onSelect: () => {
+              useDraftStore.getState().setReuseWorktree(worktreePurpose(thread.worktree?.path ?? ""));
+              navigate({ name: "new", projectId: thread.project_id });
+            },
           },
         ]
       : []),
@@ -153,6 +168,7 @@ export function threadMenuItems(input: ThreadMenuInput): MenuItem[] {
       icon: icon(Copy),
       separatorBefore: true,
       children: [
+        { label: "Reference", icon: icon(Link), onSelect: () => void copyReference(thread) },
         { label: "Path", icon: icon(Folder), onSelect: () => void copyText(thread.cwd, "Copied path") },
         ...(branch
           ? [{ label: "Branch", icon: icon(GitBranch), onSelect: () => void copyText(branch, "Copied branch") }]
