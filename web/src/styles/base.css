@@ -846,6 +846,9 @@ input[type="radio"] {
   flex-direction: column;
   gap: 8px;
 }
+.clone-job {
+  max-width: 420px;
+}
 .clone-job-text {
   min-width: 0;
   overflow-wrap: anywhere;

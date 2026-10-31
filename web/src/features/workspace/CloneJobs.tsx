@@ -33,11 +33,12 @@ let polling = false;
 async function follow() {
   if (polling) return;
   polling = true;
-  while (running()) {
+  // At least once, since a clone can end before its first answer reaches here.
+  do {
     await new Promise((done) => setTimeout(done, POLL_MS));
     const jobs = await api.clones().catch(() => null);
     if (jobs) take(jobs);
-  }
+  } while (running());
   polling = false;
 }
 

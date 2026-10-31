@@ -409,14 +409,14 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     go(shown);
   });
   // Keys can outrun the tab list, so each press steps from the last one sent.
-  const sentZoom = useRef(1);
+  const sentZoom = useRef<number | null>(null);
   const shownZoom = active?.zoom;
   useEffect(() => {
-    if (shownZoom !== undefined) sentZoom.current = shownZoom;
+    if (shownZoom === sentZoom.current) sentZoom.current = null;
   }, [shownZoom]);
   const zoomTo = (zoom: (from: number) => number) => {
     if (!active) return false;
-    sentZoom.current = zoom(sentZoom.current);
+    sentZoom.current = zoom(sentZoom.current ?? active.zoom);
     view({ zoom: sentZoom.current });
   };
   useCommand("preview.zoomIn", () => zoomTo((from) => stepZoom(from, true)));
