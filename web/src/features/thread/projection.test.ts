@@ -43,6 +43,28 @@ describe("applyEvents", () => {
     expect(late.lastSeq).toBe(3);
   });
 
+  it("keeps a reused id apart per run", () => {
+    const inRun = (seq: number, runId: string, event: AgUiEvent): WireThreadEvent => ({ ...ev(seq, event), run_id: runId });
+    const turn = (at: number, runId: string, delta: string) => [
+      inRun(at, runId, { type: "TEXT_MESSAGE_START", messageId: "msg1", role: "assistant" }),
+      inRun(at + 1, runId, { type: "TEXT_MESSAGE_CONTENT", messageId: "msg1", delta }),
+      inRun(at + 2, runId, { type: "TEXT_MESSAGE_END", messageId: "msg1" }),
+      inRun(at + 3, runId, { type: "REASONING_MESSAGE_START", messageId: "rs1", role: "reasoning" }),
+      inRun(at + 4, runId, { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "Read" }),
+    ];
+    const log = applyEvents("t", emptyLog, [...turn(1, "a", "first"), ...turn(6, "b", "second")]);
+    expect(log.items.map((item) => [item.runId, item.kind])).toEqual([
+      ["a", "message"],
+      ["a", "reasoning"],
+      ["a", "tool"],
+      ["b", "message"],
+      ["b", "reasoning"],
+      ["b", "tool"],
+    ]);
+    expect(log.items[0]).toMatchObject({ text: "first" });
+    expect(log.items[3]).toMatchObject({ text: "second" });
+  });
+
   it("joins tool arguments and results", () => {
     const log = applyEvents("t", emptyLog, [
       ev(1, { type: "TOOL_CALL_START", toolCallId: "c", toolCallName: "Read" }),
