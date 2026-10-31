@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -8,6 +8,17 @@ import { createInterface } from "node:readline";
 const WEB = resolve(import.meta.dirname, "../..");
 const BIN = process.env.ORBYN_BIN ?? resolve(WEB, "../target/debug/orbynd");
 const SCRIPTED = resolve(WEB, "e2e/real/scripted-engine.mjs");
+
+/** The shell from `npm run test:e2e:install`, so the service's previews never open an installed browser. */
+function headlessShell(): string {
+  const root = resolve(WEB, "node_modules/playwright-core/.local-browsers");
+  const dir = existsSync(root) ? readdirSync(root).find((name) => name.startsWith("chromium_headless_shell-")) : undefined;
+  const build = dir && join(root, dir);
+  const inner = build && readdirSync(build).find((name) => name.startsWith("chrome-headless-shell"));
+  const binary = inner && build && join(build, inner, process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell");
+  if (!binary || !existsSync(binary)) throw new Error("Install the headless shell first: npm run test:e2e:install");
+  return binary;
+}
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
 
@@ -49,7 +60,7 @@ export async function startService(
       : {};
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, ORBYN_BROWSER: headlessShell(), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
