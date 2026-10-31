@@ -163,18 +163,13 @@ describe("App against the mock API", () => {
     mock.reset("empty");
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Import local folder" }));
-    await user.click(await screen.findByRole("button", { name: "code" }));
-    await user.click(await screen.findByRole("button", { name: /payments-service/ }));
-    await waitFor(() => expect(screen.getByTitle("/Users/dev/code/payments-service")).toBeInTheDocument());
-    expect(screen.getByText(/original folder stays untouched/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Import this folder" }));
-
-    const report = await screen.findByRole("region", { name: "Import result" });
-    expect(within(report).getByText("src/draft.rs")).toBeInTheDocument();
-    expect(within(report).getByText("spike/retry-queue")).toBeInTheDocument();
-    await user.click(within(report).getByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("heading", { name: "What should we work on?" })).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Add project" }).at(-1)!);
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
+    const field = await within(palette).findByLabelText("Folder path");
+    await user.clear(field);
+    await user.type(field, "/Users/dev/code/payments-service{Enter}");
 
     expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
     expect(screen.getByText(/execute this repository's hooks/)).toBeInTheDocument();
@@ -185,27 +180,44 @@ describe("App against the mock API", () => {
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/threads\//));
   });
 
-  it("clones from a URL and keeps it on failure", async () => {
-    mock.fail("/api/projects/clone", 1, 502, "clone_failed", "The remote refused.");
+  const openAddProject = async (user: ReturnType<typeof userEvent.setup>) => {
+    const nav = await screen.findByRole("navigation", { name: "Workspace" });
+    await user.click(await within(nav).findByRole("button", { name: "Add project" }));
+    return screen.findByRole("dialog", { name: "Command palette" });
+  };
+
+  it("clones from a URL and keeps the URL on failure", async () => {
+    mock.fail("/api/clones", 1, 502, "clone_failed", "The remote refused.");
     const user = userEvent.setup();
-    go("#/add-project");
     render(<App />);
-    await user.type(await screen.findByLabelText("Repository URL"), "https://example.com/team/repo.git");
-    await user.click(screen.getByRole("button", { name: "Clone project" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("The remote refused.");
-    expect(screen.getByLabelText("Repository URL")).toHaveValue("https://example.com/team/repo.git");
-    await user.click(screen.getByRole("button", { name: "Retry clone" }));
-    expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
+    const palette = await openAddProject(user);
+    await user.click(within(palette).getByRole("button", { name: /Git URL/ }));
+    const field = within(palette).getByLabelText("Git clone URL");
+    await user.type(field, "https://example.com/team/repo.git{Enter}");
+    expect(await within(palette).findByRole("alert")).toHaveTextContent("The remote refused.");
+    expect(field).toHaveValue("https://example.com/team/repo.git");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("heading", { name: "Trust this folder?" }, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it("creates a new project", async () => {
     const user = userEvent.setup();
-    go("#/add-project");
     render(<App />);
-    await user.click(await screen.findByRole("tab", { name: "Create new" }));
-    await user.type(screen.getByLabelText("Project name"), "fresh-idea");
-    await user.click(screen.getByRole("button", { name: "Create project" }));
+    const palette = await openAddProject(user);
+    await user.click(within(palette).getByRole("button", { name: /New project/ }));
+    await user.type(within(palette).getByLabelText("Project name"), "fresh-idea{Enter}");
     expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();
+  });
+
+  it("adds a local folder where it is, then asks for trust", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const palette = await openAddProject(user);
+    await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
+    const field = await within(palette).findByLabelText("Folder path");
+    await user.clear(field);
+    await user.type(field, "/Users/dev/code/site/{Enter}");
+    expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
   });
 
   it("blocks everything on first run until setup finishes", async () => {
@@ -219,7 +231,7 @@ describe("App against the mock API", () => {
     expect(await screen.findByText("Setup didn't finish")).toBeInTheDocument();
     expect(screen.getByText(/couldn't be reached/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("heading", { name: "Add your first project" }, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we work on?" }, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it("adopts an existing library folder", async () => {
@@ -228,13 +240,13 @@ describe("App against the mock API", () => {
     render(<App />);
     await user.click(await screen.findByRole("radio", { name: /Adopt an existing library/ }));
     await user.click(await screen.findByRole("button", { name: "Adopt this folder" }));
-    expect(await screen.findByRole("heading", { name: "Add your first project" }, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we work on?" }, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it("reviews incoming commits before updating the library", async () => {
     for (const thread of mock.threads) thread.active_run = null;
     const user = userEvent.setup();
-    go("#/settings/projects");
+    go("#/settings/maintenance");
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Review update" }));
     const dialog = await screen.findByRole("dialog", { name: "Update the library?" });
@@ -245,7 +257,7 @@ describe("App against the mock API", () => {
   });
 
   it("disables library updates while runs are active", async () => {
-    go("#/settings/projects");
+    go("#/settings/maintenance");
     render(<App />);
     expect(await screen.findByText(/runs are active/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
@@ -255,25 +267,27 @@ describe("App against the mock API", () => {
     mock.patchWorkspace({
       library: { ...mock.workspace.library!, dirty: true, dirty_files: ["skills/a.md"] },
     });
-    go("#/settings/projects");
+    go("#/settings/maintenance");
     render(<App />);
     expect(await screen.findByText(/local changes/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review update" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Roll back" })).toBeDisabled();
   });
 
-  it("blocks removing a project with unpushed work until acknowledged", async () => {
+  it("only unregisters a project unless the server reports a managed folder with work", async () => {
+    mock.fail("/api/projects/", 1, 409, "project_has_work", "This managed folder has unpushed work.");
     const user = userEvent.setup();
     go("#/settings/projects");
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Remove marketing-site" }));
     const dialog = await screen.findByRole("dialog", { name: "Remove marketing-site?" });
-    expect(within(dialog).getByText(/uncommitted changes/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Files on disk are not touched/)).toBeInTheDocument();
     const confirm = within(dialog).getByRole("button", { name: "Remove project" });
+    await user.click(confirm);
+    expect(await within(dialog).findByText(/managed folder has unpushed work/)).toBeInTheDocument();
     expect(confirm).toBeDisabled();
     await user.click(within(dialog).getByRole("checkbox"));
     await user.click(confirm);
-    expect(await screen.findByText(/stays at \/Users\/dev\/code\/marketing-site/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("heading", { name: "marketing-site" })).toBeNull());
   });
 

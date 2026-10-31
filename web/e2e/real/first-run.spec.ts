@@ -45,7 +45,6 @@ test("first run shows a composed setup card and reaches the workspace", async ({
 
   await page.getByRole("radio", { name: /Set up managed workspace/ }).check();
   await page.getByRole("button", { name: "Set up workspace" }).click();
-  await expect(page.getByRole("link", { name: "Review trust for Skills library" })).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Skills library")).toBeHidden();
 });

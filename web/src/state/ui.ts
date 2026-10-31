@@ -32,6 +32,8 @@ interface Prefs {
   projectSort: "updated_at" | "created_at";
 }
 
+export type PaletteStart = "root" | "add-project";
+
 export const DEFAULT_SIDEBAR_WIDTH = 208;
 const TOAST_MS = 4000;
 let toastCounter = 0;
@@ -59,6 +61,8 @@ const defaults: Prefs = {
 
 interface UiState extends Prefs {
   drafts: Record<string, string>;
+  palette: PaletteStart | null;
+  setPalette(palette: PaletteStart | null): void;
   lastThreadId: string | null;
   toasts: { id: number; text: string }[];
   pushToast(text: string): void;
@@ -112,6 +116,10 @@ export const useUi = create<UiState>((set, get) => {
     ...defaults,
     ...savedPrefs(),
     drafts: readJson<Record<string, string>>(DRAFTS_KEY) ?? {},
+    palette: null,
+    setPalette(palette) {
+      set({ palette });
+    },
     lastThreadId: null,
     toasts: [],
     pushToast(text) {

@@ -25,7 +25,7 @@ export type { EngineTier } from "../generated/EngineTier";
 export type { FileDiff } from "../generated/FileDiff";
 export type { FsEntry } from "../generated/FsEntry";
 export type { FsListing } from "../generated/FsListing";
-export type { ImportReport } from "../generated/ImportReport";
+export type { CloneJob } from "../generated/CloneJob";
 export type { IncomingCommit } from "../generated/IncomingCommit";
 export type { LibraryStatus } from "../generated/LibraryStatus";
 export type { LibraryUpdateResult } from "../generated/LibraryUpdateResult";

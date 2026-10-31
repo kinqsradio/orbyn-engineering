@@ -4,10 +4,12 @@ import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
+import { FallbackNotice, Library } from "./Projects";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 export function MaintenanceSection() {
   const updates = useWorkspace((state) => state.updates.data);
+  const library = useWorkspace((state) => state.managed.data?.library);
   const unsupported = useWorkspace((state) => state.updatesUnsupported);
   const putUpdates = useWorkspace((state) => state.putUpdates);
   const settings = useAsync("server-settings", (signal) => api.settings(signal));
@@ -32,6 +34,8 @@ export function MaintenanceSection() {
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Maintenance
       </h1>
+      {library?.native_skills === false ? <FallbackNotice /> : null}
+      {library ? <Library library={library} /> : null}
       <SettingGroup title="Updates">
         {unsupported || updates?.app.unconfigured ? (
           <SettingRow title="App updates" description="Updates aren't set up for this build." />

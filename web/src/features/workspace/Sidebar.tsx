@@ -26,7 +26,7 @@ import { toFailure } from "../../lib/useAsync";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
-import { useWorkspace } from "../../state/workspace";
+import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { OrbynMark, ProjectBadge } from "../../ui/badges";
 import { Collapsible } from "../../ui/Collapsible";
 import { IconButton } from "../../ui/controls";
@@ -339,6 +339,8 @@ const searchFields = (thread: Thread, project: string) =>
 
 export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const projects = useWorkspace((state) => state.projects);
+  const visibleProjects = useVisibleProjects();
+  const setPalette = useUi((state) => state.setPalette);
   const threads = useWorkspace((state) => state.threads);
   const putThread = useWorkspace((state) => state.putThread);
   const refreshAll = useWorkspace((state) => state.refreshAll);
@@ -378,7 +380,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const grabOffset = useRef(0);
   useLoopsWhileVisible(nav);
   const selectedThread = route.name === "thread" ? route.id : null;
-  const list = useMemo(() => projects.data ?? [], [projects.data]);
+  const list = useMemo(() => visibleProjects ?? [], [visibleProjects]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -759,9 +761,9 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           </button>
         )}
         <ProjectFilter projects={list} />
-        <a className="icon-btn" href={routeHref({ name: "add-project" })} aria-label="Add project" title="Add project">
+        <IconButton label="Add project" onClick={() => setPalette("add-project")}>
           <FolderPlus size={16} aria-hidden />
-        </a>
+        </IconButton>
         <a
           className="icon-btn"
           href={routeHref({ name: "new", projectId: null })}

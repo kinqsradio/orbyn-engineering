@@ -98,7 +98,7 @@ test("first run blocks the workspace until setup completes", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "Set up your workspace" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeHidden();
   await page.getByRole("button", { name: "Set up workspace" }).click();
-  await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible({ timeout: 8000 });
 });
 
 const openHero = async (page: Page, animationMs: number) => {
@@ -236,4 +236,42 @@ test("usage opens from the sidebar and closes back to the thread", async ({ page
   await page.keyboard.press("t");
   await usage.getByRole("button", { name: "Close usage" }).click();
   await expect(page).toHaveURL(/threads\/t-done/);
+});
+
+test("the draft keeps its text and files through a project switch and adding a folder", async ({ page }) => {
+  await page.goto("/#/new");
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("Keep this");
+  await page.getByLabel("Attach files").first().setInputFiles({
+    name: "notes.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("notes"),
+  });
+  await page.locator(".hero-project").click();
+  const search = page.getByRole("textbox", { name: "Search projects" });
+  await search.fill("market");
+  await search.press("Enter");
+  await expect(page.locator(".hero-project")).toHaveText("marketing-site");
+  await expect(message).toHaveValue("Keep this");
+
+  await page.locator(".hero-project").click();
+  await page.getByRole("option", { name: "Add project" }).click();
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("button", { name: /Local folder/ }).click();
+  await palette.getByLabel("Folder path").fill("/Users/dev/code/fresh-folder");
+  await palette.getByLabel("Folder path").press("Enter");
+  await page.getByRole("button", { name: "Trust folder" }).click();
+  await expect(page.locator(".hero-project")).toHaveText("fresh-folder");
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("Keep this");
+  await expect(page.getByRole("list", { name: "Attachments" })).toContainText("notes.txt");
+});
+
+test("New thread in opens a draft in the chosen project", async ({ page }) => {
+  await page.goto("/#/new");
+  await expect(page.locator(".hero-project")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("button", { name: "New thread in..." }).click();
+  await palette.getByRole("button", { name: "marketing-site" }).click();
+  await expect(page.locator(".hero-project")).toHaveText("marketing-site");
 });

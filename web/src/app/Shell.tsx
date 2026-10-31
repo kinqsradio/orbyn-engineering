@@ -1,6 +1,6 @@
 import { PanelLeft } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { AddProject } from "../features/onboarding/AddProject";
+import { useEffect, useRef, type CSSProperties } from "react";
+import { NoProjects } from "../features/onboarding/NoProjects";
 import { DraftView } from "../features/onboarding/DraftView";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
@@ -22,7 +22,7 @@ import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
 import { useUi, type ContextTab } from "../state/ui";
-import { useWorkspace } from "../state/workspace";
+import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
 
 const POLL_MS = 4000;
@@ -32,13 +32,11 @@ type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
     case "home":
-      return needsProject ? <AddProject /> : <DraftView key="draft" projectId={null} />;
+      return needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />;
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":
       return <DraftView key={route.projectId ?? "draft"} projectId={route.projectId} />;
-    case "add-project":
-      return <AddProject />;
     case "trust":
       return <TrustFolder projectId={route.projectId} threadId={route.threadId} />;
   }
@@ -158,7 +156,7 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
 export function Shell() {
   const route = useRoute();
   const layout = useLayoutWidth();
-  const projects = useWorkspace((state) => state.projects.data);
+  const projects = useVisibleProjects();
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
   const sidebarWidth = useUi((state) => state.sidebarWidth);
@@ -167,13 +165,15 @@ export function Shell() {
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
 
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const palette = useUi((state) => state.palette);
+  const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setPaletteOpen((open) => !open);
+        const { palette: open, setPalette: toggle } = useUi.getState();
+        toggle(open ? null : "root");
       }
     };
     document.addEventListener("keydown", onKey);
@@ -214,7 +214,7 @@ export function Shell() {
       </a>
       {showNav ? <Sidebar route={route} /> : null}
       <Toasts />
-      {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
+      {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
       {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (
         <IconButton className="expand-nav" label="Expand sidebar" onClick={toggleSidebar}>
           <PanelLeft size={16} aria-hidden />

@@ -15,7 +15,6 @@ export type Route =
   | { name: "home" }
   | { name: "thread"; id: string }
   | { name: "new"; projectId: string | null }
-  | { name: "add-project" }
   | { name: "trust"; projectId: string; threadId: string | null }
   | { name: "settings"; section: SettingsSection | null }
   | { name: "usage" };
@@ -30,8 +29,6 @@ export function routeHref(route: Route): string {
       return `#/threads/${enc(route.id)}`;
     case "new":
       return route.projectId ? `#/new/${enc(route.projectId)}` : "#/new";
-    case "add-project":
-      return "#/add-project";
     case "trust":
       return `#/trust/${enc(route.projectId)}${route.threadId ? `/${enc(route.threadId)}` : ""}`;
     case "usage":
@@ -59,8 +56,6 @@ export function parseRoute(hash: string): Route {
       return first ? { name: "thread", id: first } : { name: "home" };
     case "new":
       return { name: "new", projectId: first ?? null };
-    case "add-project":
-      return { name: "add-project" };
     case "trust":
       return first ? { name: "trust", projectId: first, threadId: second ?? null } : { name: "home" };
     case "usage":

@@ -62,6 +62,7 @@ export function createMockApi(options: MockOptions = {}) {
   let failStep: string | null = null;
   let queued: QueuedMessage[] = [];
   let failures: Failure[] = [];
+  let clones: unknown[] = [];
   let delayMs = 0;
   let idCounter = 0;
   const subscribers = new Map<string, Set<Subscriber>>();
@@ -76,6 +77,7 @@ export function createMockApi(options: MockOptions = {}) {
     signedIn = false;
     idCounter = 0;
     failures = [];
+    clones = [];
     delayMs = 0;
     const blank = next === "empty" || next === "first-run";
     projects = blank ? [] : structuredClone(fixtures.projects);
@@ -418,14 +420,22 @@ export function createMockApi(options: MockOptions = {}) {
         if (seg[2] === "create") {
           return { status: 201, body: newProject(`/Users/dev/orbyn/${String(data.name)}`, true) };
         }
-        if (seg[2] === "import") {
-          return { status: 201, body: fixtures.importReport(newProject(String(data.path ?? ""))) };
+        if (seg[2] === "add") {
+          return { status: 201, body: newProject(String(data.path ?? "")) };
         }
         break;
       }
       case "DELETE /api/queue":
         queued = queued.filter((item) => item.id !== seg[2]);
         return { status: 204 };
+      case "GET /api/clones":
+        return { status: 200, body: clones };
+      case "POST /api/clones": {
+        const project = newProject(String(data.url ?? "repo").split("/").at(-1)?.replace(".git", "") ?? "repo");
+        const job = { id: `c-${clones.length}`, url: data.url, name: null, state: "done", project, error: null, used_https: false, started_at: now() };
+        clones = [...clones, job];
+        return { status: 202, body: job };
+      }
       case "GET /api/usage":
         return {
           status: 200,

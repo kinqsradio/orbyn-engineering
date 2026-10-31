@@ -3,12 +3,12 @@ import type {
   ApplyAllResult,
   Approval,
   Attachment,
+  CloneJob,
   CreateThread,
   CustomEngine,
   EngineStatus,
   FileDiff,
   FsListing,
-  ImportReport,
   JsonValue,
   LibraryUpdateResult,
   LimitsOverview,
@@ -171,9 +171,10 @@ export const api = {
   updateLibrary: (apply: boolean) =>
     request<LibraryUpdateResult>("POST", "/api/workspace/update", { apply }),
   rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
-  cloneProject: (url: string) => request<Project>("POST", "/api/projects/clone", { url }),
-  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name }),
-  importProject: (path: string) => request<ImportReport>("POST", "/api/projects/import", { path }),
+  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: false }),
+  addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
+  clones: (signal?: AbortSignal) => request<CloneJob[]>("GET", "/api/clones", undefined, signal),
+  startClone: (url: string) => request<CloneJob>("POST", "/api/clones", { url }),
   removeProject: (id: string, confirm: boolean) =>
     request<ProjectRemoval>("DELETE", `/api/projects/${q(id)}${confirm ? "?confirm=true" : ""}`),
 

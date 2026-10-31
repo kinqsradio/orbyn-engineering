@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
 import type {
@@ -407,6 +408,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
   },
 }));
+
+/** Projects as the person sees them: the skills library stays out of project flows. */
+export function useVisibleProjects(): Project[] | null {
+  const projects = useWorkspace((state) => state.projects.data);
+  const library = useWorkspace((state) => state.managed.data?.library?.path);
+  return useMemo(() => projects?.filter((project) => project.path !== library) ?? null, [projects, library]);
+}
 
 /** The engine record for a thread, if the engine list has loaded. */
 export const engineById = (engines: readonly EngineStatus[] | null, id: string) =>

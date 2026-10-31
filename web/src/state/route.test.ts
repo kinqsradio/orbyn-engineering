@@ -7,7 +7,6 @@ describe("routes", () => {
     { name: "thread", id: "t/1 x" },
     { name: "new", projectId: null },
     { name: "new", projectId: "p1" },
-    { name: "add-project" },
     { name: "trust", projectId: "p", threadId: null },
     { name: "trust", projectId: "p", threadId: "t" },
     { name: "settings", section: null },

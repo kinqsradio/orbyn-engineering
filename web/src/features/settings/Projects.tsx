@@ -18,7 +18,7 @@ export function FallbackNotice() {
   );
 }
 
-function Library({ library }: { library: LibraryStatus }) {
+export function Library({ library }: { library: LibraryStatus }) {
   const updates = useWorkspace((state) => state.updates.data);
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
   const refreshUpdates = useWorkspace((state) => state.refreshUpdates);
@@ -143,9 +143,8 @@ function RemoveDialog({
 }) {
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
   const dropProject = useWorkspace((state) => state.dropProject);
-  const [warning, setWarning] = useState<string | null>(
-    target.dirty ? "This checkout has uncommitted changes." : null,
-  );
+  /** Only the server knows a folder is its own to delete, and only then is there a choice. */
+  const [managedWork, setManagedWork] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const projectId = target.project_id;
 
@@ -154,32 +153,32 @@ function RemoveDialog({
       title={`Remove ${name}?`}
       confirmLabel="Remove project"
       tone="danger"
-      confirmDisabled={warning !== null && !acknowledged}
+      confirmDisabled={managedWork !== null && !acknowledged}
       keepOpen
       onClose={onClose}
       onConfirm={async () => {
         if (!projectId) return;
         try {
           const removal = await api.removeProject(projectId, acknowledged);
-          if (removal.kept_path) onKept(`${name} is removed. Its folder still holds work, so it stays at ${removal.kept_path}.`);
+          if (removal.kept_path) onKept(`${name} is removed. Its files stay at ${removal.kept_path}.`);
           onClose();
           dropProject(projectId);
           await refreshManaged();
         } catch (failure) {
           if (failure instanceof ApiFailure && failure.code === "project_has_work") {
-            setWarning(failure.message);
+            setManagedWork(failure.message);
             return;
           }
           throw failure;
         }
       }}
     >
-      <p>Removes it from the workspace, with its threads. Files go only when nothing would be lost.</p>
-      {warning ? (
+      <p>Deletes the project entry and its threads. Files on disk are not touched.</p>
+      {managedWork ? (
         <>
           <p className="banner banner-warn">
             <TriangleAlert size={16} aria-hidden />
-            {warning}
+            {managedWork}
           </p>
           <label className="check">
             <input
@@ -255,9 +254,6 @@ function TargetRow({ target, onKept }: { target: TargetStatus; onKept(note: stri
           ))}
         </ul>
       ) : null}
-      {target.same_name_skills.length > 0 ? (
-        <p className="overlap-note">Same name as a library skill: {target.same_name_skills.join(", ")}</p>
-      ) : null}
       {target.problem ? <p className="banner banner-warn">{target.problem}</p> : null}
       {removing ? (
         <RemoveDialog target={target} name={name} onClose={() => setRemoving(false)} onKept={onKept} />
@@ -271,6 +267,7 @@ export function ProjectsSection() {
   const unsupported = useWorkspace((state) => state.managedUnsupported);
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
   const [keptNote, setKeptNote] = useState<string | null>(null);
+  const targets = (managed.data?.targets ?? []).filter((target) => target.path !== managed.data?.library?.path);
 
   return (
     <>
@@ -280,15 +277,13 @@ export function ProjectsSection() {
         </h1>
       </div>
       {unsupported ? (
-        <Empty title="This service doesn't manage a workspace" />
+        <Empty title="No projects yet" />
       ) : managed.error && !managed.data ? (
-        <ErrorState title="Couldn't load the workspace" failure={managed.error} onRetry={() => void refreshManaged()} />
+        <ErrorState title="Couldn't load projects" failure={managed.error} onRetry={() => void refreshManaged()} />
       ) : !managed.data ? (
-        <Loading label="Loading workspace" />
+        <Loading label="Loading projects" />
       ) : (
         <>
-          {managed.data.library?.native_skills === false ? <FallbackNotice /> : null}
-          {managed.data.library ? <Library library={managed.data.library} /> : null}
           <section className="section">
             <h2>Projects</h2>
             {keptNote ? (
@@ -296,11 +291,11 @@ export function ProjectsSection() {
                 {keptNote}
               </p>
             ) : null}
-            {managed.data.targets.length === 0 ? (
+            {targets.length === 0 ? (
               <Empty title="No projects yet" />
             ) : (
               <ul className="setting-list">
-                {managed.data.targets.map((target) => (
+                {targets.map((target) => (
                   <TargetRow key={target.path} target={target} onKept={setKeptNote} />
                 ))}
               </ul>

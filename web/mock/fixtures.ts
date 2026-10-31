@@ -10,7 +10,6 @@ import type {
   Thread,
   WireThreadEvent,
   AgUiEvent,
-  ImportReport,
   JsonValue,
   ServerSettings,
   UpdateStatus,
@@ -709,11 +708,6 @@ export function workspaceStatus(list: Project[], configured = true): WorkspaceSt
   };
 }
 
-export const importReport = (project: Project): ImportReport => ({
-  project,
-  dirty_files: ["src/draft.rs", "notes/todo.md"],
-  unpushed_branches: ["spike/retry-queue"],
-});
 
 export function updateStatus(behind: number): UpdateStatus {
   return {

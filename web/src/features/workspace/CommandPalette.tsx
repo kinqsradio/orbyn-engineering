@@ -2,7 +2,10 @@ import { FolderPlus, MessageSquare, Search, Settings, SquarePen } from "lucide-r
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { compactAge } from "../../lib/format";
 import { navigate, SETTINGS_SECTIONS, type Route } from "../../state/route";
-import { useWorkspace } from "../../state/workspace";
+import type { PaletteStart } from "../../state/ui";
+import { useVisibleProjects, useWorkspace } from "../../state/workspace";
+import { ProjectBadge } from "../../ui/badges";
+import { AddProjectPalette } from "./AddProjectPalette";
 
 interface Entry {
   key: string;
@@ -10,15 +13,18 @@ interface Entry {
   label: string;
   meta?: string;
   icon: ReactNode;
-  route: Route;
+  route: Route | "add-project" | "new-in";
 }
 
 const title = (section: string) =>
   section === "sharing" ? "Sharing & access" : section.charAt(0).toUpperCase() + section.slice(1);
 
-export function CommandPalette({ onClose }: { onClose(): void }) {
+export function CommandPalette({ start, onClose }: { start: PaletteStart; onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);
+  const [adding, setAdding] = useState(start === "add-project");
   const ref = useRef<HTMLDialogElement>(null);
+  const [newIn, setNewIn] = useState(false);
+  const projects = useVisibleProjects();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
 
@@ -36,7 +42,8 @@ export function CommandPalette({ onClose }: { onClose(): void }) {
   const entries = useMemo<Entry[]>(() => {
     const actions: Entry[] = [
       { key: "new", group: "Actions", label: "New thread", icon: <SquarePen size={16} aria-hidden />, route: { name: "new", projectId: null } },
-      { key: "add", group: "Actions", label: "Add project", icon: <FolderPlus size={16} aria-hidden />, route: { name: "add-project" } },
+      { key: "new-in", group: "Actions", label: "New thread in...", icon: <SquarePen size={16} aria-hidden />, route: "new-in" },
+      { key: "add", group: "Actions", label: "Add project", icon: <FolderPlus size={16} aria-hidden />, route: "add-project" },
       ...SETTINGS_SECTIONS.map((section) => ({
         key: `settings:${section}`,
         group: "Settings",
@@ -57,12 +64,29 @@ export function CommandPalette({ onClose }: { onClose(): void }) {
         route: { name: "thread", id: thread.id } as Route,
       }));
     const needle = query.trim().toLowerCase();
-    const all = [...actions, ...recent];
+    const inProjects: Entry[] = (projects ?? []).map((project) => ({
+      key: `in:${project.id}`,
+      group: "Projects",
+      label: project.name,
+      icon: <ProjectBadge name={project.name} />,
+      route: { name: "new", projectId: project.id },
+    }));
+    const all = newIn ? inProjects : [...actions, ...recent];
     return (needle ? all.filter((entry) => entry.label.toLowerCase().includes(needle)) : all).slice(0, 50);
-  }, [threads, query]);
+  }, [threads, query, newIn, projects]);
 
   const choose = (entry: Entry | undefined) => {
     if (!entry) return;
+    if (entry.route === "add-project") {
+      setAdding(true);
+      return;
+    }
+    if (entry.route === "new-in") {
+      setNewIn(true);
+      setQuery("");
+      setActive(0);
+      return;
+    }
     onClose();
     navigate(entry.route);
   };
@@ -92,6 +116,10 @@ export function CommandPalette({ onClose }: { onClose(): void }) {
         if (event.target === ref.current) onClose();
       }}
     >
+      {adding ? (
+        <AddProjectPalette onBack={() => (start === "add-project" ? onClose() : setAdding(false))} onClose={onClose} />
+      ) : (
+        <>
       <div className="palette-search">
         <Search size={16} aria-hidden />
         <input
@@ -106,7 +134,10 @@ export function CommandPalette({ onClose }: { onClose(): void }) {
             setQuery(event.target.value);
             setActive(0);
           }}
-          onKeyDown={onKeyDown}
+          onKeyDown={(event) => {
+            if (event.key === "Backspace" && newIn && query === "") setNewIn(false);
+            onKeyDown(event);
+          }}
         />
       </div>
       <div id="palette-list" className="palette-list">
@@ -143,6 +174,8 @@ export function CommandPalette({ onClose }: { onClose(): void }) {
           <kbd>Esc</kbd> Close
         </span>
       </footer>
+        </>
+      )}
     </dialog>
   );
 }
