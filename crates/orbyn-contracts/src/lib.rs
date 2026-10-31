@@ -219,7 +219,9 @@ pub struct PolicyRule {
     pub id: String,
     pub effect: PolicyEffect,
     pub kind: ActionKind,
-    /// `*` wildcard glob matched against the action target.
+    /// `*` wildcard glob matched against the action target. A leading `=` makes
+    /// the rest of the pattern an exact literal, which is how `remember` stores
+    /// a target that itself contains `*`.
     pub pattern: String,
     pub engine: Option<String>,
     pub note: Option<String>,
@@ -383,9 +385,39 @@ pub struct FileDiff {
 }
 
 wire! {
+pub struct FsEntry {
+    pub name: String,
+    pub path: String,
+    pub is_git: bool,
+}
+}
+
+wire! {
+pub struct FsListing {
+    pub path: String,
+    pub parent: Option<String>,
+    /// Directories only, sorted by name.
+    pub entries: Vec<FsEntry>,
+}
+}
+
+wire! {
+pub struct ComputerResult {
+    pub ok: bool,
+    pub target: String,
+    /// The gateway's normalized result for the action.
+    pub data: Value,
+}
+}
+
+wire! {
 pub struct ApiError {
     pub code: String,
     pub message: String,
+    /// Structured context; `already_decided` carries the existing `Approval`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub detail: Option<Value>,
 }
 }
 
