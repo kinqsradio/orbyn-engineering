@@ -1991,6 +1991,22 @@ pub enum ShellEvent {
 }
 }
 
+wire_enum! {
+/// What a window may ask the desktop shell to do. The list is closed: no path, URL
+/// or command comes through here.
+pub enum ShellAction {
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
+}
+}
+
+wire! {
+pub struct ShellRequest {
+    pub action: ShellAction,
+}
+}
+
 wire! {
 pub struct ShellStatus {
     /// True when a desktop shell started this service.

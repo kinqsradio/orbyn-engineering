@@ -405,6 +405,14 @@ pub async fn shell_status(State(state): State<AppState>) -> Json<orbyn_contracts
     Json(state.core.shell.status())
 }
 
+pub async fn shell_action(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::ShellRequest>,
+) -> ApiResult<StatusCode> {
+    state.core.shell.request(body.action)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
 pub async fn updates(State(state): State<AppState>) -> Json<orbyn_contracts::UpdateStatus> {
     Json(state.core.updates.status().await)
 }

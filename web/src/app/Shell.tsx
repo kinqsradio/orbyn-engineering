@@ -23,7 +23,8 @@ import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { api } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
-import { useAsync } from "../lib/useAsync";
+import { inDesktopApp, zoomKeyAction } from "../api/shell";
+import { toFailure, useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
@@ -104,6 +105,13 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "settings.open":
       navigate({ name: "settings", section: null });
+      return true;
+    case "updates.check":
+      navigate({ name: "settings", section: "maintenance" });
+      api.checkUpdates().then(
+        (status) => useWorkspace.getState().putUpdates(status),
+        (failure: unknown) => ui.pushToast(`Couldn't check for updates. ${toFailure(failure).message}`),
+      );
       return true;
     case "filePicker.toggle":
       if (route.name !== "thread") return false;
@@ -330,6 +338,12 @@ function useGlobalKeys(route: Route) {
         return;
       }
       if (undoKey(event)) return;
+      const zoom = inDesktopApp() ? zoomKeyAction(event) : null;
+      if (zoom) {
+        event.preventDefault();
+        api.shellAction(zoom).catch(() => undefined);
+        return;
+      }
       // A focused surface that took the key, like the model picker's number jumps, keeps it.
       if (event.defaultPrevented) return;
       if (event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key)) {

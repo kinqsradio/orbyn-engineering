@@ -646,6 +646,12 @@ place spelled as a route: `thread/<id>`, `new[/<project>]`, `settings[/<section>
 anything else, and a link that started the app waits in the shell until the service
 runs. A second launch hands its links to the first and exits.
 
+`POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
+path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
+the window, and everything else goes to the windows as a `command`, the same ones keys
+run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
+is kept beside the window state in the app's config folder.
+
 The shell passes no data folder, so `orbynd` and the `orbyn` command agree on it, and it
 sets no `PATH`: `child_env` widens that for every child without sourcing a shell.
 
@@ -831,6 +837,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET, POST /api/storage/cleanup?dry_run=` | Last `CleanupReport`; apply the retention rules |
 | `GET /api/shell` | `ShellStatus` |
 | `GET /api/shell/events` | SSE `ShellEvent`, with events held for the first window |
+| `POST /api/shell/actions` | `ShellRequest` (`202`, `422` with no shell) |
 | `GET /api/updates`, `POST /api/updates/check` | `UpdateStatus`; a check only reads |
 | `GET /api/updates/events` | SSE `UpdateStatus` on each change |
 | `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |

@@ -168,6 +168,7 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/shell", get(api::shell_status))
         .route("/api/shell/events", get(stream::shell_events))
+        .route("/api/shell/actions", post(api::shell_action))
         .route("/api/updates", get(api::updates))
         .route("/api/updates/events", get(stream::update_events))
         .route("/api/updates/check", post(api::check_updates))

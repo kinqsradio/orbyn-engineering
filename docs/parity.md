@@ -701,7 +701,7 @@ are not built in.
 - [x] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
 - [x] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M | seen on a packaged macOS app and in CI on an installed package
 - [ ] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M
-- [ ] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [x] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | seen on a packaged macOS app; the Windows menu is untested
 - [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S
 - [ ] P15 Running-thread keep-alive: blocks sleep during work | apps/web/src/components/desktop/RunningThreadKeepAlive.tsx | d | S
 - [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M
@@ -711,8 +711,8 @@ are not built in.
 - [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M
 - [ ] P21 Linux secret storage: keyring integration | apps/desktop/src/linuxSecretStorage.ts | d | M
 - [ ] P22 Windows foreground: focus handling | apps/desktop/src/electron/WindowsForeground.ts | d | M
-- [ ] P23 View menu: reload, force reload, DevTools, actual size, zoom in and out (including keypad keys), full screen | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
-- [ ] P24 Edit and Window menus: paste as plain text, macOS Speech, minimize, zoom, File menu Settings and Close Window | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
+- [ ] P23 View menu: reload, force reload, DevTools, actual size, zoom in and out (including keypad keys), full screen | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | all items built and zoom seen working and restored; Reload, Force Reload and DevTools not pressed on a real app yet
+- [ ] P24 Edit and Window menus: paste as plain text, macOS Speech, minimize, zoom, File menu Settings and Close Window | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S | all items built; Paste as Text and Speech not pressed on a real app yet
 - [ ] P25 Desktop packaging channels: winget, Homebrew cask, deb (self-updating with password prompt), AUR stable and nightly, Nix, GitHub Releases | docs/user/install.md | d | M
 - [ ] P26 CLI install scripts: shell and PowerShell installers to `~/.local/bin`, nightly channel and exact-version pins, Intel Mac desktop only | docs/user/install.md | c | M
 - [ ] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S
