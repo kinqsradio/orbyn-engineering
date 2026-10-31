@@ -3,7 +3,7 @@ import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
-export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser";
+export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
 export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
@@ -22,6 +22,8 @@ interface Prefs {
   panelMaximized: boolean;
   /** The pane's width for this thread; null follows the window. */
   panelWidth: number | null;
+  /** The side chat the panel shows. */
+  sideChat: string | null;
   /** The current thread's layout is the fields above; others wait here. */
   layouts: Record<string, ThreadLayout>;
   layoutKey: string;
@@ -111,6 +113,7 @@ export interface ThreadLayout {
   terminalOpen: boolean;
   panelMaximized: boolean;
   panelWidth: number | null;
+  sideChat: string | null;
 }
 
 export const DRAFT_LAYOUT = "draft";
@@ -135,6 +138,7 @@ const defaults: Prefs = {
   terminalOpen: false,
   panelMaximized: false,
   panelWidth: null,
+  sideChat: null,
   layouts: {},
   layoutKey: DRAFT_LAYOUT,
   sidebarCollapsed: false,
@@ -234,6 +238,7 @@ const layoutDefaults: ThreadLayout = {
   terminalOpen: defaults.terminalOpen,
   panelMaximized: defaults.panelMaximized,
   panelWidth: defaults.panelWidth,
+  sideChat: defaults.sideChat,
 };
 
 const currentLayout = (state: Prefs): ThreadLayout => ({
@@ -244,6 +249,7 @@ const currentLayout = (state: Prefs): ThreadLayout => ({
   terminalOpen: state.terminalOpen,
   panelMaximized: state.panelMaximized,
   panelWidth: state.panelWidth,
+  sideChat: state.sideChat,
 });
 
 /** The newest layouts stay; object order is insertion order. */
@@ -263,6 +269,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   terminalOpen: state.terminalOpen,
   panelMaximized: state.panelMaximized,
   panelWidth: state.panelWidth,
+  sideChat: state.sideChat,
   layouts: state.layouts,
   layoutKey: state.layoutKey,
   sidebarCollapsed: state.sidebarCollapsed,
@@ -314,7 +321,7 @@ const prefsOf = (state: Prefs): Prefs => ({
 function savedPrefs(): Partial<Prefs> {
   const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
   const panelTab =
-    saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls"
+    saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls" || saved.panelTab === "side"
       ? saved.panelTab
       : null;
   return { ...saved, panelTab, layouts: saved.layouts ?? {} };

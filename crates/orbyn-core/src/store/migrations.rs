@@ -17,7 +17,18 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (13, STOP_REQUESTS),
     (14, MESSAGE_SEARCH),
     (15, RUN_FILE_CHANGES),
+    (16, LIMIT_STOPS),
 ];
+
+// A limit stop lives on the thread, since it outlasts the run that hit it. `resume_at`
+// is a scheduled continuation; any new run, settle or archive clears the lot.
+const LIMIT_STOPS: &str = r#"
+ALTER TABLE threads ADD COLUMN woke_at TEXT;
+ALTER TABLE threads ADD COLUMN limit_message TEXT;
+ALTER TABLE threads ADD COLUMN limit_stopped_at TEXT;
+ALTER TABLE threads ADD COLUMN limit_resets_at TEXT;
+ALTER TABLE threads ADD COLUMN limit_resume_at TEXT;
+"#;
 
 // What a run changed, as bytes, for reading and restoring later whatever the folder
 // holds by then. A state is `absent`, `stored`, or `unknown` when it was not captured.

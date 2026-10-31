@@ -1,5 +1,5 @@
 import { Check, Copy, GitBranch, Pencil, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
 import { navigate, parseRoute } from "../../state/route";
@@ -8,6 +8,9 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
+
+/** The thread these messages belong to, when it isn't the one the page is on. */
+export const ThreadScope = createContext<string | null>(null);
 
 const openThread = () => {
   const route = parseRoute(window.location.hash);
@@ -21,7 +24,8 @@ export function MessageActions({ text, runId, role }: { text: string; runId: str
   const [restoreFiles, setRestoreFiles] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const pushToast = useUi((state) => state.pushToast);
-  const threadId = openThread();
+  const scoped = useContext(ThreadScope);
+  const threadId = scoped ?? openThread();
   const busy = useWorkspace((state) => (threadId ? state.threads[threadId]?.active_run !== null : true));
 
   const copy = () => {

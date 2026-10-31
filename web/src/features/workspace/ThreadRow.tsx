@@ -3,11 +3,13 @@ import {
   CircleCheck,
   CircleDashed,
   Clock,
+  Gauge,
   GitBranch,
   OctagonAlert,
   Pin,
   PinOff,
   Unplug,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -35,12 +37,14 @@ const VERB_BADGE: Record<DropVerb, { label: string; icon: ReactNode }> = {
 function RowStatus({ thread }: { thread: Thread }) {
   const active = thread.active_run;
   const now = useNow(active !== null);
+  const approvals = useWorkspace((state) => state.approvals.data);
   if (active) {
     if (active.state === "awaiting_approval") {
+      const asking = approvals && !approvals.some((approval) => approval.thread_id === thread.id);
       return (
         <span className="row-status tone-warn">
           <span className="status-dot" aria-hidden />
-          Approval
+          {asking ? "Question" : "Approval"}
         </span>
       );
     }
@@ -49,6 +53,14 @@ function RowStatus({ thread }: { thread: Thread }) {
       <span className="row-status tone-info">
         <CircleDashed size={14} className="spin" aria-hidden />
         {label} {elapsed(active.started_at, now)}
+      </span>
+    );
+  }
+  if (thread.lifecycle?.limit) {
+    return (
+      <span className="row-status tone-warn">
+        <Gauge size={14} aria-hidden />
+        Limited
       </span>
     );
   }
@@ -175,6 +187,7 @@ export interface RowActions {
   onUnpin(thread: Thread): void;
   onRowFocus(id: string): void;
   onFiles(thread: Thread, files: File[]): void;
+  onDismissWoke(thread: Thread): void;
 }
 
 export function ThreadRow({
@@ -314,6 +327,22 @@ export function ThreadRow({
     </span>
   );
 
+  const wokeMark = lifecycle?.woke_at ? (
+    <button
+      type="button"
+      className="row-woke"
+      aria-label="Dismiss Woke"
+      title="This thread woke early. Dismiss"
+      onClick={(event) => {
+        event.preventDefault();
+        actions.onDismissWoke(thread);
+      }}
+    >
+      Woke
+      <X size={10} aria-hidden />
+    </button>
+  ) : null;
+
   const pinMark = pinned ? (
     <button
       type="button"
@@ -387,6 +416,7 @@ export function ThreadRow({
           <>
             <ProjectBadge name={projectName} />
             {title}
+            {wokeMark}
             {pinMark}
             {trailing}
           </>
@@ -395,6 +425,7 @@ export function ThreadRow({
             <span className="thread-row-line">
               <ProjectBadge name={projectName} />
               <span className="thread-row-project">{projectName}</span>
+              {wokeMark}
               {pinMark}
               {trailing}
             </span>

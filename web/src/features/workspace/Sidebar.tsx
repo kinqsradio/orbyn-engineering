@@ -56,6 +56,7 @@ import { ProjectFilter } from "./ProjectFilter";
 import {
   copyText,
   deleteThreads,
+  dismissWoke,
   reorderThreads,
   settleThreads,
   unpinThreads,
@@ -502,7 +503,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     const needle = query.trim().toLowerCase();
     if (!needle) return [];
     return scoped
-      .filter((thread) => !thread.lifecycle?.archived_at)
+      .filter((thread) => !thread.lifecycle?.archived_at && thread.lifecycle?.relation !== "side")
       .filter((thread) =>
         searchFields(thread, list.find((p) => p.id === thread.project_id)?.name ?? "").includes(needle),
       )
@@ -697,6 +698,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       });
     },
     onRowFocus: setFocusId,
+    onDismissWoke: (thread) => void dismissWoke(thread),
     onFiles(thread, files) {
       useDraftStore.getState().drop(thread.id, files);
       navigate({ name: "thread", id: thread.id });

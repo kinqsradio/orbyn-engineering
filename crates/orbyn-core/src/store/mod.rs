@@ -37,7 +37,7 @@ pub use hub::EventHub;
 pub use queue::{WatchRow, WatchUpdate};
 pub use runs::{Admission, Recovery};
 use threads::thread_family;
-pub use threads::{LifecycleRules, TickReport, default_settings};
+pub use threads::{LifecycleRules, LimitStop, TickReport, default_settings};
 
 const ACTIVE_STATES: &str = "('admitted', 'starting', 'running', 'awaiting_approval')";
 
@@ -701,8 +701,24 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
             relation: row.get("relation")?,
             permission_mode: parse_wire(0, row.get("permission_mode")?)?,
             plan_mode: row.get("plan_mode")?,
+            woke_at: row.get("woke_at")?,
+            limit: limit_row(row)?,
         }),
     })
+}
+
+fn limit_row(row: &Row<'_>) -> rusqlite::Result<Option<orbyn_contracts::ThreadLimit>> {
+    let Some(message) = row.get::<_, Option<String>>("limit_message")? else {
+        return Ok(None);
+    };
+    Ok(Some(orbyn_contracts::ThreadLimit {
+        message,
+        stopped_at: row
+            .get::<_, Option<String>>("limit_stopped_at")?
+            .unwrap_or_default(),
+        resets_at: row.get("limit_resets_at")?,
+        resume_at: row.get("limit_resume_at")?,
+    }))
 }
 
 pub(super) fn run_row(row: &Row<'_>) -> rusqlite::Result<Run> {

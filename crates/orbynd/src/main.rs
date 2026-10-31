@@ -226,6 +226,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/restore", post(api::restore_workspace))
         .route("/api/threads/{id}/rewind", post(api::rewind_thread))
         .route("/api/threads/{id}/fork", post(api::fork_thread))
+        .route("/api/threads/{id}/bring-back", post(api::bring_back))
         .route("/api/threads/{id}/switch-engine", post(api::switch_engine))
         .route("/api/threads/{id}/git/action", post(api::git_action))
         .route(

@@ -1302,6 +1302,14 @@ pub async fn fork_thread(
     ))
 }
 
+pub async fn bring_back(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.bring_back(&id, LOCAL_USER)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn switch_engine(
     State(state): State<AppState>,
     Path(id): Path<String>,

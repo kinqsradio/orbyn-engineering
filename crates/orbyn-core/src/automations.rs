@@ -727,7 +727,7 @@ impl Core {
     }
 }
 
-fn rfc3339(unix: i64) -> Option<String> {
+pub(crate) fn rfc3339(unix: i64) -> Option<String> {
     OffsetDateTime::from_unix_timestamp(unix)
         .ok()?
         .format(&time::format_description::well_known::Rfc3339)

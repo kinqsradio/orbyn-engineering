@@ -154,10 +154,7 @@ impl Store {
                 ],
             )?;
             // A question for you ends a snooze early.
-            tx.execute(
-                "UPDATE threads SET snoozed_until = NULL WHERE id = ?1",
-                [&guard.thread_id],
-            )?;
+            super::threads::wake_early(tx, &guard.thread_id)?;
             if matches!(guard.state, RunState::Starting | RunState::Running) {
                 set_state(tx, run_id, guard.state, RunState::AwaitingApproval)?;
             }

@@ -45,7 +45,7 @@ export function sectionOf(
     const age = now - new Date(thread.updated_at).getTime();
     return unresolved || age < DAY_MS ? "active" : "settled";
   }
-  if (lifecycle.archived_at) return null;
+  if (lifecycle.archived_at || lifecycle.relation === "side") return null;
   // Settling on its own doesn't pull the thread you are in out of the list; leaving lets it go.
   if (lifecycle.settled_at) return thread.id === selectedId && held === "active" ? "active" : "settled";
   if (isSnoozed(thread, now)) return "snoozed";

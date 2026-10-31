@@ -33,7 +33,7 @@ use crate::mcp::{McpBinding, McpService};
 use crate::questions::QuestionDesk;
 use crate::selection;
 use crate::skills::{SkillRoute, SkillService};
-use crate::store::{Admission, AuditRecord, Store};
+use crate::store::{Admission, AuditRecord, LimitStop, Store};
 use crate::titles::{self, TitleCall};
 use crate::util::new_id;
 use crate::workspace::{Workspace, check_target};
@@ -230,6 +230,8 @@ pub struct RunManager {
     /// Runs stopped because their parent was. Reporting back would start the parent
     /// again, undoing the Stop.
     stopped_with_parent: Mutex<HashSet<String>>,
+    /// Limits engines reported, until their run ends. Unix seconds, when they said.
+    limit_signals: Mutex<HashMap<String, Option<i64>>>,
 }
 
 /// How a run is asked to end. `cancel` lets the engine stop itself; `force` ends it
@@ -278,6 +280,7 @@ impl RunManager {
             runs_dir,
             active: Mutex::new(HashMap::new()),
             stopped_with_parent: Mutex::new(HashSet::new()),
+            limit_signals: Mutex::new(HashMap::new()),
         }
     }
 
@@ -789,6 +792,7 @@ impl RunManager {
         {
             tracing::warn!(%error, "could not remove a run directory");
         }
+        let mut limit = None;
         let (state, message) = match outcome {
             EngineOutcome::Completed => {
                 if let Err(error) = self.store.clear_handoff(&scope.thread_id) {
@@ -810,6 +814,9 @@ impl RunManager {
                         tracing::debug!(%error, "could not note a sign-in failure");
                     }
                 }
+                if let Some(resets_at) = self.limit_of(&scope.run_id, &message) {
+                    limit = Some((message.clone(), resets_at));
+                }
                 let message = diagnostics::failure_message(&message, sign_in);
                 (RunState::Failed, Some(message))
             }
@@ -818,7 +825,39 @@ impl RunManager {
                 Some("The engine lost this conversation.".to_owned()),
             ),
         };
+        self.limit_signals().remove(&run_id);
         self.close_run(&run_id, state, message.as_deref());
+        if let Some((message, resets_at)) = limit {
+            self.record_limit(&scope.thread_id, message, resets_at);
+        }
+    }
+
+    /// A limit the engine signalled, or one its failure text names.
+    fn limit_of(&self, run_id: &str, message: &str) -> Option<Option<i64>> {
+        let signalled = self.limit_signals().remove(run_id);
+        signalled.or_else(|| diagnostics::is_limit_failure(message).then_some(None))
+    }
+
+    fn limit_signals(&self) -> std::sync::MutexGuard<'_, HashMap<String, Option<i64>>> {
+        self.limit_signals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn record_limit(&self, thread_id: &str, message: String, resets_at: Option<i64>) {
+        let enabled = |key: &str| {
+            crate::preferences::stored_preference(&self.store, key, None)
+                .is_ok_and(|on| on == json!(true))
+        };
+        let stop = LimitStop {
+            message,
+            resets_at: resets_at.and_then(crate::automations::rfc3339),
+            resume: enabled("auto_resume_limited_threads"),
+            snooze: enabled("snooze_limited_threads"),
+        };
+        if let Err(error) = self.store.stop_on_limit(thread_id, &stop) {
+            tracing::warn!(%error, "could not record a limit stop");
+        }
     }
 
     /// A failed snapshot costs that run its checkpoint, never the run itself.
@@ -1137,6 +1176,9 @@ impl RunManager {
                             if let Some(outcome) = self.write_events(scope, shaper.push(event)) {
                                 break outcome;
                             }
+                        }
+                        EngineEvent::Limited { resets_at } => {
+                            self.limit_signals().insert(scope.run_id.clone(), resets_at);
                         }
                         EngineEvent::Session(session) => {
                             if let Err(error) = self.store.set_engine_session(&scope.run_id, &session) {

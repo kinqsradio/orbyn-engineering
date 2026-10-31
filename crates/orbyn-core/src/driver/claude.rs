@@ -625,6 +625,7 @@ impl StreamMapper {
                 }
                 .into(),
             ],
+            Some("rate_limit_event") => rejected_limit(frame).into_iter().collect(),
             Some("result") => {
                 self.outcome = Some(result_outcome(frame));
                 let mut events = session(frame);
@@ -971,6 +972,14 @@ fn tool_text(content: Option<&Value>) -> String {
         Some(other) => other.to_string(),
         None => String::new(),
     }
+}
+
+/// Claude reports limits as it goes; only a rejected one stops the turn.
+fn rejected_limit(frame: &Value) -> Option<EngineEvent> {
+    let info = frame.get("rate_limit_info")?;
+    (info.get("status").and_then(Value::as_str) == Some("rejected")).then(|| EngineEvent::Limited {
+        resets_at: info.get("resetsAt").and_then(Value::as_i64),
+    })
 }
 
 fn result_outcome(frame: &Value) -> EngineOutcome {

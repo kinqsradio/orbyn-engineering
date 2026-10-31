@@ -13,7 +13,15 @@ snoozed_until?: string,
 /**
  * True ends a snooze early.
  */
-wake?: boolean, unread?: boolean, 
+wake?: boolean, 
+/**
+ * True clears the note that a snooze ended early.
+ */
+dismiss_woke?: boolean, 
+/**
+ * True schedules a continuation for the limit's reset; false cancels it.
+ */
+resume_at_reset?: boolean, unread?: boolean, 
 /**
  * `null` clears the thread's own choice.
  */

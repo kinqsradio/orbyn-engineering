@@ -795,3 +795,72 @@ fn old_logs_fill_the_search_table_with_the_migration() {
     assert_eq!(found.hits[0].role, "user");
     assert_eq!(found.hits[0].snippet, "part one part two");
 }
+
+#[test]
+fn a_limit_stop_schedules_only_what_was_asked_and_settling_clears_it() {
+    let f = fixture();
+    let later = "2999-01-01T00:00:00Z";
+    let stop = |resume, snooze, resets_at: Option<&str>| LimitStop {
+        message: "Out of usage".into(),
+        resets_at: resets_at.map(str::to_owned),
+        resume,
+        snooze,
+    };
+    let lifecycle = |store: &Store| store.thread(&f.thread).unwrap().lifecycle.unwrap();
+    f.store
+        .stop_on_limit(&f.thread, &stop(false, true, None))
+        .unwrap();
+    let saved = lifecycle(&f.store);
+    assert_eq!(saved.limit.as_ref().unwrap().message, "Out of usage");
+    assert_eq!(saved.limit.unwrap().resume_at, None);
+    assert_eq!(
+        saved.snoozed_until, None,
+        "no reset, nothing to snooze until"
+    );
+
+    f.store
+        .stop_on_limit(&f.thread, &stop(true, true, Some(later)))
+        .unwrap();
+    let saved = lifecycle(&f.store);
+    assert_eq!(saved.limit.unwrap().resume_at.as_deref(), Some(later));
+    assert_eq!(saved.snoozed_until.as_deref(), Some(later));
+    let now = crate::util::unix_now();
+    assert!(f.store.due_resumes(now).unwrap().is_empty());
+    let end = crate::util::parse_time(later).unwrap();
+    assert_eq!(
+        f.store.due_resumes(end).unwrap(),
+        std::slice::from_ref(&f.thread)
+    );
+
+    let mut settle = patch();
+    settle.settled = Some(true);
+    f.store.update_thread(&f.thread, &settle, "t").unwrap();
+    assert!(lifecycle(&f.store).limit.is_none());
+    assert!(f.store.due_resumes(end).unwrap().is_empty());
+}
+
+#[test]
+fn only_an_early_end_to_a_snooze_leaves_a_note() {
+    let f = fixture();
+    let woke = |store: &Store| store.thread(&f.thread).unwrap().lifecycle.unwrap().woke_at;
+    let mut snooze = patch();
+    snooze.snoozed_until = Some("2999-01-01T00:00:00Z".into());
+    f.store.update_thread(&f.thread, &snooze, "t").unwrap();
+    let mut wake = patch();
+    wake.wake = Some(true);
+    f.store.update_thread(&f.thread, &wake, "t").unwrap();
+    assert!(
+        woke(&f.store).is_none(),
+        "waking it yourself is no surprise"
+    );
+
+    let run = running(&f.store, &f.thread);
+    f.store.update_thread(&f.thread, &snooze, "t").unwrap();
+    f.store.finish_run(&run, RunState::Failed, None).unwrap();
+    assert!(woke(&f.store).is_some());
+
+    let mut dismiss = patch();
+    dismiss.dismiss_woke = Some(true);
+    f.store.update_thread(&f.thread, &dismiss, "t").unwrap();
+    assert!(woke(&f.store).is_none());
+}
