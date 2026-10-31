@@ -470,6 +470,8 @@ export function createMockApi(options: MockOptions = {}) {
       }
       case "GET /api/threads": {
         if (seg[2]) {
+          if (seg[3] === "terminals") return { status: 200, body: [] };
+          if (seg[3] === "scripts") return { status: 200, body: { path: null, file: null, problem: null } };
           if (seg[3] === "mentions") {
             const needle = (query.get("q") ?? "").toLowerCase();
             return {
