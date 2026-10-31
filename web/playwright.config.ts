@@ -13,6 +13,7 @@ export default defineConfig({
     baseURL: "http://localhost:5274",
     ...devices["Desktop Chrome"],
     headless: true,
+    launchOptions: { args: ["--in-process-gpu"] },
   },
   webServer: {
     command: "npx vite --port 5274 --strictPort",

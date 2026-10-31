@@ -20,6 +20,15 @@ function headlessShell(): string {
   return binary;
 }
 
+/** The shell needs its GPU work in-process here, and the service passes no such flag itself. */
+function previewBrowser(dir: string): string {
+  const shell = headlessShell();
+  if (process.platform === "win32") return shell;
+  const wrapper = join(dir, "preview-browser");
+  writeFileSync(wrapper, `#!/bin/sh\nexec "${shell}" --in-process-gpu "$@"\n`, { mode: 0o755 });
+  return wrapper;
+}
+
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
 
 function makeLibrary(root: string): string {
@@ -60,7 +69,7 @@ export async function startService(
       : {};
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, ORBYN_BROWSER: headlessShell(), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
