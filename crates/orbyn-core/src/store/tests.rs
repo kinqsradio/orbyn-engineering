@@ -827,7 +827,10 @@ fn a_limit_stop_schedules_only_what_was_asked_and_settling_clears_it() {
     let now = crate::util::unix_now();
     assert!(f.store.due_resumes(now).unwrap().is_empty());
     let end = crate::util::parse_time(later).unwrap();
-    assert_eq!(f.store.due_resumes(end).unwrap(), [f.thread.clone()]);
+    assert_eq!(
+        f.store.due_resumes(end).unwrap(),
+        std::slice::from_ref(&f.thread)
+    );
 
     let mut settle = patch();
     settle.settled = Some(true);
