@@ -11,15 +11,21 @@ export interface ThreadGroups {
 const newestFirst = (a: Thread, b: Thread) => b.updated_at.localeCompare(a.updated_at);
 
 /**
- * Sidebar placement only, from what the server reports. Active runs are Working.
- * Failed and interrupted runs stay in view until dealt with, and anything else
- * settles after a quiet day.
+ * Sidebar placement only, from what the server reports. Archived threads leave
+ * the list and active runs are Working. Settled follows the server's lifecycle.
+ * Payloads without one fall back to a quiet day, keeping failed runs in view.
  */
 export function groupThreads(threads: readonly Thread[], now: number): ThreadGroups {
   const groups: ThreadGroups = { recent: [], working: [], settled: [] };
   for (const thread of threads) {
+    const lifecycle = thread.lifecycle;
+    if (lifecycle?.archived_at) continue;
     if (thread.active_run) {
       groups.working.push(thread);
+      continue;
+    }
+    if (lifecycle) {
+      (lifecycle.settled_at ? groups.settled : groups.recent).push(thread);
       continue;
     }
     const unresolved =

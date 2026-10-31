@@ -1,5 +1,4 @@
 import {
-  ArrowUp,
   BarChart3,
   ChevronRight,
   CircleDashed,
@@ -29,6 +28,7 @@ import { IconButton, Pill } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { ApprovalsLink } from "./ApprovalsLink";
 import { groupThreads } from "./groups";
+import { UpdatePill } from "./Updates";
 
 const DONE_WINDOW_MS = 5 * 60_000;
 
@@ -63,7 +63,9 @@ function RowStatus({ thread }: { thread: Thread }) {
       </span>
     );
   }
-  if (state === "completed" && Date.now() - new Date(thread.updated_at).getTime() < DONE_WINDOW_MS) {
+  const fresh =
+    thread.lifecycle?.unread ?? Date.now() - new Date(thread.updated_at).getTime() < DONE_WINDOW_MS;
+  if (state === "completed" && fresh) {
     return (
       <span className="row-status tone-success">
         <CircleCheck size={14} aria-hidden />
@@ -175,18 +177,11 @@ function Group({
 }
 
 function SidebarFoot({ route }: { route: Route }) {
-  const updates = useWorkspace(
-    (state) =>
-      state.engines.data?.filter(
-        (engine) => engine.update_command && engine.latest && engine.latest !== engine.version,
-      ).length ?? 0,
-  );
-  const settingsHref = routeHref({ name: "settings", section: null });
   return (
     <div className="sidebar-foot">
       <a
         className="icon-btn"
-        href={settingsHref}
+        href={routeHref({ name: "settings", section: null })}
         aria-label="Settings"
         title="Settings"
         aria-current={route.name === "settings" ? "page" : undefined}
@@ -202,16 +197,7 @@ function SidebarFoot({ route }: { route: Route }) {
       >
         <BarChart3 size={16} aria-hidden />
       </a>
-      {updates > 0 ? (
-        <a
-          className="update-btn"
-          href={routeHref({ name: "settings", section: "engines" })}
-          aria-label={updates === 1 ? "1 engine update available" : `${updates} engine updates available`}
-          title="Engine updates"
-        >
-          <ArrowUp size={14} aria-hidden />
-        </a>
-      ) : null}
+      <UpdatePill />
     </div>
   );
 }

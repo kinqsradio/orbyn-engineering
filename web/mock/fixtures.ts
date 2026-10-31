@@ -17,6 +17,7 @@ import type {
   AgUiEvent,
   JsonValue,
 } from "../src/api/types.ts";
+import type { UpdateStatus } from "../src/api/updates.ts";
 import type { ImportPreview, WorkspaceStatus } from "../src/api/workspace.ts";
 
 /** Fixed under test. In the dev server, "now" at startup, so ages read realistically. */
@@ -796,3 +797,34 @@ export const importPreview = (path: string): ImportPreview => ({
   uncommitted: ["src/draft.rs", "notes/todo.md"],
   unpushed_branches: ["spike/retry-queue"],
 });
+
+export function updateStatus(library: WorkspaceStatus["library"]): UpdateStatus {
+  return {
+    configured: true,
+    checked_at: new Date(T0 - 600_000).toISOString(),
+    checking: false,
+    active_runs: 0,
+    engines: [
+      { id: "claude", name: "Claude Code", current: "2.1.14", latest: "2.1.20", available: true },
+      { id: "codex", name: "Codex", current: "0.58.0", latest: "0.58.0", available: false },
+    ],
+    library: library
+      ? {
+          current: library.revision,
+          latest: library.incoming[0]?.revision ?? library.revision,
+          available: library.behind > 0,
+          modified: library.modified,
+          incoming: library.incoming,
+        }
+      : null,
+    app: {
+      current: "0.1.0",
+      latest: "0.2.0",
+      available: true,
+      notes: "## Changes\n\n- Faster thread loading\n- Fixes terminal resize on Windows",
+      manual_hint: null,
+      can_apply: true,
+    },
+    progress: null,
+  };
+}

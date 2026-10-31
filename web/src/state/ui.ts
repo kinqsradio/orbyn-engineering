@@ -15,6 +15,8 @@ interface Prefs {
   /** The terminal drawer under the conversation. */
   terminalOpen: boolean;
   sidebarCollapsed: boolean;
+  /** Look for updates periodically. Applying always takes a click. */
+  backgroundChecks: boolean;
   /** Sidebar groups the viewer has opened or closed. */
   groups: Record<string, boolean>;
 }
@@ -29,6 +31,7 @@ const defaults: Prefs = {
   detailsOpen: true,
   terminalOpen: false,
   sidebarCollapsed: false,
+  backgroundChecks: true,
   groups: {},
 };
 
@@ -41,6 +44,7 @@ interface UiState extends Prefs {
   closePanel(): void;
   toggleDetails(): void;
   toggleSidebar(): void;
+  setBackgroundChecks(enabled: boolean): void;
   toggleGroup(group: string, fallback: boolean): void;
   setDraft(threadId: string, text: string): void;
   setLastThread(threadId: string): void;
@@ -53,6 +57,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   detailsOpen: state.detailsOpen,
   terminalOpen: state.terminalOpen,
   sidebarCollapsed: state.sidebarCollapsed,
+  backgroundChecks: state.backgroundChecks,
   groups: state.groups,
 });
 
@@ -93,6 +98,10 @@ export const useUi = create<UiState>((set, get) => {
     },
     toggleSidebar() {
       set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));
+      savePrefs();
+    },
+    setBackgroundChecks(enabled) {
+      set({ backgroundChecks: enabled });
       savePrefs();
     },
     toggleGroup(group, fallback) {

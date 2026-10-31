@@ -53,12 +53,82 @@ describe("App against the mock API", () => {
     expect(within(nav).getByText("Upgrade tokio and fix the fallout")).toBeInTheDocument();
   });
 
-  it("offers engine updates from the sidebar foot", async () => {
-    render(<App />);
-    expect(await screen.findByRole("link", { name: "1 engine update available" })).toHaveAttribute(
-      "href",
-      "#/settings/engines",
-    );
+  describe("updates", () => {
+    const idle = () => {
+      for (const thread of mock.threads) thread.active_run = null;
+    };
+    const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(await screen.findByRole("button", { name: "3 updates available" }));
+      return screen.findByRole("dialog", { name: "Update everything" });
+    };
+
+    it("shows the button only when something is available", async () => {
+      mock.patchUpdates({ engines: [], library: null, app: null });
+      render(<App />);
+      await screen.findByRole("navigation", { name: "Workspace" });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(screen.queryByRole("button", { name: /updates? available/ })).toBeNull();
+    });
+
+    it("lists versions, commits and notes, and disables with the reason", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+      const dialog = await openDialog(user);
+      expect(within(dialog).getByText("Claude Code")).toBeInTheDocument();
+      expect(within(dialog).getByText("2.1.14 → 2.1.20")).toBeInTheDocument();
+      expect(within(dialog).getByText("Add statechart review guidance")).toBeInTheDocument();
+      expect(within(dialog).getByText("Faster thread loading")).toBeInTheDocument();
+      expect(within(dialog).getByText(/runs are active/)).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "Update all" })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "Update app" })).toBeDisabled();
+    });
+
+    it("runs in order, stops at the first failure and retries", async () => {
+      idle();
+      mock.failUpdateStep("library");
+      const user = userEvent.setup();
+      render(<App />);
+      const dialog = await openDialog(user);
+      await user.click(within(dialog).getByRole("button", { name: "Update all" }));
+      expect(await within(dialog).findByText(/exited with status 1/, {}, { timeout: 3000 })).toBeInTheDocument();
+      const steps = within(dialog).getByRole("list", { name: "Update progress" }).querySelectorAll("li");
+      expect([...steps].map((step) => step.getAttribute("data-state"))).toEqual(["done", "failed", "pending"]);
+      await user.click(within(dialog).getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(mock.updates.progress).toBeNull(), { timeout: 3000 });
+      expect(mock.updates.app?.available).toBe(false);
+    });
+
+    it("shows manual instructions and no button in server mode", async () => {
+      mock.patchUpdates({
+        app: { ...mock.updates.app!, can_apply: false, manual_hint: "Replace the orbynd binary and restart." },
+      });
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: "2 updates available" }));
+      const dialog = await screen.findByRole("dialog", { name: "Update everything" });
+      expect(within(dialog).getByText(/Replace the orbynd binary/)).toBeInTheDocument();
+      expect(within(dialog).queryByRole("button", { name: "Update app" })).toBeNull();
+    });
+
+    it("checks from Settings without applying anything", async () => {
+      const user = userEvent.setup();
+      go("#/settings/updates");
+      render(<App />);
+      const before = mock.updates.checked_at;
+      await user.click(await screen.findByRole("button", { name: "Check for updates" }));
+      await waitFor(() => expect(mock.updates.checked_at).not.toBe(before));
+      expect(mock.updates.engines[0]?.available).toBe(true);
+      await user.click(screen.getByRole("checkbox", { name: "Check in the background" }));
+      expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"backgroundChecks":false');
+    });
+
+    it("says when updates aren't set up for this build", async () => {
+      mock.patchUpdates({ configured: false });
+      go("#/settings/updates");
+      render(<App />);
+      expect(await screen.findByText("Updates aren't set up for this build")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /updates? available/ })).toBeNull();
+    });
   });
 
   it("walks a new person from empty state to a thread", async () => {

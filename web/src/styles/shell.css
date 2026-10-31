@@ -287,10 +287,12 @@ details[open] > summary > .chev {
   width: 32px;
   height: 32px;
   margin-left: auto;
+  padding: 0;
   border: 1px solid var(--color-borderStrong);
   border-radius: 50%;
   background: var(--color-raised);
   color: var(--color-text);
+  cursor: pointer;
 }
 .expand-nav {
   position: fixed;

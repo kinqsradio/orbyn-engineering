@@ -31,6 +31,7 @@ export function libraryBlock(status: Pick<WorkspaceStatus, "active_runs">, libra
 
 function Library({ status, library }: { status: WorkspaceStatus; library: LibraryStatus }) {
   const putManaged = useWorkspace((state) => state.putManaged);
+  const refreshUpdates = useWorkspace((state) => state.refreshUpdates);
   const [dialog, setDialog] = useState<"update" | "rollback" | null>(null);
   const blocked = libraryBlock(status, library);
   const canUpdate = blocked === null && library.behind > 0;
@@ -87,7 +88,10 @@ function Library({ status, library }: { status: WorkspaceStatus; library: Librar
           title="Update the library?"
           confirmLabel="Update"
           onClose={() => setDialog(null)}
-          onConfirm={async () => putManaged(await api.updateWorkspace())}
+          onConfirm={async () => {
+            putManaged(await api.updateWorkspace());
+            await refreshUpdates();
+          }}
         >
           <p>
             {library.incoming.length === 1

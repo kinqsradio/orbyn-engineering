@@ -18,6 +18,7 @@ import type {
   Thread,
   WireAuditEvent,
 } from "./types";
+import type { UpdateStatus } from "./updates";
 import type { ImportPreview, ImportResult, WorkspaceSetup, WorkspaceStatus } from "./workspace";
 
 /** A failed request. `code` is the server's stable code, or a local one below. */
@@ -105,6 +106,11 @@ export async function request<T>(
 const q = encodeURIComponent;
 
 export const api = {
+  updates: (signal?: AbortSignal) => request<UpdateStatus>("GET", "/api/updates", undefined, signal),
+  checkUpdates: () => request<UpdateStatus>("POST", "/api/updates/check"),
+  applyAppUpdate: () => request<UpdateStatus>("POST", "/api/updates/app/apply"),
+  applyAllUpdates: () => request<UpdateStatus>("POST", "/api/updates/apply-all"),
+
   workspace: (signal?: AbortSignal) =>
     request<WorkspaceStatus>("GET", "/api/workspace", undefined, signal),
   setupWorkspace: (body: WorkspaceSetup) =>

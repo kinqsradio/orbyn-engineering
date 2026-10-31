@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
 import type { Approval, EngineStatus, Project, Thread } from "../api/types";
+import type { UpdateStatus } from "../api/updates";
 import type { WorkspaceStatus } from "../api/workspace";
 import { toFailure } from "../lib/useAsync";
 
@@ -25,8 +26,12 @@ interface WorkspaceState {
   managed: Loadable<WorkspaceStatus>;
   /** The service predates the workspace API, so there's nothing to set up. */
   managedUnsupported: boolean;
+  updates: Loadable<UpdateStatus>;
+  updatesUnsupported: boolean;
 
   refreshManaged(): Promise<void>;
+  refreshUpdates(): Promise<void>;
+  putUpdates(status: UpdateStatus): void;
   putManaged(status: WorkspaceStatus): void;
   refreshProjects(): Promise<void>;
   refreshThreads(projectId: string): Promise<void>;
@@ -59,6 +64,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   engines: idle(),
   managed: idle(),
   managedUnsupported: false,
+  updates: idle(),
+  updatesUnsupported: false,
+
+  async refreshUpdates() {
+    const current = claim("updates");
+    try {
+      const data = await api.updates();
+      if (current()) set({ updates: { data, error: null, loading: false } });
+    } catch (error) {
+      if (!current()) return;
+      const failure = toFailure(error);
+      set((state) => ({
+        updates: { data: state.updates.data, error: failure, loading: false },
+        updatesUnsupported: failure.status === 404,
+      }));
+    }
+  },
+
+  putUpdates(status) {
+    claim("updates");
+    set({ updates: { data: status, error: null, loading: false } });
+  },
 
   async refreshManaged() {
     const current = claim("managed");
@@ -178,13 +205,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async refreshAll() {
-    const { refreshProjects, refreshThreads, refreshApprovals, refreshManaged } = get();
+    const { refreshProjects, refreshThreads, refreshApprovals, refreshManaged, refreshUpdates } = get();
     await refreshProjects();
     const projects = get().projects.data ?? [];
     await Promise.all([
       ...projects.map((p) => refreshThreads(p.id)),
       refreshApprovals(),
       refreshManaged(),
+      refreshUpdates(),
     ]);
   },
 

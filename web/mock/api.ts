@@ -10,6 +10,7 @@ import type {
   Thread,
   WireThreadEvent,
 } from "../src/api/types.ts";
+import type { UpdateStatus } from "../src/api/updates.ts";
 import type { WorkspaceStatus } from "../src/api/workspace.ts";
 import * as fixtures from "./fixtures.ts";
 
@@ -55,6 +56,8 @@ export function createMockApi(options: MockOptions = {}) {
   let rules = structuredClone(fixtures.rules);
   let managed: WorkspaceStatus = fixtures.workspaceStatus([]);
   let failNextSetup = false;
+  let updates: UpdateStatus = fixtures.updateStatus(managed.library);
+  let failStep: string | null = null;
   let failures: Failure[] = [];
   let delayMs = 0;
   let idCounter = 0;
@@ -85,6 +88,8 @@ export function createMockApi(options: MockOptions = {}) {
     }
     managed = fixtures.workspaceStatus(projects);
     failNextSetup = false;
+    updates = fixtures.updateStatus(managed.library);
+    failStep = null;
     if (next === "first-run") {
       managed = { ...managed, state: "unset", library: null, projects: [] };
     }
@@ -252,6 +257,70 @@ export function createMockApi(options: MockOptions = {}) {
     return { status: 202, body: workspaceBody() };
   }
 
+  const updatesBody = (): UpdateStatus => ({
+    ...updates,
+    active_runs: threads.filter((t) => t.active_run).length,
+    library: updates.library ? { ...updates.library, modified: managed.library?.modified ?? false } : null,
+  });
+
+  function finishStep(id: string) {
+    if (id.startsWith("engine:")) {
+      updates = {
+        ...updates,
+        engines: updates.engines.map((engine) =>
+          `engine:${engine.id}` === id ? { ...engine, current: engine.latest, available: false } : engine,
+        ),
+      };
+      const engine = engines.find((e) => `engine:${e.id}` === id);
+      if (engine) engine.version = engine.latest;
+    } else if (id === "library" && updates.library) {
+      updates = { ...updates, library: { ...updates.library, available: false, incoming: [] } };
+      if (managed.library) managed = { ...managed, library: { ...managed.library, behind: 0, incoming: [] } };
+    } else if (id === "app" && updates.app) {
+      updates = { ...updates, app: { ...updates.app, current: updates.app.latest ?? updates.app.current, available: false } };
+    }
+  }
+
+  function applyAll(): MockResponse {
+    if (threads.some((t) => t.active_run)) return err(409, "runs_active", "Runs are active.");
+    if (managed.library?.modified) return err(409, "library_modified", "The library has local changes.");
+    const previous = updates.progress ?? [];
+    const steps: UpdateStatus["progress"] = [
+      ...updates.engines.filter((e) => e.available).map((e) => ({ id: `engine:${e.id}`, label: e.name })),
+      ...(updates.library?.available ? [{ id: "library", label: "Skills library" }] : []),
+      ...(updates.app?.available && updates.app.can_apply ? [{ id: "app", label: "App" }] : []),
+    ].map((step) => ({ ...step, state: "pending", error: null }));
+    const done = previous.filter((step) => step.state === "done");
+    updates = { ...updates, progress: [...done, ...steps] };
+    const set = (id: string, state: "running" | "done" | "failed", error: string | null = null) => {
+      updates = {
+        ...updates,
+        progress: (updates.progress ?? []).map((step) => (step.id === id ? { ...step, state, error } : step)),
+      };
+    };
+    const next = (at: number) => {
+      const step = steps[at];
+      if (!step) {
+        updates = { ...updates, progress: null };
+        return;
+      }
+      set(step.id, "running");
+      const timer = setTimeout(() => {
+        if (failStep === step.id) {
+          failStep = null;
+          set(step.id, "failed", "The installer exited with status 1.");
+          return;
+        }
+        finishStep(step.id);
+        set(step.id, "done");
+        next(at + 1);
+      }, stepMs * 3);
+      timers.add(timer);
+    };
+    next(0);
+    return { status: 202, body: updatesBody() };
+  }
+
   function newProject(path: string, trusted = false): Project {
     const project: Project = {
       id: nextId("p"),
@@ -275,6 +344,19 @@ export function createMockApi(options: MockOptions = {}) {
     }
 
     switch (key) {
+      case "GET /api/updates":
+        return { status: 200, body: updatesBody() };
+      case "POST /api/updates":
+        if (seg[2] === "check") {
+          updates = { ...updates, checked_at: new Date().toISOString() };
+          return { status: 200, body: updatesBody() };
+        }
+        if (seg[2] === "apply-all") return applyAll();
+        if (seg[2] === "app") {
+          finishStep("app");
+          return { status: 200, body: updatesBody() };
+        }
+        break;
       case "GET /api/workspace":
         return { status: 200, body: workspaceBody() };
       case "POST /api/workspace":
@@ -293,6 +375,7 @@ export function createMockApi(options: MockOptions = {}) {
               },
             };
           }
+          finishStep("library");
           return { status: 200, body: workspaceBody() };
         }
         if (seg[2] === "rollback" && managed.library?.previous_revision) {
@@ -497,6 +580,7 @@ export function createMockApi(options: MockOptions = {}) {
         engine.updating = true;
         const timer = setTimeout(() => {
           engine.updating = false;
+          finishStep(`engine:${engine.id}`);
           engine.version = engine.latest;
         }, stepMs * 20);
         timers.add(timer);
@@ -575,11 +659,21 @@ export function createMockApi(options: MockOptions = {}) {
     failSetup() {
       failNextSetup = true;
     },
+    /** Fails the given step of the next apply, once. */
+    failUpdateStep(id: string) {
+      failStep = id;
+    },
+    patchUpdates(patch: Partial<UpdateStatus>) {
+      updates = { ...updates, ...patch };
+    },
     patchWorkspace(patch: Partial<WorkspaceStatus>) {
       managed = { ...managed, ...patch };
     },
     get workspace() {
       return managed;
+    },
+    get updates() {
+      return updates;
     },
   };
 }

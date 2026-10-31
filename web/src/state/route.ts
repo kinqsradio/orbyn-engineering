@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 export const SETTINGS_SECTIONS = [
   "engines",
   "workspace",
+  "updates",
   "skills",
   "policy",
   "audit",

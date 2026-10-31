@@ -49,6 +49,31 @@ describe("groupThreads", () => {
     expect(groups.recent.map((t) => t.id)).toEqual(["new", "failed"]);
     expect(groups.settled.map((t) => t.id)).toEqual(["old"]);
   });
+
+  it("follows the server's lifecycle when present", () => {
+    const lifecycle = {
+      pinned_at: null,
+      archived_at: null,
+      settled_at: null,
+      snoozed_until: null,
+      unread: false,
+      auto_settle: null,
+      position: 0,
+      parent_thread_id: null,
+      relation: null,
+    };
+    const groups = groupThreads(
+      [
+        thread("kept", 300, { lifecycle }),
+        thread("done", 1, { lifecycle: { ...lifecycle, settled_at: "2026-10-31T11:00:00Z" } }),
+        thread("gone", 1, { lifecycle: { ...lifecycle, archived_at: "2026-10-31T11:00:00Z" } }),
+      ],
+      now,
+    );
+    expect(groups.recent.map((t) => t.id)).toEqual(["kept"]);
+    expect(groups.settled.map((t) => t.id)).toEqual(["done"]);
+    expect(groups.working).toEqual([]);
+  });
 });
 
 describe("groupWork", () => {

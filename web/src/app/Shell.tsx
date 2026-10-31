@@ -1,5 +1,6 @@
 import { PanelLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { api } from "../api/client";
 import { AddProject } from "../features/onboarding/AddProject";
 import { NewThread } from "../features/onboarding/NewThread";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
@@ -14,6 +15,7 @@ import { useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
 
 const POLL_MS = 4000;
+const UPDATE_CHECK_MS = 6 * 3_600_000;
 
 function RouteView({ route, needsProject }: { route: Route; needsProject: boolean }) {
   switch (route.name) {
@@ -90,6 +92,7 @@ export function Shell() {
   const pending = useWorkspace((state) => state.approvals.data?.length ?? 0);
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
+  const backgroundChecks = useUi((state) => state.backgroundChecks);
   const main = useRef<HTMLElement>(null);
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
@@ -106,6 +109,19 @@ export function Shell() {
     }, POLL_MS);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!backgroundChecks) return;
+    const check = () => {
+      if (document.hidden) return;
+      api.checkUpdates().then(
+        (status) => useWorkspace.getState().putUpdates(status),
+        () => undefined,
+      );
+    };
+    const timer = setInterval(check, UPDATE_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [backgroundChecks]);
 
   useEffect(() => {
     document.title = pending > 0 ? `(${pending}) Orbyn Engineering` : "Orbyn Engineering";
