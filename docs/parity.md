@@ -308,7 +308,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
 - [x] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S | web done
 - [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
-- [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
+- [x] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
 - [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done | web done
@@ -346,7 +346,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] F61 PR link opening: setting chooses in-app or host site for PR links; per-repository merge method overrides and default | packages/contracts/src/settings.ts | w d | S
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
 - [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done | web done
-- [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
+- [x] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S | server done
 - [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
 

@@ -63,6 +63,7 @@ const DEFINITIONS: &[Definition] = defs![
     "default_thread_env_mode" Kind::OneOf(ENV_MODE), "local", true;
     "new_worktrees_start_from_origin" Kind::Bool, true, true;
     "worktree_submodules" Kind::OneOf(SUBMODULES), "recursive", true;
+    "worktree_location" Kind::Text, "", true;
     "add_project_base_directory" Kind::Text, "", false;
     "text_generation_model" Kind::Text, "", false;
     "auto_thread_titles" Kind::Bool, true, true;
