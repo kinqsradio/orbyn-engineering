@@ -371,9 +371,9 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [x] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
 - [x] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M | zoom and appearance per tab, defaults in `preview_zoom` and `preview_appearance`; the service side ran in a real browser
 - [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M
-- [x] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M | `PreviewFloat`, read-only; unit tested, not yet seen in the app
+- [x] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M | `PreviewFloat`, read-only, seen in a real run
 - [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
-- [x] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L | crosshair in the panel; the element is quoted into the draft; works in a streamed page, so desktop-only is lifted
+- [x] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L | crosshair in the panel; the element is quoted into the draft; seen in a real run
 - [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L | server: changed frames as JPEG files; no overlays or video
 - [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L
 - [x] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M | named profiles keep their folder and hold one tab at a time, since a browser locks its profile; no Settings page to add one yet, only the API

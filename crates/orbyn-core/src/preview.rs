@@ -221,6 +221,7 @@ async fn pump(tab: Arc<Tab>) {
     let mut ticks = tokio::time::interval(FRAME_EVERY);
     let mut since_history = 0;
     let mut crashes = Crashes::default();
+    let mut watching = 0;
     loop {
         tokio::select! {
             () = tab.stop.cancelled() => {
@@ -239,9 +240,16 @@ async fn pump(tab: Arc<Tab>) {
         let recording = lock(&tab.recording)
             .as_ref()
             .map(|rec| (rec.folder.clone(), rec.frames.clone()));
-        if tab.frames.receiver_count() == 0 && recording.is_none() {
+        let viewers = tab.frames.receiver_count();
+        if viewers == 0 && recording.is_none() {
+            watching = 0;
             continue;
         }
+        // A viewer who just joined has no frame yet, even if the page hasn't changed.
+        if viewers > watching {
+            last.clear();
+        }
+        watching = viewers;
         since_history += 1;
         if since_history >= HISTORY_TICKS {
             since_history = 0;

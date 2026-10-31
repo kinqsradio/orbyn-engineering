@@ -3090,3 +3090,12 @@ button.context-meter:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.browser-bar {
+  flex-wrap: wrap;
+}
+
+.browser-bar input {
+  flex: 1 1 120px;
+  min-width: 120px;
+}

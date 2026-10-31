@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, PictureInPicture2, Plus, RotateCw, Smartphone, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
 import { request } from "../../api/client";
 import { readToken } from "../../api/token";
@@ -387,6 +387,8 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         { label: "Dark", selected: tab.appearance === "dark", onSelect: () => view({ appearance: "dark" }) },
       ],
     },
+    { label: toolbar ? "Hide device toolbar" : "Show device toolbar", separatorBefore: true, onSelect: () => setToolbar(!toolbar) },
+    { label: "Float over chat", onSelect: () => useUi.getState().setPreviewFloat({ threadId, tabId: tab.id }) },
     { label: "Clear cookies", separatorBefore: true, destructive: true, onSelect: () => clear({ cookies: true }) },
     { label: "Clear cache", destructive: true, onSelect: () => clear({ cache: true }) },
   ];
@@ -482,9 +484,6 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
             <IconButton label="Pick an element" pressed={picking} onClick={() => setPicking(!picking)}>
               <Crosshair size={14} aria-hidden />
             </IconButton>
-            <IconButton label="Device toolbar" pressed={toolbar} onClick={() => setToolbar(!toolbar)}>
-              <Smartphone size={14} aria-hidden />
-            </IconButton>
             <IconButton
               label={human ? "Give control back" : "Take control"}
               pressed={human}
@@ -504,9 +503,6 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
               }
             >
               {active.recording ? <Square size={14} aria-hidden /> : <Circle size={14} aria-hidden />}
-            </IconButton>
-            <IconButton label="Float over chat" onClick={() => useUi.getState().setPreviewFloat({ threadId, tabId: active.id })}>
-              <PictureInPicture2 size={14} aria-hidden />
             </IconButton>
             <IconButton
               label="More page actions"
