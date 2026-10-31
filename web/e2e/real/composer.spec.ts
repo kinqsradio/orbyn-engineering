@@ -33,6 +33,20 @@ test("sent prompts recall with the arrows, and the context meter reads the engin
   await expect(box(page)).toHaveValue("");
 });
 
+test("a run that ignores Stop can be force stopped", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:deaf] hang here");
+  await expect(page).toHaveURL(/#\/threads\//);
+  const id = threadIdOf(page);
+  await expect(page.getByText(/sleep 100/).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  const force = page.getByRole("button", { name: "Force stop" });
+  await expect(force).toBeVisible({ timeout: 8_000 });
+  await force.click();
+  await settled(service, id);
+  await expect(force).toBeHidden();
+});
+
 test("send shortcut modes follow the setting", async ({ page }) => {
   await newThread(page);
   await page.goto(`${service.page}#/settings/chat`);

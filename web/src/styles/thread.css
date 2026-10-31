@@ -2363,6 +2363,10 @@ button.detail-row:hover {
   color: var(--color-warn);
   font-size: var(--text-small);
 }
+.composer-banner span {
+  flex: 1;
+  min-width: 0;
+}
 .composer-panel {
   display: flex;
   flex-direction: column;

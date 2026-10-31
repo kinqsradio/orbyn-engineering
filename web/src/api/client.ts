@@ -232,6 +232,7 @@ export const api = {
       ...turn,
     }),
   cancelRun: (runId: string) => request<void>("POST", `/api/runs/${q(runId)}/cancel`),
+  forceStop: (threadId: string) => request<unknown>("POST", `/api/threads/${q(threadId)}/force-stop`, {}),
   diff: (threadId: string, signal?: AbortSignal, scope?: string) =>
     request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff${scope ? `?scope=${scope}` : ""}`, undefined, signal),
   checkpoints: (threadId: string, signal?: AbortSignal) =>

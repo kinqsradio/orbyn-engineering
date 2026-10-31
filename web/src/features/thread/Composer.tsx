@@ -19,7 +19,7 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { useWorkspace } from "../../state/workspace";
-import { ComposerBanners, ContextMeter, InlineLimits, StashDrawer } from "./ComposerExtras";
+import { ComposerBanners, ContextMeter, InlineLimits, StashDrawer, StopNotice } from "./ComposerExtras";
 import {
   continueListLine,
   indentListLine,
@@ -96,6 +96,7 @@ export function Composer({
   const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
   const [uploading, setUploading] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [stoppedRun, setStoppedRun] = useState<string | null>(null);
   const refreshAll = useWorkspace((state) => state.refreshAll);
   const filePicker = useRef<HTMLInputElement>(null);
   const putThread = useWorkspace((state) => state.putThread);
@@ -384,6 +385,7 @@ export function Composer({
     setError(null);
     try {
       await api.cancelRun(thread.active_run.id);
+      setStoppedRun(thread.active_run.id);
       void refreshAll();
     } catch (failure) {
       setError(`Couldn't stop the run. ${toFailure(failure).message}`);
@@ -459,6 +461,7 @@ export function Composer({
       <QueuedMessages threadId={thread.id} items={queue.data ?? []} running={busy} onChange={reloadQueue} />
       <QuestionPanel threadId={thread.id} waiting={thread.active_run?.state === "awaiting_approval"} />
       <ComposerBanners engine={engine} />
+      {runId !== null && runId === stoppedRun ? <StopNotice threadId={thread.id} runId={runId} /> : null}
       {limitsOpen ? <InlineLimits threadId={thread.id} onClose={() => setLimitsOpen(false)} /> : null}
       {stashOpen ? (
         <StashDrawer entries={stashes} onRestore={restoreStash} onDelete={dropStash} onClose={() => setStashOpen(false)} />

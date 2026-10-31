@@ -70,6 +70,7 @@ export const scenes = {
     { method: "item/commandExecution/outputDelta", params: { itemId: "l2", delta: "tick\n" } },
     { hold: true },
   ],
+  deaf: [...command("d1", "sleep 100", "tick\n", 0), { deaf: true }],
   markdown: message("md", MARKDOWN),
   empty: command("q1", "true", "", 0),
   subagent: [

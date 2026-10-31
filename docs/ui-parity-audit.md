@@ -57,6 +57,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Timeline | Code block | Live: card radius 8, header 30, pre 13/17.875, language icon | Header, Shiki tokens, wrap, copy | Language text, no icon |
 | Timeline | User bubble | Live: radius 16, padding 12 | Match | 0 |
 | Composer | Stop | Live: red round button | Match, Real | 0 |
+| Composer | Force stop | Source: Agent not responding to Stop, Force stop | Match, Real on a run that ignores interrupt | Shown 3 s after Stop, the service has no unresponsive state; lost on reload |
 | Composer | Model picker | Live at 1051x534: 362 wide, border 1, radius 8, blur 16 saturate 1.08, 150 ms scale and opacity; rail 44 with 36px tabs, 3x20 indicator, star tab and divider; search 291x33 with primary underline; rows 291x32, pitch 34, radius 4; selected 6% fill and a check; star on hover, filled when favourite | Match, Real: real model lists, favourites, search, number jumps, provider keys | Row width 292, +1; rail glyphs are neutral letters; no Legacy models group, no such flag in the API |
 | Composer | Picker placement | Live: flips at short heights, y 6 at 534 tall | Below, above, then beside the trigger | Same window: x 449 vs 471, y 232 vs 6, reference rule at this size not reproduced |
 | Composer | Closed trigger | Live: 28 tall, glyph 16, short name, 14px | Match, Real | Letter glyph instead of the vendor mark |

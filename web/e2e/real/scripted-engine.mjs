@@ -22,6 +22,7 @@ if (args[0] !== "app-server") {
   let thread = "";
   let turn = 0;
   let waiting = null;
+  let deaf = false;
 
   createInterface({ input: child.stdout }).on("line", (line) => {
     const message = JSON.parse(line);
@@ -40,6 +41,10 @@ if (args[0] !== "app-server") {
     for (const step of scenes[name] ?? []) {
       if (step.wait) await delay(step.wait);
       if (step.hold) await new Promise((done) => (waiting = done));
+      if (step.deaf) {
+        deaf = true;
+        await new Promise(() => {});
+      }
       if (step.method) note(id, step.method, step.params);
       if (step.end) return finish(id, step.end, step.error);
     }
@@ -48,6 +53,7 @@ if (args[0] !== "app-server") {
 
   createInterface({ input: process.stdin }).on("line", (line) => {
     const message = JSON.parse(line);
+    if (message.method === "turn/interrupt" && deaf) return send({ id: message.id, result: {} });
     if (message.method === "turn/interrupt" && waiting) {
       send({ id: message.id, result: {} });
       waiting = null;
