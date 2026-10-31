@@ -12,6 +12,18 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 `| web done` means the web surface was run against the real `orbynd`; other
 surfaces on that row stay open.
 
+## Scope decided on 31 October 2026
+
+The target is a working desktop and local web replica. Out of scope for now:
+
+- Accounts, sign-in and hosted identity.
+- Tailscale, tunnels, relays, device pairing, linked environments, guest links and
+  other remote access: all of section L except scoped local access checks.
+- Mobile: section Q, and rows whose only surface is `m`.
+
+Rows in those groups stay listed so they can return later. They do not count
+toward completion.
+
 ## Rows Orbyn will not copy as written
 
 - `[auth-risk]` rows that hold, broker or read engine credentials break hard rule 1
@@ -82,7 +94,7 @@ surfaces on that row stay open.
 - [ ] A59 Force stop: kills unresponsive thread | apps/web/src/components/chat/useForceStopThread.ts | w d s | M
 - [ ] A60 Background work view: mobile sheet of running background work | apps/mobile/src/features/threads/ThreadBackgroundWorkSheet.tsx | m | M
 - [ ] A61 Sidebar grouping and sort: repository/path/separate; project and thread sort; overrides | packages/contracts/src/settings.ts | w d m | M
-- [ ] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M
+- [x] A62 Subagent stop cascade: stopping a parent stops delegated children | docs/user/thread-sidebar.md | w d m s | M | server done
 - [x] A63 Project filter menu: header button limits the thread list to one or several projects, with project search, Shift+Enter to add or remove a project, favicon stack on the button and a context-key shortcut to open that project's settings | apps/web/src/components/Sidebar.tsx | w d | M | web done
 - [ ] A64 Project folder menu: right-click or pen button on a project folder offers new thread, copy path and project settings | apps/web/src/components/Sidebar.tsx | w d | S
 - [ ] A65 Thread menu extras: Find in thread, New thread on this branch, Filter by this project (toggles off when active), Copy branch, Copy path, Project settings shortcut | apps/web/src/components/threadActionMenu.logic.ts | w d m | S
@@ -564,20 +576,20 @@ surfaces on that row stay open.
 - [ ] L51 Revoke other clients: one action revokes all sessions except the current one | apps/web/src/components/settings/AuthorizedClientsSettings.tsx | w d | S
 
 ## M. Automations, subagents and orchestration
-- [ ] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L
+- [x] M1 Scheduled tasks: interval, fixed time, weekdays | apps/server/src/scheduledTasks/ScheduledTaskService.ts | w d m s | L | server done
 - [ ] M2 Task manager UI: edit, pause, resume, run now, delete | apps/web/src/components/settings/ScheduledTasksSettings.tsx | w d m | M
 - [ ] M3 Thread automations panel: tasks tied to a thread | apps/web/src/components/chat/ThreadAutomationsPanel.tsx | w d | M
-- [ ] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted]
-- [ ] M5 Webhook templates: placeholders with untrusted-data wrapping | apps/server/src/scheduledTasks/webhookTemplate.ts | s | M
-- [ ] M6 Webhook signatures: header, encoding, prefix | apps/server/src/scheduledTasks/webhookVerification.ts | w d s | M
-- [ ] M7 Webhook filters: up to 16 conditions | apps/server/src/scheduledTasks/webhookFilter.ts | w d s | M
-- [ ] M8 Replay and coalesce: dedupe with windows | apps/server/src/scheduledTasks/webhookDedupe.ts | s | L
-- [ ] M9 Webhook deliveries log: request and prompt detail | packages/contracts/src/rpc.ts | w d s | M
+- [x] M4 Webhook trigger: public URL, rotate token | apps/server/src/scheduledTasks/webhookRoute.ts | w d m s | L | [hosted] | server done, reachable only where the host is; no relay
+- [x] M5 Webhook templates: placeholders with untrusted-data wrapping | apps/server/src/scheduledTasks/webhookTemplate.ts | s | M | server done
+- [x] M6 Webhook signatures: header, encoding, prefix | apps/server/src/scheduledTasks/webhookVerification.ts | w d s | M | server done
+- [x] M7 Webhook filters: up to 16 conditions | apps/server/src/scheduledTasks/webhookFilter.ts | w d s | M | server done
+- [x] M8 Replay and coalesce: dedupe with windows | apps/server/src/scheduledTasks/webhookDedupe.ts | s | L | server done
+- [x] M9 Webhook deliveries log: request and prompt detail | packages/contracts/src/rpc.ts | w d s | M | server done
 - [ ] M10 Hold webhooks offline: relay stores up to 24 hours | apps/server/src/relay/HeldHooksWaker.ts | s | L | [hosted]
-- [ ] M11 Skip stale deliveries: maximum age per task | packages/contracts/src/scheduledTask.ts | s | S
-- [ ] M12 Delegated subagents: child threads with result wake | apps/server/src/mcp/OrchestratorMcpService.ts | w d m s | L
+- [x] M11 Skip stale deliveries: maximum age per task | packages/contracts/src/scheduledTask.ts | s | S | server done
+- [x] M12 Delegated subagents: child threads with result wake | apps/server/src/mcp/OrchestratorMcpService.ts | w d m s | L | server done
 - [ ] M13 Workflows: script view and stop | packages/contracts/src/orchestrationV2.ts | w d m s | L
-- [ ] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
+- [x] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done
 - [ ] M15 Secret request tool: agent requests secret securely | apps/server/src/secrets/SecretRequests.ts | s | M | [auth-risk]
 - [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
 
