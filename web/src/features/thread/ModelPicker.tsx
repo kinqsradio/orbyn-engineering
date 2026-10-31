@@ -20,19 +20,27 @@ const MARGIN = 6;
 const GAP = 4;
 const FAVORITES = "favorites";
 
+export type FloatingSide = "below" | "above" | "beside";
+
 /** Below, above, then beside the trigger, kept inside the window, as the reference does. */
+export function chooseSide(anchor: DOMRect, height: number, viewport: { height: number }): FloatingSide {
+  if (anchor.bottom + GAP + height <= viewport.height - MARGIN) return "below";
+  if (anchor.top - GAP - height >= MARGIN) return "above";
+  return "beside";
+}
+
+/** Where the panel goes on a side. The side stays put while the content's height changes. */
 export function placeFloating(
   anchor: DOMRect,
   size: { width: number; height: number },
   viewport: { width: number; height: number },
+  side: FloatingSide = chooseSide(anchor, size.height, viewport),
 ): { left: number; top: number; origin: string } {
   const clampLeft = (left: number) => Math.max(MARGIN, Math.min(viewport.width - size.width - MARGIN, left));
   const clampTop = (top: number) => Math.max(MARGIN, Math.min(viewport.height - size.height - MARGIN, top));
-  if (anchor.bottom + GAP + size.height <= viewport.height - MARGIN) {
-    return { left: clampLeft(anchor.left), top: anchor.bottom + GAP, origin: "top left" };
-  }
-  if (anchor.top - GAP - size.height >= MARGIN) {
-    return { left: clampLeft(anchor.left), top: anchor.top - GAP - size.height, origin: "bottom left" };
+  if (side === "below") return { left: clampLeft(anchor.left), top: clampTop(anchor.bottom + GAP), origin: "top left" };
+  if (side === "above") {
+    return { left: clampLeft(anchor.left), top: clampTop(anchor.top - GAP - size.height), origin: "bottom left" };
   }
   return { left: clampLeft(anchor.left - GAP - size.width), top: clampTop(anchor.top), origin: "right center" };
 }
@@ -51,13 +59,19 @@ export function FloatingPanel({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const side = useRef<FloatingSide | null>(null);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    // Chosen once, for the tallest it can get, so switching tabs cannot move it.
+    const tallest = Math.max(element.offsetHeight, Number.parseFloat(getComputedStyle(element).maxHeight) || 0);
+    side.current ??= chooseSide(anchor, tallest, viewport);
     const place = placeFloating(
       anchor,
       { width: element.offsetWidth, height: element.offsetHeight },
-      { width: window.innerWidth, height: window.innerHeight },
+      viewport,
+      side.current,
     );
     element.style.left = `${place.left}px`;
     element.style.top = `${place.top}px`;

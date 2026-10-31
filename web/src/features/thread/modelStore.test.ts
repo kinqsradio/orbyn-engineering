@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInfo } from "../../api/types";
 import { arrangeModels, effortValue, resolveModel, searchRows, shortModelName } from "./modelStore";
-import { placeFloating } from "./ModelPicker";
+import { chooseSide, placeFloating } from "./ModelPicker";
 
 const model = (id: string, over: Partial<ModelInfo> = {}): ModelInfo => ({
   id,
@@ -61,5 +61,15 @@ describe("picker placement", () => {
     expect(placeFloating(anchor, size, { width: 1400, height: 600 })).toMatchObject({ left: 800, top: 147 });
     const short = { ...anchor, top: 284, bottom: 312 } as DOMRect;
     expect(placeFloating(short, { width: 362, height: 340 }, { width: 1051, height: 534 }).left).toBe(434);
+  });
+
+  it("stays on the side it opened on when the content changes height", () => {
+    const short = { ...anchor, top: 284, bottom: 312 } as DOMRect;
+    const window = { width: 1051, height: 534 };
+    const side = chooseSide(short, 348, window);
+    expect(side).toBe("beside");
+    const tall = placeFloating(short, { width: 362, height: 348 }, window, side);
+    const small = placeFloating(short, { width: 362, height: 120 }, window, side);
+    expect(small.left).toBe(tall.left);
   });
 });
