@@ -56,7 +56,7 @@ fn external_repo(path: &Path) -> PathBuf {
     std::fs::write(path.join("base.txt"), "base\n").unwrap();
     run_git(path, &["add", "."]);
     run_git(path, &["commit", "-q", "-m", "first"]);
-    orbyn_core::util::canonicalize(path).unwrap()
+    support::canonical(path)
 }
 
 async fn added(service: &Service, path: &Path) -> Value {
@@ -145,7 +145,7 @@ async fn adding_and_removing_write_nothing_and_a_run_leaves_working_files_alone(
 async fn the_library_and_duplicates_are_refused_however_they_are_named() {
     let dir = TempDir::new();
     let service = start(&dir, options(&dir.path().join("l"), None)).await;
-    let library = orbyn_core::util::canonicalize(dir.path().join("library")).unwrap();
+    let library = support::canonical(dir.path().join("library"));
     for bad in [
         library.clone(),
         library.join("skills"),
@@ -209,7 +209,7 @@ async fn claude_starts_at_the_library_and_reaches_the_checkout_by_path() {
     let dir = TempDir::new();
     let launch_file = dir.path().join("l");
     let service = start(&dir, options(&launch_file, None)).await;
-    let library = orbyn_core::util::canonicalize(dir.path().join("library")).unwrap();
+    let library = support::canonical(dir.path().join("library"));
     let repo = external_repo(&dir.path().join("app"));
     let project = added(&service, &repo).await;
     let id = project["id"].as_str().unwrap();
@@ -249,7 +249,7 @@ async fn codex_runs_its_turn_in_the_checkout_so_the_library_stays_read_only() {
     let dir = TempDir::new();
     let launch_file = dir.path().join("l");
     let service = start(&dir, options(&launch_file, None)).await;
-    let library = orbyn_core::util::canonicalize(dir.path().join("library")).unwrap();
+    let library = support::canonical(dir.path().join("library"));
     let repo = external_repo(&dir.path().join("app"));
     let project = added(&service, &repo).await;
     let id = project["id"].as_str().unwrap();
@@ -293,7 +293,7 @@ async fn diffs_and_checkpoints_read_the_checkout_not_the_library() {
         .json(&format!("/api/threads/{thread}/diff?scope=turn&run={run}"))
         .await;
     assert_eq!(diff[0]["path"], "from-engine.txt", "{diff}");
-    let library = orbyn_core::util::canonicalize(dir.path().join("library")).unwrap();
+    let library = support::canonical(dir.path().join("library"));
     assert!(!library.join("from-engine.txt").exists());
     service.stop().await;
 }
@@ -306,7 +306,7 @@ async fn a_non_git_folder_runs_without_git_features() {
     let folder = dir.path().join("plain");
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("note.txt"), "x").unwrap();
-    let folder = orbyn_core::util::canonicalize(folder).unwrap();
+    let folder = support::canonical(folder);
     let before = tree(&folder);
     let project = added(&service, &folder).await;
     assert_eq!(project["is_git"], false);
@@ -374,12 +374,12 @@ async fn a_thread_without_a_project_gets_a_dated_folder_that_outlives_it() {
     let dir = TempDir::new();
     let launch_file = dir.path().join("l");
     let service = start(&dir, options(&launch_file, None)).await;
-    let library = orbyn_core::util::canonicalize(dir.path().join("library")).unwrap();
+    let library = support::canonical(dir.path().join("library"));
     let body = scratch_thread(&service).await;
     assert_eq!(body["scratch"], true);
     let cwd = PathBuf::from(body["cwd"].as_str().unwrap());
     assert!(cwd.is_dir());
-    let scratch = orbyn_core::util::canonicalize(dir.path().join("data/scratch")).unwrap();
+    let scratch = support::canonical(dir.path().join("data/scratch"));
     assert!(cwd.starts_with(&scratch), "{cwd:?}");
     let name = cwd.file_name().unwrap().to_str().unwrap();
     assert_eq!(&name[4..5], "-", "dated: {name}");

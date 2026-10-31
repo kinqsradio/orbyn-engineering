@@ -10,6 +10,11 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 
+/// The form the product stores: on Windows, without the verbatim prefix.
+pub fn canonical(path: impl AsRef<Path>) -> PathBuf {
+    orbyn_core::util::canonicalize(path.as_ref()).unwrap()
+}
+
 pub const FAKE: &str = env!("CARGO_BIN_EXE_orbyn-fake-engine");
 const ORBYND: &str = env!("CARGO_BIN_EXE_orbynd");
 
@@ -19,7 +24,7 @@ impl TempDir {
     pub fn new() -> Self {
         let path = std::env::temp_dir().join(format!("orbynd-test-{}", orbyn_core::util::new_id()));
         std::fs::create_dir_all(&path).unwrap();
-        Self(orbyn_core::util::canonicalize(path).unwrap())
+        Self(canonical(path))
     }
 
     pub fn path(&self) -> &Path {
@@ -372,7 +377,7 @@ pub fn library(root: &Path) -> PathBuf {
     run_git(root, &["config", "user.name", "T"]);
     run_git(root, &["add", "."]);
     run_git(root, &["commit", "-q", "-m", "library"]);
-    orbyn_core::util::canonicalize(root).unwrap()
+    canonical(root)
 }
 
 /// A trusted project with a thread on `engine`.
