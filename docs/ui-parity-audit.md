@@ -80,7 +80,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Message limit | Source: 120,000, draft kept | Match, Real | Counted in the client as well as the service |
 | Composer | Uploads | Source: each file on add, retry, remove, blocks send | Match, Real | Failure text inline, no progress bar |
 | Composer | Queue edit | Source: back to the composer | Match, Real | An existing draft keeps its text, the prompt joins after it |
-| Composer | Plan | Source | Button, /plan, /default, Real | Shift+Tab left to focus movement |
+| Composer | Plan | Source | Button, /plan, /default, Shift+Tab, Real; Labs turns them off | Inside a list Shift+Tab outdents first |
 | Composer | Context meter, /usage-limits | Source | Match, Real; the meter compacts on native engines | Compaction tick absent |
 | Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | 0 |
 | Composer | Live Markdown | Source: rich editor that keeps literal markers | Styled layer under a transparent textarea, Real; markers stay and bold, headings and code keep their width | Italic is an underline and code stays in the body font, so the caret never drifts |
@@ -117,6 +117,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Sections | Live: General, Appearance, Chat, Diffs & pull requests, Keybindings, SnapShots, Providers, Threads, Browser, Devices, Scheduled tasks, Projects, Source control, Worktrees, Environments, Sharing & access, Maintenance, Labs, About, Archive | 15 backed, all load Real | SnapShots, Browser, Devices hidden; Environments and Sharing out of scope |
 | Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules; the shell now runs every rule through when contexts, Real | Row layout own; mod+digit falls back in the client, the service lists no jump rules |
 | Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
+| Settings | Advanced folds | Source: collapsed sections | Branch names and the open source list, Real | Fewer folds than the reference |
+| Settings | Network | Own: every automatic outbound request | Maintenance, Real | n/a |
 | Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
 | Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook and after-thread kinds; signature, filters, repeats, age, address and deliveries log | The address shows once, when issued, so reopening needs a new one |
 | Settings | Notifications | Live: Thread, In-app | Off, notifications, sound or both, and in-app, Real | System alerts only in a hidden window, which now keeps polling while work runs |

@@ -6,10 +6,11 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects } from "../../state/workspace";
 import { Button, Pill } from "../../ui/controls";
+import licenses from "./licenses.json";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
-import { PreferenceGroups } from "./PreferenceRows";
+import { Advanced, PreferenceGroups } from "./PreferenceRows";
 
 const heading = (title: string) => (
   <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -296,23 +297,29 @@ export function WorktreesSection() {
               },
             ],
           },
-          {
-            title: "Branch names",
-            rows: [
-              {
-                key: "branch_naming_mode",
-                title: "Naming",
-                options: [
-                  { value: "static", label: "Static" },
-                  { value: "semantic", label: "Semantic" },
-                  { value: "custom", label: "Custom" },
-                ],
-              },
-              { key: "branch_name_prefix", title: "Branch prefix" },
-            ],
-          },
         ]}
       />
+      <Advanced>
+        <PreferenceGroups
+          groups={[
+            {
+              title: "Branch names",
+              rows: [
+                {
+                  key: "branch_naming_mode",
+                  title: "Naming",
+                  options: [
+                    { value: "static", label: "Static" },
+                    { value: "semantic", label: "Semantic" },
+                    { value: "custom", label: "Custom" },
+                  ],
+                },
+                { key: "branch_name_prefix", title: "Branch prefix" },
+              ],
+            },
+          ]}
+        />
+      </Advanced>
     </>
   );
 }
@@ -353,6 +360,8 @@ export function SourceControlSection() {
 export function LabsSection() {
   const folders = useUi((state) => state.projectFolders);
   const multiline = useUi((state) => state.multilineRows);
+  const plan = useUi((state) => state.planControls);
+  const meter = useUi((state) => state.contextMeter);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
@@ -371,7 +380,39 @@ export function LabsSection() {
           set={(on) => setPrefs({ multilineRows: on })}
         />
       </SettingGroup>
+      <SettingGroup title="Legacy">
+        <Toggle
+          title="Plan mode"
+          description="Keeps the Plan button, /plan, /default and Shift+Tab. Off uses Build."
+          on={plan}
+          set={(on) => setPrefs({ planControls: on })}
+        />
+        <Toggle
+          title="Context window indicator"
+          description="Shows how full the context is, as a circle in the composer."
+          on={meter}
+          set={(on) => setPrefs({ contextMeter: on })}
+        />
+      </SettingGroup>
     </>
+  );
+}
+
+function OpenSourceLicenses() {
+  const group = (title: string, entries: { name: string; version: string; license: string }[]) => (
+    <SettingGroup title={title}>
+      {entries.map((entry) => (
+        <SettingRow key={entry.name} title={entry.name} description={entry.version}>
+          {entry.license}
+        </SettingRow>
+      ))}
+    </SettingGroup>
+  );
+  return (
+    <Advanced>
+      {group("Open source in the interface", licenses.scripts)}
+      {group("Open source in the service", licenses.crates)}
+    </Advanced>
   );
 }
 
@@ -384,6 +425,7 @@ export function AboutSection() {
         <SettingRow title="Version">{info.data?.version ?? "Unknown"}</SettingRow>
         <SettingRow title="Platform">{info.data?.platform ?? "Unknown"}</SettingRow>
       </SettingGroup>
+      <OpenSourceLicenses />
     </>
   );
 }

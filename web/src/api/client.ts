@@ -68,6 +68,13 @@ export function setUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
 
+const SLOW_REQUEST_MS = 10_000;
+
+let onSlowRequest: () => void = () => undefined;
+export function setSlowRequestHandler(handler: () => void): void {
+  onSlowRequest = handler;
+}
+
 export function authHeaders(): Record<string, string> {
   const token = readToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -101,6 +108,7 @@ export async function request<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
+  const slow = setTimeout(() => onSlowRequest(), SLOW_REQUEST_MS);
   try {
     response = await fetch(path, {
       method,
@@ -115,6 +123,8 @@ export async function request<T>(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiFailure(NETWORK_ERROR, "Can't reach the Orbyn service.", 0);
+  } finally {
+    clearTimeout(slow);
   }
   if (!response.ok) {
     const failure = await failureFrom(response);

@@ -3,6 +3,8 @@ import { request } from "../../api/client";
 import type { PreferenceView } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
+import { Collapsible } from "../../ui/Collapsible";
+import { ChevronRight } from "lucide-react";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 export interface PreferenceRow {
@@ -16,6 +18,23 @@ export interface PreferenceRow {
 }
 
 const q = encodeURIComponent;
+
+/** Settings most people never need, closed until asked for. */
+export function Advanced({ children }: { children: React.ReactNode }) {
+  return (
+    <Collapsible
+      summaryClassName="settings-folded-head"
+      summary={
+        <>
+          <ChevronRight size={14} className="chev" aria-hidden />
+          <span>Advanced</span>
+        </>
+      }
+    >
+      {children}
+    </Collapsible>
+  );
+}
 
 /** Rows backed by the service's preferences. A failed save keeps the saved value. */
 export function PreferenceGroups({

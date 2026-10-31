@@ -36,7 +36,7 @@ import {
 import { ACCESS, EffortTrigger, useTraitsMenu } from "./ComposerTraits";
 import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
-import { resolveModel, useEngineModels } from "./modelStore";
+import { effortOption, effortValue, resolveModel, useEngineModels } from "./modelStore";
 import { QueuedMessages } from "./QueuedMessages";
 import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
@@ -79,6 +79,7 @@ const LOCAL_COMMANDS: Suggestion[] = [
   { value: "side", detail: "Ask in a side chat" },
   { value: "btw", detail: "Ask in a side chat" },
 ];
+const PLAN_COMMANDS = new Set(["plan", "default"]);
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
 
@@ -123,6 +124,8 @@ export function Composer({
   const sendShortcut = useUi((state) => state.sendShortcut);
   const persistentContext = useUi((state) => state.persistentComposerContext);
   const skillsInSlash = useUi((state) => state.skillsInSlashMenu);
+  const planControls = useUi((state) => state.planControls);
+  const contextMeter = useUi((state) => state.contextMeter);
   const stashes = useUi((state) => state.stashes[thread.id] ?? NO_STASHES);
   const log = useThreadLogs((state) => state.logs[thread.id]);
   const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
@@ -154,7 +157,9 @@ export function Composer({
     if (trigger.char === "/") {
       const commands = await api.commands(thread.id, signal);
       const needle = trigger.query.toLowerCase();
-      const local = LOCAL_COMMANDS.filter((command) => command.value.includes(needle));
+      const local = LOCAL_COMMANDS.filter(
+        (command) => command.value.includes(needle) && (planControls || !PLAN_COMMANDS.has(command.value)),
+      );
       const skills = skillsInSlash ? (await api.mentions(thread.id, trigger.query, signal)).skills : [];
       return [
         ...local,
@@ -321,6 +326,11 @@ export function Composer({
         event.preventDefault();
         setDraft(thread.id, next.text);
         caretAfterEdit.current = next.caret;
+        return;
+      }
+      if (event.shiftKey && planControls && !busy && thread.lifecycle) {
+        event.preventDefault();
+        void setPlanMode(!planMode);
         return;
       }
     }
@@ -526,8 +536,20 @@ export function Composer({
   });
 
   useOwnCommand(side, "composer.mode", () => {
-    void setPlanMode(!planMode);
+    const trigger = effortButton();
+    if (!trigger || unmanaged) return false;
+    traits.openAt(trigger, true);
   });
+  const stepEffort = (step: 1 | -1) => {
+    const values = effortOption(model)?.values ?? [];
+    if (values.length === 0 || busy) return false;
+    const at = values.findIndex((value) => value.id === effortValue(model, thread.effort ?? null)?.id);
+    const next = values[(Math.max(at, 0) + step + values.length) % values.length];
+    if (next) void setEffort(next.id);
+    return true;
+  };
+  useOwnCommand(side, "composer.increaseEffort", () => stepEffort(1));
+  useOwnCommand(side, "composer.decreaseEffort", () => stepEffort(-1));
   const traits = useTraitsMenu({
     model,
     effort: thread.effort ?? null,
@@ -705,19 +727,21 @@ export function Composer({
               <span>{stashes.length}</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className="composer-control"
-            aria-pressed={planMode}
-            data-on={planMode || undefined}
-            disabled={busy || !thread.lifecycle}
-            onClick={() => void setPlanMode(!planMode)}
-          >
-            <ListChecks size={14} aria-hidden />
-            <span>Plan</span>
-          </button>
+          {planControls || planMode ? (
+            <button
+              type="button"
+              className="composer-control"
+              aria-pressed={planMode}
+              data-on={planMode || undefined}
+              disabled={busy || !thread.lifecycle}
+              onClick={() => void setPlanMode(!planMode)}
+            >
+              <ListChecks size={14} aria-hidden />
+              <span>Plan</span>
+            </button>
+          ) : null}
           <span className="composer-spacer" />
-          <ContextMeter threadId={thread.id} disabled={busy} />
+          {contextMeter ? <ContextMeter threadId={thread.id} disabled={busy} /> : null}
           {engine ? (
             <ModelPickerTrigger
               engines={installed}
