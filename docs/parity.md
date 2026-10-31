@@ -689,17 +689,17 @@ are not built in.
 - [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3
 
 ## P. Desktop shell
-- [ ] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L
-- [ ] P2 Shell environment: loads profile PATH and variables | apps/desktop/src/shell/DesktopShellEnvironment.ts | d | M
+- [x] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L | one managed `orbynd`; a pool serves remote hosts, which are out of scope
+- [x] P2 Shell environment: loads profile PATH and variables | apps/desktop/src/shell/DesktopShellEnvironment.ts | d | M | `child_env` tool search (P31) replaces reading the profile; no shell is sourced and profile variables are not loaded
 - [ ] P3 Auto updater: state machine with release notes | apps/desktop/src/updates/DesktopUpdates.ts | d | L
 - [ ] P4 Update everything: providers, servers, desktop in order | apps/web/src/components/sidebar/UpdateEverythingDialog.tsx | w d s | L
 - [ ] P5 Remote updates: desktop relaunch for remote hosts | apps/desktop/src/updates/DesktopRemoteUpdates.ts | d | L
 - [ ] P6 Update tracks: Stable and Nightly switching | apps/web/src/components/settings/UpdateTrackSwitchDialog.tsx | d | L
 - [ ] P7 Update sidebar pill: progress and retry | apps/web/src/components/sidebar/SidebarUpdatePill.tsx | w d | M
 - [ ] P8 Startup recovery: failure window with update or last-good version | apps/desktop/src/app/DesktopStartupRecovery.ts | d | M
-- [ ] P9 Deep links: protocol and Linux URL handler | apps/desktop/src/app/DesktopLinuxUrlHandler.ts | d | M
-- [ ] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
-- [ ] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M
+- [x] P9 Deep links: protocol and Linux URL handler | apps/desktop/src/app/DesktopLinuxUrlHandler.ts | d | M | `orbyn://`, routes only; the Linux handler is N/A since Linux is not a target; not yet opened through Windows
+- [x] P10 Web link coordinator: routes opened links | apps/web/src/components/desktop/DesktopWebLinkCoordinator.tsx | d | M
+- [x] P11 App activation broker: single instance handoff | apps/desktop/src/app/DesktopAppActivationBroker.ts | d | M | seen on a packaged macOS app and in CI on an installed package
 - [ ] P12 CLI shim: installs `t3` from app | apps/desktop/src/app/DesktopCliShim.ts | d | M
 - [ ] P13 Application menu: native menus | apps/desktop/src/window/DesktopApplicationMenu.ts | d | S
 - [ ] P14 Context menus: native including images | apps/desktop/src/window/ContextMenuImage.ts | d | S
@@ -707,7 +707,7 @@ are not built in.
 - [ ] P16 Saved environments catalog: local secure store | apps/desktop/src/app/DesktopConnectionCatalogStore.ts | d | M
 - [ ] P17 Mac permissions helper: checklist with settings window | apps/desktop/src/permissions/MacPermissions.ts | d | M
 - [ ] P18 Provider auth callback: Codex sign-in return | apps/desktop/src/app/CodexAuthCallback.ts | d | M | [auth-risk]
-- [ ] P19 Local environment auth: tokens for bundled server | apps/desktop/src/backend/DesktopLocalEnvironmentAuth.ts | d | M
+- [x] P19 Local environment auth: tokens for bundled server | apps/desktop/src/backend/DesktopLocalEnvironmentAuth.ts | d | M | per-launch token over loopback, set by `orbynd`
 - [ ] P20 V1 local storage merge: drafts, stash, layout, theme | apps/desktop/src/legacyLocalStorageMerge.ts | d | M
 - [ ] P21 Linux secret storage: keyring integration | apps/desktop/src/linuxSecretStorage.ts | d | M
 - [ ] P22 Windows foreground: focus handling | apps/desktop/src/electron/WindowsForeground.ts | d | M
@@ -721,7 +721,7 @@ are not built in.
 - [x] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S | server done: `off` stops installs here; background checks keep their own setting
 - [x] P31 Deterministic tool search path: ordered install folders, version-manager defaults and npm prefix read from config, added once at startup without sourcing a shell | src-tauri/src/providers/launch.rs | d s | M | alternative to P2 | server done: `crates` side; PATH for the desktop shell is the lead's
 - [ ] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M
-- [ ] P33 Packaged-app startup smoke: install the built package on a disposable hosted runner with isolated profile folders and no secrets, and check it stays alive | scripts/release/ci-startup-smoke.mjs | d c | M
+- [x] P33 Packaged-app startup smoke: install the built package on a disposable hosted runner with isolated profile folders and no secrets, and check it stays alive | scripts/release/ci-startup-smoke.mjs | d c | M | `scripts/smoke-app.mjs`: both platforms, and the UI must connect from the window
 - [ ] P34 Release evidence: per-asset checksums, installer and lockfile SBOMs, coverage report where an empty scan reads "incomplete", actions pinned by commit | docs/releasing.md | c | M
 - [ ] P35 Notarization check: require credentials for Developer ID builds, verify with stapler and spctl, retry stapling | scripts/release/build.mjs | d c | S
 

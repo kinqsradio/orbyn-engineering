@@ -3,7 +3,7 @@
 // the window, a second launch hands over and exits, and the service ends with the app.
 // Usage: node scripts/smoke-app.mjs [bundle-root]
 import { execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -16,7 +16,9 @@ const STAY_ALIVE_MS = 10_000;
 const HANDOFF_LIMIT_MS = 30_000;
 const STOP_LIMIT_MS = 20_000;
 
-const sandbox = mkdtempSync(join(tmpdir(), "orbyn-app-smoke-"));
+// Real path: Tauri refuses to find its resources through a symlink, and macOS's
+// temp folder is reached through one.
+const sandbox = mkdtempSync(join(realpathSync(tmpdir()), "orbyn-app-smoke-"));
 const home = join(sandbox, "home");
 const data = join(sandbox, "data");
 for (const dir of [home, data, join(home, "AppData/Local"), join(home, "AppData/Roaming")]) {

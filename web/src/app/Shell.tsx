@@ -7,7 +7,7 @@ import { TrustFolder } from "../features/onboarding/TrustFolder";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { CommandPalette } from "../features/workspace/CommandPalette";
-import type { Thread } from "../api/types";
+import type { ShellEvent, Thread } from "../api/types";
 import { arrangeThreads, threadsFlat } from "../features/workspace/groups";
 import {
   copyText,
@@ -22,7 +22,6 @@ import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { api } from "../api/client";
-import { followShell } from "../api/shell";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
@@ -380,18 +379,12 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
 }
 
 /** Links and menu items from the desktop shell, which behave like keys pressed here. */
-function useShellEvents() {
-  useEffect(
-    () =>
-      followShell((event) => {
-        if (event.type === "navigate") {
-          window.location.hash = event.href.slice(1);
-          return;
-        }
-        if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
-      }),
-    [],
-  );
+export function onShellEvent(event: ShellEvent) {
+  if (event.type === "navigate") {
+    window.location.hash = event.href.slice(1);
+    return;
+  }
+  if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
 }
 
 export function Shell() {
@@ -414,7 +407,6 @@ export function Shell() {
   const palette = useUi((state) => state.palette);
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
-  useShellEvents();
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);
