@@ -103,9 +103,11 @@ function launch(exe, args = []) {
   return child;
 }
 
-function stop(child) {
+/** Ends the app alone, or with `tree` everything it started. */
+function stop(child, tree = false) {
   if (!child.running) return;
-  if (windows) execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  const scope = tree ? ["/T"] : [];
+  if (windows) execFileSync("taskkill", ["/PID", String(child.pid), ...scope, "/F"], { stdio: "ignore" });
   else child.kill("SIGTERM");
 }
 
@@ -142,7 +144,7 @@ async function main() {
     const second = launch(exe, ["orbyn://usage"]);
     const outcome = await Promise.race([second.exited, delay(HANDOFF_LIMIT_MS)]);
     if (!outcome) {
-      stop(second);
+      stop(second, true);
       throw new Error("A second launch did not hand over and exit.");
     }
     if (!app.running) throw new Error("The first app died when the second launched.");
@@ -152,7 +154,7 @@ async function main() {
     await until(STOP_LIMIT_MS, "the service outlived the app", () => !existsSync(handle));
     console.log("The service ended with the app.");
   } finally {
-    stop(app);
+    stop(app, true);
     await Promise.race([app.exited, delay(5000)]);
   }
 }
