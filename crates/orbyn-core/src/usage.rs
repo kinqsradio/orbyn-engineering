@@ -10,13 +10,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use orbyn_contracts::{
-    DailyUsage, EngineLimits, EngineUsage, ModelPrice, ModelUsage, ServerSettings, UsageReport,
+    DailyUsage, EngineLimits, EngineUsage, LimitWindow, LimitsOverview, LimitsUnavailable,
+    ModelPrice, ModelUsage, PooledWindow, ServerSettings, UsageReport,
 };
 use serde_json::Value;
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
-use crate::util::{new_id, now, write_private};
+use crate::util::{new_id, now, parse_time, write_private};
 
 const LIMITS_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -267,10 +268,17 @@ fn cost(tokens: Tokens, price: &ModelPrice) -> f64 {
         + rate(tokens.cache_write, price.cache_write)
 }
 
+/// `YYYY-MM-DD` of the first day inside a period of `days`, today included.
+fn period_start(days: u32) -> String {
+    let today = time::OffsetDateTime::now_utc().date();
+    (today - time::Duration::days(i64::from(days.max(1)) - 1)).to_string()
+}
+
 fn summarize(
     engine: &str,
     (status, scanned, skipped, totals): (String, u32, u32, FileTotals),
     settings: &ServerSettings,
+    since: Option<&str>,
 ) -> EngineUsage {
     let resolve = |model: &str| {
         settings
@@ -282,6 +290,9 @@ fn summarize(
     let mut models: BTreeMap<String, Tokens> = BTreeMap::new();
     let mut days: BTreeMap<String, u64> = BTreeMap::new();
     for ((day, model), tokens) in totals {
+        if since.is_some_and(|since| day.as_str() < since) {
+            continue;
+        }
         models.entry(resolve(&model)).or_default().add(tokens);
         *days.entry(day).or_default() += tokens.total();
     }
@@ -339,7 +350,11 @@ impl UsageCenter {
 
     /// Scans off the async threads, since history can run to gigabytes. Unchanged
     /// files come from memory, so a scan is cheap and a price change shows at once.
-    pub async fn report(&self, settings: &ServerSettings) -> Result<UsageReport> {
+    pub async fn report(
+        &self,
+        settings: &ServerSettings,
+        days: Option<u32>,
+    ) -> Result<UsageReport> {
         let cache = self.cache.clone();
         let scans = tokio::task::spawn_blocking(move || {
             let mut cache = cache
@@ -352,14 +367,27 @@ impl UsageCenter {
         })
         .await
         .map_err(|error| CoreError::Internal(error.to_string()))?;
+        let since = days.map(period_start);
         Ok(UsageReport {
             host_id: self.host_id.clone(),
             scanned_at: now(),
             engines: scans
                 .into_iter()
-                .map(|(name, scan)| summarize(name, scan, settings))
+                .map(|(name, scan)| summarize(name, scan, settings, since.as_deref()))
                 .collect(),
         })
+    }
+
+    /// Forgets every scan and limit, so the next read goes back to the sources.
+    pub fn forget(&self) {
+        *self
+            .cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = ScanCache::default();
+        self.limits
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
     }
 
     fn cached_limits(&self, id: &str) -> Option<EngineLimits> {
@@ -381,8 +409,10 @@ impl UsageCenter {
 
 impl Core {
     /// An engine's own limit report, at most once per five minutes.
-    pub async fn engine_limits(&self, id: &str) -> Result<EngineLimits> {
-        if let Some(cached) = self.usage.cached_limits(id) {
+    /// Answers from a five-minute cache unless `force`, so opening a thread does
+    /// not start an app-server each time. A forced read still spends no model usage.
+    pub async fn engine_limits(&self, id: &str, force: bool) -> Result<EngineLimits> {
+        if !force && let Some(cached) = self.usage.cached_limits(id) {
             return Ok(cached);
         }
         let report = self.engines.driver(id)?.limits().await?.ok_or_else(|| {
@@ -391,17 +421,122 @@ impl Core {
         let limits = EngineLimits {
             engine: id.to_owned(),
             checked_at: now(),
+            windows: limit_windows(&report),
+            plan: report
+                .get("planType")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
             limits: report,
         };
         self.usage.keep_limits(&limits);
         Ok(limits)
     }
+
+    /// Every engine's limits, and one number per window across them.
+    pub async fn limits_overview(&self, force: bool) -> Result<LimitsOverview> {
+        let mut engines = Vec::new();
+        let mut unavailable = Vec::new();
+        for status in self.engines.statuses(false).await? {
+            if !status.installed {
+                continue;
+            }
+            match self.engine_limits(&status.id, force).await {
+                Ok(limits) => engines.push(limits),
+                Err(CoreError::Unsupported(_)) => {}
+                Err(error) => unavailable.push(LimitsUnavailable {
+                    engine: status.id,
+                    reason: error.public_message(),
+                }),
+            }
+        }
+        Ok(LimitsOverview {
+            pooled: pool_windows(&engines),
+            engines,
+            unavailable,
+        })
+    }
+}
+
+/// Reads Codex's `rateLimits` block. Reset times arrive as Unix seconds.
+fn limit_windows(report: &Value) -> Vec<LimitWindow> {
+    let Some(limits) = report.get("rateLimits") else {
+        return Vec::new();
+    };
+    ["primary", "secondary"]
+        .into_iter()
+        .filter_map(|id| {
+            let window = limits.get(id)?;
+            let minutes = window.get("windowDurationMins").and_then(Value::as_u64);
+            Some(LimitWindow {
+                id: id.to_owned(),
+                label: window_label(minutes),
+                used_percent: window.get("usedPercent")?.as_f64()?,
+                window_minutes: minutes,
+                resets_at: window
+                    .get("resetsAt")
+                    .and_then(Value::as_i64)
+                    .and_then(rfc3339),
+            })
+        })
+        .collect()
+}
+
+fn rfc3339(unix: i64) -> Option<String> {
+    let at = time::OffsetDateTime::from_unix_timestamp(unix).ok()?;
+    at.format(&time::format_description::well_known::Rfc3339)
+        .ok()
+}
+
+fn window_label(minutes: Option<u64>) -> String {
+    match minutes {
+        Some(minutes) if minutes % 1440 == 0 && minutes >= 1440 => {
+            format!("{} days", minutes / 1440)
+        }
+        Some(minutes) if minutes % 60 == 0 && minutes >= 60 => format!("{} hours", minutes / 60),
+        Some(minutes) => format!("{minutes} minutes"),
+        None => "Window".to_owned(),
+    }
+}
+
+fn pool_windows(engines: &[EngineLimits]) -> Vec<PooledWindow> {
+    let mut pooled: Vec<PooledWindow> = Vec::new();
+    for engine in engines {
+        for window in &engine.windows {
+            let slot = pooled
+                .iter()
+                .position(|known| known.window_minutes == window.window_minutes);
+            let slot = slot.unwrap_or_else(|| {
+                pooled.push(PooledWindow {
+                    label: window.label.clone(),
+                    window_minutes: window.window_minutes,
+                    used_percent: 0.0,
+                    resets_at: None,
+                    engines: Vec::new(),
+                });
+                pooled.len() - 1
+            });
+            let entry = &mut pooled[slot];
+            entry.used_percent = entry.used_percent.max(window.used_percent);
+            entry.engines.push(engine.engine.clone());
+            entry.resets_at = match (entry.resets_at.take(), &window.resets_at) {
+                (Some(known), Some(new)) => Some(if parse_time(new) < parse_time(&known) {
+                    new.clone()
+                } else {
+                    known
+                }),
+                (known, new) => known.or_else(|| new.clone()),
+            };
+        }
+    }
+    pooled.sort_by_key(|window| window.window_minutes);
+    pooled
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use orbyn_contracts::ModelAlias;
+    use serde_json::json;
 
     fn lines(items: &[&str]) -> std::io::Cursor<Vec<u8>> {
         std::io::Cursor::new(items.join("\n").into_bytes())
@@ -410,6 +545,55 @@ mod tests {
     fn only(totals: &FileTotals) -> Tokens {
         assert_eq!(totals.len(), 1, "{totals:?}");
         *totals.values().next().unwrap()
+    }
+
+    #[test]
+    fn windows_pool_by_length_and_keep_the_worst_number() {
+        let report = |percent: f64, resets: i64| {
+            json!({ "rateLimits": { "primary": {
+                "usedPercent": percent, "windowDurationMins": 300, "resetsAt": resets,
+            }}})
+        };
+        let limits = |engine: &str, report: Value| EngineLimits {
+            engine: engine.into(),
+            checked_at: String::new(),
+            windows: limit_windows(&report),
+            plan: None,
+            limits: report,
+        };
+        let pooled = pool_windows(&[
+            limits("a", report(10.0, 2_000_000_000)),
+            limits("b", report(60.0, 1_900_000_000)),
+        ]);
+        assert_eq!(pooled.len(), 1);
+        assert_eq!(pooled[0].label, "5 hours");
+        assert_eq!(pooled[0].used_percent, 60.0);
+        assert_eq!(pooled[0].engines, ["a", "b"]);
+        assert_eq!(
+            parse_time(pooled[0].resets_at.as_ref().unwrap()),
+            Some(1_900_000_000)
+        );
+        assert!(limit_windows(&json!({ "other": 1 })).is_empty());
+    }
+
+    #[test]
+    fn a_period_keeps_only_its_days() {
+        let mut totals = FileTotals::new();
+        let tokens = Tokens {
+            input: 5,
+            ..Tokens::default()
+        };
+        totals.insert(("2000-01-01".into(), "m".into()), tokens);
+        totals.insert((period_start(1), "m".into()), tokens);
+        let settings = crate::store::default_settings();
+        let scan = ("scanned".to_owned(), 1, 0, totals);
+        let usage = summarize("claude", scan.clone(), &settings, Some(&period_start(7)));
+        assert_eq!(usage.days.len(), 1);
+        assert_eq!(usage.models[0].input_tokens, 5);
+        assert_eq!(
+            summarize("claude", scan, &settings, None).models[0].input_tokens,
+            10
+        );
     }
 
     #[test]
@@ -478,7 +662,7 @@ mod tests {
         };
         totals.insert(("d".into(), "base-2026".into()), tokens);
         totals.insert(("d".into(), "mystery".into()), tokens);
-        let usage = summarize("x", ("scanned".into(), 1, 0, totals), &settings);
+        let usage = summarize("x", ("scanned".into(), 1, 0, totals), &settings, None);
         assert_eq!(usage.models[0].model, "base");
         assert_eq!(usage.models[0].estimated_cost, Some(13.0));
         assert_eq!(usage.models[1].estimated_cost, None);

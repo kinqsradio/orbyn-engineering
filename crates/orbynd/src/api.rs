@@ -564,16 +564,69 @@ pub async fn publish_project(
     Ok(StatusCode::ACCEPTED)
 }
 
-pub async fn usage(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+fn period(query: &HashMap<String, String>) -> ApiResult<Option<u32>> {
+    query
+        .get("days")
+        .map(|days| {
+            days.parse().map_err(|_| {
+                ApiFailure::new(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_input",
+                    "`days` must be a number.",
+                )
+            })
+        })
+        .transpose()
+}
+
+pub async fn usage(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
     let settings = state.core.store.settings()?;
-    Ok(Json(state.core.usage.report(&settings).await?))
+    let days = period(&query)?;
+    Ok(Json(state.core.usage.report(&settings, days).await?))
+}
+
+/// Reads history and limits again from their sources, and rereads prices.
+pub async fn refresh_usage(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.usage.forget();
+    let settings = state.core.store.settings()?;
+    let days = period(&query)?;
+    Ok(Json(state.core.usage.report(&settings, days).await?))
+}
+
+fn forced(query: &HashMap<String, String>) -> bool {
+    query.get("force").is_some_and(|value| value == "true")
+}
+
+pub async fn limits_overview(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.limits_overview(forced(&query)).await?))
+}
+
+pub async fn thread_limits(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let engine = state.core.store.thread(&id)?.engine;
+    Ok(Json(
+        state.core.engine_limits(&engine, forced(&query)).await?,
+    ))
 }
 
 pub async fn engine_limits(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.engine_limits(&id).await?))
+    Ok(Json(state.core.engine_limits(&id, forced(&query)).await?))
 }
 
 pub async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {

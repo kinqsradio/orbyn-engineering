@@ -79,6 +79,12 @@ first and stops the running turn, and only that message escapes the hold. Prompt
 are capped at 120,000 characters. `/compact` and `/goal` reach Claude bare as its
 own commands and Codex as `thread/compact/start` and `thread/goal/set`.
 
+A goal is set with `/goal <text>` and ended with `/goal clear`. `/goal pause` and
+`/goal resume` are refused with `422 unsupported` on an engine without
+`goal_control`, which today is every engine but Codex, whose status changes go
+through `thread/goal/set`. Claude's goal lives in its own session, so only
+Codex's status is reported back; the rest show what was last asked for.
+
 A thread's permission mode is `supervised`, `auto_edits`, `auto` or `full_access`,
 settable per thread and per turn. Codex maps it natively: `full_access` is
 `approvalPolicy: never` with the network on, and the writable root stays the checkout.
@@ -93,6 +99,35 @@ The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per
 file. A record exists only once its bytes are in place, and a message naming an
 attachment that is not ready is refused before anything is admitted.
 
+## Models
+
+`GET /api/engines/:id/models` comes from the engine where it can say: Codex's
+`model/list` on a short-lived app-server, or the models an ACP agent reports for a
+session opened in a temp folder with no prompt sent. Claude's CLI has no listing, so
+its list is the aliases its documentation names, marked `documented`. A good answer
+is kept for five minutes, and a failure is reported with the list empty rather than
+as an error. `effort` reaches Claude as `--effort` and Codex on `turn/start`; `model`
+and `effort` set on a turn stay on the thread.
+
+## Questions
+
+An engine question holds its run in `awaiting_approval` until it is answered,
+dismissed, timed out or the run ends, and all of those close it. A run returns to
+`running` when no approval and no question is open. Codex's
+`item/tool/requestUserInput` and Claude's `AskUserQuestion` both arrive here; Claude's
+goes through the same `approve` callback, so it stays on the MCP gate. A dismissal
+reaches Codex as an empty answer set and Claude as a denial. Questions are logged as
+`ACTIVITY_SNAPSHOT` with `activityType: "question"`, whose content is the
+`QuestionRequest`. A secret answer goes to the engine and is stored only as
+`[hidden]`, so it never reaches the database or the event log.
+
+## Session recovery
+
+An engine that no longer has the session a run tried to resume reports
+`SessionLost`, not a failure. The run stays open, the session is dropped, the handoff
+is rebuilt from the log with the same 16,000 character budget, and the engine starts
+fresh once, logging `CUSTOM engine.session_lost`. A second loss fails the run.
+
 ## Usage
 
 `UsageCenter` reads local session history and nothing else: `projects/**/*.jsonl`
@@ -103,7 +138,9 @@ Codex repeats its running total, so an unchanged total counts once. Costs come f
 configured `model_prices`, after `model_aliases`; a model with no price has an unknown
 cost and is never guessed. Unchanged files are served from memory. Subscription
 limits appear only where an engine reports them itself, as Codex does through
-`account/rateLimits/read`, cached for five minutes.
+`account/rateLimits/read`, cached for five minutes; `?force=true` reads again and
+spends no model usage. `/api/limits` also gives one number per window length across
+engines, the highest used percentage, since that engine stops first.
 
 ## Checkpoints
 
@@ -167,8 +204,9 @@ nothing.
 
 Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
-and `unmanaged`. `CUSTOM` carries `tool.output`, `tool.finished`, `subagent.activity`,
-`usage`, `engine.warning` and `engine.retrying`. The prompt is logged as a `user` text message whose id ends in
+and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
+`tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
+`engine.retrying` and `engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -364,15 +402,17 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported) |
 | `GET, POST /api/threads/:id/attachments?name=` | Raw upload body; `Content-Type` is the kind |
 | `DELETE /api/attachments/:id` | Remove an attachment |
-| `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills and unignored files |
-| `GET /api/threads/:id/commands` | `SlashCommand[]` |
+| `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills, ranked unignored files, this project's threads |
+| `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, custom command files, and skills when `true` |
+| `GET /api/questions?thread_id=&state=` | `QuestionRequest[]` |
+| `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
 | `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
 | `GET /api/threads/:id/files?path=` | `FileEntry[]`, one folder |
 | `GET /api/threads/:id/files/ignored` | Ignored paths |
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |
 | `GET, PUT /api/threads/:id/files/content` | `FileContent`; a stale `base_revision` is `409 file_conflict` |
-| `POST /api/threads/:id/files/open`, `GET /api/editors` | Open a file in a known installed editor |
+| `POST /api/threads/:id/files/open`, `GET /api/editors` | `OpenInEditor` with optional `line` and `column`; `file_manager` reveals the file |
 | `POST /api/threads/:id/git/action` | `GitAction` to `GitActionResult`: commit, push, pull request |
 | `GET, POST /api/threads/:id/branches`, `POST .../branches/switch` | List, create and switch |
 | `GET, POST /api/threads/:id/pulls`, `POST .../pulls/refresh` | Linked pull requests |
@@ -396,8 +436,11 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
 | `GET /api/skills`, `POST /api/skills/rebuild` | Library skills; rebuild only re-reads them |
 | `GET, POST /api/skills/profiles`, `DELETE /api/skills/profiles/:id` | Profiles |
-| `GET /api/usage` | `UsageReport` from local history, rescanned on each read |
-| `GET /api/engines/:id/limits` | `EngineLimits`; `422 unsupported` if the engine reports none |
+| `GET /api/usage?days=` | `UsageReport` from local history, rescanned on each read |
+| `POST /api/usage/refresh?days=` | Forgets scans and limits, then reports |
+| `GET /api/limits?force=` | `LimitsOverview`: pooled windows, each engine, and what could not be read |
+| `GET /api/engines/:id/limits?force=`, `GET /api/threads/:id/limits?force=` | `EngineLimits`; `422 unsupported` if the engine reports none |
+| `GET /api/engines/:id/models?refresh=` | `EngineModels`, with effort options per model |
 | `GET, POST /api/policy/rules`, `DELETE /api/policy/rules/:id` | Internal: diagnostics only, no client uses these |
 | `GET /api/audit?thread_id=&limit=` | Internal: diagnostics only, no client uses this |
 | `GET /api/computer`, `POST /api/threads/:id/computer` | Status, and a governed action |

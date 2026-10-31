@@ -118,9 +118,9 @@ surfaces on that row stay open.
 - [x] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S | web done
 - [ ] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M
 - [ ] B21 Remembered model defaults: provider, model and options carry to new threads | docs/user/composer.md | w d m | S
-- [ ] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L
+- [x] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L | server done
 - [ ] B23 Model visibility and order: hide, reorder, favorite per instance | packages/contracts/src/settings.ts | w d s | M
-- [ ] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M
+- [x] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M | server done
 - [ ] B25 Effort display: label or bars, with shortcuts | apps/web/src/components/chat/EffortGlyph.tsx | w d | S
 - [x] B26 Permission mode: Supervised, Auto-accept edits, Auto, Full access | docs/user/permission-modes.md | w d m s | L | server done
 - [x] B27 Plan mode toggle: plan or build | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
@@ -134,7 +134,7 @@ surfaces on that row stay open.
 - [x] B35 Skills: `$` menu, also in slash menu by toggle | apps/web/src/components/chat/SkillInlineText.tsx | w d m | M | server done
 - [ ] B36 Restart agent session: reloads skills, plugins and MCP config | apps/web/src/components/CommandPalette.tsx | w d s | S
 - [x] B37 `/compact`: manual compaction, also from context meter | docs/user/composer.md | w d m s | M | server done
-- [ ] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L
+- [x] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L | server done
 - [ ] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
 - [ ] B40 Inline context chips: terminal, review comment, annotation, file at cursor | apps/web/src/components/ContextChip.tsx | w d m | L
 - [ ] B41 PR chips: `#` browse, number and text search | docs/user/composer.md | w d | M
@@ -146,7 +146,7 @@ surfaces on that row stay open.
 - [ ] B47 Question attachments: files in custom answers, kept per question | docs/user/question-attachments.md | w d m s | M
 - [x] B48 Pending approval actions: approve or reject inline | apps/web/src/components/chat/ComposerPendingApprovalActions.tsx | w d m | M | web done
 - [ ] B49 Text decline to Claude: typed reply rejects with feedback | docs/user/permission-modes.md | w d m | S
-- [ ] B50 Question panel: async question answer or dismiss | apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx | w d m | M
+- [x] B50 Question panel: async question answer or dismiss | apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx | w d m | M | server done
 - [ ] B51 Secret request card: agent asks for a secret, you answer | apps/web/src/components/chat/SecretRequestCard.tsx | w d m s | M
 - [ ] B52 Link request card: agent asks to link a machine | apps/web/src/components/chat/LinkRequestCard.tsx | w d m s | M
 - [ ] B53 Context window meter: usage bar with compaction tick | apps/web/src/components/chat/ContextWindowMeter.tsx | w d | M
@@ -220,7 +220,7 @@ surfaces on that row stay open.
 - [ ] D21 Outside-workspace files: read-only, isolated HTML | docs/user/composer.md | w d s | M
 - [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done
 - [ ] D23 File context menu: Open, Reveal in Finder/File Explorer/Files (label by OS) and Open with any available editor | apps/web/src/fileContextMenu.ts | w d | S
-- [ ] D24 Editor catalog: 20 editors plus the system file manager (Cursor, Trae, Kiro, VS Code, Insiders, VSCodium, Zed, Antigravity, ten JetBrains IDEs) detected per host by command, each with path, goto or line-column launch style | packages/contracts/src/editor.ts | s w d | M
+- [x] D24 Editor catalog: 20 editors plus the system file manager (Cursor, Trae, Kiro, VS Code, Insiders, VSCodium, Zed, Antigravity, ten JetBrains IDEs) detected per host by command, each with path, goto or line-column launch style | packages/contracts/src/editor.ts | s w d | M | server done
 - [ ] D25 Favorite editor: last used editor remembered per browser, fallback to first available, menu shows its shortcut, hidden when the host cannot launch editors | apps/web/src/editorPreferences.ts | w d | S
 - [ ] D26 Open in editor over remote: for non-local environments the picker builds editor links (VS Code family, Cursor, Zed, JetBrains) to the host via SSH alias, Tailscale or mDNS name, or shows unavailable | apps/web/src/remoteOpen.ts | w d | M
 - [ ] D27 Attached file viewer controls: Copy contents, Save file, view toggle; on mobile Save or share and Open in file viewer; ZIP entries can be added to chat on mobile | docs/user/composer.md | w d m | M
@@ -434,20 +434,20 @@ surfaces on that row stay open.
 - [ ] J5 Model breakdown: trend, cache hit, cost per million | apps/web/src/components/usage/UsageModelDialog.tsx | w d | M
 - [x] J6 Custom prices: per-model rates, Mixed, retry saves | apps/web/src/components/usage/UsagePriceOverrides.tsx | w d s | L | server done
 - [x] J7 Model aliases: Map to another model | packages/contracts/src/settings.ts | w d s | S | server done
-- [ ] J8 Refresh rates: rescan and pricing update | packages/contracts/src/rpc.ts | w d s | S
+- [x] J8 Refresh rates: rescan and pricing update | packages/contracts/src/rpc.ts | w d s | S | server done
 - [x] J9 Usage host identity: stable host ID file | docs/user/usage.md | s | S | server done
-- [ ] J10 Pooled limits: one number per window across accounts | apps/web/src/components/usage/UsageLimitsPooled.tsx | w d m | L
-- [ ] J11 Account detail: plan, location, reset time | apps/web/src/components/usage/UsageLimits.tsx | w d m | M
+- [x] J10 Pooled limits: one number per window across accounts | apps/web/src/components/usage/UsageLimitsPooled.tsx | w d m | L | server done
+- [x] J11 Account detail: plan, location, reset time | apps/web/src/components/usage/UsageLimits.tsx | w d m | M | server done
 - [ ] J12 Claude usage limits: reads subscription windows | apps/server/src/provider/claudeUsageLimits.ts | s | M | [auth-risk]
 - [ ] J13 Codex usage limits: reads subscription windows | apps/server/src/provider/codexUsageLimits.ts | s | M | [auth-risk]
 - [ ] J14 Other provider limits: Antigravity, OpenCode Go, Cursor, Grok | apps/server/src/provider/antigravityUsageLimits.ts | s | M | [auth-risk]
 - [ ] J15 Reset credits: Use reset redeems banked credit | apps/server/src/provider/resetCreditCoordinator.ts | w d m s | M | [auth-risk]
 - [ ] J16 CLIProxyAPI hub: pooled limits with management key | apps/web/src/components/settings/AddUsageLimitSourceDialog.tsx | w d s | M | [auth-risk]
-- [ ] J17 Thread details limits: remaining windows row | apps/web/src/components/chat/ThreadDetailsUsage.tsx | w d | S
-- [ ] J18 Composer limits panel: inline result | apps/web/src/components/chat/ComposerUsageLimits.tsx | w d m | S
-- [ ] J19 Auto check throttle: 5-minute client limit | docs/user/usage.md | w d m | S
+- [x] J17 Thread details limits: remaining windows row | apps/web/src/components/chat/ThreadDetailsUsage.tsx | w d | S | server done
+- [x] J18 Composer limits panel: inline result | apps/web/src/components/chat/ComposerUsageLimits.tsx | w d m | S | server done
+- [x] J19 Auto check throttle: 5-minute client limit | docs/user/usage.md | w d m | S | server done
 - [ ] J20 Subscription widget: iOS and Android home-screen quota | apps/mobile/src/widgets/SubscriptionUsage.tsx | m | L
-- [ ] J21 Usage shortcuts: C, T, L, period keys | apps/web/src/components/usage/usageShortcuts.ts | w d | S
+- [x] J21 Usage shortcuts: C, T, L, period keys | apps/web/src/components/usage/usageShortcuts.ts | w d | S | server done
 - [ ] J22 Tunnel usage: T3 Connect usage display | apps/web/src/components/cloud/TunnelUsage.tsx | w d | S | [hosted]
 - [ ] J23 Usage charts: per-provider chart and share bar | apps/web/src/components/usage/UsageProviderChart.tsx | w d | S
 - [ ] J24 Mobile usage page: daily chart, environment selection, pooled limits, ChatGPT summary | apps/mobile/src/features/usage/UsageRouteScreen.tsx | m | M
@@ -579,7 +579,7 @@ surfaces on that row stay open.
 - [ ] M13 Workflows: script view and stop | packages/contracts/src/orchestrationV2.ts | w d m s | L
 - [ ] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
 - [ ] M15 Secret request tool: agent requests secret securely | apps/server/src/secrets/SecretRequests.ts | s | M | [auth-risk]
-- [ ] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L
+- [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
 
 ## N. MCP tools for agents
 - [ ] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M

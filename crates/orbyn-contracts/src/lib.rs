@@ -661,6 +661,51 @@ pub struct EngineLimits {
     pub checked_at: String,
     /// The engine's own report, which it gives without Orbyn reading a credential.
     pub limits: Value,
+    /// The same report in one shape. Empty when the shape is unknown.
+    #[serde(default)]
+    pub windows: Vec<LimitWindow>,
+    /// The subscription plan, when the engine names it.
+    #[serde(default)]
+    pub plan: Option<String>,
+}
+}
+
+wire! {
+pub struct LimitWindow {
+    /// `primary` or `secondary`.
+    pub id: String,
+    pub label: String,
+    pub used_percent: f64,
+    pub window_minutes: Option<u64>,
+    pub resets_at: Option<String>,
+}
+}
+
+wire! {
+/// One number per window: the most used engine, since that one stops first.
+pub struct PooledWindow {
+    pub label: String,
+    pub window_minutes: Option<u64>,
+    pub used_percent: f64,
+    /// The soonest reset among the engines counted.
+    pub resets_at: Option<String>,
+    pub engines: Vec<String>,
+}
+}
+
+wire! {
+pub struct LimitsOverview {
+    pub pooled: Vec<PooledWindow>,
+    pub engines: Vec<EngineLimits>,
+    /// Engines with no report, with why.
+    pub unavailable: Vec<LimitsUnavailable>,
+}
+}
+
+wire! {
+pub struct LimitsUnavailable {
+    pub engine: String,
+    pub reason: String,
 }
 }
 

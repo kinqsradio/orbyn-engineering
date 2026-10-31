@@ -85,6 +85,21 @@ async fn limits_come_from_the_engine_and_only_where_it_reports_them() {
         again["checked_at"], limits["checked_at"],
         "cached for five minutes"
     );
+    assert_eq!(limits["plan"], "plus");
+    assert_eq!(limits["windows"][0]["label"], "5 hours");
+    assert_eq!(limits["windows"][1]["label"], "7 days");
+    assert_eq!(limits["windows"][0]["resets_at"], "2027-01-15T08:00:00Z");
+    let forced = service.json("/api/engines/codex/limits?force=true").await;
+    assert_ne!(forced["checked_at"], limits["checked_at"]);
+    let overview = service.json("/api/limits").await;
+    assert_eq!(overview["pooled"][0]["used_percent"], 12.0);
+    assert_eq!(overview["pooled"][0]["engines"][0], "codex");
+    let refreshed = service
+        .post("/api/usage/refresh?days=7")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refreshed.status(), 200);
     let claude = service
         .get("/api/engines/claude/limits")
         .send()
