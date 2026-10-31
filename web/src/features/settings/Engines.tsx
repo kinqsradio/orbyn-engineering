@@ -1,0 +1,290 @@
+import { RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { api } from "../../api/client";
+import type { EngineStatus, EngineTier } from "../../api/types";
+import { authLabels, signInLabel, slugify, supportLabels, tierLabels } from "../../lib/format";
+import { toFailure } from "../../lib/useAsync";
+import { useWorkspace } from "../../state/workspace";
+import { Button, CopyCommand, Field, Pill, type PillTone } from "../../ui/controls";
+import { ConfirmDialog } from "../../ui/Dialog";
+import { Empty, ErrorState, Loading } from "../../ui/states";
+
+const POLL_WHILE_UPDATING_MS = 1500;
+
+const supportTone: Record<EngineStatus["support"], PillTone> = {
+  tested: "neutral",
+  untested: "info",
+  below_minimum: "danger",
+  unknown: "neutral",
+};
+
+function UpdateAction({ engine }: { engine: EngineStatus }) {
+  const [confirming, setConfirming] = useState(false);
+  const refreshEngines = useWorkspace((state) => state.refreshEngines);
+  if (engine.updating) {
+    return (
+      <span className="inline-status" role="status">
+        <RefreshCw size={16} className="spin" aria-hidden />
+        Updating
+      </span>
+    );
+  }
+  if (!engine.update_command) return null;
+  const hasNewer = engine.latest !== null && engine.latest !== engine.version;
+  return (
+    <>
+      <Button small onClick={() => setConfirming(true)}>
+        {hasNewer ? `Update to ${engine.latest}` : "Update"}
+      </Button>
+      {confirming ? (
+        <ConfirmDialog
+          title={`Update ${engine.name}?`}
+          confirmLabel="Update"
+          onClose={() => setConfirming(false)}
+          onConfirm={async () => {
+            await api.updateEngine(engine.id);
+            await refreshEngines();
+          }}
+        >
+          <p>Orbyn runs the installer that owns this binary:</p>
+          <CopyCommand command={engine.update_command} label="Copy update command" />
+          <p className="muted">Updates are refused while this engine has an active run.</p>
+        </ConfirmDialog>
+      ) : null}
+    </>
+  );
+}
+
+function EngineRow({ engine }: { engine: EngineStatus }) {
+  const [removing, setRemoving] = useState(false);
+  const refreshEngines = useWorkspace((state) => state.refreshEngines);
+  const removable = engine.tier !== "native";
+  return (
+    <li className="setting-row engine-row">
+      <div className="engine-row-head">
+        <h3>{engine.name}</h3>
+        <Pill>{tierLabels[engine.tier]}</Pill>
+        {!engine.capabilities.managed ? <Pill tone="warn">Unmanaged</Pill> : null}
+        {engine.installed ? (
+          <Pill tone={supportTone[engine.support]}>{supportLabels[engine.support]}</Pill>
+        ) : (
+          <Pill tone="warn">Not installed</Pill>
+        )}
+        <span className="engine-row-actions">
+          <UpdateAction engine={engine} />
+          {removable ? (
+            <Button
+              small
+              tone="quiet"
+              aria-label={`Remove ${engine.name}`}
+              icon={<Trash2 size={16} aria-hidden />}
+              onClick={() => setRemoving(true)}
+            />
+          ) : null}
+        </span>
+      </div>
+      <dl className="facts">
+        <div>
+          <dt>Version</dt>
+          <dd>{engine.version ?? "Unknown"}</dd>
+        </div>
+        <div>
+          <dt>Login</dt>
+          <dd>{authLabels[engine.auth]}</dd>
+        </div>
+        <div>
+          <dt>Location</dt>
+          <dd>
+            <code>{engine.path ?? "Not found"}</code>
+          </dd>
+        </div>
+      </dl>
+      {engine.problem ? <p className="banner banner-warn">{engine.problem}</p> : null}
+      {!engine.capabilities.managed ? (
+        <p className="muted">This engine can't ask permission, so Orbyn can't gate its actions.</p>
+      ) : null}
+      {engine.auth === "logged_out" ? (
+        <div className="setting-sub">
+          <p>{signInLabel(engine)}. Run this in a terminal:</p>
+          {engine.sign_in_command ? (
+            <CopyCommand command={engine.sign_in_command} label="Copy sign-in command" />
+          ) : null}
+        </div>
+      ) : null}
+      {!engine.update_command && engine.manual_hint ? <p className="muted">{engine.manual_hint}</p> : null}
+      {removing ? (
+        <ConfirmDialog
+          title={`Remove ${engine.name}?`}
+          confirmLabel="Remove engine"
+          tone="danger"
+          onClose={() => setRemoving(false)}
+          onConfirm={async () => {
+            await api.removeCustomEngine(engine.id);
+            await refreshEngines();
+          }}
+        >
+          <p>Existing threads keep their log, but can't start new runs with this engine.</p>
+        </ConfirmDialog>
+      ) : null}
+    </li>
+  );
+}
+
+const CUSTOM_TIERS: { tier: EngineTier; target: string; hint: string }[] = [
+  { tier: "acp", target: "Launch command", hint: "The command that starts an ACP agent over stdio." },
+  { tier: "agui", target: "Endpoint URL", hint: "The AG-UI endpoint Orbyn connects to." },
+  { tier: "terminal", target: "Launch command", hint: "Runs in a terminal only and is always unmanaged." },
+];
+
+function CustomEngineForm() {
+  const refreshEngines = useWorkspace((state) => state.refreshEngines);
+  const [name, setName] = useState("");
+  const [tier, setTier] = useState<EngineTier>("acp");
+  const [target, setTarget] = useState("");
+  const [args, setArgs] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const copy = CUSTOM_TIERS.find((entry) => entry.tier === tier) ?? CUSTOM_TIERS[0];
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addCustomEngine({
+        id: slugify(name),
+        name: name.trim(),
+        tier,
+        target: target.trim(),
+        args: args.trim() ? args.trim().split(/\s+/) : [],
+      });
+      await refreshEngines();
+      setName("");
+      setTarget("");
+      setArgs("");
+    } catch (failure) {
+      setError(toFailure(failure).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="form setting-form" onSubmit={(event) => void submit(event)}>
+      <h3>Add custom engine</h3>
+      <div className="form-grid">
+        <Field label="Name">
+          {(props) => <input {...props} required value={name} onChange={(event) => setName(event.target.value)} />}
+        </Field>
+        <Field label="Protocol">
+          {(props) => (
+            <select {...props} value={tier} onChange={(event) => setTier(event.target.value as EngineTier)}>
+              {CUSTOM_TIERS.map((entry) => (
+                <option key={entry.tier} value={entry.tier}>
+                  {tierLabels[entry.tier]}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      </div>
+      <Field label={copy?.target ?? "Target"} hint={copy?.hint}>
+        {(props) => (
+          <input
+            {...props}
+            required
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+            spellCheck={false}
+            autoCapitalize="off"
+          />
+        )}
+      </Field>
+      {tier === "agui" ? null : (
+        <Field label="Arguments (optional)">
+          {(props) => (
+            <input
+              {...props}
+              value={args}
+              onChange={(event) => setArgs(event.target.value)}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
+          )}
+        </Field>
+      )}
+      {error ? (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="form-actions">
+        <Button type="submit" busy={busy} disabled={!name.trim() || !target.trim()}>
+          Add engine
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export function EnginesSection() {
+  const engines = useWorkspace((state) => state.engines);
+  const refreshEngines = useWorkspace((state) => state.refreshEngines);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const updating = engines.data?.some((engine) => engine.updating) ?? false;
+
+  useEffect(() => {
+    if (!updating) return;
+    const timer = setInterval(() => void refreshEngines(), POLL_WHILE_UPDATING_MS);
+    return () => clearInterval(timer);
+  }, [updating, refreshEngines]);
+
+  const recheck = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      await api.refreshEngines();
+      await refreshEngines();
+    } catch (failure) {
+      setError(toFailure(failure).message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-bar">
+        <h1 tabIndex={-1} data-page-title>
+          Engines
+        </h1>
+        <Button small busy={refreshing} onClick={() => void recheck()}>
+          Check again
+        </Button>
+      </div>
+      <p className="lede">
+        Orbyn runs each engine's own CLI, which keeps its own login. Orbyn never sees your credentials.
+      </p>
+      {error ? (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {engines.error && !engines.data ? (
+        <ErrorState title="Couldn't load engines" failure={engines.error} onRetry={() => void refreshEngines()} />
+      ) : !engines.data ? (
+        <Loading label="Loading engines" />
+      ) : engines.data.length === 0 ? (
+        <Empty title="No engines found" />
+      ) : (
+        <ul className="setting-list">
+          {engines.data.map((engine) => (
+            <EngineRow key={engine.id} engine={engine} />
+          ))}
+        </ul>
+      )}
+      <CustomEngineForm />
+    </>
+  );
+}
