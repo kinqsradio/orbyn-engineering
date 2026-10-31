@@ -10,7 +10,7 @@ import { CommandPalette } from "../features/workspace/CommandPalette";
 import type { Thread } from "../api/types";
 import { arrangeThreads, threadsFlat } from "../features/workspace/groups";
 import {
-  copyText,
+  copyReference,
   pinThreads,
   settleThreads,
   unpinThreads,
@@ -165,7 +165,7 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "thread.copyReference":
       if (!thread) return false;
-      void copyText(thread.id, "Copied thread ID");
+      void copyReference(thread);
       return true;
     default:
       return false;

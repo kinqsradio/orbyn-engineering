@@ -174,6 +174,7 @@ export interface RowActions {
   onWake(thread: Thread): void;
   onUnpin(thread: Thread): void;
   onRowFocus(id: string): void;
+  onFiles(thread: Thread, files: File[]): void;
 }
 
 export function ThreadRow({
@@ -217,6 +218,7 @@ export function ThreadRow({
   const projectName = thread.scratch ? "No project" : (project?.name ?? "Unknown project");
   const engineName = engine?.name ?? thread.engine;
   const [hover, setHover] = useState<DOMRect | null>(null);
+  const [fileOver, setFileOver] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const lifecycle = thread.lifecycle;
@@ -341,6 +343,19 @@ export function ThreadRow({
       data-dragging={dragging || undefined}
       data-selected={multiSelected || undefined}
       data-highlight={highlighted || undefined}
+      data-file-over={fileOver || undefined}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setFileOver(true);
+      }}
+      onDragLeave={() => setFileOver(false)}
+      onDrop={(event) => {
+        setFileOver(false);
+        if (event.dataTransfer.files.length === 0) return;
+        event.preventDefault();
+        actions.onFiles(thread, [...event.dataTransfer.files]);
+      }}
     >
       <a
         className={compact ? "thread-row thread-row-compact" : "thread-row"}

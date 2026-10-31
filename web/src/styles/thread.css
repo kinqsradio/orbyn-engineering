@@ -2988,3 +2988,7 @@ button.context-meter:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.model-extra {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}

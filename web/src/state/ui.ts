@@ -82,6 +82,8 @@ interface Prefs {
   confirmDelete: boolean;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
+  /** The project the unsent draft belongs to, so its row opens it there. */
+  draftProject: string | null;
 }
 
 export interface Typography {
@@ -177,6 +179,7 @@ const defaults: Prefs = {
   confirmArchive: false,
   confirmDelete: true,
   lastModel: null,
+  draftProject: null,
 };
 
 interface UiState extends Prefs {
@@ -304,6 +307,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   confirmArchive: state.confirmArchive,
   confirmDelete: state.confirmDelete,
   lastModel: state.lastModel,
+  draftProject: state.draftProject,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */

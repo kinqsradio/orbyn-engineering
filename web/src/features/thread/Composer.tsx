@@ -17,6 +17,7 @@ import { useCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { useDraftStore } from "../onboarding/draftStore";
 import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi, type StashedPrompt } from "../../state/ui";
@@ -220,9 +221,9 @@ export function Composer({
   };
 
   const send = async (followUp: "default" | "opposite" = "default") => {
-    if (!canSend) return;
+    if (!canSend) return false;
     const prompt = draft;
-    if (runLocal(prompt)) return;
+    if (runLocal(prompt)) return false;
     const queued = followUpBehavior === "queue";
     const steering = busy && (followUp === "default" ? !queued : queued);
     setSending(true);
@@ -242,12 +243,13 @@ export function Composer({
       if (run) addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
       if (busy) reloadQueue();
       void refreshThread(thread.id);
+      return true;
     } catch (failure) {
       onSendFailed?.();
       const known = toFailure(failure);
       if (known.code === "folder_untrusted") {
         navigate({ name: "trust", projectId: thread.project_id, threadId: thread.id });
-        return;
+        return false;
       }
       setError(
         known.code === "thread_busy"
@@ -257,6 +259,7 @@ export function Composer({
             : `Couldn't start the run. ${known.message} Your message is kept.`,
       );
       void refreshThread(thread.id);
+      return false;
     } finally {
       setSending(false);
     }
@@ -306,6 +309,8 @@ export function Composer({
       }
     }
     if (event.key !== "Enter") return;
+    // Left to the shell, whose rule sends and opens a new thread.
+    if (event.altKey && (event.metaKey || event.ctrlKey)) return;
     if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
       const next = continueListLine(draft, element.selectionStart);
       if (next) {
@@ -344,6 +349,12 @@ export function Composer({
     if (event.dataTransfer.files.length > 0) upload([...event.dataTransfer.files]);
   };
 
+  const droppedHere = useDraftStore((state) => state.dropped[thread.id]);
+  useEffect(() => {
+    if (!droppedHere) return;
+    upload(useDraftStore.getState().takeDropped(thread.id));
+  });
+
   const stash = () => {
     const stored = useUi.getState().stashes;
     const list = stored[thread.id] ?? [];
@@ -378,6 +389,12 @@ export function Composer({
 
   useCommand("composer.stash", () => {
     stash();
+  });
+  useCommand("composer.sendAndNewThread", () => {
+    if (!canSend) return false;
+    void send().then((sent) => {
+      if (sent) navigate({ name: "new", projectId: thread.scratch ? null : thread.project_id });
+    });
   });
   useCommand("thread.steerQueuedMessage", () => {
     const oldest = queue.data?.[0];

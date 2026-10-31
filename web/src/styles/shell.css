@@ -1011,3 +1011,10 @@ details[open] > summary > .chev {
   font-size: var(--text-caption);
   transform: translateY(-50%);
 }
+.draft-row .thread-row {
+  color: var(--color-muted);
+}
+li[data-file-over] .thread-row {
+  background: var(--color-rowHover);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}

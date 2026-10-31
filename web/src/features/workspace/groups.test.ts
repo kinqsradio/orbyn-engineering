@@ -140,3 +140,12 @@ describe("folders", () => {
     expect(folders.map((folder) => folder.project.id)).toEqual(["old", "new"]);
   });
 });
+
+describe("the open thread's section", () => {
+  it("stays active when it settles on its own, until you leave", () => {
+    const settled = thread("a", { settled_at: "2026-10-31T11:00:00Z" });
+    expect(sectionOf(settled, now, "a", "active")).toBe("active");
+    expect(sectionOf(settled, now, null, "active")).toBe("settled");
+    expect(sectionOf(settled, now, "a", "settled")).toBe("settled");
+  });
+});
