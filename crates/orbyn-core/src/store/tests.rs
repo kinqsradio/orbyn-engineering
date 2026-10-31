@@ -232,6 +232,7 @@ fn recovery_interrupts_dead_owners_runs_and_expires_their_approvals() {
         Recovery {
             interrupted_runs: 1,
             expired_approvals: 1,
+            interrupted_threads: vec![f.thread.clone()],
             ..Recovery::default()
         }
     );

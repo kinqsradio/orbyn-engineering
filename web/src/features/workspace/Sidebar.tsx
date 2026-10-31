@@ -938,7 +938,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
             {hasShelf ? (
               <div className="sidebar-groups">
                 {shelves.length > 0 ? (
-                  <Group id="working" label="Working" count={shelves.length} defaultOpen={false}>
+                  <Group id="working" label="Working" count={shelves.length} defaultOpen>
                     {shelves.map((thread) => row(thread, "working", false))}
                   </Group>
                 ) : null}

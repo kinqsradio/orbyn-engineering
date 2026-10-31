@@ -93,7 +93,6 @@ test("a watched thread goes to the Working shelf, unless that is off", async ({ 
   await service.api("POST", `/api/threads/${id}/pulls`, { number: 77 });
   await service.api("POST", `/api/threads/${id}/pulls/77/watch`, {});
   await page.goto(`${service.page}#/new/${projectId}`);
-  await page.getByRole("button", { name: /^Working/ }).click();
   await expect(row(page, id)).toHaveAttribute("data-section", "working");
   await page.goto(`${service.page}#/settings/general`);
   await page.getByRole("dialog", { name: "Settings" }).getByRole("switch", { name: "Working section" }).click();

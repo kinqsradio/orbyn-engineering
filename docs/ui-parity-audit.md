@@ -21,7 +21,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Sidebar | Settled row | Live: one line, 36px, pitch 37 | Match | 0 by CSS |
 | Sidebar | Settled shelf | Live: 32px toggle, 10 rows, Show n more | Match | 0 |
 | Sidebar | Footer | Live: 32px at x 8, 44, 80; update x 167 | Settings, update only | x 166; Pull requests and Usage hidden |
-| Sidebar | Working section | Source: folds working threads, subagents and watches, with a setting | Match, Real for watches; collapsed by default | Backgrounded commands are not detected |
+| Sidebar | Working section | Source: folds working threads, subagents and watches, with a setting | Match, Real for watches; open by default, as measured earlier | Backgrounded commands are not detected |
 | Sidebar | Provider update | Source: capsule with dismiss | Match, Real in unit data | Capsule layout own |
 | Thread | Related threads | Source: control with related threads and agents | Menu with status, Real | Menu, not a popover |
 | Thread | Visit mark | Source: where you last read | Line above the first new reply, Real | Only replies count |

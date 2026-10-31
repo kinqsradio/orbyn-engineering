@@ -131,7 +131,8 @@ function PullRows({ threadId }: { threadId: string }) {
   const pulls = useAsync(`details-pulls:${threadId}`, (signal) => pullsApi.linked(threadId, signal));
   const togglePanel = useUi((state) => state.togglePanel);
   const showing = useUi((state) => state.panelOpen === true && state.panelTab === "pulls");
-  return (pulls.data ?? []).slice(0, MAX_PULL_ROWS).map((pull) => (
+  const linked = Array.isArray(pulls.data) ? pulls.data : [];
+  return linked.slice(0, MAX_PULL_ROWS).map((pull) => (
     <button key={pull.number} type="button" className="detail-row" onClick={() => (showing ? undefined : togglePanel("pulls"))}>
       <GitPullRequest size={16} aria-hidden />
       <span>{pull.title}</span>
