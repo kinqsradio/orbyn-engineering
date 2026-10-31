@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, SkillDelivery,
+    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, SkillDelivery, ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{EngineProcess, exit_message, one_shot_cli, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
-    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
-    RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths, diff_activity,
+    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, ItemRecord,
+    MCP_SERVER_NAME, RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths, diff_activity,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
@@ -670,6 +670,22 @@ impl TurnMapper {
                     self.last_error = Some(message);
                 }
             }
+            "thread/tokenUsage/updated" => {
+                let usage = params.get("tokenUsage").cloned().unwrap_or(Value::Null);
+                let report = ThreadUsage {
+                    total_tokens: usage.pointer("/total/totalTokens").and_then(Value::as_u64),
+                    context_window: usage.get("modelContextWindow").and_then(Value::as_u64),
+                    raw: usage,
+                };
+                step.events.push(
+                    AgUiEvent::Custom {
+                        name: "usage".into(),
+                        value: json!(report),
+                    }
+                    .into(),
+                );
+                step.events.push(EngineEvent::Usage(report));
+            }
             "warning" => {
                 step.events.push(
                     AgUiEvent::Custom {
@@ -752,6 +768,21 @@ impl TurnMapper {
         match item.get("type").and_then(Value::as_str) {
             Some("agentMessage") => self.open_message(id, events),
             Some("reasoning") => self.open_reasoning(id, events),
+            Some("collabAgentToolCall" | "subAgentActivity") => {
+                events.push(
+                    AgUiEvent::Custom {
+                        name: "subagent.activity".into(),
+                        value: json!({
+                            "id": id,
+                            "kind": item.get("type"),
+                            "tool": item.get("tool"),
+                            "status": item.get("status"),
+                            "agentPath": item.get("agentPath"),
+                        }),
+                    }
+                    .into(),
+                );
+            }
             Some(kind) => {
                 if let Some((name, args)) = tool_shape(kind, item) {
                     if kind == "fileChange" {
@@ -768,6 +799,23 @@ impl TurnMapper {
         let Some(id) = item.get("id").and_then(Value::as_str) else {
             return;
         };
+        let kind = item.get("type").and_then(Value::as_str).unwrap_or("item");
+        let exit_code = item.get("exitCode").and_then(Value::as_i64);
+        events.push(EngineEvent::Item(ItemRecord {
+            id: id.to_owned(),
+            kind: kind.to_owned(),
+            raw: item.clone(),
+            exit_code,
+        }));
+        if let Some(code) = exit_code {
+            events.push(
+                AgUiEvent::Custom {
+                    name: "tool.finished".into(),
+                    value: json!({ "toolCallId": id, "exitCode": code }),
+                }
+                .into(),
+            );
+        }
         match item.get("type").and_then(Value::as_str) {
             Some("agentMessage") => {
                 self.open_message(id, events);
@@ -958,8 +1006,45 @@ mod tests {
             "item/completed",
             &json!({ "threadId": "thread", "item": { "type": "agentMessage", "id": "m", "text": "hi" } }),
         );
-        assert_eq!(step.events.len(), 3);
+        // The raw item for the inspector, then start, content and end.
+        assert_eq!(step.events.len(), 4);
         assert!(mapper.open.is_empty());
+    }
+
+    #[test]
+    fn completed_commands_keep_their_exit_code_and_raw_item() {
+        let mut mapper = mapper();
+        let step = mapper.on_notification(
+            "item/completed",
+            &json!({ "threadId": "thread", "item": {
+                "type": "commandExecution", "id": "c", "command": "false",
+                "status": "failed", "exitCode": 1, "aggregatedOutput": "boom",
+            }}),
+        );
+        assert!(matches!(
+            &step.events[0],
+            EngineEvent::Item(item) if item.exit_code == Some(1) && item.kind == "commandExecution"
+        ));
+        assert!(step.events.iter().any(|event| matches!(
+            event,
+            EngineEvent::Agui(AgUiEvent::Custom { name, .. }) if name == "tool.finished"
+        )));
+    }
+
+    #[test]
+    fn usage_reports_totals_and_the_window() {
+        let mut mapper = mapper();
+        let step = mapper.on_notification(
+            "thread/tokenUsage/updated",
+            &json!({ "threadId": "thread", "tokenUsage": {
+                "total": { "totalTokens": 120 }, "modelContextWindow": 1000,
+            }}),
+        );
+        assert!(step.events.iter().any(|event| matches!(
+            event,
+            EngineEvent::Usage(usage)
+                if usage.total_tokens == Some(120) && usage.context_window == Some(1000)
+        )));
     }
 
     #[test]
@@ -977,7 +1062,8 @@ mod tests {
             "item/completed",
             &json!({ "threadId": "thread", "item": { "type": "agentMessage", "id": "m", "text": "hi" } }),
         );
-        assert_eq!(done.events.len(), 1);
+        // The raw item and the end, with no second copy of the text.
+        assert_eq!(done.events.len(), 2);
     }
 
     #[test]

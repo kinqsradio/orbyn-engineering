@@ -1,7 +1,12 @@
 //! Ordered, forward-only schema. Each entry applies once inside a transaction
 //! and is recorded in `schema_migrations`. Published entries never change.
 
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, INITIAL), (2, THREAD_LIFECYCLE), (3, COMPOSER)];
+pub const MIGRATIONS: &[(i64, &str)] = &[
+    (1, INITIAL),
+    (2, THREAD_LIFECYCLE),
+    (3, COMPOSER),
+    (4, TIMELINE),
+];
 
 const THREAD_LIFECYCLE: &str = r#"
 ALTER TABLE threads ADD COLUMN parent_thread_id TEXT REFERENCES threads(id) ON DELETE CASCADE;
@@ -42,6 +47,20 @@ CREATE TABLE attachments (
     created_at TEXT NOT NULL
 );
 CREATE INDEX attachments_by_thread ON attachments(thread_id);
+"#;
+
+const TIMELINE: &str = r#"
+CREATE TABLE thread_items (
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,
+    run_id TEXT,
+    kind TEXT NOT NULL,
+    raw TEXT NOT NULL,
+    exit_code INTEGER,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (thread_id, item_id)
+) WITHOUT ROWID;
+ALTER TABLE threads ADD COLUMN usage TEXT;
 "#;
 
 const INITIAL: &str = r#"

@@ -88,6 +88,14 @@ The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per
 file. A record exists only once its bytes are in place, and a message naming an
 attachment that is not ready is refused before anything is admitted.
 
+## Files
+
+File routes need a trusted folder and share the engines' write scope, so `..` and
+symlinks cannot leave the checkout, and `.git` is out of reach. A save names the
+revision it started from; a file that moved on is reported, never overwritten, and
+new bytes arrive by rename. These saves are the user's own edits, audited, and
+differ from rule 4, which covers what Orbyn adds on its own.
+
 ## Approval lifecycle
 
 ```text
@@ -114,8 +122,8 @@ nothing.
 
 Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
-and `unmanaged`. `CUSTOM` carries `tool.output`, `engine.warning` and
-`engine.retrying`. The prompt is logged as a `user` text message whose id ends in
+and `unmanaged`. `CUSTOM` carries `tool.output`, `tool.finished`, `subagent.activity`,
+`usage`, `engine.warning` and `engine.retrying`. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -313,6 +321,13 @@ accept `?token=` because browsers cannot set headers on them.
 | `DELETE /api/attachments/:id` | Remove an attachment |
 | `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills and unignored files |
 | `GET /api/threads/:id/commands` | `SlashCommand[]` |
+| `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
+| `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
+| `GET /api/threads/:id/files?path=` | `FileEntry[]`, one folder |
+| `GET /api/threads/:id/files/ignored` | Ignored paths |
+| `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |
+| `GET, PUT /api/threads/:id/files/content` | `FileContent`; a stale `base_revision` is `409 file_conflict` |
+| `POST /api/threads/:id/files/open`, `GET /api/editors` | Open a file in a known installed editor |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |

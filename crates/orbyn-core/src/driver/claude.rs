@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use orbyn_contracts::{AgUiEvent, EngineCapabilities, EngineTier, SkillDelivery};
+use orbyn_contracts::{AgUiEvent, EngineCapabilities, EngineTier, SkillDelivery, ThreadUsage};
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{exit_message, lines, one_shot_cli, resolve_engine, spawn_engine};
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
-    MCP_SERVER_NAME, RunHandle, RunKind, RunSpec, UpdatePlan,
+    ItemRecord, MCP_SERVER_NAME, RunHandle, RunKind, RunSpec, UpdatePlan,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -288,9 +288,18 @@ impl StreamMapper {
                 .map_or_else(Vec::new, |event| self.on_stream_event(event)),
             Some("assistant") if !nested => self.on_assistant(frame),
             Some("user") if !nested => on_user(frame),
+            Some("assistant") => vec![
+                AgUiEvent::Custom {
+                    name: "subagent.activity".into(),
+                    value: json!({ "parentToolCallId": frame.get("parent_tool_use_id") }),
+                }
+                .into(),
+            ],
             Some("result") => {
                 self.outcome = Some(result_outcome(frame));
-                session(frame)
+                let mut events = session(frame);
+                events.extend(frame.get("usage").map(usage_event));
+                events
             }
             _ => Vec::new(),
         }
@@ -396,15 +405,26 @@ impl StreamMapper {
     }
 
     fn on_assistant(&mut self, frame: &Value) -> Vec<EngineEvent> {
-        if self.saw_partials {
-            return Vec::new();
-        }
         let content = frame
             .pointer("/message/content")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        let mut events = Vec::new();
+        let mut events: Vec<EngineEvent> = content
+            .iter()
+            .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"))
+            .filter_map(|block| {
+                Some(EngineEvent::Item(ItemRecord {
+                    id: text_of(block, "id")?,
+                    kind: "tool_use".to_owned(),
+                    raw: block.clone(),
+                    exit_code: None,
+                }))
+            })
+            .collect();
+        if self.saw_partials {
+            return events;
+        }
         for block in content {
             match block.get("type").and_then(Value::as_str) {
                 Some("text") => {
@@ -470,6 +490,19 @@ fn end_event(block: &Block) -> AgUiEvent {
             tool_call_id: id.clone(),
         },
     }
+}
+
+fn usage_event(usage: &Value) -> EngineEvent {
+    let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+    let total = count("input_tokens")
+        + count("output_tokens")
+        + count("cache_read_input_tokens")
+        + count("cache_creation_input_tokens");
+    EngineEvent::Usage(ThreadUsage {
+        total_tokens: Some(total),
+        context_window: None,
+        raw: usage.clone(),
+    })
 }
 
 fn session(frame: &Value) -> Vec<EngineEvent> {
@@ -626,6 +659,32 @@ mod tests {
         ];
         let events: Vec<_> = frames.iter().flat_map(|f| mapper.on_frame(f)).collect();
         assert_eq!(events.len(), 3);
+    }
+
+    #[test]
+    fn subagent_messages_are_reported_without_joining_the_turn() {
+        let mut mapper = StreamMapper::default();
+        let events = mapper.on_frame(&json!({
+            "type":"assistant","parent_tool_use_id":"toolu_1",
+            "message":{"content":[{"type":"text","text":"inner"}]}
+        }));
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            EngineEvent::Agui(AgUiEvent::Custom { name, .. }) if name == "subagent.activity"
+        ));
+    }
+
+    #[test]
+    fn result_usage_adds_every_token_kind() {
+        let mut mapper = StreamMapper::default();
+        let events = mapper.on_frame(&json!({
+            "type":"result","subtype":"success","is_error":false,
+            "usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3}
+        }));
+        assert!(events.iter().any(|event| matches!(
+            event, EngineEvent::Usage(usage) if usage.total_tokens == Some(6)
+        )));
     }
 
     #[test]

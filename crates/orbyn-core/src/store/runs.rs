@@ -1,12 +1,15 @@
 //! Run lifecycle writes. Every transition is a compare-and-set on the previous
 //! state and the owner epoch, so a late event or a stale process cannot move a run.
 
-use orbyn_contracts::{AgUiEvent, Approval, ApprovalState, Run, RunState, ThreadEvent};
+use orbyn_contracts::{
+    AgUiEvent, Approval, ApprovalState, Run, RunState, ThreadEvent, ThreadItemRecord, ThreadUsage,
+};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde_json::{Value, json};
 
 use super::approvals::{activity_event, approval_row};
 use super::{Appended, AuditRecord, Store, insert_audit, insert_event, run_row, wire_name};
+use crate::driver::ItemRecord;
 use crate::error::{CoreError, Result};
 use crate::util::{new_id, now};
 
@@ -130,6 +133,75 @@ impl Store {
         })
     }
 
+    /// Keeps an engine item for the inspector. Later reports replace earlier ones.
+    pub fn record_item(&self, run_id: &str, item: &ItemRecord) -> Result<()> {
+        self.commit(|tx, _| {
+            let guard = guard_active(tx, &self.epoch, run_id)?;
+            tx.execute(
+                "INSERT INTO thread_items (thread_id, item_id, run_id, kind, raw, exit_code, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT (thread_id, item_id) DO UPDATE SET run_id = excluded.run_id,
+                    kind = excluded.kind, raw = excluded.raw, exit_code = excluded.exit_code,
+                    updated_at = excluded.updated_at",
+                params![
+                    guard.thread_id,
+                    item.id,
+                    run_id,
+                    item.kind,
+                    item.raw.to_string(),
+                    item.exit_code,
+                    now()
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn items(&self, thread_id: &str, limit: u32) -> Result<Vec<ThreadItemRecord>> {
+        let conn = self.reader();
+        let mut statement = conn.prepare_cached(
+            "SELECT * FROM thread_items WHERE thread_id = ?1 ORDER BY updated_at DESC LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![thread_id, limit.min(1000)], item_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn item(&self, thread_id: &str, item_id: &str) -> Result<ThreadItemRecord> {
+        self.reader()
+            .query_row(
+                "SELECT * FROM thread_items WHERE thread_id = ?1 AND item_id = ?2",
+                [thread_id, item_id],
+                item_row,
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound("item".into()))
+    }
+
+    pub fn record_usage(&self, run_id: &str, usage: &ThreadUsage) -> Result<()> {
+        let text = serde_json::to_string(usage)?;
+        self.commit(|tx, _| {
+            let guard = guard_active(tx, &self.epoch, run_id)?;
+            tx.execute(
+                "UPDATE threads SET usage = ?2 WHERE id = ?1",
+                params![guard.thread_id, text],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn usage(&self, thread_id: &str) -> Result<Option<ThreadUsage>> {
+        let text: Option<String> = self
+            .reader()
+            .query_row(
+                "SELECT usage FROM threads WHERE id = ?1",
+                [thread_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound("thread".into()))?;
+        Ok(text.and_then(|text| serde_json::from_str(&text).ok()))
+    }
+
     pub fn engine_session(&self, thread_id: &str) -> Result<Option<String>> {
         Ok(self
             .reader()
@@ -226,6 +298,18 @@ impl Store {
             |row| row.get(0),
         )?)
     }
+}
+
+fn item_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadItemRecord> {
+    let raw: String = row.get("raw")?;
+    Ok(ThreadItemRecord {
+        item_id: row.get("item_id")?,
+        run_id: row.get("run_id")?,
+        kind: row.get("kind")?,
+        raw: super::parse_json(4, &raw)?,
+        exit_code: row.get("exit_code")?,
+        updated_at: row.get("updated_at")?,
+    })
 }
 
 pub(super) fn admit_in(

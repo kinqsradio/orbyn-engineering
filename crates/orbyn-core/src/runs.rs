@@ -343,6 +343,9 @@ impl RunManager {
             .thread(thread_id)?
             .active_run
             .ok_or_else(|| CoreError::Invalid("Nothing is running to steer.".into()))?;
+        if matches!(run.state, RunState::Admitted | RunState::Starting) {
+            return Err(CoreError::Invalid("This run is still starting.".into()));
+        }
         let input = self
             .lock()
             .get(&run.id)
@@ -615,6 +618,16 @@ impl RunManager {
                         EngineEvent::Session(session) => {
                             if let Err(error) = self.store.set_engine_session(&scope.run_id, &session) {
                                 tracing::warn!(%error, "could not store the engine session");
+                            }
+                        }
+                        EngineEvent::Item(item) => {
+                            if let Err(error) = self.store.record_item(&scope.run_id, &item) {
+                                tracing::debug!(%error, "could not keep an engine item");
+                            }
+                        }
+                        EngineEvent::Usage(usage) => {
+                            if let Err(error) = self.store.record_usage(&scope.run_id, &usage) {
+                                tracing::debug!(%error, "could not keep usage");
                             }
                         }
                         EngineEvent::Permission(request) => {

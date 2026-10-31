@@ -29,6 +29,8 @@ pub enum CoreError {
     LibraryDirty(String),
     #[error("{0}")]
     NotFastForward(String),
+    #[error("This file changed since you opened it.")]
+    FileConflict { revision: Option<String> },
     #[error("finish or stop active runs first")]
     RunsActive,
     #[error("Orbyn is installing an update")]
@@ -89,6 +91,7 @@ impl CoreError {
             Self::WorkspaceRefused(_) => "workspace_refused",
             Self::LibraryDirty(_) => "library_dirty",
             Self::NotFastForward(_) => "not_fast_forward",
+            Self::FileConflict { .. } => "file_conflict",
             Self::RunsActive => "runs_active",
             Self::Updating => "updating",
             Self::ProjectHasWork { .. } => "project_has_work",
@@ -120,6 +123,7 @@ impl CoreError {
             | Self::WorkspaceRequired
             | Self::LibraryDirty(_)
             | Self::NotFastForward(_)
+            | Self::FileConflict { .. }
             | Self::RunsActive
             | Self::ProjectHasWork { .. }
             | Self::EngineBusy(_)

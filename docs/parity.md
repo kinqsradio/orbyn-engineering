@@ -145,13 +145,13 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
 - [ ] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
 - [ ] C4 Orchestrator summaries: action-specific wording, failures not counted | docs/user/activity-log.md | w d | M
-- [ ] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M
+- [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M | server done
 - [ ] C6 Open diff from tool row: review a file change | docs/user/activity-log.md | w d | S
-- [ ] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M
+- [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M | server done
 - [ ] C8 Proposed plan card: collapse, copy, save/download, follow-up | apps/web/src/components/chat/ProposedPlanCard.tsx | w d m | M
 - [ ] C9 Plan follow-up banner: implement plan from a banner | apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx | w d | M
 - [ ] C10 Claude task lists: Tasks row via env flag | docs/user/providers-claude.md | w d | S
-- [ ] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M
+- [x] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M | server done
 - [ ] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
 - [ ] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
 - [ ] C14 Math: opt-in TeX, inline and block | apps/web/src/components/chat/MarkdownMath.tsx | w d m | M
@@ -175,9 +175,9 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 ## D. Files, search and attachments
 - [ ] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L
 - [ ] D2 Go to file: quick picker | apps/web/src/components/files/ProjectFilePicker.tsx | w d | M
-- [ ] D3 Project content search: full-text dialog | apps/web/src/components/search/ProjectContentSearchDialog.tsx | w d s | L
-- [ ] D4 Show ignored files: separate listing | packages/contracts/src/rpc.ts | s | S
-- [ ] D5 Edit and save files: save coordination, conflict revision tracking | apps/web/src/components/files/fileSaveCoordinator.ts | w d s | L
+- [x] D3 Project content search: full-text dialog | apps/web/src/components/search/ProjectContentSearchDialog.tsx | w d s | L | server done
+- [x] D4 Show ignored files: separate listing | packages/contracts/src/rpc.ts | s | S | server done
+- [x] D5 Edit and save files: save coordination, conflict revision tracking | apps/web/src/components/files/fileSaveCoordinator.ts | w d s | L | server done
 - [ ] D6 Source preview: read-only highlighted view | apps/web/src/components/files/ReadOnlySourcePreview.tsx | w d m | M
 - [ ] D7 Large text viewer: worker-backed partial viewing | apps/web/src/components/files/LargeTextViewer.tsx | w d | M
 - [ ] D8 Markdown preview: rendered/raw toggle | apps/web/src/components/files/FileMarkdownPreview.tsx | w d m | S
@@ -194,7 +194,7 @@ web, desktop or mobile surface on that row is tracked by that client's owner.
 - [ ] D19 File comments: annotations feed review chips | apps/web/src/components/files/fileCommentAnnotations.ts | w d | M
 - [ ] D20 Tree drag mention: drag file into composer | apps/web/src/components/files/fileTreeDragMention.ts | w d | S
 - [ ] D21 Outside-workspace files: read-only, isolated HTML | docs/user/composer.md | w d s | M
-- [ ] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M
+- [x] D22 Open in editor: favorite editor picker including JetBrains | apps/web/src/components/chat/OpenInPicker.tsx | w d s | M | server done
 
 ## E. Diffs, checkpoints and revert
 - [ ] E1 Turn checkpoints: hidden git ref at each turn end | apps/server/src/checkpointing/CheckpointStore.ts | s | L

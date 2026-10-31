@@ -119,7 +119,18 @@ pub enum EngineEvent {
     /// The engine's resumable session id.
     Session(String),
     Permission(PermissionRequest),
+    /// A raw item for the inspector.
+    Item(ItemRecord),
+    Usage(orbyn_contracts::ThreadUsage),
     Finished(EngineOutcome),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemRecord {
+    pub id: String,
+    pub kind: String,
+    pub raw: Value,
+    pub exit_code: Option<i64>,
 }
 
 impl From<AgUiEvent> for EngineEvent {

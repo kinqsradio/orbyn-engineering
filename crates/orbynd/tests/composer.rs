@@ -28,15 +28,14 @@ async fn enqueue(service: &Service, thread: &str, prompt: &str) -> Value {
     body
 }
 
-async fn until_run_active(service: &Service, thread: &str, want: bool) {
+async fn until_running(service: &Service, thread: &str) {
     for _ in 0..2000 {
-        let body = service.json(&format!("/api/threads/{thread}")).await;
-        if body["active_run"].is_null() != want {
+        if service.run_state(thread).await == "running" {
             return;
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    panic!("run state never changed");
+    panic!("the run never started");
 }
 
 /// Waits until `count` runs have been admitted and the last one has ended.
@@ -61,7 +60,7 @@ async fn queue_runs_in_order_after_the_active_run_and_idle_starts_at_once() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
     service.admit(&thread, "[hang]").await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    until_running(&service, &thread).await;
     enqueue(&service, &thread, "first").await;
     enqueue(&service, &thread, "second").await;
     assert_eq!(queue(&service, &thread).await.len(), 2);
@@ -203,8 +202,7 @@ async fn steering_reaches_claude_and_is_refused_when_idle_or_unsupported() {
         .await;
     assert_eq!(code, 400);
     service.admit(&thread, "[hang]").await;
-    until_run_active(&service, &thread, true).await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    until_running(&service, &thread).await;
     let (code, _) = service
         .send(
             &format!("/api/threads/{thread}/steer"),

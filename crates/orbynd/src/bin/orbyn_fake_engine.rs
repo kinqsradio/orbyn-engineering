@@ -542,6 +542,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
                 "item": {
                     "type": "commandExecution", "id": "cmd1", "command": "ls", "cwd": "/repo",
                     "commandActions": [], "status": "completed", "aggregatedOutput": "listing",
+                "exitCode": 0,
                 },
             }),
         );
@@ -593,6 +594,16 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         "item/completed",
         json!({
             "completedAtMs": 6, "item": { "type": "agentMessage", "id": "msg1", "text": answer },
+        }),
+    );
+    codex_note(
+        state,
+        "thread/tokenUsage/updated",
+        json!({
+            "tokenUsage": {
+                "total": { "totalTokens": 120 }, "last": { "totalTokens": 20 },
+                "modelContextWindow": 1000,
+            },
         }),
     );
     if has(prompt, "fail") {

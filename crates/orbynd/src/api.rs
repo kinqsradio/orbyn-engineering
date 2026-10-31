@@ -12,8 +12,9 @@ use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
     ApiError, ApprovalState, CloneProject, ComputerAction, CreatePolicyRule, CreateThread,
     CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage, FsEntry,
-    FsListing, ImportProject, LibraryUpdateRequest, NewProject, ReorderThreads, ServerInfo,
-    ServerSettings, SkillProfile, StartRun, SteerRun, UpdateThread, WorkspaceSetup,
+    FsListing, ImportProject, LibraryUpdateRequest, NewProject, OpenInEditor, ReorderThreads,
+    ServerInfo, ServerSettings, SkillProfile, StartRun, SteerRun, UpdateThread, WorkspaceSetup,
+    WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -75,6 +76,7 @@ impl From<CoreError> for ApiFailure {
         let detail = match &error {
             CoreError::AlreadyDecided(existing) => serde_json::to_value(existing).ok(),
             CoreError::ProjectHasWork { detail, .. } => Some(detail.clone()),
+            CoreError::FileConflict { revision } => Some(json!({ "revision": revision })),
             _ => None,
         };
         Self {
@@ -338,6 +340,98 @@ pub async fn apply_app_update(State(state): State<AppState>) -> ApiResult<Status
 
 pub async fn apply_all_updates(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.updates.apply_all(LOCAL_USER).await?))
+}
+
+pub async fn list_items(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.thread(&id)?;
+    Ok(Json(state.core.store.items(&id, 500)?))
+}
+
+pub async fn get_item(
+    State(state): State<AppState>,
+    Path((id, item)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.store.item(&id, &item)?))
+}
+
+pub async fn thread_usage(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.store.usage(&id)?))
+}
+
+#[derive(Deserialize)]
+pub struct PathQuery {
+    #[serde(default)]
+    path: String,
+}
+
+pub async fn file_tree(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<PathQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.list_files(&id, &query.path).await?))
+}
+
+pub async fn ignored_files(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.ignored_files(&id).await?))
+}
+
+pub async fn read_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<PathQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.read_file(&id, &query.path).await?))
+}
+
+pub async fn write_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<WriteFile>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.write_file(&id, &body, LOCAL_USER).await?))
+}
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    q: String,
+    #[serde(default)]
+    content: bool,
+}
+
+pub async fn search_files(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<SearchQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state
+            .core
+            .search_files(&id, &query.q, query.content)
+            .await?,
+    ))
+}
+
+pub async fn editors() -> Json<Vec<orbyn_contracts::EditorInfo>> {
+    Json(orbyn_core::files::installed_editors())
+}
+
+pub async fn open_in_editor(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<OpenInEditor>,
+) -> ApiResult<StatusCode> {
+    state.core.open_in_editor(&id, &body, LOCAL_USER).await?;
+    Ok(StatusCode::ACCEPTED)
 }
 
 pub async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {

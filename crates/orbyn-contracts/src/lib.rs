@@ -132,6 +132,82 @@ pub struct Attachment {
 }
 
 wire! {
+/// One engine item as the engine reported it, for the item inspector.
+pub struct ThreadItemRecord {
+    pub item_id: String,
+    pub run_id: Option<String>,
+    pub kind: String,
+    pub raw: Value,
+    pub exit_code: Option<i64>,
+    pub updated_at: String,
+}
+}
+
+wire! {
+pub struct ThreadUsage {
+    pub total_tokens: Option<u64>,
+    pub context_window: Option<u64>,
+    /// The engine's own report, which varies by engine.
+    pub raw: Value,
+}
+}
+
+wire! {
+pub struct FileEntry {
+    pub name: String,
+    /// Relative to the checkout.
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub ignored: bool,
+}
+}
+
+wire! {
+pub struct FileContent {
+    pub path: String,
+    /// Empty when `binary` or `truncated`.
+    pub content: String,
+    /// Digest of the file's bytes; send it back to write safely.
+    pub revision: String,
+    pub size: u64,
+    pub binary: bool,
+    pub truncated: bool,
+}
+}
+
+wire! {
+pub struct WriteFile {
+    pub path: String,
+    pub content: String,
+    /// The revision this edit started from; `None` means the file must not exist.
+    pub base_revision: Option<String>,
+}
+}
+
+wire! {
+pub struct SearchHit {
+    pub path: String,
+    pub line: u32,
+    pub text: String,
+}
+}
+
+wire! {
+pub struct EditorInfo {
+    pub id: String,
+    pub name: String,
+}
+}
+
+wire! {
+pub struct OpenInEditor {
+    pub path: String,
+    pub editor: String,
+}
+}
+
+wire! {
 pub struct Mentions {
     pub skills: Vec<String>,
     /// Paths relative to the checkout.
