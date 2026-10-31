@@ -2,16 +2,19 @@
 //! clone, by `git init`, or by import, which clones a local folder and leaves it
 //! exactly as it was. Nothing here writes a file into a target.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use orbyn_contracts::{ImportReport, Project, ProjectRemoval};
+use orbyn_contracts::{CloneJob, CloneState, ImportReport, Project, ProjectRemoval};
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::git::{git, is_git_repo, linked_worktrees, text};
 use crate::store::AuditRecord;
-use crate::util::{canonicalize, new_id};
+use crate::util::{canonicalize, new_id, now};
 use crate::workspace::check_target;
 
 const WORKTREE_SUFFIX: &str = "-wt";
@@ -128,6 +131,15 @@ impl Core {
     }
 
     pub async fn clone_project(&self, url: &str, name: Option<&str>) -> Result<Project> {
+        self.clone_into_workspace(url, name)
+            .await
+            .map(|(project, _)| project)
+    }
+
+    /// Clones into a staging folder that removes itself if this future is dropped,
+    /// which is how a cancel leaves nothing behind. An SSH URL the server refuses
+    /// is tried once over HTTPS.
+    async fn clone_into_workspace(&self, url: &str, name: Option<&str>) -> Result<(Project, bool)> {
         if url.starts_with('-') || url.trim().is_empty() {
             return Err(CoreError::Invalid("That URL is not valid.".into()));
         }
@@ -135,34 +147,79 @@ impl Core {
             .or_else(|| name_from_url(url))
             .ok_or_else(|| CoreError::Invalid("Name this project.".into()))?;
         let (slug, path) = self.slot(name).await?;
-        let staging = self
-            .workspace
-            .repo_dir()?
-            .join(format!(".incoming-{}", new_id()));
-        let staging_text = staging.to_string_lossy().into_owned();
+        let repo_dir = self.workspace.repo_dir()?;
+        let staging = Staging(repo_dir.join(format!(".incoming-{}", new_id())));
         self.audit_project("project.clone", url, json!({ "slug": slug }))?;
-        let cloned = git(
-            &self.workspace.repo_dir()?,
-            &[
-                "-c",
-                "core.symlinks=true",
-                "-c",
-                "protocol.ext.allow=never",
-                "clone",
-                "--",
-                url,
-                &staging_text,
-            ],
-        )
-        .await;
-        if let Err(error) = cloned {
-            let _ = std::fs::remove_dir_all(&staging);
-            return Err(error);
+        let mut used_https = false;
+        let mut cloned = clone_to(&repo_dir, url, &staging.0).await;
+        if let (Err(error), Some(https)) = (&cloned, https_url(url))
+            && ssh_refused(&error.to_string())
+        {
+            let _ = std::fs::remove_dir_all(&staging.0);
+            cloned = clone_to(&repo_dir, &https, &staging.0).await;
+            used_https = cloned.is_ok();
         }
-        self.adopt_staged(&staging, &path, &slug).await
+        cloned?;
+        let project = self.adopt_staged(&staging.0, &path, &slug).await?;
+        Ok((project, used_https))
     }
 
-    pub async fn new_project(&self, name: &str) -> Result<Project> {
+    pub fn clone_jobs(&self) -> Vec<CloneJob> {
+        self.clones.list()
+    }
+
+    /// Starts a clone and returns at once. Its job reports how it went.
+    pub fn start_clone(self: &Arc<Self>, url: &str, name: Option<&str>) -> Result<CloneJob> {
+        if url.starts_with('-') || url.trim().is_empty() {
+            return Err(CoreError::Invalid("That URL is not valid.".into()));
+        }
+        let job = CloneJob {
+            id: new_id(),
+            url: url.to_owned(),
+            name: name.map(str::to_owned),
+            state: CloneState::Running,
+            project: None,
+            error: None,
+            used_https: false,
+            started_at: now(),
+        };
+        self.run_clone(job.clone());
+        Ok(job)
+    }
+
+    fn run_clone(self: &Arc<Self>, job: CloneJob) {
+        let stop = CancellationToken::new();
+        self.clones.keep(job.clone(), stop.clone());
+        let core = self.clone();
+        tokio::spawn(async move {
+            let work = core.clone_into_workspace(&job.url, job.name.as_deref());
+            let outcome = tokio::select! {
+                () = stop.cancelled() => None,
+                outcome = work => Some(outcome),
+            };
+            core.clones.finish(&job.id, outcome);
+        });
+    }
+
+    pub fn cancel_clone(&self, id: &str) -> Result<()> {
+        self.clones.cancel(id)
+    }
+
+    /// Runs a failed or cancelled clone again under the same job.
+    pub fn retry_clone(self: &Arc<Self>, id: &str) -> Result<CloneJob> {
+        let mut job = self.clones.job(id)?;
+        if job.state == CloneState::Running || job.state == CloneState::Done {
+            return Err(CoreError::Invalid("This clone cannot be retried.".into()));
+        }
+        job.state = CloneState::Running;
+        job.error = None;
+        job.started_at = now();
+        self.run_clone(job.clone());
+        Ok(job)
+    }
+
+    /// Starts an empty repository, with a README and first commit when asked.
+    pub async fn new_project(&self, name: &str, readme: bool) -> Result<Project> {
         let (slug, path) = self.slot(name).await?;
         let path_text = path.to_string_lossy().into_owned();
         self.audit_project("project.create", &slug, serde_json::Value::Null)?;
@@ -173,6 +230,14 @@ impl Core {
         .await?;
         let root = self.workspace.root()?;
         check_target(&root, &path).await?;
+        if readme {
+            std::fs::write(path.join("README.md"), format!("# {name}\n"))?;
+            git(&path, &["add", "README.md"]).await?;
+            // With no Git identity the file still stands, and the person commits it.
+            if let Err(error) = git(&path, &["commit", "-q", "-m", "Initial commit"]).await {
+                tracing::debug!(%error, "could not make the first commit");
+            }
+        }
         self.register_project(&path, &slug)
     }
 
@@ -331,6 +396,123 @@ impl Core {
             files_removed: true,
             kept_path: None,
         })
+    }
+}
+
+/// A clone's temporary folder. Dropping it removes whatever is still there, so a
+/// cancelled clone leaves nothing; after a rename nothing is there to remove.
+struct Staging(PathBuf);
+
+impl Drop for Staging {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+async fn clone_to(repo_dir: &Path, url: &str, target: &Path) -> Result<()> {
+    let target = target.to_string_lossy().into_owned();
+    git(
+        repo_dir,
+        &[
+            "-c",
+            "core.symlinks=true",
+            "-c",
+            "protocol.ext.allow=never",
+            "clone",
+            "--",
+            url,
+            &target,
+        ],
+    )
+    .await
+    .map(|_| ())
+}
+
+/// `git@host:a/b.git` and `ssh://git@host/a/b.git` as an HTTPS URL.
+fn https_url(url: &str) -> Option<String> {
+    if let Some(rest) = url.strip_prefix("ssh://") {
+        let rest = rest.split_once('@').map_or(rest, |(_, rest)| rest);
+        let (host, path) = rest.split_once('/')?;
+        let host = host.split(':').next()?;
+        return Some(format!("https://{host}/{path}"));
+    }
+    let (user, rest) = url.split_once('@')?;
+    if user.contains('/') || user.contains(':') {
+        return None;
+    }
+    let (host, path) = rest.split_once(':')?;
+    Some(format!("https://{host}/{path}"))
+}
+
+fn ssh_refused(message: &str) -> bool {
+    [
+        "Permission denied",
+        "publickey",
+        "Could not read from remote",
+        "Host key verification failed",
+        "Connection refused",
+    ]
+    .iter()
+    .any(|sign| message.contains(sign))
+}
+
+/// Background clones this process started.
+#[derive(Default)]
+pub struct ClonePool {
+    jobs: Mutex<HashMap<String, (CloneJob, CancellationToken)>>,
+}
+
+impl ClonePool {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, (CloneJob, CancellationToken)>> {
+        self.jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn keep(&self, job: CloneJob, stop: CancellationToken) {
+        self.lock().insert(job.id.clone(), (job, stop));
+    }
+
+    fn list(&self) -> Vec<CloneJob> {
+        let mut jobs: Vec<CloneJob> = self.lock().values().map(|(job, _)| job.clone()).collect();
+        jobs.sort_by(|a, b| a.started_at.cmp(&b.started_at));
+        jobs
+    }
+
+    fn job(&self, id: &str) -> Result<CloneJob> {
+        self.lock()
+            .get(id)
+            .map(|(job, _)| job.clone())
+            .ok_or_else(|| CoreError::NotFound("clone".into()))
+    }
+
+    fn cancel(&self, id: &str) -> Result<()> {
+        let jobs = self.lock();
+        let (job, stop) = jobs
+            .get(id)
+            .ok_or_else(|| CoreError::NotFound("clone".into()))?;
+        if job.state != CloneState::Running {
+            return Err(CoreError::Invalid("This clone is not running.".into()));
+        }
+        stop.cancel();
+        Ok(())
+    }
+
+    fn finish(&self, id: &str, outcome: Option<Result<(Project, bool)>>) {
+        if let Some((job, _)) = self.lock().get_mut(id) {
+            match outcome {
+                None => job.state = CloneState::Cancelled,
+                Some(Ok((project, used_https))) => {
+                    job.state = CloneState::Done;
+                    job.project = Some(project);
+                    job.used_https = used_https;
+                }
+                Some(Err(error)) => {
+                    job.state = CloneState::Failed;
+                    job.error = Some(error.public_message());
+                }
+            }
+        }
     }
 }
 

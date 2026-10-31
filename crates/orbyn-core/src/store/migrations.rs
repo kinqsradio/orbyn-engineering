@@ -9,7 +9,27 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (5, CHECKPOINTS),
     (6, PULL_REQUESTS),
     (7, MODELS_AND_QUESTIONS),
+    (8, PULL_WATCHES),
 ];
+
+const PULL_WATCHES: &str = r#"
+CREATE TABLE pull_watches (
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    snapshot TEXT,
+    comment_wakes INTEGER NOT NULL DEFAULT 0,
+    failures INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (thread_id, number)
+) WITHOUT ROWID;
+
+CREATE TABLE pull_files_viewed (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    PRIMARY KEY (project_id, number, path)
+) WITHOUT ROWID;
+"#;
 
 const MODELS_AND_QUESTIONS: &str = r#"
 ALTER TABLE threads ADD COLUMN effort TEXT;

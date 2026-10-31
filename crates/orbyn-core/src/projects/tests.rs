@@ -74,12 +74,15 @@ fn slugs_are_plain_and_never_a_worktree_root() {
 async fn create_makes_a_nested_repository() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("App").await.unwrap();
+    let project = core.new_project("App", false).await.unwrap();
     let path = PathBuf::from(&project.path);
     assert_eq!(path, core.workspace.repo_dir().unwrap().join("app"));
     assert!(path.join(".git").exists());
     assert!(!project.trusted);
-    assert!(core.new_project("app").await.is_err(), "slugs are unique");
+    assert!(
+        core.new_project("app", false).await.is_err(),
+        "slugs are unique"
+    );
 }
 
 #[tokio::test]
@@ -199,7 +202,7 @@ async fn an_external_path_cannot_be_registered() {
 async fn removing_a_dirty_or_unpushed_project_needs_confirmation_and_never_cleans() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("app").await.unwrap();
+    let project = core.new_project("app", false).await.unwrap();
     let path = PathBuf::from(&project.path);
     run_git(&path, &["config", "user.email", "t@example.com"]);
     run_git(&path, &["config", "user.name", "T"]);
@@ -244,7 +247,7 @@ async fn a_clean_pushed_project_is_removed_with_its_files() {
 async fn nothing_is_added_to_a_target_by_being_a_project() {
     let dir = TempDir::new();
     let core = core(&dir).await;
-    let project = core.new_project("app").await.unwrap();
+    let project = core.new_project("app", false).await.unwrap();
     let path = PathBuf::from(&project.path);
     let before = snapshot(&path);
     core.workspace
@@ -252,4 +255,68 @@ async fn nothing_is_added_to_a_target_by_being_a_project() {
         .await
         .unwrap();
     assert_eq!(snapshot(&path), before);
+}
+
+#[test]
+fn ssh_urls_have_an_https_form_and_others_do_not() {
+    assert_eq!(
+        https_url("git@github.com:a/b.git").as_deref(),
+        Some("https://github.com/a/b.git")
+    );
+    assert_eq!(
+        https_url("ssh://git@host.io:2222/a/b.git").as_deref(),
+        Some("https://host.io/a/b.git")
+    );
+    assert_eq!(https_url("https://github.com/a/b.git"), None);
+    assert_eq!(https_url("/tmp/repo"), None);
+    assert!(ssh_refused("git@x: Permission denied (publickey)."));
+    assert!(!ssh_refused("repository not found"));
+}
+
+#[tokio::test]
+async fn a_new_project_can_start_with_a_readme_and_first_commit() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("Notes", true).await.unwrap();
+    let path = Path::new(&project.path);
+    assert_eq!(
+        std::fs::read_to_string(path.join("README.md")).unwrap(),
+        "# Notes\n"
+    );
+}
+
+#[tokio::test]
+async fn a_background_clone_finishes_and_a_failed_one_can_retry() {
+    let dir = TempDir::new();
+    let core = Arc::new(core(&dir).await);
+    let source = source_repo(&dir.path().join("upstream"));
+    let job = core.start_clone(source.to_str().unwrap(), None).unwrap();
+    let finished = until_settled(&core, &job.id).await;
+    assert_eq!(finished.state, CloneState::Done);
+    assert!(finished.project.is_some());
+
+    let missing = dir.path().join("later");
+    let job = core.start_clone(missing.to_str().unwrap(), None).unwrap();
+    let failed = until_settled(&core, &job.id).await;
+    assert_eq!(failed.state, CloneState::Failed);
+    assert!(failed.error.is_some());
+    source_repo(&missing);
+    core.retry_clone(&job.id).unwrap();
+    assert_eq!(until_settled(&core, &job.id).await.state, CloneState::Done);
+    assert!(
+        core.retry_clone(&job.id).is_err(),
+        "a finished clone stays finished"
+    );
+    assert!(core.cancel_clone(&job.id).is_err());
+}
+
+async fn until_settled(core: &Arc<Core>, id: &str) -> CloneJob {
+    for _ in 0..2000 {
+        let job = core.clones.job(id).unwrap();
+        if job.state != CloneState::Running {
+            return job;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("the clone never finished");
 }

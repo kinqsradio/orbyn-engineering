@@ -108,7 +108,7 @@ async fn fixture(update: &'static str) -> Fixture {
     })
     .await
     .unwrap();
-    let project = core.new_project("app").await.unwrap();
+    let project = core.new_project("app", false).await.unwrap();
     core.store.trust_project(&project.id, "t").unwrap();
     let thread = core
         .create_thread(CreateThread {

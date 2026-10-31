@@ -30,6 +30,7 @@ use crate::util::{new_id, now};
 
 pub use approvals::{NewApproval, RememberRule};
 pub use hub::EventHub;
+pub use queue::{WatchRow, WatchUpdate};
 pub use runs::{Admission, Recovery};
 use threads::thread_family;
 pub use threads::{LifecycleRules, TickReport, default_settings};

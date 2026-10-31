@@ -145,13 +145,40 @@ pub async fn clone_project(
     Ok((StatusCode::CREATED, Json(project)))
 }
 
+pub async fn list_clones(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.core.clone_jobs())
+}
+
+pub async fn start_clone(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<CloneProject>,
+) -> ApiResult<impl IntoResponse> {
+    let job = state.core.start_clone(&body.url, body.name.as_deref())?;
+    Ok((StatusCode::ACCEPTED, Json(job)))
+}
+
+pub async fn cancel_clone(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.cancel_clone(&id)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn retry_clone(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((StatusCode::ACCEPTED, Json(state.core.retry_clone(&id)?)))
+}
+
 pub async fn create_project(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<NewProject>,
 ) -> ApiResult<impl IntoResponse> {
     Ok((
         StatusCode::CREATED,
-        Json(state.core.new_project(&body.name).await?),
+        Json(state.core.new_project(&body.name, body.readme).await?),
     ))
 }
 
@@ -532,27 +559,9 @@ pub async fn merge_pull(
 ) -> ApiResult<StatusCode> {
     state
         .core
-        .merge_pull(&id, number, &body.method, LOCAL_USER)
+        .merge_pull(&id, number, &body, LOCAL_USER)
         .await?;
     Ok(StatusCode::ACCEPTED)
-}
-
-#[derive(Deserialize)]
-pub struct PullListQuery {
-    state: Option<String>,
-}
-
-pub async fn project_pulls(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Query(query): Query<PullListQuery>,
-) -> ApiResult<impl IntoResponse> {
-    Ok(Json(
-        state
-            .core
-            .project_pulls(&id, query.state.as_deref().unwrap_or("open"))
-            .await?,
-    ))
 }
 
 pub async fn publish_project(

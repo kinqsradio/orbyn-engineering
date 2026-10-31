@@ -13,6 +13,7 @@ use crate::engines::{EngineConfig, EngineManager};
 use crate::error::{CoreError, Result};
 use crate::git;
 use crate::mcp::McpService;
+use crate::projects::ClonePool;
 use crate::questions::QuestionDesk;
 use crate::runs::{RunManager, RunServices};
 use crate::skills::SkillService;
@@ -72,6 +73,7 @@ pub struct Core {
     pub terminals: Arc<TerminalManager>,
     pub updates: Arc<UpdateCenter>,
     pub usage: Arc<UsageCenter>,
+    pub clones: ClonePool,
     pub recovery: Recovery,
     _lock: File,
 }
@@ -158,6 +160,7 @@ impl Core {
             terminals,
             updates,
             usage,
+            clones: ClonePool::default(),
             recovery,
             _lock: lock,
         })

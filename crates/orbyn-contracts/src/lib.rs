@@ -378,6 +378,18 @@ pub struct PullRequest {
     pub head: String,
     pub base: String,
     pub author: Option<String>,
+    #[serde(default)]
+    pub draft: bool,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// `approved`, `changes_requested`, `review_required` or `none`.
+    #[serde(default)]
+    pub review_state: Option<String>,
+    /// `pass`, `fail`, `pending` or `none`.
+    #[serde(default)]
+    pub checks_state: Option<String>,
 }
 }
 
@@ -388,6 +400,145 @@ pub struct PullRequestDetail {
     /// The forge's own records, which differ by forge.
     pub checks: Value,
     pub comments: Value,
+    /// `mergeable`, `conflicting` or `unknown`.
+    #[serde(default)]
+    pub mergeable: Option<String>,
+    #[serde(default)]
+    pub reviewers: Vec<String>,
+    #[serde(default)]
+    pub head_sha: Option<String>,
+    #[serde(default)]
+    pub base_sha: Option<String>,
+    #[serde(default)]
+    pub additions: Option<u64>,
+    #[serde(default)]
+    pub deletions: Option<u64>,
+    #[serde(default)]
+    pub changed_files: Option<u64>,
+    #[serde(default)]
+    pub maintainer_can_modify: Option<bool>,
+    #[serde(default)]
+    pub auto_merge: bool,
+}
+}
+
+wire! {
+pub struct PullCheck {
+    pub name: String,
+    /// `pass`, `fail`, `pending`, `skipped` or `neutral`.
+    pub state: String,
+    pub url: Option<String>,
+    pub workflow: Option<String>,
+    pub description: Option<String>,
+}
+}
+
+wire! {
+pub struct PullComment {
+    pub id: String,
+    /// `issue` or `review` on GitHub, `note` on GitLab.
+    pub kind: String,
+    pub author: Option<String>,
+    pub body: String,
+    pub created_at: Option<String>,
+    pub path: Option<String>,
+    pub line: Option<u64>,
+}
+}
+
+wire! {
+pub struct PullThread {
+    pub id: String,
+    pub resolved: bool,
+    pub path: Option<String>,
+    pub line: Option<u64>,
+    pub comments: Vec<PullComment>,
+}
+}
+
+wire! {
+pub struct PullConversation {
+    pub comments: Vec<PullComment>,
+    pub threads: Vec<PullThread>,
+}
+}
+
+wire! {
+pub struct PullFile {
+    pub path: String,
+    pub previous_path: Option<String>,
+    /// `added`, `modified`, `deleted` or `renamed`.
+    pub status: String,
+    pub additions: u64,
+    pub deletions: u64,
+    pub patch: Option<String>,
+    /// Marked viewed in Orbyn. Marks are kept by this service, per project.
+    pub viewed: bool,
+}
+}
+
+wire! {
+pub struct PullTimelineEvent {
+    pub id: String,
+    /// The forge's own event name, such as `reviewed` or `labeled`.
+    pub kind: String,
+    pub actor: Option<String>,
+    pub created_at: Option<String>,
+    pub text: Option<String>,
+}
+}
+
+wire! {
+pub struct PullCandidate {
+    pub name: String,
+    pub description: Option<String>,
+}
+}
+
+wire! {
+pub struct AddPullComment {
+    pub body: String,
+    /// With `line`, a comment on that line of the new file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub line: Option<u64>,
+    /// A comment or thread id to reply to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reply_to: Option<String>,
+}
+}
+
+wire! {
+pub struct EditPullComment {
+    pub kind: String,
+    pub body: String,
+}
+}
+
+wire! {
+pub struct ReactPullComment {
+    pub kind: String,
+    /// GitHub's names: `+1`, `-1`, `laugh`, `hooray`, `confused`, `heart`,
+    /// `rocket` or `eyes`.
+    pub content: String,
+}
+}
+
+wire! {
+pub struct ResolvePullThread {
+    pub resolved: bool,
+}
+}
+
+wire! {
+pub struct ReviewLineComment {
+    pub path: String,
+    pub line: u64,
+    pub body: String,
 }
 }
 
@@ -397,6 +548,159 @@ pub struct SubmitReview {
     pub event: String,
     #[serde(default)]
     pub body: String,
+    /// Line comments sent with the review.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<ReviewLineComment>>")]
+    pub comments: Vec<ReviewLineComment>,
+}
+}
+
+wire! {
+pub struct SetPullPeople {
+    #[serde(default)]
+    pub add: Vec<String>,
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+}
+
+wire! {
+/// `PATCH` on a pull request. Absent fields are left alone.
+#[derive(Default)]
+pub struct UpdatePull {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub body: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub draft: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub maintainer_can_modify: Option<bool>,
+}
+}
+
+wire! {
+pub struct PullAction {
+    /// `close`, `reopen`, `revert`, `update_branch`, `rebase` or `delete_branch`.
+    pub action: String,
+}
+}
+
+wire! {
+pub struct BulkClosePulls {
+    pub numbers: Vec<u64>,
+}
+}
+
+wire! {
+pub struct PullBulkResult {
+    pub number: u64,
+    pub ok: bool,
+    pub message: Option<String>,
+}
+}
+
+wire! {
+pub struct SetFilesViewed {
+    pub paths: Vec<String>,
+    pub viewed: bool,
+}
+}
+
+wire! {
+pub struct PullListEntry {
+    pub project_id: String,
+    pub pull: PullRequest,
+}
+}
+
+wire! {
+pub struct PullList {
+    pub pulls: Vec<PullListEntry>,
+    /// Projects that could not be read, so a partial list is never silent.
+    pub failed: Vec<PullListFailure>,
+}
+}
+
+wire! {
+pub struct PullListFailure {
+    pub project_id: String,
+    pub message: String,
+}
+}
+
+wire! {
+pub struct PullStack {
+    /// Bottom layer first.
+    pub layers: Vec<PullRequest>,
+    /// Index of the pull request asked about.
+    pub position: usize,
+}
+}
+
+wire! {
+pub struct StackAction {
+    /// `merge` or `rebase`.
+    pub action: String,
+    /// `merge`, `squash` or `rebase`, for `merge`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub method: Option<String>,
+}
+}
+
+wire! {
+pub struct PullWatch {
+    pub thread_id: String,
+    pub number: u64,
+    pub created_at: String,
+}
+}
+
+wire! {
+pub struct CheckoutPull {
+    /// True makes a worktree under the project, false checks out in place.
+    pub worktree: bool,
+}
+}
+
+wire! {
+pub struct PullCheckout {
+    pub path: String,
+    pub branch: String,
+    /// Set when the local head is not the pull request's latest commit.
+    pub warning: Option<String>,
+}
+}
+
+wire! {
+pub struct WorkOnPull {
+    pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+}
+
+wire! {
+pub struct ForgeStatus {
+    /// `github`, `gitlab`, `azure`, `forgejo` or `bitbucket`.
+    pub id: String,
+    pub name: String,
+    /// The command this forge goes through; `None` when none exists.
+    pub program: Option<String>,
+    pub installed: bool,
+    pub version: Option<String>,
+    pub signed_in: bool,
+    pub accounts: Vec<String>,
+    pub problem: Option<String>,
 }
 }
 
@@ -404,6 +708,20 @@ wire! {
 pub struct MergePull {
     /// `merge`, `squash` or `rebase`.
     pub method: String,
+    /// Merge when requirements pass, rather than now.
+    #[serde(default)]
+    pub auto: bool,
+    #[serde(default)]
+    pub delete_branch: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub subject: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub body: Option<String>,
+    /// Removes agent credit lines from the merge commit body.
+    #[serde(default)]
+    pub strip_credits: bool,
 }
 }
 
@@ -419,6 +737,10 @@ pub struct PublishProject {
     #[ts(optional)]
     pub name: Option<String>,
     pub private: bool,
+    /// `github`, the default, or `gitlab`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub forge: Option<String>,
 }
 }
 
@@ -1230,6 +1552,33 @@ pub struct CloneProject {
 wire! {
 pub struct NewProject {
     pub name: String,
+    /// Adds a README and makes the first commit.
+    #[serde(default)]
+    pub readme: bool,
+}
+}
+
+wire_enum! {
+pub enum CloneState {
+    Running,
+    Done,
+    Failed,
+    Cancelled,
+}
+}
+
+wire! {
+/// A clone running in the background. Jobs live until the service stops.
+pub struct CloneJob {
+    pub id: String,
+    pub url: String,
+    pub name: Option<String>,
+    pub state: CloneState,
+    pub project: Option<Project>,
+    pub error: Option<String>,
+    /// True when an SSH URL was refused and HTTPS worked instead.
+    pub used_https: bool,
+    pub started_at: String,
 }
 }
 

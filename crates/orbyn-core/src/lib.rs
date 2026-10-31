@@ -10,6 +10,7 @@ pub mod driver;
 pub mod engines;
 pub mod error;
 pub mod files;
+pub mod forge;
 pub mod git;
 pub mod mcp;
 pub mod policy;

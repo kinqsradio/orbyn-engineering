@@ -22,16 +22,32 @@ struct Fixture {
 
 const GH: &str = r#"#!/bin/sh
 echo "$@" >> "$GH_LOG"
+pull() {
+  echo "{\"number\":$1,\"title\":\"$2\",\"url\":\"https://github.com/o/r/pull/$1\",\"state\":\"$(cat "$GH_STATE")\",\"headRefName\":\"$3\",\"baseRefName\":\"$4\",\"author\":{\"login\":\"me\"},\"isDraft\":false,\"labels\":[{\"name\":\"bug\"}],\"reviewDecision\":\"APPROVED\",\"statusCheckRollup\":[]$5}"
+}
 case "$1 $2" in
   "pr create") [ -f "$GH_FAIL" ] && { echo "no permission" >&2; exit 1; }
     echo "https://github.com/o/r/pull/12" ;;
-  "pr view") case "$*" in
-      *body*) echo '{"body":"Details","comments":[{"body":"hi"}],"reviews":[]}' ;;
-      *) echo "{\"number\":12,\"title\":\"T\",\"url\":\"https://github.com/o/r/pull/12\",\"state\":\"$(cat "$GH_STATE")\",\"headRefName\":\"feature\",\"baseRefName\":\"main\",\"author\":{\"login\":\"me\"}}" ;;
+  "pr view") pull 12 T feature main ',"body":"Details","comments":[{"body":"hi"}],"reviews":[],"mergeable":"MERGEABLE","headRefOid":"abc","baseRefOid":"def","additions":3,"reviewRequests":[{"login":"sam"}]' ;;
+  "pr checks") echo '[{"name":"ci","state":"SUCCESS","link":"x","bucket":"pass"},{"name":"lint","state":"FAILURE","link":"y","bucket":"fail"}]'; exit 1 ;;
+  "pr list") case "$*" in
+      *--head*) echo "[$(pull 12 T feature main)]" ;;
+      *) echo "[$(pull 3 Other h main),$(pull 4 Next i h)]" ;;
     esac ;;
-  "pr checks") echo '[{"name":"ci","state":"SUCCESS","link":"x"}]'; exit 8 ;;
-  "pr list") echo '[{"number":3,"title":"Other","url":"u","state":"OPEN","headRefName":"h","baseRefName":"main","author":{"login":"x"}}]' ;;
   "pr merge") echo MERGED > "$GH_STATE" ;;
+  "pr close") [ "$3" = 66 ] && { echo "refused" >&2; exit 1; } ;;
+  "label list") echo '[{"name":"bug","description":"Broken"}]' ;;
+  "api user") echo '{"login":"me"}' ;;
+  "api graphql") echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
+  "auth status") echo "  Logged in to github.com account octo (keyring)" >&2 ;;
+  "--version "*) echo "gh version 2.0" ;;
+esac
+case "$*" in
+  api*/issues/*/comments*) cat "$GH_COMMENTS" 2>/dev/null || echo '[{"id":7,"body":"hello","user":{"login":"me"}}]' ;;
+  api*/issues/*/timeline*) echo '[{"id":1,"event":"labeled","actor":{"login":"me"}}]' ;;
+  api*/pulls/*/files*) echo '[{"filename":"a.rs","status":"changed","additions":1,"deletions":2,"patch":"@@"},{"filename":"b.rs","status":"removed","additions":0,"deletions":1}]' ;;
+  api*/pulls/*/reviews*--input*) cat >> "$GH_LOG" ;;
+  api*assignees*) echo '[{"login":"sam"}]' ;;
 esac
 "#;
 
@@ -46,6 +62,13 @@ async fn fixture() -> Fixture {
     let state_file = dir.path().join("gh-state");
     std::fs::write(&state_file, "OPEN").unwrap();
     let env = vec![
+        (
+            "GH_COMMENTS".to_owned(),
+            dir.path()
+                .join("library/repo/comments.json")
+                .to_string_lossy()
+                .into_owned(),
+        ),
         (
             "PATH".to_owned(),
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
@@ -91,6 +114,28 @@ async fn fixture() -> Fixture {
         checkout,
         gh_log,
         state_file,
+    }
+}
+
+impl Fixture {
+    async fn project(&self) -> String {
+        let thread = self
+            .service
+            .json(&format!("/api/threads/{}", self.thread))
+            .await;
+        thread["project_id"].as_str().unwrap().to_owned()
+    }
+
+    fn log(&self) -> String {
+        std::fs::read_to_string(&self.gh_log).unwrap_or_default()
+    }
+
+    /// Points origin at a GitHub-shaped URL, so forge routes go through `gh`.
+    fn hosted(&self) {
+        run_git(
+            &self.checkout,
+            &["remote", "set-url", "origin", "https://github.com/o/r.git"],
+        );
     }
 }
 
@@ -401,4 +446,398 @@ async fn review_list_and_publish_use_the_users_own_cli() {
             .unwrap()
             .contains("repo create r --private --source . --push")
     );
+}
+
+#[tokio::test]
+async fn lists_narrow_and_read_into_one_shape() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let pulls = f
+        .service
+        .json(&format!(
+            "/api/projects/{project}/pulls?state=all&q=fix&author=me&label=bug"
+        ))
+        .await;
+    assert_eq!(pulls[0]["labels"][0], "bug");
+    assert_eq!(pulls[0]["review_state"], "approved");
+    let log = f.log();
+    assert!(log.contains("--state all"));
+    assert!(
+        log.contains("--search fix --author me --label bug"),
+        "{log}"
+    );
+    let all = f.service.json("/api/pulls").await;
+    assert_eq!(all["pulls"][0]["project_id"], project.as_str());
+    assert_eq!(all["failed"].as_array().unwrap().len(), 0);
+    let (code, _) = f
+        .service
+        .send(
+            &format!("/api/projects/{project}/pulls/9/action"),
+            json!({ "action": "nope" }),
+        )
+        .await;
+    assert_eq!(code, 400);
+}
+
+#[tokio::test]
+async fn detail_checks_conversation_timeline_and_files_are_normalized() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let base = format!("/api/projects/{project}/pulls/12");
+    let detail = f.service.json(&base).await;
+    assert_eq!(detail["mergeable"], "mergeable");
+    assert_eq!(detail["reviewers"][0], "sam");
+    assert_eq!(detail["additions"], 3);
+    let checks = f.service.json(&format!("{base}/checks")).await;
+    assert_eq!(checks[1]["state"], "fail");
+    let talk = f.service.json(&format!("{base}/comments")).await;
+    assert_eq!(talk["comments"][0]["author"], "me");
+    assert_eq!(talk["threads"][0]["id"], "T1");
+    let timeline = f.service.json(&format!("{base}/timeline")).await;
+    assert_eq!(timeline[0]["kind"], "labeled");
+    let (code, _) = f
+        .service
+        .send(
+            &format!("{base}/viewed"),
+            json!({ "paths": ["a.rs"], "viewed": true }),
+        )
+        .await;
+    assert_eq!(code, 204);
+    let files = f.service.json(&format!("{base}/files")).await;
+    assert_eq!(files[0]["status"], "modified");
+    assert_eq!(files[0]["viewed"], true);
+    assert_eq!(files[1]["status"], "deleted");
+    assert_eq!(files[1]["viewed"], false);
+}
+
+#[tokio::test]
+async fn writes_reach_the_forge_with_their_arguments_and_are_audited() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let base = format!("/api/projects/{project}/pulls/12");
+    for (path, body) in [
+        ("comments", json!({ "body": "plain" })),
+        (
+            "comments",
+            json!({ "body": "on a line", "path": "a.rs", "line": 3 }),
+        ),
+        ("comments", json!({ "body": "reply", "reply_to": "11" })),
+        (
+            "comments/7/react",
+            json!({ "kind": "issue", "content": "rocket" }),
+        ),
+        ("threads/T1/resolve", json!({ "resolved": true })),
+        ("reviewers", json!({ "add": ["sam"], "remove": ["kim"] })),
+        ("labels", json!({ "add": ["bug"] })),
+        (
+            "merge",
+            json!({
+                "method": "squash", "auto": true, "delete_branch": true,
+                "body": "Done\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+                "strip_credits": true,
+            }),
+        ),
+        (
+            "review",
+            json!({
+                "event": "comment", "body": "Notes",
+                "comments": [{ "path": "a.rs", "line": 1, "body": "here" }],
+            }),
+        ),
+        ("action", json!({ "action": "update_branch" })),
+    ] {
+        let (code, reply) = f.service.send(&format!("{base}/{path}"), body).await;
+        assert_eq!(code, 202, "{path}: {reply}");
+    }
+    let (code, _) = f
+        .service
+        .send(
+            &format!("{base}/comments/1%2F..%2F2/react"),
+            json!({ "kind": "issue", "content": "+1" }),
+        )
+        .await;
+    assert_eq!(code, 400);
+    let (code, _) = f
+        .service
+        .send(
+            &format!("{base}/comments/7/react"),
+            json!({ "kind": "issue", "content": "shrug" }),
+        )
+        .await;
+    assert_eq!(code, 400);
+    let patched = f
+        .service
+        .client
+        .patch(format!("{}{base}", f.service.url))
+        .bearer_auth(&f.service.token)
+        .json(&json!({ "title": "New", "draft": true, "maintainer_can_modify": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(patched.status(), 200);
+    let log = f.log();
+    for expected in [
+        "pr comment 12 --body plain",
+        "commit_id=abc -f path=path=a.rs"
+            .replace("path=path=", "path=")
+            .as_str(),
+        "repos/{owner}/{repo}/pulls/12/comments/11/replies",
+        "repos/{owner}/{repo}/issues/comments/7/reactions -f content=rocket",
+        "resolveReviewThread",
+        "--add-reviewer sam --remove-reviewer kim",
+        "--add-label bug",
+        "pr merge 12 --squash --auto --delete-branch --body Done",
+        "\"event\":\"COMMENT\"",
+        "pr update-branch 12",
+        "pr edit 12 --title New",
+        "pr ready 12 --undo",
+        "maintainer_can_modify=false",
+    ] {
+        assert!(log.contains(expected), "missing {expected}\n{log}");
+    }
+    assert!(!log.contains("Co-Authored-By"), "{log}");
+    let audit = f.service.json("/api/audit?limit=100").await;
+    assert!(
+        audit
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["action"] == "git.merge")
+    );
+}
+
+#[tokio::test]
+async fn bulk_close_reports_each_and_stacks_follow_bases() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let (code, results) = f
+        .service
+        .send(
+            &format!("/api/projects/{project}/pulls/close"),
+            json!({ "numbers": [65, 66, 67] }),
+        )
+        .await;
+    assert_eq!(code, 200);
+    assert_eq!(results[1]["ok"], false);
+    assert_eq!(results[2]["ok"], true, "one refusal does not stop the rest");
+    let stack = f
+        .service
+        .json(&format!("/api/projects/{project}/pulls/4/stack"))
+        .await;
+    assert_eq!(stack["layers"][0]["number"], 3);
+    assert_eq!(stack["position"], 1);
+    let (code, results) = f
+        .service
+        .send(
+            &format!("/api/projects/{project}/pulls/4/stack"),
+            json!({ "action": "merge", "method": "squash" }),
+        )
+        .await;
+    assert_eq!(code, 200, "{results}");
+    assert_eq!(results.as_array().unwrap().len(), 2);
+    let log = f.log();
+    let first = log.find("pr merge 3").unwrap();
+    assert!(
+        first < log.find("pr merge 4").unwrap(),
+        "bottom layer first"
+    );
+}
+
+#[tokio::test]
+async fn a_watch_wakes_on_news_and_ends_with_the_pull_request() {
+    let f = fixture().await;
+    f.hosted();
+    let watch = format!("/api/threads/{}/pulls/12/watch", f.thread);
+    let (code, _) = f.service.send(&watch, json!({})).await;
+    assert_eq!(code, 201);
+    // The first pass sees a failing check, which is news.
+    let (code, _) = f.service.send("/api/watches/check", json!({})).await;
+    assert_eq!(code, 204);
+    assert_eq!(f.service.finished(&f.thread).await, "completed");
+    let events = f.service.all_events(&f.thread).await;
+    assert!(
+        format!("{events:?}").contains("A check failed."),
+        "{events:?}"
+    );
+    // Nothing moved, so the next pass stays quiet.
+    let (code, _) = f.service.send("/api/watches/check", json!({})).await;
+    assert_eq!(code, 204);
+    let queue = f
+        .service
+        .json(&format!("/api/threads/{}/queue", f.thread))
+        .await;
+    assert_eq!(queue.as_array().unwrap().len(), 0);
+    let list = f
+        .service
+        .json(&format!("/api/threads/{}/watches", f.thread))
+        .await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    // A comment from someone else wakes it; your own would not.
+    let comments = f.checkout.parent().unwrap().join("comments.json");
+    std::fs::write(
+        &comments,
+        r#"[{"id":8,"body":"hey","user":{"login":"them"}}]"#,
+    )
+    .unwrap();
+    std::fs::write(&f.state_file, "MERGED").unwrap();
+    let (code, _) = f.service.send("/api/watches/check", json!({})).await;
+    assert_eq!(code, 204);
+    let list = f
+        .service
+        .json(&format!("/api/threads/{}/watches", f.thread))
+        .await;
+    assert_eq!(list.as_array().unwrap().len(), 0, "a merge ends the watch");
+}
+
+#[tokio::test]
+async fn settling_ends_watches_and_a_settled_thread_cannot_start_one() {
+    let f = fixture().await;
+    f.hosted();
+    let watch = format!("/api/threads/{}/pulls/12/watch", f.thread);
+    assert_eq!(f.service.send(&watch, json!({})).await.0, 201);
+    let (code, _) = f.service.patch(&f.thread, json!({ "settled": true })).await;
+    assert_eq!(code, 200);
+    let list = f
+        .service
+        .json(&format!("/api/threads/{}/watches", f.thread))
+        .await;
+    assert_eq!(list.as_array().unwrap().len(), 0);
+    assert_eq!(f.service.send(&watch, json!({})).await.0, 400);
+}
+
+#[tokio::test]
+async fn refresh_links_the_branch_pull_request_on_its_own() {
+    let f = fixture().await;
+    f.hosted();
+    let (code, _) = f
+        .service
+        .send(
+            &format!("/api/threads/{}/branches", f.thread),
+            json!({ "name": "feature" }),
+        )
+        .await;
+    assert_eq!(code, 201);
+    let (code, linked) = f
+        .service
+        .send(
+            &format!("/api/threads/{}/pulls/refresh", f.thread),
+            json!({}),
+        )
+        .await;
+    assert_eq!(code, 200, "{linked}");
+    assert_eq!(linked[0]["number"], 12);
+}
+
+#[tokio::test]
+async fn forges_report_each_cli_and_bitbucket_says_why_not() {
+    let f = fixture().await;
+    let forges = f.service.json("/api/forges").await;
+    let github = forges
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|forge| forge["id"] == "github")
+        .unwrap();
+    assert_eq!(github["installed"], true);
+    assert_eq!(github["signed_in"], true);
+    assert_eq!(github["accounts"][0], "octo");
+    let bitbucket = forges
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|forge| forge["id"] == "bitbucket")
+        .unwrap();
+    assert!(bitbucket["program"].is_null());
+    assert!(bitbucket["problem"].as_str().unwrap().contains("tokens"));
+    f.hosted();
+    run_git(
+        &f.checkout,
+        &["remote", "set-url", "origin", "git@bitbucket.org:o/r.git"],
+    );
+    let project = f.project().await;
+    let response = f
+        .service
+        .get(&format!("/api/projects/{project}/pulls"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 422);
+}
+
+/// Stand-ins for the other CLIs: each logs its arguments and prints one record in
+/// that tool's own JSON. They prove the routing and parsing, not the real flags.
+const OTHER_CLIS: &[(&str, &str, &str)] = &[
+    (
+        "glab",
+        "https://gitlab.com/o/r.git",
+        r#"[{"iid":5,"title":"Lab","web_url":"u","state":"opened","source_branch":"h","target_branch":"main","author":{"username":"a"}}]"#,
+    ),
+    (
+        "az",
+        "https://dev.azure.com/o/p/_git/r",
+        r#"[{"pullRequestId":5,"title":"Lab","status":"active","sourceRefName":"refs/heads/h","targetRefName":"refs/heads/main","createdBy":{"displayName":"a"}}]"#,
+    ),
+    (
+        "tea",
+        "https://codeberg.org/o/r.git",
+        r#"[{"index":5,"title":"Lab","state":"open","head":"h","base":"main","poster":"a"}]"#,
+    ),
+];
+
+#[tokio::test]
+async fn gitlab_azure_and_forgejo_list_and_merge_through_their_own_clis() {
+    let f = fixture().await;
+    let dir = f
+        .checkout
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let project = f.project().await;
+    for (program, remote, reply) in OTHER_CLIS {
+        let script = format!("#!/bin/sh\necho \"{program} $@\" >> \"$GH_LOG\"\necho '{reply}'\n");
+        let path = dir.join("bin").join(program);
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        run_git(&f.checkout, &["remote", "set-url", "origin", remote]);
+        let pulls = f
+            .service
+            .json(&format!("/api/projects/{project}/pulls"))
+            .await;
+        assert_eq!(pulls[0]["number"], 5, "{program}: {pulls}");
+        assert_eq!(pulls[0]["state"], "open", "{program}");
+        assert_eq!(pulls[0]["head"], "h", "{program}");
+        assert_eq!(pulls[0]["author"], "a", "{program}");
+        let (code, body) = f
+            .service
+            .send(
+                &format!("/api/projects/{project}/pulls/5/merge"),
+                json!({ "method": "squash", "delete_branch": true }),
+            )
+            .await;
+        assert_eq!(code, 202, "{program}: {body}");
+    }
+    let log = f.log();
+    for expected in [
+        "glab mr merge 5 --yes --squash --remove-source-branch",
+        "az repos pr update --id 5 --detect true --status completed --squash true",
+        "tea pulls merge --style squash 5",
+    ] {
+        assert!(log.contains(expected), "missing {expected}\n{log}");
+    }
+    // A forge with no route for this says so instead of guessing.
+    let (code, body) = f
+        .service
+        .send(
+            &format!("/api/projects/{project}/pulls/5/comments"),
+            json!({ "body": "hi" }),
+        )
+        .await;
+    assert_eq!((code, body["code"].as_str()), (422, Some("unsupported")));
 }

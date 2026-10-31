@@ -235,6 +235,9 @@ impl Store {
                     return Err(CoreError::ThreadBusy);
                 }
                 let value = archived.then(|| stamp.clone());
+                if archived {
+                    tx.execute("DELETE FROM pull_watches WHERE thread_id = ?1", [id])?;
+                }
                 tx.execute(
                     "UPDATE threads SET archived_at = ?2, pinned_at =
                         CASE WHEN ?2 IS NULL THEN pinned_at END WHERE id = ?1",
@@ -504,6 +507,7 @@ fn settle(tx: &Transaction<'_>, appended: &mut Appended, id: &str, actor: &str) 
          WHERE id = ?1",
         params![id, now()],
     )?;
+    tx.execute("DELETE FROM pull_watches WHERE thread_id = ?1", [id])?;
     audit(tx, actor, "thread.settle", id, Value::Null)?;
     notify(tx, appended, id, "settle")
 }

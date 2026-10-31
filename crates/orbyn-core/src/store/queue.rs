@@ -1,7 +1,9 @@
 //! Queued messages and attachment records. A queued message becomes a run in one
 //! transaction, so it can neither start twice nor vanish between the two steps.
 
-use orbyn_contracts::{Attachment, PullRequest, QueuedMessage, Run};
+use std::collections::HashSet;
+
+use orbyn_contracts::{Attachment, PullRequest, PullWatch, QueuedMessage, Run};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::runs::admit_in;
@@ -21,6 +23,34 @@ fn queued_row(row: &Row<'_>) -> rusqlite::Result<QueuedMessage> {
     })
 }
 
+/// A stored watch, with what its last pass saw.
+#[derive(Clone, Debug)]
+pub struct WatchRow {
+    pub thread_id: String,
+    pub number: u64,
+    pub snapshot: Option<String>,
+    pub comment_wakes: i64,
+    pub failures: i64,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WatchUpdate {
+    pub snapshot: Option<String>,
+    pub comment_wakes: i64,
+    pub failures: i64,
+}
+
+impl WatchUpdate {
+    /// A failed read: the wake count and snapshot stand, so only this rises.
+    pub fn failed(failures: i64) -> Self {
+        Self {
+            failures,
+            ..Self::default()
+        }
+    }
+}
+
 fn pull_row(row: &Row<'_>) -> rusqlite::Result<PullRequest> {
     Ok(PullRequest {
         number: row.get::<_, i64>("number")? as u64,
@@ -30,6 +60,11 @@ fn pull_row(row: &Row<'_>) -> rusqlite::Result<PullRequest> {
         head: row.get("head")?,
         base: row.get("base")?,
         author: row.get("author")?,
+        draft: false,
+        updated_at: None,
+        labels: Vec::new(),
+        review_state: None,
+        checks_state: None,
     })
 }
 
@@ -246,8 +281,105 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    pub fn watch_pull(&self, thread_id: &str, number: u64) -> Result<PullWatch> {
+        let created_at = now();
+        self.commit(|tx, _| {
+            tx.execute(
+                "INSERT INTO pull_watches (thread_id, number, created_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (thread_id, number) DO NOTHING",
+                params![thread_id, number as i64, created_at],
+            )?;
+            Ok(())
+        })?;
+        Ok(PullWatch {
+            thread_id: thread_id.to_owned(),
+            number,
+            created_at,
+        })
+    }
+
+    pub fn unwatch_pull(&self, thread_id: &str, number: u64) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "DELETE FROM pull_watches WHERE thread_id = ?1 AND number = ?2",
+                params![thread_id, number as i64],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn update_watch(&self, thread_id: &str, number: u64, update: WatchUpdate) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "UPDATE pull_watches SET snapshot = COALESCE(?3, snapshot), comment_wakes = ?4,
+                    failures = ?5 WHERE thread_id = ?1 AND number = ?2",
+                params![
+                    thread_id,
+                    number as i64,
+                    update.snapshot,
+                    update.comment_wakes,
+                    update.failures
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// One thread's watches, or every watch when `None`.
+    pub fn pull_watches(&self, thread_id: Option<&str>) -> Result<Vec<WatchRow>> {
+        let conn = self.reader();
+        let mut statement = conn.prepare(
+            "SELECT * FROM pull_watches WHERE ?1 IS NULL OR thread_id = ?1 ORDER BY created_at",
+        )?;
+        let rows = statement.query_map([thread_id], |row| {
+            Ok(WatchRow {
+                thread_id: row.get("thread_id")?,
+                number: row.get::<_, i64>("number")? as u64,
+                snapshot: row.get("snapshot")?,
+                comment_wakes: row.get("comment_wakes")?,
+                failures: row.get("failures")?,
+                created_at: row.get("created_at")?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn viewed_files(&self, project_id: &str, number: u64) -> Result<HashSet<String>> {
+        let conn = self.reader();
+        let mut statement = conn
+            .prepare("SELECT path FROM pull_files_viewed WHERE project_id = ?1 AND number = ?2")?;
+        let rows = statement.query_map(params![project_id, number as i64], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn set_files_viewed(
+        &self,
+        project_id: &str,
+        number: u64,
+        paths: &[String],
+        viewed: bool,
+    ) -> Result<()> {
+        self.commit(|tx, _| {
+            for path in paths {
+                let sql = if viewed {
+                    "INSERT OR IGNORE INTO pull_files_viewed (project_id, number, path)
+                     VALUES (?1, ?2, ?3)"
+                } else {
+                    "DELETE FROM pull_files_viewed
+                     WHERE project_id = ?1 AND number = ?2 AND path = ?3"
+                };
+                tx.execute(sql, params![project_id, number as i64, path])?;
+            }
+            Ok(())
+        })
+    }
+
     pub fn unlink_pull(&self, thread_id: &str, number: u64) -> Result<()> {
         self.commit(|tx, _| {
+            tx.execute(
+                "DELETE FROM pull_watches WHERE thread_id = ?1 AND number = ?2",
+                params![thread_id, number as i64],
+            )?;
             let changed = tx.execute(
                 "DELETE FROM thread_pull_requests WHERE thread_id = ?1 AND number = ?2",
                 params![thread_id, number as i64],

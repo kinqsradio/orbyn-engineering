@@ -160,14 +160,36 @@ is not used.
 
 ## Source control
 
-Forge work goes through the user's own `gh` or `glab`, chosen from the origin host,
-so Orbyn holds no forge credential. A missing CLI is `422 unsupported`. Arguments are
-passed directly and no shell parses them. A git action runs commit, push and pull
-request in order, logs each phase as `CUSTOM git.phase`, and stops at the first
-failure; earlier phases stand. These are the user's own commands, so unlike Orbyn's
-internal reads they run commit hooks. All of it needs a trusted folder, and writes
-wait for the thread's run to end. Linked pull requests are polled every two minutes.
-A merge settles the thread when `on_merge` is set and the thread has not opted out.
+Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
+`glab`, `az` and `tea`. Orbyn holds no forge credential and reads none, so an unknown
+host is treated as GitHub Enterprise through `gh`, and a missing CLI is
+`422 unsupported`. Bitbucket has no CLI to go through and needs an API token, so it
+reports that and stays `422`. GitHub and GitLab cover the full pull request surface
+through `gh api` and `glab api`. Azure DevOps and Forgejo cover list, read, open,
+merge, close and reopen; anything else is `422`. Arguments are passed directly and no
+shell parses them, and comment and thread ids that go into API paths are checked to
+be plain.
+
+A git action runs commit, push and pull request in order, logs each phase as `CUSTOM
+git.phase`, and stops at the first failure; earlier phases stand. These are the
+user's own commands, so unlike Orbyn's internal reads they run commit hooks. All of
+it needs a trusted folder, and writes wait for the thread's run to end. Every forge
+write is audited before it happens. A stack is the chain of open pull requests whose
+bases are each other's heads; a stack action works from the bottom and stops at the
+first failure. Bulk close carries on past a refusal and reports each number.
+
+Linked pull requests are polled every two minutes, and a refresh links the open pull
+request of the checkout's branch. A merge settles the thread when `on_merge` is set
+and the thread has not opted out. A watch wakes its thread, through the queue, when a
+check fails, all checks pass, the branch starts to conflict, or someone else comments
+or reviews; the viewer's own comments are not news. It ends at a merge or close, after
+10 wakes in a row that bring only comments, after 8 failed reads in a row, on an
+unlink, or when the thread settles or archives. A subagent thread cannot watch.
+Viewed-file marks are this service's own, per project, and never reach the forge.
+
+A background clone is a job kept in memory until the service stops. Its staging
+folder removes itself when the job is cancelled. An SSH URL the server refuses is
+tried once over HTTPS, and the job says so.
 
 ## Files
 
@@ -382,7 +404,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |
 | `POST /api/workspace/rollback` | Back to the revision before the last update |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
-| `POST /api/projects/clone`, `/create`, `/import` | The only ways to add a project |
+| `POST /api/projects/clone`, `/create`, `/import` | The only ways to add a project; `create` takes `readme` for a first commit |
 | `DELETE /api/projects/:id?confirm=` | `ProjectRemoval`; `409 project_has_work` |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
 | `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads |
@@ -415,11 +437,33 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/files/open`, `GET /api/editors` | `OpenInEditor` with optional `line` and `column`; `file_manager` reveals the file |
 | `POST /api/threads/:id/git/action` | `GitAction` to `GitActionResult`: commit, push, pull request |
 | `GET, POST /api/threads/:id/branches`, `POST .../branches/switch` | List, create and switch |
-| `GET, POST /api/threads/:id/pulls`, `POST .../pulls/refresh` | Linked pull requests |
+| `GET /api/forges` | `ForgeStatus[]`; never cached, so it is also the rescan |
+| `GET /api/clones`, `POST /api/clones` | `CloneJob[]`; start a background clone (`202`) |
+| `POST /api/clones/:id/cancel`, `/retry` | Stop a running clone; run a failed or cancelled one again |
+| `GET, POST /api/threads/:id/pulls`, `POST .../pulls/refresh` | Linked pull requests; refresh also links the branch's own |
+| `GET /api/threads/:id/watches`, `POST, DELETE /api/threads/:id/pulls/:number/watch` | `PullWatch`; `400` on a settled, archived or subagent thread |
+| `POST /api/watches/check` | One watch pass now (`204`) |
 | `GET, DELETE /api/threads/:id/pulls/:number` | `PullRequestDetail`; unlink |
 | `POST /api/threads/:id/pulls/:number/review`, `/merge` | Review and merge through the forge CLI |
-| `GET /api/projects/:id/pulls?state=` | `PullRequest[]` |
-| `POST /api/projects/:id/publish` | Create the remote and push, with `gh` |
+| `GET /api/pulls?state=&q=&author=&label=` | `PullList` across trusted projects; `failed` names any it could not read |
+| `GET /api/projects/:id/pulls?state=&q=&author=&label=` | `PullRequest[]` |
+| `POST /api/projects/:id/pulls/close` | `BulkClosePulls` to `PullBulkResult[]` |
+| `GET /api/projects/:id/pulls/reviewers`, `/labels` | `PullCandidate[]` |
+| `POST /api/projects/:id/workflows/:run/approve` | Let a fork's waiting workflow run; GitHub only |
+| `GET, PATCH /api/projects/:id/pulls/:number` | `PullRequestDetail`; `UpdatePull` for title, body, base, draft, maintainer edits |
+| `GET .../pulls/:number/checks`, `/timeline`, `/files` | `PullCheck[]`, `PullTimelineEvent[]`, `PullFile[]` with viewed marks |
+| `GET, POST .../pulls/:number/comments` | `PullConversation`; `AddPullComment` with optional `path`, `line`, `reply_to` |
+| `PATCH .../comments/:comment`, `POST .../comments/:comment/react` | `EditPullComment`; `ReactPullComment` |
+| `POST .../pulls/:number/threads/:thread/resolve` | `ResolvePullThread` |
+| `POST .../pulls/:number/viewed` | `SetFilesViewed` (`204`) |
+| `POST .../pulls/:number/review` | `SubmitReview`, with line comments |
+| `POST .../pulls/:number/reviewers`, `/labels` | `SetPullPeople` |
+| `POST .../pulls/:number/merge` | `MergePull`: method, `auto`, `delete_branch`, `subject`, `body`, `strip_credits` |
+| `POST .../pulls/:number/action` | `PullAction`: close, reopen, revert, update_branch, rebase, delete_branch |
+| `GET, POST .../pulls/:number/stack` | `PullStack`; `StackAction` to `PullBulkResult[]` |
+| `POST .../pulls/:number/checkout` | `CheckoutPull` to `PullCheckout`, in place or in `<repo>-wt/pr-<n>` |
+| `POST .../pulls/:number/work` | `WorkOnPull`: a new thread on that worktree, linked |
+| `POST /api/projects/:id/publish` | `PublishProject`: create the remote, with `gh` or `glab`, and push |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |

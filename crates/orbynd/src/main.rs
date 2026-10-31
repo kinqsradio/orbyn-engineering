@@ -2,6 +2,7 @@
 
 mod access;
 mod api;
+mod pulls;
 mod stream;
 mod terminal_ws;
 mod ui;
@@ -152,6 +153,9 @@ fn router(state: AppState) -> Router {
         .route("/api/projects", get(api::list_projects))
         .route("/api/projects/clone", post(api::clone_project))
         .route("/api/projects/create", post(api::create_project))
+        .route("/api/clones", get(api::list_clones).post(api::start_clone))
+        .route("/api/clones/{id}/cancel", post(api::cancel_clone))
+        .route("/api/clones/{id}/retry", post(api::retry_clone))
         .route("/api/projects/import", post(api::import_project))
         .route(
             "/api/projects/{id}",
@@ -245,7 +249,93 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/pulls/{number}/merge",
             post(api::merge_pull),
         )
-        .route("/api/projects/{id}/pulls", get(api::project_pulls))
+        .route("/api/forges", get(pulls::forges))
+        .route("/api/pulls", get(pulls::all))
+        .route("/api/projects/{id}/pulls", get(pulls::list))
+        .route("/api/projects/{id}/pulls/close", post(pulls::close_many))
+        .route(
+            "/api/projects/{id}/pulls/reviewers",
+            get(pulls::reviewer_candidates),
+        )
+        .route(
+            "/api/projects/{id}/pulls/labels",
+            get(pulls::label_candidates),
+        )
+        .route(
+            "/api/projects/{id}/workflows/{run}/approve",
+            post(pulls::approve_workflow),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}",
+            get(pulls::detail).patch(pulls::update),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/checks",
+            get(pulls::checks),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/comments",
+            get(pulls::conversation).post(pulls::comment),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/comments/{comment}",
+            axum::routing::patch(pulls::edit_comment),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/comments/{comment}/react",
+            post(pulls::react),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/threads/{thread}/resolve",
+            post(pulls::resolve_thread),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/timeline",
+            get(pulls::timeline),
+        )
+        .route("/api/projects/{id}/pulls/{number}/files", get(pulls::files))
+        .route(
+            "/api/projects/{id}/pulls/{number}/viewed",
+            post(pulls::set_viewed),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/review",
+            post(pulls::review),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/reviewers",
+            post(pulls::set_reviewers),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/labels",
+            post(pulls::set_labels),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/merge",
+            post(pulls::merge),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/action",
+            post(pulls::action),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/stack",
+            get(pulls::stack).post(pulls::stack_action),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/checkout",
+            post(pulls::checkout),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/work",
+            post(pulls::work_on),
+        )
+        .route("/api/threads/{id}/watches", get(pulls::watches))
+        .route("/api/watches/check", post(pulls::check_watches))
+        .route(
+            "/api/threads/{id}/pulls/{number}/watch",
+            post(pulls::watch).delete(pulls::unwatch),
+        )
         .route("/api/projects/{id}/publish", post(api::publish_project))
         .route("/api/usage", get(api::usage).post(api::usage))
         .route("/api/usage/refresh", post(api::refresh_usage))
