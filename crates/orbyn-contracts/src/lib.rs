@@ -657,6 +657,16 @@ pub struct PullFile {
 }
 
 wire! {
+/// One commit of a pull request, oldest first.
+pub struct PullRevision {
+    pub sha: String,
+    pub message: String,
+    pub author: Option<String>,
+    pub committed_at: Option<String>,
+}
+}
+
+wire! {
 pub struct PullTimelineEvent {
     pub id: String,
     /// The forge's own event name, such as `reviewed` or `labeled`.

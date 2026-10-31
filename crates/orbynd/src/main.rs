@@ -307,6 +307,14 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/projects/{id}/pulls/{number}/files", get(pulls::files))
         .route(
+            "/api/projects/{id}/pulls/{number}/revisions",
+            get(pulls::revisions),
+        )
+        .route(
+            "/api/projects/{id}/commits/{sha}/files",
+            get(pulls::revision_files),
+        )
+        .route(
             "/api/projects/{id}/pulls/{number}/viewed",
             post(pulls::set_viewed),
         )

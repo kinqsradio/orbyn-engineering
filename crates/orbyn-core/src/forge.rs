@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use orbyn_contracts::{
     AddPullComment, MergePull, PullCandidate, PullCheck, PullComment, PullConversation, PullFile,
-    PullRequest, PullRequestDetail, PullThread, PullTimelineEvent, ReviewLineComment,
+    PullRequest, PullRequestDetail, PullRevision, PullThread, PullTimelineEvent, ReviewLineComment,
     SetPullPeople, SubmitReview, UpdatePull,
 };
 use serde_json::{Value, json};
@@ -918,6 +918,104 @@ pub async fn pull_files(forge: Forge, cwd: &Path, number: u64) -> Result<Vec<Pul
             Ok(files.iter().map(parse_gitlab_file).collect())
         }
         _ => Err(forge.unsupported("list changed files")),
+    }
+}
+
+fn first_line(text: &str) -> String {
+    text.lines().next().unwrap_or_default().to_owned()
+}
+
+fn parse_github_revision(commit: &Value) -> PullRevision {
+    let detail = commit.get("commit").unwrap_or(&Value::Null);
+    PullRevision {
+        sha: optional(commit, "sha").unwrap_or_default(),
+        message: first_line(&optional(detail, "message").unwrap_or_default()),
+        author: commit
+            .get("author")
+            .and_then(|author| optional(author, "login"))
+            .or_else(|| {
+                detail
+                    .get("author")
+                    .and_then(|author| optional(author, "name"))
+            }),
+        committed_at: detail
+            .get("committer")
+            .and_then(|committer| optional(committer, "date")),
+    }
+}
+
+fn parse_gitlab_revision(commit: &Value) -> PullRevision {
+    PullRevision {
+        sha: optional(commit, "id").unwrap_or_default(),
+        message: first_line(&optional(commit, "title").unwrap_or_default()),
+        author: optional(commit, "author_name"),
+        committed_at: optional(commit, "committed_date"),
+    }
+}
+
+/// The commits of a pull request, oldest first.
+pub async fn pull_revisions(forge: Forge, cwd: &Path, number: u64) -> Result<Vec<PullRevision>> {
+    match forge {
+        Forge::GitHub => {
+            let path = format!("repos/{{owner}}/{{repo}}/pulls/{number}/commits?per_page=100");
+            let commits = call_pages(forge, cwd, &["api", "--paginate", &path]).await?;
+            Ok(commits.iter().map(parse_github_revision).collect())
+        }
+        Forge::GitLab => {
+            let path = format!("projects/:id/merge_requests/{number}/commits?per_page=100");
+            let commits = call_pages(forge, cwd, &["api", "--paginate", &path]).await?;
+            // GitLab lists the newest first.
+            Ok(commits.iter().rev().map(parse_gitlab_revision).collect())
+        }
+        _ => Err(forge.unsupported("list commits")),
+    }
+}
+
+/// What one commit changed. The hash comes from the page, so it is checked here.
+pub async fn revision_files(forge: Forge, cwd: &Path, sha: &str) -> Result<Vec<PullFile>> {
+    if sha.is_empty() || !sha.chars().all(|letter| letter.is_ascii_hexdigit()) {
+        return Err(CoreError::Invalid("That is not a commit.".into()));
+    }
+    match forge {
+        Forge::GitHub => {
+            let path = format!("repos/{{owner}}/{{repo}}/commits/{sha}");
+            let commit: Value = serde_json::from_str(&call(forge, cwd, &["api", &path]).await?)
+                .map_err(|error| CoreError::Git(error.to_string()))?;
+            let files = commit.get("files").and_then(Value::as_array);
+            Ok(files.into_iter().flatten().map(parse_github_file).collect())
+        }
+        Forge::GitLab => {
+            let path = format!("projects/:id/repository/commits/{sha}/diff?per_page=100");
+            let files = call_pages(forge, cwd, &["api", "--paginate", &path]).await?;
+            Ok(files.iter().map(parse_gitlab_file).collect())
+        }
+        _ => Err(forge.unsupported("list changed files")),
+    }
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::*;
+
+    #[test]
+    fn a_github_commit_reads_its_first_line_and_login() {
+        let revision = parse_github_revision(&json!({
+            "sha": "abc",
+            "author": { "login": "ada" },
+            "commit": { "message": "Rename it\n\nBecause.", "committer": { "date": "2026-10-01T00:00:00Z" } },
+        }));
+        assert_eq!(revision.message, "Rename it");
+        assert_eq!(revision.author.as_deref(), Some("ada"));
+        assert_eq!(
+            revision.committed_at.as_deref(),
+            Some("2026-10-01T00:00:00Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_hash_with_anything_else_in_it_never_reaches_the_forge() {
+        let refused = revision_files(Forge::GitHub, Path::new("."), "abc/../x").await;
+        assert!(matches!(refused, Err(CoreError::Invalid(_))));
     }
 }
 

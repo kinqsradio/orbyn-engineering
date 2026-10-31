@@ -73,6 +73,11 @@ function apiCall() {
   if ((match = /^issues\/(\d+)\/comments/.exec(local))) return out(pull(match[1]).issueComments ?? []);
   if ((match = /^issues\/(\d+)\/timeline/.exec(local))) return out(pull(match[1]).timeline ?? []);
   if ((match = /^pulls\/(\d+)\/files/.exec(local))) return out(pull(match[1]).files ?? []);
+  if ((match = /^pulls\/(\d+)\/commits/.exec(local))) return out(pull(match[1]).commits ?? []);
+  if ((match = /^commits\/(\w+)$/.exec(local))) {
+    const commit = state.pulls.flatMap((entry) => entry.commits ?? []).find((entry) => entry.sha === match[1]);
+    return out(commit ?? {});
+  }
   if ((match = /^pulls\/(\d+)\/comments\/(\d+)\/replies/.exec(local))) {
     const thread = (pull(match[1]).threads ?? []).find((entry) => entry.comments.nodes.some((comment) => String(comment.databaseId) === match[2]));
     thread.comments.nodes.push({ databaseId: state.next++, body: field("body"), author: { login: "me" } });

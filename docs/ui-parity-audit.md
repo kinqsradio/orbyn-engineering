@@ -105,7 +105,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Layout | Side chat | Source: /side, /btw, + menu, tab with own composer, Bring back, Delete, listed in details | Match, Real | Launcher instead of the + menu; one open at a time |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real on a stand-in gh: author, label, draft, review, checks, quick actions, bulk close | Filters are one menu, not groups |
-| Pull requests | Detail | Source: Summary, Timeline, Code | Real on a stand-in gh: title, description, base, reviewers, labels, checks, comments, threads, reactions, viewed marks, line review, merge, draft, branch actions, stack, checkout | Guide absent; no revision picker on Code |
+| Pull requests | Detail | Source: Summary, Timeline, Code | Real on a stand-in gh: title, description, base, reviewers, labels, checks, comments, threads, reactions, viewed marks, line review, merge, draft, branch actions, stack, checkout | Guide absent; Code picks a commit from a select |
 | Pull requests | Linked panel | Source: multiple, stacks, unlink | Link, unlink, watch, Real on a stand-in gh | Layout own |
 | Git | Actions | Source: split control with commit, push, pull request and their combinations, phases | Git menu in the header, dialog, phase list, Real against real Git and a stand-in gh | Menu, not a split button; no generated commit message |
 | Git | Branches | Source: picker, search, create | Dialog from the branch row, Real | Dialog, not a popover |
