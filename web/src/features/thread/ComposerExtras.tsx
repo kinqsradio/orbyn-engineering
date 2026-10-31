@@ -19,18 +19,24 @@ const usageShare = (usage: JsonValue | null | undefined): { used: number; window
 const compactCount = (value: number) => (value >= 1000 ? `${Math.round(value / 100) / 10}k` : String(value));
 
 /** How full the context window is, as the engine last reported it. */
+/** The ring alone reads as a spinner when little is used, so the number sits beside it. */
+export const percentLabel = (value: number) =>
+  value < 10 ? `${value.toFixed(1).replace(/\.0$/, "")}%` : `${Math.round(value)}%`;
+
 export function ContextMeter({ threadId }: { threadId: string }) {
   const usage = useThreadLogs((state) => state.logs[threadId]?.usage);
   const share = usageShare(usage);
   if (!share) return null;
-  const percent = Math.min(Math.round((share.used / share.window) * 100), 100);
-  const label = `Context ${percent}% used, ${compactCount(share.used)} of ${compactCount(share.window)} tokens`;
+  const percent = Math.min((share.used / share.window) * 100, 100);
+  const shown = percentLabel(percent);
+  const label = `Context ${shown} used, ${compactCount(share.used)} of ${compactCount(share.window)} tokens`;
   return (
     <span className="context-meter" role="img" aria-label={label} title={label}>
-      <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden>
-        <circle cx="10" cy="10" r="8" pathLength="100" />
-        <circle cx="10" cy="10" r="8" pathLength="100" strokeDasharray={`${percent} 100`} />
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+        <circle cx="12" cy="12" r="9.75" pathLength="100" />
+        <circle cx="12" cy="12" r="9.75" pathLength="100" strokeDasharray={`${percent} 100`} />
       </svg>
+      <span aria-hidden>{shown}</span>
     </span>
   );
 }
