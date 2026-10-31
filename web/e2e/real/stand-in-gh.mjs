@@ -3,7 +3,7 @@
  * Answers the `gh` calls the service makes, from a JSON file, so forge routes run with
  * no network. ORBYN_GH_STATE names the file; ORBYN_GH_LOG collects each call.
  */
-import { appendFileSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
 const args = process.argv.slice(2);
@@ -13,6 +13,7 @@ const statePath = process.env.ORBYN_GH_STATE;
 // lock a read sees a half-written file and two edits lose one. The service kills a
 // call whose request went away, so a holder that has died no longer counts.
 const lock = `${statePath}.lock`;
+const HELD_MS = 2000;
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const alive = (pid) => {
   try {
@@ -29,7 +30,8 @@ for (;;) {
   } catch {
     try {
       const holder = Number(readFileSync(lock, "utf8"));
-      if (holder && !alive(holder)) rmSync(lock, { force: true });
+      // A killed process can linger unreaped and still look alive, so age counts too.
+      if ((holder && !alive(holder)) || Date.now() - statSync(lock).mtimeMs > HELD_MS) rmSync(lock, { force: true });
     } catch {
       // Released between the two calls.
     }
