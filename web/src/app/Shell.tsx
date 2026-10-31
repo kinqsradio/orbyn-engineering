@@ -22,11 +22,12 @@ import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
 import { api } from "../api/client";
+import { followShell } from "../api/shell";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
-import { navigate, routeHref, useRoute, type Route } from "../state/route";
+import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
@@ -101,6 +102,9 @@ function runShellCommand(command: string, route: Route): boolean {
       return true;
     case "usage.open":
       navigate({ name: "usage" });
+      return true;
+    case "settings.open":
+      navigate({ name: "settings", section: null });
       return true;
     case "filePicker.toggle":
       if (route.name !== "thread") return false;
@@ -375,6 +379,21 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
   }, [routeKey, ready, main]);
 }
 
+/** Links and menu items from the desktop shell, which behave like keys pressed here. */
+function useShellEvents() {
+  useEffect(
+    () =>
+      followShell((event) => {
+        if (event.type === "navigate") {
+          window.location.hash = event.href.slice(1);
+          return;
+        }
+        if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
+      }),
+    [],
+  );
+}
+
 export function Shell() {
   const route = useRoute();
   const layout = useLayoutWidth();
@@ -395,6 +414,7 @@ export function Shell() {
   const palette = useUi((state) => state.palette);
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
+  useShellEvents();
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);

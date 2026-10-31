@@ -401,6 +401,10 @@ pub async fn reorder_threads(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn shell_status(State(state): State<AppState>) -> Json<orbyn_contracts::ShellStatus> {
+    Json(state.core.shell.status())
+}
+
 pub async fn updates(State(state): State<AppState>) -> Json<orbyn_contracts::UpdateStatus> {
     Json(state.core.updates.status().await)
 }

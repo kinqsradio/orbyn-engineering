@@ -32,39 +32,6 @@ pub struct CoreProcess {
     app_url: url::Url,
 }
 
-/// Apps opened from Finder or the Dock get a minimal PATH, so engines installed
-/// through Homebrew or a version manager would look missing.
-#[cfg(unix)]
-fn login_shell_path() -> Option<String> {
-    const MARKER: &str = "__ORBYN_PATH__";
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let mut child = Command::new(shell)
-        .args(["-ilc", &format!("printf '{MARKER}%s{MARKER}' \"$PATH\"")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let mut stdout = child.stdout.take()?;
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let mut output = String::new();
-        let _ = std::io::Read::read_to_string(&mut stdout, &mut output);
-        let _ = sender.send(output);
-    });
-    let output = receiver.recv_timeout(Duration::from_secs(5));
-    let _ = child.kill();
-    let _ = child.wait();
-    let output = output.ok()?;
-    let path = output.split(MARKER).nth(1)?;
-    (!path.is_empty()).then(|| path.to_string())
-}
-
-#[cfg(not(unix))]
-fn login_shell_path() -> Option<String> {
-    None
-}
-
 fn sidecar_path() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|error| format!("Cannot find the app: {error}."))?;
     let dir = exe
@@ -84,10 +51,6 @@ impl CoreProcess {
         on_message: impl Fn(ServiceMessage) + Send + 'static,
         on_exit: impl FnOnce(String) + Send + 'static,
     ) -> Result<Self, String> {
-        let data_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|error| format!("Cannot find app data: {error}."))?;
         let resources = app
             .path()
             .resource_dir()
@@ -96,16 +59,11 @@ impl CoreProcess {
         command
             .arg("serve")
             .arg("--parent-stdin")
-            .arg("--data-dir")
-            .arg(&data_dir)
             .arg("--ui-dir")
             .arg(resources.join("ui"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
-        if let Some(path) = login_shell_path() {
-            command.env("PATH", path);
-        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;

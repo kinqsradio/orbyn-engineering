@@ -15,6 +15,7 @@ use orbyn_contracts::{AgUiEvent, ApprovalState, ThreadEvent};
 use orbyn_core::store::Store;
 use orbyn_core::{Core, CoreError};
 use serde_json::{Value, json};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::watch;
 
 use crate::api::{ApiJson, ApiResult, AppState, QueryMap};
@@ -112,6 +113,29 @@ pub async fn update_events(
             Some((Ok(frame), (updates, changes, false)))
         },
     );
+    Sse::new(frames).keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
+}
+
+/// What the shell sends the windows. The counted watch lives as long as this stream.
+pub async fn shell_events(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mut watch = state.core.shell.watch();
+    let held = std::mem::take(&mut watch.held).into_iter();
+    let frames = stream::unfold((watch, held), |(mut watch, mut held)| async move {
+        let event = match held.next() {
+            Some(event) => event,
+            None => loop {
+                match watch.events.recv().await {
+                    Ok(event) => break event,
+                    Err(RecvError::Lagged(_)) => {}
+                    Err(RecvError::Closed) => return None,
+                }
+            },
+        };
+        let frame = Event::default().json_data(&event).ok()?;
+        Some((Ok(frame), (watch, held)))
+    });
     Sse::new(frames).keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
 }
 

@@ -162,3 +162,37 @@ async fn update_events_send_the_status_then_each_change() {
     .unwrap();
     assert!(found);
 }
+
+#[tokio::test]
+async fn a_link_waits_for_the_window_and_arrives_as_a_route() {
+    let dir = TempDir::new();
+    let (mut service, _thread) = setup(&dir, desktop(), "codex").await;
+    let status = service.json("/api/shell").await;
+    assert_eq!(status, json!({ "attached": true, "windows": 0 }));
+    say(
+        &mut service,
+        r#"{"type":"open_link","url":"orbyn://run/start"}"#,
+    );
+    say(
+        &mut service,
+        r#"{"type":"open_link","url":"orbyn://thread/t1"}"#,
+    );
+    say(&mut service, r#"{"type":"app_update_none"}"#);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let mut stream = service.get("/api/shell/events").send().await.unwrap();
+    let mut seen = String::new();
+    while !seen.contains("\n\n") {
+        let chunk = tokio::time::timeout(Duration::from_secs(5), stream.chunk())
+            .await
+            .expect("the held link never arrived")
+            .unwrap()
+            .expect("the stream closed");
+        seen.push_str(&String::from_utf8_lossy(&chunk));
+    }
+    assert!(
+        seen.contains(r##"{"type":"navigate","href":"#/threads/t1"}"##),
+        "{seen}"
+    );
+    assert_eq!(service.json("/api/shell").await["windows"], 1);
+}

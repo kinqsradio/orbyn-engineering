@@ -2,7 +2,12 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
   "description": "The local loader page only. The product UI loads from orbynd and holds no native access.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "local": true,
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "allow-restart-core"
+  ]
 }
