@@ -164,6 +164,9 @@ describe("Composer", () => {
     await userEvent.upload(input, new File(["x"], "b.png"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Too large.");
     await userEvent.type(box(), "look{Enter}");
+    expect(start).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Remove b.png" }));
+    await userEvent.type(box(), "{Enter}");
     await waitFor(() => expect(start).toHaveBeenCalledWith("t1", "look", ["a1"]));
     upload.mockRestore();
     start.mockRestore();

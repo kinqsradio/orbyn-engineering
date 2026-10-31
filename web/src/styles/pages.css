@@ -1216,3 +1216,21 @@ kbd {
   align-items: center;
   gap: 4px;
 }
+
+.custom-models {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.custom-model {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  justify-content: space-between;
+}
+.custom-models input {
+  flex: 1 1 140px;
+  min-width: 0;
+}

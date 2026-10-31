@@ -70,8 +70,11 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double | Long-press flip absent |
 | Composer | Send shortcut | Source: Enter, Mod+Enter multiline, Mod+Enter | Match, Real | 0 |
 | Composer | Recall, stash, large paste, drop | Source | Match, Real | Stash keeps text only, attachments are not stashed |
+| Composer | Message limit | Source: 120,000, draft kept | Match, Real | Counted in the client as well as the service |
+| Composer | Uploads | Source: each file on add, retry, remove, blocks send | Match, Real | Failure text inline, no progress bar |
+| Composer | Queue edit | Source: back to the composer | Match, Real | An existing draft keeps its text, the prompt joins after it |
 | Composer | Plan | Source | Button, /plan, /default, Real | Shift+Tab left to focus movement |
-| Composer | Context meter, /usage-limits | Source | Match, Real | Compaction tick absent |
+| Composer | Context meter, /usage-limits | Source | Match, Real; the meter compacts on native engines | Compaction tick absent |
 | Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | No live Markdown styling |
 | Approval | Inline row | Live: target, Waiting for approval, Decline, Approve, More | Match, Real | Always allow persists, so no "this session" |
 | Approval | Question panel | Source | Built, Real: answered through the protocol double | Layout own |

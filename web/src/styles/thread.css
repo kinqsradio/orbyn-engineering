@@ -2842,3 +2842,29 @@ button.detail-row:hover {
   margin: 0;
   font-size: var(--text-small);
 }
+
+.attachment-strip li[data-failed] {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+.attachment-failure {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--color-danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-over {
+  margin: 0;
+  padding: 8px 12px 0;
+  color: var(--color-danger);
+  font-size: var(--text-meta);
+}
+button.context-meter {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+button.context-meter:hover:not(:disabled) {
+  color: var(--color-text);
+}

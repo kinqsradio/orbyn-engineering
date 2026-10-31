@@ -1,12 +1,12 @@
 import { RefreshCw, Trash2, ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { api } from "../../api/client";
-import type { EngineStatus, EngineTier } from "../../api/types";
+import { api, request } from "../../api/client";
+import type { EngineStatus, EngineTier, PreferenceView } from "../../api/types";
 import { authLabels, signInLabel, slugify, supportLabels, tierLabels } from "../../lib/format";
-import { toFailure } from "../../lib/useAsync";
+import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { arrangeModels, modelKey, useEngineModels } from "../thread/modelStore";
+import { arrangeModels, modelKey, useEngineModels, useModelStore } from "../thread/modelStore";
 import { Button, CopyCommand, Field, Pill, type PillTone, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { AcpRegistry } from "./AcpRegistry";
@@ -59,6 +59,64 @@ function UpdateAction({ engine }: { engine: EngineStatus }) {
 }
 
 /** Which of an engine's models the picker shows, and in what order. */
+interface CustomModel {
+  engine: string;
+  id: string;
+  label?: string;
+}
+
+/** Models the service doesn't list, kept as a setting and merged into its list. */
+function CustomModels({ engine }: { engine: EngineStatus }) {
+  const preferences = useAsync("custom-models", (signal) =>
+    request<PreferenceView[]>("GET", "/api/preferences", undefined, signal),
+  );
+  const [id, setId] = useState("");
+  const [label, setLabel] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const all = (preferences.data?.find((entry) => entry.key === "custom_models")?.value ?? []) as unknown as CustomModel[];
+  const mine = all.filter((model) => model.engine === engine.id);
+  const save = async (next: CustomModel[]) => {
+    setError(null);
+    try {
+      preferences.setData(await request<PreferenceView[]>("PUT", "/api/preferences", { values: { custom_models: next } }));
+      await useModelStore.getState().reload(engine.id);
+      setId("");
+      setLabel("");
+    } catch (failure) {
+      setError(toFailure(failure).message);
+    }
+  };
+  const add = (event: FormEvent) => {
+    event.preventDefault();
+    void save([...all, { engine: engine.id, id: id.trim(), ...(label.trim() ? { label: label.trim() } : {}) }]);
+  };
+  return (
+    <form className="custom-models" aria-label={`Custom models for ${engine.name}`} onSubmit={add}>
+      {mine.map((model) => (
+        <div key={model.id} className="custom-model">
+          <span>{model.label ?? model.id}</span>
+          <IconButton
+            label={`Remove ${model.label ?? model.id}`}
+            onClick={() => void save(all.filter((entry) => !(entry.engine === engine.id && entry.id === model.id)))}
+          >
+            <Trash2 size={14} aria-hidden />
+          </IconButton>
+        </div>
+      ))}
+      <input aria-label="Model id" placeholder="Model id" value={id} onChange={(event) => setId(event.target.value)} />
+      <input aria-label="Display name" placeholder="Display name" value={label} onChange={(event) => setLabel(event.target.value)} />
+      <Button small type="submit" disabled={!id.trim()}>
+        Add model
+      </Button>
+      {error ? (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
 function EngineModelList({ engine }: { engine: EngineStatus }) {
   const hidden = useUi((state) => state.modelHidden);
   const order = useUi((state) => state.modelOrder);
@@ -115,6 +173,7 @@ function EngineModelList({ engine }: { engine: EngineStatus }) {
           })}
         </ul>
       ) : null}
+      {open ? <CustomModels engine={engine} /> : null}
     </div>
   );
 }

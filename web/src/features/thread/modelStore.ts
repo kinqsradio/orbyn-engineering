@@ -6,13 +6,19 @@ import type { EngineModels, ModelInfo } from "../../api/types";
 interface ModelState {
   byEngine: Record<string, EngineModels>;
   load(engine: string): Promise<void>;
+  /** Reads the list again, after something that changes it. */
+  reload(engine: string): Promise<void>;
 }
 
 const started = new Set<string>();
 
 /** Engine model lists. The service keeps a good answer for five minutes. */
-export const useModelStore = create<ModelState>((set) => ({
+export const useModelStore = create<ModelState>((set, get) => ({
   byEngine: {},
+  async reload(engine) {
+    started.delete(engine);
+    await get().load(engine);
+  },
   async load(engine) {
     if (started.has(engine)) return;
     started.add(engine);
