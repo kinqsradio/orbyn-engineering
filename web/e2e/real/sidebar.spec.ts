@@ -243,7 +243,7 @@ test("the terminal drawer opens tabs and splits, and files and diff sources read
   await expect(drawer.getByText("Connected")).toBeVisible({ timeout: 10_000 });
   await drawer.getByRole("button", { name: "New terminal" }).click();
   await expect(drawer.getByRole("tab")).toHaveCount(2);
-  await drawer.getByRole("button", { name: "Split terminal" }).click();
+  await drawer.getByRole("button", { name: "Split terminal horizontally" }).click();
   await expect(drawer.locator(".terminal-panel")).toHaveCount(2);
   await drawer.getByRole("button", { name: /^Close Terminal|^Close [^t]/ }).first().click();
 

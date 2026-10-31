@@ -1,4 +1,4 @@
-import { Columns2, Play, Plus, X } from "lucide-react";
+import { Columns2, Play, Plus, Rows2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { request } from "../../api/client";
 import type { ProjectFileView, TerminalInfo } from "../../api/types";
@@ -18,7 +18,7 @@ export function groupTerminals(terminals: readonly TerminalInfo[]): TerminalInfo
 }
 
 /** Terminal tabs, each a group of splits, and the project's scripts. */
-export function TerminalDrawerBody({ threadId }: { threadId: string }) {
+export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; onClose(): void }) {
   const base = `/api/threads/${q(threadId)}`;
   const terminals = useAsync(`terminals:${threadId}`, (signal) =>
     request<TerminalInfo[]>("GET", `${base}/terminals`, undefined, signal),
@@ -97,14 +97,26 @@ export function TerminalDrawerBody({ threadId }: { threadId: string }) {
             </span>
           );
         })}
+        <span className="terminal-tabs-gap" />
+        {terminals.data ? (
+          <>
+            <IconButton
+              label="Split terminal horizontally"
+              onClick={() => void open({ split_of: shown?.[0]?.id ?? MAIN, direction: "horizontal" })}
+            >
+              <Columns2 size={14} aria-hidden />
+            </IconButton>
+            <IconButton
+              label="Split terminal vertically"
+              onClick={() => void open({ split_of: shown?.[0]?.id ?? MAIN, direction: "vertical" })}
+            >
+              <Rows2 size={14} aria-hidden />
+            </IconButton>
+          </>
+        ) : null}
         <IconButton label="New terminal" onClick={() => void open({})}>
           <Plus size={14} aria-hidden />
         </IconButton>
-        {terminals.data ? (
-          <IconButton label="Split terminal" onClick={() => void open({ split_of: shown?.[0]?.id ?? MAIN, direction: "horizontal" })}>
-            <Columns2 size={14} aria-hidden />
-          </IconButton>
-        ) : null}
         {scriptList.length > 0 ? (
           <IconButton
             label="Run a script"
@@ -116,6 +128,9 @@ export function TerminalDrawerBody({ threadId }: { threadId: string }) {
             <Play size={14} aria-hidden />
           </IconButton>
         ) : null}
+        <IconButton label="Close terminal" onClick={onClose}>
+          <X size={14} aria-hidden />
+        </IconButton>
       </div>
       <div className="terminal-splits" data-direction={shown?.[1]?.direction ?? undefined}>
         {shown ? (

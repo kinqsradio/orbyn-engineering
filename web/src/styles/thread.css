@@ -1123,11 +1123,6 @@ button.detail-row:hover {
   padding: 4px 12px 12px;
   border-top: 1px solid var(--color-border);
 }
-.drawer-close {
-  position: absolute;
-  top: 4px;
-  right: 12px;
-}
 
 /* Context panel */
 .context {
@@ -2159,4 +2154,12 @@ button.detail-row:hover {
 }
 .thread-main {
   position: relative;
+}
+.terminal-tabs-gap {
+  flex: 1;
+}
+.terminal-tabs .icon-btn {
+  flex: none;
+  width: 21px;
+  height: 21px;
 }

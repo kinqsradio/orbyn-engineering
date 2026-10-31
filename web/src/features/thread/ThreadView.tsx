@@ -8,7 +8,6 @@ import {
   Rows3,
   ShieldAlert,
   WifiOff,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
@@ -182,10 +181,7 @@ function TerminalDrawer({ threadId, open, onClose }: { threadId: string; open: b
   if (!opened) return null;
   return (
     <section className="drawer" hidden={!open} aria-label="Terminal">
-      <TerminalDrawerBody threadId={threadId} />
-      <IconButton label="Close terminal" className="drawer-close" onClick={onClose}>
-        <X size={14} aria-hidden />
-      </IconButton>
+      <TerminalDrawerBody threadId={threadId} onClose={onClose} />
     </section>
   );
 }

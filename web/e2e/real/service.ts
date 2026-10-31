@@ -14,7 +14,7 @@ function makeLibrary(root: string): string {
   const library = join(root, "library");
   mkdirSync(join(library, "skills"), { recursive: true });
   writeFileSync(join(library, "AGENTS.md"), "# Library\n");
-  writeFileSync(join(library, "skills/catalog.json"), "[]\n");
+  writeFileSync(join(library, "skills/catalog.json"), '{"skills":[]}\n');
   writeFileSync(join(library, ".gitignore"), "repo/\n");
   git(library, "init", "-q", "-b", "main");
   git(library, "add", ".");
@@ -27,17 +27,21 @@ export interface Service {
   page: string;
   /** A plain folder outside any library, for the add-folder flow. */
   folder: string;
+  /** A small Git repository outside the library. */
+  repo: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   stop(): void;
 }
 
 /** A real `orbynd` on a fresh data directory, with the dev UI proxied to it. */
-export async function startService(port: number): Promise<Service> {
+export async function startService(port: number, options: { fakeEngines?: boolean } = {}): Promise<Service> {
   if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
   const dir = mkdtempSync(join(tmpdir(), "orbyn-e2e-"));
+  const fake = resolve(BIN, "../orbyn-fake-engine");
+  const engines = options.fakeEngines ? { ORBYN_CLAUDE_BIN: fake, ORBYN_CODEX_BIN: fake } : {};
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
@@ -56,8 +60,15 @@ export async function startService(port: number): Promise<Service> {
     .toBe(true);
   const folder = join(dir, "my-folder");
   mkdirSync(folder);
+  const repo = join(dir, "my-repo");
+  mkdirSync(repo);
+  writeFileSync(join(repo, "README.md"), "# Repo\n");
+  git(repo, "init", "-q", "-b", "main");
+  git(repo, "add", ".");
+  git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "First");
   return {
     folder,
+    repo,
     page: `http://localhost:${port}/?token=${ready.token}`,
     async api<T>(method: string, path: string, body?: unknown) {
       const response = await fetch(`${ready.url}${path}`, {

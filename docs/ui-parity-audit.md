@@ -50,7 +50,7 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
 | Composer | Queue and steer | Source | Built; queue and remove Real | Steer mock only |
 | Approval | Inline row | Live: target, Waiting for approval, Decline, Approve, More | Match, Real | Always allow persists, so no "this session" |
-| Approval | Question panel | Source | Absent | No backend event |
+| Approval | Question panel | Source | Built, Real: answered through the protocol double | Layout own |
 | Command palette | Open | Live: y 90, 576x420, radius 16, blur 16, items 32 radius 4 | Match | Fewer actions |
 | Dialogs | Backdrop | Live: 64% black, blur 4, 200 ms | Match | 0 |
 | Menus | Popover | Live: radius 8, 150 ms scale and opacity | 100 ms | 50 ms |
@@ -62,11 +62,11 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
 | Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
 | Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
-| Terminal drawer | Tabs and splits | Source: per-thread tabs, split, close, scripts | Built, Real for new, split and close | Scripts menu not run; no project file in the test |
+| Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split and close | Tabs in a top row, reference has a side list; scripts menu not run |
 | Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree | No editing, no image viewer |
 | Diff | Sources | Source: turn, thread, branch | Working tree, Turn, Thread, Branch from the real scopes | Commit source absent |
-| Timeline | Message actions | Live: Copy, Edit from here, Fork from this response | Built | Not run on a real turn |
-| Thread | Find | Source: find bar with position | Built, opens Real | Highlights need the browser's Highlight API |
+| Timeline | Message actions | Live: Copy, Edit from here, Fork from this response | Match, Real on a turn through the protocol double | Copy prompt link hidden |
+| Thread | Find | Source: find bar with position | Built, Real count and steps | Highlights need the browser's Highlight API |
 | Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
 | Settings | Sections | Live: General, Appearance, Chat, Diffs & pull requests, Keybindings, SnapShots, Providers, Threads, Browser, Devices, Scheduled tasks, Projects, Source control, Worktrees, Environments, Sharing & access, Maintenance, Labs, About, Archive | 15 backed, all load Real | SnapShots, Browser, Devices hidden; Environments and Sharing out of scope |
 | Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules | Row layout own |
