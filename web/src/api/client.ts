@@ -197,7 +197,7 @@ export const api = {
   updateLibrary: (apply: boolean) =>
     request<LibraryUpdateResult>("POST", "/api/workspace/update", { apply }),
   rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
-  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: false }),
+  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: true }),
   addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
   clones: (signal?: AbortSignal) => request<CloneJob[]>("GET", "/api/clones", undefined, signal),
   startClone: (url: string) => request<CloneJob>("POST", "/api/clones", { url }),

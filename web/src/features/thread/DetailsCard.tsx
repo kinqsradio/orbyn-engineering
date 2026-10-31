@@ -2,6 +2,7 @@ import {
   Activity,
   Copy,
   FileDiff,
+  Gauge,
   Monitor,
   SquareTerminal,
   EllipsisVertical,
@@ -10,7 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
-import type { EngineStatus, Thread } from "../../api/types";
+import type { EngineLimits, EngineStatus, Thread } from "../../api/types";
 import { elapsed } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
 import { useNow } from "../../lib/useNow";
@@ -124,6 +125,30 @@ function ChangesRow({ threadId }: { threadId: string }) {
   );
 }
 
+/** Automatic checks stay this far apart, however often the card appears. */
+const LIMITS_CHECK_MS = 5 * 60 * 1000;
+const lastLimits = new Map<string, { at: number; limits: Promise<EngineLimits> }>();
+
+/** What's left of each limit window for this thread's engine, when it reports one. */
+function LimitsRow({ threadId, engine }: { threadId: string; engine: string }) {
+  const limits = useAsync(`details-limits:${engine}`, () => {
+    const kept = lastLimits.get(engine);
+    if (kept && Date.now() - kept.at < LIMITS_CHECK_MS) return kept.limits;
+    const fresh = api.threadLimits(threadId);
+    lastLimits.set(engine, { at: Date.now(), limits: fresh });
+    fresh.catch(() => lastLimits.delete(engine));
+    return fresh;
+  });
+  const windows = limits.data?.windows ?? [];
+  if (windows.length === 0) return null;
+  return (
+    <div className="detail-row detail-row-static">
+      <Gauge size={16} aria-hidden />
+      <span>{windows.map((window) => `${window.label} ${Math.max(100 - Math.round(window.used_percent), 0)}% left`).join(", ")}</span>
+    </div>
+  );
+}
+
 function RunningList({ threadId, active }: { threadId: string; active: boolean }) {
   const log = useThreadLogs((state) => state.logs[threadId]);
   const tools = useMemo(() => (active ? runningTools(log?.items ?? []) : []), [log, active]);
@@ -198,6 +223,7 @@ export function DetailsCard({
       <div className="details-section">
         {branch ? <BranchRow thread={thread} branch={branch} /> : null}
         <ChangesRow threadId={thread.id} />
+        <LimitsRow threadId={thread.id} engine={thread.engine} />
         <OpenInEditor threadId={thread.id} />
         {compact ? (
           <>

@@ -140,6 +140,7 @@ function StartPage({ threadId, onOpen }: { threadId: string; onOpen(url: string)
     request<LocalServer[]>("GET", `/api/threads/${q(threadId)}/servers`, undefined, signal),
   );
   const recent = useUi((state) => state.recentUrls);
+  const pushToast = useUi((state) => state.pushToast);
   const list = servers.data ?? [];
   return (
     <div className="browser-start">
@@ -152,6 +153,18 @@ function StartPage({ threadId, onOpen }: { threadId: string; onOpen(url: string)
               <button type="button" onClick={() => onOpen(`http://localhost:${server.port}`)}>
                 localhost:{server.port} <span>{server.process}</span>
               </button>
+              {server.in_checkout ? (
+                <IconButton
+                  label={`Stop localhost:${server.port}`}
+                  onClick={() => {
+                    request<void>("POST", `/api/threads/${q(threadId)}/servers/${server.pid}/stop`).then(servers.reload, (failure: unknown) =>
+                      pushToast(`Couldn't stop it. ${toFailure(failure).message}`),
+                    );
+                  }}
+                >
+                  <Square size={12} aria-hidden />
+                </IconButton>
+              ) : null}
             </li>
           ))}
         </ul>

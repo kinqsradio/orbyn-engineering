@@ -29,6 +29,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Draft | Composer | Capture: x 80-816, y 469-580 | x 80.5-816.5, y 468-580 | 0.5 x, 1 y, re-measured |
 | Draft | Divider, pane | Capture: x 1189, 539 wide | x 1189, 539 wide | 0, re-measured |
 | Draft | Details card | Capture: 280, y 64-295 | 280, y 64-225 | Editor, script, commit rows hidden |
+| Draft | New worktree | Source: base branch picker | Base branch text box beside the purpose, Real | Typed, not picked |
 | Draft | Launcher | Live: 7 surfaces | Terminal, Diff, Activity | Others hidden, no backend |
 | Draft | No project state | Live: What should we work on?, No project picker below it, permissions alone under the composer | Match, Real | Scratch thread sent through the real service |
 | Draft | Project selected | Live: What should we build in, project as picker, or start without a project, checkout and branch left, permissions right | Match, Real | Heading to composer 49 |
@@ -50,6 +51,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Timeline | Error banner | Source: end-of-thread failure, dismiss for the session | Match, Real, with Retry | Inline notice stays for history |
 | Timeline | Changed files | Source: per-turn tree with open diff | Flat list, Real, opens and scrolls to the file | Flat, not a tree |
 | Timeline | Subagent bar | Source: model, effort, status, Runs on its own, Open parent | Match, Real on a delegated thread | Live activity not shown in the parent |
+| Thread details | Limits | Source: remaining windows row | Match, Real from the protocol double | Checked once in five minutes per page load |
+| Usage | Price and alias | Source: per-model rates, counts as | Dialog from the model row, Real | A failed save keeps the form; no Mixed price |
 | Timeline | Announcers | Source | Background threads live region, Real | Current-thread activity uses the status row |
 | Timeline | Markdown | Live: 14/22.75, p margin 10.4, h2 18/600 | Match | 0 |
 | Timeline | Inline code | Live: 11.9px, radius 4 | Match | 0 by ratio |
@@ -75,7 +78,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Queue edit | Source: back to the composer | Match, Real | An existing draft keeps its text, the prompt joins after it |
 | Composer | Plan | Source | Button, /plan, /default, Real | Shift+Tab left to focus movement |
 | Composer | Context meter, /usage-limits | Source | Match, Real; the meter compacts on native engines | Compaction tick absent |
-| Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | No live Markdown styling |
+| Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | 0 |
+| Composer | Live Markdown | Source: rich editor that keeps literal markers | Styled layer under a transparent textarea, Real; markers stay and bold, headings and code keep their width | Italic is an underline and code stays in the body font, so the caret never drifts |
 | Approval | Inline row | Live: target, Waiting for approval, Decline, Approve, More | Match, Real | Always allow persists, so no "this session" |
 | Approval | Question panel | Source | Built, Real: answered through the protocol double | Layout own |
 | Command palette | Open | Live: y 90, 576x420, radius 16, blur 16, items 32 radius 4 | Match | Fewer actions |
@@ -87,12 +91,13 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Layout | Narrow | Source: right panel becomes a sheet at 980 and under | Replaces the thread with Back to thread | Own shape below the wide breakpoint |
 | Layout | Independent scrolling | Source: each pane scrolls alone | Real at both ends, parked and during a run: details, Diff, Files, Terminal, Browser, sidebar | The cause was absolute children, such as sr-only text, escaping the transcript and giving `.main` something to scroll |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
-| Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
-| Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
+| Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real on a stand-in gh: author, label, draft, review, checks, quick actions, bulk close | Filters are one menu, not groups |
+| Pull requests | Detail | Source: Summary, Timeline, Code | Real on a stand-in gh: title, description, base, reviewers, labels, checks, comments, threads, reactions, viewed marks, line review, merge, draft, branch actions, stack, checkout | Guide absent; no revision picker on Code |
+| Pull requests | Linked panel | Source: multiple, stacks, unlink | Link, unlink, watch, Real on a stand-in gh | Layout own |
 | Git | Actions | Source: split control with commit, push, pull request and their combinations, phases | Git menu in the header, dialog, phase list, Real against real Git and a stand-in gh | Menu, not a split button; no generated commit message |
 | Git | Branches | Source: picker, search, create | Dialog from the branch row, Real | Dialog, not a popover |
-| Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
-| Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split and close | Tabs in a top row, reference has a side list; scripts menu not run |
+| Open in editor | Details row | Source: Open in preferred, menu of detected editors | Match, Real through a stand-in editor on the service's PATH | Layout own |
+| Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split, close, scripts menu and watch only | Tabs in a top row, reference has a side list |
 | Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit, image, video, audio, PDF, font, hex and partial text from the raw route, Save file | Layout own; no office or ZIP view |
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
@@ -108,13 +113,14 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules; the shell now runs every rule through when contexts, Real | Row layout own; mod+digit falls back in the client, the service lists no jump rules |
 | Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
 | Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
-| Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook kinds | The form sent an invalid kind before this was run for real |
-| Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
+| Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook and after-thread kinds; signature, filters, repeats, age, address and deliveries log | The address shows once, when issued, so reopening needs a new one |
+| Settings | Notifications | Live: Thread, In-app | Off, notifications, sound or both, and in-app, Real | System alerts only in a hidden window, which now keeps polling while work runs |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | ACP registry | Source: search and add agents | Search, add, remove, Real against a local registry file | First listed install route only |
-| Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |
+| Settings | Threads | Live name | Auto-settle, titles, snooze presets, Real | Presets are minutes only, no time of day |
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
-| Settings | Maintenance | Live name | Update checks, Real | Contents unobserved |
+| Settings | Maintenance | Live name | Update checks, retention rules with preview and report, OTLP addresses with a test, Real | Contents unobserved; the 1 GiB notice ran on the real answer with one field raised |
+| Settings | Project settings | Source: per-project defaults | Dialog from each project, Real | Layout own; rows follow the service's project-scoped keys |
 | First run | Setup, create, trust, draft send | n/a, required by Orbyn | Passed, Real | Synthetic data |
 | Removed | Audit section | Not in reference | Removed with its mock data | n/a |
 | Removed | Policy section | Not in reference | Removed with its mock data | n/a |

@@ -31,6 +31,7 @@ import { DRAFT_LAYOUT, useUi, type ContextTab } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { IconButton } from "../ui/controls";
 
+const HIDDEN_POLL_EVERY = 3;
 const POLL_MS = 4000;
 
 type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
@@ -227,6 +228,24 @@ const notices: Partial<Record<Attention, string>> = {
   failed: "failed",
 };
 
+/** A short tone. Browsers refuse audio before a first click, which costs nothing here. */
+function playChime() {
+  try {
+    const audio = new AudioContext();
+    const tone = audio.createOscillator();
+    const level = audio.createGain();
+    tone.frequency.value = 660;
+    level.gain.setValueAtTime(0.06, audio.currentTime);
+    level.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.18);
+    tone.connect(level).connect(audio.destination);
+    tone.start();
+    tone.stop(audio.currentTime + 0.18);
+    tone.onended = () => void audio.close();
+  } catch {
+    // No audio device. The other notices still go out.
+  }
+}
+
 /** Tells you when another thread finishes, fails or needs you. */
 function useThreadNotifications(openId: string | null) {
   useEffect(() => {
@@ -239,8 +258,9 @@ function useThreadNotifications(openId: string | null) {
         const notice = notices[now];
         if (before === undefined || before === now || !notice || thread.id === openId) continue;
         useAnnouncer.setState({ text: `${thread.title} ${notice}` });
-        const { inAppNotifications, threadNotifications, pushToast } = useUi.getState();
+        const { inAppNotifications, threadNotifications, threadSound, pushToast } = useUi.getState();
         if (inAppNotifications) pushToast(`${thread.title} ${notice}`);
+        if (threadSound) playChime();
         if (threadNotifications && document.hidden && "Notification" in window && Notification.permission === "granted") {
           new Notification(thread.title, { body: notice });
         }
@@ -340,8 +360,13 @@ export function Shell() {
     const { refreshAll, refreshEngines } = useWorkspace.getState();
     void refreshAll();
     void refreshEngines();
+    let ticks = 0;
     const timer = setInterval(() => {
-      if (!document.hidden) void refreshAll();
+      ticks += 1;
+      // A hidden window keeps up while work runs, or its alerts would never fire, and
+      // looks in now and then so it hears of work started elsewhere.
+      const running = Object.values(useWorkspace.getState().threads).some((thread) => thread.active_run);
+      if (!document.hidden || running || ticks % HIDDEN_POLL_EVERY === 0) void refreshAll();
     }, POLL_MS);
     return () => clearInterval(timer);
   }, []);

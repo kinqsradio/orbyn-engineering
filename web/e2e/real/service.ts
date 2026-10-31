@@ -62,7 +62,7 @@ function standInGh(dir: string, pulls: PullFixture[]): { bin: string; state: str
   const state = join(dir, "gh-state.json");
   const log = join(dir, "gh-calls.log");
   writeFileSync(log, "");
-  writeFileSync(state, JSON.stringify({ pulls: pulls.map(pullRow), repos: [], next: 100, template: pullRow({ number: 0, title: "" }) }));
+  writeFileSync(state, JSON.stringify({ pulls: pulls.map(pullRow), repos: [], next: 100, people: ["ada", "grace"], labels: ["bug", "docs"], template: pullRow({ number: 0, title: "" }) }));
   symlinkSync(STAND_IN_GH, join(bin, "gh"));
   return { bin, state, log };
 }
@@ -89,6 +89,12 @@ function makeLibrary(root: string): string {
 export interface Service {
   /** The dev server in front of the real service, token included. */
   page: string;
+  /** The service itself, for callers from outside the UI. */
+  url: string;
+  /** Where the service keeps its data. */
+  dataDir: string;
+  /** A folder on the service's PATH, for stand-in tools. Only with `forge`. */
+  binDir: string;
   /** A plain folder outside any library, for the add-folder flow. */
   folder: string;
   /** A small Git repository outside the library. */
@@ -97,6 +103,8 @@ export interface Service {
   stop(): void;
   /** What the stand-in `gh` was asked, oldest first. */
   ghCalls(): string[][];
+  /** What the stand-in holds for one pull request now. */
+  ghPull(number: number): Record<string, unknown>;
   /** The stand-in's bare remote, for specs that read what was pushed. */
   remote: string;
 }
@@ -128,7 +136,7 @@ export async function startService(
     : null;
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}:` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}:` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
@@ -155,18 +163,22 @@ export async function startService(
   git(repo, "add", ".");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "First");
   if (options.forge) {
-    git(repo, "remote", "add", "origin", "https://github.com/o/r.git");
-    // Reads name the forge, pushes land in a bare repository next to the checkout.
-    const remote = join(dir, "remote.git");
+    // A real remote on disk, named so the service takes it for GitHub.
+    const remote = join(dir, "github.com/o/r.git");
     execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote]);
-    git(repo, "config", "url." + remote + ".pushInsteadOf", "https://github.com/o/r.git");
+    git(repo, "remote", "add", "origin", remote);
     git(repo, "push", "-q", "origin", "main");
-    git(repo, "fetch", "-q", remote, "+refs/heads/*:refs/remotes/origin/*");
+    git(repo, "fetch", "-q", "origin");
   }
   return {
+    url: ready.url,
+    dataDir: join(dir, "data"),
+    binDir: join(dir, "bin"),
     folder,
     repo,
-    remote: join(dir, "remote.git"),
+    remote: join(dir, "github.com/o/r.git"),
+    ghPull: (number) =>
+      (JSON.parse(readFileSync(forge?.state ?? "", "utf8")) as { pulls: PullFixture[] }).pulls.find((pull) => pull.number === number) ?? {},
     ghCalls: () =>
       forge
         ? readFileSync(forge.log, "utf8")

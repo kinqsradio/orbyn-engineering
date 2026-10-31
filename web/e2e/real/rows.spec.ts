@@ -71,7 +71,7 @@ test("a queued message goes back to the composer, is removed, or waits held afte
 
   await box(page).fill("wait for me");
   await box(page).press("Enter");
-  await expect(page.getByText("wait for me")).toBeVisible();
+  await expect(page.getByLabel("Queued messages").getByText("wait for me")).toBeVisible();
   await expect(box(page)).toHaveValue("");
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByText("Held after the last run stopped.")).toBeVisible({ timeout: 15_000 });
@@ -112,6 +112,37 @@ test("$ lists the library's skills, and they join the / menu by setting", async 
   await box(page).fill("");
 });
 
+test("Markdown styles as you type, keeps its markers and sends what was typed", async ({ page }) => {
+  const id = await started(page, "[scene:usage] hello");
+  await settled(service, id);
+  const draft = "# Plan\n\n**bold** and `code` and [link](https://example.com)\n\n- item";
+  await box(page).fill(draft);
+  const mirror = page.locator(".composer-mirror");
+  await expect(mirror.locator("[data-md=bold]")).toHaveText("bold");
+  await expect(mirror.locator("[data-md=code]")).toHaveText("code");
+  await expect(mirror.locator("[data-md=heading]")).toHaveText("Plan");
+  await expect(mirror.locator("[data-md=link]")).toHaveText("[link]");
+  await expect(box(page)).toHaveValue(draft);
+  expect((await mirror.textContent())?.trimEnd()).toBe(draft);
+
+  const boxes = await box(page).evaluate((element) => {
+    const area = getComputedStyle(element);
+    const mirrored = getComputedStyle(element.parentElement?.querySelector(".composer-mirror") as Element);
+    return [area.paddingLeft === mirrored.paddingLeft, area.lineHeight === mirrored.lineHeight, area.fontSize === mirrored.fontSize, area.fontFamily === mirrored.fontFamily];
+  });
+  expect(boxes).toEqual([true, true, true, true]);
+
+  await box(page).fill("line\n".repeat(60));
+  await box(page).evaluate((element) => {
+    element.scrollTop = 200;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  const offset = await page.evaluate(() => document.querySelector(".composer-mirror")?.scrollTop);
+  expect(offset).toBeGreaterThan(0);
+  await box(page).fill("");
+  await expect(mirror).toBeHidden();
+});
+
 test("a custom model joins the picker and can go again", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
   const row = page.locator(".setting-list > li").filter({ hasText: "Codex" });
@@ -124,4 +155,45 @@ test("a custom model joins the picker and can go again", async ({ page }) => {
   expect(models.models.find((model) => model.id === "house-model")?.custom).toBe(true);
   await row.getByRole("button", { name: "Remove House Model" }).click();
   await expect(row.getByRole("button", { name: "Remove House Model" })).toBeHidden();
+});
+
+test("another thread's finish reaches you as a toast, a sound and a system alert", async ({ page, context }) => {
+  await context.grantPermissions(["notifications"]);
+  await page.addInitScript(() => {
+    const seen = { sounds: 0, alerts: [] as string[] };
+    Object.assign(window, { seen });
+    const Tone = window.AudioContext;
+    window.AudioContext = class extends Tone {
+      constructor() {
+        super();
+        seen.sounds += 1;
+      }
+    };
+    window.Notification = class {
+      static permission = "granted";
+      static requestPermission = () => Promise.resolve("granted");
+      constructor(title: string) {
+        seen.alerts.push(title);
+      }
+    } as unknown as typeof Notification;
+    Object.defineProperty(document, "hidden", { get: () => true });
+  });
+  await page.goto(`${service.page}#/settings/general`);
+  await page.getByLabel("Thread notifications").selectOption("both");
+  await page.getByRole("switch", { name: "In-app notifications" }).check();
+  const other = await service.api<{ id: string }>("POST", "/api/threads", {
+    project_id: projectId,
+    engine: "codex",
+    title: "Busy elsewhere",
+    model: null,
+    worktree: null,
+    skill_profile: null,
+  });
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await expect(page.locator("li[data-thread-item]").filter({ hasText: "Busy elsewhere" })).toBeVisible();
+  await service.api("POST", `/api/threads/${other.id}/runs`, { prompt: "[scene:usage] elsewhere" });
+  await expect(page.getByText(/Busy elsewhere (finished|failed)/).first()).toBeVisible({ timeout: 25_000 });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { seen: { sounds: number } }).seen.sounds)).toBeGreaterThan(0);
+  const alerts = await page.evaluate(() => (window as unknown as { seen: { alerts: string[] } }).seen.alerts);
+  expect(alerts).toContain("Busy elsewhere");
 });

@@ -161,7 +161,7 @@ test("a follow-up steers or queues by setting, and the opposite key flips it", a
     .toBe("running");
   await box(page).fill("queued one");
   await box(page).press("Enter");
-  await expect(page.getByText("queued one")).toBeVisible();
+  await expect(page.getByLabel("Queued messages").getByText("queued one")).toBeVisible();
   await expect(box(page)).toHaveValue("");
   await box(page).fill("steered now");
   await box(page).press("ControlOrMeta+Enter");

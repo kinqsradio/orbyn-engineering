@@ -137,8 +137,9 @@ async fn a_crash_holds_the_queue_across_restart() {
     service.kill();
     let reopened = Service::start(&data, Options::default());
     let held = queue(&reopened, &thread).await;
-    assert_eq!(held[0]["prompt"], "kept");
-    assert_eq!(held[0]["held"], true);
+    // A prompt the crash caught before its run started is held along with it.
+    let kept = held.iter().find(|row| row["prompt"] == "kept").unwrap();
+    assert_eq!(kept["held"], true);
 }
 
 #[tokio::test]

@@ -6,7 +6,8 @@ import { readJson, writeJson } from "../../lib/storage";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { IconButton } from "../../ui/controls";
+import { Button, Field, IconButton } from "../../ui/controls";
+import { Dialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
@@ -151,18 +152,22 @@ function UsageView({
   days,
   only,
   nameOf,
+  onSaved,
 }: {
   report: UsageReport;
   metric: "cost" | "tokens";
   days: UsageDays;
   only: string | null;
   nameOf(engine: string): string;
+  /** A price or alias changed, so the report does too. */
+  onSaved(): void;
 }) {
   const totals = useMemo(
     () => usageTotals(report.engines.filter((engine) => !only || engine.engine === only), days, new Date()),
     [report, days, only],
   );
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
+  const [pricing, setPricing] = useState<string | null>(null);
   const colorOf = (engine: string) => {
     const at = report.engines.findIndex((entry) => entry.engine === engine);
     return CHART_COLORS[at % CHART_COLORS.length] ?? "var(--color-text)";
@@ -258,7 +263,11 @@ function UsageView({
               <tbody>
                 {models.map((model) => (
                   <tr key={`${model.engine}:${model.model}`}>
-                    <td>{model.model}</td>
+                    <td>
+                      <button type="button" className="text-action" aria-label={`Set price for ${model.model}`} onClick={() => setPricing(model.model)}>
+                        {model.model}
+                      </button>
+                    </td>
                     <td>{cost(model.estimated_cost)}</td>
                     <td>{formatPercent(totals.tokens > 0 ? model.tokens / totals.tokens : 0)}</td>
                     <td>{formatTokens(model.tokens)}</td>
@@ -294,7 +303,96 @@ function UsageView({
           )}
         </div>
       </section>
+      {pricing ? <ModelPriceDialog model={pricing} onClose={() => setPricing(null)} onSaved={onSaved} /> : null}
     </div>
+  );
+}
+
+const RATES = [
+  { key: "input", label: "Input" },
+  { key: "output", label: "Output" },
+  { key: "cache_read", label: "Cached input" },
+  { key: "cache_write", label: "Cache write" },
+] as const;
+
+/** A model's rates per million tokens, or another model it counts as. */
+function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(): void; onSaved(): void }) {
+  const settings = useAsync("usage-settings", (signal) => api.settings(signal));
+  const current = settings.data?.model_prices?.find((price) => price.model === model);
+  const alias = settings.data?.model_aliases?.find((entry) => entry.model === model);
+  const [rates, setRates] = useState<Record<string, string>>({});
+  const [countsAs, setCountsAs] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const shown = (key: (typeof RATES)[number]["key"]) => rates[key] ?? (current ? String(current[key]) : "");
+  const save = async () => {
+    if (!settings.data) return;
+    setBusy(true);
+    setError(null);
+    const target = (countsAs ?? alias?.counts_as ?? "").trim();
+    const priced = RATES.some((rate) => shown(rate.key) !== "");
+    const number = (key: (typeof RATES)[number]["key"]) => Number(shown(key));
+    try {
+      await api.putSettings({
+        ...settings.data,
+        model_prices: [
+          ...(settings.data.model_prices ?? []).filter((price) => price.model !== model),
+          ...(priced
+            ? [{ model, input: number("input"), output: number("output"), cache_read: number("cache_read"), cache_write: number("cache_write") }]
+            : []),
+        ],
+        model_aliases: [
+          ...(settings.data.model_aliases ?? []).filter((entry) => entry.model !== model),
+          ...(target ? [{ model, counts_as: target }] : []),
+        ],
+      });
+      onSaved();
+      onClose();
+    } catch (failure) {
+      setError(`Your changes are kept. ${toFailure(failure).message}`);
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      title={`Price for ${model}`}
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button tone="primary" busy={busy} disabled={!settings.data} onClick={() => void save()}>
+            Save price
+          </Button>
+        </>
+      }
+    >
+      <p>Dollars per million tokens.</p>
+      {RATES.map((rate) => (
+        <Field key={rate.key} label={rate.label}>
+          {(props) => (
+            <input
+              {...props}
+              type="number"
+              min="0"
+              step="any"
+              value={shown(rate.key)}
+              onChange={(event) => setRates({ ...rates, [rate.key]: event.target.value })}
+            />
+          )}
+        </Field>
+      ))}
+      <Field label="Counts as" hint="Another model whose price this one follows.">
+        {(props) => <input {...props} value={countsAs ?? alias?.counts_as ?? ""} onChange={(event) => setCountsAs(event.target.value)} />}
+      </Field>
+      {error ? (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Dialog>
   );
 }
 
@@ -332,6 +430,8 @@ export function UsagePage({ onClose }: { onClose(): void }) {
       if (event.metaKey || event.ctrlKey || event.altKey || event.target instanceof HTMLInputElement) return;
       const next = { c: "cost", t: "tokens", l: "limits" }[event.key.toLowerCase()] as UsageMetric | undefined;
       if (next) setMetric(next);
+      const period = USAGE_PERIODS[Number(event.key) - 1];
+      if (period) setDays(period.days);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -421,7 +521,7 @@ export function UsagePage({ onClose }: { onClose(): void }) {
         ) : usage.status === "error" ? (
           <ErrorState title="Couldn't load usage" failure={usage.error} onRetry={usage.reload} />
         ) : usage.status === "ready" ? (
-          <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} />
+          <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => setNonce((value) => value + 1)} />
         ) : (
           <div className="usage-body">
             <Loading label="Loading usage" rows={4} />

@@ -110,6 +110,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
   const [worktree, setWorktree] = useState<string | null>(null);
+  const [baseBranch, setBaseBranch] = useState("");
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -156,6 +157,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         model: pickedModel,
         title: null,
         worktree: worktree ? slugify(worktree) : null,
+        ...(worktree && baseBranch.trim() ? { base_branch: baseBranch.trim() } : {}),
         skill_profile: null,
       });
       putThread(thread);
@@ -379,6 +381,21 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                             value={worktree}
                             spellCheck={false}
                             onChange={(event) => setWorktree(event.target.value)}
+                          />
+                        </dd>
+                      </div>
+                    ) : null}
+                    {worktree !== null ? (
+                      <div>
+                        <dt className="sr-only">Base branch</dt>
+                        <dd>
+                          <input
+                            className="worktree-purpose"
+                            aria-label="Base branch"
+                            placeholder="from default"
+                            value={baseBranch}
+                            spellCheck={false}
+                            onChange={(event) => setBaseBranch(event.target.value)}
                           />
                         </dd>
                       </div>

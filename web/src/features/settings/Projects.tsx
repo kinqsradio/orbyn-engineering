@@ -1,10 +1,11 @@
-import { Trash2, TriangleAlert } from "lucide-react";
+import { Trash2, TriangleAlert, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { ApiFailure, api } from "../../api/client";
 import type { LibraryStatus, TargetStatus } from "../../api/types";
 import { useWorkspace } from "../../state/workspace";
+import { PreferenceGroups } from "./PreferenceRows";
 import { Button, Pill } from "../../ui/controls";
-import { ConfirmDialog } from "../../ui/Dialog";
+import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 
 const short = (revision: string | null) => revision?.slice(0, 8) ?? "Unknown";
@@ -194,6 +195,108 @@ function RemoveDialog({
   );
 }
 
+const PERMISSIONS = [
+  { value: "supervised", label: "Supervised" },
+  { value: "auto_edits", label: "Auto-accept edits" },
+  { value: "auto", label: "Auto" },
+  { value: "full_access", label: "Full access" },
+];
+
+function EngineToggles({ value, save }: { value: unknown; save(next: string[]): void }) {
+  const engines = useWorkspace((state) => state.engines.data) ?? [];
+  const off = Array.isArray(value) ? (value as string[]) : [];
+  return (
+    <div className="engine-toggles">
+      {engines.map((engine) => (
+        <label key={engine.id} className="check">
+          <input
+            type="checkbox"
+            checked={!off.includes(engine.id)}
+            onChange={(event) => save(event.target.checked ? off.filter((id) => id !== engine.id) : [...off, engine.id])}
+          />
+          <span>{engine.name}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** One command per line, saved as the scripts new threads in this project offer. */
+function ScriptLines({ value, save }: { value: unknown; save(next: { name: string; command: string }[]): void }) {
+  const scripts = Array.isArray(value) ? (value as { name: string; command: string }[]) : [];
+  return (
+    <textarea
+      aria-label="Project scripts"
+      rows={3}
+      placeholder="Name: command"
+      key={JSON.stringify(scripts)}
+      defaultValue={scripts.map((script) => `${script.name}: ${script.command}`).join("\n")}
+      onBlur={(event) =>
+        save(
+          event.target.value
+            .split("\n")
+            .map((line) => /^([^:]+):\s*(.+)$/.exec(line.trim()))
+            .flatMap((match) => (match ? [{ name: match[1] ?? "", command: match[2] ?? "" }] : [])),
+        )
+      }
+    />
+  );
+}
+
+/** What this project sets for itself. Anything left alone follows the global setting. */
+function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string; name: string; onClose(): void }) {
+  return (
+    <Dialog title={`${name} settings`} onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
+      <PreferenceGroups
+        projectId={projectId}
+        groups={[
+          {
+            title: "New threads",
+            rows: [
+              { key: "default_engine", title: "Default engine" },
+              { key: "default_model", title: "Default model" },
+              { key: "default_permission_mode", title: "Default permissions", options: PERMISSIONS },
+              {
+                key: "default_thread_env_mode",
+                title: "Default checkout",
+                options: [
+                  { value: "local", label: "Current checkout" },
+                  { value: "worktree", label: "New worktree" },
+                ],
+              },
+              {
+                key: "disabled_engines",
+                title: "Providers",
+                render: (value, save) => <EngineToggles value={value} save={save} />,
+              },
+              {
+                key: "default_project_scripts",
+                title: "Scripts",
+                render: (value, save) => <ScriptLines value={value} save={save} />,
+              },
+            ],
+          },
+          {
+            title: "Source control",
+            rows: [
+              { key: "auto_pull", title: "Pull the default branch automatically" },
+              {
+                key: "worktree_submodules",
+                title: "Submodules",
+                options: [
+                  { value: "recursive", label: "Recursive" },
+                  { value: "top_level", label: "Top level" },
+                  { value: "skip", label: "Skip" },
+                ],
+              },
+            ],
+          },
+        ]}
+      />
+    </Dialog>
+  );
+}
+
 function TargetRow({ target, onKept }: { target: TargetStatus; onKept(note: string): void }) {
   const name = useWorkspace(
     (state) =>
@@ -202,6 +305,7 @@ function TargetRow({ target, onKept }: { target: TargetStatus; onKept(note: stri
       target.path,
   );
   const [removing, setRemoving] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
 
   return (
     <li className="setting-row">
@@ -210,6 +314,13 @@ function TargetRow({ target, onKept }: { target: TargetStatus; onKept(note: stri
         {target.dirty ? <Pill tone="warn">Modified</Pill> : null}
         {target.project_id ? (
           <span className="engine-row-actions">
+            <Button
+              small
+              tone="quiet"
+              aria-label={`Settings for ${name}`}
+              icon={<Settings2 size={16} aria-hidden />}
+              onClick={() => setConfiguring(true)}
+            />
             <Button
               small
               tone="quiet"
@@ -257,6 +368,9 @@ function TargetRow({ target, onKept }: { target: TargetStatus; onKept(note: stri
       {target.problem ? <p className="banner banner-warn">{target.problem}</p> : null}
       {removing ? (
         <RemoveDialog target={target} name={name} onClose={() => setRemoving(false)} onKept={onKept} />
+      ) : null}
+      {configuring && target.project_id ? (
+        <ProjectSettingsDialog projectId={target.project_id} name={name} onClose={() => setConfiguring(false)} />
       ) : null}
     </li>
   );

@@ -352,6 +352,9 @@ async fn stopping_a_parent_stops_what_it_delegated() {
         .await;
     assert!(code < 300);
     assert_eq!(service.finished(&child).await, "cancelled");
+    assert_eq!(service.finished(&thread).await, "cancelled");
+    let queue = service.json(&format!("/api/threads/{thread}/queue")).await;
+    assert_eq!(queue, json!([]), "the child's report doesn't undo the Stop");
     service.stop().await;
 }
 
