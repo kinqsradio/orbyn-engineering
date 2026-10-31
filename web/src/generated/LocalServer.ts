@@ -2,6 +2,7 @@
 
 export type LocalServer = { port: number, pid: number, process: string, 
 /**
- * False where Orbyn cannot tell which folder a process runs in, as on Windows.
+ * False where the OS will not say which folder a process runs in, as for a
+ * system service. Only a server in the checkout can be stopped.
  */
 in_checkout: boolean, };

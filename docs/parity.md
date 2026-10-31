@@ -337,7 +337,7 @@ toward completion.
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
 - [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done | web done
 - [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
-- [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
 
 ## G. Terminal
@@ -352,7 +352,7 @@ toward completion.
 - [x] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S | server done
 - [x] G10 Project scripts control: run scripts, keybindings per script | apps/web/src/components/ProjectScriptsControl.tsx | w d m s | M | server done | web done
 - [ ] G11 Mobile terminal preferences: font size 6 to 14 in half steps, theme, paste handling, session menu with status labels, exit navigation | apps/mobile/src/features/terminal/terminalPreferences.ts | m | S
-- [x] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [x] G13 Terminal close order: end the process tree before closing the pseudo console so the close cannot hang | src-tauri/src/terminal.rs | s | S | server done
 - [ ] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3
 
@@ -401,7 +401,7 @@ toward completion.
 - [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
 - [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
 - [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
-- [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: tested on any OS, not yet run on Windows
+- [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 
 ## I. Providers
 
