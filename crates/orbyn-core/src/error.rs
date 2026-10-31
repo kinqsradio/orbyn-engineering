@@ -35,6 +35,8 @@ pub enum CoreError {
     NotFastForward(String),
     #[error("This file changed since you opened it.")]
     FileConflict { revision: Option<String> },
+    #[error("This file is too large to open here: {size} bytes, over the {limit} byte limit.")]
+    FileTooLarge { size: u64, limit: u64 },
     #[error("{0} other thread(s) work in this folder, so restoring could lose their work.")]
     SharedDirectory(usize),
     #[error("finish or stop active runs first")]
@@ -104,6 +106,7 @@ impl CoreError {
             Self::LibraryDirty(_) => "library_dirty",
             Self::NotFastForward(_) => "not_fast_forward",
             Self::FileConflict { .. } => "file_conflict",
+            Self::FileTooLarge { .. } => "file_too_large",
             Self::SharedDirectory(_) => "shared_directory",
             Self::RunsActive => "runs_active",
             Self::Updating => "updating",
@@ -132,6 +135,7 @@ impl CoreError {
             Self::NotFound(_) => 404,
             Self::Updating => 503,
             Self::Invalid(_) => 400,
+            Self::FileTooLarge { .. } => 413,
             Self::FolderUntrusted | Self::PolicyDenied(_) | Self::WorkspaceRefused(_) => 403,
             Self::ThreadBusy
             | Self::AlreadyDecided(_)

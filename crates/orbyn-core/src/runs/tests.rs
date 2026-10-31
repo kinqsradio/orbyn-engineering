@@ -412,6 +412,225 @@ async fn driver_that_ignores_cancel_is_still_torn_down() {
 }
 
 #[tokio::test]
+async fn a_forced_stop_does_not_wait_for_an_engine_that_ignores_it() {
+    let script: Script = Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let _held_open = events;
+            std::future::pending::<()>().await;
+        })
+    });
+    let f = fixture(script).await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_state(&f.core, &run.id, RunState::Running).await;
+    let started = std::time::Instant::now();
+    let stopped = f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+    assert!(started.elapsed() < STOP_TIMEOUT, "{:?}", started.elapsed());
+    assert_eq!(stopped.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(stopped.state, Some(RunState::Cancelled));
+    let again = f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+    assert_eq!(again.run_id, None, "a second click changes nothing");
+}
+
+#[tokio::test]
+async fn a_forced_stop_closes_a_run_nothing_owns() {
+    let script: Script = Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let _held_open = events;
+            std::future::pending::<()>().await;
+        })
+    });
+    let f = fixture(script).await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_state(&f.core, &run.id, RunState::Running).await;
+    let owner = f.core.runs.lock().remove(&run.id).unwrap();
+    let stopped = f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+    assert_eq!(stopped.state, Some(RunState::Cancelled));
+    owner.stops.force.cancel();
+}
+
+fn silent_engine() -> Script {
+    Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let _held_open = events;
+            std::future::pending::<()>().await;
+        })
+    })
+}
+
+#[tokio::test]
+async fn a_delegated_run_that_goes_silent_is_ended_and_says_why() {
+    let f = fixture(silent_engine()).await;
+    let task = orbyn_contracts::DelegateTask {
+        prompt: "work".into(),
+        title: None,
+        engine: None,
+        model: None,
+        effort: None,
+        options: std::collections::BTreeMap::new(),
+    };
+    let child = f.core.delegate(&f.thread, &task, "t").unwrap();
+    let run = f.core.store.thread(&child.id).unwrap().active_run.unwrap();
+    until_state(&f.core, &run.id, RunState::Running).await;
+    tokio::time::pause();
+    tokio::time::sleep(SILENCE_LIMIT * 2).await;
+    tokio::time::resume();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Failed);
+    let error = f.core.store.run(&run.id).unwrap().error.unwrap();
+    assert!(error.contains("stopped responding"), "{error}");
+}
+
+#[tokio::test]
+async fn a_run_someone_watches_is_never_ended_for_silence() {
+    let f = fixture(silent_engine()).await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_state(&f.core, &run.id, RunState::Running).await;
+    tokio::time::pause();
+    tokio::time::sleep(SILENCE_LIMIT * 2).await;
+    tokio::time::resume();
+    tokio::task::yield_now().await;
+    let state = f.core.store.run(&run.id).unwrap().state;
+    assert_eq!(state, RunState::Running);
+    f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+}
+
+fn follow_up(project: &str, target: &str, on_success: bool) -> orbyn_contracts::UpsertTask {
+    orbyn_contracts::UpsertTask {
+        id: None,
+        project_id: project.to_owned(),
+        thread_id: None,
+        name: "After".into(),
+        prompt: "next step".into(),
+        engine: "script".into(),
+        schedule: orbyn_contracts::TaskSchedule {
+            kind: "after_thread".into(),
+            every_minutes: None,
+            time: None,
+            weekdays: Vec::new(),
+            utc_offset_minutes: 0,
+            after_thread: Some(target.to_owned()),
+            only_on_success: on_success,
+        },
+        signature: None,
+        secret: None,
+        filters: Vec::new(),
+        dedupe: None,
+        max_age_seconds: None,
+        timestamp_path: None,
+    }
+}
+
+fn finishing() -> Script {
+    Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let _ = events
+                .send(EngineEvent::Finished(EngineOutcome::Completed))
+                .await;
+        })
+    })
+}
+
+#[tokio::test]
+async fn a_follow_up_fires_once_for_each_run_that_ends_and_not_for_old_ones() {
+    let f = fixture(finishing()).await;
+    let project = f.core.store.thread(&f.thread).unwrap().project_id;
+    let first = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_terminal(&f.core, &first.id).await;
+
+    let task = f
+        .core
+        .save_task(follow_up(&project, &f.thread, true), "t")
+        .unwrap();
+    assert!(task.next_run_at.is_none());
+    f.core.run_due_tasks().await;
+    let threads = |core: &Core| {
+        core.store
+            .list_threads(Some(&project), false)
+            .unwrap()
+            .len()
+    };
+    assert_eq!(
+        threads(&f.core),
+        1,
+        "a run from before the task does not count"
+    );
+
+    let second = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_terminal(&f.core, &second.id).await;
+    f.core.run_due_tasks().await;
+    f.core.run_due_tasks().await;
+    assert_eq!(threads(&f.core), 2, "once, however often the clock ticks");
+}
+
+#[tokio::test]
+async fn a_follow_up_can_ask_for_success_and_cannot_follow_itself() {
+    let script: Script = Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let outcome = EngineOutcome::Failed("no".into());
+            let _ = events.send(EngineEvent::Finished(outcome)).await;
+        })
+    });
+    let f = fixture(script).await;
+    let project = f.core.store.thread(&f.thread).unwrap().project_id;
+    let task = f
+        .core
+        .save_task(follow_up(&project, &f.thread, true), "t")
+        .unwrap();
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_terminal(&f.core, &run.id).await;
+    f.core.run_due_tasks().await;
+    let threads = f.core.store.list_threads(Some(&project), false).unwrap();
+    assert_eq!(threads.len(), 1, "a failed run sets off nothing here");
+    let kept = f.core.store.task(&task.id).unwrap();
+    assert_eq!(kept.after_run.as_deref(), Some(run.id.as_str()));
+
+    let mut itself = follow_up(&project, &f.thread, false);
+    itself.thread_id = Some(f.thread.clone());
+    assert!(f.core.save_task(itself, "t").is_err());
+    let mut unnamed = follow_up(&project, &f.thread, false);
+    unnamed.schedule.after_thread = None;
+    assert!(f.core.save_task(unnamed, "t").is_err());
+    let mut elsewhere = follow_up(&project, "nothing", false);
+    elsewhere.name = "x".into();
+    assert!(f.core.save_task(elsewhere, "t").is_err());
+}
+
+#[tokio::test]
+async fn the_gate_keeps_a_files_old_bytes_before_a_write_it_allows() {
+    let script: Script = Arc::new(|spec, events, _| {
+        tokio::spawn(async move {
+            let path = spec.checkout.join("a.txt").to_string_lossy().into_owned();
+            let verdict = crate::driver::ask_paths(
+                &events,
+                ActionKind::FileChange,
+                path.clone(),
+                "Edit".into(),
+                Value::Null,
+                Vec::new(),
+            )
+            .await;
+            if verdict.is_allowed() {
+                std::fs::write(&path, "new").unwrap();
+                let _ = events.send(EngineEvent::Files(vec![path])).await;
+            }
+            let _ = events
+                .send(EngineEvent::Finished(EngineOutcome::Completed))
+                .await;
+        })
+    });
+    let f = fixture(script).await;
+    let cwd = f.core.store.thread(&f.thread).unwrap().cwd;
+    std::fs::write(Path::new(&cwd).join("a.txt"), "old").unwrap();
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    let approval = until_pending(&f.core, &f.thread).await;
+    f.core.gate.decide(&approval.id, true, false, "t").unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+    let kept = f.core.changed_file(&f.thread, &run.id, "a.txt").unwrap();
+    assert_eq!(kept.before.as_deref(), Some("old"));
+    assert_eq!(kept.after.as_deref(), Some("new"));
+    assert_eq!(kept.status, orbyn_contracts::ChangeStatus::Modified);
+}
+
+#[tokio::test]
 async fn panicking_engine_task_fails_the_run() {
     let script: Script = Arc::new(|_, _events, _| {
         tokio::spawn(async move {

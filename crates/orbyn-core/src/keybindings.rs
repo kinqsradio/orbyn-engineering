@@ -70,6 +70,15 @@ const DEFAULTS: &[(&str, &str, &str)] = &[
     ("mod+o", "editor.openFavorite", ""),
     ("mod+shift+[", "thread.previous", ""),
     ("mod+shift+]", "thread.next", ""),
+    ("mod+1", "thread.jump.1", "!terminalFocus"),
+    ("mod+2", "thread.jump.2", "!terminalFocus"),
+    ("mod+3", "thread.jump.3", "!terminalFocus"),
+    ("mod+4", "thread.jump.4", "!terminalFocus"),
+    ("mod+5", "thread.jump.5", "!terminalFocus"),
+    ("mod+6", "thread.jump.6", "!terminalFocus"),
+    ("mod+7", "thread.jump.7", "!terminalFocus"),
+    ("mod+8", "thread.jump.8", "!terminalFocus"),
+    ("mod+9", "thread.jump.9", "!terminalFocus"),
     ("mod+shift+c", "thread.copyReference", "!terminalFocus"),
     ("mod+shift+s", "thread.settle", "!terminalFocus"),
     ("mod+shift+p", "thread.pin", "!terminalFocus"),
@@ -275,6 +284,20 @@ mod tests {
             "{:?}",
             conflicts(&defaults())
         );
+    }
+
+    #[test]
+    fn nine_jumps_are_bound_and_each_can_be_rebound_alone() {
+        let rules = defaults();
+        for digit in 1..=9 {
+            let command = format!("thread.jump.{digit}");
+            let found: Vec<_> = rules.iter().filter(|r| r.command == command).collect();
+            assert_eq!(found.len(), 1, "{command}");
+            assert_eq!(found[0].key, format!("mod+{digit}"));
+        }
+        let moved = merged(&[rule("alt+3", "thread.jump.3", Some("!terminalFocus"))]);
+        assert!(!moved.iter().any(|r| r.key == "mod+3"));
+        assert!(moved.iter().any(|r| r.key == "mod+4"));
     }
 
     #[test]

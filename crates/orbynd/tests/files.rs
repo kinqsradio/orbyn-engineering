@@ -290,12 +290,254 @@ async fn open_in_editor_runs_only_a_known_editor_on_a_checkout_file() {
         .send(&opened, json!({ "path": "a.txt", "editor": "vscode" }))
         .await;
     assert_eq!(status, 202);
-    for _ in 0..200 {
-        if record.exists() {
+    // The editor runs detached, and on a busy machine it can take a while.
+    let mut seen = String::new();
+    for _ in 0..6000 {
+        seen = std::fs::read_to_string(&record).unwrap_or_default();
+        if !seen.is_empty() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    let seen = std::fs::read_to_string(&record).unwrap();
     assert_eq!(seen.trim(), checkout.join("a.txt").to_str().unwrap());
+}
+
+async fn raw(service: &Service, thread: &str, path: &str) -> reqwest::RequestBuilder {
+    service
+        .get(&format!("/api/threads/{thread}/files/raw"))
+        .query(&[("path", path)])
+}
+
+fn header<'a>(response: &'a reqwest::Response, name: &str) -> &'a str {
+    response
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+}
+
+async fn checkout(service: &Service, thread: &str) -> std::path::PathBuf {
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    body["cwd"].as_str().unwrap().into()
+}
+
+#[tokio::test]
+async fn raw_bytes_serve_ranges_and_never_run_a_page_in_this_origin() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let root = checkout(&service, &thread).await;
+    let bytes: Vec<u8> = (0..=255).collect();
+    std::fs::write(root.join("clip.mp4"), &bytes).unwrap();
+    std::fs::write(root.join("page.html"), "<script>1</script>").unwrap();
+    std::fs::write(root.join("mark.svg"), "<svg/>").unwrap();
+    std::fs::write(root.join("doc.pdf"), "%PDF").unwrap();
+
+    let whole = raw(&service, &thread, "clip.mp4")
+        .await
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(whole.status(), 200);
+    assert_eq!(header(&whole, "content-type"), "video/mp4");
+    assert_eq!(header(&whole, "accept-ranges"), "bytes");
+    assert_eq!(header(&whole, "x-content-type-options"), "nosniff");
+    assert!(header(&whole, "content-disposition").starts_with("inline"));
+    let tag = header(&whole, "etag").to_owned();
+    assert_eq!(whole.bytes().await.unwrap().as_ref(), &bytes[..]);
+
+    let part = raw(&service, &thread, "clip.mp4")
+        .await
+        .header("Range", "bytes=10-19")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(part.status(), 206);
+    assert_eq!(header(&part, "content-range"), "bytes 10-19/256");
+    assert_eq!(header(&part, "content-length"), "10");
+    assert_eq!(part.bytes().await.unwrap().as_ref(), &bytes[10..20]);
+
+    let tail = raw(&service, &thread, "clip.mp4")
+        .await
+        .header("Range", "bytes=-6")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tail.bytes().await.unwrap().as_ref(), &bytes[250..]);
+
+    let past = raw(&service, &thread, "clip.mp4")
+        .await
+        .header("Range", "bytes=256-")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(past.status(), 416);
+    assert_eq!(header(&past, "content-range"), "bytes */256");
+
+    // A file that changed answers in full, so two versions are never stitched.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::write(root.join("clip.mp4"), b"newer").unwrap();
+    let stale = raw(&service, &thread, "clip.mp4")
+        .await
+        .header("Range", "bytes=0-1")
+        .header("If-Range", &tag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), 200);
+    assert_eq!(stale.bytes().await.unwrap().as_ref(), b"newer");
+
+    let fresh = raw(&service, &thread, "clip.mp4")
+        .await
+        .send()
+        .await
+        .unwrap();
+    let tag = header(&fresh, "etag").to_owned();
+    let same = raw(&service, &thread, "clip.mp4")
+        .await
+        .header("If-None-Match", &tag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(same.status(), 304);
+
+    let page = raw(&service, &thread, "page.html")
+        .await
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(header(&page, "content-type"), "application/octet-stream");
+    assert!(header(&page, "content-disposition").starts_with("attachment"));
+
+    let svg = raw(&service, &thread, "mark.svg")
+        .await
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(header(&svg, "content-type"), "image/svg+xml");
+    assert!(header(&svg, "content-security-policy").contains("sandbox"));
+
+    let pdf = raw(&service, &thread, "doc.pdf")
+        .await
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(header(&pdf, "content-type"), "application/pdf");
+    assert_eq!(header(&pdf, "content-security-policy"), "");
+
+    let forced = service
+        .get(&format!("/api/threads/{thread}/files/raw"))
+        .query(&[("path", "mark.svg"), ("download", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert!(header(&forced, "content-disposition").starts_with("attachment"));
+}
+
+#[tokio::test]
+async fn raw_bytes_stay_inside_the_checkout_and_behind_the_token() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let root = checkout(&service, &thread).await;
+    std::fs::write(dir.path().join("outside.png"), "secret").unwrap();
+    std::fs::write(root.join("in.png"), "ok").unwrap();
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+
+    for path in [
+        "../outside.png",
+        "sub/../../outside.png",
+        "/etc/hosts",
+        ".git/config",
+        ".GIT/config",
+    ] {
+        let response = raw(&service, &thread, path).await.send().await.unwrap();
+        assert_eq!(response.status(), 400, "{path}");
+    }
+    let folder = raw(&service, &thread, "sub").await.send().await.unwrap();
+    assert_eq!(folder.status(), 400);
+    let missing = raw(&service, &thread, "none.png")
+        .await
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), 404);
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(dir.path().join("outside.png"), root.join("link.png")).unwrap();
+        std::os::unix::fs::symlink(".git/config", root.join("cfg.png")).unwrap();
+        for path in ["link.png", "cfg.png"] {
+            let linked = raw(&service, &thread, path).await.send().await.unwrap();
+            assert_eq!(linked.status(), 400, "{path}");
+        }
+    }
+
+    // An image element cannot set a header, so this route takes the token in the URL,
+    // and no other route gains that.
+    let url = format!("{}/api/threads/{thread}/files/raw", service.url);
+    let anonymous = service
+        .client
+        .get(&url)
+        .query(&[("path", "in.png")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), 401);
+    let wrong = service
+        .client
+        .get(&url)
+        .query(&[("path", "in.png"), ("token", "wrong")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), 401);
+    let good = service
+        .client
+        .get(&url)
+        .query(&[("path", "in.png"), ("token", service.token.as_str())])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(good.status(), 200);
+    let other = service
+        .client
+        .get(format!(
+            "{}/api/threads/{thread}/files/content",
+            service.url
+        ))
+        .query(&[("path", "in.png"), ("token", service.token.as_str())])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(other.status(), 401);
+}
+
+#[tokio::test]
+async fn raw_bytes_need_a_trusted_folder() {
+    let dir = TempDir::new();
+    let service = Service::start(&dir.path().join("data"), Options::default());
+    let folder = dir.path().join("project");
+    std::fs::create_dir_all(&folder).unwrap();
+    let project = service.project(&folder, false).await;
+    let thread = service.thread(&project, "codex").await;
+    let response = raw(&service, &thread, "a.png").await.send().await.unwrap();
+    assert_eq!(response.status(), 403);
+}
+
+#[tokio::test]
+async fn raw_bytes_refuse_a_file_past_the_limit() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let root = checkout(&service, &thread).await;
+    // A sparse file, so this takes no disk.
+    let huge = std::fs::File::create(root.join("huge.mp4")).unwrap();
+    huge.set_len(orbyn_core::file_bytes::MAX_RAW_BYTES + 1)
+        .unwrap();
+    let response = raw(&service, &thread, "huge.mp4")
+        .await
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 413);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "file_too_large");
 }

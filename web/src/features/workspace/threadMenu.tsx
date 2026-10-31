@@ -11,6 +11,7 @@ import {
   MailOpen,
   Pencil,
   Pin,
+  Search,
   PinOff,
   RefreshCw,
   Settings,
@@ -18,6 +19,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
+import { runHandlers } from "../../app/shortcuts";
 import { useState } from "react";
 import type { Thread } from "../../api/types";
 import type { SnoozePreset } from "../../generated/SnoozePreset";
@@ -102,6 +104,15 @@ export function threadMenuItems(input: ThreadMenuInput): MenuItem[] {
           icon: icon(Clock),
           children: snoozeChildren([thread], presets, () => input.onCustomSnooze([thread])),
         },
+    {
+      label: "Find in thread",
+      icon: icon(Search),
+      separatorBefore: true,
+      onSelect: () => {
+        navigate({ name: "thread", id: thread.id });
+        setTimeout(() => runHandlers("chat.find"));
+      },
+    },
     { label: "Rename thread", icon: icon(Pencil), separatorBefore: true, onSelect: input.onRename },
     { label: "Regenerate title", icon: icon(RefreshCw), onSelect: () => void regenerateTitles([thread]) },
     { label: "Mark unread", icon: icon(MailOpen), onSelect: () => void setUnread([thread], true) },

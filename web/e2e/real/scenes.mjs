@@ -87,6 +87,20 @@ ${Array.from({ length: 30 }, (_, at) => `- Step ${at + 1}`).join("\n")}
     { method: "thread/tokenUsage/updated", params: { tokenUsage: { total: { totalTokens: 600 }, last: { totalTokens: 20 }, modelContextWindow: 1000 } } },
     ...message("us", "Counted."),
   ],
+  large: [
+    { method: "turn/diff/updated", params: { diff: ["a", "b", "c"].map((name) => `diff --git a/${name} b/${name}\n--- a/${name}\n+++ b/${name}\n@@ -1 +1 @@\n-x\n+y\n`).join("") } },
+    ...message("lg", "Changed a lot."),
+  ],
+  long: message("ln", Array.from({ length: 120 }, (_, at) => `Paragraph ${at + 1} of a long answer.`).join("\n\n")),
+  stream: [
+    ...message("st", Array.from({ length: 60 }, (_, at) => `Streamed line ${at + 1}.`).join("\n\n")),
+    ...Array.from({ length: 40 }, (_, at) => [
+      { wait: 150 },
+      started(item(`s${at}`, "agentMessage", { text: "" })),
+      { method: "item/agentMessage/delta", params: { itemId: `s${at}`, delta: `Tick ${at}.` } },
+      completed(item(`s${at}`, "agentMessage", { text: `Tick ${at}.` })),
+    ]).flat(),
+  ],
   failure: [
     ...message("partial", "Starting."),
     { end: "failed", error: { message: "The engine stopped: quota reached" } },

@@ -9,6 +9,11 @@ publish.workspace = true
 name = "orbynd"
 path = "src/main.rs"
 
+# The command line. It talks to a running service over the same API as the UI.
+[[bin]]
+name = "orbyn"
+path = "src/bin/orbyn.rs"
+
 # Deterministic protocol double used by the integration tests. It speaks each
 # engine's wire format over real pipes and is never selected by default.
 [[bin]]

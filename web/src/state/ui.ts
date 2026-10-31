@@ -3,7 +3,7 @@ import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
-export type RightTab = "diff" | "files" | "activity" | "pulls";
+export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser";
 export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
@@ -51,6 +51,14 @@ interface Prefs {
   timestampFormat: "locale" | "12-hour" | "24-hour";
   sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
   followUpBehavior: "queue" | "steer";
+  diffLayout: "stacked" | "split";
+  previewSearchEngine: string;
+  /** Opens Changes after a large turn. */
+  proactivePanels: boolean;
+  recentUrls: string[];
+  diffFilesCollapsed: boolean;
+  diffIgnoreWhitespace: boolean;
+  diffHideTests: boolean;
   /** A named palette over the base theme, for each scheme. */
   lightPreset: string | null;
   darkPreset: string | null;
@@ -144,6 +152,13 @@ const defaults: Prefs = {
   timestampFormat: "locale",
   sendShortcut: "enter",
   followUpBehavior: "queue",
+  diffLayout: "stacked",
+  previewSearchEngine: "duckduckgo",
+  proactivePanels: false,
+  recentUrls: [],
+  diffFilesCollapsed: false,
+  diffIgnoreWhitespace: false,
+  diffHideTests: false,
   lightPreset: null,
   darkPreset: null,
   customColors: {},
@@ -259,6 +274,13 @@ const prefsOf = (state: Prefs): Prefs => ({
   timestampFormat: state.timestampFormat,
   sendShortcut: state.sendShortcut,
   followUpBehavior: state.followUpBehavior,
+  diffLayout: state.diffLayout,
+  previewSearchEngine: state.previewSearchEngine,
+  proactivePanels: state.proactivePanels,
+  recentUrls: state.recentUrls,
+  diffFilesCollapsed: state.diffFilesCollapsed,
+  diffIgnoreWhitespace: state.diffIgnoreWhitespace,
+  diffHideTests: state.diffHideTests,
   lightPreset: state.lightPreset,
   darkPreset: state.darkPreset,
   customColors: state.customColors,

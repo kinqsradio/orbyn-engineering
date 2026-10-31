@@ -30,6 +30,31 @@ use crate::workspace::Workspace;
 /// A wait of this length covers an unattended person without a run hanging forever.
 pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
+/// Where the service keeps its data unless told otherwise, so the CLI finds it too.
+pub fn default_data_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("ORBYN_DATA_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    let home = || {
+        std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from)
+    };
+    #[cfg(target_os = "macos")]
+    let dir = home().map(|home| home.join("Library/Application Support/Orbyn"));
+    #[cfg(windows)]
+    let dir = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(home)
+        .map(|base| base.join("Orbyn"));
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let dir = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home().map(|home| home.join(".local/share")))
+        .map(|base| base.join("orbyn"));
+    dir
+}
+
 #[derive(Clone, Debug)]
 pub struct CoreConfig {
     pub data_dir: PathBuf,
@@ -43,7 +68,11 @@ pub struct CoreConfig {
     pub approval_timeout: Duration,
     pub desktop_program: Option<String>,
     pub browser_path: Option<PathBuf>,
+    /// Where the ACP registry is read from.
+    pub acp_registry_url: String,
     pub browser_headless: bool,
+    /// Forces `--in-process-gpu`, which the headless shell gets by itself.
+    pub browser_in_process_gpu: bool,
 }
 
 impl CoreConfig {
@@ -57,7 +86,9 @@ impl CoreConfig {
             approval_timeout: DEFAULT_APPROVAL_TIMEOUT,
             desktop_program: None,
             browser_path: None,
+            acp_registry_url: crate::acp_registry::REGISTRY_URL.to_owned(),
             browser_headless: false,
+            browser_in_process_gpu: false,
         }
     }
 }
@@ -78,6 +109,8 @@ pub struct Core {
     pub usage: Arc<UsageCenter>,
     pub clones: ClonePool,
     pub previews: PreviewManager,
+    /// For requests a person asked for, such as reading the ACP registry.
+    pub http: reqwest::Client,
     pub recovery: Recovery,
     _lock: File,
 }
@@ -90,6 +123,7 @@ impl Core {
             browser_path: config.browser_path.clone(),
             profile_dir: config.data_dir.join("browser-profile"),
             headless: config.browser_headless,
+            in_process_gpu: config.browser_in_process_gpu,
         }));
         Self::open_with(config, backend)
     }
@@ -149,7 +183,7 @@ impl Core {
             store.clone(),
             workspace.clone(),
             engines.clone(),
-            http,
+            http.clone(),
             config.update_manifest.clone(),
         ));
         let core = Self {
@@ -168,6 +202,7 @@ impl Core {
             usage,
             clones: ClonePool::default(),
             previews: PreviewManager::default(),
+            http,
             recovery,
             _lock: lock,
         };

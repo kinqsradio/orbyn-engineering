@@ -387,3 +387,114 @@ async fn switching_engines_hands_off_within_budget_and_refuses_when_busy() {
         .await;
     service.finished(&thread).await;
 }
+
+async fn changes_of(service: &Service, thread: &str, run: &str) -> Value {
+    service
+        .json(&format!("/api/threads/{thread}/runs/{run}/changes"))
+        .await
+}
+
+async fn restore(service: &Service, thread: &str, run: &str, body: Value) -> (u16, Value) {
+    service
+        .send(
+            &format!("/api/threads/{thread}/runs/{run}/changes/restore"),
+            body,
+        )
+        .await
+}
+
+#[tokio::test]
+async fn a_run_keeps_both_ends_of_a_file_and_restores_them_without_touching_later_work() {
+    let dir = TempDir::new();
+    let checkout = dir.path().join("library/repo/project");
+    let options = Options {
+        env: vec![(
+            "ORBYN_FAKE_CHECKOUT".into(),
+            checkout.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, thread) = setup(&dir, options, "codex").await;
+    std::fs::write(checkout.join("a.txt"), "before\n").unwrap();
+    let run = service.admit(&thread, "[write:a.txt]").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let new = service.admit(&thread, "[write:b.txt]").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+
+    let changes = changes_of(&service, &thread, &run).await;
+    assert_eq!(changes["files"][0]["path"], "a.txt");
+    assert_eq!(changes["files"][0]["status"], "modified");
+    assert_eq!(changes["files"][0]["restorable"], true);
+    let added = changes_of(&service, &thread, &new).await;
+    assert_eq!(added["files"][0]["status"], "added");
+
+    // Saved content answers, whatever the folder holds now.
+    std::fs::write(checkout.join("a.txt"), "someone else\n").unwrap();
+    let saved = service
+        .get(&format!("/api/threads/{thread}/runs/{run}/changes/file"))
+        .query(&[("path", "a.txt")])
+        .send()
+        .await
+        .unwrap();
+    let saved: Value = saved.json().await.unwrap();
+    assert_eq!(saved["before"], "before\n");
+    assert_eq!(saved["after"], "written by turn\n");
+
+    // Later work is reported and left where it is.
+    let (code, report) = restore(&service, &thread, &run, json!({ "point": "start" })).await;
+    assert_eq!(code, 200, "{report}");
+    assert_eq!(report[0]["outcome"], "conflict");
+    let held = std::fs::read_to_string(checkout.join("a.txt")).unwrap();
+    assert_eq!(held, "someone else\n");
+
+    std::fs::write(checkout.join("a.txt"), "written by turn\n").unwrap();
+    let (_, report) = restore(&service, &thread, &run, json!({ "point": "start" })).await;
+    assert_eq!(report[0]["outcome"], "restored");
+    assert_eq!(
+        std::fs::read_to_string(checkout.join("a.txt")).unwrap(),
+        "before\n"
+    );
+    let (_, again) = restore(&service, &thread, &run, json!({ "point": "start" })).await;
+    assert_eq!(again[0]["outcome"], "unchanged");
+    let (_, report) = restore(&service, &thread, &new, json!({ "point": "start" })).await;
+    assert_eq!(report[0]["outcome"], "restored");
+    assert!(!checkout.join("b.txt").exists(), "an added file goes");
+
+    let (code, _) = restore(
+        &service,
+        &thread,
+        &run,
+        json!({ "point": "start", "paths": ["never.txt"] }),
+    )
+    .await;
+    assert_eq!(code, 400);
+    let other = service
+        .thread(
+            service.json(&format!("/api/threads/{thread}")).await["project_id"]
+                .as_str()
+                .unwrap(),
+            "codex",
+        )
+        .await;
+    let (code, _) = restore(&service, &other, &run, json!({ "point": "start" })).await;
+    assert_eq!(code, 404, "a run belongs to its thread");
+    let audit = service.audit(&thread).await;
+    assert!(
+        audit
+            .iter()
+            .any(|row| row["action"] == "run.restore_changes")
+    );
+}
+
+#[tokio::test]
+async fn a_restore_waits_for_the_run_to_end() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let run = service.admit(&thread, "[hang]").await;
+    let (code, _) = restore(&service, &thread, &run, json!({ "point": "start" })).await;
+    assert_eq!(code, 409);
+    let (code, _) = service
+        .send(&format!("/api/runs/{run}/cancel"), json!({}))
+        .await;
+    assert_eq!(code, 202);
+}

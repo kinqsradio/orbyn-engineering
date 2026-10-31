@@ -28,6 +28,9 @@ use crate::util::new_id;
 
 const PROTOCOL_VERSION: u64 = 1;
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// How many models one probe tries, and how long it may take over them.
+const MAX_PROBED_MODELS: usize = 24;
+const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 const PROMPT_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CANCEL_GRACE: Duration = Duration::from_secs(5);
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -80,10 +83,17 @@ impl EngineDriver for AcpDriver {
         let dir = ProbeDir::new()?;
         let process = spawn_engine(&command, &args, dir.path())?;
         let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, true);
-        let (_, session) = open_raw(&rpc, dir.path(), None).await?;
+        let (id, session, init) = open_raw(&rpc, dir.path(), None).await?;
+        let options = parse_session_options(&session);
+        let mut models = parse_models(&session);
+        let probing = probe_model_options(&rpc, &id, &session, &options, &mut models);
+        if tokio::time::timeout(PROBE_TIMEOUT, probing).await.is_err() {
+            tracing::debug!("an agent took too long to list its models' options");
+        }
+        delete_probe_session(&rpc, &init, &id).await;
         Ok(Some(ModelCatalog {
-            options: parse_session_options(&session),
-            ..ModelCatalog::engine(parse_models(&session))
+            options,
+            ..ModelCatalog::engine(models)
         }))
     }
 
@@ -203,7 +213,7 @@ async fn run_protocol(
 }
 
 async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
-    let (id, mut session) = open_raw(rpc, &spec.cwd, spec.mcp_url.as_deref()).await?;
+    let (id, mut session, _) = open_raw(rpc, &spec.cwd, spec.mcp_url.as_deref()).await?;
     // Mode first: an agent can change what it offers per mode and per model, so each
     // step reads the reply of the one before it, and the prompt waits for them all.
     if let Some(mode) = spec.options.get(MODE) {
@@ -265,6 +275,11 @@ async fn select_model(rpc: &RpcClient, id: &str, session: &Value, model: &str) -
     }
     let params = json!({ "sessionId": id, "modelId": model });
     match rpc.call("session/set_model", params, CALL_TIMEOUT).await {
+        Ok(reply) if reply.get("configOptions").is_some() => {
+            let mut next = session.clone();
+            next["configOptions"] = reply["configOptions"].clone();
+            Ok(next)
+        }
         Ok(_) => Ok(session.clone()),
         Err(error) => Err(CoreError::EngineUnavailable(format!(
             "This agent did not take the model {model}: {error}"
@@ -374,7 +389,7 @@ async fn open_raw(
     rpc: &RpcClient,
     cwd: &std::path::Path,
     mcp_url: Option<&str>,
-) -> Result<(String, Value)> {
+) -> Result<(String, Value, Value)> {
     let init = rpc
         .call(
             "initialize",
@@ -418,7 +433,52 @@ async fn open_raw(
         .and_then(Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| CoreError::EngineUnavailable("The agent returned no session id.".into()))?;
-    Ok((id, session))
+    Ok((id, session, init))
+}
+
+/// Some agents list what a model offers only once it is chosen, so a probe chooses each
+/// in turn, in a session nobody will use, and keeps what differs from the session's own
+/// options. One that refuses is left with those.
+async fn probe_model_options(
+    rpc: &RpcClient,
+    id: &str,
+    session: &Value,
+    baseline: &[ModelOption],
+    models: &mut [ModelInfo],
+) {
+    let mut state = session.clone();
+    for model in models.iter_mut().take(MAX_PROBED_MODELS) {
+        let Ok(reply) = select_model(rpc, id, &state, &model.id).await else {
+            continue;
+        };
+        model.options = parse_session_options(&reply)
+            .into_iter()
+            .filter(|option| !baseline.contains(option))
+            .collect();
+        state = reply;
+    }
+}
+
+/// Removes the session a probe opened, so an agent that keeps sessions does not show
+/// it among real work. An agent may offer neither call, and a failure here is only a
+/// leftover in a temp folder that is about to go.
+async fn delete_probe_session(rpc: &RpcClient, init: &Value, id: &str) {
+    let offered = |name: &str| {
+        init.pointer("/agentCapabilities/sessionCapabilities")
+            .and_then(|capabilities| capabilities.get(name))
+            .is_some_and(|capability| !capability.is_null())
+    };
+    let method = if offered("delete") {
+        "session/delete"
+    } else if offered("close") {
+        "session/close"
+    } else {
+        return;
+    };
+    let params = json!({ "sessionId": id });
+    if let Err(error) = rpc.call(method, params, CALL_TIMEOUT).await {
+        tracing::debug!(%error, "could not remove a probe session");
+    }
 }
 
 /// Reads the models a session reply lists, marking the agent's current one. An

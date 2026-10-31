@@ -1,9 +1,9 @@
 //! Scheduled tasks and the webhook delivery log.
 
-use orbyn_contracts::{ScheduledTask, WebhookDelivery};
+use orbyn_contracts::{Run, ScheduledTask, WebhookDelivery};
 use rusqlite::{OptionalExtension, params};
 
-use super::Store;
+use super::{Store, run_row};
 use crate::error::{CoreError, Result};
 
 /// A task's delivery log keeps this many rows.
@@ -57,6 +57,19 @@ impl Store {
             conn.prepare("SELECT task FROM scheduled_tasks WHERE next_run_at <= ?1")?;
         let rows = statement.query_map([now], |row| row.get::<_, String>(0))?;
         rows.map(|text| Ok(serde_json::from_str(&text?)?)).collect()
+    }
+
+    /// A thread's newest run, active or ended.
+    pub fn latest_run(&self, thread_id: &str) -> Result<Option<Run>> {
+        Ok(self
+            .reader()
+            .query_row(
+                "SELECT id, thread_id, state, error, started_at, ended_at FROM runs
+                 WHERE thread_id = ?1 ORDER BY started_at DESC, id DESC LIMIT 1",
+                [thread_id],
+                run_row,
+            )
+            .optional()?)
     }
 
     pub fn delete_task(&self, id: &str) -> Result<()> {

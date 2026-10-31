@@ -17,7 +17,7 @@ use crate::approvals::{ActionAsk, ApprovalGate, RunScope};
 use crate::error::{CoreError, Result};
 use crate::policy;
 use crate::store::{AuditRecord, Store};
-use cdp::BrowserSession;
+use cdp::{BrowserSession, LaunchOptions};
 
 /// A concrete action after its target is known.
 #[derive(Clone, Debug, PartialEq)]
@@ -181,6 +181,7 @@ pub struct ComputerConfig {
     pub browser_path: Option<PathBuf>,
     pub profile_dir: PathBuf,
     pub headless: bool,
+    pub in_process_gpu: bool,
 }
 
 /// Desktop through the `agent-desktop` sidecar, browser through CDP.
@@ -222,10 +223,12 @@ impl LocalBackend {
             let path = self.browser_path().ok_or_else(|| {
                 CoreError::Computer("Install Chrome or Edge to use browser control.".into())
             })?;
-            *browser = Some(
-                BrowserSession::launch(&path, &self.config.profile_dir, self.config.headless)
-                    .await?,
-            );
+            let options = LaunchOptions {
+                headless: self.config.headless,
+                in_process_gpu: self.config.in_process_gpu,
+            };
+            *browser =
+                Some(BrowserSession::launch(&path, &self.config.profile_dir, options).await?);
         }
         let session = browser
             .as_mut()

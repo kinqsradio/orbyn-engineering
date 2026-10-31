@@ -240,6 +240,22 @@ fn claude(args: &[String]) {
     );
     stop(0);
 
+    if has(&prompt, "plan-item") {
+        send(&json!({
+            "type": "assistant", "parent_tool_use_id": null,
+            "message": { "content": [{
+                "type": "tool_use", "id": "todo1", "name": "TodoWrite",
+                "input": { "todos": [{ "content": "do it", "status": "in_progress" }] },
+            }]},
+        }));
+        send(&json!({
+            "type": "assistant", "parent_tool_use_id": null,
+            "message": { "content": [{
+                "type": "tool_use", "id": "exit1", "name": "ExitPlanMode",
+                "input": { "plan": "# Ship\n1. a" },
+            }]},
+        }));
+    }
     let mut answer = "hello from claude".to_owned();
     let mut lines = lines;
     if has(&prompt, "approve") || has(&prompt, "crash-in-approval") {
@@ -599,6 +615,15 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
             "explanation": null, "plan": [{ "step": "do it", "status": "inProgress" }],
         }),
     );
+    if has(prompt, "plan-item") {
+        codex_note(
+            state,
+            "item/completed",
+            json!({
+                "completedAtMs": 2, "item": { "type": "plan", "id": "plan1", "text": "# Ship\n1. a" },
+            }),
+        );
+    }
     let mut answer = "hello from codex".to_owned();
     if has(prompt, "unknown-request") {
         let reply = codex_request("item/tool/call", json!({ "itemId": "x" }), lines);
@@ -648,19 +673,17 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         && let Some(name) = rest.split(']').next()
     {
         let checkout = std::env::var("ORBYN_FAKE_CHECKOUT").expect("checkout");
-        codex_note(
-            state,
-            "item/completed",
-            json!({ "item": {
-                "type": "fileChange", "id": format!("write-{name}"), "status": "completed",
-                "changes": [{ "path": name, "kind": { "type": "add" }, "diff": "" }],
-            }}),
-        );
+        let item = json!({
+            "type": "fileChange", "id": format!("write-{name}"), "status": "inProgress",
+            "changes": [{ "path": name, "kind": { "type": "add" }, "diff": "" }],
+        });
+        codex_note(state, "item/started", json!({ "item": item }));
         std::fs::write(
             std::path::Path::new(&checkout).join(name),
             "written by turn\n",
         )
         .expect("write");
+        codex_note(state, "item/completed", json!({ "item": item }));
     }
     // `[mcp-call:<tool>]<json args>[/mcp-call]` calls one tool and answers with it.
     if let Some(rest) = prompt.split("[mcp-call:").nth(1)
@@ -875,9 +898,20 @@ fn acp() {
         match message["method"].as_str().unwrap_or_default() {
             "initialize" => acp_send(json!({ "id": id, "result": {
                 "protocolVersion": 1,
-                "agentCapabilities": { "mcpCapabilities": { "http": true } },
+                "agentCapabilities": {
+                    "mcpCapabilities": { "http": true },
+                    "sessionCapabilities": if std::env::var_os("ORBYN_FAKE_ACP_SESSIONS").is_some() {
+                        json!({ "delete": {} })
+                    } else {
+                        json!({})
+                    },
+                },
                 "authMethods": [],
             }})),
+            "session/delete" => {
+                record_launch("acp-delete", &[message["params"].to_string()]);
+                acp_send(json!({ "id": id, "result": {} }));
+            }
             "session/new" => acp_send(json!({ "id": id, "result": {
                 "sessionId": session,
                 "models": {
@@ -903,7 +937,19 @@ fn acp() {
             }})),
             "session/set_model" => {
                 record_launch("acp-model", &[message["params"].to_string()]);
-                acp_send(json!({ "id": id, "result": {} }));
+                // A large model shows what it offers only once it is chosen.
+                let large = message["params"]["modelId"] == "acp-large";
+                if large && std::env::var_os("ORBYN_FAKE_ACP_SESSIONS").is_some() {
+                    acp_send(json!({ "id": id, "result": { "configOptions": [{
+                        "id": "effort", "name": "Effort", "category": "thought_level",
+                        "type": "select", "currentValue": "low",
+                        "options": [{ "value": "low", "name": "Low" }, { "value": "max", "name": "Max" }],
+                    }]}}));
+                } else if std::env::var_os("ORBYN_FAKE_ACP_REFUSE_MODEL").is_some() {
+                    acp_send(json!({ "id": id, "error": { "code": -32000, "message": "no" } }));
+                } else {
+                    acp_send(json!({ "id": id, "result": {} }));
+                }
             }
             "session/set_mode" | "session/set_config_option" => {
                 record_launch("acp-config", &[message.to_string()]);

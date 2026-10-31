@@ -273,3 +273,58 @@ async fn worktrees_follow_the_prefix_the_chosen_base_and_a_settled_one_is_cleane
     assert!(!path.exists());
     service.stop().await;
 }
+
+#[tokio::test]
+async fn the_network_list_names_each_switch_and_reports_it() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let row = |rows: &Value, key: &str| {
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["setting"] == key)
+            .unwrap_or_else(|| panic!("no row for {key}"))
+            .clone()
+    };
+    let rows = service.json("/api/network").await;
+    assert_eq!(row(&rows, "poll_pull_requests")["enabled"], true);
+    assert_eq!(row(&rows, "auto_pull")["enabled"], false, "off by default");
+    assert_eq!(row(&rows, "background_update_checks")["enabled"], true);
+    let (code, _) = put_value(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "poll_pull_requests": false, "auto_pull": true } }),
+    )
+    .await;
+    assert_eq!(code, 200);
+    let rows = service.json("/api/network").await;
+    assert_eq!(row(&rows, "poll_pull_requests")["enabled"], false);
+    assert_eq!(row(&rows, "auto_pull")["enabled"], true);
+    let settings = service.json("/api/settings").await;
+    let mut settings = settings;
+    settings["background_update_checks"] = json!(false);
+    let (code, _) = put_value(&service, "/api/settings", settings).await;
+    assert_eq!(code, 200);
+    let rows = service.json("/api/network").await;
+    assert_eq!(row(&rows, "background_update_checks")["enabled"], false);
+    assert!(
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["setting"].is_null()),
+        "a request made only on demand has no switch"
+    );
+}
+
+async fn put_value(service: &Service, path: &str, body: Value) -> (u16, Value) {
+    let response = service
+        .client
+        .put(format!("{}{path}", service.url))
+        .bearer_auth(&service.token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    (status, response.json().await.unwrap_or(Value::Null))
+}

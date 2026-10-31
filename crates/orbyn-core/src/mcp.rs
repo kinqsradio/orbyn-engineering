@@ -93,6 +93,12 @@ impl McpService {
         self.lock().remove(&sha256_hex(token.as_bytes()));
     }
 
+    /// Drops a run's token when the task that holds it can no longer do so.
+    pub fn revoke_run(&self, run_id: &str) {
+        self.lock()
+            .retain(|_, binding| binding.scope.run_id != run_id);
+    }
+
     pub fn is_valid(&self, token: &str) -> bool {
         self.lock().contains_key(&sha256_hex(token.as_bytes()))
     }

@@ -35,17 +35,24 @@ fn reported_paths(kind: &str, raw: &Value) -> Vec<String> {
             .flatten()
             .filter_map(|change| text(change.get("path")))
             .collect(),
-        "tool_use" => match raw.get("name").and_then(Value::as_str) {
-            Some("Write" | "Edit" | "MultiEdit") => {
-                text(raw.pointer("/input/file_path")).into_iter().collect()
-            }
-            Some("NotebookEdit") => text(raw.pointer("/input/notebook_path"))
-                .into_iter()
-                .collect(),
-            _ => Vec::new(),
-        },
+        "tool_use" => claude_write_paths(raw),
         _ => Vec::new(),
     }
+}
+
+/// The file a Claude tool block says it writes.
+pub(crate) fn claude_write_paths(block: &Value) -> Vec<String> {
+    let pointer = match block.get("name").and_then(Value::as_str) {
+        Some("Write" | "Edit" | "MultiEdit") => "/input/file_path",
+        Some("NotebookEdit") => "/input/notebook_path",
+        _ => return Vec::new(),
+    };
+    block
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .into_iter()
+        .collect()
 }
 
 impl Core {
@@ -57,7 +64,7 @@ impl Core {
         Ok(thread)
     }
 
-    fn idle_thread(&self, id: &str) -> Result<Thread> {
+    pub(crate) fn idle_thread(&self, id: &str) -> Result<Thread> {
         let thread = self.trusted_thread(id)?;
         if thread.active_run.is_some() {
             return Err(CoreError::ThreadBusy);
@@ -199,6 +206,7 @@ impl Core {
             json!({ "through": through }),
         )?;
         self.store.set_handoff(thread_id, &handoff)?;
+        self.store.forget_messages_after(thread_id, through)?;
         self.store
             .note_thread_event(thread_id, "thread.rewound", json!({ "through": through }))
     }
@@ -235,12 +243,22 @@ impl Core {
                 }
             }
         }
+        let files = self.store.changed_files(run_id)?;
+        // A declared file reached the list through the handshake, not an item.
+        let checkout = std::path::Path::new(&self.store.thread(id)?.cwd).to_path_buf();
+        for file in &files {
+            let absolute = checkout.join(&file.path).to_string_lossy().into_owned();
+            if !paths.contains(&file.path) && !paths.contains(&absolute) {
+                paths.push(file.path.clone());
+            }
+        }
         let truncated = paths.len() > MAX_CHANGED_PATHS;
         paths.truncate(MAX_CHANGED_PATHS);
         Ok(RunChanges {
             run_id: run_id.to_owned(),
             paths,
             truncated,
+            files,
         })
     }
 

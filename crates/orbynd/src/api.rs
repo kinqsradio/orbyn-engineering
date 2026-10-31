@@ -14,11 +14,11 @@ use orbyn_contracts::{
     AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, BatchThreads, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
     DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
-    GitAction, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull, MoveThread, NewProject,
-    OpenInEditor, OtlpCheck, PublishProject, QuestionState, ReorderThreads, RestoreWorkspace,
-    RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerRun,
-    SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask,
-    WorkspaceSetup, WriteFile,
+    GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull,
+    MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject,
+    ReorderThreads, RestoreChanges, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings,
+    SetPreferences, SkillProfile, StartRun, SteerRun, SubmitReview, SwitchBranch, SwitchEngine,
+    TaskEnabled, UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -433,8 +433,31 @@ pub async fn run_changes(
     Ok(Json(state.core.run_changes(&id, &run)?))
 }
 
-pub async fn network_requests() -> impl IntoResponse {
-    Json(orbyn_core::network::automatic_requests())
+#[derive(Deserialize)]
+pub struct ChangedFileQuery {
+    path: String,
+}
+
+pub async fn changed_file(
+    State(state): State<AppState>,
+    Path((id, run)): Path<(String, String)>,
+    Query(query): Query<ChangedFileQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.changed_file(&id, &run, &query.path)?))
+}
+
+pub async fn restore_changes(
+    State(state): State<AppState>,
+    Path((id, run)): Path<(String, String)>,
+    ApiJson(body): ApiJson<RestoreChanges>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state.core.restore_changes(&id, &run, &body, LOCAL_USER)?,
+    ))
+}
+
+pub async fn network_requests(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.network_requests()?))
 }
 
 pub async fn get_item(
@@ -705,6 +728,14 @@ pub async fn save_task(
     ApiJson(body): ApiJson<UpsertTask>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.save_task(body, LOCAL_USER)?))
+}
+
+pub async fn update_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<UpsertTask>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.update_task(&id, body, LOCAL_USER)?))
 }
 
 pub async fn set_task_enabled(
@@ -1109,6 +1140,57 @@ pub async fn cancel_run(
 }
 
 #[derive(Deserialize)]
+pub struct MessageSearchQuery {
+    q: String,
+    project_id: Option<String>,
+    thread_id: Option<String>,
+    limit: Option<usize>,
+    archived: Option<bool>,
+}
+
+pub async fn search_messages(
+    State(state): State<AppState>,
+    Query(query): Query<MessageSearchQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = orbyn_core::search::SearchScope {
+        project_id: query.project_id,
+        thread_id: query.thread_id,
+        archived: query.archived.unwrap_or(false),
+        limit: query.limit,
+    };
+    Ok(Json(state.core.store.search_messages(&query.q, &scope)?))
+}
+
+#[derive(Deserialize)]
+pub struct MessagesQuery {
+    limit: Option<usize>,
+}
+
+pub async fn thread_messages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<MessagesQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let limit = query.limit.unwrap_or(200);
+    Ok(Json(state.core.store.thread_messages(&id, limit)?))
+}
+
+pub async fn rename_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<RenameProject>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.rename_project(&id, &body.name)?))
+}
+
+pub async fn force_stop(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.runs.force_stop(&id, LOCAL_USER).await?))
+}
+
+#[derive(Deserialize)]
 pub struct ApprovalsQuery {
     state: Option<String>,
 }
@@ -1283,6 +1365,39 @@ pub async fn add_custom_engine(
         StatusCode::CREATED,
         Json(state.core.engines.status(&engine.id).await?),
     ))
+}
+
+#[derive(Deserialize)]
+pub struct RegistryQuery {
+    #[serde(default)]
+    q: String,
+}
+
+pub async fn search_acp_registry(
+    State(state): State<AppState>,
+    Query(query): Query<RegistryQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.search_acp_registry(&query.q).await?))
+}
+
+pub async fn install_acp_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<InstallAcpAgent>,
+) -> ApiResult<impl IntoResponse> {
+    let engine = state
+        .core
+        .install_acp_agent(&id, body.distribution.as_deref(), LOCAL_USER)
+        .await?;
+    Ok((StatusCode::CREATED, Json(engine)))
+}
+
+pub async fn remove_acp_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.remove_acp_agent(&id, LOCAL_USER).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_custom_engine(

@@ -1,6 +1,7 @@
 //! Orbyn product behavior: store, run lifecycle, policy, audit, skills, engines,
 //! git, terminal and computer gateway. Transport lives in `orbynd`.
 
+pub mod acp_registry;
 pub mod app;
 pub mod approvals;
 pub mod automations;
@@ -11,6 +12,8 @@ pub mod computer;
 pub mod driver;
 pub mod engines;
 pub mod error;
+pub mod file_bytes;
+pub mod file_changes;
 pub mod files;
 pub mod forge;
 pub mod git;
@@ -29,6 +32,7 @@ pub mod questions;
 pub mod runs;
 pub mod scm;
 pub mod scratch;
+pub mod search;
 pub mod selection;
 pub mod skills;
 pub mod sse;

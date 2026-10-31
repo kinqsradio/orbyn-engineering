@@ -53,6 +53,44 @@ where
     wait.await.expect("no frame arrived")
 }
 
+fn decode(text: &str) -> Vec<u8> {
+    let value = |byte: u8| match byte {
+        b'A'..=b'Z' => byte - b'A',
+        b'a'..=b'z' => byte - b'a' + 26,
+        b'0'..=b'9' => byte - b'0' + 52,
+        b'+' => 62,
+        _ => 63,
+    };
+    let mut out = Vec::new();
+    let (mut bits, mut count) = (0u32, 0);
+    for byte in text.bytes().filter(|byte| *byte != b'=') {
+        bits = (bits << 6) | u32::from(value(byte));
+        count += 6;
+        if count >= 8 {
+            count -= 8;
+            out.push((bits >> count) as u8);
+            bits &= (1 << count) - 1;
+        }
+    }
+    out
+}
+
+/// Width and height from a JPEG's start-of-frame marker.
+fn jpeg_size(bytes: &[u8]) -> (u32, u32) {
+    let mut at = 2;
+    while at + 9 < bytes.len() {
+        let marker = bytes[at + 1];
+        let length = usize::from(bytes[at + 2]) << 8 | usize::from(bytes[at + 3]);
+        if (0xc0..=0xc2).contains(&marker) {
+            let height = u32::from(bytes[at + 5]) << 8 | u32::from(bytes[at + 6]);
+            let width = u32::from(bytes[at + 7]) << 8 | u32::from(bytes[at + 8]);
+            return (width, height);
+        }
+        at += 2 + length;
+    }
+    panic!("no frame header");
+}
+
 async fn put_json(service: &Service, path: &str) -> u16 {
     service
         .client
@@ -126,11 +164,150 @@ async fn a_tab_streams_frames_and_a_person_must_take_it_to_click() {
     let saved = std::fs::read(format!("{folder}/000000.jpg")).unwrap();
     assert_eq!(&saved[..3], [0xff, 0xd8, 0xff], "a real JPEG on disk");
 
+    // Back, forward and size, on a second address of the same server.
+    let step = |back: bool| json!({ "back": back });
+    let history = format!("{base}/{id}/history");
+    let (code, stayed) = service.send(&history, step(true)).await;
+    assert_eq!(code, 200, "{stayed}");
+    assert_eq!(
+        stayed["can_go_back"], false,
+        "the blank page does not count"
+    );
+    let (_, there) = service
+        .send(
+            &format!("{base}/{id}/navigate"),
+            json!({ "url": format!("http://127.0.0.1:{port}/second") }),
+        )
+        .await;
+    assert_eq!(there["can_go_back"], true);
+    let (_, back) = service.send(&history, step(true)).await;
+    assert_eq!(back["url"], format!("http://127.0.0.1:{port}/"));
+    assert_eq!(back["can_go_forward"], true);
+    let (_, forward) = service.send(&history, step(false)).await;
+    assert_eq!(forward["url"], format!("http://127.0.0.1:{port}/second"));
+    assert_eq!(forward["can_go_forward"], false);
+
+    let (code, resized) = service
+        .send(
+            &format!("{base}/{id}/resize"),
+            json!({ "width": 320, "height": 240 }),
+        )
+        .await;
+    assert_eq!(code, 200, "{resized}");
+    assert_eq!(
+        (resized["width"].as_u64(), resized["height"].as_u64()),
+        (Some(320), Some(240))
+    );
+    let framed = next_frame(&mut socket).await;
+    let jpeg = decode(&framed);
+    assert_eq!(jpeg_size(&jpeg), (320, 240), "a frame at the new size");
+    let (code, _) = service
+        .send(
+            &format!("{base}/{id}/resize"),
+            json!({ "width": 0, "height": 240 }),
+        )
+        .await;
+    assert_eq!(code, 400);
+
     assert_eq!(put_json(&service, &format!("{base}/{id}")).await, 204);
     assert_eq!(service.json(&base).await.as_array().unwrap().len(), 0);
     tokio::time::sleep(Duration::from_millis(800)).await;
     let profiles = dir.path().join("data/preview-profiles").join(id);
     assert!(!profiles.exists(), "the profile goes with the tab");
+    service.stop().await;
+}
+
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn an_agent_records_a_page_in_its_own_tab() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let (code, _) = service
+        .patch(&thread, json!({ "permission_mode": "full_access" }))
+        .await;
+    assert_eq!(code, 200);
+    let port = serve_page();
+    let mut seen = None;
+    let mut call = async |name: &str, args: serde_json::Value| {
+        service
+            .admit(&thread, &format!("[mcp-call:{name}]{args}[/mcp-call]"))
+            .await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        service.finished(&thread).await;
+        let text = support::text_of(&events);
+        assert!(text.contains("tool error=false"), "{name}: {text}");
+        let reply = text.rsplit("tool error=false ").next().unwrap().trim();
+        serde_json::from_str::<serde_json::Value>(reply).unwrap()
+    };
+    let tab = call(
+        "orbyn_preview_open",
+        json!({ "url": format!("http://127.0.0.1:{port}/") }),
+    )
+    .await;
+    let id = tab["id"].as_str().unwrap().to_owned();
+    let listed = call("orbyn_preview_list", json!({})).await;
+    assert_eq!(listed[0]["id"], id.as_str());
+    call("orbyn_preview_recording_start", json!({ "tab_id": id })).await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let done = call("orbyn_preview_recording_stop", json!({ "tab_id": id })).await;
+    assert!(done["frames"].as_u64().unwrap() >= 1, "{done}");
+    let moved = call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "url": format!("http://127.0.0.1:{port}/two") }),
+    )
+    .await;
+    assert_eq!(moved["can_go_back"], true);
+    let back = call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "back": true }),
+    )
+    .await;
+    assert_eq!(back["url"], format!("http://127.0.0.1:{port}/"));
+    call("orbyn_preview_close", json!({ "tab_id": id })).await;
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn preview_controls_refuse_an_unknown_tab_and_a_bad_size() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let base = format!("/api/threads/{thread}/previews");
+    let (code, _) = service
+        .send(&format!("{base}/none/history"), json!({ "back": true }))
+        .await;
+    assert_eq!(code, 404);
+    let (code, _) = service
+        .send(
+            &format!("{base}/none/resize"),
+            json!({ "width": 320, "height": 240 }),
+        )
+        .await;
+    assert_eq!(code, 404);
+    for (width, height) in [(0, 240), (320, 99), (5000, 240)] {
+        let (code, _) = service
+            .send(
+                &format!("{base}/none/resize"),
+                json!({ "width": width, "height": height }),
+            )
+            .await;
+        assert_eq!(code, 400, "{width}x{height}");
+        let (code, _) = service
+            .send(
+                &base,
+                json!({ "url": "http://127.0.0.1:1/", "width": width, "height": height }),
+            )
+            .await;
+        assert_eq!(code, 400, "{width}x{height}");
+    }
+    let (code, _) = service
+        .send(&format!("{base}/none/history"), json!({}))
+        .await;
+    assert_eq!(code, 400);
     service.stop().await;
 }
 

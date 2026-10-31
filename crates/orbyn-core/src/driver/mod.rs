@@ -166,6 +166,8 @@ pub enum EngineEvent {
     Permission(PermissionRequest),
     /// A raw item for the inspector.
     Item(ItemRecord),
+    /// Files a tool just finished writing.
+    Files(Vec<String>),
     Usage(orbyn_contracts::ThreadUsage),
     /// Slash commands the engine says it has, as `(name, description)`.
     Commands(Vec<(String, String)>),
@@ -173,6 +175,32 @@ pub enum EngineEvent {
     /// The goal as the engine reports it; `None` means it was cleared.
     Goal(Option<orbyn_contracts::ThreadGoal>),
     Finished(EngineOutcome),
+}
+
+/// A plan an engine proposed, as one finished assistant message in the
+/// `<proposed_plan>` form clients already show as a card. Being text, it also reaches
+/// a handoff and message search. A closing tag inside the plan is broken so it cannot
+/// end the card early.
+pub(crate) fn proposed_plan_events(id: &str, plan: &str) -> Vec<EngineEvent> {
+    let plan = plan.trim();
+    if plan.is_empty() {
+        return Vec::new();
+    }
+    let message_id = format!("proposed-plan-{id}");
+    let plan = plan.replace("</proposed_plan>", "<\\/proposed_plan>");
+    vec![
+        AgUiEvent::TextMessageStart {
+            message_id: message_id.clone(),
+            role: "assistant".into(),
+        }
+        .into(),
+        AgUiEvent::TextMessageContent {
+            message_id: message_id.clone(),
+            delta: format!("<proposed_plan>\n{plan}\n</proposed_plan>"),
+        }
+        .into(),
+        AgUiEvent::TextMessageEnd { message_id }.into(),
+    ]
 }
 
 #[derive(Clone, Debug, PartialEq)]

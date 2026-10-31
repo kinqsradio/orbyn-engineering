@@ -84,6 +84,38 @@ export function GeneralSection() {
           </select>
         </SettingRow>
       </SettingGroup>
+      <PreferenceGroups
+        groups={[
+          {
+            title: "Background activity",
+            rows: [
+              {
+                key: "background_activity_profile",
+                title: "Activity profile",
+                options: [
+                  { value: "balanced", label: "Balanced" },
+                  { value: "saver", label: "Saver" },
+                  { value: "performance", label: "Performance" },
+                ],
+              },
+              { key: "automatic_git_fetch_minutes", title: "Git fetch interval (minutes)" },
+              { key: "provider_health_refresh_minutes", title: "Provider health interval (minutes)" },
+            ],
+          },
+          {
+            title: "Providers",
+            rows: [
+              { key: "enable_provider_update_checks", title: "Check providers for updates" },
+              { key: "text_generation_model", title: "Text generation model" },
+              { key: "prefer_saved_login", title: "Prefer saved login" },
+            ],
+          },
+          {
+            title: "New projects",
+            rows: [{ key: "add_project_base_directory", title: "Base directory" }],
+          },
+        ]}
+      />
       <SettingGroup title="Confirmations">
         <Toggle title="Unpin confirmation" on={confirmUnpin} set={(on) => setPrefs({ confirmUnpin: on })} />
         <Toggle title="Archive confirmation" on={confirmArchive} set={(on) => setPrefs({ confirmArchive: on })} />
@@ -100,6 +132,10 @@ export function ChatSection() {
   const timestampFormat = useUi((state) => state.timestampFormat);
   const sendShortcut = useUi((state) => state.sendShortcut);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
+  const persistent = useUi((state) => state.persistentComposerContext);
+  const proactive = useUi((state) => state.proactivePanels);
+  const searchEngine = useUi((state) => state.previewSearchEngine);
+  const skillsInSlash = useUi((state) => state.skillsInSlashMenu);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
@@ -121,8 +157,23 @@ export function ChatSection() {
         </SettingRow>
         <Toggle title="Word wrap" on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
         <Toggle title="Math rendering" on={math} set={(on) => setPrefs({ mathRendering: on })} />
+        <Toggle title="Open Changes after large turns" on={proactive} set={(on) => setPrefs({ proactivePanels: on })} />
+      </SettingGroup>
+      <SettingGroup title="Browser">
+        <SettingRow title="Search engine">
+          <select aria-label="Search engine" value={searchEngine} onChange={(event) => setPrefs({ previewSearchEngine: event.target.value })}>
+            <option value="duckduckgo">DuckDuckGo</option>
+            <option value="google">Google</option>
+            <option value="bing">Bing</option>
+            <option value="brave">Brave</option>
+            <option value="kagi">Kagi</option>
+            <option value="startpage">Startpage</option>
+          </select>
+        </SettingRow>
       </SettingGroup>
       <SettingGroup title="Composer">
+        <Toggle title="Keep checkout and branch visible" on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />
+        <Toggle title="Show skills in the slash menu" on={skillsInSlash} set={(on) => setPrefs({ skillsInSlashMenu: on })} />
         <SettingRow title="Send shortcut">
           <select aria-label="Send shortcut" value={sendShortcut} onChange={(event) => setPrefs({ sendShortcut: event.target.value as "enter" | "mod-enter-multiline" | "mod-enter" })}>
             <option value="enter">Enter</option>
@@ -166,6 +217,15 @@ export function ChatSection() {
             title: "Idle threads",
             rows: [
               { key: "compact_idle_threads", title: "Compact idle threads" },
+              {
+                key: "idle_compaction",
+                title: "Idle compaction",
+                options: [
+                  { value: "on_return", label: "On return" },
+                  { value: "before_cache_expiry", label: "Before cache expiry" },
+                  { value: "never", label: "Never" },
+                ],
+              },
               { key: "snooze_limited_threads", title: "Snooze threads that hit a limit" },
               { key: "auto_resume_limited_threads", title: "Resume at reset" },
             ],

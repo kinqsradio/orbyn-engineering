@@ -15,7 +15,65 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (11, AUTOMATIONS),
     (12, MODEL_OPTIONS),
     (13, STOP_REQUESTS),
+    (14, MESSAGE_SEARCH),
+    (15, RUN_FILE_CHANGES),
 ];
+
+// What a run changed, as bytes, for reading and restoring later whatever the folder
+// holds by then. A state is `absent`, `stored`, or `unknown` when it was not captured.
+const RUN_FILE_CHANGES: &str = r#"
+CREATE TABLE run_file_changes (
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    before_state TEXT NOT NULL,
+    before_bytes BLOB,
+    after_state TEXT NOT NULL,
+    after_bytes BLOB,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, path)
+) WITHOUT ROWID;
+"#;
+
+// Whole messages for search, since a message is split over many events. Written with
+// each event; this fills it from the log for threads that already exist. An engine can
+// reuse a message id on a later turn, so a message belongs to its run. A fork's copied
+// events have no run, which `run_key` writes as an empty string.
+const MESSAGE_SEARCH: &str = r#"
+CREATE TABLE thread_messages (
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    run_key TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    ts TEXT NOT NULL,
+    text TEXT NOT NULL,
+    PRIMARY KEY (thread_id, run_key, message_id)
+) WITHOUT ROWID;
+CREATE INDEX thread_messages_by_time ON thread_messages(ts);
+
+INSERT INTO thread_messages (thread_id, run_key, message_id, seq, role, ts, text)
+SELECT body.thread_id, body.run_key, body.message_id, MIN(body.seq),
+       COALESCE(head.role, 'assistant'), MIN(body.ts),
+       group_concat(body.delta, '' ORDER BY body.seq)
+FROM (
+    SELECT thread_id, seq, ts, COALESCE(run_id, '') AS run_key,
+           json_extract(event, '$.messageId') AS message_id,
+           json_extract(event, '$.delta') AS delta
+    FROM thread_events
+    WHERE json_extract(event, '$.type') = 'TEXT_MESSAGE_CONTENT'
+) AS body
+LEFT JOIN (
+    SELECT thread_id, COALESCE(run_id, '') AS run_key,
+           json_extract(event, '$.messageId') AS message_id,
+           MIN(json_extract(event, '$.role')) AS role
+    FROM thread_events
+    WHERE json_extract(event, '$.type') = 'TEXT_MESSAGE_START'
+    GROUP BY thread_id, run_key, message_id
+) AS head ON head.thread_id = body.thread_id AND head.run_key = body.run_key
+    AND head.message_id = body.message_id
+WHERE body.message_id IS NOT NULL
+GROUP BY body.thread_id, body.run_key, body.message_id;
+"#;
 
 const STOP_REQUESTS: &str = r#"
 ALTER TABLE runs ADD COLUMN stop_requested INTEGER NOT NULL DEFAULT 0;

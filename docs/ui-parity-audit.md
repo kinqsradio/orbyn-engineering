@@ -1,11 +1,18 @@
 # UI parity audit
 
-Reference: a running T3 Code, observed at 1440x900 and 1728x1048 at DPR 2, with its
-source at `cadf7d5fe3` and two saved captures. "Live" means measured in the running
-app, including two test turns in one dedicated thread on GPT-6-Luna at Low in
-Supervised mode. "Source" means read from code only. "Unobserved" means neither.
-The candidate is `web/`. "Real" means run through `orbynd` with synthetic data and a
-fake ACP engine; everything else ran on the mock. No reference data is recorded here.
+Reference: T3 Code's source at `cadf7d5fe3`, plus earlier observations of a running
+copy at 1440x900 and 1728x1048 at DPR 2 and two saved captures. "Live" means measured
+in that running copy before 31 October 2026; it is no longer consulted. "Source" and
+"source-derived" mean read from local code only, including every row added since, and
+anything that could only have been checked in the running copy. "Unobserved" means
+neither. The candidate is `web/`. "Real" means run through `orbynd` with synthetic data
+and the repo's protocol double, or a scripted engine that feeds Codex notifications to
+the real service; everything else ran on the mock. No reference data is recorded here.
+
+E2e runs headless on Playwright's `chromium-headless-shell` from `node_modules`
+(`npm run test:e2e:install`). It launches no installed browser: the service's previews
+get the same shell through `ORBYN_BROWSER`, and a process watch across the full suite
+saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu` here.
 
 | Surface | State | Reference observed | Our status | Measured deviation |
 | --- | --- | --- | --- | --- |
@@ -33,7 +40,17 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Timeline | Live header | Live: "Working for Ns" with rule | Match | 0 |
 | Timeline | Thinking row | Live: band 2200 ms stepped | Match | Sweep and band asserted |
 | Timeline | Tool shimmer | Live: 2200 ms, spin 1000 ms | Match | 0 |
-| Timeline | Finished fold | Live: hidden when no tools ran | Kept as "Worked for" | Keeps reasoning reachable |
+| Timeline | Finished fold | Live and source: prompt, Worked for, answer; hides tools, reasoning and interim text; collapsed by default; You stopped after on a stop | Match, Real | Also folds when only reasoning ran, so it stays reachable |
+| Timeline | Tool groups | Live: summary row with kind icon, expanded rows with chevron and time; source: at most two kinds, then Performed n other actions | Match, Real, same wording | Claude and ACP tool names classified by our own rules |
+| Timeline | Command output | Live: highlighted command, italic No output; source: follows while near the end, 320 max | Match, Real, ANSI colour, exit code, failed mark | Earlier output not shown notice absent, no truncation signal |
+| Timeline | Item inspector | Source: inside the expanded row | Inspect item, dialog of the raw record, Real | Field layout own |
+| Timeline | Rich Markdown | Source: math opt-in, Mermaid, file, thread and external links, details, table copy | Match, Real | Thread links use orbyn://thread/id; images remote only, no local media route |
+| Timeline | Proposed plan | Source: Plan badge, clip over 900 chars or 20 lines, menu, Save to workspace, Plan ready banner | Match, Real via a proposed_plan tag | The driver has no plan item, so Claude plan mode is not carded |
+| Timeline | Minimap | Live and source: tick per prompt, 8 spacing, min(natural, 100vh - 18rem) | Match, Real | Wheel passthrough absent |
+| Timeline | Error banner | Source: end-of-thread failure, dismiss for the session | Match, Real, with Retry | Inline notice stays for history |
+| Timeline | Changed files | Source: per-turn tree with open diff | Flat list, Real, opens and scrolls to the file | Flat, not a tree |
+| Timeline | Subagent bar | Source: model, effort, status, Runs on its own, Open parent | Match, Real on a delegated thread | Live activity not shown in the parent |
+| Timeline | Announcers | Source | Background threads live region, Real | Current-thread activity uses the status row |
 | Timeline | Markdown | Live: 14/22.75, p margin 10.4, h2 18/600 | Match | 0 |
 | Timeline | Inline code | Live: 11.9px, radius 4 | Match | 0 by ratio |
 | Timeline | Table | Live: full width, th 600, td padding 7.2 | Match | Numeric right-align not built |
@@ -48,7 +65,12 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Composer | Permission modes | Live: four icon segments 65.5x24 in the effort menu, with one description line; the control under the composer opens the same menu at Permissions | Match, Real, all four saved by the server | Default stays Supervised |
 | Composer | Approval placeholder | Live | Match | Declines, then queues |
 | Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
-| Composer | Queue and steer | Source | Built; queue and remove Real | Steer mock only |
+| Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double | Long-press flip absent |
+| Composer | Send shortcut | Source: Enter, Mod+Enter multiline, Mod+Enter | Match, Real | 0 |
+| Composer | Recall, stash, large paste, drop | Source | Match, Real | Stash keeps text only, attachments are not stashed |
+| Composer | Plan | Source | Button, /plan, /default, Real | Shift+Tab left to focus movement |
+| Composer | Context meter, /usage-limits | Source | Match, Real | Compaction tick absent |
+| Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | No live Markdown styling |
 | Approval | Inline row | Live: target, Waiting for approval, Decline, Approve, More | Match, Real | Always allow persists, so no "this session" |
 | Approval | Question panel | Source | Built, Real: answered through the protocol double | Layout own |
 | Command palette | Open | Live: y 90, 576x420, radius 16, blur 16, items 32 radius 4 | Match | Fewer actions |
@@ -58,19 +80,26 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Layout | Draft to thread | Source: a draft's id becomes the thread's, so its layout carries | Match, Real | Next draft starts fresh |
 | Layout | Pane width | Live: 360 default, resized per thread | Match, Real; double-click resets | Default follows the window, as measured before |
 | Layout | Narrow | Source: right panel becomes a sheet at 980 and under | Replaces the thread with Back to thread | Own shape below the wide breakpoint |
+| Layout | Independent scrolling | Source: each pane scrolls alone | Real at both ends, parked and during a run: details, Diff, Files, Terminal, Browser, sidebar | The cause was absolute children, such as sr-only text, escaping the transcript and giving `.main` something to scroll |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
 | Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
 | Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
 | Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split and close | Tabs in a top row, reference has a side list; scripts menu not run |
-| Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree | No editing, no image viewer |
-| Diff | Sources | Source: turn, thread, branch | Working tree, Turn, Thread, Branch from the real scopes | Commit source absent |
+| Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit | No binary, image or media viewer: no raw file route |
+| Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
+| Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
+| Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward, reload, control, record, start page, Real on headless shell | Back and forward are this panel's own stack; no zoom, devices or profiles |
+| Diff | Sources | Source: turn, thread, branch, commits | All five, Real | Picker is a select |
+| Diff | Options | Source: layout, collapse, whitespace, tests, find, copy path, status | Match, Real | Whitespace filtered in the client, find highlights lines not words |
 | Timeline | Message actions | Live: Copy, Edit from here, Fork from this response | Match, Real on a turn through the protocol double | Copy prompt link hidden |
 | Thread | Find | Source: find bar with position | Built, Real count and steps | Highlights need the browser's Highlight API |
 | Settings | Shell | Live: overlay inset 80/40, nav 239, rows 12/16, group radius 12 | Match, Real | 0 by CSS |
 | Settings | Sections | Live: General, Appearance, Chat, Diffs & pull requests, Keybindings, SnapShots, Providers, Threads, Browser, Devices, Scheduled tasks, Projects, Source control, Worktrees, Environments, Sharing & access, Maintenance, Labs, About, Archive | 15 backed, all load Real | SnapShots, Browser, Devices hidden; Environments and Sharing out of scope |
-| Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules | Row layout own |
-| Settings | Scheduled tasks | Source | List, new, pause, run, delete | Only interval schedules in the form; webhooks hidden |
+| Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules; the shell now runs every rule through when contexts, Real | Row layout own; mod+digit falls back in the client, the service lists no jump rules |
+| Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
+| Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
+| Settings | Scheduled tasks | Source | List, new, pause, run, delete, Real; interval, fixed time with days, webhook kinds | The form sent an invalid kind before this was run for real; no edit, the save route has no id |
 | Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | Threads | Live name | Auto-settle, titles, Real load | Layout from rows |

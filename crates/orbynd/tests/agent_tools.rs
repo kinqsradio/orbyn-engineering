@@ -264,3 +264,262 @@ async fn every_thread_and_schedule_tool_works_from_a_real_run() {
     assert_eq!(s.json("/api/tasks").await.as_array().unwrap().len(), 0);
     service.stop().await;
 }
+
+async fn full_access(service: &Service, thread: &str) {
+    let (code, _) = service
+        .patch(thread, json!({ "permission_mode": "full_access" }))
+        .await;
+    assert_eq!(code, 200);
+}
+
+#[tokio::test]
+async fn an_agent_starts_threads_changes_project_preferences_and_renames_only_its_own_project() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    full_access(&service, &thread).await;
+    let mut seen = None;
+    let made = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_threads_create",
+        json!({ "threads": [
+            { "prompt": "one", "title": "One" },
+            { "prompt": "two", "engine": "nope" },
+        ]}),
+    )
+    .await;
+    assert!(made.contains("thread_id"), "{made}");
+    assert!(
+        made.contains("error"),
+        "one failure does not stop the rest: {made}"
+    );
+
+    tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_environment_preferences_update",
+        json!({ "values": { "branch_name_prefix": "wip" } }),
+    )
+    .await;
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let project = body["project_id"].as_str().unwrap();
+    let prefs = service
+        .json(&format!("/api/preferences?project_id={project}"))
+        .await;
+    let prefix = prefs
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|view| view["key"] == "branch_name_prefix")
+        .unwrap();
+    assert_eq!(prefix["value"], "wip");
+
+    tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_update",
+        json!({ "name": "Renamed" }),
+    )
+    .await;
+    let projects = service.json("/api/projects").await;
+    assert!(
+        projects
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["id"] == project && row["name"] == "Renamed")
+    );
+
+    let refused = call(
+        "orbyn_environment_preferences_update",
+        json!({ "values": { "prefer_saved_login": true } }),
+    );
+    service.admit(&thread, &refused).await;
+    let events = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED"
+        })
+        .await;
+    service.finished(&thread).await;
+    let text = text_of(&events);
+    assert!(text.contains("tool error=true"), "a global key: {text}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn attachments_come_from_this_checkout_and_previews_from_this_thread() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    full_access(&service, &thread).await;
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let checkout = std::path::PathBuf::from(body["cwd"].as_str().unwrap());
+    std::fs::write(checkout.join("note.txt"), "hello").unwrap();
+    std::fs::write(dir.path().join("outside.txt"), "no").unwrap();
+    let sibling = service
+        .thread(body["project_id"].as_str().unwrap(), "codex")
+        .await;
+    let mut seen = None;
+    let added = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_attachment_add",
+        json!({ "thread_id": sibling, "path": "note.txt" }),
+    )
+    .await;
+    let reply: Value =
+        serde_json::from_str(added.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    let id = reply["id"].as_str().unwrap();
+    assert_eq!(
+        service
+            .json(&format!("/api/threads/{sibling}/attachments"))
+            .await[0]["id"],
+        id
+    );
+    tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_attachment_discard",
+        json!({ "thread_id": sibling, "attachment_id": id }),
+    )
+    .await;
+
+    for (name, args) in [
+        (
+            "orbyn_attachment_add",
+            json!({ "thread_id": sibling, "path": "../outside.txt" }),
+        ),
+        ("orbyn_preview_close", json!({ "tab_id": "not-mine" })),
+        (
+            "orbyn_preview_resize",
+            json!({ "tab_id": "not-mine", "width": 300, "height": 300 }),
+        ),
+    ] {
+        service.admit(&thread, &call(name, args)).await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        service.finished(&thread).await;
+        assert!(text_of(&events).contains("tool error=true"), "{name}");
+    }
+    let status = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_worktree_status",
+        json!({}),
+    )
+    .await;
+    assert!(status.contains("\"worktree\":false"), "{status}");
+    let abilities = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_orchestrator_capabilities",
+        json!({}),
+    )
+    .await;
+    assert!(abilities.contains("\"can_delegate\":true"), "{abilities}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_handoff_starts_a_thread_in_a_new_worktree() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    full_access(&service, &thread).await;
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let checkout = std::path::Path::new(body["cwd"].as_str().unwrap()).to_path_buf();
+    support::run_git(&checkout, &["config", "user.email", "t@example.com"]);
+    support::run_git(&checkout, &["config", "user.name", "T"]);
+    support::run_git(&checkout, &["commit", "-q", "--allow-empty", "-m", "base"]);
+    let mut seen = None;
+    let text = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_worktree_handoff",
+        json!({ "purpose": "tidy", "prompt": "carry on" }),
+    )
+    .await;
+    let reply: Value =
+        serde_json::from_str(text.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    let child = service
+        .json(&format!(
+            "/api/threads/{}",
+            reply["thread_id"].as_str().unwrap()
+        ))
+        .await;
+    let cwd = std::path::Path::new(child["cwd"].as_str().unwrap());
+    assert!(cwd.ends_with("tidy"), "{child}");
+    assert!(
+        cwd.parent().unwrap().to_string_lossy().ends_with("-wt"),
+        "{child}"
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_thread_is_organized_and_configured_inside_its_project_only() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    full_access(&service, &thread).await;
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let sibling = service
+        .thread(body["project_id"].as_str().unwrap(), "codex")
+        .await;
+    let mut seen = None;
+    tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_thread_organize",
+        json!({ "thread_id": sibling, "pinned": true }),
+    )
+    .await;
+    tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_thread_configure",
+        json!({ "thread_id": sibling, "plan_mode": true, "effort": "high" }),
+    )
+    .await;
+    let changed = service.json(&format!("/api/threads/{sibling}")).await;
+    assert_eq!(changed["effort"], "high");
+    assert_eq!(changed["lifecycle"]["plan_mode"], true);
+    assert!(changed["lifecycle"]["pinned_at"].is_string(), "{changed}");
+
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let foreign_project = service.project(&elsewhere, true).await;
+    let foreign = service.thread(&foreign_project, "codex").await;
+    for (name, args) in [
+        (
+            "orbyn_thread_organize",
+            json!({ "thread_id": foreign, "archived": true }),
+        ),
+        (
+            "orbyn_thread_configure",
+            json!({ "thread_id": sibling, "permission_mode": "root" }),
+        ),
+    ] {
+        service.admit(&thread, &call(name, args)).await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        service.finished(&thread).await;
+        assert!(text_of(&events).contains("tool error=true"), "{name}");
+    }
+    service.stop().await;
+}

@@ -1,5 +1,6 @@
 import { PanelLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
+import { create } from "zustand";
 import { NoProjects } from "../features/onboarding/NoProjects";
 import { DraftView } from "../features/onboarding/DraftView";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
@@ -195,6 +196,18 @@ function undoKey(event: KeyboardEvent): boolean {
   return false;
 }
 
+/** Read out by screen readers when another thread changes. */
+const useAnnouncer = create<{ text: string }>(() => ({ text: "" }));
+
+function BackgroundAnnouncer() {
+  const text = useAnnouncer((state) => state.text);
+  return (
+    <div className="sr-only" role="status" aria-label="Background threads">
+      {text}
+    </div>
+  );
+}
+
 type Attention = "working" | "waiting" | "done" | "failed" | "idle";
 
 const attentionOf = (thread: Thread): Attention =>
@@ -225,6 +238,7 @@ function useThreadNotifications(openId: string | null) {
         seen.set(thread.id, now);
         const notice = notices[now];
         if (before === undefined || before === now || !notice || thread.id === openId) continue;
+        useAnnouncer.setState({ text: `${thread.title} ${notice}` });
         const { inAppNotifications, threadNotifications, pushToast } = useUi.getState();
         if (inAppNotifications) pushToast(`${thread.title} ${notice}`);
         if (threadNotifications && document.hidden && "Notification" in window && Notification.permission === "granted") {
@@ -262,7 +276,7 @@ function useGlobalKeys(route: Route) {
         }
       }
       const digit = /^Digit([1-9])$/.exec(event.code);
-      if (digit && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+      if (digit && !event.defaultPrevented && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
         if (runShellCommand(`thread.jump.${digit[1]}`, route)) event.preventDefault();
         return;
       }
@@ -351,6 +365,7 @@ export function Shell() {
         Skip to content
       </a>
       {showNav ? <Sidebar route={route} /> : null}
+      <BackgroundAnnouncer />
       <Toasts />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
       {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (

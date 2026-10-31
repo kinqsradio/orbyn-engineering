@@ -184,10 +184,11 @@ fn authorized(access: &Access, request: &Request<Body>) -> bool {
     if access.cookie_valid(request.headers()) {
         return true;
     }
-    // Browsers cannot set headers on EventSource or WebSocket, so only those
-    // read routes take the token in the URL.
-    let streaming = request.method() == Method::GET
-        && (request.uri().path().starts_with("/ws/") || request.uri().path().ends_with("/events"));
+    // Browsers cannot set headers on EventSource, WebSocket or an image or video
+    // element, so only those read routes take the token in the URL.
+    let path = request.uri().path();
+    let streaming = matches!(*request.method(), Method::GET | Method::HEAD)
+        && (path.starts_with("/ws/") || path.ends_with("/events") || path.ends_with("/files/raw"));
     streaming && query_token(request).is_some_and(|token| access.token_valid(token))
 }
 

@@ -2,7 +2,7 @@
 
 export type TaskSchedule = { 
 /**
- * `interval`, `fixed_time` or `webhook`.
+ * `interval`, `fixed_time`, `webhook` or `after_thread`.
  */
 kind: string, every_minutes: number | null, 
 /**
@@ -12,4 +12,12 @@ time: string | null,
 /**
  * 0 is Sunday. Empty means every day.
  */
-weekdays: Array<number>, utc_offset_minutes: number, };
+weekdays: Array<number>, utc_offset_minutes: number, 
+/**
+ * For `after_thread`: the thread whose runs set this off.
+ */
+after_thread?: string, 
+/**
+ * For `after_thread`: only when its run completed.
+ */
+only_on_success: boolean, };

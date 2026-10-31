@@ -337,6 +337,72 @@ pub struct RunChanges {
     pub paths: Vec<String>,
     /// More files were reported than are listed.
     pub truncated: bool,
+    /// What was kept of them, relative to the checkout.
+    #[serde(default)]
+    pub files: Vec<ChangedFile>,
+}
+}
+
+wire_enum! {
+/// `Unknown` means an end of the change was not kept: too large, over the run's
+/// budget, or written before Orbyn could look.
+pub enum ChangeStatus {
+    Added,
+    Modified,
+    Deleted,
+    Unchanged,
+    Unknown,
+}
+}
+
+wire! {
+pub struct ChangedFile {
+    pub path: String,
+    pub status: ChangeStatus,
+    /// Both ends were kept, so this file can be put back either way.
+    pub restorable: bool,
+}
+}
+
+wire! {
+/// A file as a run found and left it, from what was kept then, never the folder as
+/// it is now. A text is empty when absent, unknown or binary.
+pub struct ChangedFileContent {
+    pub path: String,
+    pub status: ChangeStatus,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    pub binary: bool,
+}
+}
+
+wire! {
+pub struct RestoreChanges {
+    /// `start` puts back what the run found; `end` what it left.
+    pub point: RestorePoint,
+    /// Absent means every file the run changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub paths: Option<Vec<String>>,
+}
+}
+
+wire_enum! {
+pub enum RestoreOutcome {
+    Restored,
+    /// It already matches.
+    Unchanged,
+    /// It holds something the run did not leave, so it was left alone.
+    Conflict,
+    /// That end of the change was not kept.
+    NotKept,
+}
+}
+
+wire! {
+pub struct RestoredFile {
+    pub path: String,
+    pub outcome: RestoreOutcome,
 }
 }
 
@@ -348,6 +414,11 @@ pub struct NetworkRequest {
     pub cadence: String,
     /// What turns it off.
     pub control: String,
+    /// The key that does, in `/api/settings` for `background_update_checks` and in
+    /// preferences otherwise. Empty when nothing here controls it.
+    pub setting: Option<String>,
+    /// Happening now. False for one that runs only when asked.
+    pub enabled: bool,
 }
 }
 
@@ -1578,7 +1649,7 @@ pub struct CleanupReport {
 
 wire! {
 pub struct TaskSchedule {
-    /// `interval`, `fixed_time` or `webhook`.
+    /// `interval`, `fixed_time`, `webhook` or `after_thread`.
     pub kind: String,
     #[serde(default)]
     pub every_minutes: Option<u32>,
@@ -1590,6 +1661,13 @@ pub struct TaskSchedule {
     pub weekdays: Vec<u8>,
     #[serde(default)]
     pub utc_offset_minutes: i32,
+    /// For `after_thread`: the thread whose runs set this off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub after_thread: Option<String>,
+    /// For `after_thread`: only when its run completed.
+    #[serde(default)]
+    pub only_on_success: bool,
 }
 }
 
@@ -1647,6 +1725,10 @@ pub struct ScheduledTask {
     /// `never`, `started`, or why the last firing failed.
     pub last_status: String,
     pub created_at: String,
+    /// The last run of `after_thread` this task has answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub after_run: Option<String>,
 }
 }
 
@@ -1682,6 +1764,58 @@ pub struct UpsertTask {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub timestamp_path: Option<String>,
+}
+}
+
+wire! {
+/// A message that holds every word. `seq` is its place in the thread's log, and
+/// `message_id` the message clients draw, so a client can open right at it.
+pub struct MessageHit {
+    pub thread_id: String,
+    pub thread_title: String,
+    pub project_id: String,
+    pub message_id: String,
+    pub seq: i64,
+    pub role: String,
+    pub ts: String,
+    /// The text around the first word found.
+    pub snippet: String,
+}
+}
+
+wire! {
+pub struct ThreadMessage {
+    pub message_id: String,
+    pub seq: i64,
+    pub role: String,
+    pub ts: String,
+    pub text: String,
+}
+}
+
+wire! {
+pub struct MessageSearch {
+    pub hits: Vec<MessageHit>,
+    /// The words to highlight, lower-cased.
+    pub words: Vec<String>,
+    /// No word was long enough to search for, so nothing was searched.
+    pub too_short: bool,
+    /// More matched, or too many messages to read them all. Narrow the search.
+    pub truncated: bool,
+}
+}
+
+wire! {
+/// `run_id` is what was stopped, and empty when nothing was running.
+pub struct ForcedStop {
+    pub run_id: Option<String>,
+    pub state: Option<RunState>,
+}
+}
+
+wire! {
+pub struct RenameProject {
+    pub name: String,
 }
 }
 
@@ -1776,6 +1910,10 @@ pub struct PreviewTab {
     pub control: String,
     pub recording: bool,
     pub viewers: usize,
+    pub width: u32,
+    pub height: u32,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
 }
 }
 
@@ -1794,6 +1932,20 @@ pub struct OpenPreview {
 wire! {
 pub struct NavigatePreview {
     pub url: String,
+}
+}
+
+wire! {
+pub struct StepPreview {
+    /// True goes back; false goes forward.
+    pub back: bool,
+}
+}
+
+wire! {
+pub struct ResizePreview {
+    pub width: u32,
+    pub height: u32,
 }
 }
 
@@ -2410,6 +2562,29 @@ pub struct CustomEngine {
     /// ACP or terminal launch command; AG-UI endpoint URL for `agui`.
     pub target: String,
     pub args: Vec<String>,
+}
+}
+
+wire! {
+/// An agent the ACP registry lists. Nothing here is installed by being listed.
+pub struct AcpRegistryEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    /// What this machine can install it through, best first: `binary`, `npx`, `uvx`.
+    pub installable: Vec<String>,
+    /// The engine it became, once installed.
+    pub engine: Option<String>,
+}
+}
+
+wire! {
+pub struct InstallAcpAgent {
+    /// `binary`, `npx` or `uvx`. Absent takes the best this machine can use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub distribution: Option<String>,
 }
 }
 

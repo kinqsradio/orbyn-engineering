@@ -22,6 +22,13 @@ cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 cd web && npm run check && npm test
 ```
 
+## Delivery
+
+Keep `main` current. Work lands as small, coherent pull requests from short-lived
+`feat/`, `fix/`, `docs/` or `chore/` branches. Required checks must pass on macOS,
+Windows and web before merge; auto-merge lands a green PR. Never merge red. Commit
+`web/src/generated` in the same commit as any contract change.
+
 Windows and macOS are both supported targets. Never add a Unix-only path, shell
 or signal without its Windows branch and a test on the CI matrix.
 

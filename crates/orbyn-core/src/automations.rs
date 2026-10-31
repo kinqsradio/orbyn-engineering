@@ -110,7 +110,7 @@ pub fn verify_signature(
 /// When a schedule next fires after `from`. A webhook has no clock.
 pub fn next_run(schedule: &TaskSchedule, from: i64) -> Result<Option<i64>> {
     match schedule.kind.as_str() {
-        "webhook" => Ok(None),
+        "webhook" | "after_thread" => Ok(None),
         "interval" => {
             let minutes = schedule
                 .every_minutes
@@ -306,15 +306,21 @@ impl Core {
         }
         self.store.project(&request.project_id)?;
         self.engines.driver(&request.engine)?;
-        if let Some(thread) = &request.thread_id {
-            self.store.thread(thread)?;
+        if let Some(thread) = &request.thread_id
+            && self.store.thread(thread)?.project_id != request.project_id
+        {
+            return Err(CoreError::NotFound("thread".into()));
         }
-        let next = next_run(&request.schedule, unix_now())?;
         let existing = request
             .id
             .as_deref()
             .map(|id| self.store.task(id))
             .transpose()?;
+        let after_run = self.after_run_for(&request, existing.as_ref())?;
+        // A paused task stays paused however it is edited, with nothing due.
+        let enabled = existing.as_ref().is_none_or(|task| task.enabled);
+        let due = next_run(&request.schedule, unix_now())?;
+        let next = due.filter(|_| enabled);
         let keeps_secret = existing.as_ref().is_some_and(|task| task.has_secret);
         let task = ScheduledTask {
             id: request.id.unwrap_or_else(new_id),
@@ -324,7 +330,7 @@ impl Core {
             prompt: request.prompt,
             engine: request.engine,
             schedule: request.schedule,
-            enabled: existing.as_ref().is_none_or(|task| task.enabled),
+            enabled,
             signature: request.signature,
             has_secret: keeps_secret || request.secret.is_some(),
             filters: request.filters,
@@ -333,13 +339,70 @@ impl Core {
             timestamp_path: request.timestamp_path,
             next_run_at: next.and_then(rfc3339),
             last_run_at: existing.as_ref().and_then(|task| task.last_run_at.clone()),
-            last_status: existing.map_or_else(|| "never".to_owned(), |task| task.last_status),
-            created_at: now(),
+            last_status: existing
+                .as_ref()
+                .map_or_else(|| "never".to_owned(), |task| task.last_status.clone()),
+            created_at: existing.map_or_else(now, |task| task.created_at),
+            after_run,
         };
         self.audit_task(actor, "task.save", &task.id)?;
         self.store
             .save_task(&task, next, request.secret.as_deref())?;
         Ok(task)
+    }
+
+    /// Where an `after_thread` task starts from: a run that already ended does not
+    /// set it off. A task that would queue on the thread it follows would set itself
+    /// off for ever, so that is refused.
+    fn after_run_for(
+        &self,
+        request: &UpsertTask,
+        existing: Option<&ScheduledTask>,
+    ) -> Result<Option<String>> {
+        if request.schedule.kind != "after_thread" {
+            return Ok(None);
+        }
+        let target = request
+            .schedule
+            .after_thread
+            .as_deref()
+            .ok_or_else(|| CoreError::Invalid("Choose a thread to follow.".into()))?;
+        if self.store.thread(target)?.project_id != request.project_id {
+            return Err(CoreError::NotFound("thread".into()));
+        }
+        if request.thread_id.as_deref() == Some(target) {
+            return Err(CoreError::Invalid(
+                "A task cannot run on the thread it follows.".into(),
+            ));
+        }
+        let unchanged =
+            existing.is_some_and(|task| task.schedule.after_thread.as_deref() == Some(target));
+        if unchanged {
+            return Ok(existing.and_then(|task| task.after_run.clone()));
+        }
+        Ok(self.store.latest_run(target)?.map(|run| run.id))
+    }
+
+    /// Changes the task at `id`, which must exist and stays in its project. History,
+    /// pause, webhook token and, unless replaced, signing secret all carry over.
+    pub fn update_task(
+        &self,
+        id: &str,
+        mut request: UpsertTask,
+        actor: &str,
+    ) -> Result<ScheduledTask> {
+        if request.id.as_deref().is_some_and(|named| named != id) {
+            return Err(CoreError::Invalid(
+                "That body names a different task.".into(),
+            ));
+        }
+        if self.store.task(id)?.project_id != request.project_id {
+            return Err(CoreError::Invalid(
+                "A task cannot move to another project.".into(),
+            ));
+        }
+        request.id = Some(id.to_owned());
+        self.save_task(request, actor)
     }
 
     fn audit_task(&self, actor: &str, action: &str, id: &str) -> Result<()> {
@@ -451,6 +514,34 @@ impl Core {
                 tracing::debug!(%error, "a scheduled task did not start");
             }
         }
+        for task in self.store.tasks().unwrap_or_default() {
+            if task.enabled
+                && task.schedule.kind == "after_thread"
+                && let Err(error) = self.answer_finished_run(task).await
+            {
+                tracing::debug!(%error, "a follow-up task did not start");
+            }
+        }
+    }
+
+    /// Fires once for each run of the followed thread that ended. The run is marked
+    /// answered first, so a failed firing does not repeat, as with any other task.
+    async fn answer_finished_run(&self, mut task: ScheduledTask) -> Result<()> {
+        let Some(target) = task.schedule.after_thread.clone() else {
+            return Ok(());
+        };
+        let Some(run) = self.store.latest_run(&target)? else {
+            return Ok(());
+        };
+        if !run.state.is_terminal() || task.after_run.as_deref() == Some(run.id.as_str()) {
+            return Ok(());
+        }
+        task.after_run = Some(run.id);
+        if task.schedule.only_on_success && run.state != orbyn_contracts::RunState::Completed {
+            return self.store.save_task(&task, None, None);
+        }
+        let prompt = task.prompt.clone();
+        self.fire_recorded(task, &prompt).await.map(|_| ())
     }
 
     /// Handles a webhook request. A wrong token looks exactly like an unknown task;
@@ -723,6 +814,8 @@ mod tests {
             time: Some("09:30".into()),
             weekdays,
             utc_offset_minutes: offset,
+            after_thread: None,
+            only_on_success: false,
         };
         let tomorrow = next_run(&schedule(vec![], 0), monday).unwrap().unwrap();
         assert_eq!(rfc3339(tomorrow).unwrap(), "2026-11-03T09:30:00Z");
@@ -737,6 +830,8 @@ mod tests {
             time: None,
             weekdays: vec![],
             utc_offset_minutes: 0,
+            after_thread: None,
+            only_on_success: false,
         };
         assert!(next_run(&interval, monday).is_err());
     }

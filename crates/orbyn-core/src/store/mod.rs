@@ -5,6 +5,7 @@
 mod approvals;
 mod automations;
 mod catalog;
+mod changes;
 mod checkpoints;
 mod hub;
 mod migrations;
@@ -14,6 +15,8 @@ mod runs;
 #[cfg(test)]
 mod tests;
 mod threads;
+
+pub use changes::{KeptChange, Snapshot};
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -115,7 +118,7 @@ impl Store {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn reader(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn reader(&self) -> MutexGuard<'_, Connection> {
         self.read
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -198,6 +201,19 @@ impl Store {
     }
 
     /// Records the trust decision, audit first, in one transaction.
+    pub fn rename_project(&self, id: &str, name: &str) -> Result<Project> {
+        let changed = self.commit(|tx, _| {
+            Ok(tx.execute(
+                "UPDATE projects SET name = ?2 WHERE id = ?1",
+                params![id, name],
+            )?)
+        })?;
+        if changed == 0 {
+            return Err(CoreError::NotFound("project".into()));
+        }
+        self.project(id)
+    }
+
     pub fn trust_project(&self, id: &str, actor: &str) -> Result<Project> {
         self.commit(|tx, _| {
             let path: String = tx
@@ -546,8 +562,43 @@ fn insert_event(
             serde_json::to_string(event)?
         ],
     )?;
+    match event {
+        AgUiEvent::TextMessageStart { message_id, role } => {
+            index_message(tx, &record, message_id, role, "")?;
+        }
+        AgUiEvent::TextMessageContent { message_id, delta } => {
+            index_message(tx, &record, message_id, "assistant", delta)?;
+        }
+        _ => {}
+    }
     appended.0.push((thread_id.to_owned(), seq));
     Ok(record)
+}
+
+/// Keeps the whole text of a message beside the log, for search.
+fn index_message(
+    tx: &Transaction<'_>,
+    record: &ThreadEvent,
+    message_id: &str,
+    role: &str,
+    text: &str,
+) -> Result<()> {
+    tx.execute(
+        "INSERT INTO thread_messages (thread_id, run_key, message_id, seq, role, ts, text)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT (thread_id, run_key, message_id)
+         DO UPDATE SET text = text || excluded.text",
+        params![
+            record.thread_id,
+            record.run_id.as_deref().unwrap_or(""),
+            message_id,
+            record.seq,
+            role,
+            record.ts,
+            text
+        ],
+    )?;
+    Ok(())
 }
 
 fn insert_audit(tx: &Transaction<'_>, record: &AuditRecord) -> Result<i64> {
@@ -654,7 +705,7 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
     })
 }
 
-fn run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
+pub(super) fn run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
     let state: RunState = parse_wire(2, row.get("state")?)?;
     Ok(Run {
         id: row.get("id")?,

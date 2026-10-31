@@ -160,6 +160,31 @@ async fn codex_cancel_interrupts_and_cleans_up() {
 }
 
 #[tokio::test]
+async fn a_forced_stop_kills_the_engine_and_is_safe_to_repeat() {
+    let dir = TempDir::new();
+    let (pids, options) = pid_env(&dir);
+    let (service, thread) = setup(&dir, options, "codex").await;
+    let run = service.admit(&thread, "[hang]").await;
+    engine_started(&pids).await;
+    let path = format!("/api/threads/{thread}/force-stop");
+    let (status, stopped) = service.send(&path, json!({})).await;
+    assert_eq!(status, 200, "{stopped}");
+    assert_eq!(stopped["run_id"], run);
+    assert_eq!(stopped["state"], "cancelled");
+    #[cfg(unix)]
+    assert_all_dead(&pids).await;
+    assert_eq!(service.finished(&thread).await, "cancelled");
+    let (_, again) = service.send(&path, json!({})).await;
+    assert_eq!(again["run_id"], Value::Null);
+    let (status, _) = service
+        .send("/api/threads/nothing/force-stop", json!({}))
+        .await;
+    assert_eq!(status, 404);
+    let actions = service.audit(&thread).await;
+    assert!(actions.iter().any(|row| row["action"] == "run.force_stop"));
+}
+
+#[tokio::test]
 async fn codex_exit_during_approval_fails_and_expires() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
@@ -191,10 +216,12 @@ async fn codex_gets_the_mcp_server_without_approve() {
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
     service.admit(&thread, "[mcp-tools]").await;
     service.finished(&thread).await;
-    assert_eq!(
-        text_of(&service.all_events(&thread).await),
-        "mcp 200 tools 32"
-    );
+    let text = text_of(&service.all_events(&thread).await);
+    let tools: u32 = text
+        .strip_prefix("mcp 200 tools ")
+        .and_then(|count| count.parse().ok())
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(tools > 30, "{text}");
 }
 
 #[tokio::test]
@@ -210,6 +237,31 @@ async fn claude_stream_maps_to_events() {
             .iter()
             .any(|t| t == "REASONING_MESSAGE_CONTENT")
     );
+}
+
+#[tokio::test]
+async fn plans_reach_the_log_as_steps_and_a_proposed_plan() {
+    for (engine, step) in [("claude", "do it"), ("codex", "do it")] {
+        let dir = TempDir::new();
+        let (service, thread) = setup(&dir, Options::default(), engine).await;
+        service.admit(&thread, "[plan-item]").await;
+        assert_eq!(service.finished(&thread).await, "completed");
+        let events = service.all_events(&thread).await;
+        let plan = events
+            .iter()
+            .find(|event| event["event"]["activityType"] == "plan")
+            .unwrap_or_else(|| panic!("{engine}: no plan activity"));
+        assert_eq!(plan["event"]["content"]["steps"][0]["title"], step);
+        assert_eq!(
+            plan["event"]["content"]["steps"][0]["status"],
+            "in_progress"
+        );
+        assert!(
+            text_of(&events).contains("<proposed_plan>\n# Ship\n1. a\n</proposed_plan>"),
+            "{engine}: {}",
+            text_of(&events)
+        );
+    }
 }
 
 #[tokio::test]

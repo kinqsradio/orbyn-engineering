@@ -9,7 +9,7 @@ import {
   ShieldAlert,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
@@ -192,6 +192,26 @@ function PlanBanner({ thread }: { thread: Thread }) {
   );
 }
 
+const PROACTIVE_FILES = 3;
+const PROACTIVE_LINES = 50;
+
+/** Opens Changes after a turn that touched a lot, unless the setting is off or a panel is up. */
+function useProactivePanels(threadId: string, runId: string | null) {
+  const previous = useRef(runId);
+  useEffect(() => {
+    const finished = previous.current;
+    previous.current = runId;
+    if (!finished || runId) return;
+    const ui = useUi.getState();
+    if (!ui.proactivePanels || ui.panelOpen === true) return;
+    const items = useThreadLogs.getState().logs[threadId]?.items ?? [];
+    const changed = items.findLast((item) => item.kind === "diff" && item.runId === finished);
+    if (changed?.kind !== "diff") return;
+    const lines = changed.files.reduce((sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0), 0);
+    if (changed.files.length >= PROACTIVE_FILES || lines >= PROACTIVE_LINES) ui.togglePanel("diff");
+  }, [threadId, runId]);
+}
+
 function StreamBanner({ threadId }: { threadId: string }) {
   const status = useThreadLogs((state) => state.streams[threadId]?.status);
   if (status !== "reconnecting") return null;
@@ -254,6 +274,7 @@ export function ThreadView({ id }: { id: string }) {
   );
   const motion = usePanelMotion();
   useThreadStream(id);
+  useProactivePanels(id, thread?.active_run?.id ?? null);
 
   useEffect(() => {
     setLastThread(id);

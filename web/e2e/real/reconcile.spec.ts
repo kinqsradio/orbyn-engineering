@@ -95,12 +95,12 @@ test("the palette finds a thread by project and offers settings", async ({ page 
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#\/threads\//);
   await page.keyboard.press("ControlOrMeta+p");
-  await palette.getByRole("combobox", { name: "Search" }).fill("AGENTS");
-  await palette.getByRole("button", { name: /AGENTS\.md/ }).click();
-  await expect(page.locator(".file-source")).toContainText("# Library");
+  await palette.getByRole("combobox", { name: "Search" }).fill("README");
+  await palette.getByRole("button", { name: /README\.md/ }).click();
+  await expect(page.locator(".file-preview")).toContainText("Repo");
   await page.keyboard.press("ControlOrMeta+Shift+f");
-  await palette.getByRole("combobox", { name: "Search" }).fill("Library");
-  await expect(palette.getByRole("button", { name: /AGENTS\.md:1/ })).toBeVisible();
+  await palette.getByRole("combobox", { name: "Search" }).fill("Repo");
+  await expect(palette.getByRole("button", { name: /README\.md:1/ })).toBeVisible();
   await page.keyboard.press("Escape");
 });
 
@@ -113,6 +113,66 @@ test("number badges show while the jump key is held, and a digit opens that row"
   await page.keyboard.press("1");
   await page.keyboard.up("ControlOrMeta");
   await expect(page).toHaveURL(/#\/threads\//);
+});
+
+test("new threads keep their project; the shelf pages; hover shows the card; labs change rows", async ({ page }) => {
+  for (const at of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+    const made = await make(`Shelf ${at}`);
+    await service.api("PATCH", `/api/threads/${made.id}`, { settled: true });
+  }
+  const held = await make("Hover me");
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(service.page);
+  await expect(row(page, "Hover me")).toBeVisible();
+  await row(page, "Hover me").click();
+  await page.locator(".thread-main").getByRole("textbox", { name: /^Message/ }).focus();
+  await page.keyboard.press("ControlOrMeta+Shift+n");
+  await expect(page).toHaveURL(new RegExp(`#/new/${projectId}`));
+
+  const more = page.getByRole("button", { name: /^Show \d+ more/ });
+  await page.getByRole("button", { name: /^Settled/ }).click().catch(() => undefined);
+  await expect(more).toBeVisible();
+  await more.click();
+  await expect(row(page, "Shelf 1").first()).toBeVisible();
+
+  await row(page, "Shelf 2").hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+
+  await page.goto(`${service.page}#/settings/labs`);
+  await page.getByRole("switch", { name: "Project folders" }).check();
+  await page.getByRole("switch", { name: "Multiline rows" }).check();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.locator(".sidebar-scroll").getByText("my-repo").first()).toBeVisible();
+  await expect(page.locator("[data-multiline]").first()).toBeAttached();
+  await row(page, "Hover me").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Find in thread" }).click();
+  await expect(page.getByRole("textbox", { name: "Find in thread" })).toBeVisible();
+  await page.goto(`${service.page}#/threads/${held.id}`);
+  await expect(page.locator(".thread-main").getByRole("textbox", { name: /^Message/ })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+b");
+});
+
+test("scheduled tasks: create, pause, run and delete through the form", async ({ page }) => {
+  await page.goto(`${service.page}#/settings/tasks`);
+  await page.getByRole("button", { name: /New/ }).first().click();
+  const form = page.getByRole("dialog", { name: "New scheduled task" });
+  await form.getByLabel("Name").fill("Nightly");
+  await form.getByLabel("Prompt").fill("check things");
+  await form.getByLabel("Schedule").selectOption("fixed_time");
+  await form.getByLabel("Time").fill("07:30");
+  await form.getByLabel("Mon").check();
+  await form.getByRole("button", { name: /Create|Save|Add/ }).click();
+  await expect(form).toBeHidden();
+  const list = () => service.api<{ id: string; enabled: boolean }[]>("GET", "/api/tasks");
+  await expect.poll(async () => (await list()).length).toBe(1);
+  await page.getByRole("switch", { name: "Enable Nightly" }).click();
+  await expect.poll(async () => (await list())[0]?.enabled).toBe(false);
+  await page.getByRole("button", { name: "Run Nightly" }).click();
+  await expect(page.getByText(/Couldn't/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Delete Nightly" }).click();
+  await expect.poll(async () => (await list()).length).toBe(0);
 });
 
 test("the keybindings page rebinds and the new key runs", async ({ page }) => {

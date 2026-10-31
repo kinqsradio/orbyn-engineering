@@ -138,6 +138,18 @@ impl Store {
     }
 
     /// Ends the engine session and leaves `handoff` for the next run.
+    /// Takes messages past a rewind out of search, as clients hide them. The log
+    /// keeps them.
+    pub fn forget_messages_after(&self, thread_id: &str, through: i64) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "DELETE FROM thread_messages WHERE thread_id = ?1 AND seq > ?2",
+                params![thread_id, through],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn set_handoff(&self, thread_id: &str, handoff: &str) -> Result<()> {
         self.commit(|tx, _| {
             tx.execute(
@@ -249,6 +261,13 @@ impl Store {
             tx.execute(
                 "INSERT INTO thread_events (thread_id, seq, run_id, ts, event)
                  SELECT ?1, seq, NULL, ts, event FROM thread_events
+                 WHERE thread_id = ?2 AND seq <= ?3",
+                params![id, new.parent_thread_id, through],
+            )?;
+            tx.execute(
+                "INSERT INTO thread_messages
+                    (thread_id, run_key, message_id, seq, role, ts, text)
+                 SELECT ?1, run_key, message_id, seq, role, ts, text FROM thread_messages
                  WHERE thread_id = ?2 AND seq <= ?3",
                 params![id, new.parent_thread_id, through],
             )?;

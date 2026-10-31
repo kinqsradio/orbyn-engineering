@@ -59,6 +59,11 @@ admitted -> starting -> running <-> awaiting_approval
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.
+- A forced stop (`POST /api/threads/:id/force-stop`) is for an engine that stopped
+  answering, so it skips the wait for it: the stop is saved, the process tree and those
+  of delegated threads are killed, and the run ends `cancelled` within seconds. If a stage
+  around the engine is what hangs, the run is closed anyway after four seconds, and
+  fencing keeps out whatever it does later. With nothing running it changes nothing.
 - Terminal states never change. Every transition is a compare-and-set on the
   previous state, so a late engine event cannot revive a finished run.
 - A run owner is fenced by `(run_id, owner_epoch)`. `owner_epoch` is a value
@@ -125,7 +130,10 @@ Codex reads `model/list`, every page, hidden models left out, on a short-lived
 app-server, then `config/read` with no folder for a configured `service_tier`, which
 becomes the default wherever a model offers it (config's `fast` is a catalog's
 `priority`). An ACP agent's models, modes and config options come from a session opened
-in a temp folder with no prompt sent.
+in a temp folder with no prompt sent. Some list what a model offers only once it is
+chosen, so a probe chooses up to 24 in turn, within 15 seconds, and keeps what differs from
+the session's own options. It then deletes that session where the agent offers
+`session/delete`, or closes it with `session/close`, so it never shows among real work.
 
 Claude's list is kept until its CLI version or login changes, which is compared at most
 once a minute. Other lists are kept five minutes, a stand-in 30 seconds, and `?refresh=
@@ -235,6 +243,25 @@ leaves it pending, and until then `/compact` and `/goal`, which reach an engine 
 thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
 is not used.
 
+## What a run changed
+
+A run's change list holds only files a tool named, never what status shows, so a thread
+sharing the folder adds nothing. Both ends of each file are kept as bytes in the
+database. The new ones are read when the tool ends, which freezes them against anything
+later. The old ones come from the moment the gate allows the write, or failing that the
+run's start checkpoint. An engine's "started" notice is not used, because it can arrive
+after a fast write and make a change look like none. A write nothing reports, such as a
+shell script, can be declared with `orbyn_track_files`. With no source, as in a full-access
+Codex turn outside Git, that end is `unknown`, which is reported rather than guessed. Links, `.git` and anything outside the
+checkout are never read. The limits are 200 files and 32 MiB a run and 1 MiB a file, and
+past 512 MiB in all the oldest bytes go while their paths stay.
+
+Reading a change uses only what was kept. A restore puts files back to either end from
+those bytes, so it works on one file, outside Git and in a folder other threads share,
+where a checkpoint cannot. It needs the thread idle, and a file holding anything but the
+run's own two versions is reported as `conflict` and left alone. An added file is removed
+by a restore to the start.
+
 ## Source control
 
 Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
@@ -313,19 +340,39 @@ keeps uncommitted work, and never while another active thread uses it. `?dry_run
 only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
+## Message search
+
+A message is split over many events, so `thread_messages` keeps each one whole, written
+in the same transaction as its event, copied with a fork and filled from the log for
+threads made before it. Reasoning is not in it, and a rewind takes out what it hides from
+clients while the log stays whole.
+
+A message matches when it holds every word, in any order, ignoring case. A search needs
+one word of at least three characters, or two in Chinese, Japanese or Korean, which has
+no spaces and packs more into a character. Shorter words still have to match; a query
+with none long enough returns `too_short` and reads nothing. At most 16 words and 200
+characters, 200 hits and the newest 50,000 messages are read, and `truncated` says when
+that left something out. Archived threads are searched only when asked.
+
 ## Automatic requests
 
 `GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
-Orbyn makes without being asked, with host, cadence and what turns it off. A new one is
-added there in the same change. Engines make their own requests under their own terms.
+Orbyn makes without being asked, with host, cadence, what turns it off, the key that does
+and whether it is on now. A new one is added there in the same change, with a switch.
+The two-minute pull request poll has its own, `poll_pull_requests`. Engines make their own requests under their own terms.
 
 ## Automations
 
 A scheduled task fires on an interval, at a fixed time on chosen weekdays in a fixed
-UTC offset, or on a webhook. The clock is checked each minute. Each firing queues the
+UTC offset, on a webhook, or after a run of another thread in its project ends,
+optionally only when it completed. The clock is checked each minute, so a follow-up starts
+within one, and answers each run once, never one from before the task existed. A task
+cannot run on the thread it follows, which would set itself off for ever. Each firing queues the
 prompt on the task's thread, or on a new thread, in that project's normal permission
 mode, and needs a trusted project at that moment. A failed firing records why and
-tries again at the next time.
+tries again at the next time. Changing a task by id replaces what it does and keeps
+what it earned: its history, pause, token and, unless replaced, signing secret. It
+stays in its project, and its thread must be in that project too.
 
 `POST /hooks/:id/:token` is public, because a sender cannot hold a session, though the
 `Host` and `Origin` checks still apply. The token is shown once and kept as a digest,
@@ -343,7 +390,9 @@ Reaching a machine from outside is up to the person; Orbyn runs no relay.
 A delegated thread is a `subagent` child in the parent's folder. When it ends with
 nothing queued, it reports through the parent's queue, with the newest text within
 the handoff budget, which wakes the parent. Cancelling a run cancels the runs of its
-delegated threads.
+delegated threads. A delegated run with no event for eight minutes, twice the longest a tool
+may take, is ended as failed and says so. Waiting on a person does not count, and a run
+someone is watching is never ended for going quiet.
 
 ## Files
 
@@ -352,8 +401,20 @@ symlinks cannot leave the checkout, and `.git` is out of reach. A save names the
 revision it started from; a file that moved on is reported, never overwritten, and
 new bytes arrive by rename. A read opens the resolved file without following a link and
 checks the path again, which narrows the window for a swapped folder but cannot close it
-on every filesystem. These saves are the user's own edits, audited, and
-differ from rule 4, which covers what Orbyn adds on its own.
+on every filesystem. A path is judged where it lands, so a link into `.git` or a
+different spelling of it on a case-insensitive disk is refused too. These saves are the
+user's own edits, audited, and differ from rule 4, which covers what Orbyn adds on its
+own.
+
+`GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
+byte range at a time; a form it does not serve gets the whole file. A checkout holds
+code nobody here wrote, so nothing in it may run in this origin. The type comes from
+the name, never the bytes: images, audio, video, fonts and PDF are `inline` and
+everything else is `application/octet-stream` as an attachment. All of it is `nosniff`
+and sandboxed by CSP, which is what makes SVG safe, except PDF, which browsers will not
+show sandboxed. An image or video element cannot set a header, so this route takes
+`?token=` as the streams do, with `no-referrer` to keep it out of anything a file links
+to.
 
 ## Approval lifecycle
 
@@ -383,12 +444,17 @@ replays from `Last-Event-ID`, then follows live. Events use AG-UI 1.0 names.
 Delivery to clients is a projection of the log; a client that reconnects loses
 nothing.
 
+A plan has two forms. Steps are a `plan` activity, from Codex's `turn/plan/updated` and
+Claude's `TodoWrite`. A proposed plan is an assistant message holding
+`<proposed_plan>...</proposed_plan>`, from Codex's finished `plan` item and Claude's
+`ExitPlanMode`, so it also reaches a handoff and search. A subagent's stay out.
+
 Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
-`engine.retrying`, `engine.selection`, `engine.sign_in_required` and
-`engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
+`engine.retrying`, `engine.selection`, `engine.sign_in_required`,
+`engine.session_lost` and `run.force_stopped`. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -548,10 +614,14 @@ what to do.
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
 random per run, is passed only to that run's engine, and is revoked at run end.
 Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
-governed `computer_*` tools and `orbyn_*` tools for threads, projects, pull requests,
-delegation and scheduling. `approve` is listed only for Claude.
+governed `computer_*` tools and `orbyn_*` tools for threads, projects, worktrees,
+attachments, preview tabs, pull requests, delegation, scheduling and declaring writes.
+`approve` is listed only for Claude.
 
-An `orbyn_*` tool reaches only the caller's project; anything else reads as not found.
+An `orbyn_*` tool reaches only the caller's project, its thread's preview tabs and, for
+an attachment, its own checkout; anything else reads as not found. A preference a tool
+sets is the project's, never a global one. A project cannot be created, cloned or
+removed from a tool, since those reach past it.
 Claude's permission prompt passes Orbyn's own tools without asking, so each tool with
 an effect goes through the gate itself as a `tool` action, which needs a person unless
 the thread is in full access or a rule allows it. Every call is audited first. A
@@ -575,6 +645,16 @@ text. Watching gives no control: input needs a person to take the page first.
 Recording keeps the changed frames as numbered JPEG files in
 `<data>/browser-artifacts`, with no video encoder. Agents do not act on a preview tab
 yet, so taking control only guards against a watcher's stray input.
+
+Back and forward step through web pages only, so the blank page a browser starts on
+and anything else not `http` or `https` is passed over, and at either end nothing
+happens. A link clicked in the page changes where a tab is with nobody telling this
+side, so the address and those two flags are reread about once a second while someone
+watches. A page is 100 to 4096 pixels each way, which also bounds each frame.
+
+The headless shell's separate GPU process exits once a page composites, which ends the
+browser, so a binary named as that shell gets `--in-process-gpu` on macOS and Linux.
+`ORBYN_BROWSER_IN_PROCESS_GPU` forces it for one behind a wrapper.
 
 `/api/threads/:id/servers` lists TCP listeners whose process runs from the checkout,
 through `lsof`. Windows has no such check, so there it lists loopback and wildcard
@@ -632,22 +712,46 @@ Nothing runs a shell or npm to learn these. On Windows a `.cmd` is followed to t
 it wraps, including pnpm's store and a same-named sibling, a `node.exe` beside the shim
 wins, and a shim that points at a shell is refused.
 
+## ACP registry
+
+`GET /api/acp/registry` reads the public registry on request, and installing an agent
+makes it a custom engine named `acp-<id>`, with no account and no credential: one that
+needs a login says so when run, under its own command. The registry is someone else's
+file, so an entry that does not parse is left out, and ids and versions that reach a
+path must be plain. `npx` and `uvx` agents install nothing here. A package name cannot
+read as a flag, and those tools fetch it on first run. A binary is taken only over `https`,
+with the digest the entry gives, and one with no digest is not installable. It is
+unpacked into a staging folder under `<data>/acp-agents`, a link leading out or a command
+outside the folder refuses it, and only then does it become the install. Removing one
+takes its files and engine, refused during a run, and threads keep their history.
+
+## Command line
+
+`orbyn` is a client of a running service, with no rule of its own: `thread`, `project`,
+`theme`, `status` and `doctor` go through the API the UI uses, and `serve` runs `orbynd`
+from beside it. It finds the service in `service.json` in the data folder (`--data-dir`,
+`ORBYN_DATA_DIR`), holding the URL, the launch token and the process id. That file is
+private like any secret file and goes when the service stops; one left by a crash reads
+as nothing running. Exit codes are 0, 1 when a request was refused or a waited-on run
+did not complete, and 2 when no service is running. `--json` prints the API's answer.
+
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`,
 `--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
 `{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
-for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
+for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
-`ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`, `ORBYN_OFFLINE`
+`ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,
+`ORBYN_BROWSER_IN_PROCESS_GPU`, `ORBYN_OFFLINE`
 (skip latest-version lookups) and `ORBYN_LOG`.
 
 ## HTTP API
 
 All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
-`Authorization: Bearer <token>`, or the session cookie. SSE and WebSocket also
-accept `?token=` because browsers cannot set headers on them.
+`Authorization: Bearer <token>`, or the session cookie. SSE, WebSocket and
+`files/raw` also accept `?token=` because browsers cannot set headers on them.
 
 | Method and path | Purpose |
 | --- | --- |
@@ -659,6 +763,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
+| `PATCH /api/projects/:id` | `RenameProject`: the name shown; the folder stays |
 | `DELETE /api/projects/:id?delete_files=&confirm=` | `ProjectRemoval`: unregisters; `delete_files` is `400` unless Orbyn made the folder, and can be `409 project_has_work` |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
 | `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads; no `project_id` on create makes a scratch folder |
@@ -671,6 +776,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
 | `GET, PUT /api/settings` | `ServerSettings` |
 | `GET, POST /api/tasks` | `ScheduledTask[]`; `UpsertTask` creates or changes |
+| `PUT /api/tasks/:id` | The whole `UpsertTask`; `404` if unknown, `400` for another task's `id` or another project |
 | `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |
 | `POST /api/tasks/:id/run` | Fire now (`202`, `{thread_id}`) |
 | `POST /api/tasks/:id/webhook` | `WebhookEndpoint`: issue or rotate the token, shown once |
@@ -696,17 +802,22 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET, POST /api/threads/:id/attachments?name=` | Raw upload body; `Content-Type` is the kind |
 | `DELETE /api/attachments/:id` | Remove an attachment |
 | `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills, ranked unignored files, this project's threads |
+| `GET /api/search/messages?q=&project_id=&thread_id=&archived=&limit=` | `MessageSearch`: `MessageHit[]`, newest first, each with `seq` and `message_id` to open at |
 | `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, its agents (`source: agent`), custom command files, and skills when `true` |
 | `GET /api/questions?thread_id=&state=` | `QuestionRequest[]` |
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
+| `GET /api/threads/:id/messages?limit=` | `ThreadMessage[]`: the newest up to 1,000, each whole, in order |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
 | `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
-| `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported writing, up to 200; a command's own writes are not known |
-| `GET /api/network` | `NetworkRequest[]`: every automatic outbound request |
+| `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported or the agent declared, up to 200, with status and whether each can be restored |
+| `GET /api/threads/:id/runs/:run/changes/file?path=` | `ChangedFileContent`: both ends as kept, never the folder as it is now |
+| `POST /api/threads/:id/runs/:run/changes/restore` | `RestoreChanges` to `RestoredFile[]`: `restored`, `unchanged`, `conflict`, `not_kept`; `409 thread_busy` |
+| `GET /api/network` | `NetworkRequest[]`: every automatic outbound request, its switch and whether it is on |
 | `GET /api/threads/:id/files?path=` | `FileEntry[]`, one folder |
 | `GET /api/threads/:id/files/ignored` | Ignored paths |
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |
 | `GET, PUT /api/threads/:id/files/content` | `FileContent`; a stale `base_revision` is `409 file_conflict` |
+| `GET /api/threads/:id/files/raw?path=&download=` | Bytes with `Range`, `If-Range` and `If-None-Match`; `206`, `304`, `413 file_too_large`, `416`; `download` forces an attachment |
 | `POST /api/threads/:id/files/open`, `GET /api/editors` | `OpenInEditor` with optional `line` and `column`; `file_manager` reveals the file |
 | `POST /api/threads/:id/git/action` | `GitAction` to `GitActionResult`: commit, push, pull request |
 | `GET, POST /api/threads/:id/branches`, `POST .../branches/switch` | List, create and switch |
@@ -738,6 +849,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST .../pulls/:number/work` | `WorkOnPull`: a new thread on that worktree, linked |
 | `POST /api/projects/:id/publish` | `PublishProject`: create the remote, with `gh` or `glab`, and push |
 | `POST /api/runs/:id/cancel` | Cancel |
+| `POST /api/threads/:id/force-stop` | `ForcedStop`: end the run now; `run_id` is empty when nothing was running |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
@@ -750,6 +862,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET, POST /api/threads/:id/previews` | `PreviewTab[]`; `OpenPreview` |
 | `DELETE /api/threads/:id/previews/:tab` | Close the tab and its browser |
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
+| `POST .../previews/:tab/history`, `/resize` | `StepPreview`; `ResizePreview`, `400` outside 100 to 4096; both to `PreviewTab` |
 | `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
 | `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
 | `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |
@@ -762,6 +875,8 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
+| `GET /api/acp/registry?q=` | `AcpRegistryEntry[]`, with how this machine can install each; `502` if unreachable |
+| `POST, DELETE /api/acp/registry/:id` | `InstallAcpAgent` to `EngineStatus`, `422` if refused; remove, `409 engine_busy` |
 | `GET /api/skills`, `POST /api/skills/rebuild` | Library skills; rebuild only re-reads them |
 | `GET, POST /api/skills/profiles`, `DELETE /api/skills/profiles/:id` | Profiles |
 | `GET /api/usage?days=` | `UsageReport` from local history, rescanned on each read |

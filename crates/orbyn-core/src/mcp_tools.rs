@@ -20,6 +20,7 @@ use crate::store::AuditRecord;
 const MAX_WAIT_SECONDS: u64 = 40;
 const MAX_SEARCH_CHARS: usize = 200_000;
 const MAX_HITS: usize = 50;
+const MAX_BATCH: usize = 16;
 
 struct Tool {
     name: &'static str,
@@ -129,6 +130,31 @@ const TOOLS: &[Tool] = &[
         &[("thread_id", "string")],
         &["thread_id"],
     ),
+    read(
+        "orbyn_worktree_status",
+        "This checkout's branch, whether it is a worktree, and its uncommitted files.",
+        &[],
+        &[],
+    ),
+    read(
+        "orbyn_orchestrator_capabilities",
+        "What this thread can start: engines, and whether it may delegate.",
+        &[],
+        &[],
+    ),
+    read(
+        "orbyn_preview_list",
+        "This thread's preview tabs.",
+        &[],
+        &[],
+    ),
+    read(
+        "orbyn_track_files",
+        "Before writing files no tool reports, such as from a shell script, call this with \
+         the checkout paths; call it again with done true afterwards.",
+        &[("paths", "array"), ("done", "boolean")],
+        &["paths"],
+    ),
     act(
         "orbyn_thread_launch",
         "Start a new thread in this project with a first message.",
@@ -140,10 +166,121 @@ const TOOLS: &[Tool] = &[
         &["prompt"],
     ),
     act(
+        "orbyn_threads_create",
+        "Start several threads in this project, each with a first message. One failure \
+         does not stop the rest.",
+        &[("threads", "array")],
+        &["threads"],
+    ),
+    act(
+        "orbyn_worktree_handoff",
+        "Continue in a new worktree: a new thread there, with a first message.",
+        &[
+            ("purpose", "string"),
+            ("prompt", "string"),
+            ("base_branch", "string"),
+            ("title", "string"),
+        ],
+        &["purpose", "prompt"],
+    ),
+    act(
+        "orbyn_environment_preferences_update",
+        "Change this project's preferences. null goes back to the default.",
+        &[("values", "object")],
+        &["values"],
+    ),
+    act(
+        "orbyn_project_update",
+        "Rename this project.",
+        &[("name", "string")],
+        &["name"],
+    ),
+    act(
         "orbyn_thread_send",
-        "Queue a message on a thread.",
-        &[("thread_id", "string"), ("prompt", "string")],
+        "Queue a message on a thread, with attachments from orbyn_attachment_add.",
+        &[
+            ("thread_id", "string"),
+            ("prompt", "string"),
+            ("attachment_ids", "array"),
+        ],
         &["thread_id", "prompt"],
+    ),
+    act(
+        "orbyn_attachment_add",
+        "Attach a file from this checkout to a thread, for orbyn_thread_send.",
+        &[("thread_id", "string"), ("path", "string")],
+        &["thread_id", "path"],
+    ),
+    act(
+        "orbyn_attachment_discard",
+        "Remove an attachment that was not sent.",
+        &[("thread_id", "string"), ("attachment_id", "string")],
+        &["thread_id", "attachment_id"],
+    ),
+    act(
+        "orbyn_thread_organize",
+        "Pin, settle, snooze, archive or mark a thread unread.",
+        &[
+            ("thread_id", "string"),
+            ("pinned", "boolean"),
+            ("settled", "boolean"),
+            ("archived", "boolean"),
+            ("unread", "boolean"),
+            ("snoozed_until", "string"),
+        ],
+        &["thread_id"],
+    ),
+    act(
+        "orbyn_thread_configure",
+        "Set a thread's model, effort, permission mode or plan mode.",
+        &[
+            ("thread_id", "string"),
+            ("model", "string"),
+            ("effort", "string"),
+            ("permission_mode", "string"),
+            ("plan_mode", "boolean"),
+        ],
+        &["thread_id"],
+    ),
+    act(
+        "orbyn_preview_open",
+        "Open a web page in a preview tab for this thread.",
+        &[("url", "string"), ("width", "number"), ("height", "number")],
+        &["url"],
+    ),
+    act(
+        "orbyn_preview_navigate",
+        "Go to a page, or back or forward, in one of this thread's preview tabs.",
+        &[("tab_id", "string"), ("url", "string"), ("back", "boolean")],
+        &["tab_id"],
+    ),
+    act(
+        "orbyn_preview_resize",
+        "Set a preview tab's size.",
+        &[
+            ("tab_id", "string"),
+            ("width", "number"),
+            ("height", "number"),
+        ],
+        &["tab_id", "width", "height"],
+    ),
+    act(
+        "orbyn_preview_close",
+        "Close one of this thread's preview tabs.",
+        &[("tab_id", "string")],
+        &["tab_id"],
+    ),
+    act(
+        "orbyn_preview_recording_start",
+        "Start recording a preview tab's frames.",
+        &[("tab_id", "string")],
+        &["tab_id"],
+    ),
+    act(
+        "orbyn_preview_recording_stop",
+        "Stop recording, and return where the frames are.",
+        &[("tab_id", "string")],
+        &["tab_id"],
     ),
     act(
         "orbyn_thread_update",
@@ -321,6 +458,53 @@ impl Core {
         Ok(())
     }
 
+    /// A new thread in the caller's project with a first message.
+    async fn launch(&self, own: &Thread, spec: &Value, worktree: Option<String>) -> Result<Value> {
+        let string = |key: &str| spec.get(key).and_then(Value::as_str).map(str::to_owned);
+        let thread = self
+            .create_thread(CreateThread {
+                project_id: Some(own.project_id.clone()),
+                engine: string("engine").unwrap_or_else(|| own.engine.clone()),
+                model: None,
+                title: string("title"),
+                worktree,
+                skill_profile: own.skill_profile.clone(),
+                base_branch: string("base_branch"),
+                effort: None,
+                options: std::collections::BTreeMap::new(),
+            })
+            .await?;
+        self.runs.enqueue(&thread.id, text(spec, "prompt")?, &[])?;
+        Ok(json!({ "thread_id": thread.id }))
+    }
+
+    /// A checkout file as an attachment. Trust, `..`, links and `.git` are the same
+    /// checks as any file route, and a thread can only draw on its own checkout.
+    fn attach_from_checkout(
+        &self,
+        own: &Thread,
+        target: &str,
+        path: &str,
+    ) -> Result<orbyn_contracts::Attachment> {
+        let bytes = self.open_raw_file(&own.id, path, true)?;
+        let mut body = Vec::new();
+        std::io::Read::read_to_end(&mut &bytes.file, &mut body)?;
+        self.add_attachment(target, &bytes.name, "application/octet-stream", &body)
+    }
+
+    fn own_preview(&self, own: &Thread, args: &Value) -> Result<String> {
+        let tab = text(args, "tab_id")?.to_owned();
+        if !self
+            .previews
+            .list(&own.id)
+            .iter()
+            .any(|view| view.id == tab)
+        {
+            return Err(CoreError::NotFound("preview".into()));
+        }
+        Ok(tab)
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn run_orbyn_tool(
         &self,
@@ -426,30 +610,193 @@ impl Core {
                     "last_run_state": thread.last_run_state,
                 })
             }
-            "orbyn_thread_launch" => {
-                let thread = self
-                    .create_thread(CreateThread {
-                        project_id: Some(own.project_id.clone()),
-                        engine: args
-                            .get("engine")
-                            .and_then(Value::as_str)
-                            .unwrap_or(&own.engine)
-                            .to_owned(),
-                        model: None,
-                        title: args.get("title").and_then(Value::as_str).map(str::to_owned),
-                        worktree: None,
-                        skill_profile: own.skill_profile.clone(),
-                        base_branch: None,
-                        effort: None,
-                        options: std::collections::BTreeMap::new(),
-                    })
-                    .await?;
-                self.runs.enqueue(&thread.id, text(args, "prompt")?, &[])?;
-                json!({ "thread_id": thread.id })
+            "orbyn_track_files" => {
+                let paths: Vec<String> = args
+                    .get("paths")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| CoreError::Invalid("paths is required.".into()))?
+                    .iter()
+                    .filter_map(|path| path.as_str().map(str::to_owned))
+                    .take(200)
+                    .collect();
+                let done = args.get("done").and_then(Value::as_bool).unwrap_or(false);
+                crate::file_changes::record(&self.store, &binding.scope, &paths, done);
+                json!({ "tracked": paths.len() })
+            }
+            "orbyn_thread_launch" => self.launch(&own, args, None).await?,
+            "orbyn_threads_create" => {
+                let specs = args
+                    .get("threads")
+                    .and_then(Value::as_array)
+                    .filter(|specs| specs.len() <= MAX_BATCH)
+                    .ok_or_else(|| {
+                        CoreError::Invalid(format!("threads is a list of up to {MAX_BATCH}."))
+                    })?;
+                let mut results = Vec::with_capacity(specs.len());
+                for spec in specs {
+                    results.push(match self.launch(&own, spec, None).await {
+                        Ok(started) => started,
+                        Err(error) => json!({ "error": error.public_message() }),
+                    });
+                }
+                json!(results)
+            }
+            "orbyn_worktree_handoff" => {
+                let purpose = text(args, "purpose")?.to_owned();
+                self.launch(&own, args, Some(purpose)).await?
+            }
+            "orbyn_worktree_status" => {
+                let checkout = Path::new(&own.cwd);
+                let status = crate::git::git(checkout, &["status", "--porcelain", "-b"]).await?;
+                let status = String::from_utf8_lossy(&status);
+                let mut lines = status.lines();
+                let branch = lines.next().and_then(|line| line.strip_prefix("## "));
+                let project = self.store.project(&own.project_id)?;
+                json!({
+                    "checkout": own.cwd,
+                    "branch": branch,
+                    "worktree": Path::new(&project.path) != checkout,
+                    "changed": lines.map(|line| line.get(3..).unwrap_or(line)).collect::<Vec<_>>(),
+                })
+            }
+            "orbyn_orchestrator_capabilities" => {
+                let nested =
+                    own.lifecycle.as_ref().and_then(|l| l.relation.as_deref()) == Some("subagent");
+                let engines: Vec<Value> = self
+                    .engines
+                    .statuses(false)
+                    .await?
+                    .into_iter()
+                    .map(|engine| json!({ "id": engine.id, "name": engine.name }))
+                    .collect();
+                json!({
+                    "engines": engines,
+                    "can_delegate": !nested,
+                    "max_batch": MAX_BATCH,
+                })
+            }
+            "orbyn_environment_preferences_update" => {
+                let values = args
+                    .get("values")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| CoreError::Invalid("values is required.".into()))?
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+                self.set_preferences(Some(&own.project_id), &values)?;
+                json!({ "updated": values.len() })
+            }
+            "orbyn_project_update" => {
+                json!(self.rename_project(&own.project_id, text(args, "name")?)?)
             }
             "orbyn_thread_send" => {
                 let thread = thread_arg()?;
-                json!(self.runs.enqueue(&thread.id, text(args, "prompt")?, &[])?)
+                let attachments: Vec<String> = args
+                    .get("attachment_ids")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|id| id.as_str().map(str::to_owned))
+                    .collect();
+                json!(
+                    self.runs
+                        .enqueue(&thread.id, text(args, "prompt")?, &attachments)?
+                )
+            }
+            "orbyn_attachment_add" => {
+                let thread = thread_arg()?;
+                json!(self.attach_from_checkout(&own, &thread.id, text(args, "path")?)?)
+            }
+            "orbyn_attachment_discard" => {
+                let thread = thread_arg()?;
+                let id = text(args, "attachment_id")?;
+                let held = self.store.list_attachments(&thread.id)?;
+                if !held.iter().any(|(attachment, _)| attachment.id == id) {
+                    return Err(CoreError::NotFound("attachment".into()));
+                }
+                self.remove_attachment(id)?;
+                json!({ "discarded": true })
+            }
+            "orbyn_thread_organize" => {
+                let thread = thread_arg()?;
+                let flag = |key: &str| args.get(key).and_then(Value::as_bool);
+                let patch = UpdateThread {
+                    pinned: flag("pinned"),
+                    settled: flag("settled"),
+                    archived: flag("archived"),
+                    unread: flag("unread"),
+                    snoozed_until: args
+                        .get("snoozed_until")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                    ..UpdateThread::default()
+                };
+                json!(self.update_thread(&thread.id, &patch, &actor)?)
+            }
+            "orbyn_thread_configure" => {
+                let thread = thread_arg()?;
+                let string = |key: &str| args.get(key).and_then(Value::as_str).map(str::to_owned);
+                let mode = args
+                    .get("permission_mode")
+                    .filter(|value| !value.is_null())
+                    .map(|value| serde_json::from_value(value.clone()))
+                    .transpose()
+                    .map_err(|_| CoreError::Invalid("That is not a permission mode.".into()))?;
+                let patch = UpdateThread {
+                    model: string("model"),
+                    effort: string("effort"),
+                    permission_mode: mode,
+                    plan_mode: args.get("plan_mode").and_then(Value::as_bool),
+                    ..UpdateThread::default()
+                };
+                json!(self.update_thread(&thread.id, &patch, &actor)?)
+            }
+            "orbyn_preview_list" => json!(self.previews.list(&own.id)),
+            "orbyn_preview_open" => {
+                let size = |key: &str| {
+                    args.get(key)
+                        .and_then(Value::as_u64)
+                        .and_then(|value| u32::try_from(value).ok())
+                };
+                let url = text(args, "url")?;
+                let opened =
+                    self.open_preview(&own.id, url, (size("width"), size("height")), &actor);
+                json!(opened.await?)
+            }
+            "orbyn_preview_navigate" => {
+                let tab = self.own_preview(&own, args)?;
+                if let Some(url) = args.get("url").and_then(Value::as_str) {
+                    json!(self.previews.navigate(&own.id, &tab, url).await?)
+                } else {
+                    let back = args.get("back").and_then(Value::as_bool);
+                    let back = back.ok_or_else(|| {
+                        CoreError::Invalid("Name a url, or back true or false.".into())
+                    })?;
+                    json!(self.previews.step(&own.id, &tab, back).await?)
+                }
+            }
+            "orbyn_preview_resize" => {
+                let tab = self.own_preview(&own, args)?;
+                let side = |key: &str| {
+                    u32::try_from(number(args, key)?)
+                        .map_err(|_| CoreError::Invalid(format!("{key} is too large.")))
+                };
+                let (width, height) = (side("width")?, side("height")?);
+                json!(self.previews.resize(&own.id, &tab, width, height).await?)
+            }
+            "orbyn_preview_close" => {
+                let tab = self.own_preview(&own, args)?;
+                self.previews.close(&own.id, &tab)?;
+                json!({ "closed": true })
+            }
+            "orbyn_preview_recording_start" => {
+                let tab = self.own_preview(&own, args)?;
+                self.start_preview_recording(&own.id, &tab)?;
+                json!({ "recording": true })
+            }
+            "orbyn_preview_recording_stop" => {
+                let tab = self.own_preview(&own, args)?;
+                json!(self.previews.stop_recording(&own.id, &tab)?)
             }
             "orbyn_thread_update" => {
                 let thread = thread_arg()?;
@@ -517,6 +864,8 @@ impl Core {
                         time: None,
                         weekdays: Vec::new(),
                         utc_offset_minutes: 0,
+                        after_thread: None,
+                        only_on_success: false,
                     },
                     signature: None,
                     secret: None,

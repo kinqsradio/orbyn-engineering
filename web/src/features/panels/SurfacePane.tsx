@@ -1,5 +1,6 @@
 import {
   Activity,
+  AppWindow,
   FileDiff,
   Files,
   GitPullRequest,
@@ -22,6 +23,7 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi, type ContextTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ActivityPanel } from "./ActivityPanel";
+import { BrowserPanel } from "./BrowserPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FilesPanel } from "./FilesPanel";
 import { LinkedPulls } from "./LinkedPulls";
@@ -47,6 +49,7 @@ function Launcher({ thread }: { thread: Thread }) {
   }, [version, reload]);
 
   const actions: LauncherAction[] = [
+    { id: "browser", label: "Browser", icon: AppWindow, shortcut: "B", available: true },
     { id: "terminal", label: "Terminal", icon: SquareTerminal, shortcut: "T", available: true },
     { id: "diff", label: "Diff", icon: FileDiff, shortcut: "D", available: (diff.data?.length ?? 0) > 0 },
     { id: "files", label: "Files", icon: Files, shortcut: "F", available: true },
@@ -207,7 +210,9 @@ export function SurfacePane({
           <Launcher thread={thread} />
         ) : (
           <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">
-            {tab === "diff" ? (
+            {tab === "browser" ? (
+              <BrowserPanel threadId={thread.id} />
+            ) : tab === "diff" ? (
               <DiffPanel threadId={thread.id} />
             ) : tab === "files" ? (
               <FilesPanel threadId={thread.id} />

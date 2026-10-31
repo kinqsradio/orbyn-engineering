@@ -2,6 +2,8 @@
   display: flex;
   height: 100%;
   min-height: 0;
+  /* Nothing here may hand .main something to scroll: each pane has its own scroller. */
+  overflow: clip;
 }
 .thread-main {
   position: relative;
@@ -88,10 +90,13 @@
   display: flex;
 }
 .transcript {
+  /* Positioned so absolute children, such as sr-only text, stay clipped by this box. */
+  position: relative;
   flex: 1;
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 .transcript-inner {
   display: flex;
@@ -158,9 +163,13 @@
   border-top: 1px solid var(--color-divider);
 }
 .work-log {
+  position: relative;
   display: flex;
   flex-direction: column;
+  max-height: min(18rem, 50dvh);
   margin: 4px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .tool-stack {
   display: flex;
@@ -476,8 +485,10 @@
   overflow-y: auto;
 }
 .tool-output {
+  position: relative;
   max-height: 320px;
   overflow: auto;
+  overscroll-behavior: contain;
   color: var(--color-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1066,6 +1077,7 @@
   width: var(--details-w);
   max-height: calc(100% - var(--topbar-h) - 24px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: var(--radius-xl);
   background: var(--color-raised);
   box-shadow: inset 0 0 0 1px var(--color-outline);
@@ -1172,6 +1184,8 @@ button.detail-row:hover {
   flex: none;
   flex-direction: column;
   height: 300px;
+  overflow: clip;
+  overscroll-behavior: contain;
   padding: 4px 12px 12px;
   border-top: 1px solid var(--color-border);
 }
@@ -1328,9 +1342,11 @@ button.detail-row:hover {
   flex-direction: column;
 }
 .tabpanel {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 8px 12px 16px;
 }
 .panel-bar {
@@ -1379,7 +1395,9 @@ button.detail-row:hover {
   padding: 8px;
 }
 .patch {
+  position: relative;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   font-family: var(--font-mono);
   font-size: var(--text-small);
   line-height: 1.5;
@@ -2115,10 +2133,12 @@ button.detail-row:hover {
   width: 12px;
 }
 .file-source {
+  position: relative;
   flex: 1;
   min-height: 0;
   margin: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   font-family: var(--font-mono);
   font-size: var(--text-meta);
   line-height: 1.5;
@@ -2553,4 +2573,176 @@ button.detail-row:hover {
 .diff-card {
   display: flex;
   flex-direction: column;
+}
+
+/* Diff options and file views */
+.diff-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 8px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.diff-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.diff-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 4px;
+  font-size: var(--text-small);
+}
+.diff-find input {
+  flex: 1;
+  min-width: 0;
+}
+.diff-commit {
+  margin: 4px 8px;
+  max-width: calc(100% - 16px);
+}
+.diff-file-head {
+  display: flex;
+  align-items: center;
+}
+.diff-file-head .diff-file-row {
+  flex: 1;
+  min-width: 0;
+}
+.diff-status {
+  flex: none;
+  width: 14px;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.diff-status[data-status="added"] {
+  color: var(--color-success);
+}
+.diff-status[data-status="deleted"] {
+  color: var(--color-danger);
+}
+.diff-status[data-status="renamed"] {
+  color: var(--color-info);
+}
+.patch-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.patch-line[data-hit] {
+  outline: 1px solid var(--color-warn);
+  outline-offset: -1px;
+}
+.file-modes {
+  margin: 4px 8px;
+}
+.file-preview,
+.file-notebook {
+  padding: 8px 12px;
+  overflow: auto;
+}
+.file-table {
+  margin: 8px;
+  overflow: auto;
+}
+.file-frame {
+  width: 100%;
+  height: calc(100dvh - 180px);
+  border: 0;
+  background: var(--color-raised);
+}
+.file-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+.file-editor textarea {
+  width: 100%;
+  min-height: 320px;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+.patch-empty {
+  background: var(--color-sunken);
+}
+
+/* Browser surface */
+.browser-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.browser-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  overflow-x: auto;
+}
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+}
+.browser-bar input {
+  flex: 1;
+  min-width: 0;
+}
+.browser-frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--color-raised);
+}
+.browser-frame[data-human] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.browser-note {
+  padding: 24px;
+  color: var(--color-muted);
+  text-align: center;
+}
+.browser-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  color: var(--color-muted);
+  text-align: center;
+}
+.browser-start h3 {
+  color: var(--color-text);
+}
+.browser-start ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-start button {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.terminal-host .xterm-viewport {
+  overscroll-behavior: contain;
 }

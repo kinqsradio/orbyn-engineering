@@ -19,7 +19,9 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::Core;
-use crate::computer::cdp::{BrowserSession, find_browser, normalize_url};
+use crate::computer::cdp::{
+    BrowserSession, HistoryState, LaunchOptions, find_browser, normalize_url,
+};
 use crate::error::{CoreError, Result};
 use crate::store::AuditRecord;
 use crate::util::new_id;
@@ -30,6 +32,11 @@ const FRAME_QUALITY: u32 = 60;
 const DEFAULT_SIZE: (u32, u32) = (1280, 800);
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
 const PROFILE_GRACE: Duration = Duration::from_millis(500);
+/// Bounds a page's size, which sets how much memory each frame takes.
+const SIZES: std::ops::RangeInclusive<u32> = 100..=4096;
+/// How many frame ticks pass between looks at history, about one a second. A link
+/// clicked in the page changes it with nobody telling this side.
+const HISTORY_TICKS: u32 = 5;
 
 struct Recording {
     folder: PathBuf,
@@ -63,6 +70,26 @@ impl Tab {
         info.recording = lock(&self.recording).is_some();
         info
     }
+
+    fn note_history(&self, history: &HistoryState) {
+        let mut info = lock(&self.info);
+        if !history.url.is_empty() {
+            history.url.clone_into(&mut info.url);
+        }
+        info.can_go_back = history.can_go_back;
+        info.can_go_forward = history.can_go_forward;
+    }
+}
+
+fn check_size(width: u32, height: u32) -> Result<()> {
+    if SIZES.contains(&width) && SIZES.contains(&height) {
+        return Ok(());
+    }
+    Err(CoreError::Invalid(format!(
+        "A preview is {} to {} pixels each way.",
+        SIZES.start(),
+        SIZES.end()
+    )))
 }
 
 fn decode_base64(text: &str) -> Vec<u8> {
@@ -93,6 +120,7 @@ fn decode_base64(text: &str) -> Vec<u8> {
 async fn pump(tab: Arc<Tab>) {
     let mut last = Vec::new();
     let mut ticks = tokio::time::interval(FRAME_EVERY);
+    let mut since_history = 0;
     loop {
         tokio::select! {
             () = tab.stop.cancelled() => {
@@ -111,6 +139,13 @@ async fn pump(tab: Arc<Tab>) {
             .map(|rec| (rec.folder.clone(), rec.frames.clone()));
         if tab.frames.receiver_count() == 0 && recording.is_none() {
             continue;
+        }
+        since_history += 1;
+        if since_history >= HISTORY_TICKS {
+            since_history = 0;
+            if let Ok(history) = tab.session.lock().await.history().await {
+                tab.note_history(&history);
+            }
         }
         let Ok(frame) = tab.session.lock().await.frame(FRAME_QUALITY).await else {
             continue;
@@ -164,8 +199,38 @@ impl PreviewManager {
     pub async fn navigate(&self, thread_id: &str, id: &str, url: &str) -> Result<PreviewTab> {
         let url = normalize_url(url)?;
         let tab = self.tab(thread_id, id)?;
-        tab.session.lock().await.navigate(&url).await?;
+        let mut session = tab.session.lock().await;
+        session.navigate(&url).await?;
+        let history = session.history().await?;
+        drop(session);
         lock(&tab.info).url = url;
+        tab.note_history(&history);
+        Ok(tab.view())
+    }
+
+    /// One page back or forward. At either end this changes nothing.
+    pub async fn step(&self, thread_id: &str, id: &str, back: bool) -> Result<PreviewTab> {
+        let tab = self.tab(thread_id, id)?;
+        let history = tab.session.lock().await.step_history(back).await?;
+        tab.note_history(&history);
+        Ok(tab.view())
+    }
+
+    pub async fn resize(
+        &self,
+        thread_id: &str,
+        id: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<PreviewTab> {
+        check_size(width, height)?;
+        let tab = self.tab(thread_id, id)?;
+        tab.session.lock().await.set_viewport(width, height).await?;
+        {
+            let mut info = lock(&tab.info);
+            info.width = width;
+            info.height = height;
+        }
         Ok(tab.view())
     }
 
@@ -302,6 +367,11 @@ impl Core {
             return Err(CoreError::FolderUntrusted);
         }
         let url = normalize_url(url)?;
+        let (width, height) = (
+            size.0.unwrap_or(DEFAULT_SIZE.0),
+            size.1.unwrap_or(DEFAULT_SIZE.1),
+        );
+        check_size(width, height)?;
         if lock(&self.previews.tabs).len() >= MAX_TABS {
             return Err(CoreError::Invalid(format!(
                 "Close a preview first: {MAX_TABS} can be open at once."
@@ -325,13 +395,12 @@ impl Core {
         })?;
         let id = new_id();
         let profile = self.config.data_dir.join("preview-profiles").join(&id);
-        let mut session = BrowserSession::launch(&browser, &profile, true).await?;
-        session
-            .set_viewport(
-                size.0.unwrap_or(DEFAULT_SIZE.0),
-                size.1.unwrap_or(DEFAULT_SIZE.1),
-            )
-            .await?;
+        let options = LaunchOptions {
+            headless: true,
+            in_process_gpu: self.config.browser_in_process_gpu,
+        };
+        let mut session = BrowserSession::launch(&browser, &profile, options).await?;
+        session.set_viewport(width, height).await?;
         session.navigate(&url).await?;
         let (frames, _) = broadcast::channel(8);
         let tab = Arc::new(Tab {
@@ -342,6 +411,10 @@ impl Core {
                 control: "none".to_owned(),
                 recording: false,
                 viewers: 0,
+                width,
+                height,
+                can_go_back: false,
+                can_go_forward: false,
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
