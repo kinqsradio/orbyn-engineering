@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { startService, type Service } from "./service";
+import { type Service, libraryReady, startService } from "./service";
 
 /** Real runs through the real service, against the protocol double. */
 const PORT = 5278;
@@ -21,7 +21,7 @@ const send = async (page: Page, text: string) => {
 
 test.beforeAll(async () => {
   service = await startService(PORT, { fakeEngines: true });
-  await service.api("POST", "/api/workspace/setup", {});
+  await libraryReady(service);
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });
   projectId = project.id;
   await service.api("POST", `/api/projects/${projectId}/trust`);

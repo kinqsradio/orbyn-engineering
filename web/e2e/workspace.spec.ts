@@ -93,12 +93,19 @@ test("keyboard focus is visible and reduced motion stops animation", async ({ pa
   expect(Number.parseFloat(duration)).toBeLessThan(0.01);
 });
 
-test("first run blocks the workspace until setup completes", async ({ page }) => {
+test("first run opens on the draft flow with nothing to set up", async ({ page }) => {
   await page.goto("/__mock/scenario/first-run");
-  await expect(page.getByRole("heading", { name: "Set up your workspace" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Workspace" })).toBeHidden();
-  await page.getByRole("button", { name: "Set up workspace" }).click();
-  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
+  await expect(page.getByText(/set up/i)).toHaveCount(0);
+});
+
+test("unavailable skills get a quiet line, never a blocking screen", async ({ page }) => {
+  await page.goto("/__mock/scenario/no-skills");
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Skills aren't available right now" })).toBeVisible();
+  await page.getByRole("button", { name: "Start without a project" }).click();
+  await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
 });
 
 const openHero = async (page: Page, animationMs: number) => {

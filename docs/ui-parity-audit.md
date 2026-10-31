@@ -136,7 +136,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
 | Settings | Maintenance | Live name | Update checks, retention rules with preview and report, OTLP addresses with a test, Real | Contents unobserved; the 1 GiB notice ran on the real answer with one field raised |
 | Settings | Project settings | Source: per-project defaults | Dialog from each project, Real | Layout own; rows follow the service's project-scoped keys |
-| First run | Setup, create, trust, draft send | n/a, required by Orbyn | Passed, Real | Synthetic data |
+| First run | Opens on the draft flow, add project, trust, draft send | Source: no setup step | Passed, Real; a calm line if skills are unavailable, library choices in Maintenance | Synthetic data |
 | Removed | Audit section | Not in reference | Removed with its mock data | n/a |
 | Removed | Policy section | Not in reference | Removed with its mock data | n/a |
 | Removed | Computer section | Not in reference | Removed with its mock data | n/a |
