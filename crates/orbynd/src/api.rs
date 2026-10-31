@@ -1161,6 +1161,20 @@ pub async fn search_messages(
     Ok(Json(state.core.store.search_messages(&query.q, &scope)?))
 }
 
+#[derive(Deserialize)]
+pub struct MessagesQuery {
+    limit: Option<usize>,
+}
+
+pub async fn thread_messages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<MessagesQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let limit = query.limit.unwrap_or(200);
+    Ok(Json(state.core.store.thread_messages(&id, limit)?))
+}
+
 pub async fn rename_project(
     State(state): State<AppState>,
     Path(id): Path<String>,

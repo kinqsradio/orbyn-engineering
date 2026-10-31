@@ -707,13 +707,23 @@ Nothing runs a shell or npm to learn these. On Windows a `.cmd` is followed to t
 it wraps, including pnpm's store and a same-named sibling, a `node.exe` beside the shim
 wins, and a shim that points at a shell is refused.
 
+## Command line
+
+`orbyn` is a client of a running service, with no rule of its own: `thread`, `project`,
+`theme`, `status` and `doctor` go through the API the UI uses, and `serve` runs `orbynd`
+from beside it. It finds the service in `service.json` in the data folder (`--data-dir`,
+`ORBYN_DATA_DIR`), holding the URL, the launch token and the process id. That file is
+private like any secret file and goes when the service stops; one left by a crash reads
+as nothing running. Exit codes are 0, 1 when a request was refused or a waited-on run
+did not complete, and 2 when no service is running. `--json` prints the API's answer.
+
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`,
 `--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
 `{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
-for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
+for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,
 `ORBYN_BROWSER_IN_PROCESS_GPU`, `ORBYN_OFFLINE`
@@ -778,6 +788,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, its agents (`source: agent`), custom command files, and skills when `true` |
 | `GET /api/questions?thread_id=&state=` | `QuestionRequest[]` |
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
+| `GET /api/threads/:id/messages?limit=` | `ThreadMessage[]`: the newest up to 1,000, each whole, in order |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
 | `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
 | `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported or the agent declared, up to 200, with status and whether each can be restored |

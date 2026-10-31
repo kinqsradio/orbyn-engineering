@@ -30,6 +30,31 @@ use crate::workspace::Workspace;
 /// A wait of this length covers an unattended person without a run hanging forever.
 pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
+/// Where the service keeps its data unless told otherwise, so the CLI finds it too.
+pub fn default_data_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("ORBYN_DATA_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    let home = || {
+        std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from)
+    };
+    #[cfg(target_os = "macos")]
+    let dir = home().map(|home| home.join("Library/Application Support/Orbyn"));
+    #[cfg(windows)]
+    let dir = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(home)
+        .map(|base| base.join("Orbyn"));
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let dir = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home().map(|home| home.join(".local/share")))
+        .map(|base| base.join("orbyn"));
+    dir
+}
+
 #[derive(Clone, Debug)]
 pub struct CoreConfig {
     pub data_dir: PathBuf,

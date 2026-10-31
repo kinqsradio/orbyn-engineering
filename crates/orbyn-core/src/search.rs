@@ -2,7 +2,7 @@
 //! order, ignoring case. `LIKE` narrows the rows and ignores case only in ASCII, so
 //! the final word check runs here, where any script folds.
 
-use orbyn_contracts::{MessageHit, MessageSearch};
+use orbyn_contracts::{MessageHit, MessageSearch, ThreadMessage};
 use rusqlite::params_from_iter;
 use rusqlite::types::Value as SqlValue;
 
@@ -20,6 +20,7 @@ const MAX_HITS: usize = 200;
 const MAX_SCAN: usize = 50_000;
 /// Characters shown on each side of a match.
 const SNIPPET_SIDE: usize = 80;
+const MAX_MESSAGES: usize = 1000;
 
 /// What to search. Empty fields mean everything live.
 #[derive(Clone, Debug, Default)]
@@ -101,6 +102,29 @@ fn snippet(text: &str, lowered: &str, words: &[String]) -> String {
 }
 
 impl Store {
+    /// A thread's newest messages, in order, whole.
+    pub fn thread_messages(&self, thread_id: &str, limit: usize) -> Result<Vec<ThreadMessage>> {
+        self.thread(thread_id)?;
+        let conn = self.reader();
+        let mut statement = conn.prepare(
+            "SELECT message_id, seq, role, ts, text FROM thread_messages
+             WHERE thread_id = ?1 ORDER BY seq DESC LIMIT ?2",
+        )?;
+        let limit = i64::try_from(limit.clamp(1, MAX_MESSAGES)).unwrap_or(1);
+        let rows = statement.query_map(rusqlite::params![thread_id, limit], |row| {
+            Ok(ThreadMessage {
+                message_id: row.get(0)?,
+                seq: row.get(1)?,
+                role: row.get(2)?,
+                ts: row.get(3)?,
+                text: row.get(4)?,
+            })
+        })?;
+        let mut messages = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        messages.reverse();
+        Ok(messages)
+    }
+
     pub fn search_messages(&self, query: &str, scope: &SearchScope) -> Result<MessageSearch> {
         let words = words_of(query)?;
         if !words.iter().any(|word| long_enough(word)) {

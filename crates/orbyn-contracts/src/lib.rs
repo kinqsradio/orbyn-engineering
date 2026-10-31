@@ -1773,6 +1773,16 @@ pub struct MessageHit {
 }
 
 wire! {
+pub struct ThreadMessage {
+    pub message_id: String,
+    pub seq: i64,
+    pub role: String,
+    pub ts: String,
+    pub text: String,
+}
+}
+
+wire! {
 pub struct MessageSearch {
     pub hits: Vec<MessageHit>,
     /// The words to highlight, lower-cased.

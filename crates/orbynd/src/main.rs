@@ -34,6 +34,8 @@ const BODY_LIMIT: usize = 4 * 1024 * 1024;
 /// A little over the largest allowed file; core enforces the exact limits.
 const UPLOAD_LIMIT: usize = 51 * 1024 * 1024;
 const REMOTE_KEY_SETTING: &str = "remote_key_sha256";
+/// Where the `orbyn` command finds this service.
+const SERVICE_FILE: &str = "service.json";
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const SANDBOX_MODES: &[&str] = &["read-only", "workspace-write", "danger-full-access"];
 
@@ -83,27 +85,6 @@ struct ServeArgs {
     parent_stdin: bool,
 }
 
-fn default_data_dir() -> Option<PathBuf> {
-    let home = || {
-        std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from)
-    };
-    #[cfg(target_os = "macos")]
-    let dir = home().map(|home| home.join("Library/Application Support/Orbyn"));
-    #[cfg(windows)]
-    let dir = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .or_else(home)
-        .map(|base| base.join("Orbyn"));
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let dir = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| home().map(|home| home.join(".local/share")))
-        .map(|base| base.join("orbyn"));
-    dir
-}
-
 fn env_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|value| value == "1" || value == "true")
 }
@@ -112,7 +93,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
     let data_dir = args
         .data_dir
         .clone()
-        .or_else(default_data_dir)
+        .or_else(orbyn_core::app::default_data_dir)
         .ok_or("Set --data-dir: no app-data directory could be found.")?;
     let mut config = CoreConfig::new(data_dir, base_url);
     if args.skills_dir.is_some() {
@@ -211,6 +192,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/mentions", get(api::mentions))
         .route("/api/threads/{id}/commands", get(api::slash_commands))
         .route("/api/threads/{id}/items", get(api::list_items))
+        .route("/api/threads/{id}/messages", get(api::thread_messages))
         .route(
             "/api/threads/{id}/runs/{run}/changes",
             get(api::run_changes),
@@ -627,6 +609,11 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         start["access_key"] = json!(key);
     }
     println!("{start}");
+    let handle = core.config.data_dir.join(SERVICE_FILE);
+    let found = json!({ "url": base_url, "token": token, "pid": std::process::id() });
+    if let Err(error) = orbyn_core::util::write_private(&handle, found.to_string().as_bytes()) {
+        tracing::warn!(%error, "the orbyn command will not find this service");
+    }
 
     let stop = CancellationToken::new();
     let parent = args.parent_stdin.then(|| {
@@ -661,6 +648,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     let _ = lifecycle.await;
     checks.abort();
     core.shutdown().await;
+    let _ = std::fs::remove_file(handle);
     // Open streams never finish on their own; they end with the process.
     let _ = tokio::time::timeout(SHUTDOWN_GRACE, server).await;
     Ok(())

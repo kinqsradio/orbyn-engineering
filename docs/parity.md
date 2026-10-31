@@ -661,10 +661,10 @@ are not built in.
 
 ## O. CLI
 - [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M
-- [ ] O2 `t3 serve`: headless server with host, LAN, Tailscale options | apps/server/src/cli/server.ts | c | M
+- [x] O2 `t3 serve`: headless server with host, LAN, Tailscale options | apps/server/src/cli/server.ts | c | M | server done, as `orbyn serve`; remote options are out of scope
 - [ ] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S
 - [ ] O4 `t3 up`: prompted or flag-driven access setup | apps/server/src/cli/up.ts | c | L | [hosted]
-- [ ] O5 `t3 status`: current access settings, JSON | apps/server/src/cli/up.ts | c | S
+- [x] O5 `t3 status`: current access settings, JSON | apps/server/src/cli/up.ts | c | S | server done, as `orbyn status`, for the running service
 - [ ] O6 `t3 connect` and subcommands: login, link, status, publish, unlink, logout | apps/server/src/cli/connect.ts | c | L | [hosted]
 - [ ] O7 `t3 pair`: pairing link with scopes and Tailscale | apps/server/src/cli/pair.ts | c | M
 - [ ] O8 `t3 auth pairing`: create, list, revoke | apps/server/src/cli/auth.ts | c | M
@@ -674,15 +674,15 @@ are not built in.
 - [ ] O12 `service.env`: literal environment file | docs/user/background-service.md | c s | S
 - [ ] O13 `t3 update`: exact version, channel, downgrade | apps/server/src/cli/update.ts | c | M
 - [ ] O14 `t3 uninstall`: removes launcher, service, versions | apps/server/src/cli/uninstall.ts | c | S
-- [ ] O15 `t3 doctor`: database repair, dry run, fix | apps/server/src/cli/doctor.ts | c | M
-- [ ] O16 `t3 thread`: list, start, send, show with wait and JSON | apps/server/src/cli/thread.ts | c | M
-- [ ] O17 `t3 project`: add, remove, rename | apps/server/src/cli/project.ts | c | S
+- [x] O15 `t3 doctor`: database repair, dry run, fix | apps/server/src/cli/doctor.ts | c | M | server done, as `orbyn doctor`, `--dry-run` and `--fix`, through a running service
+- [x] O16 `t3 thread`: list, start, send, show with wait and JSON | apps/server/src/cli/thread.ts | c | M | server done, as `orbyn thread`
+- [x] O17 `t3 project`: add, remove, rename | apps/server/src/cli/project.ts | c | S | server done, as `orbyn project`
 - [ ] O18 `t3 environment`: link, list, unlink | apps/server/src/cli/environment.ts | c | M
-- [ ] O19 `t3 theme`: set, clear, show | apps/server/src/cli/theme.ts | c | S
+- [x] O19 `t3 theme`: set, clear, show | apps/server/src/cli/theme.ts | c | S | server done, as `orbyn theme`, through the `default_theme` preference
 - [ ] O20 `t3 browser setup`: host sandbox and libraries | apps/server/src/cli/browser.ts | c | M
 - [ ] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S
 - [ ] O22 `t3 triage`: starts Claude or Codex in terminal | apps/server/src/cli/triage.ts | c | S
-- [ ] O23 Config inputs: flags, environment, home directory | apps/server/src/cli/config.ts | c | M
+- [x] O23 Config inputs: flags, environment, home directory | apps/server/src/cli/config.ts | c | M | server done: `--data-dir` and `ORBYN_DATA_DIR`; `orbyn serve` takes `orbynd serve` options
 - [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M
 - [ ] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S
 - [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S
