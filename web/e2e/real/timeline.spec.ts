@@ -131,7 +131,7 @@ test("the minimap goes to a prompt and the error banner retries and dismisses", 
   const id = threadIdOf(page);
   await settled(service, id);
   await send(page, "[scene:failure] second prompt");
-  await expect(page.locator(".thread-error")).toContainText("quota reached", { timeout: 15_000 });
+  await expect(page.locator(".thread-error")).toContainText("disk full", { timeout: 15_000 });
   await settled(service, id);
   const map = page.getByRole("navigation", { name: "Prompts in this thread" });
   await expect(map.getByRole("button")).toHaveCount(2);
