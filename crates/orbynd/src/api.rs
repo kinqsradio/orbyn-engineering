@@ -707,6 +707,14 @@ pub async fn save_task(
     Ok(Json(state.core.save_task(body, LOCAL_USER)?))
 }
 
+pub async fn update_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<UpsertTask>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.update_task(&id, body, LOCAL_USER)?))
+}
+
 pub async fn set_task_enabled(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -1106,6 +1114,13 @@ pub async fn cancel_run(
 ) -> ApiResult<StatusCode> {
     state.core.runs.cancel(&id)?;
     Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn force_stop(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.runs.force_stop(&id, LOCAL_USER).await?))
 }
 
 #[derive(Deserialize)]

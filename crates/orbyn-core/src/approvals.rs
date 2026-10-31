@@ -33,11 +33,15 @@ impl WriteScope {
         self.engine_cwd.join(path).to_string_lossy().into_owned()
     }
 
+    /// Where `path` really lands, links followed.
+    pub(crate) fn resolved(&self, path: &str) -> Option<PathBuf> {
+        resolve_existing(&self.engine_cwd.join(path))
+    }
+
     /// True when `path` lands inside the checkout after resolving `..` and any
     /// symlink in the part of the path that exists.
     pub fn permits(&self, path: &str) -> bool {
-        let full = self.engine_cwd.join(path);
-        let Some(resolved) = resolve_existing(&full) else {
+        let Some(resolved) = self.resolved(path) else {
             return false;
         };
         let inside = crate::util::canonicalize(&self.checkout)
@@ -50,7 +54,7 @@ impl WriteScope {
 }
 
 /// Removes `.` and `..`, then canonicalizes the deepest existing ancestor.
-fn resolve_existing(path: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve_existing(path: &Path) -> Option<PathBuf> {
     let mut plain = PathBuf::new();
     for part in path.components() {
         match part {

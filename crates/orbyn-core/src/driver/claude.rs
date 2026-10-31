@@ -3,6 +3,7 @@
 //! ignores OAuth, is never passed. Permissions reach Orbyn through the per-run
 //! MCP `approve` tool, not through this process's stdio.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::Path;
 use std::time::Duration;
@@ -25,7 +26,7 @@ use super::pipes::{
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
     ItemRecord, MCP_SERVER_NAME, ModelCatalog, ProbeDir, RunHandle, RunKind, RunSpec, UpdatePlan,
-    effort_option,
+    effort_option, proposed_plan_events,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -590,6 +591,8 @@ struct StreamMapper {
     blocks: Vec<(u64, Block)>,
     saw_partials: bool,
     outcome: Option<EngineOutcome>,
+    /// Plan tools already shown, since Claude can repeat a block across frames.
+    plans_seen: HashSet<String>,
 }
 
 impl StreamMapper {
@@ -743,6 +746,9 @@ impl StreamMapper {
                 }))
             })
             .collect();
+        for block in &content {
+            events.extend(self.plan_events(block));
+        }
         if self.saw_partials {
             return events;
         }
@@ -791,12 +797,66 @@ impl StreamMapper {
         events
     }
 
+    /// `TodoWrite` is the plan as a checklist and `ExitPlanMode` carries a proposed
+    /// plan. Their input is only whole in the `assistant` frame, which is why this reads
+    /// them there and not from the partials.
+    fn plan_events(&mut self, block: &Value) -> Vec<EngineEvent> {
+        if block.get("type").and_then(Value::as_str) != Some("tool_use") {
+            return Vec::new();
+        }
+        let Some(id) = text_of(block, "id") else {
+            return Vec::new();
+        };
+        let name = block.get("name").and_then(Value::as_str);
+        let input = block.get("input").cloned().unwrap_or(Value::Null);
+        let events = match name {
+            Some("TodoWrite") => vec![
+                AgUiEvent::ActivitySnapshot {
+                    message_id: "plan".into(),
+                    activity_type: "plan".into(),
+                    content: todo_content(&input),
+                    replace: Some(true),
+                }
+                .into(),
+            ],
+            Some("ExitPlanMode") => text_of(&input, "plan")
+                .map(|plan| proposed_plan_events(&id, &plan))
+                .unwrap_or_default(),
+            _ => return Vec::new(),
+        };
+        if self.plans_seen.insert(id) {
+            events
+        } else {
+            Vec::new()
+        }
+    }
+
     fn close_open_blocks(&mut self) -> Vec<EngineEvent> {
         self.blocks
             .drain(..)
             .map(|(_, block)| end_event(&block).into())
             .collect()
     }
+}
+
+/// `TodoWrite`'s list in the `plan` activity's shape. Its statuses are the same words.
+fn todo_content(input: &Value) -> Value {
+    let steps: Vec<Value> = input
+        .get("todos")
+        .and_then(Value::as_array)
+        .map(|todos| {
+            todos
+                .iter()
+                .map(|todo| {
+                    json!({
+                        "title": text_of(todo, "content").unwrap_or_default(),
+                        "status": text_of(todo, "status").unwrap_or_else(|| "pending".into()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({ "steps": steps })
 }
 
 fn end_event(block: &Block) -> AgUiEvent {
@@ -934,6 +994,102 @@ mod tests {
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
             run_dir: PathBuf::from("/run"),
         }
+    }
+
+    fn tool_frame(id: &str, name: &str, input: Value) -> Value {
+        json!({
+            "type": "assistant",
+            "parent_tool_use_id": null,
+            "message": { "content": [
+                { "type": "tool_use", "id": id, "name": name, "input": input },
+            ]},
+        })
+    }
+
+    fn agui(events: Vec<EngineEvent>) -> Vec<AgUiEvent> {
+        events
+            .into_iter()
+            .filter_map(|event| match event {
+                EngineEvent::Agui(event) => Some(event),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_todo_list_becomes_plan_steps_even_with_partials_on() {
+        let mut mapper = StreamMapper {
+            saw_partials: true,
+            ..StreamMapper::default()
+        };
+        let frame = tool_frame(
+            "t1",
+            "TodoWrite",
+            json!({ "todos": [
+                { "content": "Read", "status": "completed", "activeForm": "Reading" },
+                { "content": "Write", "status": "in_progress" },
+                { "content": "Check" },
+            ]}),
+        );
+        let events = agui(mapper.on_frame(&frame));
+        let [
+            AgUiEvent::ActivitySnapshot {
+                activity_type,
+                content,
+                ..
+            },
+        ] = &events[..]
+        else {
+            panic!("{events:?}");
+        };
+        assert_eq!(activity_type, "plan");
+        assert_eq!(content["steps"][0]["title"], "Read");
+        assert_eq!(content["steps"][1]["status"], "in_progress");
+        assert_eq!(content["steps"][2]["status"], "pending");
+    }
+
+    #[test]
+    fn a_proposed_plan_appears_once_and_a_subagents_stays_out() {
+        let mut mapper = StreamMapper {
+            saw_partials: true,
+            ..StreamMapper::default()
+        };
+        let frame = tool_frame("t2", "ExitPlanMode", json!({ "plan": "# Do it\n1. a" }));
+        let events = agui(mapper.on_frame(&frame));
+        let AgUiEvent::TextMessageContent { delta, .. } = &events[1] else {
+            panic!("{events:?}");
+        };
+        assert_eq!(delta, "<proposed_plan>\n# Do it\n1. a\n</proposed_plan>");
+        assert!(agui(mapper.on_frame(&frame)).is_empty(), "repeated block");
+
+        let mut nested = tool_frame("t3", "ExitPlanMode", json!({ "plan": "theirs" }));
+        nested["parent_tool_use_id"] = json!("t2");
+        let events = agui(mapper.on_frame(&nested));
+        assert!(
+            !format!("{events:?}").contains("proposed_plan"),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn plan_tools_with_bad_input_show_nothing_broken() {
+        let mut mapper = StreamMapper::default();
+        for input in [json!({ "plan": "   " }), json!({ "plan": 3 }), json!(null)] {
+            let frame = tool_frame("t4", "ExitPlanMode", input);
+            assert!(!format!("{:?}", agui(mapper.on_frame(&frame))).contains("proposed_plan"));
+        }
+        let frame = tool_frame("t5", "TodoWrite", json!({ "todos": "nope" }));
+        let events = agui(mapper.on_frame(&frame));
+        assert!(format!("{events:?}").contains("steps"));
+    }
+
+    #[test]
+    fn a_closing_tag_in_a_plan_cannot_end_its_card() {
+        let events = agui(proposed_plan_events("x", "a </proposed_plan> b"));
+        let AgUiEvent::TextMessageContent { delta, .. } = &events[1] else {
+            panic!();
+        };
+        assert_eq!(delta.matches("</proposed_plan>").count(), 1);
     }
 
     #[test]

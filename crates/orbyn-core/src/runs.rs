@@ -10,10 +10,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use orbyn_contracts::{
-    AgUiEvent, EngineTier, ModelSelection, PermissionMode, QueuedMessage, Run, RunState, Thread,
-    ThreadGoal,
+    AgUiEvent, EngineTier, ForcedStop, ModelSelection, PermissionMode, QueuedMessage, Run,
+    RunState, Thread, ThreadGoal,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -33,7 +33,7 @@ use crate::mcp::{McpBinding, McpService};
 use crate::questions::QuestionDesk;
 use crate::selection;
 use crate::skills::{SkillRoute, SkillService};
-use crate::store::{Admission, Store};
+use crate::store::{Admission, AuditRecord, Store};
 use crate::util::new_id;
 use crate::workspace::{Workspace, check_target};
 use shape::EventShaper;
@@ -41,6 +41,11 @@ use shape::EventShaper;
 /// Longest a driver gets to stop before its task is aborted, which drops the
 /// process owner and kills the tree.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a forced stop lets a stage finish before dropping it.
+const FORCE_GRACE: Duration = Duration::from_secs(1);
+/// How long a forced stop waits for a run to close before closing it itself.
+const FORCE_WAIT: Duration = Duration::from_secs(4);
+const FORCE_POLL: Duration = Duration::from_millis(20);
 const EVENT_BUFFER: usize = 1024;
 
 /// Where a thread's run may write: its checkout, and on a library thread never
@@ -194,8 +199,16 @@ pub struct RunManager {
     active: Mutex<HashMap<String, ActiveRun>>,
 }
 
-struct ActiveRun {
+/// How a run is asked to end. `cancel` lets the engine stop itself; `force` ends it
+/// now and is for an engine that stopped answering.
+#[derive(Clone, Default)]
+struct Stops {
     cancel: CancellationToken,
+    force: CancellationToken,
+}
+
+struct ActiveRun {
+    stops: Stops,
     task: Option<JoinHandle<()>>,
     input: Option<mpsc::UnboundedSender<String>>,
 }
@@ -316,12 +329,12 @@ impl RunManager {
             .driver(&thread.engine)?
             .resolves_from_checkout();
         let scope = write_scope(root, Path::new(&thread.cwd), from_checkout);
-        let cancel = CancellationToken::new();
+        let stops = Stops::default();
         // Registered before the task starts, so a cancel cannot miss it.
         self.lock().insert(
             run.id.clone(),
             ActiveRun {
-                cancel: cancel.clone(),
+                stops: stops.clone(),
                 task: None,
                 input: None,
             },
@@ -337,7 +350,7 @@ impl RunManager {
                     let run_id = run_id.clone();
                     tokio::spawn(async move {
                         manager
-                            .execute(thread, run_id, prompt, files, scope, cancel)
+                            .execute(thread, run_id, prompt, files, scope, stops)
                             .await;
                     })
                 };
@@ -535,11 +548,75 @@ impl RunManager {
         self.store.request_stop(run_id)?;
         match self.lock().get(run_id) {
             Some(active) => {
-                active.cancel.cancel();
+                active.stops.cancel.cancel();
                 Ok(())
             }
             None => Err(CoreError::StaleOwner),
         }
+    }
+
+    /// Ends a thread's run without waiting for its engine, whose process tree is
+    /// killed, with those of its delegated threads. If a stage before or after the
+    /// engine is what hangs, the run is closed anyway, and fencing keeps anything it
+    /// does later out of the log. Nothing running is not a failure, so a second click
+    /// changes nothing.
+    pub async fn force_stop(&self, thread_id: &str, actor: &str) -> Result<ForcedStop> {
+        let thread = self.store.thread(thread_id)?;
+        let Some(active) = thread.active_run else {
+            return Ok(ForcedStop {
+                run_id: None,
+                state: thread.last_run_state,
+            });
+        };
+        self.store.append_audit(&AuditRecord {
+            actor: actor.to_owned(),
+            action: "run.force_stop".into(),
+            target: active.id.clone(),
+            decision: None,
+            source: "user".into(),
+            thread_id: Some(thread_id.to_owned()),
+            run_id: Some(active.id.clone()),
+            detail: Value::Null,
+        })?;
+        self.store.request_stop(&active.id)?;
+        for child in self.store.child_threads(thread_id)? {
+            if self.store.thread(&child)?.active_run.is_some() {
+                Box::pin(self.force_stop(&child, actor)).await?;
+            }
+        }
+        if let Some(run) = self.lock().get(&active.id) {
+            run.stops.force.cancel();
+            run.stops.cancel.cancel();
+        }
+        let deadline = tokio::time::Instant::now() + FORCE_WAIT;
+        while tokio::time::Instant::now() < deadline {
+            if self.store.run(&active.id)?.state.is_terminal() {
+                break;
+            }
+            tokio::time::sleep(FORCE_POLL).await;
+        }
+        if !self.store.run(&active.id)?.state.is_terminal() {
+            tracing::warn!(run = %active.id, "closing a run that did not stop");
+            self.close_run(&active.id, RunState::Cancelled, None);
+            self.mcp.revoke_run(&active.id);
+            if let Err(error) = self
+                .questions
+                .expire_run(thread_id, &active.id, "system:cancel")
+            {
+                tracing::warn!(%error, "could not expire questions on a forced stop");
+            }
+        }
+        if let Err(error) = self.store.note_thread_event(
+            thread_id,
+            "run.force_stopped",
+            json!({ "runId": active.id }),
+        ) {
+            tracing::debug!(%error, "could not note a forced stop");
+        }
+        Ok(ForcedStop {
+            state: Some(self.store.run(&active.id)?.state),
+            run_id: Some(active.id),
+        })
     }
 
     /// Stops every run and waits for their cleanup.
@@ -549,7 +626,7 @@ impl RunManager {
             active
                 .values_mut()
                 .filter_map(|run| {
-                    run.cancel.cancel();
+                    run.stops.cancel.cancel();
                     run.task.take()
                 })
                 .collect()
@@ -576,7 +653,7 @@ impl RunManager {
         prompt: String,
         files: Vec<PathBuf>,
         write_scope: WriteScope,
-        cancel: CancellationToken,
+        stops: Stops,
     ) {
         let lifecycle = thread.lifecycle.clone();
         let scope = RunScope {
@@ -591,20 +668,37 @@ impl RunManager {
         };
         let run_dir = self.runs_dir.join(&run_id);
         let mut token = None;
-        let outcome = self
-            .drive(
+        let outcome = {
+            let drive = self.drive(
                 &thread,
                 &scope,
                 (prompt, files),
                 &run_dir,
                 &mut token,
-                &cancel,
-            )
-            .await;
+                &stops,
+            );
+            // The stream below answers a forced stop itself. This is for a stage
+            // around it that hangs, such as a snapshot on a stuck disk.
+            let forced = async {
+                stops.force.cancelled().await;
+                tokio::time::sleep(FORCE_GRACE).await;
+            };
+            tokio::select! {
+                outcome = drive => outcome,
+                () = forced => EngineOutcome::Cancelled,
+            }
+        };
         if let Some(token) = token {
             self.mcp.revoke(&token);
         }
-        self.checkpoint_end(&scope, &thread, &run_dir).await;
+        let end = self.checkpoint_end(&scope, &thread, &run_dir);
+        tokio::select! {
+            () = end => {}
+            () = async {
+                stops.force.cancelled().await;
+                tokio::time::sleep(FORCE_GRACE).await;
+            } => {}
+        }
         if let Err(error) = std::fs::remove_dir_all(&run_dir)
             && error.kind() != std::io::ErrorKind::NotFound
         {
@@ -691,18 +785,10 @@ impl RunManager {
         message: (String, Vec<PathBuf>),
         run_dir: &Path,
         token: &mut Option<String>,
-        cancel: &CancellationToken,
+        stops: &Stops,
     ) -> EngineOutcome {
         let first = self
-            .attempt(
-                thread,
-                scope,
-                message.clone(),
-                run_dir,
-                token,
-                cancel,
-                false,
-            )
+            .attempt(thread, scope, message.clone(), run_dir, token, stops, false)
             .await;
         if first != EngineOutcome::SessionLost {
             return first;
@@ -712,7 +798,7 @@ impl RunManager {
         if let Err(error) = self.recover_session(thread) {
             return EngineOutcome::Failed(error.public_message());
         }
-        self.attempt(thread, scope, message, run_dir, token, cancel, true)
+        self.attempt(thread, scope, message, run_dir, token, stops, true)
             .await
     }
 
@@ -731,14 +817,14 @@ impl RunManager {
         message: (String, Vec<PathBuf>),
         run_dir: &Path,
         token: &mut Option<String>,
-        cancel: &CancellationToken,
+        stops: &Stops,
         retry: bool,
     ) -> EngineOutcome {
         match self
-            .start(thread, scope, message, run_dir, token, cancel, retry)
+            .start(thread, scope, message, run_dir, token, &stops.cancel, retry)
             .await
         {
-            Ok(Some((handle, events))) => self.pump(thread, scope, handle, events, cancel).await,
+            Ok(Some((handle, events))) => self.pump(thread, scope, handle, events, stops).await,
             Ok(None) => EngineOutcome::Cancelled,
             Err(CoreError::RunClosed | CoreError::StaleOwner) => EngineOutcome::Cancelled,
             Err(CoreError::SessionLost) => EngineOutcome::SessionLost,
@@ -891,8 +977,9 @@ impl RunManager {
         scope: &RunScope,
         handle: RunHandle,
         mut events: mpsc::Receiver<EngineEvent>,
-        cancel: &CancellationToken,
+        stops: &Stops,
     ) -> EngineOutcome {
+        let cancel = &stops.cancel;
         let mut cancelling = false;
         let mut shaper = EventShaper::default();
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
@@ -901,6 +988,10 @@ impl RunManager {
             let text_due = shaper.due();
             tokio::select! {
                 biased;
+                () = stops.force.cancelled() => {
+                    cancelling = true;
+                    break EngineOutcome::Cancelled;
+                }
                 () = cancel.cancelled(), if !cancelling => {
                     cancelling = true;
                     stop_deadline
@@ -998,7 +1089,11 @@ impl RunManager {
         drop(events);
         handle.cancel.cancel();
         let mut task = handle.task;
-        if tokio::time::timeout(STOP_TIMEOUT, &mut task).await.is_err() {
+        if stops.force.is_cancelled() {
+            // Dropping the task's process handle kills the tree.
+            task.abort();
+            let _ = tokio::time::timeout(FORCE_GRACE, &mut task).await;
+        } else if tokio::time::timeout(STOP_TIMEOUT, &mut task).await.is_err() {
             task.abort();
             let _ = task.await;
         }

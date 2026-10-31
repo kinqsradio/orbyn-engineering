@@ -20,7 +20,7 @@ use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, GoalAction,
     ItemRecord, MCP_SERVER_NAME, ModelCatalog, RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths,
-    ask_question, diff_activity, effort_option,
+    ask_question, diff_activity, effort_option, proposed_plan_events,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
@@ -1182,6 +1182,13 @@ impl TurnMapper {
                     }
                     .into(),
                 );
+            }
+            // Deltas may not add up to this, so the finished item is the plan.
+            Some("plan") => {
+                events.extend(proposed_plan_events(
+                    id,
+                    &text(item, "text").unwrap_or_default(),
+                ));
             }
             Some("reasoning") => {
                 if self.open.remove(id).is_some() {

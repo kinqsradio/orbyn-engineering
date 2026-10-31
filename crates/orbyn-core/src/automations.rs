@@ -306,15 +306,20 @@ impl Core {
         }
         self.store.project(&request.project_id)?;
         self.engines.driver(&request.engine)?;
-        if let Some(thread) = &request.thread_id {
-            self.store.thread(thread)?;
+        if let Some(thread) = &request.thread_id
+            && self.store.thread(thread)?.project_id != request.project_id
+        {
+            return Err(CoreError::NotFound("thread".into()));
         }
-        let next = next_run(&request.schedule, unix_now())?;
         let existing = request
             .id
             .as_deref()
             .map(|id| self.store.task(id))
             .transpose()?;
+        // A paused task stays paused however it is edited, with nothing due.
+        let enabled = existing.as_ref().is_none_or(|task| task.enabled);
+        let due = next_run(&request.schedule, unix_now())?;
+        let next = due.filter(|_| enabled);
         let keeps_secret = existing.as_ref().is_some_and(|task| task.has_secret);
         let task = ScheduledTask {
             id: request.id.unwrap_or_else(new_id),
@@ -324,7 +329,7 @@ impl Core {
             prompt: request.prompt,
             engine: request.engine,
             schedule: request.schedule,
-            enabled: existing.as_ref().is_none_or(|task| task.enabled),
+            enabled,
             signature: request.signature,
             has_secret: keeps_secret || request.secret.is_some(),
             filters: request.filters,
@@ -333,13 +338,37 @@ impl Core {
             timestamp_path: request.timestamp_path,
             next_run_at: next.and_then(rfc3339),
             last_run_at: existing.as_ref().and_then(|task| task.last_run_at.clone()),
-            last_status: existing.map_or_else(|| "never".to_owned(), |task| task.last_status),
-            created_at: now(),
+            last_status: existing
+                .as_ref()
+                .map_or_else(|| "never".to_owned(), |task| task.last_status.clone()),
+            created_at: existing.map_or_else(now, |task| task.created_at),
         };
         self.audit_task(actor, "task.save", &task.id)?;
         self.store
             .save_task(&task, next, request.secret.as_deref())?;
         Ok(task)
+    }
+
+    /// Changes the task at `id`, which must exist and stays in its project. History,
+    /// pause, webhook token and, unless replaced, signing secret all carry over.
+    pub fn update_task(
+        &self,
+        id: &str,
+        mut request: UpsertTask,
+        actor: &str,
+    ) -> Result<ScheduledTask> {
+        if request.id.as_deref().is_some_and(|named| named != id) {
+            return Err(CoreError::Invalid(
+                "That body names a different task.".into(),
+            ));
+        }
+        if self.store.task(id)?.project_id != request.project_id {
+            return Err(CoreError::Invalid(
+                "A task cannot move to another project.".into(),
+            ));
+        }
+        request.id = Some(id.to_owned());
+        self.save_task(request, actor)
     }
 
     fn audit_task(&self, actor: &str, action: &str, id: &str) -> Result<()> {

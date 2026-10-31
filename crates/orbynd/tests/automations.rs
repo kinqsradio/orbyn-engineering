@@ -112,6 +112,87 @@ async fn a_task_runs_on_demand_in_a_new_thread_and_can_be_paused() {
     service.stop().await;
 }
 
+async fn put_task(service: &Service, id: &str, body: Value) -> (u16, Value) {
+    let response = service
+        .client
+        .put(format!("{}/api/tasks/{id}", service.url))
+        .bearer_auth(&service.token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn a_task_changes_by_id_and_keeps_what_it_earned() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    let project = project_of(&service, &thread).await;
+    let every = json!({ "kind": "interval", "every_minutes": 30 });
+    let body = |name: &str| {
+        json!({ "project_id": project, "name": name, "prompt": "hi", "engine": "codex",
+                "schedule": every })
+    };
+    let (_, task) = service.send("/api/tasks", body("Before")).await;
+    let id = task["id"].as_str().unwrap().to_owned();
+    let (code, ran) = service
+        .send(&format!("/api/tasks/{id}/run"), json!({}))
+        .await;
+    assert_eq!(code, 202, "{ran}");
+
+    let (code, changed) = put_task(&service, &id, body("After")).await;
+    assert_eq!(code, 200, "{changed}");
+    assert_eq!(changed["id"], id.as_str());
+    assert_eq!(changed["name"], "After");
+    assert_eq!(changed["created_at"], task["created_at"]);
+    assert_eq!(changed["last_status"], "started");
+    assert_eq!(
+        service.json("/api/tasks").await.as_array().unwrap().len(),
+        1
+    );
+
+    // Editing a paused task does not start it.
+    let (_, _) = service
+        .send(
+            &format!("/api/tasks/{id}/enabled"),
+            json!({ "enabled": false }),
+        )
+        .await;
+    let (_, paused) = put_task(&service, &id, body("Quiet")).await;
+    assert_eq!(paused["enabled"], false);
+    assert!(paused["next_run_at"].is_null());
+
+    let (code, _) = put_task(&service, "nothing", body("x")).await;
+    assert_eq!(code, 404);
+    let mut other = body("x");
+    other["id"] = json!("something-else");
+    let (code, _) = put_task(&service, &id, other).await;
+    assert_eq!(code, 400);
+    let mut moved = body("x");
+    moved["project_id"] = json!("another");
+    let (code, _) = put_task(&service, &id, moved).await;
+    assert_eq!(code, 400);
+    let (code, _) = put_task(&service, &id, json!({ "name": "partial" })).await;
+    assert_eq!(code, 400, "a body is the whole task");
+    let mut empty = body("  ");
+    empty["prompt"] = json!("");
+    let (code, _) = put_task(&service, &id, empty).await;
+    assert_eq!(code, 400);
+
+    // A thread in another project is not a target.
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let foreign_project = service.project(&elsewhere, true).await;
+    let foreign = service.thread(&foreign_project, "codex").await;
+    let mut pointed = body("x");
+    pointed["thread_id"] = json!(foreign);
+    let (code, _) = put_task(&service, &id, pointed).await;
+    assert_eq!(code, 404);
+    service.stop().await;
+}
+
 #[tokio::test]
 async fn a_webhook_needs_its_token_and_its_values_arrive_as_data() {
     let dir = TempDir::new();

@@ -59,6 +59,11 @@ admitted -> starting -> running <-> awaiting_approval
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.
+- A forced stop (`POST /api/threads/:id/force-stop`) is for an engine that stopped
+  answering, so it skips the wait for it: the stop is saved, the process tree and those
+  of delegated threads are killed, and the run ends `cancelled` within seconds. If a stage
+  around the engine is what hangs, the run is closed anyway after four seconds, and
+  fencing keeps out whatever it does later. With nothing running it changes nothing.
 - Terminal states never change. Every transition is a compare-and-set on the
   previous state, so a late engine event cannot revive a finished run.
 - A run owner is fenced by `(run_id, owner_epoch)`. `owner_epoch` is a value
@@ -325,7 +330,9 @@ A scheduled task fires on an interval, at a fixed time on chosen weekdays in a f
 UTC offset, or on a webhook. The clock is checked each minute. Each firing queues the
 prompt on the task's thread, or on a new thread, in that project's normal permission
 mode, and needs a trusted project at that moment. A failed firing records why and
-tries again at the next time.
+tries again at the next time. Changing a task by id replaces what it does and keeps
+what it earned: its history, pause, token and, unless replaced, signing secret. It
+stays in its project, and its thread must be in that project too.
 
 `POST /hooks/:id/:token` is public, because a sender cannot hold a session, though the
 `Host` and `Origin` checks still apply. The token is shown once and kept as a digest,
@@ -352,8 +359,20 @@ symlinks cannot leave the checkout, and `.git` is out of reach. A save names the
 revision it started from; a file that moved on is reported, never overwritten, and
 new bytes arrive by rename. A read opens the resolved file without following a link and
 checks the path again, which narrows the window for a swapped folder but cannot close it
-on every filesystem. These saves are the user's own edits, audited, and
-differ from rule 4, which covers what Orbyn adds on its own.
+on every filesystem. A path is judged where it lands, so a link into `.git` or a
+different spelling of it on a case-insensitive disk is refused too. These saves are the
+user's own edits, audited, and differ from rule 4, which covers what Orbyn adds on its
+own.
+
+`GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
+byte range at a time; a form it does not serve gets the whole file. A checkout holds
+code nobody here wrote, so nothing in it may run in this origin. The type comes from
+the name, never the bytes: images, audio, video, fonts and PDF are `inline` and
+everything else is `application/octet-stream` as an attachment. All of it is `nosniff`
+and sandboxed by CSP, which is what makes SVG safe, except PDF, which browsers will not
+show sandboxed. An image or video element cannot set a header, so this route takes
+`?token=` as the streams do, with `no-referrer` to keep it out of anything a file links
+to.
 
 ## Approval lifecycle
 
@@ -382,6 +401,11 @@ the log, so replay and live are one loop. `GET /api/threads/:id/events` is SSE: 
 replays from `Last-Event-ID`, then follows live. Events use AG-UI 1.0 names.
 Delivery to clients is a projection of the log; a client that reconnects loses
 nothing.
+
+A plan has two forms. Steps are a `plan` activity, from Codex's `turn/plan/updated` and
+Claude's `TodoWrite`. A proposed plan is an assistant message holding
+`<proposed_plan>...</proposed_plan>`, from Codex's finished `plan` item and Claude's
+`ExitPlanMode`, so it also reaches a handoff and search. A subagent's stay out.
 
 Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
@@ -646,8 +670,8 @@ for older shells. Environment: `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `
 ## HTTP API
 
 All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
-`Authorization: Bearer <token>`, or the session cookie. SSE and WebSocket also
-accept `?token=` because browsers cannot set headers on them.
+`Authorization: Bearer <token>`, or the session cookie. SSE, WebSocket and
+`files/raw` also accept `?token=` because browsers cannot set headers on them.
 
 | Method and path | Purpose |
 | --- | --- |
@@ -671,6 +695,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
 | `GET, PUT /api/settings` | `ServerSettings` |
 | `GET, POST /api/tasks` | `ScheduledTask[]`; `UpsertTask` creates or changes |
+| `PUT /api/tasks/:id` | The whole `UpsertTask`; `404` if unknown, `400` for another task's `id` or another project |
 | `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |
 | `POST /api/tasks/:id/run` | Fire now (`202`, `{thread_id}`) |
 | `POST /api/tasks/:id/webhook` | `WebhookEndpoint`: issue or rotate the token, shown once |
@@ -707,6 +732,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/threads/:id/files/ignored` | Ignored paths |
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |
 | `GET, PUT /api/threads/:id/files/content` | `FileContent`; a stale `base_revision` is `409 file_conflict` |
+| `GET /api/threads/:id/files/raw?path=&download=` | Bytes with `Range`, `If-Range` and `If-None-Match`; `206`, `304`, `413 file_too_large`, `416`; `download` forces an attachment |
 | `POST /api/threads/:id/files/open`, `GET /api/editors` | `OpenInEditor` with optional `line` and `column`; `file_manager` reveals the file |
 | `POST /api/threads/:id/git/action` | `GitAction` to `GitActionResult`: commit, push, pull request |
 | `GET, POST /api/threads/:id/branches`, `POST .../branches/switch` | List, create and switch |
@@ -738,6 +764,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST .../pulls/:number/work` | `WorkOnPull`: a new thread on that worktree, linked |
 | `POST /api/projects/:id/publish` | `PublishProject`: create the remote, with `gh` or `glab`, and push |
 | `POST /api/runs/:id/cancel` | Cancel |
+| `POST /api/threads/:id/force-stop` | `ForcedStop`: end the run now; `run_id` is empty when nothing was running |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |

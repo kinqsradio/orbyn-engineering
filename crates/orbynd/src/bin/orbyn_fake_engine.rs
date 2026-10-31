@@ -240,6 +240,22 @@ fn claude(args: &[String]) {
     );
     stop(0);
 
+    if has(&prompt, "plan-item") {
+        send(&json!({
+            "type": "assistant", "parent_tool_use_id": null,
+            "message": { "content": [{
+                "type": "tool_use", "id": "todo1", "name": "TodoWrite",
+                "input": { "todos": [{ "content": "do it", "status": "in_progress" }] },
+            }]},
+        }));
+        send(&json!({
+            "type": "assistant", "parent_tool_use_id": null,
+            "message": { "content": [{
+                "type": "tool_use", "id": "exit1", "name": "ExitPlanMode",
+                "input": { "plan": "# Ship\n1. a" },
+            }]},
+        }));
+    }
     let mut answer = "hello from claude".to_owned();
     let mut lines = lines;
     if has(&prompt, "approve") || has(&prompt, "crash-in-approval") {
@@ -599,6 +615,15 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
             "explanation": null, "plan": [{ "step": "do it", "status": "inProgress" }],
         }),
     );
+    if has(prompt, "plan-item") {
+        codex_note(
+            state,
+            "item/completed",
+            json!({
+                "completedAtMs": 2, "item": { "type": "plan", "id": "plan1", "text": "# Ship\n1. a" },
+            }),
+        );
+    }
     let mut answer = "hello from codex".to_owned();
     if has(prompt, "unknown-request") {
         let reply = codex_request("item/tool/call", json!({ "itemId": "x" }), lines);

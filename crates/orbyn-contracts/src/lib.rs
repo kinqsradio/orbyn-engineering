@@ -1686,6 +1686,14 @@ pub struct UpsertTask {
 }
 
 wire! {
+/// `run_id` is what was stopped, and empty when nothing was running.
+pub struct ForcedStop {
+    pub run_id: Option<String>,
+    pub state: Option<RunState>,
+}
+}
+
+wire! {
 pub struct TaskEnabled {
     pub enabled: bool,
 }

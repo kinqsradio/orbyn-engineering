@@ -4,6 +4,7 @@ mod access;
 mod api;
 mod preview_routes;
 mod pulls;
+mod raw_files;
 mod stream;
 mod terminal_ws;
 mod ui;
@@ -223,6 +224,7 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/files/content",
             get(api::read_file).put(api::write_file),
         )
+        .route("/api/threads/{id}/files/raw", get(raw_files::serve))
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
         .route("/api/editors", get(api::editors))
         .route("/api/threads/{id}/commits", get(api::commits))
@@ -378,7 +380,10 @@ fn router(state: AppState) -> Router {
             get(api::cleanup_report).post(api::storage_cleanup),
         )
         .route("/api/tasks", get(api::tasks).post(api::save_task))
-        .route("/api/tasks/{id}", axum::routing::delete(api::delete_task))
+        .route(
+            "/api/tasks/{id}",
+            axum::routing::put(api::update_task).delete(api::delete_task),
+        )
         .route("/api/tasks/{id}/enabled", post(api::set_task_enabled))
         .route("/api/tasks/{id}/run", post(api::run_task))
         .route("/api/tasks/{id}/webhook", post(api::rotate_webhook))
@@ -417,6 +422,7 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/threads/{id}/runs", post(api::start_run))
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
+        .route("/api/threads/{id}/force-stop", post(api::force_stop))
         .route("/api/threads/{id}/events", get(stream::thread_events))
         .route("/api/approvals", get(api::list_approvals))
         .route("/api/approvals/{id}/decide", post(api::decide_approval))

@@ -233,13 +233,33 @@ fn scope_of(root: &Path, thread: &Thread) -> WriteScope {
     }
 }
 
+/// True when any part of `path` names Git's folder, in any case, because a
+/// case-insensitive disk finds `.GIT` too.
+fn names_git(path: &Path) -> bool {
+    path.components().any(|part| {
+        matches!(part, Component::Normal(name)
+            if name.to_string_lossy().eq_ignore_ascii_case(".git"))
+    })
+}
+
+/// True when `path` reaches Git's folder through a link or another spelling.
+fn lands_in_git(scope: &WriteScope, path: &str) -> bool {
+    let Ok(checkout) = crate::util::canonicalize(&scope.checkout) else {
+        return true;
+    };
+    scope
+        .resolved(path)
+        .is_none_or(|real| real.strip_prefix(&checkout).map_or(true, names_git))
+}
+
 /// Resolves a relative path inside the checkout, or refuses it.
-fn inside(scope: &WriteScope, path: &str) -> Result<PathBuf> {
+pub(crate) fn inside(scope: &WriteScope, path: &str) -> Result<PathBuf> {
     let relative = Path::new(path);
-    let in_git = relative
-        .components()
-        .any(|part| matches!(part, Component::Normal(name) if name == ".git"));
-    if relative.is_absolute() || in_git || !scope.permits(path) {
+    if relative.is_absolute()
+        || names_git(relative)
+        || !scope.permits(path)
+        || lands_in_git(scope, path)
+    {
         return Err(CoreError::Invalid(
             "That path is outside this checkout.".into(),
         ));
@@ -251,6 +271,18 @@ fn inside(scope: &WriteScope, path: &str) -> Result<PathBuf> {
 /// path again. That way a folder swapped for a link after the first check cannot point
 /// this read somewhere else.
 fn read_inside(scope: &WriteScope, path: &str, full: &Path) -> Result<Vec<u8>> {
+    let (mut file, opened) = open_inside(scope, path, full)?;
+    let mut bytes = Vec::with_capacity(usize::try_from(opened.len()).unwrap_or(0));
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// The open handle behind `read_inside`, for a read that streams.
+pub(crate) fn open_inside(
+    scope: &WriteScope,
+    path: &str,
+    full: &Path,
+) -> Result<(std::fs::File, std::fs::Metadata)> {
     let resolved = crate::util::canonicalize(full)?;
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
@@ -266,14 +298,12 @@ fn read_inside(scope: &WriteScope, path: &str, full: &Path) -> Result<Vec<u8>> {
         options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
     let refused = || CoreError::Invalid("That path is outside this checkout.".into());
-    let mut file = options.open(&resolved).map_err(|_| refused())?;
+    let file = options.open(&resolved).map_err(|_| refused())?;
     let opened = file.metadata()?;
     if !opened.is_file() || !scope.permits(path) {
         return Err(refused());
     }
-    let mut bytes = Vec::with_capacity(usize::try_from(opened.len()).unwrap_or(0));
-    file.read_to_end(&mut bytes)?;
-    Ok(bytes)
+    Ok((file, opened))
 }
 
 fn revision_of(bytes: &[u8]) -> String {
@@ -282,7 +312,7 @@ fn revision_of(bytes: &[u8]) -> String {
 
 impl Core {
     /// A thread's checkout, gated on trust like any other work in the folder.
-    fn file_scope(&self, thread_id: &str) -> Result<(Thread, WriteScope)> {
+    pub(crate) fn file_scope(&self, thread_id: &str) -> Result<(Thread, WriteScope)> {
         let thread = self.store.thread(thread_id)?;
         if !self.store.project(&thread.project_id)?.trusted {
             return Err(CoreError::FolderUntrusted);
@@ -591,9 +621,33 @@ mod tests {
             engine_cwd: dir.path().to_path_buf(),
             excluded: Vec::new(),
         };
-        for bad in [".git/config", "src/.git/hooks/x", "/etc/hosts", "../x"] {
+        for bad in [
+            ".git/config",
+            ".GIT/config",
+            "src/.Git/hooks/x",
+            "/etc/hosts",
+            "../x",
+        ] {
             assert!(inside(&scope, bad).is_err(), "{bad}");
         }
         assert!(inside(&scope, "src/a.rs").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_into_git_metadata_is_refused() {
+        let dir = crate::testing::TempDir::new();
+        let root = crate::util::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git/config"), "secret").unwrap();
+        std::os::unix::fs::symlink(".git", root.join("meta")).unwrap();
+        std::os::unix::fs::symlink(".git/config", root.join("cfg")).unwrap();
+        let scope = WriteScope {
+            checkout: root.clone(),
+            engine_cwd: root,
+            excluded: Vec::new(),
+        };
+        assert!(inside(&scope, "meta/config").is_err());
+        assert!(inside(&scope, "cfg").is_err());
     }
 }

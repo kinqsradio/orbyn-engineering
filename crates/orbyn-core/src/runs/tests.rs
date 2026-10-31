@@ -412,6 +412,43 @@ async fn driver_that_ignores_cancel_is_still_torn_down() {
 }
 
 #[tokio::test]
+async fn a_forced_stop_does_not_wait_for_an_engine_that_ignores_it() {
+    let script: Script = Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let _held_open = events;
+            std::future::pending::<()>().await;
+        })
+    });
+    let f = fixture(script).await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_state(&f.core, &run.id, RunState::Running).await;
+    let started = std::time::Instant::now();
+    let stopped = f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+    assert!(started.elapsed() < STOP_TIMEOUT, "{:?}", started.elapsed());
+    assert_eq!(stopped.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(stopped.state, Some(RunState::Cancelled));
+    let again = f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+    assert_eq!(again.run_id, None, "a second click changes nothing");
+}
+
+#[tokio::test]
+async fn a_forced_stop_closes_a_run_nothing_owns() {
+    let script: Script = Arc::new(|_, events, _| {
+        tokio::spawn(async move {
+            let _held_open = events;
+            std::future::pending::<()>().await;
+        })
+    });
+    let f = fixture(script).await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_state(&f.core, &run.id, RunState::Running).await;
+    let owner = f.core.runs.lock().remove(&run.id).unwrap();
+    let stopped = f.core.runs.force_stop(&f.thread, "t").await.unwrap();
+    assert_eq!(stopped.state, Some(RunState::Cancelled));
+    owner.stops.force.cancel();
+}
+
+#[tokio::test]
 async fn panicking_engine_task_fails_the_run() {
     let script: Script = Arc::new(|_, _events, _| {
         tokio::spawn(async move {
