@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import { startProject, threadIdOf, type PullFixture, type Service } from "./service";
 
 /** The pull request surface through the real service and a stand-in `gh` that keeps state. */
-const PORT = 5288;
 
 const PATCH = "@@ -1,2 +1,3 @@\n keep\n-old\n+new\n+more";
 const fixtures: PullFixture[] = [
@@ -62,7 +61,7 @@ const moreAction = async (page: Page, article: Locator, name: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true, forge: fixtures }));
+  ({ service, projectId } = await startProject({ fakeEngines: true, forge: fixtures }));
 });
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1500, height: 1000 }));

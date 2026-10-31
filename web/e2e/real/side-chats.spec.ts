@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Side chats through the real service: asked beside a thread, then brought back. */
-const PORT = 5294;
 
 interface Listed {
   id: string;
@@ -27,7 +26,7 @@ const started = async (page: Page, prompt: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1500, height: 900 }));
