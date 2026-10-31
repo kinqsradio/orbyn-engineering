@@ -54,7 +54,8 @@ async fn codex_lists_its_visible_models_with_their_efforts() {
     let models = service.json("/api/engines/codex/models").await;
     assert_eq!(models["source"], "engine");
     let list = models["models"].as_array().unwrap();
-    assert_eq!(list.len(), 1, "{models}");
+    assert_eq!(list.len(), 2, "{models}");
+    assert!(!models.to_string().contains("fake-old"), "hidden: {models}");
     assert_eq!(list[0]["id"], "fake-big");
     assert_eq!(list[0]["is_default"], true);
     let values = &list[0]["options"][0]["values"];
@@ -65,11 +66,69 @@ async fn codex_lists_its_visible_models_with_their_efforts() {
 }
 
 #[tokio::test]
-async fn claude_lists_documented_aliases() {
+async fn claude_lists_what_initialize_says_and_never_passes_on_the_account() {
     let dir = TempDir::new();
-    let (service, _) = setup(&dir, engines(true, &dir.path().join("l")), "claude").await;
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(true, &launch_file), "claude").await;
+    let models = service.json("/api/engines/claude/models").await;
+    assert_eq!(models["source"], "engine");
+    assert!(models.get("fallback").is_none(), "{models}");
+    assert!(
+        !models.to_string().contains("person@example.com"),
+        "{models}"
+    );
+    assert_eq!(models["models"][2]["id"], "haiku");
+    assert!(
+        models["models"][2]["options"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let fable = &models["models"][1]["options"];
+    assert_eq!(fable[0]["values"].as_array().unwrap().len(), 1);
+    assert_eq!(fable[1]["id"], "fast_mode");
+    assert_eq!(models["output_styles"][1], "Learning");
+    assert_eq!(models["agents"][0]["name"], "Explore");
+
+    service.json("/api/engines/claude/models").await;
+    assert_eq!(launches(&launch_file, "claude-probe").len(), 1, "cached");
+    service
+        .json("/api/engines/claude/models?refresh=true")
+        .await;
+    assert_eq!(launches(&launch_file, "claude-probe").len(), 2, "refreshed");
+
+    let args = std::fs::read_to_string(&launch_file).unwrap();
+    assert!(args.contains("--strict-mcp-config"), "{args}");
+
+    let commands = service
+        .json(&format!("/api/threads/{thread}/commands"))
+        .await;
+    let found = |name: &str| {
+        commands
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|command| command["name"] == name)
+            .cloned()
+            .unwrap_or_default()
+    };
+    assert_eq!(found("review")["description"], "Review a change");
+    assert_eq!(found("Explore")["source"], "agent");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_claude_that_will_not_say_falls_back_to_a_marked_list() {
+    let dir = TempDir::new();
+    let mut options = engines(true, &dir.path().join("l"));
+    options
+        .env
+        .push(("ORBYN_FAKE_NO_INITIALIZE".to_owned(), "1".to_owned()));
+    let (service, thread) = setup(&dir, options, "claude").await;
     let models = service.json("/api/engines/claude/models").await;
     assert_eq!(models["source"], "documented");
+    assert_eq!(models["fallback"], true);
+    assert!(models["error"].is_string(), "{models}");
     assert!(
         models["models"]
             .as_array()
@@ -77,6 +136,269 @@ async fn claude_lists_documented_aliases() {
             .iter()
             .any(|model| model["id"] == "opus")
     );
+    // A stand-in list has no standing to refuse anything.
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/queue"),
+            json!({ "prompt": "hi", "effort": "max" }),
+        )
+        .await;
+    assert_eq!(code, 201, "{body}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn fast_mode_reaches_claude_as_a_setting_only_on_a_model_that_has_it() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(true, &launch_file), "claude").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi", "model": "haiku", "options": { "fast_mode": "on" } }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    assert_eq!(body["code"], "unsupported_option");
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi", "model": "fable", "options": { "fast_mode": "on" } }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    let launched = std::fs::read_to_string(&launch_file).unwrap();
+    let run = launched
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|entry| entry["mode"] == "claude")
+        .unwrap();
+    assert!(run["args"].to_string().contains("settings.json"), "{run}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn codex_refuses_what_a_model_does_not_offer_and_keeps_nothing() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(false, &launch_file), "codex").await;
+    for (path, status) in [("runs", 422), ("queue", 422)] {
+        let (code, body) = service
+            .send(
+                &format!("/api/threads/{thread}/{path}"),
+                json!({ "prompt": "hi", "model": "fake-small", "effort": "xhigh" }),
+            )
+            .await;
+        assert_eq!(code, status, "{body}");
+        assert_eq!(body["code"], "unsupported_option");
+    }
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi", "model": "fake-small", "options": { "service_tier": "priority" } }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    assert_eq!(body["code"], "unsupported_option");
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    assert!(body.get("effort").is_none(), "{body}");
+    assert!(body.get("model").is_none_or(Value::is_null), "{body}");
+    assert!(launches(&launch_file, "codex-turn").is_empty());
+
+    // A value stored by a plain update is refused when a run asks to use it.
+    let (code, _) = service.patch(&thread, json!({ "effort": "never" })).await;
+    assert_eq!(code, 200);
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi" }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn every_codex_turn_states_its_selection_and_a_new_model_keeps_the_thread() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(false, &launch_file), "codex").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "one", "effort": "xhigh", "options": { "service_tier": "priority" } }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    // Cleared here, so the next turn has to say so or Codex keeps the old values.
+    service
+        .patch(
+            &thread,
+            json!({ "effort": "", "options": { "service_tier": "" } }),
+        )
+        .await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "two" }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "three", "model": "fake-small" }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+
+    let turns: Vec<Value> = launches(&launch_file, "codex-turn")
+        .iter()
+        .map(|turn| serde_json::from_str(turn).unwrap())
+        .collect();
+    assert_eq!(turns[0]["model"], "fake-big");
+    assert_eq!(turns[0]["effort"], "xhigh");
+    assert_eq!(turns[0]["serviceTier"], "priority");
+    assert_eq!(turns[1]["effort"], "medium", "back to the model's default");
+    assert!(
+        turns[1].get("serviceTier").is_some_and(Value::is_null),
+        "standard clears the tier: {}",
+        turns[1]
+    );
+    assert_eq!(turns[2]["model"], "fake-small");
+    assert_eq!(turns[2]["threadId"], turns[0]["threadId"]);
+    assert!(turns[2].get("serviceTier").is_none(), "{}", turns[2]);
+    let threads: Vec<Value> = launches(&launch_file, "codex-thread")
+        .iter()
+        .map(|start| serde_json::from_str(start).unwrap())
+        .collect();
+    assert_eq!(threads[2]["threadId"], turns[0]["threadId"], "a resume");
+    assert_eq!(threads[2]["model"], "fake-small");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn the_configured_tier_is_the_default_and_goes_out_with_a_turn() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let mut options = engines(false, &launch_file);
+    options
+        .env
+        .push(("ORBYN_FAKE_CODEX_TIER".to_owned(), "fast".to_owned()));
+    let (service, thread) = setup(&dir, options, "codex").await;
+    let models = service.json("/api/engines/codex/models").await;
+    let tiers = &models["models"][0]["options"][1];
+    assert_eq!(tiers["id"], "service_tier");
+    assert_eq!(tiers["values"][1]["id"], "priority");
+    assert_eq!(tiers["values"][1]["default"], true);
+    assert_eq!(models["models"][0]["input_modalities"][1], "image");
+    service.admit(&thread, "hi").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let turn: Value = serde_json::from_str(&launches(&launch_file, "codex-turn")[0]).unwrap();
+    assert_eq!(turn["serviceTier"], "priority");
+    assert_eq!(turn["effort"], "medium");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_selection_follows_the_queue_a_fork_and_new_threads() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(false, &launch_file), "codex").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/queue"),
+            json!({
+                "prompt": "hi", "model": "fake-big", "effort": "xhigh",
+                "options": { "service_tier": "priority" },
+            }),
+        )
+        .await;
+    assert_eq!(code, 201, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    let saved = service.json(&format!("/api/threads/{thread}")).await;
+    assert_eq!(saved["effort"], "xhigh");
+    assert_eq!(saved["options"]["service_tier"], "priority");
+
+    let (code, fork) = service
+        .send(&format!("/api/threads/{thread}/fork"), json!({}))
+        .await;
+    assert_eq!(code, 201, "{fork}");
+    assert_eq!(fork["model"], "fake-big");
+    assert_eq!(fork["effort"], "xhigh");
+    assert_eq!(fork["options"]["service_tier"], "priority");
+
+    let models = service.json("/api/engines/codex/models").await;
+    assert_eq!(models["remembered"]["effort"], "xhigh");
+    let project = saved["project_id"].as_str().unwrap();
+    let fresh = service.thread(project, "codex").await;
+    let fresh = service.json(&format!("/api/threads/{fresh}")).await;
+    assert_eq!(fresh["model"], "fake-big");
+    assert_eq!(fresh["effort"], "xhigh");
+    assert_eq!(fresh["options"]["service_tier"], "priority");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn switching_engines_leaves_the_old_engines_selection_behind() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let mut options = engines(false, &launch_file);
+    options
+        .env
+        .push(("ORBYN_CLAUDE_BIN".to_owned(), FAKE.to_owned()));
+    let (service, thread) = setup(&dir, options, "codex").await;
+    service
+        .patch(
+            &thread,
+            json!({ "model": "fake-big", "effort": "xhigh", "options": { "service_tier": "priority" } }),
+        )
+        .await;
+    let (code, moved) = service
+        .send(
+            &format!("/api/threads/{thread}/switch-engine"),
+            json!({ "engine": "claude", "model": "fable", "effort": "low" }),
+        )
+        .await;
+    assert_eq!(code, 200, "{moved}");
+    assert_eq!(moved["model"], "fable");
+    assert_eq!(moved["effort"], "low");
+    assert!(moved.get("options").is_none(), "{moved}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_project_default_model_and_mode_reach_a_new_thread() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(false, &dir.path().join("l")), "codex").await;
+    let saved = service.json(&format!("/api/threads/{thread}")).await;
+    let project = saved["project_id"].as_str().unwrap().to_owned();
+    let response = service
+        .client
+        .put(format!(
+            "{}/api/projects/{project}/preferences",
+            service.url
+        ))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": {
+            "default_model": "fake-small", "default_engine": "codex",
+            "default_permission_mode": "auto",
+        }}))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success(), "{}", response.status());
+    let codex = service.thread(&project, "codex").await;
+    let codex = service.json(&format!("/api/threads/{codex}")).await;
+    assert_eq!(codex["model"], "fake-small");
+    assert_eq!(codex["lifecycle"]["permission_mode"], "auto");
+    let claude = service.thread(&project, "claude").await;
+    let claude = service.json(&format!("/api/threads/{claude}")).await;
+    assert!(claude.get("model").is_none_or(Value::is_null), "{claude}");
     service.stop().await;
 }
 
@@ -107,6 +429,85 @@ async fn acp_models_come_from_a_session_and_a_choice_reaches_the_agent() {
     service.admit(&thread, "hi").await;
     assert_eq!(service.finished(&thread).await, "completed");
     assert!(launches(&launch_file, "acp-model")[0].contains("acp-large"));
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn acp_modes_and_options_are_listed_and_applied_in_order_before_the_prompt() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, _) = setup(&dir, engines(true, &launch_file), "claude").await;
+    let (code, body) = service
+        .send(
+            "/api/engines/custom",
+            json!({ "id": "acp1", "name": "Acp", "tier": "acp", "target": FAKE, "args": ["acp"] }),
+        )
+        .await;
+    assert!(code < 300, "{body}");
+    let models = service.json("/api/engines/acp1/models").await;
+    assert_eq!(models["options"][0]["id"], "mode");
+    assert_eq!(models["options"][1]["id"], "config:think");
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let thread = service.thread(&project, "acp1").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi", "options": { "mode": "nope" } }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi", "options": { "mode": "code", "config:think": "on" } }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    let steps = launches(&launch_file, "acp-config");
+    assert!(
+        steps[0].contains("set_mode") && steps[0].contains("code"),
+        "{steps:?}"
+    );
+    assert!(
+        steps[1].contains("set_config_option") && steps[1].contains("think"),
+        "{steps:?}"
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn acp_fails_the_turn_when_a_chosen_mode_is_gone_and_sends_no_prompt() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, _) = setup(&dir, engines(true, &launch_file), "claude").await;
+    let (code, body) = service
+        .send(
+            "/api/engines/custom",
+            json!({ "id": "acp2", "name": "Acp", "tier": "acp", "target": FAKE, "args": ["acp"] }),
+        )
+        .await;
+    assert!(code < 300, "{body}");
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let thread = service.thread(&project, "acp2").await;
+    // The catalog offered `code` when it was read; this session no longer does.
+    service.json("/api/engines/acp2/models").await;
+    std::fs::write(dir.path().join("lost-mode"), "").unwrap();
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hi", "options": { "mode": "code" } }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "failed");
+    assert!(launches(&launch_file, "acp-config").is_empty());
     service.stop().await;
 }
 

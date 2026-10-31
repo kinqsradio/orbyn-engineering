@@ -3,10 +3,11 @@
 
 use std::collections::HashSet;
 
-use orbyn_contracts::{Attachment, PullRequest, PullWatch, QueuedMessage, Run};
+use orbyn_contracts::{Attachment, ModelSelection, PullRequest, PullWatch, QueuedMessage, Run};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::runs::admit_in;
+use super::threads::apply_selection;
 use super::{Admission, Store, parse_json};
 use crate::error::{CoreError, Result};
 use crate::util::{new_id, now};
@@ -20,6 +21,9 @@ fn queued_row(row: &Row<'_>) -> rusqlite::Result<QueuedMessage> {
         attachment_ids: parse_json(3, &ids)?,
         held: row.get("held")?,
         created_at: row.get("created_at")?,
+        model: row.get("model")?,
+        effort: row.get("effort")?,
+        options: parse_json(0, &row.get::<_, String>("options")?)?,
     })
 }
 
@@ -88,10 +92,12 @@ impl Store {
         thread_id: &str,
         prompt: &str,
         attachments: &[String],
+        selection: &ModelSelection,
     ) -> Result<QueuedMessage> {
         let id = new_id();
         let stamp = now();
         let ids = serde_json::to_string(attachments)?;
+        let options = serde_json::to_string(&selection.options)?;
         self.commit(|tx, _| {
             // A new message joins any held queue rather than jumping past it.
             let held: bool = tx.query_row(
@@ -100,9 +106,20 @@ impl Store {
                 |row| row.get(0),
             )?;
             tx.execute(
-                "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![id, thread_id, prompt, ids, held, stamp],
+                "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held,
+                    created_at, model, effort, options)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    id,
+                    thread_id,
+                    prompt,
+                    ids,
+                    held,
+                    stamp,
+                    selection.model,
+                    selection.effort,
+                    options,
+                ],
             )?;
             Ok(())
         })?;
@@ -204,6 +221,14 @@ impl Store {
                 },
             )?;
             tx.execute("DELETE FROM queued_messages WHERE id = ?1", [&message.id])?;
+            apply_selection(
+                tx,
+                appended,
+                thread_id,
+                message.model.as_deref(),
+                message.effort.as_deref(),
+                Some(&message.options),
+            )?;
             Ok(Some((run, message)))
         });
         match outcome {

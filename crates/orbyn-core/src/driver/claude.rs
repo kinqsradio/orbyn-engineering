@@ -10,25 +10,34 @@ use std::time::Duration;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use orbyn_contracts::{
-    AgUiEvent, EngineCapabilities, EngineTier, ModelInfo, SkillDelivery, ThreadUsage,
+    AgUiEvent, EngineAgent, EngineCapabilities, EngineTier, ModelInfo, ModelOption,
+    ModelOptionValue, SkillDelivery, ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::pipes::{exit_message, lines, one_shot_cli, resolve_engine, spawn_engine};
+use super::pipes::{
+    EngineProcess, exit_message, lines, one_shot_cli, resolve_engine, spawn_engine,
+    spawn_engine_with,
+};
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
-    ItemRecord, MCP_SERVER_NAME, ModelCatalog, RunHandle, RunKind, RunSpec, UpdatePlan,
+    ItemRecord, MCP_SERVER_NAME, ModelCatalog, ProbeDir, RunHandle, RunKind, RunSpec, UpdatePlan,
     effort_option,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
-use crate::error::Result;
+use crate::error::{CoreError, Result};
+use crate::selection::FAST_MODE;
 use crate::util::{new_id, write_private};
 
 const EXIT_GRACE: Duration = Duration::from_secs(3);
+const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
+const INITIALIZE_ID: &str = "orbyn-capabilities";
+/// Efforts the docs name, for the stand-in list only.
+const DOCUMENTED_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 pub struct ClaudeDriver {
     program: String,
@@ -75,12 +84,60 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
         args.push("--effort".into());
         args.push(effort.into());
     }
+    if spec.options.contains_key(FAST_MODE) {
+        args.push("--settings".into());
+        args.push(run_settings_path(spec).into());
+    }
     if let Some(session) = &spec.resume {
         args.push("--resume".into());
         args.push(session.into());
     }
     args
 }
+
+fn run_settings_path(spec: &RunSpec) -> std::path::PathBuf {
+    spec.run_dir.join("settings.json")
+}
+
+/// The settings a run passes with `--settings`, which is how the CLI takes fast mode
+/// in print mode. It reaches only a model that reports `supportsFastMode`, because
+/// admission refuses the option anywhere else.
+fn run_settings(spec: &RunSpec) -> Option<Value> {
+    let fast = spec.options.get(FAST_MODE)?;
+    Some(json!({ "fastMode": fast == "on" }))
+}
+
+/// The command line for reading capabilities. These flags are what keep it inert:
+/// a real 2.1.150 ran a `SessionStart` hook and started a user-level MCP server
+/// without them, even in an empty folder, and did neither with them. Hooks and
+/// servers both live in the user's own config, so a temp folder is not enough.
+pub fn capability_args(mcp_config: &Path, settings: &Path) -> Vec<OsString> {
+    let mut args: Vec<OsString> = [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--input-format",
+        "stream-json",
+        "--verbose",
+        "--no-session-persistence",
+        "--strict-mcp-config",
+        "--mcp-config",
+    ]
+    .iter()
+    .map(OsString::from)
+    .collect();
+    args.push(mcp_config.into());
+    args.push("--settings".into());
+    args.push(settings.into());
+    args
+}
+
+/// Servers from a claude.ai account are not in any config file, so these stay out
+/// of reach of the flags above.
+const CAPABILITY_ENV: &[(&str, &str)] = &[
+    ("ENABLE_CLAUDEAI_MCP_SERVERS", "false"),
+    ("CLAUDE_CODE_AUTO_CONNECT_IDE", "0"),
+];
 
 #[async_trait]
 impl EngineDriver for ClaudeDriver {
@@ -131,57 +188,20 @@ impl EngineDriver for ClaudeDriver {
         Some(maintenance::CLAUDE.npm_package)
     }
 
-    /// The CLI has no listing command, so this is the aliases its docs name. An
-    /// alias tracks the vendor's latest, and any full model name also works as a
-    /// custom model.
+    /// Asks the CLI itself, which works logged out and spends no model usage. If it
+    /// cannot say, the aliases its docs name stand in and say so.
     async fn models(&self) -> Result<Option<ModelCatalog>> {
-        const EFFORTS: &[(&str, &str)] = &[
-            ("low", "Low"),
-            ("medium", "Medium"),
-            ("high", "High"),
-            ("xhigh", "Extra high"),
-            ("max", "Max"),
-        ];
-        let model = |id: &str, label: &str, description: &str, is_default: bool| ModelInfo {
-            id: id.to_owned(),
-            label: label.to_owned(),
-            description: Some(description.to_owned()),
-            is_default,
-            custom: false,
-            options: vec![effort_option(EFFORTS, None)],
-        };
-        Ok(Some(ModelCatalog {
-            source: "documented",
-            models: vec![
-                model(
-                    "default",
-                    "Default",
-                    "What Claude Code picks for your plan",
-                    true,
-                ),
-                model("sonnet", "Sonnet", "The latest Sonnet", false),
-                model("opus", "Opus", "The latest Opus", false),
-                model("haiku", "Haiku", "The latest Haiku", false),
-                model(
-                    "sonnet[1m]",
-                    "Sonnet (1M context)",
-                    "Sonnet with a 1M context window",
-                    false,
-                ),
-                model(
-                    "opus[1m]",
-                    "Opus (1M context)",
-                    "Opus with a 1M context window",
-                    false,
-                ),
-                model(
-                    "opusplan",
-                    "Opus for planning",
-                    "Opus in plan mode, Sonnet otherwise",
-                    false,
-                ),
-            ],
+        Ok(Some(match self.initialize().await {
+            Ok(response) => parse_capabilities(&response),
+            Err(error) => documented_catalog(error.public_message()),
         }))
+    }
+
+    /// The list follows the CLI and its login: signing in changes which models
+    /// appear, and an update can change everything.
+    async fn catalog_key(&self) -> Option<String> {
+        let probe = self.probe().await;
+        Some(format!("{:?}|{:?}", probe.version, probe.auth))
     }
 
     async fn one_shot(&self, prompt: &str, model: Option<&str>) -> Result<String> {
@@ -210,6 +230,9 @@ impl EngineDriver for ClaudeDriver {
             "mcpServers": { (MCP_SERVER_NAME): { "type": "http", "url": spec.mcp_url } }
         });
         write_private(&mcp_config, config.to_string().as_bytes())?;
+        if let Some(settings) = run_settings(&spec) {
+            write_private(&run_settings_path(&spec), settings.to_string().as_bytes())?;
+        }
         let args = run_args(&spec, &mcp_config);
         let process = spawn_engine(&command, &args, &spec.cwd)?;
         let cancel = CancellationToken::new();
@@ -229,8 +252,211 @@ impl EngineDriver for ClaudeDriver {
     }
 }
 
+impl ClaudeDriver {
+    /// Reads the CLI's `initialize` response from a process that never gets a
+    /// prompt, in an empty folder of its own.
+    async fn initialize(&self) -> Result<Value> {
+        let command = resolve_engine(&self.program)?;
+        let dir = ProbeDir::new()?;
+        let mcp_config = dir.path().join("mcp.json");
+        let settings = dir.path().join("settings.json");
+        write_private(
+            &mcp_config,
+            json!({ "mcpServers": {} }).to_string().as_bytes(),
+        )?;
+        write_private(
+            &settings,
+            json!({ "disableAllHooks": true }).to_string().as_bytes(),
+        )?;
+        let args = capability_args(&mcp_config, &settings);
+        let mut process = spawn_engine_with(&command, &args, dir.path(), CAPABILITY_ENV)?;
+        let frame = json!({
+            "type": "control_request",
+            "request_id": INITIALIZE_ID,
+            "request": { "subtype": "initialize" },
+        });
+        process
+            .stdin
+            .write_all(format!("{frame}\n").as_bytes())
+            .await?;
+        process.stdin.flush().await?;
+        let answer = tokio::time::timeout(INITIALIZE_TIMEOUT, read_initialize(process.stdout));
+        let response = answer.await.map_err(|_| {
+            CoreError::EngineUnavailable("Claude Code did not say what it offers in time.".into())
+        })?;
+        match response {
+            Some(response) => Ok(response),
+            None => {
+                let status = process.child.wait().await.ok();
+                Err(CoreError::EngineUnavailable(
+                    exit_message(status, &process.stderr).await,
+                ))
+            }
+        }
+    }
+}
+
+/// The body of the matching `control_response`, or `None` if the stream ended. The
+/// reply carries account details, so it is never logged, and only the fields
+/// `parse_capabilities` names leave this file.
+async fn read_initialize(stdout: tokio::process::ChildStdout) -> Option<Value> {
+    let mut stream = lines(stdout);
+    while let Some(line) = stream.next().await {
+        let Ok(line) = line else { continue };
+        let Ok(frame) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if frame.get("type").and_then(Value::as_str) != Some("control_response") {
+            continue;
+        }
+        let reply = frame.get("response")?;
+        if reply.get("request_id").and_then(Value::as_str) != Some(INITIALIZE_ID) {
+            continue;
+        }
+        return reply.get("response").cloned();
+    }
+    None
+}
+
+/// Turns an `initialize` response into a catalog. Each model's effort list is its
+/// own, and a model that reports no effort support gets no effort option.
+pub fn parse_capabilities(response: &Value) -> ModelCatalog {
+    let list = |key: &str| response.get(key).and_then(Value::as_array);
+    let reported = list("models").into_iter().flatten();
+    let mut models: Vec<ModelInfo> = reported.filter_map(parse_claude_model).collect();
+    if !models.iter().any(|model| model.is_default)
+        && let Some(first) = models.first_mut()
+    {
+        first.is_default = true;
+    }
+    ModelCatalog {
+        models,
+        commands: list("commands")
+            .into_iter()
+            .flatten()
+            .filter_map(|command| {
+                Some((
+                    text_of(command, "name")?,
+                    text_of(command, "description").unwrap_or_default(),
+                ))
+            })
+            .collect(),
+        agents: list("agents")
+            .into_iter()
+            .flatten()
+            .filter_map(|agent| {
+                Some(EngineAgent {
+                    name: text_of(agent, "name")?,
+                    description: text_of(agent, "description").unwrap_or_default(),
+                    model: text_of(agent, "model"),
+                })
+            })
+            .collect(),
+        output_styles: list("available_output_styles")
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect(),
+        output_style: text_of(response, "output_style"),
+        ..ModelCatalog::engine(Vec::new())
+    }
+}
+
+fn parse_claude_model(model: &Value) -> Option<ModelInfo> {
+    let id = text_of(model, "value")?;
+    let flag = |key: &str| model.get(key).and_then(Value::as_bool) == Some(true);
+    let mut options = Vec::new();
+    let levels: Vec<&str> = model
+        .get("supportedEffortLevels")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if flag("supportsEffort") && !levels.is_empty() {
+        options.push(effort_option(levels, None));
+    }
+    if flag("supportsFastMode") {
+        options.push(fast_option());
+    }
+    Some(ModelInfo {
+        label: text_of(model, "displayName").unwrap_or_else(|| id.clone()),
+        description: text_of(model, "description"),
+        is_default: id == "default",
+        custom: false,
+        options,
+        input_modalities: Vec::new(),
+        upgrade: None,
+        id,
+    })
+}
+
+fn fast_option() -> ModelOption {
+    let value = |id: &str, label: &str, default: bool| ModelOptionValue {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        default,
+        description: None,
+    };
+    ModelOption {
+        id: FAST_MODE.to_owned(),
+        label: "Speed".to_owned(),
+        values: vec![value("off", "Standard", true), value("on", "Fast", false)],
+    }
+}
+
+/// The aliases the CLI's docs name, for when it cannot be asked. An alias tracks the
+/// vendor's latest, and any full model name also works as a custom model.
+fn documented_catalog(reason: String) -> ModelCatalog {
+    let model = |id: &str, label: &str, description: &str, is_default: bool| ModelInfo {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        description: Some(description.to_owned()),
+        is_default,
+        custom: false,
+        options: vec![effort_option(DOCUMENTED_EFFORTS.iter().copied(), None)],
+        input_modalities: Vec::new(),
+        upgrade: None,
+    };
+    ModelCatalog {
+        source: "documented",
+        fallback: Some(reason),
+        models: vec![
+            model(
+                "default",
+                "Default",
+                "What Claude Code picks for your plan",
+                true,
+            ),
+            model("sonnet", "Sonnet", "The latest Sonnet", false),
+            model("opus", "Opus", "The latest Opus", false),
+            model("haiku", "Haiku", "The latest Haiku", false),
+            model(
+                "sonnet[1m]",
+                "Sonnet (1M context)",
+                "Sonnet with a 1M context window",
+                false,
+            ),
+            model(
+                "opus[1m]",
+                "Opus (1M context)",
+                "Opus with a 1M context window",
+                false,
+            ),
+            model(
+                "opusplan",
+                "Opus for planning",
+                "Opus in plan mode, Sonnet otherwise",
+                false,
+            ),
+        ],
+        ..ModelCatalog::default()
+    }
+}
+
 async fn run_protocol(
-    mut process: super::pipes::EngineProcess,
+    mut process: EngineProcess,
     spec: RunSpec,
     events: mpsc::Sender<EngineEvent>,
     mut steering: mpsc::UnboundedReceiver<String>,
@@ -692,6 +918,7 @@ mod tests {
             plan: false,
             model: Some("sonnet".into()),
             effort: None,
+            options: std::collections::BTreeMap::new(),
             resume: Some("sess".into()),
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
             run_dir: PathBuf::from("/run"),
@@ -733,6 +960,113 @@ mod tests {
                 .iter()
                 .any(|arg| arg == "--bare" || arg == "--plugin-dir")
         );
+    }
+
+    #[test]
+    fn capability_reads_cannot_start_servers_or_hooks_and_never_use_bare() {
+        let args: Vec<String> = capability_args(Path::new("/p/mcp.json"), Path::new("/p/s.json"))
+            .into_iter()
+            .map(|arg| arg.into_string().unwrap())
+            .collect();
+        for flag in ["--strict-mcp-config", "--no-session-persistence"] {
+            assert!(args.iter().any(|arg| arg == flag), "{flag}");
+        }
+        let after = |flag: &str| {
+            let at = args.iter().position(|arg| arg == flag).unwrap();
+            args[at + 1].clone()
+        };
+        assert_eq!(after("--mcp-config"), "/p/mcp.json");
+        assert_eq!(after("--settings"), "/p/s.json");
+        assert!(!args.iter().any(|arg| arg == "--bare"));
+        assert!(CAPABILITY_ENV.contains(&("ENABLE_CLAUDEAI_MCP_SERVERS", "false")));
+    }
+
+    /// The shape of a real 2.1.150 reply, with the account block it also carries.
+    fn initialize_reply() -> Value {
+        json!({
+            "models": [
+                { "value": "default", "displayName": "Default (recommended)",
+                  "description": "The default", "supportsEffort": true,
+                  "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"],
+                  "supportsAdaptiveThinking": true, "supportsAutoMode": true },
+                { "value": "sonnet", "displayName": "Sonnet", "supportsEffort": true,
+                  "supportedEffortLevels": ["low", "medium", "high", "max"] },
+                { "value": "opus", "displayName": "Opus", "supportsEffort": true,
+                  "supportedEffortLevels": ["low"], "supportsFastMode": true },
+                { "value": "haiku", "displayName": "Haiku", "description": "Fastest" },
+            ],
+            "commands": [{ "name": "review", "description": "Review a change" }],
+            "agents": [{ "name": "Explore", "description": "Search", "model": "haiku" }],
+            "available_output_styles": ["default", "Learning"],
+            "output_style": "default",
+            "account": { "email": "person@example.com", "organization": "Secret Co" },
+            "pid": 12,
+        })
+    }
+
+    #[test]
+    fn each_model_keeps_its_own_efforts_and_only_a_supporting_one_offers_speed() {
+        let catalog = parse_capabilities(&initialize_reply());
+        assert_eq!(catalog.source, "engine");
+        assert_eq!(catalog.fallback, None);
+        let efforts = |id: &str| -> Vec<String> {
+            let model = catalog.models.iter().find(|model| model.id == id).unwrap();
+            model
+                .options
+                .iter()
+                .filter(|option| option.id == "effort")
+                .flat_map(|option| option.values.iter().map(|value| value.id.clone()))
+                .collect()
+        };
+        assert_eq!(efforts("sonnet"), ["low", "medium", "high", "max"]);
+        assert_eq!(efforts("default").len(), 5);
+        assert!(efforts("haiku").is_empty());
+        assert!(catalog.models[0].is_default);
+        let with_fast: Vec<&str> = catalog
+            .models
+            .iter()
+            .filter(|model| model.options.iter().any(|option| option.id == FAST_MODE))
+            .map(|model| model.id.as_str())
+            .collect();
+        assert_eq!(with_fast, ["opus"]);
+        assert_eq!(catalog.commands[0].0, "review");
+        assert_eq!(catalog.agents[0].name, "Explore");
+        assert_eq!(catalog.output_styles, ["default", "Learning"]);
+    }
+
+    #[test]
+    fn the_account_block_never_reaches_a_catalog() {
+        let catalog = parse_capabilities(&initialize_reply());
+        let text = format!("{catalog:?}");
+        assert!(!text.contains("person@example.com"), "{text}");
+        assert!(!text.contains("Secret Co"), "{text}");
+    }
+
+    #[test]
+    fn the_stand_in_list_says_it_is_one_and_why() {
+        let catalog = documented_catalog("no answer".into());
+        assert_eq!(catalog.source, "documented");
+        assert_eq!(catalog.fallback.as_deref(), Some("no answer"));
+        assert!(catalog.models.iter().any(|model| model.id == "opus"));
+    }
+
+    #[test]
+    fn speed_goes_through_settings_and_only_when_chosen() {
+        let plain = spec();
+        assert_eq!(run_settings(&plain), None);
+        assert!(
+            !run_args(&plain, Path::new("/m"))
+                .iter()
+                .any(|a| a == "--settings")
+        );
+        let mut fast = spec();
+        fast.options.insert(FAST_MODE.into(), "on".into());
+        assert_eq!(run_settings(&fast), Some(json!({ "fastMode": true })));
+        let args = run_args(&fast, Path::new("/m"));
+        let at = args.iter().position(|arg| arg == "--settings").unwrap();
+        assert_eq!(args[at + 1], "/run/settings.json");
+        fast.options.insert(FAST_MODE.into(), "off".into());
+        assert_eq!(run_settings(&fast), Some(json!({ "fastMode": false })));
     }
 
     #[test]

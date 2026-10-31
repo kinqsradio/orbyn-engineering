@@ -2,6 +2,8 @@
 //! strings and ids are opaque strings. `cargo test -p orbyn-contracts
 //! export_bindings` regenerates `web/src/generated`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -64,6 +66,10 @@ pub struct Thread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub effort: Option<String>,
+    /// Choices beyond model and effort, by `ModelOption` id, such as `service_tier`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
     /// The goal the engine is working toward, as last reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -126,6 +132,16 @@ pub struct QueuedMessage {
     /// Held messages wait for a resume after a stop, failure or restart.
     pub held: bool,
     pub created_at: String,
+    /// What this message sets on the thread when it starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -134,6 +150,16 @@ pub struct EnqueueMessage {
     pub prompt: String,
     #[serde(default)]
     pub attachment_ids: Vec<String>,
+    /// Set on the thread when this message starts, and it stays for later turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -146,6 +172,16 @@ pub struct EditQueuedMessage {
 wire! {
 pub struct SteerRun {
     pub prompt: String,
+    /// A running turn keeps its own model; these apply from the next turn on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -308,7 +344,14 @@ pub struct ForkThread {
 wire! {
 pub struct SwitchEngine {
     pub engine: String,
+    /// Absent uses what was last chosen on that engine.
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -777,7 +820,8 @@ pub struct SlashCommand {
     pub name: String,
     pub description: String,
     /// `orbyn` commands the service or client handles, `engine` commands sent to
-    /// the engine as typed, or `skill`.
+    /// the engine as typed, `agent` for a subagent reached by mentioning it, or
+    /// `skill`.
     #[serde(default)]
     pub source: String,
 }
@@ -789,13 +833,17 @@ pub struct ModelOptionValue {
     pub id: String,
     pub label: String,
     pub default: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
 }
 }
 
 wire! {
 /// A choice a model offers per turn.
 pub struct ModelOption {
-    /// `effort` is the only id today.
+    /// `effort`, `service_tier`, `fast_mode` (`on` or `off`), `mode` for an ACP
+    /// agent's session mode, or `config:<id>` for one of its config options.
     pub id: String,
     pub label: String,
     pub values: Vec<ModelOptionValue>,
@@ -812,6 +860,41 @@ pub struct ModelInfo {
     /// Added in settings rather than reported by the engine.
     pub custom: bool,
     pub options: Vec<ModelOption>,
+    /// What a turn can carry, such as `text` and `image`. Empty is unknown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub input_modalities: Vec<String>,
+    /// The model the engine suggests moving to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub upgrade: Option<String>,
+}
+}
+
+wire! {
+/// A subagent the engine offers, reached by mentioning it.
+pub struct EngineAgent {
+    pub name: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+}
+
+wire! {
+/// What was last chosen on an engine, carried to its new threads.
+#[derive(Default)]
+pub struct ModelSelection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -824,6 +907,30 @@ pub struct EngineModels {
     /// Why the engine could not be asked. Custom models still appear.
     pub error: Option<String>,
     pub checked_at: String,
+    /// The list is a stand-in for an answer the engine did not give, so choices
+    /// are not checked against it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(optional, as = "Option<bool>")]
+    pub fallback: bool,
+    /// Choices that apply to every model, such as an ACP agent's session modes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<ModelOption>>")]
+    pub options: Vec<ModelOption>,
+    /// Subagents the engine offers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<EngineAgent>>")]
+    pub agents: Vec<EngineAgent>,
+    /// Output styles the engine offers. Listed only; Orbyn does not set one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub output_styles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub output_style: Option<String>,
+    /// What was last chosen on this engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub remembered: Option<ModelSelection>,
 }
 }
 
@@ -872,6 +979,10 @@ pub struct UpdateThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub effort: Option<String>,
+    /// Merged by key; an empty value goes back to the engine's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub options: Option<BTreeMap<String, String>>,
 }
 }
 
@@ -1595,6 +1706,12 @@ pub struct DelegateTask {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -2202,6 +2319,13 @@ pub struct CreateThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub base_branch: Option<String>,
+    /// Absent effort and options follow what was last chosen for this model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 
@@ -2223,6 +2347,10 @@ pub struct StartRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub effort: Option<String>,
+    /// Merged into the thread's options for this turn and the ones after it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(optional, as = "Option<BTreeMap<String, String>>")]
+    pub options: BTreeMap<String, String>,
 }
 }
 

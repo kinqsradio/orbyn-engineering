@@ -1,7 +1,8 @@
 //! Policy rules, skill profiles, custom engines and settings.
 
 use orbyn_contracts::{
-    ActionKind, CreatePolicyRule, CustomEngine, PolicyEffect, PolicyRule, SkillProfile,
+    ActionKind, CreatePolicyRule, CustomEngine, EngineAgent, ModelSelection, PolicyEffect,
+    PolicyRule, SkillProfile,
 };
 use rusqlite::{OptionalExtension, Row, params};
 use serde_json::Value;
@@ -287,10 +288,69 @@ impl Store {
             .unwrap_or_default())
     }
 
+    /// Keeps a description the engine gave before when this list has none, because
+    /// a session's init frame names commands without describing them.
     pub fn set_engine_commands(&self, engine: &str, commands: &[(String, String)]) -> Result<()> {
+        let known = self.engine_commands(engine)?;
+        let merged: Vec<(String, String)> = commands
+            .iter()
+            .map(|(name, description)| {
+                let kept = known
+                    .iter()
+                    .find(|(old, _)| old == name && description.is_empty())
+                    .map_or(description, |(_, old)| old);
+                (name.clone(), kept.clone())
+            })
+            .collect();
         self.set_setting(
             &format!("engine_commands:{engine}"),
-            &serde_json::to_string(commands)?,
+            &serde_json::to_string(&merged)?,
+        )
+    }
+
+    /// Adds what a capability read reports. It runs in an empty folder, so a project's
+    /// own commands from a session's list stay, and only a session can remove one.
+    pub fn add_engine_commands(&self, engine: &str, commands: &[(String, String)]) -> Result<()> {
+        let mut known = self.engine_commands(engine)?;
+        for (name, description) in commands {
+            match known.iter_mut().find(|(old, _)| old == name) {
+                Some(entry) => entry.1.clone_from(description),
+                None => known.push((name.clone(), description.clone())),
+            }
+        }
+        self.set_setting(
+            &format!("engine_commands:{engine}"),
+            &serde_json::to_string(&known)?,
+        )
+    }
+
+    /// Subagents an engine last said it has.
+    pub fn engine_agents(&self, engine: &str) -> Result<Vec<EngineAgent>> {
+        Ok(self
+            .setting(&format!("engine_agents:{engine}"))?
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default())
+    }
+
+    pub fn set_engine_agents(&self, engine: &str, agents: &[EngineAgent]) -> Result<()> {
+        self.set_setting(
+            &format!("engine_agents:{engine}"),
+            &serde_json::to_string(agents)?,
+        )
+    }
+
+    /// What was last chosen on an engine.
+    pub fn remembered_selection(&self, engine: &str) -> Result<ModelSelection> {
+        Ok(self
+            .setting(&format!("engine_selection:{engine}"))?
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default())
+    }
+
+    pub fn remember_selection(&self, engine: &str, selection: &ModelSelection) -> Result<()> {
+        self.set_setting(
+            &format!("engine_selection:{engine}"),
+            &serde_json::to_string(selection)?,
         )
     }
 

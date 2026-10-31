@@ -435,6 +435,8 @@ impl Core {
                         worktree: None,
                         skill_profile: own.skill_profile.clone(),
                         base_branch: None,
+                        effort: None,
+                        options: std::collections::BTreeMap::new(),
                     })
                     .await?;
                 self.runs.enqueue(&thread.id, text(args, "prompt")?, &[])?;
@@ -488,6 +490,8 @@ impl Core {
                         .and_then(Value::as_str)
                         .map(str::to_owned),
                     model: None,
+                    effort: None,
+                    options: std::collections::BTreeMap::new(),
                 };
                 let child = self.delegate(&own.id, &task, &actor)?;
                 json!({ "thread_id": child.id })

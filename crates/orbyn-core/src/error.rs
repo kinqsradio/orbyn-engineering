@@ -48,6 +48,9 @@ pub enum CoreError {
     },
     #[error("{0}")]
     Unsupported(String),
+    /// A model, effort or option the chosen model does not offer.
+    #[error("{0}")]
+    UnsupportedOption(String),
     #[error("{0}")]
     UpdateUnavailable(String),
     #[error("{0}")]
@@ -106,6 +109,7 @@ impl CoreError {
             Self::Updating => "updating",
             Self::ProjectHasWork { .. } => "project_has_work",
             Self::Unsupported(_) => "unsupported",
+            Self::UnsupportedOption(_) => "unsupported_option",
             Self::UpdateUnavailable(_) => "update_unavailable",
             Self::UpdateFailed(_) => "update_failed",
             Self::PolicyDenied(_) => "policy_denied",
@@ -146,7 +150,7 @@ impl CoreError {
             | Self::StaleOwner
             | Self::RunClosed
             | Self::InvalidTransition { .. } => 409,
-            Self::UpdateUnavailable(_) | Self::Unsupported(_) => 422,
+            Self::UpdateUnavailable(_) | Self::Unsupported(_) | Self::UnsupportedOption(_) => 422,
             Self::EngineUnavailable(_) | Self::Computer(_) | Self::UpdateFailed(_) => 502,
             _ => 500,
         }

@@ -123,6 +123,8 @@ async fn fixture_with(script: Script, update: &str, update_timeout: Duration) ->
             worktree: None,
             skill_profile: None,
             base_branch: None,
+            effort: None,
+            options: std::collections::BTreeMap::new(),
         })
         .await
         .unwrap();

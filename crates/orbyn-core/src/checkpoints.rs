@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use orbyn_contracts::ModelSelection;
 use orbyn_contracts::{
     CommitInfo, FileDiff, ForkThread, RestorePoint, RestoreWorkspace, RewindThread, SwitchEngine,
     Thread,
@@ -211,8 +212,23 @@ impl Core {
             }),
         )?;
         self.store.set_handoff(id, &handoff)?;
+        // What was asked for, then what was last chosen on that engine, then its
+        // defaults. Admission checks the result, as it does any selection.
+        let last = if request.engine == thread.engine {
+            crate::selection::of_thread(&thread)
+        } else {
+            self.store.remembered_selection(&request.engine)?
+        };
+        let chosen = crate::selection::merged(
+            &last,
+            &ModelSelection {
+                model: request.model.clone(),
+                effort: request.effort.clone(),
+                options: request.options.clone(),
+            },
+        );
         self.store
-            .switch_thread_engine(id, &request.engine, request.model.as_deref())?;
+            .switch_thread_engine(id, &request.engine, &chosen)?;
         self.store.thread(id)
     }
 }

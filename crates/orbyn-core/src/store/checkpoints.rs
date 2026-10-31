@@ -1,7 +1,7 @@
 //! Checkpoints and the conversation handoff that carries a thread across engine
 //! sessions: rewinds, forks and engine switches all use it.
 
-use orbyn_contracts::{AgUiEvent, Checkpoint, Thread};
+use orbyn_contracts::{AgUiEvent, Checkpoint, ModelSelection, Thread};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::{NewThread, Store, thread_row, with_run_state};
@@ -164,11 +164,20 @@ impl Store {
         })
     }
 
-    pub fn switch_thread_engine(&self, id: &str, engine: &str, model: Option<&str>) -> Result<()> {
+    /// A selection means nothing to another engine, so `selection` replaces it all.
+    pub fn switch_thread_engine(
+        &self,
+        id: &str,
+        engine: &str,
+        selection: &ModelSelection,
+    ) -> Result<()> {
+        let options = serde_json::to_string(&selection.options)?;
         self.commit(|tx, _| {
             tx.execute(
-                "UPDATE threads SET engine = ?2, model = ?3, engine_session = NULL WHERE id = ?1",
-                params![id, engine, model],
+                "UPDATE threads SET engine = ?2, model = ?3, effort = ?4, options = ?5,
+                    engine_session = NULL
+                 WHERE id = ?1",
+                params![id, engine, selection.model, selection.effort, options],
             )?;
             Ok(())
         })
@@ -179,6 +188,7 @@ impl Store {
         let id = new_id();
         let stamp = now();
         let handoff = self.handoff_text(&parent.id, through)?;
+        let options = serde_json::to_string(&parent.options)?;
         let new = NewThread {
             project_id: parent.project_id.clone(),
             title: title.to_owned(),
@@ -196,10 +206,10 @@ impl Store {
             tx.execute(
                 "INSERT INTO threads (id, project_id, title, engine, model, cwd, worktree_path,
                     worktree_branch, worktree_base, skill_profile, created_at, updated_at, position,
-                    parent_thread_id, relation, next_seq, handoff, scratch)
+                    parent_thread_id, relation, next_seq, handoff, scratch, effort, options)
                  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11,
                     (SELECT COALESCE(MIN(position), 0) - 1 FROM threads), ?12, ?13, ?14 + 1, ?15,
-                    ?16",
+                    ?16, ?17, ?18",
                 params![
                     id,
                     new.project_id,
@@ -217,6 +227,8 @@ impl Store {
                     through,
                     handoff,
                     new.scratch,
+                    parent.effort,
+                    options,
                 ],
             )?;
             // A fork shows the conversation it came from, without the parent's runs.

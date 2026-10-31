@@ -626,6 +626,7 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
         engine: row.get("engine")?,
         model: row.get("model")?,
         effort: row.get("effort")?,
+        options: parse_json(0, &row.get::<_, String>("options")?)?,
         goal: row
             .get::<_, Option<String>>("goal")?
             .and_then(|text| serde_json::from_str(&text).ok()),

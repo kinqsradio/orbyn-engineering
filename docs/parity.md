@@ -134,7 +134,7 @@ toward completion.
 - [x] B21 Remembered model defaults: provider, model and options carry to new threads | docs/user/composer.md | w d m | S | web done
 - [x] B22 Model picker: providers rail, search, favorites, number jumps | apps/web/src/components/chat/ProviderModelPicker.tsx | w d m | L | server done | web done
 - [x] B23 Model visibility and order: hide, reorder, favorite per instance | packages/contracts/src/settings.ts | w d s | M | server done | web done
-- [x] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M | server done | web done
+- [x] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M | server done: effort, Codex service tier and Claude fast mode per model; neither engine reports thinking or context choices | web done
 - [x] B25 Effort display: label or bars, with shortcuts | apps/web/src/components/chat/EffortGlyph.tsx | w d | S | web done
 - [x] B26 Permission mode: Supervised, Auto-accept edits, Auto, Full access | docs/user/permission-modes.md | w d m s | L | server done | web done
 - [x] B27 Plan mode toggle: plan or build | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
@@ -404,6 +404,12 @@ toward completion.
 - [ ] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S
 
 ## I. Providers
+
+Surveyed against PandaCode 0.3.85's engine list. Any ACP agent runs here as a custom
+engine, with its models, modes and config options read from `session/new`. Engines with
+no row of their own are in I62. Per-engine launch flags, environment and login checks
+are not built in, and an agent that lists effort only after switching models needs I59.
+
 - [ ] I1 Codex CLI login: existing install and login | docs/user/providers-codex.md | s | M | [auth-risk]
 - [ ] I2 Connect ChatGPT: managed sign-in with sharing | apps/server/src/provider/CodexChatGptAuth.ts | w d s | L | [auth-risk] [hosted]
 - [ ] I3 Managed token broker: brokers ChatGPT tokens to Codex | apps/server/src/provider/CodexManagedTokenBroker.ts | s | L | [auth-risk]
@@ -461,7 +467,7 @@ toward completion.
 - [ ] I55 Prefer saved login: scrub inherited credential and endpoint variables so the engine uses its own login; report only variable names and endpoint origin | src-tauri/src/providers/claude_auth.rs | s w | M | beyond T3
 - [ ] I56 Login probe without secrets: run the engine's own status command with settings sources empty, time and size bounded, output wiped; map to signed in, not signed in, other credentials, unknown | src-tauri/src/providers/claude_auth.rs | s | S
 - [ ] I57 Agent telemetry switch: one setting applies each engine's own telemetry opt-outs to every spawn; coverage table shows off, manual or unknown per engine | src-tauri/src/providers/privacy.rs | s w d | M | beyond T3
-- [ ] I58 Codex fast tier from catalog: offered only when the model list names the tier | src-tauri/src/command_operations.rs | s w | S
+- [x] I58 Codex fast tier from catalog: offered only when the model list names the tier | src-tauri/src/command_operations.rs | s w | S | server done
 - [ ] I59 Discovery without leftovers: engines that report per-model options only after a switch are probed in throwaway sessions that are deleted afterwards | src-tauri/src/providers/devin.rs | s | M
 - [ ] I60 Model health pauses: a failing model is paused with a cooldown that survives restart; same model on another engine is offered as failover; Settings can allow it now | src-tauri/src/model_health.rs | s w | M | beyond T3
 - [ ] I61 Warm next turn: start the next Claude process in the background and adopt it only when every launch input matches | src-tauri/src/providers/warm.rs | s | M | beyond T3
@@ -500,7 +506,7 @@ toward completion.
 - [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
 - [ ] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
 - [ ] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S
-- [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done
+- [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
 - [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
 - [x] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M | server done

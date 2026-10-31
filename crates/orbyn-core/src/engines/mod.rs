@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
-    AuthState, CustomEngine, EngineModels, EngineStatus, EngineTier, InstallerKind, VersionSupport,
+    AuthState, CustomEngine, EngineModels, EngineStatus, EngineTier, InstallerKind, ModelSelection,
+    VersionSupport,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -21,7 +22,7 @@ use crate::driver::agui::AguiDriver;
 use crate::driver::claude::ClaudeDriver;
 use crate::driver::codex::CodexDriver;
 use crate::driver::terminal::TerminalDriver;
-use crate::driver::{EngineDriver, UpdatePlan};
+use crate::driver::{EngineDriver, ModelCatalog, UpdatePlan};
 use crate::error::{CoreError, Result};
 use crate::process::{ManagedChild, engine_command, resolve};
 use crate::store::{AuditRecord, Store};
@@ -32,6 +33,10 @@ use manifest::TestedManifest;
 const LATEST_TIMEOUT: Duration = Duration::from_secs(4);
 pub const UPDATE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const MODELS_TTL: Duration = Duration::from_secs(5 * 60);
+/// How often an engine's catalog key is compared. Reading it starts processes.
+const MODELS_KEY_CHECK: Duration = Duration::from_secs(60);
+/// A stand-in list is kept only long enough not to start a process per read.
+const MODELS_RETRY: Duration = Duration::from_secs(30);
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Debug)]
@@ -67,7 +72,15 @@ pub struct EngineManager {
     updating: Mutex<HashSet<String>>,
     installer_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     statuses: tokio::sync::Mutex<Option<Vec<EngineStatus>>>,
-    models: tokio::sync::Mutex<HashMap<String, (Instant, EngineModels)>>,
+    models: tokio::sync::Mutex<HashMap<String, CachedModels>>,
+    /// The last good list of each engine, for checks that cannot wait for an engine.
+    known_models: Mutex<HashMap<String, EngineModels>>,
+}
+
+struct CachedModels {
+    checked: Instant,
+    key: Option<String>,
+    models: EngineModels,
 }
 
 impl EngineManager {
@@ -95,6 +108,7 @@ impl EngineManager {
             installer_locks: Mutex::new(HashMap::new()),
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
+            known_models: Mutex::new(HashMap::new()),
         }
     }
 
@@ -173,38 +187,73 @@ impl EngineManager {
     }
 
     /// What the engine says it offers. A failure is reported with the list empty,
-    /// so custom models still work, and only a good answer is kept.
+    /// so custom models still work, and only a good answer is kept for long.
     pub async fn models(&self, id: &str, refresh: bool) -> Result<EngineModels> {
         let driver = self.driver(id)?;
         let mut cache = self.models.lock().await;
         if !refresh
-            && let Some((at, models)) = cache.get(id)
-            && at.elapsed() < MODELS_TTL
+            && let Some(cached) = cache.get(id)
+            && cached.key.is_some()
+            && cached.checked.elapsed() < MODELS_KEY_CHECK
         {
-            return Ok(models.clone());
+            return Ok(cached.models.clone());
+        }
+        let key = driver.catalog_key().await;
+        if !refresh
+            && let Some(cached) = cache.get_mut(id)
+            && still_good(cached, key.as_ref())
+        {
+            return Ok(cached.models.clone());
         }
         let report = tokio::time::timeout(MODELS_TIMEOUT, driver.models()).await;
-        let (source, models, error) = match report {
-            Ok(Ok(Some(catalog))) => (catalog.source, catalog.models, None),
-            Ok(Ok(None)) => ("none", Vec::new(), None),
-            Ok(Err(error)) => ("none", Vec::new(), Some(error.public_message())),
+        let (catalog, error) = match report {
+            Ok(Ok(Some(catalog))) => (catalog, None),
+            Ok(Ok(None)) => (empty_catalog(), None),
+            Ok(Err(error)) => (empty_catalog(), Some(error.public_message())),
             Err(_) => (
-                "none",
-                Vec::new(),
+                empty_catalog(),
                 Some("The engine did not list its models in time.".to_owned()),
             ),
         };
+        let fallback = catalog.fallback.is_some();
         let models = EngineModels {
             engine: id.to_owned(),
-            source: source.to_owned(),
-            models,
-            error,
+            source: catalog.source.to_owned(),
+            models: catalog.models,
+            error: catalog.fallback.or(error),
             checked_at: crate::util::now(),
+            fallback,
+            options: catalog.options,
+            agents: catalog.agents,
+            output_styles: catalog.output_styles,
+            output_style: catalog.output_style,
+            remembered: None,
         };
         if models.error.is_none() {
-            cache.insert(id.to_owned(), (Instant::now(), models.clone()));
+            if !catalog.commands.is_empty() {
+                self.store.add_engine_commands(id, &catalog.commands)?;
+            }
+            self.store.set_engine_agents(id, &models.agents)?;
+            lock(&self.known_models).insert(id.to_owned(), models.clone());
+        }
+        if models.error.is_none() || fallback {
+            let cached = CachedModels {
+                checked: Instant::now(),
+                key: key.filter(|_| !fallback),
+                models: models.clone(),
+            };
+            cache.insert(id.to_owned(), cached);
         }
         Ok(models)
+    }
+
+    /// Refuses what the last good list says the model does not offer, without
+    /// waiting on an engine. With no list yet, the run's own start checks it.
+    pub fn check_selection(&self, engine: &str, selection: &ModelSelection) -> Result<()> {
+        match lock(&self.known_models).get(engine) {
+            Some(catalog) => crate::selection::check(catalog, selection),
+            None => Ok(()),
+        }
     }
 
     pub async fn status(&self, id: &str) -> Result<EngineStatus> {
@@ -378,6 +427,27 @@ impl EngineManager {
             Ok(status) if status.success() => Ok(tail(&text, 4096)),
             _ => Err(CoreError::UpdateFailed(tail(&text, 1024))),
         }
+    }
+}
+
+fn empty_catalog() -> ModelCatalog {
+    ModelCatalog {
+        source: "none",
+        ..ModelCatalog::default()
+    }
+}
+
+/// A keyed list lasts until its key changes. Anything else ages out.
+fn still_good(cached: &mut CachedModels, key: Option<&String>) -> bool {
+    let age = cached.checked.elapsed();
+    match &cached.key {
+        Some(known) if key == Some(known) => {
+            cached.checked = Instant::now();
+            true
+        }
+        Some(_) => false,
+        None if cached.models.fallback => age < MODELS_RETRY,
+        None => age < MODELS_TTL,
     }
 }
 

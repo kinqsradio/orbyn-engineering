@@ -95,7 +95,19 @@ pub(crate) fn spawn_engine(
     args: &[OsString],
     cwd: &Path,
 ) -> Result<EngineProcess> {
-    let mut child = ManagedChild::spawn(engine_command(command, args, cwd)).map_err(|error| {
+    spawn_engine_with(command, args, cwd, &[])
+}
+
+/// `spawn_engine` with environment variables set for this process alone.
+pub(crate) fn spawn_engine_with(
+    command: &ResolvedCommand,
+    args: &[OsString],
+    cwd: &Path,
+    env: &[(&str, &str)],
+) -> Result<EngineProcess> {
+    let mut builder = engine_command(command, args, cwd);
+    builder.envs(env.iter().copied());
+    let mut child = ManagedChild::spawn(builder).map_err(|error| {
         CoreError::EngineUnavailable(format!("Could not start engine: {error}"))
     })?;
     let handle = child.child_mut();

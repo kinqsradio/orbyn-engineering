@@ -9,7 +9,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use orbyn_contracts::{
     ActionKind, AgUiEvent, AuthState, CustomEngine, EngineCapabilities, EngineTier, ModelInfo,
-    SkillDelivery,
+    ModelOption, ModelOptionValue, SkillDelivery,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -19,10 +19,11 @@ use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
-    ModelCatalog, RunHandle, RunSpec, ask_paths,
+    ModelCatalog, ProbeDir, RunHandle, RunSpec, ask_paths,
 };
 use crate::approvals::Verdict;
 use crate::error::{CoreError, Result};
+use crate::selection::MODE;
 use crate::util::new_id;
 
 const PROTOCOL_VERSION: u64 = 1;
@@ -30,6 +31,8 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 const PROMPT_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CANCEL_GRACE: Duration = Duration::from_secs(5);
 const METHOD_NOT_FOUND: i64 = -32601;
+/// Prefix of a `ModelOption` id that names one of the agent's config options.
+const CONFIG_PREFIX: &str = "config:";
 
 pub struct AcpDriver {
     engine: CustomEngine,
@@ -74,13 +77,13 @@ impl EngineDriver for AcpDriver {
     async fn models(&self) -> Result<Option<ModelCatalog>> {
         let command = resolve_engine(&self.engine.target)?;
         let args: Vec<OsString> = self.engine.args.iter().map(OsString::from).collect();
-        let cwd = std::env::temp_dir();
-        let process = spawn_engine(&command, &args, &cwd)?;
+        let dir = ProbeDir::new()?;
+        let process = spawn_engine(&command, &args, dir.path())?;
         let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, true);
-        let (_, session) = open_raw(&rpc, &cwd, None).await?;
+        let (_, session) = open_raw(&rpc, dir.path(), None).await?;
         Ok(Some(ModelCatalog {
-            source: "engine",
-            models: parse_models(&session),
+            options: parse_session_options(&session),
+            ..ModelCatalog::engine(parse_models(&session))
         }))
     }
 
@@ -200,21 +203,170 @@ async fn run_protocol(
 }
 
 async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
-    let (id, _) = open_raw(rpc, &spec.cwd, spec.mcp_url.as_deref()).await?;
+    let (id, mut session) = open_raw(rpc, &spec.cwd, spec.mcp_url.as_deref()).await?;
+    // Mode first: an agent can change what it offers per mode and per model, so each
+    // step reads the reply of the one before it, and the prompt waits for them all.
+    if let Some(mode) = spec.options.get(MODE) {
+        require_offered(&session, MODE, mode)?;
+        let params = json!({ "sessionId": id, "modeId": mode });
+        rpc.call("session/set_mode", params, CALL_TIMEOUT).await?;
+    }
     if let Some(model) = &spec.model {
-        // Optional in the protocol: an agent without it keeps its own model.
-        let selected = rpc
-            .call(
-                "session/set_model",
-                json!({ "sessionId": id, "modelId": model }),
-                CALL_TIMEOUT,
-            )
-            .await;
-        if let Err(error) = selected {
-            tracing::debug!(%error, "this agent did not take a model choice");
+        session = select_model(rpc, &id, &session, model).await?;
+    }
+    for (option, value) in &spec.options {
+        let Some(config) = option.strip_prefix(CONFIG_PREFIX) else {
+            continue;
+        };
+        require_offered(&session, option, value)?;
+        let params = json!({ "sessionId": id, "configId": config, "value": value });
+        let reply = rpc
+            .call("session/set_config_option", params, CALL_TIMEOUT)
+            .await?;
+        if reply.get("configOptions").is_some() {
+            session = reply;
         }
     }
     Ok(id)
+}
+
+/// A value the session no longer lists fails the turn. Running under something else
+/// could mean running under a looser mode than the one chosen.
+fn require_offered(session: &Value, option: &str, value: &str) -> Result<()> {
+    let offered = parse_session_options(session);
+    match offered.iter().find(|known| known.id == option) {
+        Some(known) if known.values.iter().any(|choice| choice.id == value) => Ok(()),
+        _ => Err(CoreError::UnsupportedOption(format!(
+            "This agent no longer offers {value} for {option}."
+        ))),
+    }
+}
+
+/// Sets the model through whichever route this session lists it on. Returns the
+/// session state to read later steps from, which a config reply replaces.
+async fn select_model(rpc: &RpcClient, id: &str, session: &Value, model: &str) -> Result<Value> {
+    if let Some(config) = model_config(session) {
+        let config_id = config.get("id").and_then(Value::as_str).unwrap_or_default();
+        let params = json!({ "sessionId": id, "configId": config_id, "value": model });
+        let reply = rpc
+            .call("session/set_config_option", params, CALL_TIMEOUT)
+            .await?;
+        return Ok(if reply.get("configOptions").is_some() {
+            reply
+        } else {
+            session.clone()
+        });
+    }
+    let listed = parse_models(session);
+    if !listed.is_empty() && !listed.iter().any(|known| known.id == model) {
+        return Err(CoreError::UnsupportedOption(format!(
+            "This agent no longer offers {model}."
+        )));
+    }
+    let params = json!({ "sessionId": id, "modelId": model });
+    match rpc.call("session/set_model", params, CALL_TIMEOUT).await {
+        Ok(_) => Ok(session.clone()),
+        Err(error) => Err(CoreError::EngineUnavailable(format!(
+            "This agent did not take the model {model}: {error}"
+        ))),
+    }
+}
+
+fn config_options(session: &Value) -> impl Iterator<Item = &Value> {
+    session
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+}
+
+/// The config option that picks the model, for an agent that lists models there.
+fn model_config(session: &Value) -> Option<&Value> {
+    config_options(session)
+        .find(|option| option.get("category").and_then(Value::as_str) == Some("model"))
+}
+
+/// A config option's choices. They can be flat or sorted into named groups.
+fn config_values(option: &Value) -> Vec<&Value> {
+    option
+        .get("options")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .flat_map(
+            |entry| match entry.get("options").and_then(Value::as_array) {
+                Some(grouped) => grouped.iter().collect(),
+                None => vec![entry],
+            },
+        )
+        .collect()
+}
+
+/// What a session offers beyond the model: its modes and its other config options.
+fn parse_session_options(session: &Value) -> Vec<ModelOption> {
+    let mut options = Vec::new();
+    let current_mode = session
+        .pointer("/modes/currentModeId")
+        .and_then(Value::as_str);
+    let modes: Vec<ModelOptionValue> = session
+        .pointer("/modes/availableModes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|mode| {
+            let id = mode.get("id")?.as_str()?;
+            Some(choice(mode, "name", id, current_mode == Some(id)))
+        })
+        .collect();
+    if !modes.is_empty() {
+        options.push(ModelOption {
+            id: MODE.to_owned(),
+            label: "Mode".to_owned(),
+            values: modes,
+        });
+    }
+    for option in config_options(session) {
+        let category = option.get("category").and_then(Value::as_str);
+        let Some(id) = option.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if category == Some("model") || category == Some(MODE) {
+            continue;
+        }
+        let current = option.get("currentValue").and_then(Value::as_str);
+        let values: Vec<ModelOptionValue> = config_values(option)
+            .into_iter()
+            .filter_map(|entry| {
+                let value = entry.get("value")?.as_str()?;
+                Some(choice(entry, "name", value, current == Some(value)))
+            })
+            .collect();
+        if values.is_empty() {
+            continue;
+        }
+        options.push(ModelOption {
+            id: format!("{CONFIG_PREFIX}{id}"),
+            label: field(option, "name"),
+            values,
+        });
+    }
+    options
+}
+
+fn choice(entry: &Value, name_key: &str, id: &str, default: bool) -> ModelOptionValue {
+    ModelOptionValue {
+        id: id.to_owned(),
+        label: entry
+            .get(name_key)
+            .and_then(Value::as_str)
+            .unwrap_or(id)
+            .to_owned(),
+        default,
+        description: entry
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    }
 }
 
 /// Initializes and opens a session, returning its id and the agent's whole reply.
@@ -269,8 +421,29 @@ async fn open_raw(
     Ok((id, session))
 }
 
-/// Reads the models a session reply lists, marking the agent's current one.
+/// Reads the models a session reply lists, marking the agent's current one. An
+/// agent can list them as a config option instead of a `models` block.
 fn parse_models(session: &Value) -> Vec<ModelInfo> {
+    if let Some(config) = model_config(session) {
+        let current = config.get("currentValue").and_then(Value::as_str);
+        return config_values(config)
+            .into_iter()
+            .filter_map(|entry| {
+                let id = entry.get("value")?.as_str()?;
+                let picked = choice(entry, "name", id, current == Some(id));
+                Some(ModelInfo {
+                    id: picked.id,
+                    label: picked.label,
+                    description: picked.description,
+                    is_default: picked.default,
+                    custom: false,
+                    options: Vec::new(),
+                    input_modalities: Vec::new(),
+                    upgrade: None,
+                })
+            })
+            .collect();
+    }
     let current = session
         .pointer("/models/currentModelId")
         .and_then(Value::as_str);
@@ -294,6 +467,8 @@ fn parse_models(session: &Value) -> Vec<ModelInfo> {
                 is_default: current == Some(id.as_str()),
                 custom: false,
                 options: Vec::new(),
+                input_modalities: Vec::new(),
+                upgrade: None,
                 id,
             })
         })
@@ -502,6 +677,17 @@ impl UpdateMapper {
                     );
                 }
             }
+            Some("available_commands_update") => {
+                let listed = update.get("availableCommands").and_then(Value::as_array);
+                events.push(EngineEvent::Commands(
+                    listed
+                        .into_iter()
+                        .flatten()
+                        .map(|command| (field(command, "name"), field(command, "description")))
+                        .filter(|(name, _)| !name.is_empty())
+                        .collect(),
+                ));
+            }
             Some("plan") => {
                 let steps: Vec<Value> = update
                     .get("entries")
@@ -644,6 +830,47 @@ mod tests {
         let tool = json!({ "sessionUpdate": "tool_call", "toolCallId": "c", "title": "ls" });
         assert_eq!(mapper.on_update(&tool).len(), 2);
         assert_eq!(mapper.close().len(), 1);
+    }
+
+    #[test]
+    fn modes_and_config_options_are_listed_and_the_current_ones_marked() {
+        let session = json!({
+            "modes": { "currentModeId": "ask", "availableModes": [
+                { "id": "ask", "name": "Ask", "description": "Asks first" },
+                { "id": "code", "name": "Code" },
+            ]},
+            "configOptions": [
+                { "id": "model", "name": "Model", "category": "model", "currentValue": "b",
+                  "type": "select", "options": [
+                    { "group": "one", "name": "One", "options": [{ "value": "a", "name": "A" }] },
+                    { "value": "b", "name": "B", "description": "Big" },
+                ]},
+                { "id": "think", "name": "Thinking", "category": "thought_level",
+                  "currentValue": "on", "type": "select",
+                  "options": [{ "value": "on", "name": "On" }, { "value": "off", "name": "Off" }] },
+                { "id": "broken", "name": "No choices", "options": [] },
+            ],
+        });
+        let models = parse_models(&session);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "a");
+        assert!(models[1].is_default);
+        assert_eq!(models[1].description.as_deref(), Some("Big"));
+        let options = parse_session_options(&session);
+        assert_eq!(options.len(), 2, "{options:?}");
+        assert_eq!(options[0].id, "mode");
+        assert!(options[0].values[0].default);
+        assert_eq!(options[1].id, "config:think");
+        assert!(options[1].values[0].default);
+    }
+
+    #[test]
+    fn a_mode_the_session_stopped_offering_fails_the_turn() {
+        let session = json!({ "modes": { "availableModes": [{ "id": "code" }] } });
+        require_offered(&session, MODE, "code").unwrap();
+        let refused = require_offered(&session, MODE, "plan").unwrap_err();
+        assert_eq!(refused.code(), "unsupported_option");
+        assert!(require_offered(&json!({}), MODE, "code").is_err());
     }
 
     #[test]

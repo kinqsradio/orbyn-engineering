@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use orbyn_contracts::Thread;
+use orbyn_contracts::{PermissionMode, UpdateThread};
 
 use crate::approvals::ApprovalGate;
 use crate::computer::{ComputerBackend, ComputerConfig, ComputerGateway, LocalBackend};
@@ -207,11 +208,29 @@ impl Core {
         let cwd = worktree
             .as_ref()
             .map_or_else(|| project.path.clone(), |worktree| worktree.path.clone());
+        let project_id = project.id.clone();
+        let remembered = self.store.remembered_selection(&request.engine)?;
+        let model = request
+            .model
+            .clone()
+            .or(self.project_default_model(&request.engine, &project_id)?)
+            .or(remembered.model.clone());
+        // Effort and options belong to a model, so they carry only with that model.
+        let carried = (model == remembered.model).then_some(remembered);
+        let effort = request
+            .effort
+            .clone()
+            .or(carried.as_ref().and_then(|last| last.effort.clone()));
+        let options = if request.options.is_empty() {
+            carried.map(|last| last.options).unwrap_or_default()
+        } else {
+            request.options.clone()
+        };
         let thread = self.store.create_thread(NewThread {
             project_id: project.id,
             title: request.title.unwrap_or_else(|| "New thread".to_owned()),
             engine: request.engine,
-            model: request.model,
+            model,
             cwd,
             worktree,
             skill_profile: request.skill_profile,
@@ -219,6 +238,19 @@ impl Core {
             relation: None,
             scratch: project.scratch,
         })?;
+        let mode = self.preference("default_permission_mode", Some(&project_id))?;
+        let mode: PermissionMode = serde_json::from_value(mode)?;
+        let patch = UpdateThread {
+            effort,
+            options: Some(options).filter(|options| !options.is_empty()),
+            permission_mode: Some(mode).filter(|mode| *mode != PermissionMode::Supervised),
+            ..UpdateThread::default()
+        };
+        let thread = if patch == UpdateThread::default() {
+            thread
+        } else {
+            self.store.update_thread(&thread.id, &patch, "system")?
+        };
         self.run_hook_scripts(&thread.id, |script| script.run_on_worktree_create);
         Ok(thread)
     }

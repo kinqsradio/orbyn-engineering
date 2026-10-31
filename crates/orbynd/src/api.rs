@@ -9,6 +9,7 @@ use axum::Json;
 use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use orbyn_contracts::ModelSelection;
 use orbyn_contracts::{
     AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, BatchThreads, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
@@ -20,6 +21,7 @@ use orbyn_contracts::{
     WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
+use orbyn_core::selection;
 use orbyn_core::skills::DEFAULT_PROFILE;
 use orbyn_core::util::new_id;
 use orbyn_core::{Core, CoreError};
@@ -861,11 +863,18 @@ pub async fn start_run(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<StartRun>,
 ) -> ApiResult<impl IntoResponse> {
-    if body.permission_mode.is_some() || body.model.is_some() || body.effort.is_some() {
+    let wanted = ModelSelection {
+        model: body.model.clone(),
+        effort: body.effort.clone(),
+        options: body.options.clone(),
+    };
+    state.core.check_turn(&id, &wanted).await?;
+    if body.permission_mode.is_some() || !selection::is_empty(&wanted) {
         let patch = UpdateThread {
             permission_mode: body.permission_mode,
-            model: body.model.clone(),
-            effort: body.effort.clone(),
+            model: wanted.model,
+            effort: wanted.effort,
+            options: Some(wanted.options),
             ..UpdateThread::default()
         };
         state.core.update_thread(&id, &patch, LOCAL_USER)?;
@@ -890,10 +899,16 @@ pub async fn enqueue(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<EnqueueMessage>,
 ) -> ApiResult<impl IntoResponse> {
+    let wanted = ModelSelection {
+        model: body.model,
+        effort: body.effort,
+        options: body.options,
+    };
+    state.core.check_turn(&id, &wanted).await?;
     let message = state
         .core
         .runs
-        .enqueue(&id, &body.prompt, &body.attachment_ids)?;
+        .enqueue_with(&id, &body.prompt, &body.attachment_ids, &wanted)?;
     Ok((StatusCode::CREATED, Json(message)))
 }
 
@@ -935,7 +950,22 @@ pub async fn steer(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<SteerRun>,
 ) -> ApiResult<StatusCode> {
+    let wanted = ModelSelection {
+        model: body.model,
+        effort: body.effort,
+        options: body.options,
+    };
+    state.core.check_turn(&id, &wanted).await?;
     state.core.runs.steer(&id, &body.prompt)?;
+    if !selection::is_empty(&wanted) {
+        let patch = UpdateThread {
+            model: wanted.model,
+            effort: wanted.effort,
+            options: Some(wanted.options),
+            ..UpdateThread::default()
+        };
+        state.core.update_thread(&id, &patch, LOCAL_USER)?;
+    }
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -1002,7 +1032,7 @@ pub async fn slash_commands(
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     let skills = query.get("skills").is_some_and(|value| value == "true");
-    Ok(Json(state.core.slash_commands(&id, skills)?))
+    Ok(Json(state.core.slash_commands(&id, skills).await?))
 }
 
 pub async fn engine_models(

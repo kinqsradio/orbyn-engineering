@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use orbyn_contracts::{
-    AgUiEvent, EngineTier, PermissionMode, QueuedMessage, Run, RunState, Thread, ThreadGoal,
+    AgUiEvent, EngineTier, ModelSelection, PermissionMode, QueuedMessage, Run, RunState, Thread,
+    ThreadGoal,
 };
 use serde_json::json;
 use tokio::sync::mpsc;
@@ -19,13 +20,15 @@ use crate::approvals::{ActionAsk, ApprovalGate, RunScope, WriteScope};
 use crate::checkpoints::checkpoint_ref;
 use crate::composer::check_prompt;
 use crate::driver::{
-    EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunHandle, RunKind, RunSpec,
+    EngineDriver, EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunHandle, RunKind,
+    RunSpec,
 };
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
 use crate::git::{git, snapshot, text};
 use crate::mcp::{McpBinding, McpService};
 use crate::questions::QuestionDesk;
+use crate::selection;
 use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, Store};
 use crate::util::new_id;
@@ -237,6 +240,8 @@ impl RunManager {
         let thread = self.store.thread(thread_id)?;
         self.check_goal_action(&thread, prompt)?;
         self.attachment_files(thread_id, attachments)?;
+        self.engines
+            .check_selection(&thread.engine, &selection::of_thread(&thread))?;
         let root = self.workspace.root()?;
         let run = self.workspace.admit_with(|| {
             self.engines.admit_with(&thread.engine, || {
@@ -304,6 +309,7 @@ impl RunManager {
                 input: None,
             },
         );
+        self.remember_selection(&thread);
         let manager = self.clone();
         let thread_id = thread.id.clone();
         let task = tokio::spawn({
@@ -337,6 +343,22 @@ impl RunManager {
         Ok(())
     }
 
+    /// What a person chose carries to new threads on this engine. A delegated
+    /// thread's choices are the parent's, not theirs.
+    fn remember_selection(&self, thread: &Thread) {
+        let relation = thread
+            .lifecycle
+            .as_ref()
+            .and_then(|l| l.relation.as_deref());
+        if relation == Some("subagent") {
+            return;
+        }
+        let chosen = selection::of_thread(thread);
+        if let Err(error) = self.store.remember_selection(&thread.engine, &chosen) {
+            tracing::debug!(%error, "could not remember a selection");
+        }
+    }
+
     /// Starts the next queued message if the thread is free. A failure leaves
     /// the message queued, so nothing typed is lost.
     pub fn drain(self: &Arc<Self>, thread_id: &str) {
@@ -353,6 +375,8 @@ impl RunManager {
                 .admit_with(&thread.engine, || self.store.admit_next(thread_id, "user"))
         })?;
         if let Some((run, message)) = next {
+            // The message's own selection reached the thread with its admission.
+            let thread = self.store.thread(thread_id)?;
             self.launch(thread, run, message.prompt, &message.attachment_ids, &root)?;
         }
         Ok(())
@@ -365,13 +389,32 @@ impl RunManager {
         prompt: &str,
         attachments: &[String],
     ) -> Result<QueuedMessage> {
+        self.enqueue_with(thread_id, prompt, attachments, &ModelSelection::default())
+    }
+
+    /// `enqueue`, with what the message sets on the thread when it starts. A value
+    /// the model does not offer is refused here, so nothing waits in line to fail.
+    pub fn enqueue_with(
+        self: &Arc<Self>,
+        thread_id: &str,
+        prompt: &str,
+        attachments: &[String],
+        wanted: &ModelSelection,
+    ) -> Result<QueuedMessage> {
         check_prompt(prompt)?;
         let thread = self.store.thread(thread_id)?;
-        if thread.lifecycle.and_then(|l| l.archived_at).is_some() {
+        if thread
+            .lifecycle
+            .as_ref()
+            .and_then(|l| l.archived_at.as_ref())
+            .is_some()
+        {
             return Err(CoreError::ThreadArchived);
         }
         self.attachment_files(thread_id, attachments)?;
-        let message = self.store.enqueue(thread_id, prompt, attachments)?;
+        let chosen = selection::merged(&selection::of_thread(&thread), wanted);
+        self.engines.check_selection(&thread.engine, &chosen)?;
+        let message = self.store.enqueue(thread_id, prompt, attachments, wanted)?;
         self.drain(thread_id);
         Ok(message)
     }
@@ -732,6 +775,7 @@ impl RunManager {
         });
         let native = descriptor.tier == EngineTier::Native;
         let kind = RunKind::parse(&prompt);
+        let chosen = self.selection_for_run(thread, driver.as_ref()).await?;
         match &kind {
             RunKind::Goal(GoalAction::Set(objective)) => self.store.set_goal(
                 &thread.id,
@@ -756,14 +800,17 @@ impl RunManager {
             mode: scope.mode,
             plan: scope.plan,
             user_prompt: prompt,
-            model: thread.model.clone(),
-            effort: thread.effort.clone(),
+            model: chosen.model.clone(),
+            effort: chosen.effort.clone(),
+            options: chosen.options.clone(),
             resume: self.store.engine_session(&thread.id)?,
             mcp_url,
             run_dir: run_dir.to_path_buf(),
         };
         let (sender, receiver) = mpsc::channel(EVENT_BUFFER);
         let handle = driver.start_run(spec, sender).await?;
+        self.store
+            .note_thread_event(&thread.id, "engine.selection", json!(chosen))?;
         if let Some(active) = self.lock().get_mut(&scope.run_id) {
             active.input.clone_from(&handle.input);
         }
@@ -773,6 +820,28 @@ impl RunManager {
             return Err(error);
         }
         Ok(Some((handle, receiver)))
+    }
+
+    /// The selection this run goes out with, checked against the engine's current
+    /// list: admission may have had none to hand, and a queued message can outlive
+    /// a model. Nothing is asked of the engine when there is nothing to check.
+    async fn selection_for_run(
+        &self,
+        thread: &Thread,
+        driver: &dyn EngineDriver,
+    ) -> Result<ModelSelection> {
+        let chosen = selection::of_thread(thread);
+        let keeps = driver.keeps_turn_overrides();
+        if !keeps && selection::is_empty(&chosen) {
+            return Ok(chosen);
+        }
+        let catalog = self.engines.models(&thread.engine, false).await?;
+        selection::check(&catalog, &chosen)?;
+        Ok(if keeps {
+            selection::with_defaults(&catalog, &chosen)
+        } else {
+            chosen
+        })
     }
 
     /// Commits engine events in order until the engine finishes or the run is

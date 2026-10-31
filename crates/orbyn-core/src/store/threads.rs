@@ -2,6 +2,8 @@
 //! Each change and its log notice commit together, so a client following the
 //! thread sees it without polling.
 
+use std::collections::BTreeMap;
+
 use orbyn_contracts::{
     AgUiEvent, AutoSettleChoice, AutoSettleSettings, ServerSettings, SnoozePreset, Thread,
     UpdateThread,
@@ -60,6 +62,62 @@ fn has_active_run(tx: &Transaction<'_>, id: &str) -> Result<bool> {
         [id],
         |row| row.get(0),
     )?)
+}
+
+/// Keys with an empty value leave the map, so `""` means the engine's default.
+pub(super) fn merge_options(
+    current: &mut BTreeMap<String, String>,
+    changes: &BTreeMap<String, String>,
+) {
+    for (key, value) in changes {
+        if value.trim().is_empty() {
+            current.remove(key);
+        } else {
+            current.insert(key.clone(), value.trim().to_owned());
+        }
+    }
+}
+
+/// Writes a selection onto a thread. Absent parts are left alone and an empty
+/// string goes back to the engine's default.
+pub(super) fn apply_selection(
+    tx: &Transaction<'_>,
+    appended: &mut Appended,
+    id: &str,
+    model: Option<&str>,
+    effort: Option<&str>,
+    options: Option<&BTreeMap<String, String>>,
+) -> Result<()> {
+    if let Some(model) = model {
+        let value = Some(model.trim()).filter(|model| !model.is_empty());
+        tx.execute(
+            "UPDATE threads SET model = ?2 WHERE id = ?1",
+            params![id, value],
+        )?;
+        notify(tx, appended, id, "model")?;
+    }
+    if let Some(effort) = effort {
+        let value = Some(effort.trim()).filter(|effort| !effort.is_empty());
+        tx.execute(
+            "UPDATE threads SET effort = ?2 WHERE id = ?1",
+            params![id, value],
+        )?;
+        notify(tx, appended, id, "effort")?;
+    }
+    if let Some(changes) = options.filter(|changes| !changes.is_empty()) {
+        let text: String =
+            tx.query_row("SELECT options FROM threads WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })?;
+        let mut current: BTreeMap<String, String> = serde_json::from_str(&text)?;
+        merge_options(&mut current, changes);
+        tx.execute(
+            "UPDATE threads SET options = ?2 WHERE id = ?1",
+            params![id, serde_json::to_string(&current)?],
+        )?;
+        notify(tx, appended, id, "options")?;
+    }
+    Ok(())
 }
 
 fn notify(
@@ -190,22 +248,14 @@ impl Store {
                 )?;
                 notify(tx, appended, id, "permission_mode")?;
             }
-            if let Some(model) = &patch.model {
-                let value = Some(model.trim()).filter(|model| !model.is_empty());
-                tx.execute(
-                    "UPDATE threads SET model = ?2 WHERE id = ?1",
-                    params![id, value],
-                )?;
-                notify(tx, appended, id, "model")?;
-            }
-            if let Some(effort) = &patch.effort {
-                let value = Some(effort.trim()).filter(|effort| !effort.is_empty());
-                tx.execute(
-                    "UPDATE threads SET effort = ?2 WHERE id = ?1",
-                    params![id, value],
-                )?;
-                notify(tx, appended, id, "effort")?;
-            }
+            apply_selection(
+                tx,
+                appended,
+                id,
+                patch.model.as_deref(),
+                patch.effort.as_deref(),
+                patch.options.as_ref(),
+            )?;
             if let Some(plan) = patch.plan_mode {
                 tx.execute(
                     "UPDATE threads SET plan_mode = ?2 WHERE id = ?1",

@@ -154,7 +154,33 @@ fn claude(args: &[String]) {
             .cloned()
     };
     let mut lines = stdin_lines();
-    let Some(first) = lines.next() else { return };
+    let Some(mut first) = lines.next() else {
+        return;
+    };
+    if first["type"] == "control_request" {
+        if std::env::var_os("ORBYN_FAKE_NO_INITIALIZE").is_some() {
+            return;
+        }
+        record_launch("claude-probe", args);
+        send(&json!({ "type": "control_response", "response": {
+            "subtype": "success", "request_id": first["request_id"], "response": {
+                "models": [
+                    { "value": "default", "displayName": "Default", "supportsEffort": true,
+                      "supportedEffortLevels": ["low", "high"] },
+                    { "value": "fable", "displayName": "Fable", "supportsEffort": true,
+                      "supportedEffortLevels": ["low"], "supportsFastMode": true },
+                    { "value": "haiku", "displayName": "Haiku" },
+                ],
+                "commands": [{ "name": "review", "description": "Review a change" }],
+                "agents": [{ "name": "Explore", "description": "Search the code" }],
+                "available_output_styles": ["default", "Learning"],
+                "output_style": "default",
+                "account": { "email": "person@example.com" },
+            },
+        }}));
+        let Some(next) = lines.next() else { return };
+        first = next;
+    }
     let prompt = first
         .pointer("/message/content")
         .and_then(Value::as_str)
@@ -439,6 +465,18 @@ fn codex() {
                             { "reasoningEffort": "medium", "description": "Balanced" },
                             { "reasoningEffort": "xhigh", "description": "Deep" },
                         ],
+                        "serviceTiers": [
+                            { "id": "priority", "name": "Fast", "description": "Quicker" },
+                        ],
+                        "inputModalities": ["text", "image"],
+                    },
+                    {
+                        "id": "fake-small", "model": "fake-small", "displayName": "Fake Small",
+                        "description": "", "hidden": false, "isDefault": false,
+                        "defaultReasoningEffort": "low",
+                        "supportedReasoningEfforts": [
+                            { "reasoningEffort": "low", "description": "Quick" },
+                        ],
                     },
                     {
                         "id": "fake-old", "model": "fake-old", "displayName": "Fake Old",
@@ -446,6 +484,11 @@ fn codex() {
                         "defaultReasoningEffort": "low", "supportedReasoningEfforts": [],
                     },
                 ]}}));
+            }
+            "config/read" => {
+                send(&json!({ "id": id, "result": { "config": {
+                    "service_tier": std::env::var("ORBYN_FAKE_CODEX_TIER").ok(),
+                }, "origins": {} }}));
             }
             "thread/compact/start" => {
                 record_launch("codex-compact", &[]);
@@ -788,6 +831,15 @@ fn acp_update(session: &str, update: Value) {
     );
 }
 
+/// Lets a test take a mode away between reading the list and running.
+fn acp_lost_mode() -> bool {
+    std::env::var("ORBYN_FAKE_LAUNCH_FILE").is_ok_and(|path| {
+        std::path::Path::new(&path)
+            .with_file_name("lost-mode")
+            .exists()
+    })
+}
+
 fn acp() {
     let mut lines = stdin_lines();
     let session = "acp-session-1";
@@ -809,9 +861,26 @@ fn acp() {
                         { "modelId": "acp-large", "name": "ACP Large", "description": "Big" },
                     ],
                 },
+                "modes": {
+                    "currentModeId": "ask",
+                    "availableModes": if acp_lost_mode() {
+                        json!([{ "id": "ask", "name": "Ask" }])
+                    } else {
+                        json!([{ "id": "ask", "name": "Ask" }, { "id": "code", "name": "Code" }])
+                    },
+                },
+                "configOptions": [{
+                    "id": "think", "name": "Thinking", "category": "thought_level",
+                    "type": "select", "currentValue": "off",
+                    "options": [{ "value": "off", "name": "Off" }, { "value": "on", "name": "On" }],
+                }],
             }})),
             "session/set_model" => {
                 record_launch("acp-model", &[message["params"].to_string()]);
+                acp_send(json!({ "id": id, "result": {} }));
+            }
+            "session/set_mode" | "session/set_config_option" => {
+                record_launch("acp-config", &[message.to_string()]);
                 acp_send(json!({ "id": id, "result": {} }));
             }
             "session/prompt" => {

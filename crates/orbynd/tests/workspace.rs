@@ -113,7 +113,9 @@ async fn codex_thread_discovers_at_the_root_and_turns_write_in_the_checkout() {
     assert_eq!(service.finished(&thread).await, "completed");
     let root = dir.path().join("library");
     let checkout = root.join("repo/project");
-    assert_eq!(launches(&file, "codex")[0]["cwd"], root.to_str().unwrap());
+    // The first launch can be the short one that reads the model list.
+    let run = launches(&file, "codex");
+    assert_eq!(run.last().unwrap()["cwd"], root.to_str().unwrap());
     let parse = |mode: &str| -> Value {
         serde_json::from_str(launches(&file, mode)[0]["args"][0].as_str().unwrap()).unwrap()
     };

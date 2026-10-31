@@ -190,6 +190,21 @@ impl Core {
         Ok(())
     }
 
+    /// The project's default model, when it applies to this engine.
+    pub fn project_default_model(&self, engine: &str, project_id: &str) -> Result<Option<String>> {
+        let text = |key: &str| -> Result<String> {
+            Ok(self
+                .preference(key, Some(project_id))?
+                .as_str()
+                .unwrap_or_default()
+                .to_owned())
+        };
+        let default_engine = text("default_engine")?;
+        let model = text("default_model")?;
+        let applies = default_engine.is_empty() || default_engine == engine;
+        Ok((applies && !model.is_empty()).then_some(model))
+    }
+
     /// Refuses an engine this project turned off.
     pub fn check_engine_enabled(&self, engine: &str, project_id: &str) -> Result<()> {
         let disabled = self.preference("disabled_engines", Some(project_id))?;
@@ -232,6 +247,8 @@ impl Core {
                     is_default: false,
                     custom: true,
                     options: Vec::new(),
+                    input_modalities: Vec::new(),
+                    upgrade: None,
                 });
             }
         }
@@ -247,6 +264,8 @@ impl Core {
                 .position(|entry| *entry == named(&model.id))
                 .unwrap_or(usize::MAX)
         });
+        let remembered = self.store.remembered_selection(id)?;
+        models.remembered = (!crate::selection::is_empty(&remembered)).then_some(remembered);
         Ok(models)
     }
 }

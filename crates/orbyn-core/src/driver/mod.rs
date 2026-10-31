@@ -10,12 +10,13 @@ mod pipes;
 pub mod rpc;
 pub mod terminal;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, InstallerKind, ModelOption,
-    ModelOptionValue,
+    ActionKind, AgUiEvent, AuthState, EngineAgent, EngineCapabilities, EngineTier, InstallerKind,
+    ModelInfo, ModelOption, ModelOptionValue,
 };
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -90,6 +91,8 @@ pub struct RunSpec {
     pub plan: bool,
     pub model: Option<String>,
     pub effort: Option<String>,
+    /// Choices beyond model and effort, by `ModelOption` id.
+    pub options: BTreeMap<String, String>,
     /// The engine's own session id from an earlier run of this thread.
     pub resume: Option<String>,
     /// Per-run MCP URL; the token inside it is revoked at run end.
@@ -117,11 +120,32 @@ pub struct QuestionAsk {
     pub reply: oneshot::Sender<Option<Answers>>,
 }
 
-/// A model list and where it came from: `engine` or `documented`.
-#[derive(Clone, Debug, PartialEq)]
+/// What an engine says it offers, and where the list came from: `engine` or
+/// `documented`.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModelCatalog {
     pub source: &'static str,
-    pub models: Vec<orbyn_contracts::ModelInfo>,
+    pub models: Vec<ModelInfo>,
+    /// Choices that apply to every model.
+    pub options: Vec<ModelOption>,
+    /// Why this is a stand-in for what the engine would have said.
+    pub fallback: Option<String>,
+    /// Slash commands, as `(name, description)`.
+    pub commands: Vec<(String, String)>,
+    pub agents: Vec<EngineAgent>,
+    pub output_styles: Vec<String>,
+    pub output_style: Option<String>,
+}
+
+impl ModelCatalog {
+    /// A list the engine itself gave.
+    pub fn engine(models: Vec<ModelInfo>) -> Self {
+        Self {
+            source: "engine",
+            models,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -259,6 +283,18 @@ pub trait EngineDriver: Send + Sync {
         Ok(None)
     }
 
+    /// What a cached list depends on. An engine with a key keeps its list until the
+    /// key changes; without one the list simply ages out.
+    async fn catalog_key(&self) -> Option<String> {
+        None
+    }
+
+    /// True when a value set on one turn stays for the next unless it is replaced,
+    /// so each run has to state the catalog's default instead of leaving it out.
+    fn keeps_turn_overrides(&self) -> bool {
+        false
+    }
+
     /// One prompt, one reply, no tools and no session. This spends the user's
     /// engine usage, so it runs only when they ask for it.
     async fn one_shot(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
@@ -268,19 +304,57 @@ pub trait EngineDriver: Send + Sync {
     }
 }
 
-/// An `effort` option from `(id, label)` pairs.
-pub(crate) fn effort_option(values: &[(&str, &str)], default: Option<&str>) -> ModelOption {
+/// An `effort` option from the levels a model reports, in its order.
+pub(crate) fn effort_option<'a>(
+    levels: impl IntoIterator<Item = &'a str>,
+    default: Option<&str>,
+) -> ModelOption {
     ModelOption {
-        id: "effort".into(),
+        id: crate::selection::EFFORT.into(),
         label: "Effort".into(),
-        values: values
-            .iter()
-            .map(|(id, label)| ModelOptionValue {
-                id: (*id).to_owned(),
-                label: (*label).to_owned(),
-                default: Some(*id) == default,
+        values: levels
+            .into_iter()
+            .map(|id| ModelOptionValue {
+                id: id.to_owned(),
+                label: effort_label(id),
+                default: Some(id) == default,
+                description: None,
             })
             .collect(),
+    }
+}
+
+fn effort_label(id: &str) -> String {
+    match id {
+        "xhigh" => "Extra high".to_owned(),
+        other => {
+            let mut chars = other.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(chars).collect()
+            })
+        }
+    }
+}
+
+/// A private empty folder for asking an engine what it offers, so no project's
+/// config applies. It goes when the probe is done.
+pub(crate) struct ProbeDir(PathBuf);
+
+impl ProbeDir {
+    pub(crate) fn new() -> Result<Self> {
+        let path = std::env::temp_dir().join(format!("orbyn-probe-{}", crate::util::new_id()));
+        std::fs::create_dir_all(&path)?;
+        Ok(Self(path))
+    }
+
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for ProbeDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

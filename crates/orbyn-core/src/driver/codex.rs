@@ -20,13 +20,14 @@ use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, GoalAction,
     ItemRecord, MCP_SERVER_NAME, ModelCatalog, RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths,
-    ask_question, diff_activity,
+    ask_question, diff_activity, effort_option,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
 use crate::error::{CoreError, Result};
 use crate::questions::Answers;
+use crate::selection::{SERVICE_TIER, STANDARD_TIER};
 use crate::util::new_id;
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
@@ -152,15 +153,33 @@ impl EngineDriver for CodexDriver {
                 .await?;
             let items = page.get("data").and_then(Value::as_array);
             models.extend(items.into_iter().flatten().filter_map(parse_model));
-            cursor = page.get("nextCursor").cloned().unwrap_or(Value::Null);
-            if cursor.is_null() {
+            let next = page.get("nextCursor").cloned().unwrap_or(Value::Null);
+            if next.is_null() || next == cursor {
                 break;
             }
+            cursor = next;
         }
-        Ok(Some(ModelCatalog {
-            source: "engine",
-            models,
-        }))
+        // Read without a folder, so one project's config cannot shape the list. A
+        // failure only costs the configured tier its default mark.
+        let configured = session
+            .rpc
+            .call(
+                "config/read",
+                json!({ "includeLayers": false }),
+                CALL_TIMEOUT,
+            )
+            .await
+            .ok()
+            .and_then(|reply| text(reply.get("config")?, "service_tier"));
+        if let Some(tier) = configured {
+            apply_configured_tier(&mut models, &tier);
+        }
+        Ok(Some(ModelCatalog::engine(models)))
+    }
+
+    /// Codex keeps a turn's model, effort and tier for the turns after it.
+    fn keeps_turn_overrides(&self) -> bool {
+        true
     }
 
     async fn start_run(
@@ -222,49 +241,129 @@ fn parse_model(value: &Value) -> Option<ModelInfo> {
     }
     let id = text(value, "model").or_else(|| text(value, "id"))?;
     let default_effort = text(value, "defaultReasoningEffort");
-    let efforts: Vec<ModelOptionValue> = value
+    let reported = value
         .get("supportedReasoningEfforts")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|option| {
-            let id = text(option, "reasoningEffort")?;
-            Some(ModelOptionValue {
-                label: effort_label(&id),
-                default: default_effort.as_deref() == Some(id.as_str()),
-                id,
-            })
-        })
-        .collect();
-    let options = if efforts.is_empty() {
-        Vec::new()
-    } else {
-        vec![ModelOption {
-            id: "effort".into(),
-            label: "Effort".into(),
-            values: efforts,
-        }]
-    };
+        .and_then(Value::as_array);
+    let mut effort = effort_option(
+        reported
+            .into_iter()
+            .flatten()
+            .filter_map(|option| option.get("reasoningEffort")?.as_str()),
+        default_effort.as_deref(),
+    );
+    for (choice, option) in effort.values.iter_mut().zip(reported.into_iter().flatten()) {
+        choice.description = text(option, "description").filter(|text| !text.is_empty());
+    }
+    let mut options = Vec::new();
+    if !effort.values.is_empty() {
+        options.push(effort);
+    }
+    options.extend(tier_option(value));
     Some(ModelInfo {
         label: text(value, "displayName").unwrap_or_else(|| id.clone()),
         description: text(value, "description"),
         is_default: value.get("isDefault").and_then(Value::as_bool) == Some(true),
         custom: false,
         options,
+        input_modalities: value
+            .get("inputModalities")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect(),
+        upgrade: text(value, "upgrade"),
         id,
     })
 }
 
-fn effort_label(id: &str) -> String {
-    match id {
-        "xhigh" => "Extra high".to_owned(),
-        other => {
-            let mut chars = other.chars();
-            chars.next().map_or_else(String::new, |first| {
-                first.to_uppercase().chain(chars).collect()
+/// Service tiers, or the older speed tier list from a CLI that has no `serviceTiers`.
+/// Standard is always offered, and a model with neither has no such choice at all.
+fn tier_option(value: &Value) -> Option<ModelOption> {
+    let list = |key: &str| value.get(key).and_then(Value::as_array);
+    let mut tiers: Vec<ModelOptionValue> = list("serviceTiers")
+        .into_iter()
+        .flatten()
+        .filter_map(|tier| {
+            let id = text(tier, "id")?;
+            Some(ModelOptionValue {
+                label: text(tier, "name").unwrap_or_else(|| id.clone()),
+                default: false,
+                description: text(tier, "description").filter(|text| !text.is_empty()),
+                id,
             })
+        })
+        .collect();
+    if tiers.is_empty() {
+        tiers = list("additionalSpeedTiers")
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(|id| ModelOptionValue {
+                id: id.to_owned(),
+                label: if id == "fast" { "Fast" } else { id }.to_owned(),
+                default: false,
+                description: None,
+            })
+            .collect();
+    }
+    if tiers.is_empty() {
+        return None;
+    }
+    let default = text(value, "defaultServiceTier")
+        .filter(|id| tiers.iter().any(|tier| tier.id == *id))
+        .unwrap_or_else(|| STANDARD_TIER.to_owned());
+    tiers.insert(
+        0,
+        ModelOptionValue {
+            id: STANDARD_TIER.to_owned(),
+            label: "Standard".to_owned(),
+            default: false,
+            description: None,
+        },
+    );
+    for tier in &mut tiers {
+        tier.default = tier.id == default;
+    }
+    Some(ModelOption {
+        id: SERVICE_TIER.to_owned(),
+        label: "Speed".to_owned(),
+        values: tiers,
+    })
+}
+
+/// The tier in the person's Codex config becomes the default wherever a model
+/// offers it. Config says `fast` for what a catalog can call `priority`.
+fn apply_configured_tier(models: &mut [ModelInfo], configured: &str) {
+    let options = models.iter_mut().flat_map(|model| &mut model.options);
+    for option in options.filter(|option| option.id == SERVICE_TIER) {
+        let found = option
+            .values
+            .iter()
+            .find(|value| value.id == configured)
+            .or_else(|| {
+                let alias = (configured == "fast").then_some("priority")?;
+                option.values.iter().find(|value| value.id == alias)
+            })
+            .map(|value| value.id.clone());
+        if let Some(found) = found {
+            for value in &mut option.values {
+                value.default = value.id == found;
+            }
         }
     }
+}
+
+/// What to send for the tier. `None` leaves it out, which keeps what the thread has,
+/// so that happens only when no default could be read. Standard is a clear.
+fn tier_param(spec: &RunSpec) -> Option<Value> {
+    let tier = spec.options.get(SERVICE_TIER)?;
+    Some(if tier == STANDARD_TIER {
+        Value::Null
+    } else {
+        json!(tier)
+    })
 }
 
 fn parse_login(status: i32, stdout: &str) -> AuthState {
@@ -429,6 +528,10 @@ async fn open_turn(
     if let Some(model) = &spec.model {
         params["model"] = json!(model);
     }
+    if let Some(tier) = tier_param(spec) {
+        params["serviceTier"] = tier;
+    }
+    // The same thread takes a new model: a resume carries it, and the history stays.
     let thread = match &spec.resume {
         Some(session) => {
             params["threadId"] = json!(session);
@@ -493,21 +596,19 @@ async fn open_turn(
         _ => spec.prompt.as_str(),
     };
     let policy = if spec.plan { "read-only" } else { sandbox };
-    let turn = rpc
-        .call(
-            "turn/start",
-            json!({
-                "threadId": session,
-                "input": [{ "type": "text", "text": text, "text_elements": [] }],
-                "cwd": spec.checkout,
-                "sandboxPolicy": sandbox_policy(policy, &spec.checkout, spec.mode),
-                "approvalPolicy": approval_policy(spec.mode),
-                "model": spec.model,
-                "effort": spec.effort,
-            }),
-            CALL_TIMEOUT,
-        )
-        .await?;
+    let mut params = json!({
+        "threadId": session,
+        "input": [{ "type": "text", "text": text, "text_elements": [] }],
+        "cwd": spec.checkout,
+        "sandboxPolicy": sandbox_policy(policy, &spec.checkout, spec.mode),
+        "approvalPolicy": approval_policy(spec.mode),
+        "model": spec.model,
+        "effort": spec.effort,
+    });
+    if let Some(tier) = tier_param(spec) {
+        params["serviceTier"] = tier;
+    }
+    let turn = rpc.call("turn/start", params, CALL_TIMEOUT).await?;
     let turn_id = turn
         .pointer("/turn/id")
         .and_then(Value::as_str)
@@ -1236,6 +1337,86 @@ mod tests {
         TurnMapper::new("thread".into())
     }
 
+    fn listed(extra: Value) -> Value {
+        let mut model = json!({
+            "id": "m", "model": "m", "displayName": "M", "description": "", "hidden": false,
+            "isDefault": true, "defaultReasoningEffort": "low",
+            "supportedReasoningEfforts": [
+                { "reasoningEffort": "low", "description": "Quick" },
+                { "reasoningEffort": "high", "description": "" },
+            ],
+        });
+        model
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        model
+    }
+
+    #[test]
+    fn a_model_lists_its_efforts_tiers_and_modalities() {
+        let model = parse_model(&listed(json!({
+            "serviceTiers": [
+                { "id": "priority", "name": "Fast", "description": "Quicker, costs more" },
+            ],
+            "inputModalities": ["text", "image"],
+            "upgrade": "m2",
+        })))
+        .unwrap();
+        assert_eq!(model.input_modalities, ["text", "image"]);
+        assert_eq!(model.upgrade.as_deref(), Some("m2"));
+        let effort = &model.options[0];
+        assert_eq!(effort.values[0].description.as_deref(), Some("Quick"));
+        assert!(effort.values[0].default);
+        assert_eq!(effort.values[1].description, None);
+        let tiers = &model.options[1];
+        assert_eq!(tiers.id, "service_tier");
+        assert_eq!(tiers.values[0].id, "default");
+        assert!(tiers.values[0].default);
+        assert_eq!(tiers.values[1].id, "priority");
+    }
+
+    #[test]
+    fn a_catalog_default_tier_wins_and_old_speed_tiers_still_count() {
+        let model = parse_model(&listed(json!({
+            "serviceTiers": [{ "id": "flex", "name": "Flex", "description": "" }],
+            "defaultServiceTier": "flex",
+        })))
+        .unwrap();
+        assert!(model.options[1].values[1].default);
+        let old = parse_model(&listed(json!({ "additionalSpeedTiers": ["fast"] }))).unwrap();
+        assert_eq!(old.options[1].values[1].label, "Fast");
+        let none = parse_model(&listed(json!({}))).unwrap();
+        assert_eq!(none.options.len(), 1);
+    }
+
+    #[test]
+    fn the_configured_tier_becomes_the_default_where_it_is_offered() {
+        let priced = json!({ "serviceTiers": [
+            { "id": "priority", "name": "Fast", "description": "" },
+        ]});
+        let mut models = vec![
+            parse_model(&listed(priced)).unwrap(),
+            parse_model(&listed(json!({}))).unwrap(),
+        ];
+        apply_configured_tier(&mut models, "fast");
+        let values = &models[0].options[1].values;
+        assert!(!values[0].default);
+        assert!(values[1].default, "config's fast is the catalog's priority");
+        apply_configured_tier(&mut models, "unknown");
+        assert!(models[0].options[1].values[1].default);
+    }
+
+    #[test]
+    fn standard_clears_the_tier_and_an_unread_default_leaves_it_alone() {
+        let mut spec = turn_spec();
+        assert_eq!(tier_param(&spec), None);
+        spec.options.insert(SERVICE_TIER.into(), "default".into());
+        assert_eq!(tier_param(&spec), Some(Value::Null));
+        spec.options.insert(SERVICE_TIER.into(), "priority".into());
+        assert_eq!(tier_param(&spec), Some(json!("priority")));
+    }
+
     #[test]
     fn real_login_status_is_recognized() {
         assert_eq!(
@@ -1367,9 +1548,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn mcp_server_name_cannot_merge_with_a_user_orbyn_entry() {
-        let spec = RunSpec {
+    fn turn_spec() -> RunSpec {
+        RunSpec {
             run_id: "r".into(),
             thread_id: "t".into(),
             cwd: "/workspace".into(),
@@ -1381,11 +1561,16 @@ mod tests {
             plan: false,
             model: None,
             effort: None,
+            options: std::collections::BTreeMap::new(),
             resume: None,
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
             run_dir: "/run".into(),
-        };
-        let config = thread_config(&spec);
+        }
+    }
+
+    #[test]
+    fn mcp_server_name_cannot_merge_with_a_user_orbyn_entry() {
+        let config = thread_config(&turn_spec());
         assert!(config["mcp_servers"]["orbyn"].is_null());
         assert_eq!(
             config["mcp_servers"]["orbyn_engineering"]["url"],

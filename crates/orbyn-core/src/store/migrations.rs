@@ -13,7 +13,15 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (9, IN_PLACE_PROJECTS),
     (10, PROJECT_PREFERENCES),
     (11, AUTOMATIONS),
+    (12, MODEL_OPTIONS),
 ];
+
+const MODEL_OPTIONS: &str = r#"
+ALTER TABLE threads ADD COLUMN options TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE queued_messages ADD COLUMN model TEXT;
+ALTER TABLE queued_messages ADD COLUMN effort TEXT;
+ALTER TABLE queued_messages ADD COLUMN options TEXT NOT NULL DEFAULT '{}';
+"#;
 
 const AUTOMATIONS: &str = r#"
 CREATE TABLE scheduled_tasks (

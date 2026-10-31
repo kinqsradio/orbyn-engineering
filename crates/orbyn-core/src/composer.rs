@@ -167,8 +167,15 @@ impl Core {
     /// What `/` can offer here: the commands Orbyn handles, the commands the
     /// engine reported at its last start, and custom command files, which are
     /// only listed and never run by Orbyn. `with_skills` adds the library skills.
-    pub fn slash_commands(&self, thread_id: &str, with_skills: bool) -> Result<Vec<SlashCommand>> {
+    pub async fn slash_commands(
+        &self,
+        thread_id: &str,
+        with_skills: bool,
+    ) -> Result<Vec<SlashCommand>> {
         let thread = self.store.thread(thread_id)?;
+        // Asking for the list also fills in commands and agents for an engine that
+        // has not had a session yet. A failure just leaves what is stored.
+        self.engines.models(&thread.engine, false).await?;
         let driver = self.engines.driver(&thread.engine)?;
         let descriptor = driver.descriptor();
         let native = descriptor.tier == EngineTier::Native;
@@ -199,6 +206,9 @@ impl Core {
         push("usage-limits", "Show what is left of your limits", "orbyn");
         for (name, description) in self.store.engine_commands(&thread.engine)? {
             push(&name, &description, "engine");
+        }
+        for agent in self.store.engine_agents(&thread.engine)? {
+            push(&agent.name, &agent.description, "agent");
         }
         for folder in command_folders(&thread.engine, Path::new(&thread.cwd)) {
             for (name, description) in command_files(&folder) {

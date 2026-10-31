@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 
+use orbyn_contracts::ModelSelection;
 use orbyn_contracts::{
     BatchThread, BatchThreadResult, CreateThread, DelegateTask, ScheduledTask, TaskSchedule,
     Thread, UpsertTask, WebhookDelivery, WebhookEndpoint, WebhookFilter, WebhookSignature,
@@ -407,6 +408,8 @@ impl Core {
                     worktree: None,
                     skill_profile: None,
                     base_branch: None,
+                    effort: None,
+                    options: std::collections::BTreeMap::new(),
                 })
                 .await?
                 .id
@@ -573,6 +576,9 @@ impl Core {
         let engine = task.engine.clone().unwrap_or_else(|| owner.engine.clone());
         self.engines.driver(&engine)?;
         self.audit_task(actor, "thread.delegate", parent)?;
+        // A selection means nothing to another engine, so only the same one inherits.
+        let same_engine = engine == owner.engine;
+        let inherited = |own: &Option<String>| own.clone().filter(|_| same_engine);
         let child = self.store.create_thread(NewThread {
             project_id: owner.project_id.clone(),
             title: task
@@ -580,7 +586,7 @@ impl Core {
                 .clone()
                 .unwrap_or_else(|| "Delegated task".to_owned()),
             engine,
-            model: task.model.clone().or(owner.model.clone()),
+            model: task.model.clone().or(inherited(&owner.model)),
             cwd: owner.cwd.clone(),
             worktree: owner.worktree.clone(),
             skill_profile: owner.skill_profile.clone(),
@@ -588,7 +594,19 @@ impl Core {
             relation: Some("subagent".to_owned()),
             scratch: owner.scratch,
         })?;
-        self.runs.enqueue(&child.id, &task.prompt, &[])?;
+        let mut options = if same_engine {
+            owner.options.clone()
+        } else {
+            std::collections::BTreeMap::new()
+        };
+        options.extend(task.options.clone());
+        let wanted = ModelSelection {
+            model: None,
+            effort: task.effort.clone().or(inherited(&owner.effort)),
+            options,
+        };
+        self.runs
+            .enqueue_with(&child.id, &task.prompt, &[], &wanted)?;
         self.store.thread(&child.id)
     }
 

@@ -119,6 +119,8 @@ async fn fixture(update: &'static str) -> Fixture {
             worktree: None,
             skill_profile: None,
             base_branch: None,
+            effort: None,
+            options: std::collections::BTreeMap::new(),
         })
         .await
         .unwrap()

@@ -103,13 +103,56 @@ attachment that is not ready is refused before anything is admitted.
 
 ## Models
 
-`GET /api/engines/:id/models` comes from the engine where it can say: Codex's
-`model/list` on a short-lived app-server, or the models an ACP agent reports for a
-session opened in a temp folder with no prompt sent. Claude's CLI has no listing, so
-its list is the aliases its documentation names, marked `documented`. A good answer
-is kept for five minutes, and a failure is reported with the list empty rather than
-as an error. `effort` reaches Claude as `--effort` and Codex on `turn/start`; `model`
-and `effort` set on a turn stay on the thread.
+`GET /api/engines/:id/models` comes from the engine itself. Claude answers the
+`initialize` control request of a print-mode process that never gets a prompt, which
+works logged out and spends no usage. That process runs in an empty temp folder with
+`--strict-mcp-config`, an empty `--mcp-config`, `disableAllHooks` through `--settings`
+and `--no-session-persistence`. The flags matter as much as the folder: on 2.1.150 a
+user-level `SessionStart` hook and MCP server both fired from an empty folder without
+them, and neither did with them. The reply's account block is never stored, logged or
+returned. Commands and agents from it feed the `/` list, and output styles are listed
+but not set. If the CLI cannot say, its documented aliases stand in with `fallback`
+set and `error` saying why, and a stand-in list refuses nothing.
+
+Codex reads `model/list`, every page, hidden models left out, on a short-lived
+app-server, then `config/read` with no folder for a configured `service_tier`, which
+becomes the default wherever a model offers it (config's `fast` is a catalog's
+`priority`). An ACP agent's models, modes and config options come from a session opened
+in a temp folder with no prompt sent.
+
+Claude's list is kept until its CLI version or login changes, which is compared at most
+once a minute. Other lists are kept five minutes, a stand-in 30 seconds, and `?refresh=
+true` always asks. A failure is reported with the list empty rather than as an error.
+
+A selection is a model, an effort and `options` by `ModelOption` id: `service_tier`
+(`default` is Standard), `fast_mode` (`on`, `off`), `mode` and `config:<id>` for ACP.
+It belongs to the thread, is set by `PATCH`, by a turn, or by a queued message when that
+message starts, and an empty string goes back to the engine's default. A steer leaves
+the running turn alone and applies from the next. A fork keeps the selection. An engine
+switch takes what was asked for, then what was last chosen on that engine, and never
+keeps the old engine's values. The last selection used on an engine is remembered and
+reported as `remembered`. A new thread takes the request's model, then the project's
+`default_model` (when `default_engine` is empty or matches), then the remembered one,
+and effort and options carry only along with their model. A project's
+`default_permission_mode` also applies there.
+
+Admission refuses a value the model does not offer with `422 unsupported_option`, and
+stores nothing. A model the engine did not list may be custom, so only engine-wide
+options are checked for it. `PATCH` does not check, because a model and its effort
+change in two steps. A run's start checks again, which is what catches a queued message
+that outlived a model; that run fails with the same message.
+
+`effort` reaches Claude as `--effort`, an ACP config option is applied once acknowledged
+in the order mode, model, options before the prompt, and a mode or option the session
+no longer lists fails the turn. Fast mode reaches Claude as `fastMode` through
+`--settings`, the settings key its schema names, only on a model reporting
+`supportsFastMode`. Reported only when signed in, so this path has no live evidence yet.
+Codex keeps a turn's values for later turns, so every `turn/start` states model, effort
+and tier, filled from the catalog when unset, and Standard is a `null` tier. A new model
+on a Codex thread goes through `thread/resume` and `turn/start`, keeping the same
+thread. Each run logs what it went out with as `CUSTOM engine.selection`. A real
+0.166.0 turn through `orbynd` wrote the chosen model and effort and a null tier to its
+session record.
 
 ## Questions
 
@@ -302,7 +345,7 @@ Activity types are `approval` (content is the `Approval`), `plan`
 (`{steps: [{title, status}]}`), `diff` (`{files: [{path, additions, deletions}]}`)
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
-`engine.retrying` and `engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
+`engine.retrying`, `engine.selection` and `engine.session_lost`. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -568,16 +611,16 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/updates/events` | SSE `UpdateStatus` on each change |
 | `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |
 | `POST /api/updates/apply-all` | `ApplyAllResult`; engines, library, app; stops at the first failure |
-| `POST /api/threads/:id/runs` | Admit a run (`202`, `409 thread_busy`, `403 folder_untrusted`) |
-| `GET, POST /api/threads/:id/queue` | `QueuedMessage[]`; queue a message, which starts at once if idle |
+| `POST /api/threads/:id/runs` | Admit a run with an optional `model`, `effort` and `options` (`202`, `409 thread_busy`, `403 folder_untrusted`, `422 unsupported_option`) |
+| `GET, POST /api/threads/:id/queue` | `QueuedMessage[]`; queue a message, which starts at once if idle and can carry a selection (`422 unsupported_option`) |
 | `POST /api/threads/:id/queue/resume` | Release a held queue |
 | `PATCH, DELETE /api/queue/:id` | Edit or remove a queued message |
 | `POST /api/queue/:id/send-now` | Send next, stopping a running turn for it |
-| `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported) |
+| `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported); a selection applies from the next turn |
 | `GET, POST /api/threads/:id/attachments?name=` | Raw upload body; `Content-Type` is the kind |
 | `DELETE /api/attachments/:id` | Remove an attachment |
 | `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills, ranked unignored files, this project's threads |
-| `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, custom command files, and skills when `true` |
+| `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, its agents (`source: agent`), custom command files, and skills when `true` |
 | `GET /api/questions?thread_id=&state=` | `QuestionRequest[]` |
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
@@ -625,7 +668,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/threads/:id/restore` | `RestoreWorkspace`; `409 shared_directory`, `409 thread_busy` |
 | `POST /api/threads/:id/rewind` | `RewindThread`: continue from before a run |
 | `POST /api/threads/:id/fork` | `ForkThread`: a child thread with the log up to a run |
-| `POST /api/threads/:id/switch-engine` | `SwitchEngine`: hand the conversation to another engine |
+| `POST /api/threads/:id/switch-engine` | `SwitchEngine`: hand the conversation to another engine, with an optional selection |
 | `GET, POST /api/threads/:id/previews` | `PreviewTab[]`; `OpenPreview` |
 | `DELETE /api/threads/:id/previews/:tab` | Close the tab and its browser |
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
@@ -647,7 +690,7 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/usage/refresh?days=` | Forgets scans and limits, then reports |
 | `GET /api/limits?force=` | `LimitsOverview`: pooled windows, each engine, and what could not be read |
 | `GET /api/engines/:id/limits?force=`, `GET /api/threads/:id/limits?force=` | `EngineLimits`; `422 unsupported` if the engine reports none |
-| `GET /api/engines/:id/models?refresh=` | `EngineModels`, with effort options per model |
+| `GET /api/engines/:id/models?refresh=` | `EngineModels`: models with their options, engine-wide options, agents, output styles, `remembered` |
 | `GET, POST /api/policy/rules`, `DELETE /api/policy/rules/:id` | Internal: diagnostics only, no client uses these |
 | `GET /api/audit?thread_id=&limit=` | Internal: diagnostics only, no client uses this |
 | `GET /api/computer`, `POST /api/threads/:id/computer` | Status, and a governed action |
