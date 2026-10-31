@@ -30,7 +30,7 @@ describe("model lists", () => {
   });
 
   it("falls back to the engine's default model and effort", () => {
-    const listed = { engine: "e", source: "engine", error: null, checked_at: "", models: [model("a"), model("b", { is_default: true, options: [effort] })] };
+    const listed = { engine: "e", source: "engine", error: null, fallback: false, checked_at: "", models: [model("a"), model("b", { is_default: true, options: [effort] })] };
     const picked = resolveModel(listed, null);
     expect(picked?.id).toBe("b");
     expect(effortValue(picked, null)?.id).toBe("medium");

@@ -1,6 +1,6 @@
 import { Lock, PenLine, ShieldOff, Sparkles, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ModelInfo, PermissionMode } from "../../api/types";
+import type { ModelInfo, ModelOption, PermissionMode } from "../../api/types";
 import { FloatingPanel } from "./ModelPicker";
 import { effortOption, effortValue } from "./modelStore";
 import { EffortGlyph } from "./EffortGlyph";
@@ -23,30 +23,34 @@ export const ACCESS: Record<PermissionMode, { label: string; description: string
 
 const MODES = Object.keys(ACCESS) as PermissionMode[];
 
-/** Per-model options the service can take on a turn. The values always come from the model. */
-const TRAIT_OPTIONS = ["effort"];
-
 function TraitsMenu({
   model,
   effort,
+  extras,
   access,
   anchor,
   toAccess,
   onEffort,
+  onOption,
   onAccess,
   onClose,
 }: {
   model: ModelInfo | null;
   effort: string | null;
+  extras: Record<string, string | undefined>;
   access: PermissionMode | null;
   anchor: DOMRect;
   toAccess: boolean;
   onEffort(value: string): void;
+  onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
   onClose(): void;
 }) {
-  const options = (model?.options ?? []).filter((entry) => TRAIT_OPTIONS.includes(entry.id));
-  const current = effortValue(model, effort);
+  const options = model?.options ?? [];
+  const chosen = (option: ModelOption) =>
+    option.id === "effort"
+      ? effortValue(model, effort)?.id
+      : (extras[option.id] ?? option.values.find((value) => value.default)?.id);
   const section = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -79,10 +83,11 @@ function TraitsMenu({
                 key={value.id}
                 type="button"
                 role="menuitemradio"
-                aria-checked={value.id === current?.id}
+                aria-checked={value.id === chosen(option)}
                 className="traits-item"
                 onClick={() => {
-                  onEffort(value.id);
+                  if (option.id === "effort") onEffort(value.id);
+                  else onOption(option.id, value.id);
                   onClose();
                 }}
               >
@@ -131,8 +136,11 @@ interface Open {
 export function useTraitsMenu(input: {
   model: ModelInfo | null;
   effort: string | null;
+  /** Choices beyond effort, by the model's option id. */
+  extras: Record<string, string | undefined>;
   access: PermissionMode | null;
   onEffort(value: string): void;
+  onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
 }) {
   const [open, setOpen] = useState<Open | null>(null);

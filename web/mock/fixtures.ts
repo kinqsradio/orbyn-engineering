@@ -811,6 +811,7 @@ export const engineModels = (engine: string) => ({
   engine,
   source: "documented",
   error: null,
+  fallback: false,
   checked_at: iso(0),
   models: [
     { id: "sonnet", label: "Claude Sonnet", description: null, is_default: true, custom: false, options: [effort] },

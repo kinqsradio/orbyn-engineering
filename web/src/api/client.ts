@@ -205,7 +205,12 @@ export const api = {
     threadId: string,
     prompt: string,
     attachmentIds: string[] = [],
-    turn: { model?: string; effort?: string; permission_mode?: PermissionMode } = {},
+    turn: {
+      model?: string;
+      effort?: string;
+      permission_mode?: PermissionMode;
+      options?: Record<string, string>;
+    } = {},
   ) =>
     request<Run>("POST", `/api/threads/${q(threadId)}/runs`, {
       prompt,

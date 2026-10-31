@@ -82,3 +82,29 @@ test("a question and an approval are answered from the composer", async ({ page 
   await page.getByRole("button", { name: "Decline", exact: true }).click();
   await expect.poll(async () => (await service.api<Thread>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 }).toBeNull();
 });
+
+test("a thread archives, comes back from Archive, and deletes", async ({ page }) => {
+  const engines = await service.api<{ id: string }[]>("GET", "/api/engines");
+  const made = await service.api<Thread>("POST", "/api/threads", {
+    project_id: projectId,
+    engine: engines[0]?.id,
+    model: null,
+    title: "Throwaway",
+    worktree: null,
+    skill_profile: null,
+  });
+  await page.goto(service.page);
+  const row = page.locator("li[data-thread-item]").filter({ hasText: "Throwaway" });
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Archive thread" }).click();
+  await expect(row).toHaveCount(0);
+  await page.goto(`${service.page}#/settings/archive`);
+  await page.getByRole("button", { name: "Unarchive" }).first().click();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(row).toHaveCount(1);
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("dialog", { name: "Delete thread?" }).getByRole("button", { name: "Delete" }).click();
+  await expect(row).toHaveCount(0);
+  await expect(service.api("GET", `/api/threads/${made.id}`)).rejects.toThrow("404");
+});

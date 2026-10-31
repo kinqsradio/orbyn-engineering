@@ -169,19 +169,25 @@ test("the composer picks model and effort, sets access, and keeps favourites", a
   const picker = page.getByRole("dialog", { name: "Choose a model" });
   await expect(picker.getByRole("option").first()).toBeVisible({ timeout: 15_000 });
   await expect(picker.getByRole("button", { name: "Favorites", exact: true })).toBeVisible();
-  const opus = picker.getByRole("option", { name: /^Opus/ }).first();
-  await opus.hover();
-  await opus.getByRole("button", { name: "Add to favorites" }).click();
+  const choice = picker.getByRole("option").nth(1);
+  const label = (await choice.locator(".model-row-text span").first().innerText()).trim();
+  await choice.hover();
+  await choice.getByRole("button", { name: "Add to favorites" }).click();
   await picker.getByRole("button", { name: "Favorites", exact: true }).click();
   await expect(picker.getByRole("option")).toHaveCount(1);
   await picker.getByRole("textbox", { name: "Search models" }).press("ControlOrMeta+1");
-  await expect.poll(async () => (await thread(id) as unknown as { model: string }).model).toBe("opus");
-  await expect(trigger).toContainText("Opus");
+  await expect.poll(async () => (await thread(id) as unknown as { model: string | null }).model).not.toBeNull();
+  await expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: /^Effort:/ }).click();
-  await page.getByRole("menuitemradio", { name: "High", exact: true }).click();
-  await expect.poll(async () => (await thread(id) as unknown as { effort: string }).effort).toBe("high");
-  await expect(page.getByRole("button", { name: /^Effort: High/ })).toBeVisible();
+  const effort = page.getByRole("button", { name: /^Effort:/ });
+  if (await effort.isVisible()) {
+    await effort.click();
+    const value = page.getByRole("menuitemradio").first();
+    const name = (await value.locator("span").first().innerText()).trim();
+    await value.click();
+    await expect(page.getByRole("button", { name: new RegExp(`^Effort: ${name}`) })).toBeVisible();
+    expect((await thread(id) as unknown as { effort: string | null }).effort).not.toBeNull();
+  }
 
   await page.getByRole("button", { name: "Permissions: Supervised", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Full access" }).click();

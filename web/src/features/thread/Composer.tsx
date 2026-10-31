@@ -244,8 +244,15 @@ export function Composer({
   const traits = useTraitsMenu({
     model,
     effort: thread.effort ?? null,
+    extras: thread.options ?? {},
     access: unmanaged ? null : access,
     onEffort: (value) => void setEffort(value),
+    onOption: (option, value) => {
+      setError(null);
+      api.patchThread(thread.id, { options: { [option]: value } }).then(putThread, (failure: unknown) => {
+        setError(`Couldn't change that. ${toFailure(failure).message}`);
+      });
+    },
     onAccess: (mode) => void setAccess(mode),
   });
 

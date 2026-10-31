@@ -44,6 +44,7 @@ export type { LibraryStatus } from "../generated/LibraryStatus";
 export type { LibraryUpdateResult } from "../generated/LibraryUpdateResult";
 export type { Mentions } from "../generated/Mentions";
 export type { ModelInfo } from "../generated/ModelInfo";
+export type { ModelOption } from "../generated/ModelOption";
 export type { PermissionMode } from "../generated/PermissionMode";
 export type { Project } from "../generated/Project";
 export type { ProjectRemoval } from "../generated/ProjectRemoval";

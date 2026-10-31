@@ -37,25 +37,29 @@ function DraftModelControls({
   engine,
   model,
   effort,
+  extras,
   access,
   register,
   onModel,
   onEffort,
+  onOption,
   onAccess,
 }: {
   engines: EngineStatus[];
   engine: string;
   model: string | null;
   effort: string | null;
+  extras: Record<string, string>;
   access: PermissionMode | null;
   register(open: () => (element: HTMLElement) => void): void;
   onModel(next: { engine: string; model: string | null }): void;
   onEffort(value: string): void;
+  onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
 }) {
   const models = useEngineModels(engine);
   const resolved = resolveModel(models, model);
-  const traits = useTraitsMenu({ model: resolved, effort, access, onEffort, onAccess });
+  const traits = useTraitsMenu({ model: resolved, effort, extras, access, onEffort, onOption, onAccess });
   const openAt = useRef(traits.openAt);
   openAt.current = traits.openAt;
   useEffect(() => {
@@ -88,6 +92,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const setPrefs = useUi((state) => state.setPrefs);
   const [choice, setChoice] = useState(lastModel);
   const [access, setAccess] = useState<PermissionMode>("supervised");
+  const [extras, setExtras] = useState<Record<string, string>>({});
   const prompt = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
   const setDraft = useUi((state) => state.setDraft);
   const setPalette = useUi((state) => state.setPalette);
@@ -164,6 +169,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         attached.map((file) => file.id),
         {
           ...(pickedEffort ? { effort: pickedEffort } : {}),
+          ...(Object.keys(extras).length > 0 ? { options: extras } : {}),
           ...(access === "supervised" ? {} : { permission_mode: access }),
         },
       );
@@ -307,10 +313,12 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         engine={engine.id}
                         model={pickedModel}
                         effort={pickedEffort}
+                        extras={extras}
                         access={unmanaged ? null : access}
                         register={setOpenTraits}
                         onModel={(next) => {
                           const picked = { ...next, effort: pickedEffort };
+                          setExtras({});
                           setChoice(picked);
                           setPrefs({ lastModel: picked });
                         }}
@@ -319,6 +327,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                           setChoice(picked);
                           setPrefs({ lastModel: picked });
                         }}
+                        onOption={(option, value) => setExtras({ ...extras, [option]: value })}
                         onAccess={setAccess}
                       />
                     ) : (
