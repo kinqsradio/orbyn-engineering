@@ -25,7 +25,9 @@ function previewBrowser(dir: string): string {
   const shell = headlessShell();
   if (process.platform === "win32") return shell;
   const wrapper = join(dir, "preview-browser");
-  writeFileSync(wrapper, `#!/bin/sh\nexec "${shell}" --in-process-gpu "$@"\n`, { mode: 0o755 });
+  // Linux runners restrict user namespaces, which the shell's sandbox needs; Playwright drops it the same way.
+  const flags = process.platform === "linux" ? "--in-process-gpu --no-sandbox" : "--in-process-gpu";
+  writeFileSync(wrapper, `#!/bin/sh\nexec "${shell}" ${flags} "$@"\n`, { mode: 0o755 });
   return wrapper;
 }
 
@@ -80,7 +82,8 @@ export async function startService(
     ? { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: SCRIPTED, ORBYN_E2E_FAKE: fake }
     : options.fakeEngines
       ? { ORBYN_CLAUDE_BIN: fake, ORBYN_CODEX_BIN: fake }
-      : {};
+      : // Never an installed engine, so a run reads the same on every machine.
+        { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: join(dir, "no-codex") };
   const forgePath = options.forge ? `${standInGh(dir)}:` : "";
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.

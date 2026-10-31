@@ -264,6 +264,8 @@ function useGlobalKeys(route: Route) {
         return;
       }
       if (undoKey(event)) return;
+      // A focused surface that took the key, like the model picker's number jumps, keeps it.
+      if (event.defaultPrevented) return;
       if (event.metaKey || event.ctrlKey || event.altKey) {
         const context = keyContext(route);
         // The last rule wins, so the file overrides a default.
@@ -276,7 +278,7 @@ function useGlobalKeys(route: Route) {
         }
       }
       const digit = /^Digit([1-9])$/.exec(event.code);
-      if (digit && !event.defaultPrevented && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+      if (digit && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
         if (runShellCommand(`thread.jump.${digit[1]}`, route)) event.preventDefault();
         return;
       }
