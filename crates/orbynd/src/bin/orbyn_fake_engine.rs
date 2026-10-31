@@ -468,6 +468,9 @@ fn codex() {
                     "requiresOpenaiAuth": true,
                 }}));
             }
+            "model/list" if sibling_exists("lost-models") => {
+                send(&json!({ "id": id, "error": { "code": -32000, "message": "no list" } }));
+            }
             "model/list" => {
                 send(&json!({ "id": id, "result": { "nextCursor": null, "data": [
                     {
@@ -645,6 +648,14 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         && let Some(name) = rest.split(']').next()
     {
         let checkout = std::env::var("ORBYN_FAKE_CHECKOUT").expect("checkout");
+        codex_note(
+            state,
+            "item/completed",
+            json!({ "item": {
+                "type": "fileChange", "id": format!("write-{name}"), "status": "completed",
+                "changes": [{ "path": name, "kind": { "type": "add" }, "diff": "" }],
+            }}),
+        );
         std::fs::write(
             std::path::Path::new(&checkout).join(name),
             "written by turn\n",
@@ -844,13 +855,15 @@ fn acp_update(session: &str, update: Value) {
     );
 }
 
-/// Lets a test take a mode away between reading the list and running.
+/// Lets a test change the engine's answers while it runs.
+fn sibling_exists(name: &str) -> bool {
+    std::env::var("ORBYN_FAKE_LAUNCH_FILE")
+        .is_ok_and(|path| std::path::Path::new(&path).with_file_name(name).exists())
+}
+
+/// A test takes a mode away between reading the list and running.
 fn acp_lost_mode() -> bool {
-    std::env::var("ORBYN_FAKE_LAUNCH_FILE").is_ok_and(|path| {
-        std::path::Path::new(&path)
-            .with_file_name("lost-mode")
-            .exists()
-    })
+    sibling_exists("lost-mode")
 }
 
 fn acp() {

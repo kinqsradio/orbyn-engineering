@@ -44,47 +44,47 @@ toward completion.
 - [ ] A9 New thread in this worktree: reuses an existing worktree | docs/user/thread-sidebar.md | w d | S
 - [ ] A10 Use last project: mobile default for new threads, toggleable | docs/user/thread-sidebar.md | m | S
 - [x] A11 Pin and unpin: keeps thread above active work, scroll stays put | apps/web/src/components/Sidebar.tsx | w d m s | S | server done
-- [ ] A12 Undo notices: 5-second undo for unpin, settle, snooze, archive, draft discard | apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx | w d m | M
+- [x] A12 Undo notices: 5-second undo for unpin, settle, snooze, archive, draft discard | apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx | w d m | M
 - [ ] A13 Drop files on a thread row: opens thread with files attached | docs/user/thread-sidebar.md | w d | S
 - [x] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L | web done
 - [x] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
 - [ ] A16 Arrange threads sheet: mobile drag handles, plus move up/down | apps/mobile/src/features/threads/ThreadArrangementSheet.tsx | m | M
-- [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S | server done
+- [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S
 - [ ] A18 Title instructions: per-environment or per-project guidance | apps/web/src/components/settings/ThreadTitleInstructionsSettings.tsx | w d s | S
-- [x] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S | server done
+- [x] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S
 - [ ] A20 Working section: folds threads waiting on subagents, watches, monitors | packages/contracts/src/settings.ts | w d m | M
 - [ ] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
 - [ ] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
 - [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M | server done
 - [x] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M | server done
-- [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S | server done
+- [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S
 - [x] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M | web done
 - [x] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S | server done
 - [x] A28 Snooze presets: up to 8 duration or time-of-day options | apps/web/src/components/settings/SnoozePresetsSettings.tsx | w d m s | M | server done
 - [x] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S | web done
 - [x] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S | web done
 - [x] A31 Wake rules: returns early on approval, answer, failure or your message | docs/user/thread-sidebar.md | w d m s | M | server done
-- [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S | server done | web done
-- [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done | web done
-- [x] A34 Mark unread: flags a thread | packages/contracts/src/orchestrationV2.ts | w d m s | S | server done
+- [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S
+- [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M
+- [x] A34 Mark unread: flags a thread | packages/contracts/src/orchestrationV2.ts | w d m s | S
 - [x] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S | web done
 - [ ] A36 Copy reference/thread/ID: PR link first, then thread chip, then bare ID | docs/user/thread-sidebar.md | w d m | S
-- [ ] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M
+- [x] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M
 - [ ] A38 Message search: all-words match, opens at the message, CJK-aware minimum | packages/contracts/src/orchestrationV2.ts | w d m s | L
 - [x] A39 Find in thread: find bar with highlights and position | apps/web/src/components/chat/ThreadFindBar.tsx | w d s | M | web done
-- [ ] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
-- [ ] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
+- [x] A40 Thread navigation keys: previous, next, jump 1–9 | packages/contracts/src/keybindings.ts | w d | S
+- [x] A41 History navigation: back/forward with trackpad swipe | apps/web/src/components/HistorySwipeNavigation.tsx | w d | S
 - [ ] A42 Thread hover card: rich preview on hover | apps/web/src/components/ThreadHoverCard.tsx | w d | S
 - [ ] A43 Status indicators: working, limited, needs-you, request states | apps/web/src/components/ThreadStatusIndicators.tsx | w d m | M
 - [ ] A44 Side chats: `/side`, `/btw` or + menu, separate tab with own permissions | apps/web/src/components/chat/SideChatPane.tsx | w d m | L
 - [ ] A45 Bring back: sends side chat into the parent's next message | docs/user/thread-sidebar.md | w d | M
 - [x] A46 Fork thread: branches conversation, with portable fallback | packages/contracts/src/orchestrationV2.ts | w d s | L | server done | web done
-- [x] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L | server done
+- [x] A47 Provider switch mid-thread: budgeted context handoff to another provider | docs/user/portable-handoffs.md | w d m s | L
 - [ ] A48 Lineage view: related threads and workflow rows | apps/web/src/components/chat/ThreadRelationshipsControl.tsx | w d | M
 - [ ] A49 Thread details card: PRs, servers, usage, scripts, editor actions | apps/web/src/components/chat/ThreadDetailsCard.tsx | w d m | M
 - [ ] A50 Customize details: show/hide rows, reset, right-click access | apps/web/src/components/settings/ThreadDetailsItemsRow.tsx | w d | S
 - [x] A51 Local servers list: thread's ports with open and stop | apps/web/src/components/chat/ThreadServersPanel.tsx | w d s | M | server done
-- [ ] A52 Timeline minimap: overview navigation strip | apps/web/src/components/chat/TimelineMinimap.tsx | w d | M
+- [x] A52 Timeline minimap: overview navigation strip | apps/web/src/components/chat/TimelineMinimap.tsx | w d | M
 - [ ] A53 Visit watermark: marks where you last read | apps/web/src/components/chat/ThreadVisitWatermark.tsx | w d s | S
 - [ ] A54 V1 thread migration: copies old database, imports transcripts in stages | docs/user/thread-migration.md | s d | L
 - [ ] A55 Limited state: shows provider limit stop, resume manually | apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx | w d m | M
@@ -102,32 +102,32 @@ toward completion.
 - [ ] A67 Wake now and dismiss Woke: snoozed rows have a wake-now button; a thread that woke early shows a dismissible Woke badge | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
 - [ ] A68 Older settled paging: settled shelf loads older threads in pages, shows hidden count and a show-more control | apps/web/src/components/Sidebar.tsx | w d m | M
 - [ ] A69 Sidebar sizing and toggle: drag-resizable thread sidebar with remembered width, collapse toggle, and a header-docked toggle command | apps/web/src/components/threadSidebarWidth.ts | w d | S
-- [ ] A70 Jump hints: number badges appear on the first nine rows while the jump modifier is held | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
+- [x] A70 Jump hints: number badges appear on the first nine rows while the jump modifier is held | apps/web/src/components/sidebar/SidebarThreadRow.tsx | w d | S
 - [ ] A71 Provider update pill: sidebar capsule announces provider CLI updates with a dismiss control, separate from the desktop update pill | apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx | w d | S
 - [ ] A72 Landing states: no-projects hero, no-active-thread state, hosted empty state and draft hero with project name and heading | apps/web/src/components/NoProjectsHero.tsx | w d | S
-- [ ] A73 Header panel toggles: buttons for thread details panel, terminal drawer and right panel; right panel becomes a sheet at narrow widths | apps/web/src/components/chat/PanelLayoutControls.tsx | w d | S
+- [x] A73 Header panel toggles: buttons for thread details panel, terminal drawer and right panel; right panel becomes a sheet at narrow widths | apps/web/src/components/chat/PanelLayoutControls.tsx | w d | S
 - [ ] A74 Hide environment threads: per-environment switch hides that server's threads from the sidebar, plus reconnect and disconnect failure banners | apps/web/src/components/chat/useSystemComposerBanners.tsx | w d | S
 - [ ] A75 Open thread holds its section: the thread you are in never jumps between Active, Finished and Settled until you leave it; a held thread that starts running becomes Active | src/sidebar-sections.ts | w d | S | beyond T3
 - [ ] A76 Edit sent prompt: forks before that message into a new thread in the same folder and puts the text back in its composer; files are not rewound | docs/rewind.md | w d s | S | beyond T3
 
 ## B. Composer
 - [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done
-- [ ] B2 Large paste to attachment: 32 KiB or more becomes a file, shift-paste keeps it editable | docs/user/composer.md | w d | S
+- [x] B2 Large paste to attachment: 32 KiB or more becomes a file, shift-paste keeps it editable | docs/user/composer.md | w d | S
 - [ ] B3 Live Markdown styling: rich editor that keeps literal markers | apps/web/src/components/ComposerPromptEditorTiptap.tsx | w d m | L
-- [ ] B4 List and quote editing: Shift+Enter continue, Tab nest | docs/user/composer.md | w d | M
+- [x] B4 List and quote editing: Shift+Enter continue, Tab nest | docs/user/composer.md | w d | M
 - [ ] B5 Code block editing: indent, language picker, exit rules | apps/web/src/components/chat/ComposerCodeBlockNodeView.tsx | w d | M
 - [x] B6 Attachments: 100 files; 10 MiB per image, 80 MiB images total, 50 MiB other | docs/user/composer.md | w d m s | L | server done
 - [x] B7 Upload lifecycle: starts on add, retry or remove, blocks send until done | apps/web/src/components/chat/ComposerAttachmentStrip.tsx | w d m | M | server done
 - [ ] B8 HEIC conversion and resizing: JPEG conversion, shrinks oversized photos | docs/user/composer.md | w d m | M
-- [ ] B9 Drag and paste images: intake into web composer | apps/web/src/components/chat/useComposerAttachmentIntake.ts | w d | S
+- [x] B9 Drag and paste images: intake into web composer | apps/web/src/components/chat/useComposerAttachmentIntake.ts | w d | S
 - [ ] B10 System share sheet: send files to T3 from other apps | apps/mobile/src/features/sharing/IncomingShareProvider.tsx | m | M
-- [ ] B11 Follow-up behavior: queue or steer default | packages/contracts/src/settings.ts | w d m | M
-- [ ] B12 Send shortcut modes: Enter, Mod+Enter multiline only, Mod+Enter | packages/contracts/src/settings.ts | w d | S
-- [ ] B13 Opposite action: modifier or long-press flips queue/steer | docs/user/composer.md | w d m | S
+- [x] B11 Follow-up behavior: queue or steer default | packages/contracts/src/settings.ts | w d m | M
+- [x] B12 Send shortcut modes: Enter, Mod+Enter multiline only, Mod+Enter | packages/contracts/src/settings.ts | w d | S
+- [x] B13 Opposite action: modifier or long-press flips queue/steer | docs/user/composer.md | w d m | S
 - [x] B14 Queued messages: persisted on server, shown as dashed rows | apps/web/src/components/chat/QueuedRunsControl.tsx | w d m s | L | server done
 - [x] B15 Queue actions: send now, edit in composer, remove | apps/web/src/components/chat/useQueuedRunEdit.ts | w d m s | M | server done
 - [x] B16 Held queue and resume: preserved after stop or restart | docs/user/composer.md | w d m s | M | server done
-- [ ] B17 Steer oldest queued: shortcut, draft untouched | packages/contracts/src/keybindings.ts | w d | S
+- [x] B17 Steer oldest queued: shortcut, draft untouched | packages/contracts/src/keybindings.ts | w d | S
 - [ ] B18 Offline mobile queue: local copies, resumes on reconnect | docs/user/composer.md | m | L
 - [x] B19 Interrupt button: stops running turn when draft empty | apps/web/src/components/chat/ComposerPrimaryActions.tsx | w d m | S | web done
 - [x] B20 Custom models: add unlisted model, rename built-ins via settings.json | apps/web/src/components/settings/CustomModelEditor.tsx | w d s | M | server done
@@ -137,38 +137,38 @@ toward completion.
 - [x] B24 Traits picker: effort, thinking, speed, context options per model | apps/web/src/components/chat/TraitsPicker.tsx | w d m | M | server done: effort, Codex service tier and Claude fast mode per model; neither engine reports thinking or context choices | web done
 - [x] B25 Effort display: label or bars, with shortcuts | apps/web/src/components/chat/EffortGlyph.tsx | w d | S | web done
 - [x] B26 Permission mode: Supervised, Auto-accept edits, Auto, Full access | docs/user/permission-modes.md | w d m s | L | server done | web done
-- [x] B27 Plan mode toggle: plan or build | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
+- [x] B27 Plan mode toggle: plan or build | packages/contracts/src/orchestrationV2.ts | w d m s | M
 - [ ] B28 Cite in composer: quote assistant text with a comment | apps/web/src/components/chat/AssistantCitationChip.tsx | w d | L
-- [ ] B29 Prompt recall: up/down through sent prompts | apps/web/src/components/chat/composerPromptHistory.ts | w d | S
+- [x] B29 Prompt recall: up/down through sent prompts | apps/web/src/components/chat/composerPromptHistory.ts | w d | S
 - [ ] B30 Edit from here: rewind with or without file restore | apps/web/src/components/chat/useTimelineRewind.ts | w d s | L
-- [ ] B31 Prompt stash: save/restore drafts, uploads kept 24 hours | apps/web/src/components/chat/ComposerStashMenu.tsx | w d | M
+- [x] B31 Prompt stash: save/restore drafts, uploads kept 24 hours | apps/web/src/components/chat/ComposerStashMenu.tsx | w d | M
 - [ ] B32 iPhone voice input: on-device transcription, 5-minute limit, iOS 26+ | apps/mobile/src/features/voice-input/VoiceInputProvider.tsx | m | L
 - [ ] B33 Microphone ranking: priority across device kinds | apps/mobile/src/features/settings/SettingsMicrophoneRouteScreen.tsx | m | M
 - [x] B34 Slash commands: `/` menu with T3 and provider commands | apps/web/src/components/chat/ComposerCommandMenu.tsx | w d m | M | server done
 - [x] B35 Skills: `$` menu, also in slash menu by toggle | apps/web/src/components/chat/SkillInlineText.tsx | w d m | M | server done
 - [ ] B36 Restart agent session: reloads skills, plugins and MCP config | apps/web/src/components/CommandPalette.tsx | w d s | S
 - [x] B37 `/compact`: manual compaction, also from context meter | docs/user/composer.md | w d m s | M | server done
-- [x] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L | server done
-- [ ] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
+- [ ] B38 `/goal`: runs across turns until met; clear, pause, resume vary by provider | docs/user/composer.md | w d m s | L
+- [x] B39 `/usage-limits`: inline snapshot above composer | docs/user/usage.md | w d m | S
 - [ ] B40 Inline context chips: terminal, review comment, annotation, file at cursor | apps/web/src/components/ContextChip.tsx | w d m | L
 - [ ] B41 PR chips: `#` browse, number and text search | docs/user/composer.md | w d | M
 - [ ] B42 Thread chips: `@` lookup, on-demand read by the agent | apps/web/src/components/ThreadContextChip.tsx | w d m | M
 - [ ] B43 Drag threads to composer: multi-select, cross-environment transcript file | apps/web/src/components/chat/composerThreadImport.ts | w d | M
-- [ ] B44 Image shelf and chips: thumbnails plus inline references | apps/web/src/components/chat/ComposerImageThumbnail.tsx | w d | M
+- [x] B44 Image shelf and chips: thumbnails plus inline references | apps/web/src/components/chat/ComposerImageThumbnail.tsx | w d | M
 - [ ] B45 Chip clipboard: copy/paste keeps chips, refetches files | packages/contracts/src/composerContextClipboard.ts | w d | L
-- [ ] B46 Readable copy: Markdown output with links replacing chips | apps/web/src/components/chat/MessageCopyButton.tsx | w d | S
+- [x] B46 Readable copy: Markdown output with links replacing chips | apps/web/src/components/chat/MessageCopyButton.tsx | w d | S
 - [ ] B47 Question attachments: files in custom answers, kept per question | docs/user/question-attachments.md | w d m s | M
 - [x] B48 Pending approval actions: approve or reject inline | apps/web/src/components/chat/ComposerPendingApprovalActions.tsx | w d m | M | web done
 - [ ] B49 Text decline to Claude: typed reply rejects with feedback | docs/user/permission-modes.md | w d m | S
 - [x] B50 Question panel: async question answer or dismiss | apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx | w d m | M | server done
 - [ ] B51 Secret request card: agent asks for a secret, you answer | apps/web/src/components/chat/SecretRequestCard.tsx | w d m s | M
 - [ ] B52 Link request card: agent asks to link a machine | apps/web/src/components/chat/LinkRequestCard.tsx | w d m s | M
-- [ ] B53 Context window meter: usage bar with compaction tick | apps/web/src/components/chat/ContextWindowMeter.tsx | w d | M
+- [x] B53 Context window meter: usage bar with compaction tick | apps/web/src/components/chat/ContextWindowMeter.tsx | w d | M
 - [ ] B54 Compact chip: offered on return after prompt cache expiry | docs/user/providers-claude.md | w d | M
-- [ ] B55 Composer banners: provider, update, clone, retry notices | apps/web/src/components/chat/ComposerBannerStack.tsx | w d | M
-- [ ] B56 Persistent composer context: keeps branch controls after first send | packages/contracts/src/settings.ts | w d | S
+- [x] B55 Composer banners: provider, update, clone, retry notices | apps/web/src/components/chat/ComposerBannerStack.tsx | w d | M
+- [x] B56 Persistent composer context: keeps branch controls after first send | packages/contracts/src/settings.ts | w d | S
 - [ ] B57 Compact controls menu: narrow composers fold model, traits, permission and plan controls into one overflow menu | apps/web/src/components/chat/CompactComposerControlsMenu.tsx | w d | S
-- [ ] B58 Text direction: each composer block gets left-to-right or right-to-left direction from its own text | apps/web/src/composer-text-direction.ts | w d | S
+- [x] B58 Text direction: each composer block gets left-to-right or right-to-left direction from its own text | apps/web/src/composer-text-direction.ts | w d | S
 - [ ] B59 Composer editor switches: turn live Markdown styling off, show or hide skills in the slash menu (skills still appear with `$`), show context meter | packages/contracts/src/settings.ts | w d m | S
 - [ ] B60 Compact composer on phone: sheets for command popover, queued-message edit, attachment button and error notice | apps/mobile/src/features/threads/ComposerCommandPopover.tsx | m | M
 - [ ] B61 Steer delivery states: each mid-turn message reports pending, delivered or failed by id; a failed one returns to the queue; engines with no mid-turn input hold it for the next turn | src-tauri/src/providers/steering.rs | w d s | M
@@ -180,49 +180,49 @@ toward completion.
 ## C. Timeline and rendered output
 - [ ] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L
 - [ ] C2 Timeline follow and anchoring: position restore and sticky scroll | apps/web/src/components/chat/useTimelineFollow.ts | w d m | L
-- [ ] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
+- [x] C3 Tool activity groups: expandable summaries with category counts | apps/web/src/components/chat/TimelineWorkGroupRows.tsx | w d m | L
 - [ ] C4 Orchestrator summaries: action-specific wording, failures not counted | docs/user/activity-log.md | w d | M
-- [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M | server done
-- [ ] C6 Open diff from tool row: review a file change | docs/user/activity-log.md | w d | S
-- [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M | server done
-- [ ] C8 Proposed plan card: collapse, copy, save/download, follow-up | apps/web/src/components/chat/ProposedPlanCard.tsx | w d m | M
-- [ ] C9 Plan follow-up banner: implement plan from a banner | apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx | w d | M
+- [x] C5 Command output: live tail, exit codes, full subscription | apps/web/src/components/chat/CommandOutputPanel.tsx | w d m s | M
+- [x] C6 Open diff from tool row: review a file change | docs/user/activity-log.md | w d | S
+- [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M
+- [x] C8 Proposed plan card: collapse, copy, save/download, follow-up | apps/web/src/components/chat/ProposedPlanCard.tsx | w d m | M
+- [x] C9 Plan follow-up banner: implement plan from a banner | apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx | w d | M
 - [ ] C10 Claude task lists: Tasks row via env flag | docs/user/providers-claude.md | w d | S
-- [x] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M | server done
-- [ ] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
-- [ ] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
-- [ ] C14 Math: opt-in TeX, inline and block | apps/web/src/components/chat/MarkdownMath.tsx | w d m | M
-- [ ] C15 Mermaid: rendered diagrams | apps/web/src/components/chat/MermaidDiagram.tsx | w d | M
-- [ ] C16 File links: line-aware opening in viewer | apps/web/src/components/chat/MarkdownFileLink.tsx | w d m | M
-- [ ] C17 Thread links: render and navigate | apps/web/src/components/chat/MarkdownThreadLink.tsx | w d | S
-- [ ] C18 External link menu: open target and context actions | apps/web/src/components/chat/MarkdownExternalLink.tsx | w d | S
+- [x] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M
+- [x] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
+- [x] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
+- [x] C14 Math: opt-in TeX, inline and block | apps/web/src/components/chat/MarkdownMath.tsx | w d m | M
+- [x] C15 Mermaid: rendered diagrams | apps/web/src/components/chat/MermaidDiagram.tsx | w d | M
+- [x] C16 File links: line-aware opening in viewer | apps/web/src/components/chat/MarkdownFileLink.tsx | w d m | M
+- [x] C17 Thread links: render and navigate | apps/web/src/components/chat/MarkdownThreadLink.tsx | w d | S
+- [x] C18 External link menu: open target and context actions | apps/web/src/components/chat/MarkdownExternalLink.tsx | w d | S
 - [ ] C19 Media in messages: image gallery, video, save/copy path | apps/web/src/components/chat/ChatMarkdownMedia.tsx | w d m | M
-- [ ] C20 Image lightbox: zoomable expanded view | apps/web/src/components/chat/ExpandedImageDialog.tsx | w d | S
+- [x] C20 Image lightbox: zoomable expanded view | apps/web/src/components/chat/ExpandedImageDialog.tsx | w d | S
 - [ ] C21 HTML renders: sandboxed agent pages with theme and zoom | apps/web/src/components/chat/HtmlRenderFrame.tsx | w d m s | L
 - [ ] C22 Render publish: embeds local images, deleted with thread | apps/server/src/htmlRender | s | M
 - [ ] C23 Render verification: headless screenshots, one 120 MB browser download | docs/user/html-renders.md | s | M
 - [ ] C24 MCP Apps: interactive tool UI inline, Codex only today | apps/web/src/components/chat/McpAppFrame.tsx | w d m s | L
 - [ ] C25 MCP App controls: tool-call and message approvals, full screen | docs/user/html-renders.md | w d m | L
 - [ ] C26 MCP App model context: latest note sent with next message | packages/contracts/src/mcpApps.ts | w d m s | M
-- [ ] C27 Elapsed timers: per-turn agent timing | apps/web/src/components/chat/AgentElapsed.tsx | w d | S
-- [ ] C28 Status line: current activity beneath the timeline | apps/web/src/components/chat/ThreadStatusLine.tsx | w d | S
+- [x] C27 Elapsed timers: per-turn agent timing | apps/web/src/components/chat/AgentElapsed.tsx | w d | S
+- [x] C28 Status line: current activity beneath the timeline | apps/web/src/components/chat/ThreadStatusLine.tsx | w d | S
 - [ ] C29 Accessibility announcers: activity and background thread announcements | apps/web/src/components/chat/ThreadActivityAnnouncer.tsx | w d | S
-- [ ] C30 Word wrap and chat width: comfortable, wide, full | packages/contracts/src/settings.ts | w d | S
+- [x] C30 Word wrap and chat width: comfortable, wide, full | packages/contracts/src/settings.ts | w d | S
 - [ ] C31 Right panel tabs: add-tab menu (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Side chat), mute tab, close, maximize, resize handle, sheet on small screens | apps/web/src/components/RightPanelTabs.tsx | w d | M
 - [ ] C32 Proactive panels: opt-in setting opens the linked PR, or the Changes panel after a turn touching at least 3 files or 50 lines; a panel you opened or closed wins | apps/web/src/hooks/useProactivePanels.ts | w d | M
 - [ ] C33 Thread end lines: sync state, reconnect, goal and status lines at the end of the timeline share one family with icon, detail and actions | apps/web/src/components/chat/ThreadNow.tsx | w d m | S
-- [ ] C34 Changed files tree in timeline: per-turn file list with open-diff action | apps/web/src/components/chat/ChangedFilesTree.tsx | w d | S
-- [ ] C35 Error banner: thread-level error with dismiss and retry actions | apps/web/src/components/chat/ThreadErrorBanner.tsx | w d m | S
+- [x] C34 Changed files tree in timeline: per-turn file list with open-diff action | apps/web/src/components/chat/ChangedFilesTree.tsx | w d | S
+- [x] C35 Error banner: thread-level error with dismiss and retry actions | apps/web/src/components/chat/ThreadErrorBanner.tsx | w d m | S
 - [ ] C36 Lifecycle rows: system dividers and lifecycle rows mark restarts, handoffs and context boundaries | apps/web/src/components/chat/V2LifecycleRow.tsx | w d m | S
 - [ ] C37 Sentence tool trace: each tool call is a verb-object row with kind icon; calls group in fives with a count summary; live view bounded to 30 rows; turn folds to a summary at the end | src/tool-trace.ts | w d | L
-- [ ] C38 Bounded tool snapshots: input preview 4 KiB, output preview 8 KiB, UTF-8-safe truncation notice, 64 snapshots per run | docs/providers.md | s | S
-- [ ] C39 Delta coalescing: text deltas merged for 33 ms or 8 KiB before sending, only new text per event | src-tauri/src/providers.rs | s | S
+- [x] C38 Bounded tool snapshots: input preview 4 KiB, output preview 8 KiB, UTF-8-safe truncation notice, 64 snapshots per run | docs/providers.md | s | S | server done: arguments 16 KiB rather than 4, because cut JSON no longer parses
+- [x] C39 Delta coalescing: text deltas merged for 33 ms or 8 KiB before sending, only new text per event | src-tauri/src/providers.rs | s | S | server done
 - [ ] C40 Rich question content: agent questions render Markdown, charts and sanitised SVG or static HTML in an isolated root; remote images become links | src/rich-markdown.ts | w d | M | beyond T3
 
 ## D. Files, search and attachments
 - [x] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L | web done
-- [ ] D2 Go to file: quick picker | apps/web/src/components/files/ProjectFilePicker.tsx | w d | M
-- [x] D3 Project content search: full-text dialog | apps/web/src/components/search/ProjectContentSearchDialog.tsx | w d s | L | server done
+- [x] D2 Go to file: quick picker | apps/web/src/components/files/ProjectFilePicker.tsx | w d | M
+- [x] D3 Project content search: full-text dialog | apps/web/src/components/search/ProjectContentSearchDialog.tsx | w d s | L
 - [x] D4 Show ignored files: separate listing | packages/contracts/src/rpc.ts | s | S | server done
 - [x] D5 Edit and save files: save coordination, conflict revision tracking | apps/web/src/components/files/fileSaveCoordinator.ts | w d s | L | server done
 - [x] D6 Source preview: read-only highlighted view | apps/web/src/components/files/ReadOnlySourcePreview.tsx | w d m | M | web done
@@ -270,7 +270,7 @@ toward completion.
 - [ ] E16 Native mobile diff: custom diff view with word diffs | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
 - [ ] E17 Diff status markers: per-file added, modified, deleted, renamed badges and plus/minus counts | apps/web/src/components/diffs/DiffFileStatus.tsx | w d m | S
 - [ ] E18 Large diff loading: very large uncommitted diffs load files as you scroll; find covers loaded files only | docs/user/keybindings.md | w d | S
-- [ ] E19 Write-attributed changes: a turn's change list holds only files the thread declared (begin and complete handshake) or the engine reported, frozen at tool completion; never inferred from status; caps 200 paths, 1 MiB per file, 32 MiB per turn | docs/turn-changes.md | s w | L | beyond T3
+- [ ] E19 Write-attributed changes: a turn's change list holds only files the thread declared (begin and complete handshake) or the engine reported, frozen at tool completion; never inferred from status; caps 200 paths, 1 MiB per file, 32 MiB per turn | docs/turn-changes.md | s w | L | beyond T3 | server: reported paths only, capped at 200; declared-file capture and contents not built
 
 ## F. Source control, worktrees and pull requests
 - [x] F1 GitHub connection: saved token, env token, or gh | docs/user/source-control.md | w d s | M | server done, through `gh` only: saved and env tokens stay out under rule 1
@@ -297,7 +297,7 @@ toward completion.
 - [x] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L | server done
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
 - [ ] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S
-- [ ] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
+- [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation
 - [ ] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S
 - [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
@@ -504,25 +504,25 @@ are not built in, and an agent that lists effort only after switching models nee
 ## K. Settings, appearance and notifications
 - [ ] K1 Settings scope: choose project and environments, fan-out edit | apps/web/src/components/settings/SettingsScopeSentence.tsx | w d m | L
 - [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
-- [ ] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
+- [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
 - [ ] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S
 - [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M
 - [ ] K7 Project icons: icon, emoji, monogram, image, automatic | apps/web/src/components/settings/ProjectIconPickerDialog.tsx | w d s | M
 - [x] K8 t3.json project file: scripts, icon, workspace defaults, submodules | packages/contracts/src/t3ProjectFile.ts | s | M | server done
 - [ ] K9 Project actions: run on worktree create, settle, async, preview URL | apps/web/src/components/settings/ProjectActionsSettings.tsx | w d s | M
-- [x] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L | server done
+- [x] K10 Keybindings editor: rebind, when conditions, conflicts | apps/web/src/components/settings/KeybindingsSettings.tsx | w d s | L
 - [x] K11 Keybindings file: lenient JSON with late defaults | apps/server/src/keybindings.ts | s | M | server done
 - [ ] K12 Workspace focus: F6 area cycling, tree navigation | docs/user/keyboard-focus.md | w d | M
 - [ ] K13 Command palette: threads, actions, projects, settings, submenus | apps/web/src/components/CommandPalette.tsx | w d m | L
-- [ ] K14 Themes: built-in, per-light/dark selection | apps/web/src/components/settings/ThemeSettings.tsx | w d m | M
-- [ ] K15 Theme editor: palette editing with element inspector | apps/web/src/components/settings/ThemeEditorPanel.tsx | w d | L
-- [ ] K16 Theme import/export: T3 or VS Code, JSON | apps/web/src/components/settings/ThemeImportDialog.tsx | w d | M
+- [x] K14 Themes: built-in, per-light/dark selection | apps/web/src/components/settings/ThemeSettings.tsx | w d m | M
+- [x] K15 Theme editor: palette editing with element inspector | apps/web/src/components/settings/ThemeEditorPanel.tsx | w d | L
+- [x] K16 Theme import/export: T3 or VS Code, JSON | apps/web/src/components/settings/ThemeImportDialog.tsx | w d | M
 - [ ] K17 Environment themes: server-published with applied-once default | apps/server/src/environmentTheme.ts | w d c s | M
-- [ ] K18 Typography: fonts and sizes for four surfaces | apps/web/src/components/settings/TypographySettings.tsx | w d m | M
-- [ ] K19 Glass, contrast, smoothing: visual tuning | packages/contracts/src/settings.ts | w d | S
+- [x] K18 Typography: fonts and sizes for four surfaces | apps/web/src/components/settings/TypographySettings.tsx | w d m | M
+- [x] K19 Glass, contrast, smoothing: visual tuning | packages/contracts/src/settings.ts | w d | S
 - [ ] K20 Panel animations: 0–400 ms slider | apps/web/src/components/settings/PanelAnimationsPreview.tsx | w d | S
-- [ ] K21 Timestamp format: locale, 12-hour, 24-hour | packages/contracts/src/settings.ts | w d m | S
+- [x] K21 Timestamp format: locale, 12-hour, 24-hour | packages/contracts/src/settings.ts | w d m | S
 - [ ] K22 Environment identification: artwork, pill, none | packages/contracts/src/settings.ts | w d | S
 - [ ] K23 Material You: Android dynamic colors and layout | docs/user/appearance.md | m | M
 - [ ] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M
@@ -543,11 +543,11 @@ are not built in, and an agent that lists effort only after switching models nee
 - [ ] K39 Thread shortcuts: stop turn (unbound), steer first queued, edit queued, previous and next, jump 1 to 9 (desktop only), copy reference, settle, pin, global undo with mod+z | packages/contracts/src/keybindings.ts | w d | M
 - [ ] K40 Model picker shortcuts: toggle, previous and next provider, jump 1 to 9 inside the picker, Left or Shift+Tab to the provider list | docs/user/keybindings.md | w d | S
 - [ ] K41 Composer menu shortcuts: model, host, cycle host, effort, step effort up and down (wrapping), permissions, workspace, previous worktree, branch, stash | docs/user/keybindings.md | w d | M
-- [ ] K42 Panel and navigation shortcuts: sidebar toggle, back and forward, right panel toggle, new, maximize, close, thread panel toggle, reopen closed tab, diff toggle, terminal toggle, split, new, close | packages/contracts/src/keybindings.ts | w d | M
+- [x] K42 Panel and navigation shortcuts: sidebar toggle, back and forward, right panel toggle, new, maximize, close, thread panel toggle, reopen closed tab, diff toggle, terminal toggle, split, new, close | packages/contracts/src/keybindings.ts | w d | M
 - [ ] K43 Preview shortcuts: toggle, refresh, focus URL, zoom in, out and reset | packages/contracts/src/keybindings.ts | w d | S
-- [ ] K44 Search and new-thread shortcuts: palette, file picker, project search, find in thread, new thread, local new thread, new without project, open favorite editor, copy PR number | packages/contracts/src/keybindings.ts | w d | S
+- [x] K44 Search and new-thread shortcuts: palette, file picker, project search, find in thread, new thread, local new thread, new without project, open favorite editor, copy PR number | packages/contracts/src/keybindings.ts | w d | S
 - [ ] K45 Theme shortcuts: pick theme, cycle appearance, toggle theme editor, open usage | packages/contracts/src/keybindings.ts | w d | S
-- [x] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M | server done
+- [x] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M
 - [ ] K47 Keybinding file notices: toast when file reloads or is invalid, warning when it cannot be opened | apps/web/src/components/KeybindingsUpdateToast.tsx | w d | S
 - [ ] K48 Reserved keys: mod+w never closes the desktop window; browsers need alt+w style rebind | docs/user/keybindings.md | w d | S
 - [ ] K49 Snap Shot settings: shortcut (including both Shift keys), sound choice, flash, animations, include accessibility data, setup dialog | apps/web/src/components/settings/SnapShotSettings.tsx | d | M
@@ -556,9 +556,9 @@ are not built in, and an agent that lists effort only after switching models nee
 - [ ] K52 Provider update checks: toggle checking CLIs and model catalogs for updates | packages/contracts/src/settings.ts | w d s | S
 - [ ] K53 Default theme and environment icon: default theme preference with set time, machine-kind icon picker | apps/web/src/components/settings/EnvironmentIconPicker.tsx | w d | S
 - [ ] K54 New projects base directory: default parent folder for new and cloned projects | packages/contracts/src/settings.ts | w d s | S
-- [ ] K55 Settings navigation: sidebar nav, breadcrumb, section deep links across 24 settings pages | apps/web/src/components/settings/SettingsSidebarNav.tsx | w d | M
+- [x] K55 Settings navigation: sidebar nav, breadcrumb, section deep links across 24 settings pages | apps/web/src/components/settings/SettingsSidebarNav.tsx | w d | M
 - [ ] K56 Capability inventory: read-only list of each engine's commands, MCP server names, hook event names, plugin names and skill folders; no secrets, bodies or absolute config paths | docs/capabilities.md | w d s | M | beyond T3
-- [ ] K57 Network disclosure: Settings lists every automatic outbound request with host and cadence | README.md | w d | S | beyond T3
+- [ ] K57 Network disclosure: Settings lists every automatic outbound request with host and cadence | README.md | w d | S | beyond T3 | server: `GET /api/network`; Settings not built
 
 ## L. Remote access, pairing and auth
 - [ ] L1 T3 Connect tunnel: reach host without port forwarding | docs/user/remote-access.md | w d m c s | L | [hosted]
@@ -632,7 +632,7 @@ are not built in, and an agent that lists effort only after switching models nee
 - [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
 - [ ] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M
 - [ ] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S
-- [ ] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M
+- [x] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M | server done
 
 ## N. MCP tools for agents
 - [ ] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M
@@ -657,7 +657,7 @@ are not built in, and an agent that lists effort only after switching models nee
 - [x] N20 Scheduling: `schedule_task`, `list_scheduled_tasks`, `delete_scheduled_task`, `run_scheduled_task_now` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
 - [ ] N21 Agent requests: `request_secret`, `create_threads` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | [auth-risk]
 - [ ] N22 Links: `t3_environment_links`, `_link`, `_unlink` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
-- [ ] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M
+- [x] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M | server done: 512 KiB requests, 256 KiB replies; the permission prompt keeps its own timeout
 
 ## O. CLI
 - [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M
@@ -718,7 +718,7 @@ are not built in, and an agent that lists effort only after switching models nee
 - [ ] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S
 - [ ] P28 Menu-bar popover: icon with running count; popover lists running, needs you, finished unseen and plan usage read on open | src-tauri/src/tray.rs | d | L | beyond T3
 - [ ] P29 Quick launcher: global shortcut opens a small window for new and running threads; manual open when shortcut registration fails | src-tauri/src/overlay.rs | d | L | beyond T3
-- [ ] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S
+- [x] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S | server done: `off` stops installs here; background checks keep their own setting
 - [x] P31 Deterministic tool search path: ordered install folders, version-manager defaults and npm prefix read from config, added once at startup without sourcing a shell | src-tauri/src/providers/launch.rs | d s | M | alternative to P2 | server done: `crates` side; PATH for the desktop shell is the lead's
 - [ ] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M
 - [ ] P33 Packaged-app startup smoke: install the built package on a disposable hosted runner with isolated profile folders and no secrets, and check it stays alive | scripts/release/ci-startup-smoke.mjs | d c | M

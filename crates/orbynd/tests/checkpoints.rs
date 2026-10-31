@@ -244,6 +244,79 @@ async fn rewind_drops_the_session_and_hands_the_earlier_conversation_on_once() {
 }
 
 #[tokio::test]
+async fn a_runs_changes_are_what_its_engine_reported_and_stay_with_that_thread() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
+    seed(&dir);
+    let wrote = run(&service, &thread, "[write:one.txt] write it").await;
+    let quiet = run(&service, &thread, "say hello").await;
+    // Another thread's file in the same checkout is not this run's change.
+    std::fs::write(dir.path().join("library/repo/project/other.txt"), "x").unwrap();
+    let changes = service
+        .json(&format!("/api/threads/{thread}/runs/{wrote}/changes"))
+        .await;
+    assert_eq!(changes["paths"].as_array().unwrap().len(), 1, "{changes}");
+    assert!(changes["paths"][0].as_str().unwrap().ends_with("one.txt"));
+    let none = service
+        .json(&format!("/api/threads/{thread}/runs/{quiet}/changes"))
+        .await;
+    assert_eq!(none["paths"], json!([]));
+
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let other = service.thread(&project, "codex").await;
+    let response = service
+        .get(&format!("/api/threads/{other}/runs/{wrote}/changes"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn a_handoff_survives_a_failed_run_and_goes_only_with_a_finished_one() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
+    seed(&dir);
+    run(&service, &thread, "remember the first thing").await;
+    let second = run(&service, &thread, "second thing").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/rewind"),
+            json!({ "run_id": second, "restore_files": false }),
+        )
+        .await;
+    assert_eq!(code, 204, "{body}");
+    // A bare command has no way to carry the earlier conversation.
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "/compact" }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    assert_eq!(body["code"], "unsupported");
+
+    service.admit(&thread, "[fail] third").await;
+    assert_eq!(service.finished(&thread).await, "failed");
+    service.admit(&thread, "fourth").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    service.admit(&thread, "fifth").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
+    let starts: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains(r#""mode":"codex-turn""#))
+        .collect();
+    let at = |prompt: &str| starts.iter().find(|turn| turn.contains(prompt)).unwrap();
+    assert!(at("third").contains("remember the first thing"));
+    assert!(at("fourth").contains("remember the first thing"), "kept");
+    assert!(!at("fifth").contains("remember the first thing"), "cleared");
+}
+
+#[tokio::test]
 async fn fork_shows_the_history_up_to_its_point_and_leaves_the_parent_alone() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, options(&dir, false), "codex").await;

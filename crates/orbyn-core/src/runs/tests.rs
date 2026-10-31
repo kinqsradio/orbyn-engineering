@@ -25,6 +25,7 @@ struct ScriptDriver {
     script: Script,
     capabilities: EngineCapabilities,
     update_script: String,
+    probes: std::sync::atomic::AtomicU64,
 }
 
 fn capabilities() -> EngineCapabilities {
@@ -54,7 +55,15 @@ impl EngineDriver for ScriptDriver {
     async fn probe(&self) -> EngineProbe {
         EngineProbe {
             path: Some("/bin/echo".into()),
-            version: Some("1.0.0".into()),
+            version: Some(if self.update_script.contains("no change") {
+                "1.0.0".into()
+            } else {
+                format!(
+                    "1.0.{}",
+                    self.probes
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                )
+            }),
             ..EngineProbe::default()
         }
     }
@@ -104,6 +113,7 @@ async fn fixture_with(script: Script, update: &str, update_timeout: Duration) ->
         script,
         capabilities: capabilities(),
         update_script: update.to_owned(),
+        probes: Default::default(),
     }));
     core.workspace
         .setup(orbyn_contracts::WorkspaceSetup {
@@ -477,6 +487,16 @@ async fn update_is_refused_during_a_run_and_admission_during_an_update() {
         .filter(|action| action.starts_with("engine.update"))
         .collect();
     assert_eq!(positions, ["engine.update.result", "engine.update"]);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_updater_that_changed_nothing_is_a_failed_update() {
+    let f = fixture_with(finished(), "echo no change", Duration::from_secs(30)).await;
+    match f.core.engines.update("script", "t").await {
+        Err(CoreError::UpdateFailed(message)) => assert!(message.contains("1.0.0"), "{message}"),
+        other => panic!("{:?}", other.map(|status| status.version)),
+    }
 }
 
 #[cfg(unix)]

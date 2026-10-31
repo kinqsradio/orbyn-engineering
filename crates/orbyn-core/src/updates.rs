@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
     AppMode, AppUpdateStatus, ApplyAllResult, EngineStatus, EngineUpdateStatus,
@@ -22,6 +22,8 @@ use crate::store::{AuditRecord, Store};
 use crate::util::now;
 use crate::workspace::Workspace;
 
+/// How long nobody must have done anything before an automatic install.
+const IDLE_BEFORE_INSTALL: Duration = Duration::from_secs(2 * 60);
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(8);
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -49,6 +51,8 @@ pub struct UpdateCenter {
     /// Lines for the desktop shell. Present exactly when one is attached.
     shell: Mutex<Option<mpsc::UnboundedSender<Value>>>,
     changes: watch::Sender<u64>,
+    /// When someone last did something through a client.
+    last_activity: Mutex<Instant>,
 }
 
 #[derive(Deserialize)]
@@ -75,6 +79,38 @@ impl UpdateCenter {
             known: Mutex::new(Known::default()),
             shell: Mutex::new(None),
             changes: watch::channel(0).0,
+            last_activity: Mutex::new(Instant::now()),
+        }
+    }
+
+    /// Marks a person as present, which puts off an automatic install.
+    pub fn note_activity(&self) {
+        *lock(&self.last_activity) = Instant::now();
+    }
+
+    fn idle_for(&self) -> Duration {
+        lock(&self.last_activity).elapsed()
+    }
+
+    /// Installs an app update only with `automatic` chosen, nothing running and nobody
+    /// at the app for two minutes. Engines and the library always wait to be asked.
+    pub async fn auto_install(&self, mode: &str) {
+        self.auto_install_after(mode, IDLE_BEFORE_INSTALL).await;
+    }
+
+    async fn auto_install_after(&self, mode: &str, idle: Duration) -> bool {
+        if mode != "automatic" || self.idle_for() < idle {
+            return false;
+        }
+        if !self.status().await.app.can_apply {
+            return false;
+        }
+        match self.apply_app("system:auto-update").await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::debug!(%error, "an automatic update did not start");
+                false
+            }
         }
     }
 

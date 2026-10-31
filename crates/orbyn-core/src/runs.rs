@@ -2,6 +2,8 @@
 //! before any process exists. The event loop is the single writer of a run's
 //! progress, and cleanup runs on every path out of it.
 
+mod shape;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -34,6 +36,7 @@ use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, Store};
 use crate::util::new_id;
 use crate::workspace::{Workspace, check_target};
+use shape::EventShaper;
 
 /// Longest a driver gets to stop before its task is aborted, which drops the
 /// process owner and kills the tree.
@@ -197,6 +200,13 @@ struct ActiveRun {
     input: Option<mpsc::UnboundedSender<String>>,
 }
 
+async fn sleep_until_due(due: Option<tokio::time::Instant>) {
+    match due {
+        Some(due) => tokio::time::sleep_until(due).await,
+        None => std::future::pending().await,
+    }
+}
+
 impl RunManager {
     pub fn new(services: RunServices) -> Self {
         let RunServices {
@@ -261,10 +271,16 @@ impl RunManager {
     /// without it refuses here rather than reading the words as a prompt.
     fn check_goal_action(&self, thread: &Thread, prompt: &str) -> Result<()> {
         let driver = self.engines.driver(&thread.engine)?;
-        let held = matches!(
-            RunKind::parse(prompt),
-            RunKind::Goal(GoalAction::Pause | GoalAction::Resume)
-        );
+        let kind = RunKind::parse(prompt);
+        // These reach the engine bare, so earlier conversation has no way along.
+        if kind != RunKind::Turn && self.store.pending_handoff(&thread.id)?.is_some() {
+            return Err(CoreError::Unsupported(
+                "Send a message first: this thread's earlier conversation has not reached \
+                 the engine yet."
+                    .into(),
+            ));
+        }
+        let held = matches!(kind, RunKind::Goal(GoalAction::Pause | GoalAction::Resume));
         if held && !driver.descriptor().capabilities.goal_control {
             return Err(CoreError::Unsupported(
                 "This engine cannot pause or resume a goal.".into(),
@@ -412,6 +428,7 @@ impl RunManager {
         {
             return Err(CoreError::ThreadArchived);
         }
+        self.check_goal_action(&thread, prompt)?;
         self.attachment_files(thread_id, attachments)?;
         let chosen = selection::merged(&selection::of_thread(&thread), wanted);
         self.engines.check_selection(&thread.engine, &chosen)?;
@@ -515,6 +532,7 @@ impl RunManager {
                 let _ = self.cancel(&active.id);
             }
         }
+        self.store.request_stop(run_id)?;
         match self.lock().get(run_id) {
             Some(active) => {
                 active.cancel.cancel();
@@ -593,7 +611,12 @@ impl RunManager {
             tracing::warn!(%error, "could not remove a run directory");
         }
         let (state, message) = match outcome {
-            EngineOutcome::Completed => (RunState::Completed, None),
+            EngineOutcome::Completed => {
+                if let Err(error) = self.store.clear_handoff(&scope.thread_id) {
+                    tracing::warn!(%error, "could not clear a used handoff");
+                }
+                (RunState::Completed, None)
+            }
             EngineOutcome::Cancelled => (RunState::Cancelled, None),
             EngineOutcome::Failed(message) => {
                 let sign_in = self.engines.driver(&scope.engine).ok();
@@ -773,7 +796,7 @@ impl RunManager {
             return Ok(None);
         }
         let (revision, dirty) = self.workspace.identity().await?;
-        let handoff = self.store.take_handoff(&thread.id)?;
+        let handoff = self.store.pending_handoff(&thread.id)?;
         let context = run_context(&RunContext {
             library: &root,
             revision: &revision,
@@ -871,9 +894,11 @@ impl RunManager {
         cancel: &CancellationToken,
     ) -> EngineOutcome {
         let mut cancelling = false;
+        let mut shaper = EventShaper::default();
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
         tokio::pin!(stop_deadline);
         let outcome = loop {
+            let text_due = shaper.due();
             tokio::select! {
                 biased;
                 () = cancel.cancelled(), if !cancelling => {
@@ -891,6 +916,11 @@ impl RunManager {
                     handle.cancel.cancel();
                 }
                 () = &mut stop_deadline, if cancelling => break EngineOutcome::Cancelled,
+                () = sleep_until_due(text_due), if text_due.is_some() => {
+                    if let Some(outcome) = self.write_events(scope, shaper.flush()) {
+                        break outcome;
+                    }
+                }
                 event = events.recv() => {
                     let Some(event) = event else {
                         break if cancelling {
@@ -899,14 +929,16 @@ impl RunManager {
                             EngineOutcome::Failed("The engine stopped without finishing.".into())
                         };
                     };
+                    // Anything else keeps its place after the text before it.
+                    if !matches!(event, EngineEvent::Agui(_))
+                        && let Some(outcome) = self.write_events(scope, shaper.flush())
+                    {
+                        break outcome;
+                    }
                     match event {
                         EngineEvent::Agui(event) => {
-                            match self.store.append_run_event(&scope.run_id, &event) {
-                                Ok(_) => {}
-                                Err(CoreError::RunClosed | CoreError::StaleOwner) => {
-                                    break EngineOutcome::Cancelled;
-                                }
-                                Err(error) => break EngineOutcome::Failed(error.public_message()),
+                            if let Some(outcome) = self.write_events(scope, shaper.push(event)) {
+                                break outcome;
                             }
                         }
                         EngineEvent::Session(session) => {
@@ -949,6 +981,7 @@ impl RunManager {
                 }
             }
         };
+        let _ = self.write_events(scope, shaper.flush());
         // Blocked engines hear a denial even when the engine ended on its own.
         if let Err(error) = self
             .gate
@@ -974,6 +1007,20 @@ impl RunManager {
         } else {
             outcome
         }
+    }
+
+    /// Writes events in order. Returns how the run ends if it can no longer write.
+    fn write_events(&self, scope: &RunScope, events: Vec<AgUiEvent>) -> Option<EngineOutcome> {
+        for event in events {
+            match self.store.append_run_event(&scope.run_id, &event) {
+                Ok(_) => {}
+                Err(CoreError::RunClosed | CoreError::StaleOwner) => {
+                    return Some(EngineOutcome::Cancelled);
+                }
+                Err(error) => return Some(EngineOutcome::Failed(error.public_message())),
+            }
+        }
+        None
     }
 
     /// Runs the gate on its own task so a long wait does not stall the event log.

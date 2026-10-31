@@ -1027,3 +1027,11 @@ input[type="radio"] {
     scroll-behavior: auto !important;
   }
 }
+
+:root[data-contrast="more"] {
+  --color-muted: var(--color-textSoft);
+  --color-border: var(--color-outline);
+}
+:root[data-smoothing="on"] {
+  -webkit-font-smoothing: antialiased;
+}

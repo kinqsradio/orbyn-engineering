@@ -5,7 +5,10 @@ import { arrangeThreads } from "../workspace/groups";
 import { touchesOf } from "./approvalDetail";
 import type { ThreadItem } from "./projection";
 import { insertToken, triggerAt } from "./skillMention";
-import { groupWork } from "./timeline";
+import { outputSpans } from "./ansi";
+import type { ToolItem } from "./projection";
+import { arrangeTimeline, groupWork } from "./timeline";
+import { summarizeWork } from "./toolTrace";
 import { withLocalPrompts } from "./Transcript";
 
 describe("triggers", () => {
@@ -88,15 +91,71 @@ describe("groupThreads", () => {
 });
 
 describe("groupWork", () => {
-  const base = { seq: 1, runId: "r" };
-  it("folds consecutive work and measures its span", () => {
+  const base = { seq: 1, runId: "r", ts: "2026-10-31T10:00:00Z" };
+  it("joins neighbouring work and leaves messages out", () => {
     const entries = groupWork([
-      { ...base, kind: "reasoning", key: "a", ts: "2026-10-31T10:00:00Z", text: "", done: true },
-      { ...base, kind: "tool", key: "b", ts: "2026-10-31T10:00:20Z", name: "Read", args: "", output: "", result: "ok", done: true },
-      { ...base, kind: "message", key: "c", ts: "2026-10-31T10:00:21Z", role: "assistant", text: "hi", done: true },
+      { ...base, kind: "reasoning", key: "a", text: "", done: true },
+      { ...base, kind: "tool", key: "b", name: "Read", args: "", output: "", result: "ok", done: true, exitCode: null },
+      { ...base, kind: "message", key: "c", role: "assistant", text: "hi", done: true },
     ]);
     expect(entries.map((entry) => entry.kind)).toEqual(["work", "message"]);
-    expect(entries[0]).toMatchObject({ seconds: 20 });
+  });
+});
+
+describe("arrangeTimeline", () => {
+  const at = (seconds: number) => `2026-10-31T10:00:${String(seconds).padStart(2, "0")}Z`;
+  const base = { seq: 1, runId: "r" };
+  const items: ThreadItem[] = [
+    { ...base, ts: at(0), kind: "message", key: "u", role: "user", text: "go", done: true },
+    { ...base, ts: at(1), kind: "message", key: "m1", role: "assistant", text: "looking", done: true },
+    { ...base, ts: at(2), kind: "tool", key: "t", name: "command", args: "{}", output: "", result: "x", done: true, exitCode: 0 },
+    { ...base, ts: at(3), kind: "message", key: "m2", role: "assistant", text: "done", done: true },
+  ];
+  it("folds a finished turn down to the prompt and the answer", () => {
+    const span = { startedAt: at(0), endedAt: at(49), outcome: "success" as const };
+    const entries = arrangeTimeline(items, { r: span }, null);
+    expect(entries.map((entry) => entry.kind)).toEqual(["message", "fold", "message"]);
+    expect(entries[1]).toMatchObject({ label: "Worked for 49s" });
+  });
+  it("says who stopped a turn", () => {
+    const span = { startedAt: at(0), endedAt: at(9), outcome: "cancelled" as const };
+    expect(arrangeTimeline(items, { r: span }, null)[1]).toMatchObject({ label: "You stopped after 9s" });
+  });
+  it("keeps a running turn open under its header", () => {
+    const span = { startedAt: at(0), endedAt: null, outcome: null };
+    const kinds = arrangeTimeline(items, { r: span }, "r").map((entry) => entry.kind);
+    expect(kinds).toEqual(["message", "working", "message", "work", "message"]);
+  });
+});
+
+describe("summarizeWork", () => {
+  const tool = (name: string, args: unknown, exitCode: number | null = 0): ToolItem => ({
+    seq: 1, runId: "r", ts: "", kind: "tool", key: name, name, args: JSON.stringify(args), output: "", result: "", done: true, exitCode,
+  });
+  it("names up to two kinds of work and counts the rest", () => {
+    const { summary } = summarizeWork([
+      tool("command", { command: "ls" }),
+      tool("command", { command: "pwd" }),
+      tool("file_change", { paths: ["a", "b"] }),
+      tool("web_search", { query: "x" }),
+    ]);
+    expect(summary).toBe("Ran 2 commands, changed 2 files, and performed 1 other action");
+  });
+  it("marks a failed command", () => {
+    expect(summarizeWork([tool("Bash", { command: "x" }, 1)])).toMatchObject({ summary: "Ran 1 command", failed: true });
+  });
+  it("calls reasoning alone a thought", () => {
+    const thought = { seq: 1, runId: "r", ts: "", kind: "reasoning" as const, key: "r", text: "", done: true };
+    expect(summarizeWork([thought, thought]).summary).toBe("Thought (×2)");
+  });
+});
+
+describe("outputSpans", () => {
+  it("strips escapes and keeps colour", () => {
+    expect(outputSpans("\u001b[32mok\u001b[0m plain\u001b]0;title\u0007")).toEqual([
+      { text: "ok", color: "var(--ansi-green)", bold: false },
+      { text: " plain", color: null, bold: false },
+    ]);
   });
 });
 

@@ -107,11 +107,12 @@ export function badgeTint(name: string): number {
   return hash % BADGE_TINTS;
 }
 
-export function clockTime(iso: string): string {
+export function clockTime(iso: string, format: "locale" | "12-hour" | "24-hour" = "locale"): string {
   const date = new Date(iso);
+  const hour12 = format === "locale" ? undefined : format === "12-hour";
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12 });
 }
 
 export function fullTime(iso: string): string {

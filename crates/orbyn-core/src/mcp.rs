@@ -2,7 +2,9 @@
 //! A token is random per run, reaches only that run's engine and dies with the run.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::time::Duration;
 
 use orbyn_contracts::{ActionKind, ComputerAction, Question, QuestionOption};
 use serde_json::{Value, json};
@@ -22,6 +24,17 @@ const INVALID_PARAMS: i64 = -32602;
 const QUESTION_TOOL: &str = "AskUserQuestion";
 /// Tools this server provides. Each governs itself, so `approve` does not ask again.
 const OWN_TOOL_PREFIX: &str = "mcp__orbyn_engineering__";
+
+/// Engines give up on a tool call at about a minute, so a reply has to be sent first.
+const TOOL_BUDGET: Duration = Duration::from_secs(45);
+/// A tool that can wait on a person gets longer, and a late answer does nothing: the
+/// wait is dropped, which expires the approval. Claude's `approve` is a run's own
+/// permission prompt, on the approval timeout rather than this.
+const GATED_BUDGET: Duration = Duration::from_secs(240);
+/// The largest reply a tool sends back, in bytes.
+const MAX_RESULT_BYTES: usize = 256 * 1024;
+/// The largest request accepted, in bytes. A prompt can be 120,000 characters.
+pub const MAX_REQUEST_BYTES: usize = 512 * 1024;
 
 /// The token is unknown or already revoked.
 #[derive(Debug)]
@@ -120,7 +133,13 @@ impl McpService {
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tool_list(binding.permission_prompt) })),
-            "tools/call" => self.call_tool(&binding, &params).await,
+            "tools/call" => {
+                let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+                match budget_for(name) {
+                    Some(budget) => within(budget, self.call_tool(&binding, &params)).await,
+                    None => self.call_tool(&binding, &params).await,
+                }
+            }
             _ => Err((METHOD_NOT_FOUND, format!("Unknown method {method}."))),
         };
         Ok(Some(match reply {
@@ -274,8 +293,43 @@ fn deny_json(message: &str) -> String {
     json!({ "behavior": "deny", "message": message }).to_string()
 }
 
+/// How long a tool may take. `None` is for Claude's permission prompt.
+fn budget_for(name: &str) -> Option<Duration> {
+    if name == "approve" {
+        None
+    } else if name.starts_with("computer_") || crate::mcp_tools::has_effect(name) {
+        Some(GATED_BUDGET)
+    } else {
+        Some(TOOL_BUDGET)
+    }
+}
+
+/// Runs a tool call inside its budget. Going over drops the call, and a call waiting on
+/// an approval expires it as it drops.
+async fn within(
+    budget: Duration,
+    call: impl Future<Output = Result<Value, (i64, String)>>,
+) -> Result<Value, (i64, String)> {
+    match tokio::time::timeout(budget, call).await {
+        Ok(reply) => reply,
+        Err(_) => Ok(text_result("This tool did not finish in time.", true)),
+    }
+}
+
+/// Keeps a reply under the limit, on a character boundary, and says so.
+fn capped(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.len() <= MAX_RESULT_BYTES {
+        return text.into();
+    }
+    let mut end = MAX_RESULT_BYTES;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n[cut off at {MAX_RESULT_BYTES} bytes]", &text[..end]).into()
+}
+
 fn text_result(text: &str, is_error: bool) -> Value {
-    let mut result = json!({ "content": [{ "type": "text", "text": text }] });
+    let mut result = json!({ "content": [{ "type": "text", "text": capped(text) }] });
     if is_error {
         result["isError"] = json!(true);
     }
@@ -416,6 +470,32 @@ fn tool_list(permission_prompt: bool) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_tool_over_its_budget_answers_rather_than_hanging() {
+        let reply = within(Duration::from_millis(5), std::future::pending()).await;
+        let reply = reply.unwrap();
+        assert_eq!(reply["isError"], true);
+    }
+
+    #[test]
+    fn only_the_permission_prompt_has_no_budget() {
+        assert_eq!(budget_for("approve"), None);
+        assert_eq!(budget_for("skill_search"), Some(TOOL_BUDGET));
+        assert_eq!(budget_for("orbyn_thread_list"), Some(TOOL_BUDGET));
+        assert_eq!(budget_for("orbyn_thread_send"), Some(GATED_BUDGET));
+        assert_eq!(budget_for("computer_click"), Some(GATED_BUDGET));
+    }
+
+    #[test]
+    fn a_long_reply_is_cut_on_a_character_boundary_and_says_so() {
+        let text = "é".repeat(MAX_RESULT_BYTES);
+        let result = text_result(&text, false);
+        let shown = result["content"][0]["text"].as_str().unwrap();
+        assert!(shown.len() < MAX_RESULT_BYTES + 64);
+        assert!(shown.ends_with("bytes]"));
+        assert_eq!(text_result("short", false)["content"][0]["text"], "short");
+    }
 
     #[test]
     fn claude_tools_map_to_policy_actions() {

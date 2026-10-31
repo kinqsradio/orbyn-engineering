@@ -54,12 +54,19 @@ admitted -> starting -> running <-> awaiting_approval
   a second admission returns `409 thread_busy`.
 - `interrupted` is assigned only by startup recovery, for runs a dead process
   owned. Recovery also moves pending approvals to `expired`.
+- A stop is saved before anything is signalled, so a run stopped by a person ends
+  `cancelled` even if the process dies first. Recovery closes tools the dead process
+  left open with a note. A run still `admitted` never reached an engine, so its message
+  returns to the front of the held queue, without attachments, and is not resent on its
+  own. A later state may have reached the engine and is never resent.
 - Terminal states never change. Every transition is a compare-and-set on the
   previous state, so a late engine event cannot revive a finished run.
 - A run owner is fenced by `(run_id, owner_epoch)`. `owner_epoch` is a value
   chosen at process start; a stale owner's writes are rejected.
 - A file lock gives each data directory one live `orbynd`, because a second
-  process's recovery would fence runs that are still alive.
+  process's recovery would fence runs that are still alive. The lock file names its
+  owner: a live one refuses at once, and a dead one's lock gets a few seconds to clear,
+  since a child caught mid-exec can hold it briefly after a crash.
 - Pending approvals expire in the same transaction that ends a run.
 
 ## Thread lifecycle
@@ -122,7 +129,9 @@ in a temp folder with no prompt sent.
 
 Claude's list is kept until its CLI version or login changes, which is compared at most
 once a minute. Other lists are kept five minutes, a stand-in 30 seconds, and `?refresh=
-true` always asks. A failure is reported with the list empty rather than as an error.
+true` always asks. A failure, a stand-in or an answer with no models never replaces a good list: the last
+one stays, with `error` saying why, and a read of Claude stops at 4 MiB. With no list
+yet, a failure is reported with the list empty rather than as an error.
 
 A selection is a model, an effort and `options` by `ModelOption` id: `service_tier`
 (`default` is Standard), `fast_mode` (`on`, `off`), `mode` and `config:<id>` for ACP.
@@ -146,7 +155,8 @@ that outlived a model; that run fails with the same message.
 in the order mode, model, options before the prompt, and a mode or option the session
 no longer lists fails the turn. Fast mode reaches Claude as `fastMode` through
 `--settings`, the settings key its schema names, only on a model reporting
-`supportsFastMode`. Reported only when signed in, so this path has no live evidence yet.
+`supportsFastMode`. A logged-out 2.1.150 lists it for `default` once the child
+environment is clean, but no live turn has run with it.
 Codex keeps a turn's values for later turns, so every `turn/start` states model, effort
 and tier, filled from the catalog when unset, and Standard is a `null` tier. A new model
 on a Codex thread goes through `thread/resume` and `turn/start`, keeping the same
@@ -218,7 +228,10 @@ Restoring takes a safety snapshot first, then makes the files match, leaving HEA
 the index and ignored files alone. It refuses while another live thread shares the
 folder. A rewind, a fork and an engine switch cannot carry an engine session, so each
 ends it and leaves a handoff of up to 16,000 characters, oldest text dropped first,
-that goes to the next run once. The log stays whole; a rewind is logged as `CUSTOM
+for the next run. Dropping the session and writing the handoff share a transaction. It
+stays until a run that carried it completes, so a failed start, a stop or a restart
+leaves it pending, and until then `/compact` and `/goal`, which reach an engine bare, are
+`422 unsupported`. The log stays whole; a rewind is logged as `CUSTOM
 thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
 is not used.
 
@@ -300,6 +313,12 @@ keeps uncommitted work, and never while another active thread uses it. `?dry_run
 only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
+## Automatic requests
+
+`GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
+Orbyn makes without being asked, with host, cadence and what turns it off. A new one is
+added there in the same change. Engines make their own requests under their own terms.
+
 ## Automations
 
 A scheduled task fires on an interval, at a fixed time on chosen weekdays in a fixed
@@ -355,7 +374,10 @@ never matches a compound command (`;`, `|`, `&`, redirection, substitution), so
 ## Event stream
 
 Every run event is stored in `thread_events` with a per-thread `seq`, and followers
-are woken after commit. A follower carries only a position and always reads from
+are woken after commit. Text from an engine is merged for up to 33 ms or 8 KiB before it
+is written, and anything else flushes it first, so order holds. Tool traffic is bounded
+per tool: arguments at 16 KiB, output at 8 KiB with a notice, and after 64 tools a run
+keeps a tool's row and not its output. Raw items stay whole for the inspector. A follower carries only a position and always reads from
 the log, so replay and live are one loop. `GET /api/threads/:id/events` is SSE: it
 replays from `Last-Event-ID`, then follows live. Events use AG-UI 1.0 names.
 Delivery to clients is a projection of the log; a client that reconnects loses
@@ -497,7 +519,11 @@ at startup, every six hours and on demand, unless the `background_update_checks`
 setting is `false`. A check only reads: `git fetch` of the library, engine latest
 versions and the app's release. A network failure never blocks startup; it keeps
 the earlier results and sets `error`, and `checked_at` stays at the last full
-success. Nothing applies automatically, ever.
+success. Engines and the library never apply on their own. The app does only with the
+`app_update_mode` preference at `automatic` (the default is `notify`), no active run, an
+install the shell can make and no request that changes anything for two minutes. An
+engine update counts only when the version read back afterwards has changed, since an
+installer's exit code says only that it finished.
 
 `POST /api/updates/apply-all` runs engines, then the library, then the app, stops at
 the first failure, and is refused while any run is active (`409 runs_active`). Every
@@ -554,6 +580,14 @@ yet, so taking control only guards against a watcher's stray input.
 through `lsof`. Windows has no such check, so there it lists loopback and wildcard
 listeners, named through a PowerShell query with `netstat` behind it, with `in_checkout:
 false`, and none of those can be stopped from here.
+
+## Tool budgets
+
+A tool call answers within 45 seconds, under the minute engines allow, and one that
+can wait on a person gets 240. Going over drops the call, and a dropped wait expires its
+approval, so a late answer does nothing. Claude's `approve` is a run's permission prompt
+and stays on `ORBYN_APPROVAL_TIMEOUT_SECS`. `orbyn_thread_wait` waits at most 40 seconds
+and reports `ended: false`. A request can be 512 KiB and a reply is cut at 256 KiB.
 
 ## Service access
 
@@ -667,6 +701,8 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/questions/:id/answer`, `/dismiss` | `AnswerQuestion`; `409 already_decided` carries the existing request |
 | `GET /api/threads/:id/items`, `/items/:item` | `ThreadItemRecord`: raw engine items and exit codes |
 | `GET /api/threads/:id/usage` | `ThreadUsage`, last reported by the engine |
+| `GET /api/threads/:id/runs/:run/changes` | `RunChanges`: files the engine reported writing, up to 200; a command's own writes are not known |
+| `GET /api/network` | `NetworkRequest[]`: every automatic outbound request |
 | `GET /api/threads/:id/files?path=` | `FileEntry[]`, one folder |
 | `GET /api/threads/:id/files/ignored` | Ignored paths |
 | `GET /api/threads/:id/files/search?q=&content=` | `SearchHit[]` by name or by line |

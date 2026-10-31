@@ -231,7 +231,8 @@ fn recovery_interrupts_dead_owners_runs_and_expires_their_approvals() {
         recovery,
         Recovery {
             interrupted_runs: 1,
-            expired_approvals: 1
+            expired_approvals: 1,
+            ..Recovery::default()
         }
     );
     assert_eq!(successor.run(&run).unwrap().state, RunState::Interrupted);
@@ -247,6 +248,84 @@ fn recovery_interrupts_dead_owners_runs_and_expires_their_approvals() {
     // Recovery is idempotent and the thread is usable again.
     assert_eq!(successor.recover().unwrap(), Recovery::default());
     assert!(admit(&successor, &f.thread).is_ok());
+}
+
+#[test]
+fn a_stop_saved_before_a_crash_ends_cancelled_rather_than_interrupted() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    f.store.request_stop(&run).unwrap();
+    let successor = Store::open(&f.path, "epoch-b").unwrap();
+    let recovery = successor.recover().unwrap();
+    assert_eq!(recovery.stopped_runs, 1);
+    assert_eq!(recovery.interrupted_runs, 0);
+    assert_eq!(successor.run(&run).unwrap().state, RunState::Cancelled);
+}
+
+#[test]
+fn a_tool_left_open_by_a_crash_is_closed_with_a_note() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    for (id, close) in [("open", false), ("done", true)] {
+        let start = AgUiEvent::ToolCallStart {
+            tool_call_id: id.into(),
+            tool_call_name: "x".into(),
+        };
+        f.store.append_run_event(&run, &start).unwrap();
+        if close {
+            let end = AgUiEvent::ToolCallEnd {
+                tool_call_id: id.into(),
+            };
+            f.store.append_run_event(&run, &end).unwrap();
+        }
+    }
+    let successor = Store::open(&f.path, "epoch-b").unwrap();
+    successor.recover().unwrap();
+    let notes: Vec<String> = successor
+        .events_after(&f.thread, 0, 1000)
+        .unwrap()
+        .into_iter()
+        .filter_map(|event| match event.event {
+            AgUiEvent::ToolCallResult {
+                tool_call_id,
+                content,
+                ..
+            } => Some(format!("{tool_call_id}: {content}")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notes, ["open: Interrupted before a result."]);
+}
+
+#[test]
+fn a_message_that_never_reached_an_engine_returns_held_to_the_queue() {
+    let f = fixture();
+    let run = f
+        .store
+        .admit_run(Admission {
+            thread_id: &f.thread,
+            prompt: "typed by hand",
+            actor: "t",
+        })
+        .unwrap();
+    let successor = Store::open(&f.path, "epoch-b").unwrap();
+    let recovery = successor.recover().unwrap();
+    assert_eq!(recovery.returned_messages, 1);
+    assert_eq!(successor.run(&run.id).unwrap().state, RunState::Interrupted);
+    let queue = successor.list_queue(&f.thread).unwrap();
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue[0].prompt, "typed by hand");
+    assert!(queue[0].held, "nothing is sent again without a person");
+    assert_eq!(successor.recover().unwrap(), Recovery::default());
+}
+
+#[test]
+fn a_running_message_is_not_sent_twice() {
+    let f = fixture();
+    running(&f.store, &f.thread);
+    let successor = Store::open(&f.path, "epoch-b").unwrap();
+    assert_eq!(successor.recover().unwrap().returned_messages, 0);
+    assert!(successor.list_queue(&f.thread).unwrap().is_empty());
 }
 
 #[test]

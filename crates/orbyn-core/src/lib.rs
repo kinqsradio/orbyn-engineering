@@ -18,6 +18,7 @@ pub mod keybindings;
 pub mod maintenance;
 pub mod mcp;
 pub mod mcp_tools;
+pub mod network;
 pub mod policy;
 pub mod preferences;
 pub mod preview;

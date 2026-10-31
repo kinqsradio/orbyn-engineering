@@ -20,7 +20,10 @@ import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
 import { Toasts } from "../ui/Toasts";
+import { api } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
+import { useAsync } from "../lib/useAsync";
+import { FALLBACK_RULES, matchesKey, runHandlers, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab } from "../state/ui";
@@ -55,62 +58,138 @@ const PANEL_KEYS: Record<string, ContextTab> = {
 const editing = (target: EventTarget | null) =>
   target instanceof HTMLElement && target.matches("input, textarea, select, [contenteditable='true']");
 
-/** The current thread's shortcuts, with their reference defaults. */
-function threadKey(event: KeyboardEvent, route: Route): boolean {
+const openThread = (route: Route) => {
+  const id = route.name === "thread" ? route.id : null;
+  return id ? useWorkspace.getState().threads[id] : undefined;
+};
+
+function jumpRows(route: Route) {
+  const { threads } = useWorkspace.getState();
+  const openId = route.name === "thread" ? route.id : null;
+  return threadsFlat(arrangeThreads(Object.values(threads), Date.now(), openId)).filter(
+    (thread) => !thread.lifecycle?.settled_at,
+  );
+}
+
+function stepThread(route: Route, step: number): boolean {
+  const rows = jumpRows(route);
+  if (rows.length === 0) return false;
+  const at = rows.findIndex((thread) => route.name === "thread" && thread.id === route.id);
+  const next = rows[(at + step + rows.length) % rows.length];
+  if (next) navigate({ name: "thread", id: next.id });
+  return true;
+}
+
+/** Commands the shell owns; the rest belong to whatever registered for them. */
+function runShellCommand(command: string, route: Route): boolean {
+  const ui = useUi.getState();
+  const thread = openThread(route);
+  const jump = /^thread\.jump\.(\d)$/.exec(command);
+  if (jump) {
+    const row = jumpRows(route)[Number(jump[1]) - 1];
+    if (row) navigate({ name: "thread", id: row.id });
+    return row !== undefined;
+  }
+  switch (command) {
+    case "sidebar.toggle":
+      ui.toggleSidebar();
+      return true;
+    case "commandPalette.toggle":
+      ui.setPalette(ui.palette ? null : "root");
+      return true;
+    case "usage.open":
+      navigate({ name: "usage" });
+      return true;
+    case "filePicker.toggle":
+      if (route.name !== "thread") return false;
+      ui.setPalette(ui.palette ? null : "files");
+      return true;
+    case "projectSearch.toggle":
+      if (route.name !== "thread") return false;
+      ui.setPalette(ui.palette ? null : "search");
+      return true;
+    case "navigation.back":
+      window.history.back();
+      return true;
+    case "navigation.forward":
+      window.history.forward();
+      return true;
+    case "chat.new":
+    case "chat.newLocal":
+      navigate({ name: "new", projectId: thread?.project_id ?? null });
+      return true;
+    case "chat.newWithoutProject":
+      navigate({ name: "new", projectId: null });
+      return true;
+    case "thread.previous":
+      return stepThread(route, -1);
+    case "thread.next":
+      return stepThread(route, 1);
+    default:
+      break;
+  }
+  if (route.name !== "thread") return false;
+  switch (command) {
+    case "terminal.toggle":
+      ui.togglePanel("terminal");
+      return true;
+    case "diff.toggle":
+      ui.togglePanel("diff");
+      return true;
+    case "rightPanel.toggle":
+      ui.setPanelOpen(ui.panelOpen !== true);
+      return true;
+    case "rightPanel.close":
+      if (ui.panelOpen !== true) return false;
+      ui.closePanel();
+      return true;
+    case "threadPanel.toggle":
+      ui.toggleDetails();
+      return true;
+    case "thread.settle":
+      if (!thread) return false;
+      void (thread.lifecycle?.settled_at ? unsettleThreads([thread]) : settleThreads([thread]));
+      return true;
+    case "thread.pin":
+      if (!thread) return false;
+      void (thread.lifecycle?.pinned_at ? unpinThreads([thread]) : pinThreads([thread]));
+      return true;
+    case "thread.copyReference":
+      if (!thread) return false;
+      void copyText(thread.id, "Copied thread ID");
+      return true;
+    default:
+      return false;
+  }
+}
+
+function keyContext(route: Route): WhenContext {
+  const active = document.activeElement;
+  const ui = useUi.getState();
+  return {
+    terminalFocus: active?.closest(".terminal-drawer-body") != null,
+    previewFocus: active?.closest("[data-preview]") != null,
+    composerFocus: active?.closest(".composer") != null,
+    editableFocus: editing(active),
+    rightPanelOpen: ui.panelOpen === true,
+    usagePageOpen: route.name === "usage",
+    turnRunning: openThread(route)?.active_run != null,
+    draftRoute: route.name === "new" || route.name === "home",
+  };
+}
+
+/** The undo shortcut outranks everything while its notice shows. */
+function undoKey(event: KeyboardEvent): boolean {
   const mod = /mac/i.test(navigator.platform) ? event.metaKey : event.ctrlKey;
   const key = event.key.toLowerCase();
   if (!mod) {
     if (!["shift", "meta", "control", "alt"].includes(key)) releaseUndoShortcut();
     return false;
   }
-  if (key === "z" && !event.shiftKey && !event.altKey) {
-    if (useUndoNotice.getState().notice && (undoHasShortcut() || !editing(event.target))) {
-      event.preventDefault();
-      void undoLatest();
-      return true;
-    }
-    return false;
-  }
-  if (key === "u" && !event.shiftKey && !event.altKey) {
+  if (key !== "z" || event.shiftKey || event.altKey) return false;
+  if (useUndoNotice.getState().notice && (undoHasShortcut() || !editing(event.target))) {
     event.preventDefault();
-    navigate({ name: "usage" });
-    return true;
-  }
-  if (key === "b" && !event.shiftKey && !event.altKey) {
-    event.preventDefault();
-    useUi.getState().toggleSidebar();
-    return true;
-  }
-  if (!event.shiftKey || event.altKey) return false;
-  const { threads } = useWorkspace.getState();
-  const openId = route.name === "thread" ? route.id : null;
-  const current = openId ? threads[openId] : undefined;
-  if (key === "[" || key === "]" || event.code === "BracketLeft" || event.code === "BracketRight") {
-    const rows = threadsFlat(arrangeThreads(Object.values(threads), Date.now(), openId)).filter(
-      (thread) => !thread.lifecycle?.settled_at,
-    );
-    if (rows.length === 0) return false;
-    const at = rows.findIndex((thread) => thread.id === openId);
-    const step = event.code === "BracketLeft" ? -1 : 1;
-    const next = rows[(at + step + rows.length) % rows.length];
-    event.preventDefault();
-    if (next) navigate({ name: "thread", id: next.id });
-    return true;
-  }
-  if (!current) return false;
-  if (key === "s") {
-    event.preventDefault();
-    void (current.lifecycle?.settled_at ? unsettleThreads([current]) : settleThreads([current]));
-    return true;
-  }
-  if (key === "p") {
-    event.preventDefault();
-    void (current.lifecycle?.pinned_at ? unpinThreads([current]) : pinThreads([current]));
-    return true;
-  }
-  if (key === "c") {
-    event.preventDefault();
-    void copyText(current.id, "Copied thread ID");
+    void undoLatest();
     return true;
   }
   return false;
@@ -157,6 +236,10 @@ function useThreadNotifications(openId: string | null) {
 }
 
 function useGlobalKeys(route: Route) {
+  const keymap = useAsync("keybindings", (signal) => api.keybindings(signal));
+  const reload = keymap.reload;
+  useCommand("keybindings.reload", reload);
+  const rules = keymap.data?.rules ?? FALLBACK_RULES;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) {
@@ -166,7 +249,23 @@ function useGlobalKeys(route: Route) {
         }
         return;
       }
-      if (threadKey(event, route)) return;
+      if (undoKey(event)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        const context = keyContext(route);
+        // The last rule wins, so the file overrides a default.
+        for (const rule of [...rules].reverse()) {
+          if (rule.remove || !matchesKey(rule.key, event) || !whenHolds(rule.when, context)) continue;
+          if (runHandlers(rule.command) || runShellCommand(rule.command, route)) {
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+      const digit = /^Digit([1-9])$/.exec(event.code);
+      if (digit && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+        if (runShellCommand(`thread.jump.${digit[1]}`, route)) event.preventDefault();
+        return;
+      }
       if (!event.altKey || event.metaKey || event.ctrlKey) return;
       if (event.code === "KeyN") {
         event.preventDefault();
@@ -178,7 +277,7 @@ function useGlobalKeys(route: Route) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [route]);
+  }, [route, rules]);
 }
 
 /** Moves focus into the new screen, so keyboard and screen reader users follow it. */
@@ -218,17 +317,6 @@ export function Shell() {
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
   useThreadNotifications(route.name === "thread" ? route.id : null);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        const { palette: open, setPalette: toggle } = useUi.getState();
-        toggle(open ? null : "root");
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);
 

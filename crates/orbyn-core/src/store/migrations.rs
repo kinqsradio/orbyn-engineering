@@ -14,7 +14,12 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (10, PROJECT_PREFERENCES),
     (11, AUTOMATIONS),
     (12, MODEL_OPTIONS),
+    (13, STOP_REQUESTS),
 ];
+
+const STOP_REQUESTS: &str = r#"
+ALTER TABLE runs ADD COLUMN stop_requested INTEGER NOT NULL DEFAULT 0;
+"#;
 
 const MODEL_OPTIONS: &str = r#"
 ALTER TABLE threads ADD COLUMN options TEXT NOT NULL DEFAULT '{}';

@@ -992,3 +992,20 @@ details[open] > summary > .chev {
   z-index: 40;
   text-align: left;
 }
+
+/* Number badges while the jump modifier is held. */
+[data-jump-hint]::after {
+  content: attr(data-jump-hint);
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: var(--color-chip);
+  color: var(--color-text);
+  font-size: var(--text-caption);
+  transform: translateY(-50%);
+}

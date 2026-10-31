@@ -127,6 +127,19 @@ where
     }
 }
 
+/// A request that changes something means a person is here, which puts off an
+/// automatic update. Reads don't count: a window left open polls.
+pub async fn note_activity(
+    State(state): State<AppState>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request.method() != axum::http::Method::GET {
+        state.core.updates.note_activity();
+    }
+    next.run(request).await
+}
+
 pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
     Json(ServerInfo {
         version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -411,6 +424,17 @@ pub async fn list_items(
 ) -> ApiResult<impl IntoResponse> {
     state.core.store.thread(&id)?;
     Ok(Json(state.core.store.items(&id, 500)?))
+}
+
+pub async fn run_changes(
+    State(state): State<AppState>,
+    Path((id, run)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.run_changes(&id, &run)?))
+}
+
+pub async fn network_requests() -> impl IntoResponse {
+    Json(orbyn_core::network::automatic_requests())
 }
 
 pub async fn get_item(

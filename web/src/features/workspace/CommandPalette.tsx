@@ -1,8 +1,10 @@
-import { FolderPlus, MessageSquare, Search, Settings, SquarePen } from "lucide-react";
+import { File, FolderPlus, MessageSquare, Search, Settings, SquarePen, SunMoon } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { api } from "../../api/client";
 import { compactAge } from "../../lib/format";
-import { navigate, SETTINGS_SECTIONS, type Route } from "../../state/route";
-import type { PaletteStart } from "../../state/ui";
+import { useAsync } from "../../lib/useAsync";
+import { navigate, parseRoute, SETTINGS_SECTIONS, type Route } from "../../state/route";
+import { useUi, type PaletteStart } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
 import { AddProjectPalette } from "./AddProjectPalette";
@@ -13,14 +15,35 @@ interface Entry {
   label: string;
   meta?: string;
   icon: ReactNode;
-  route: Route | "add-project" | "new-in";
+  /** Extra words that find this entry, such as a thread's project and branch. */
+  search?: string;
+  route: Route | "add-project" | "new-in" | "toggle-theme" | { file: string; line: number | null };
 }
 
 const title = (section: string) =>
   section.charAt(0).toUpperCase() + section.slice(1);
 
+const searchTitle: Partial<Record<PaletteStart, string>> = {
+  files: "Go to file",
+  search: "Search in project",
+};
+
+/** Files or text in the open thread's checkout. */
+function useCheckoutSearch(start: PaletteStart, query: string) {
+  const route = parseRoute(window.location.hash);
+  const threadId = route.name === "thread" ? route.id : null;
+  const content = start === "search";
+  const key = `palette:${start}:${threadId ?? ""}:${query}`;
+  const hits = useAsync(key, async (signal) => {
+    if (!threadId || !query.trim() || !searchTitle[start]) return [];
+    return api.searchFiles(threadId, query.trim(), content, signal);
+  });
+  return hits.data ?? [];
+}
+
 export function CommandPalette({ start, onClose }: { start: PaletteStart; onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);
+  const allProjects = useWorkspace((state) => state.projects.data);
   const [adding, setAdding] = useState(start === "add-project");
   const ref = useRef<HTMLDialogElement>(null);
   const [newIn, setNewIn] = useState(false);
@@ -39,8 +62,20 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
     };
   }, []);
 
+  const hits = useCheckoutSearch(start, query);
   const entries = useMemo<Entry[]>(() => {
+    if (searchTitle[start]) {
+      return hits.map((hit) => ({
+        key: `${hit.path}:${hit.line}`,
+        group: searchTitle[start] ?? "",
+        label: hit.text && start === "search" ? hit.text.trim() : hit.path,
+        meta: start === "search" ? `${hit.path}:${hit.line}` : undefined,
+        icon: <File size={16} aria-hidden />,
+        route: { file: hit.path, line: hit.line || null },
+      }));
+    }
     const actions: Entry[] = [
+      { key: "theme", group: "Actions", label: "Toggle theme", icon: <SunMoon size={16} aria-hidden />, route: "toggle-theme" },
       { key: "new", group: "Actions", label: "New thread", icon: <SquarePen size={16} aria-hidden />, route: { name: "new", projectId: null } },
       { key: "new-in", group: "Actions", label: "New thread in...", icon: <SquarePen size={16} aria-hidden />, route: "new-in" },
       { key: "add", group: "Actions", label: "Add project", icon: <FolderPlus size={16} aria-hidden />, route: "add-project" },
@@ -60,6 +95,7 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
         group: "Threads",
         label: thread.title,
         meta: compactAge(thread.updated_at),
+        search: `${allProjects?.find((project) => project.id === thread.project_id)?.name ?? ""} ${thread.worktree?.branch ?? ""}`,
         icon: <MessageSquare size={16} aria-hidden />,
         route: { name: "thread", id: thread.id } as Route,
       }));
@@ -72,13 +108,29 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       route: { name: "new", projectId: project.id },
     }));
     const all = newIn ? inProjects : [...actions, ...recent];
-    return (needle ? all.filter((entry) => entry.label.toLowerCase().includes(needle)) : all).slice(0, 50);
-  }, [threads, query, newIn, projects]);
+    const words = needle.split(/\s+/).filter(Boolean);
+    const found = (entry: Entry) => {
+      const text = `${entry.label} ${entry.search ?? ""}`.toLowerCase();
+      return words.every((word) => text.includes(word));
+    };
+    return (needle ? all.filter(found) : all).slice(0, 50);
+  }, [threads, query, newIn, projects, allProjects, hits, start]);
 
   const choose = (entry: Entry | undefined) => {
     if (!entry) return;
     if (entry.route === "add-project") {
       setAdding(true);
+      return;
+    }
+    if (entry.route === "toggle-theme") {
+      const { theme, setTheme } = useUi.getState();
+      setTheme(theme === "dark" ? "light" : "dark");
+      onClose();
+      return;
+    }
+    if (typeof entry.route === "object" && "file" in entry.route) {
+      useUi.getState().revealFile(entry.route.file, entry.route.line);
+      onClose();
       return;
     }
     if (entry.route === "new-in") {
@@ -128,7 +180,7 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
           aria-expanded
           aria-controls="palette-list"
           aria-label="Search"
-          placeholder="Search threads and commands"
+          placeholder={searchTitle[start] ?? "Search threads and commands"}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);

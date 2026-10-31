@@ -94,9 +94,49 @@ export function GeneralSection() {
 }
 
 export function ChatSection() {
+  const math = useUi((state) => state.mathRendering);
+  const wordWrap = useUi((state) => state.wordWrap);
+  const chatWidth = useUi((state) => state.chatWidth);
+  const timestampFormat = useUi((state) => state.timestampFormat);
+  const sendShortcut = useUi((state) => state.sendShortcut);
+  const followUpBehavior = useUi((state) => state.followUpBehavior);
+  const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
       {heading("Chat")}
+      <SettingGroup title="Display">
+        <SettingRow title="Chat width">
+          <select aria-label="Chat width" value={chatWidth} onChange={(event) => setPrefs({ chatWidth: event.target.value as "comfortable" | "wide" | "full" })}>
+            <option value="comfortable">Comfortable</option>
+            <option value="wide">Wide</option>
+            <option value="full">Full</option>
+          </select>
+        </SettingRow>
+        <SettingRow title="Timestamp format">
+          <select aria-label="Timestamp format" value={timestampFormat} onChange={(event) => setPrefs({ timestampFormat: event.target.value as "locale" | "12-hour" | "24-hour" })}>
+            <option value="locale">System default</option>
+            <option value="12-hour">12-hour</option>
+            <option value="24-hour">24-hour</option>
+          </select>
+        </SettingRow>
+        <Toggle title="Word wrap" on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
+        <Toggle title="Math rendering" on={math} set={(on) => setPrefs({ mathRendering: on })} />
+      </SettingGroup>
+      <SettingGroup title="Composer">
+        <SettingRow title="Send shortcut">
+          <select aria-label="Send shortcut" value={sendShortcut} onChange={(event) => setPrefs({ sendShortcut: event.target.value as "enter" | "mod-enter-multiline" | "mod-enter" })}>
+            <option value="enter">Enter</option>
+            <option value="mod-enter-multiline">Mod+Enter when multiline</option>
+            <option value="mod-enter">Mod+Enter</option>
+          </select>
+        </SettingRow>
+        <SettingRow title="Follow-up behavior">
+          <select aria-label="Follow-up behavior" value={followUpBehavior} onChange={(event) => setPrefs({ followUpBehavior: event.target.value as "queue" | "steer" })}>
+            <option value="queue">Queue</option>
+            <option value="steer">Steer</option>
+          </select>
+        </SettingRow>
+      </SettingGroup>
       <PreferenceGroups
         groups={[
           {

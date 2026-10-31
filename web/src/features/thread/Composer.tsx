@@ -1,14 +1,34 @@
-import { ArrowUp, Folder, GitBranch, Paperclip, ShieldOff, Square, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, Square, X } from "lucide-react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import { api } from "../../api/client";
+import { useCommand } from "../../app/shortcuts";
 import type { Attachment, EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
-import { useUi } from "../../state/ui";
+import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { useWorkspace } from "../../state/workspace";
+import { ComposerBanners, ContextMeter, InlineLimits, StashDrawer } from "./ComposerExtras";
+import {
+  continueListLine,
+  indentListLine,
+  LARGE_PASTE_BYTES,
+  localCommand,
+  promptHistory,
+  recallStep,
+  type RecallPosition,
+} from "./composerInput";
 import { ACCESS, EffortTrigger, useTraitsMenu } from "./ComposerTraits";
 import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
@@ -21,6 +41,17 @@ interface Suggestion {
   detail: string | null;
 }
 
+interface ShownAttachment extends Attachment {
+  /** An object URL for images added here, so the shelf can show them. */
+  preview: string | null;
+}
+
+const NO_STASHES: StashedPrompt[] = [];
+const LOCAL_COMMANDS: Suggestion[] = [
+  { value: "plan", detail: "Switch to Plan" },
+  { value: "default", detail: "Switch back to Build" },
+  { value: "usage-limits", detail: "Show usage limits" },
+];
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
 
@@ -50,7 +81,19 @@ export function Composer({
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<ShownAttachment[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [recall, setRecall] = useState<RecallPosition | null>(null);
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const [stashOpen, setStashOpen] = useState(false);
+  const shiftPaste = useRef(false);
+  const followUpBehavior = useUi((state) => state.followUpBehavior);
+  const sendShortcut = useUi((state) => state.sendShortcut);
+  const persistentContext = useUi((state) => state.persistentComposerContext);
+  const skillsInSlash = useUi((state) => state.skillsInSlashMenu);
+  const stashes = useUi((state) => state.stashes[thread.id] ?? NO_STASHES);
+  const log = useThreadLogs((state) => state.logs[thread.id]);
+  const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
   const [uploading, setUploading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const refreshAll = useWorkspace((state) => state.refreshAll);
@@ -76,9 +119,15 @@ export function Composer({
     if (trigger.char === "/") {
       const commands = await api.commands(thread.id, signal);
       const needle = trigger.query.toLowerCase();
-      return commands
-        .filter((command) => command.name.toLowerCase().includes(needle))
-        .map((command) => ({ value: command.name, detail: command.description }));
+      const local = LOCAL_COMMANDS.filter((command) => command.value.includes(needle));
+      const skills = skillsInSlash ? (await api.mentions(thread.id, trigger.query, signal)).skills : [];
+      return [
+        ...local,
+        ...commands
+          .filter((command) => command.name.toLowerCase().includes(needle))
+          .map((command) => ({ value: command.name, detail: command.description })),
+        ...skills.map((value) => ({ value, detail: "Skill" })),
+      ];
     }
     const found = await api.mentions(thread.id, trigger.query, signal);
     const values = trigger.char === "$" ? found.skills : found.files;
@@ -98,15 +147,39 @@ export function Composer({
 
   const pick = (suggestion: Suggestion) => {
     if (!trigger) return;
+    if (runLocal(`/${suggestion.value}`)) return;
     const next = insertToken(draft, caret, trigger, suggestion.value);
     setDraft(thread.id, next.text);
     setCaret(next.caret);
     requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
   };
 
-  const send = async () => {
+  const setPlanMode = async (on: boolean) => {
+    setError(null);
+    try {
+      putThread(await api.patchThread(thread.id, { plan_mode: on }));
+    } catch (failure) {
+      setError(`Couldn't change the mode. ${toFailure(failure).message}`);
+    }
+  };
+
+  /** Handles what the composer does itself; the agent never sees these. */
+  const runLocal = (text: string): boolean => {
+    const command = localCommand(text);
+    if (!command) return false;
+    setDraft(thread.id, "");
+    if (command === "plan") void setPlanMode(true);
+    if (command === "default") void setPlanMode(false);
+    if (command === "usage-limits") setLimitsOpen(true);
+    return true;
+  };
+
+  const send = async (followUp: "default" | "opposite" = "default") => {
     if (!canSend) return;
     const prompt = draft;
+    if (runLocal(prompt)) return;
+    const queued = followUpBehavior === "queue";
+    const steering = busy && (followUp === "default" ? !queued : queued);
     setSending(true);
     setError(null);
     try {
@@ -114,8 +187,10 @@ export function Composer({
       await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false)));
       const ids = attachments.map((file) => file.id);
       const run = busy ? null : await api.startRun(thread.id, prompt.trim(), ids);
-      if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
+      if (steering) await api.steer(thread.id, prompt.trim());
+      else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
+      setRecall(null);
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
       setDraft(thread.id, current === prompt ? "" : current);
@@ -132,7 +207,9 @@ export function Composer({
       setError(
         known.code === "thread_busy"
           ? "A run started first. Your message is kept, so send it again to queue it."
-          : `Couldn't start the run. ${known.message} Your message is kept.`,
+          : steering
+            ? `Couldn't steer. ${known.message} Your message is kept.`
+            : `Couldn't start the run. ${known.message} Your message is kept.`,
       );
       void refreshThread(thread.id);
     } finally {
@@ -161,17 +238,122 @@ export function Composer({
         return;
       }
     }
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing) return;
+    shiftPaste.current = event.shiftKey && event.key.toLowerCase() === "v";
+    const element = event.currentTarget;
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.metaKey && !event.ctrlKey) {
+      const edge = event.key === "ArrowUp" ? element.selectionStart === 0 : element.selectionEnd === draft.length;
+      const step = edge ? recallStep(history, recall, draft, event.key === "ArrowUp" ? -1 : 1) : null;
+      if (step) {
+        event.preventDefault();
+        setRecall(step.position);
+        setDraft(thread.id, step.text);
+      }
+      return;
+    }
+    if (event.key === "Tab" && !menuOpen) {
+      const next = indentListLine(draft, element.selectionStart, event.shiftKey);
+      if (next) {
+        event.preventDefault();
+        setDraft(thread.id, next.text);
+        requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
+        return;
+      }
+    }
+    if (event.key !== "Enter") return;
+    if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
+      const next = continueListLine(draft, element.selectionStart);
+      if (next) {
+        event.preventDefault();
+        setDraft(thread.id, next.text);
+        requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
+      }
+      return;
+    }
+    const mod = event.metaKey || event.ctrlKey;
+    const multiline = draft.includes("\n");
+    const enterSends = sendShortcut === "enter" || (sendShortcut === "mod-enter-multiline" && !multiline);
+    if (!enterSends && !mod) return;
     event.preventDefault();
-    void send();
+    void send(busy && (enterSends ? mod : event.shiftKey) ? "opposite" : "default");
   };
 
-  const upload = async (files: FileList | null) => {
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = [...event.clipboardData.files];
+    if (files.length > 0) {
+      event.preventDefault();
+      void upload(files);
+      return;
+    }
+    const text = event.clipboardData.getData("text/plain");
+    if (text.length >= LARGE_PASTE_BYTES && !shiftPaste.current) {
+      event.preventDefault();
+      void upload([new File([text], "pasted-text.txt", { type: "text/plain" })]);
+    }
+    shiftPaste.current = false;
+  };
+
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault();
+    setDragging(false);
+    if (event.dataTransfer.files.length > 0) void upload([...event.dataTransfer.files]);
+  };
+
+  const stash = () => {
+    const stored = useUi.getState().stashes;
+    const list = stored[thread.id] ?? [];
+    const { setPrefs: save } = useUi.getState();
+    if (draft.trim()) {
+      const entry = { id: crypto.randomUUID(), text: draft, at: new Date().toISOString() };
+      save({ stashes: { ...stored, [thread.id]: [entry, ...list] } });
+      setDraft(thread.id, "");
+      useUi.getState().pushToast("Prompt stashed");
+    } else if (list.length === 1 && list[0]) {
+      restoreStash(list[0].id);
+    } else if (list.length > 1) {
+      setStashOpen(true);
+    }
+  };
+
+  const dropStash = (id: string) => {
+    const stored = useUi.getState().stashes;
+    useUi.getState().setPrefs({
+      stashes: { ...stored, [thread.id]: (stored[thread.id] ?? []).filter((entry) => entry.id !== id) },
+    });
+  };
+
+  const restoreStash = (id: string) => {
+    const entry = stashes.find((candidate) => candidate.id === id);
+    if (!entry) return;
+    setDraft(thread.id, entry.text);
+    dropStash(id);
+    setStashOpen(false);
+    field.current?.focus();
+  };
+
+  useCommand("composer.stash", () => {
+    stash();
+  });
+  useCommand("thread.steerQueuedMessage", () => {
+    const oldest = queue.data?.[0];
+    if (!oldest || !busy) return false;
+    void api
+      .steer(thread.id, oldest.prompt)
+      .then(() => api.removeQueued(oldest.id))
+      .then(reloadQueue, (failure: unknown) => setError(`Couldn't steer. ${toFailure(failure).message}`));
+  });
+
+  const upload = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
     setUploading(true);
     setError(null);
     try {
-      const added = await Promise.all([...files].map((file) => api.uploadAttachment(thread.id, file)));
+      const added = await Promise.all(
+        [...files].map(async (file) => ({
+          ...(await api.uploadAttachment(thread.id, file)),
+          preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        })),
+      );
       setAttachments((current) => [...current, ...added]);
     } catch (failure) {
       setError(`Couldn't attach that. ${toFailure(failure).message}`);
@@ -211,6 +393,7 @@ export function Composer({
   };
 
   const unmanaged = engine !== null && !engine.capabilities.managed;
+  const planMode = thread.lifecycle?.plan_mode ?? false;
   const access = thread.lifecycle?.permission_mode ?? "supervised";
   const AccessIcon = ACCESS[access].icon;
   const engineName = engine?.name ?? thread.engine;
@@ -241,6 +424,9 @@ export function Composer({
       setError(`Couldn't change the model. ${toFailure(failure).message}`);
     }
   };
+  useCommand("composer.mode", () => {
+    void setPlanMode(!planMode);
+  });
   const traits = useTraitsMenu({
     model,
     effort: thread.effort ?? null,
@@ -272,7 +458,21 @@ export function Composer({
       ) : null}
       <QueuedMessages threadId={thread.id} items={queue.data ?? []} running={busy} onChange={reloadQueue} />
       <QuestionPanel threadId={thread.id} waiting={thread.active_run?.state === "awaiting_approval"} />
-      <div className="composer-box">
+      <ComposerBanners engine={engine} />
+      {limitsOpen ? <InlineLimits threadId={thread.id} onClose={() => setLimitsOpen(false)} /> : null}
+      {stashOpen ? (
+        <StashDrawer entries={stashes} onRestore={restoreStash} onDelete={dropStash} onClose={() => setStashOpen(false)} />
+      ) : null}
+      <div
+        className="composer-box"
+        data-dragging={dragging || undefined}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
         {menuOpen ? (
           <ul className="mention-menu" role="listbox" aria-label="Suggestions">
             {matches.map((suggestion, at) => (
@@ -297,6 +497,7 @@ export function Composer({
           <ul className="attachment-strip" aria-label="Attachments">
             {attachments.map((file) => (
               <li key={file.id}>
+                {file.preview ? <img src={file.preview} alt="" className="attachment-thumb" /> : null}
                 <span>{file.name}</span>
                 <button
                   type="button"
@@ -321,6 +522,8 @@ export function Composer({
           }}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          dir="auto"
           aria-label={`Message ${thread.title}`}
           aria-describedby="composer-help"
           placeholder={
@@ -349,7 +552,30 @@ export function Composer({
           >
             <Paperclip size={16} aria-hidden />
           </IconButton>
+          {stashes.length > 0 ? (
+            <button
+              type="button"
+              className="composer-control"
+              aria-label={`${stashes.length} stashed prompts`}
+              onClick={() => setStashOpen(!stashOpen)}
+            >
+              <Archive size={14} aria-hidden />
+              <span>{stashes.length}</span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="composer-control"
+            aria-pressed={planMode}
+            data-on={planMode || undefined}
+            disabled={busy || !thread.lifecycle}
+            onClick={() => void setPlanMode(!planMode)}
+          >
+            <ListChecks size={14} aria-hidden />
+            <span>Plan</span>
+          </button>
           <span className="composer-spacer" />
+          <ContextMeter threadId={thread.id} />
           {engine ? (
             <ModelPickerTrigger
               engines={installed}
@@ -403,7 +629,7 @@ export function Composer({
           )}
         </div>
       </div>
-      <div className="composer-context" hidden={!showContext}>
+      <div className="composer-context" hidden={!showContext && !persistentContext}>
         <dl>
           <div title={thread.cwd}>
             <dt className="sr-only">Checkout</dt>

@@ -347,7 +347,27 @@ const threadIdAt = (list: HTMLElement, y: number) => {
 const searchFields = (thread: Thread, project: string) =>
   `${thread.title} ${project} ${thread.worktree?.branch ?? ""}`.toLowerCase();
 
+/** True while Mod is held on its own, when number badges show on the first rows. */
+function useJumpHeld() {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    const sync = (event: KeyboardEvent) =>
+      setHeld((/mac/i.test(navigator.platform) ? event.metaKey : event.ctrlKey) && !event.shiftKey && !event.altKey);
+    const clear = () => setHeld(false);
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
+  return held;
+}
+
 export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
+  const jumpHeld = useJumpHeld();
   const projects = useWorkspace((state) => state.projects);
   const visibleProjects = useVisibleProjects();
   const setPalette = useUi((state) => state.setPalette);
@@ -412,6 +432,12 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
   const orderedRef = useRef<Thread[]>([]);
   orderedRef.current = threadsFlat(sections);
+  const jumpRank = new Map(
+    orderedRef.current
+      .filter((thread) => !thread.lifecycle?.settled_at)
+      .slice(0, 9)
+      .map((thread, at) => [thread.id, at + 1]),
+  );
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const sectionsRef = useRef(sections);
@@ -662,6 +688,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     return (
       <ThreadRow
         key={thread.id}
+        jumpHint={jumpHeld ? jumpRank.get(thread.id) ?? null : null}
         thread={thread}
         section={section}
         selected={thread.id === selectedThread}

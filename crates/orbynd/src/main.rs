@@ -209,6 +209,11 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/mentions", get(api::mentions))
         .route("/api/threads/{id}/commands", get(api::slash_commands))
         .route("/api/threads/{id}/items", get(api::list_items))
+        .route(
+            "/api/threads/{id}/runs/{run}/changes",
+            get(api::run_changes),
+        )
+        .route("/api/network", get(api::network_requests))
         .route("/api/threads/{id}/items/{item}", get(api::get_item))
         .route("/api/threads/{id}/usage", get(api::thread_usage))
         .route("/api/threads/{id}/files", get(api::file_tree))
@@ -470,12 +475,18 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/scripts",
             get(terminal_ws::scripts).post(terminal_ws::run_script),
         )
+        .route_layer(from_fn_with_state(state.clone(), api::note_activity))
         .route_layer(from_fn_with_state(access.clone(), access::require_auth));
     Router::new()
         .merge(protected)
         .route("/auth/session", post(api::open_session))
         .route("/hooks/{id}/{token}", post(api::webhook))
-        .route("/mcp/{thread_token}", post(api::mcp).get(api::mcp_get))
+        .route(
+            "/mcp/{thread_token}",
+            post(api::mcp)
+                .get(api::mcp_get)
+                .layer(DefaultBodyLimit::max(orbyn_core::mcp::MAX_REQUEST_BYTES)),
+        )
         .fallback(ui::serve)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(from_fn_with_state(access, access::guard_origin))

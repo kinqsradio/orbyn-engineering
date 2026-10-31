@@ -358,6 +358,43 @@ async fn a_missing_login_points_at_the_vendors_command() {
 }
 
 #[tokio::test]
+async fn a_failed_refresh_keeps_the_list_and_says_why() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(false, &launch_file), "codex").await;
+    let good = service.json("/api/engines/codex/models").await;
+    std::fs::write(dir.path().join("lost-models"), "").unwrap();
+    let kept = service.json("/api/engines/codex/models?refresh=true").await;
+    assert_eq!(kept["models"], good["models"]);
+    assert!(kept["error"].is_string(), "{kept}");
+    // The last good list still refuses what it knows a model does not offer.
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/queue"),
+            json!({ "prompt": "hi", "effort": "never" }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn an_oversized_mcp_request_is_refused() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, engines(false, &dir.path().join("l")), "codex").await;
+    let response = service
+        .post("/mcp/anything")
+        .header("content-type", "application/json")
+        .body(format!("\"{}\"", "x".repeat(600 * 1024)))
+        .send()
+        .await
+        .unwrap();
+    // A body under the limit would get as far as the unknown token, which is a 404.
+    assert_eq!(response.status().as_u16(), 400);
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn a_selection_follows_the_queue_a_fork_and_new_threads() {
     let dir = TempDir::new();
     let launch_file = dir.path().join("l");

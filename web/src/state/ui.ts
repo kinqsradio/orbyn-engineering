@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings/themes";
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
@@ -42,6 +43,28 @@ interface Prefs {
   modelOrder: string[];
   effortDisplay: "label" | "bars";
   preferredEditor: string | null;
+  /** TeX in rendered Markdown, off unless asked for. */
+  mathRendering: boolean;
+  chatWidth: "comfortable" | "wide" | "full";
+  /** Wraps long lines in code and diffs. */
+  wordWrap: boolean;
+  timestampFormat: "locale" | "12-hour" | "24-hour";
+  sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
+  followUpBehavior: "queue" | "steer";
+  /** A named palette over the base theme, for each scheme. */
+  lightPreset: string | null;
+  darkPreset: string | null;
+  /** Colours the person set themselves, which win over any preset. */
+  customColors: ThemeColors;
+  typography: Typography;
+  contrast: "normal" | "more";
+  fontSmoothing: boolean;
+  /** Keeps checkout and branch under the composer after the first send. */
+  persistentComposerContext: boolean;
+  /** Lists skills in the `/` menu as well as under `$`. */
+  skillsInSlashMenu: boolean;
+  /** Saved prompts by thread, newest first. */
+  stashes: Record<string, StashedPrompt[]>;
   threadNotifications: boolean;
   inAppNotifications: boolean;
   confirmUnpin: boolean;
@@ -49,6 +72,22 @@ interface Prefs {
   confirmDelete: boolean;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
+}
+
+export interface Typography {
+  uiFont: string;
+  /** Interface size in px; everything scales from it. */
+  uiSize: number;
+  chatSize: number;
+  codeFont: string;
+  codeSize: number;
+  terminalSize: number;
+}
+
+export interface StashedPrompt {
+  id: string;
+  text: string;
+  at: string;
 }
 
 /** What each thread remembers of its layout. Drafts share the `draft` key until sent. */
@@ -65,7 +104,7 @@ export interface ThreadLayout {
 export const DRAFT_LAYOUT = "draft";
 const MAX_LAYOUTS = 200;
 
-export type PaletteStart = "root" | "add-project";
+export type PaletteStart = "root" | "add-project" | "files" | "search";
 
 export const DEFAULT_SIDEBAR_WIDTH = 208;
 const TOAST_MS = 4000;
@@ -99,6 +138,21 @@ const defaults: Prefs = {
   modelOrder: [],
   effortDisplay: "label",
   preferredEditor: null,
+  mathRendering: false,
+  chatWidth: "comfortable",
+  wordWrap: false,
+  timestampFormat: "locale",
+  sendShortcut: "enter",
+  followUpBehavior: "queue",
+  lightPreset: null,
+  darkPreset: null,
+  customColors: {},
+  typography: { uiFont: "", uiSize: 16, chatSize: 14, codeFont: "", codeSize: 13, terminalSize: 12 },
+  contrast: "normal",
+  fontSmoothing: true,
+  persistentComposerContext: false,
+  skillsInSlashMenu: false,
+  stashes: {},
   threadNotifications: false,
   inAppNotifications: false,
   confirmUnpin: false,
@@ -117,6 +171,12 @@ interface UiState extends Prefs {
   dismissToast(id: number): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
+  /** A file the Files surface should open next, with the line to reveal. */
+  fileReveal: { path: string; line: number | null; nonce: number } | null;
+  revealFile(path: string, line: number | null): void;
+  /** A file the Diff surface should scroll to. */
+  diffReveal: { path: string; nonce: number } | null;
+  revealDiff(path: string): void;
   togglePanel(tab: ContextTab): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
@@ -135,27 +195,7 @@ interface UiState extends Prefs {
   setSidebarWidth(width: number): void;
   toggleGroup(group: string, fallback: boolean): void;
   setPrefs(
-    prefs: Partial<
-      Pick<
-        Prefs,
-        | "projectFilter"
-        | "projectFolders"
-        | "multilineRows"
-        | "threadSort"
-        | "projectSort"
-        | "modelFavorites"
-        | "modelHidden"
-        | "modelOrder"
-        | "effortDisplay"
-        | "preferredEditor"
-        | "threadNotifications"
-        | "inAppNotifications"
-        | "confirmUnpin"
-        | "confirmArchive"
-        | "confirmDelete"
-        | "lastModel"
-      >
-    >,
+    prefs: Partial<Omit<Prefs, "layouts" | "layoutKey">>,
   ): void;
   setDraft(threadId: string, text: string): void;
   setLastThread(threadId: string): void;
@@ -213,6 +253,21 @@ const prefsOf = (state: Prefs): Prefs => ({
   modelOrder: state.modelOrder,
   effortDisplay: state.effortDisplay,
   preferredEditor: state.preferredEditor,
+  mathRendering: state.mathRendering,
+  chatWidth: state.chatWidth,
+  wordWrap: state.wordWrap,
+  timestampFormat: state.timestampFormat,
+  sendShortcut: state.sendShortcut,
+  followUpBehavior: state.followUpBehavior,
+  lightPreset: state.lightPreset,
+  darkPreset: state.darkPreset,
+  customColors: state.customColors,
+  typography: state.typography,
+  contrast: state.contrast,
+  fontSmoothing: state.fontSmoothing,
+  persistentComposerContext: state.persistentComposerContext,
+  skillsInSlashMenu: state.skillsInSlashMenu,
+  stashes: state.stashes,
   threadNotifications: state.threadNotifications,
   inAppNotifications: state.inAppNotifications,
   confirmUnpin: state.confirmUnpin,
@@ -259,6 +314,26 @@ export const useUi = create<UiState>((set, get) => {
     setTheme(theme) {
       set({ theme });
       savePrefs();
+    },
+    diffReveal: null,
+    revealDiff(path) {
+      const { openSurfaces } = get();
+      set({
+        diffReveal: { path, nonce: Date.now() },
+        panelOpen: true,
+        panelTab: "diff",
+        openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
+      });
+    },
+    fileReveal: null,
+    revealFile(path, line) {
+      const { openSurfaces } = get();
+      set({
+        fileReveal: { path, line, nonce: Date.now() },
+        panelOpen: true,
+        panelTab: "files",
+        openSurfaces: openSurfaces.includes("files") ? openSurfaces : [...openSurfaces, "files"],
+      });
     },
     togglePanel(tab) {
       if (tab === "terminal") {
@@ -366,5 +441,23 @@ export function resolveTheme(choice: ThemeChoice): "light" | "dark" {
 }
 
 export function applyTheme(choice: ThemeChoice): void {
-  document.documentElement.dataset.theme = resolveTheme(choice);
+  const scheme = resolveTheme(choice);
+  const root = document.documentElement;
+  root.dataset.theme = scheme;
+  const { lightPreset, darkPreset, customColors, typography, contrast, fontSmoothing } = useUi.getState();
+  const preset = presetById(scheme === "dark" ? darkPreset : lightPreset);
+  for (const [token] of THEME_TOKENS) {
+    const value = customColors[token] ?? preset?.colors[token];
+    if (value) root.style.setProperty(token, value);
+    else root.style.removeProperty(token);
+  }
+  root.dataset.contrast = contrast;
+  root.dataset.smoothing = fontSmoothing ? "on" : "off";
+  root.style.setProperty("zoom", typography.uiSize === 16 ? "" : String(typography.uiSize / 16));
+  const set = (name: string, value: string) =>
+    value ? root.style.setProperty(name, value) : root.style.removeProperty(name);
+  set("--font-sans", typography.uiFont);
+  set("--font-mono", typography.codeFont);
+  root.style.setProperty("--chat-size", `${typography.chatSize}px`);
+  root.style.setProperty("--code-size", `${typography.codeSize}px`);
 }

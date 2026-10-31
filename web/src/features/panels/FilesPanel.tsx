@@ -9,6 +9,10 @@ import { ErrorState, Loading } from "../../ui/states";
 
 const q = encodeURIComponent;
 
+const scrollToMarkedLine = (element: HTMLPreElement | null) => {
+  element?.querySelector("[data-line]")?.scrollIntoView({ block: "center" });
+};
+
 function Viewer({ threadId, path, line, onBack }: { threadId: string; path: string; line: number | null; onBack(): void }) {
   const file = useAsync(`file:${threadId}:${path}`, (signal) =>
     request<FileContent>("GET", `/api/threads/${q(threadId)}/files/content?path=${q(path)}`, undefined, signal),
@@ -43,7 +47,7 @@ function Viewer({ threadId, path, line, onBack }: { threadId: string; path: stri
       ) : file.data.binary ? (
         <p className="muted">This is a binary file.</p>
       ) : (
-        <pre tabIndex={0} className="file-source">
+        <pre tabIndex={0} className="file-source" ref={scrollToMarkedLine}>
           {file.data.content.split("\n").map((text, at) => (
             <span key={at} data-line={at + 1 === line || undefined}>
               <i>{at + 1}</i>
@@ -111,6 +115,13 @@ function FolderList({
 /** The checkout's files. A search finds names and, with text, lines. */
 export function FilesPanel({ threadId }: { threadId: string }) {
   const [file, setFile] = useState<{ path: string; line: number | null } | null>(null);
+  // A link in a message opens its file here, once per click.
+  const reveal = useUi((state) => state.fileReveal);
+  const [seen, setSeen] = useState<number | null>(null);
+  if (reveal && reveal.nonce !== seen) {
+    setSeen(reveal.nonce);
+    setFile({ path: reveal.path, line: reveal.line });
+  }
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const hits = useAsync(`file-search:${threadId}:${query}`, (signal) =>

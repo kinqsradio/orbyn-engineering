@@ -46,6 +46,24 @@ const groups: { label: string | null; sections: SettingsSection[] }[] = [
   { label: null, sections: ["maintenance", "labs", "about", "archive"] },
 ];
 
+/** Words a person might search for, beyond the section names. */
+const KEYWORDS: Partial<Record<SettingsSection, string>> = {
+  general: "notifications sidebar confirmation sound project order thread order",
+  appearance: "theme dark light contrast font typography size animation effort color",
+  chat: "width timestamp word wrap math send shortcut follow-up steer queue streaming permissions",
+  diffs: "pull request merge whitespace",
+  keybindings: "shortcut key binding",
+  providers: "engine codex claude model sign in install",
+  threads: "auto-settle snooze title",
+  tasks: "schedule automation webhook",
+  projects: "library folder scripts",
+  worktrees: "branch naming submodule base directory",
+  maintenance: "update diagnostics storage",
+};
+
+const matchesSection = (entry: SettingsSection, needle: string) =>
+  `${labels[entry]} ${KEYWORDS[entry] ?? ""}`.toLowerCase().includes(needle);
+
 const views: Record<SettingsSection, () => React.JSX.Element | null> = {
   general: GeneralSection,
   appearance: AppearanceSection,
@@ -84,7 +102,7 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
     return groups
       .map((group) => ({
         ...group,
-        sections: group.sections.filter((entry) => labels[entry].toLowerCase().includes(needle)),
+        sections: group.sections.filter((entry) => matchesSection(entry, needle)),
       }))
       .filter((group) => group.sections.length > 0);
   }, [query]);
