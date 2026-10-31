@@ -171,7 +171,20 @@ test("scheduled tasks: create, pause, run and delete through the form", async ({
   await expect.poll(async () => (await list())[0]?.enabled).toBe(false);
   await page.getByRole("button", { name: "Run Nightly" }).click();
   await expect(page.getByText(/Couldn't/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Delete Nightly" }).click();
+
+  await page.getByRole("button", { name: "Edit Nightly" }).click();
+  const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
+  await expect(edit.getByLabel("Time")).toHaveValue("07:30");
+  await expect(edit.getByLabel("Mon")).toBeChecked();
+  await edit.getByLabel("Name").fill("Weekly");
+  await edit.getByLabel("Time").fill("08:15");
+  await edit.getByRole("button", { name: "Save task" }).click();
+  await expect(edit).toBeHidden();
+  const saved = () => service.api<{ name: string; schedule: { time: string } }[]>("GET", "/api/tasks");
+  await expect.poll(async () => (await saved())[0]?.name).toBe("Weekly");
+  expect((await saved())[0]?.schedule.time).toBe("08:15");
+
+  await page.getByRole("button", { name: "Delete Weekly" }).click();
   await expect.poll(async () => (await list()).length).toBe(0);
 });
 
