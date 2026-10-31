@@ -111,8 +111,8 @@ verification stops the run. The signing key sits beside the pack, so this catche
 changes by anything that cannot read the key, not a process running as the user.
 
 - Claude: `--plugin-dir <pack>/claude-plugin`, per-thread `--mcp-config`,
-  `--permission-prompt-tool mcp__orbyn__approve`.
-- Codex: `skills/extraRoots/set`, per-thread `mcp_servers.orbyn` config,
+  `--permission-prompt-tool mcp__orbyn_engineering__approve`.
+- Codex: `skills/extraRoots/set`, per-thread `mcp_servers.orbyn_engineering` config,
   app-server approval requests.
 
 ## Per-thread MCP server

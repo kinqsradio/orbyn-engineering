@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
-    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, RunHandle, RunSpec,
-    UpdatePlan, ask, diff_activity,
+    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
+    RunHandle, RunSpec, UpdatePlan, ask, diff_activity,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
@@ -298,7 +298,7 @@ fn thread_config(spec: &RunSpec) -> Value {
     match &spec.mcp_url {
         Some(url) => json!({
             "mcp_servers": {
-                "orbyn": { "url": url, "default_tools_approval_mode": "approve" }
+                (MCP_SERVER_NAME): { "url": url, "default_tools_approval_mode": "approve" }
             }
         }),
         None => json!({}),
@@ -943,6 +943,27 @@ mod tests {
         assert_eq!(
             approval_response("item/permissions/requestApproval", &params, &deny),
             json!({ "permissions": {}, "scope": "turn" })
+        );
+    }
+
+    #[test]
+    fn mcp_server_name_cannot_merge_with_a_user_orbyn_entry() {
+        let spec = RunSpec {
+            run_id: "r".into(),
+            thread_id: "t".into(),
+            cwd: "/repo".into(),
+            prompt: "p".into(),
+            model: None,
+            resume: None,
+            mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),
+            skills: Default::default(),
+            run_dir: "/run".into(),
+        };
+        let config = thread_config(&spec);
+        assert!(config["mcp_servers"]["orbyn"].is_null());
+        assert_eq!(
+            config["mcp_servers"]["orbyn_engineering"]["url"],
+            "http://127.0.0.1:1/mcp/x"
         );
     }
 

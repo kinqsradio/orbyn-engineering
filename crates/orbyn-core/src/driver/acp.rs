@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
-    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, RunHandle, RunSpec,
-    ask,
+    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
+    RunHandle, RunSpec, ask,
 };
 use crate::approvals::Verdict;
 use crate::error::{CoreError, Result};
@@ -213,7 +213,7 @@ async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
         == Some(true);
     let servers = match &spec.mcp_url {
         Some(url) if http_mcp => {
-            json!([{ "type": "http", "name": "orbyn", "url": url, "headers": [] }])
+            json!([{ "type": "http", "name": MCP_SERVER_NAME, "url": url, "headers": [] }])
         }
         _ => json!([]),
     };

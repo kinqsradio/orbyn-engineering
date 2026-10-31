@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::pipes::{exit_message, lines, resolve_engine, spawn_engine};
 use super::{
-    EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, RunHandle, RunSpec,
-    UpdatePlan,
+    CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
+    MCP_SERVER_NAME, RunHandle, RunSpec, UpdatePlan,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -56,7 +56,7 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
     .collect();
     args.push(mcp_config.into());
     args.push("--permission-prompt-tool".into());
-    args.push("mcp__orbyn__approve".into());
+    args.push(CLAUDE_APPROVE_TOOL.into());
     if let Some(plugin_dir) = &spec.skills.plugin_dir {
         args.push("--plugin-dir".into());
         args.push(plugin_dir.into());
@@ -125,7 +125,7 @@ impl EngineDriver for ClaudeDriver {
         let command = resolve_engine(&self.program)?;
         let mcp_config = spec.run_dir.join("mcp.json");
         let config = json!({
-            "mcpServers": { "orbyn": { "type": "http", "url": spec.mcp_url } }
+            "mcpServers": { (MCP_SERVER_NAME): { "type": "http", "url": spec.mcp_url } }
         });
         write_private(&mcp_config, config.to_string().as_bytes())?;
         let args = run_args(&spec, &mcp_config);
@@ -551,7 +551,7 @@ mod tests {
                 "--mcp-config",
                 "/run/mcp.json",
                 "--permission-prompt-tool",
-                "mcp__orbyn__approve",
+                "mcp__orbyn_engineering__approve",
                 "--plugin-dir",
                 "/pack/claude-plugin",
                 "--model",
@@ -561,6 +561,14 @@ mod tests {
             ]
         );
         assert!(!args.iter().any(|arg| arg == "--bare"));
+    }
+
+    #[test]
+    fn permission_tool_follows_the_server_name() {
+        assert_eq!(
+            CLAUDE_APPROVE_TOOL,
+            format!("mcp__{MCP_SERVER_NAME}__approve")
+        );
     }
 
     #[test]

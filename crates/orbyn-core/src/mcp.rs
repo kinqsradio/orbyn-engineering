@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, Verdict};
 use crate::computer::{Caller, ComputerGateway};
+use crate::driver::MCP_SERVER_NAME;
 use crate::error::Result;
 use crate::skills::SkillService;
 use crate::util::{random_token, sha256_hex};
@@ -18,7 +19,7 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 const QUESTION_TOOL: &str = "AskUserQuestion";
 /// Tools this server provides. Each governs itself, so `approve` does not ask again.
-const OWN_TOOL_PREFIX: &str = "mcp__orbyn__";
+const OWN_TOOL_PREFIX: &str = "mcp__orbyn_engineering__";
 
 /// The token is unknown or already revoked.
 #[derive(Debug)]
@@ -101,7 +102,7 @@ impl McpService {
                     .cloned()
                     .unwrap_or(json!(PROTOCOL_VERSION)),
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "orbyn", "version": env!("CARGO_PKG_VERSION") },
+                "serverInfo": { "name": MCP_SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tool_list(binding.permission_prompt) })),

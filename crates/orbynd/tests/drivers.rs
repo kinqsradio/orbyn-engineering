@@ -130,6 +130,18 @@ async fn codex_unknown_server_request_is_refused() {
 }
 
 #[tokio::test]
+async fn codex_token_refresh_request_is_refused_over_the_wire() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    service.admit(&thread, "[token-refresh]").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert_eq!(
+        text_of(&service.all_events(&thread).await),
+        "token refresh error -32601 result null"
+    );
+}
+
+#[tokio::test]
 async fn codex_cancel_interrupts_and_cleans_up() {
     let dir = TempDir::new();
     let (pids, options) = pid_env(&dir);

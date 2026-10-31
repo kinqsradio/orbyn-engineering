@@ -158,7 +158,7 @@ fn claude(args: &[String]) {
             &std::fs::read_to_string(flag("--mcp-config").expect("mcp config")).expect("read"),
         )
         .expect("mcp json");
-        let url = config["mcpServers"]["orbyn"]["url"]
+        let url = config["mcpServers"]["orbyn_engineering"]["url"]
             .as_str()
             .expect("url")
             .to_owned();
@@ -270,7 +270,7 @@ fn codex() {
                 if let Some(thread) = params["threadId"].as_str() {
                     state.thread = thread.to_owned();
                 }
-                state.mcp_url = params["config"]["mcp_servers"]["orbyn"]["url"]
+                state.mcp_url = params["config"]["mcp_servers"]["orbyn_engineering"]["url"]
                     .as_str()
                     .map(str::to_owned);
                 send(&json!({ "id": id, "result": {
@@ -378,6 +378,16 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
             "refused {}",
             reply.pointer("/error/code").unwrap_or(&Value::Null)
         );
+    }
+    if has(prompt, "token-refresh") {
+        let reply = codex_request(
+            "account/chatgptAuthTokens/refresh",
+            json!({ "reason": "unauthorized" }),
+            lines,
+        );
+        let code = reply.pointer("/error/code").unwrap_or(&Value::Null);
+        let result = reply.get("result").unwrap_or(&Value::Null);
+        answer = format!("token refresh error {code} result {result}");
     }
     if has(prompt, "mcp-tools") {
         let url = state.mcp_url.as_deref().expect("mcp url");

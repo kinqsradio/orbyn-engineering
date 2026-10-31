@@ -24,6 +24,14 @@ use tokio_util::sync::CancellationToken;
 use crate::approvals::Verdict;
 use crate::error::Result;
 
+/// The per-run MCP server's name in every engine. It is distinct from `orbyn`
+/// because a user's own engine config can already define a server by that name,
+/// and an engine merges same-named entries.
+pub const MCP_SERVER_NAME: &str = "orbyn_engineering";
+
+/// Claude's name for this server's permission tool.
+pub const CLAUDE_APPROVE_TOOL: &str = "mcp__orbyn_engineering__approve";
+
 #[derive(Clone, Debug)]
 pub struct EngineDescriptor {
     pub id: String,
