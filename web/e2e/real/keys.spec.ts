@@ -107,7 +107,10 @@ test("usage period keys come from the rules", async ({ page }) => {
 });
 
 test("a keybindings file that changes or breaks says so when you come back", async ({ page }) => {
+  // The toast compares with what the page already read, so the first read has to land.
+  const read = page.waitForResponse((response) => response.url().endsWith("/api/keybindings"));
   await page.goto(service.page);
+  await read;
   const view = await service.api<{ path: string }>("GET", "/api/keybindings");
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   writeFileSync(view.path, JSON.stringify([{ key: "mod+shift+y", command: "sidebar.toggle" }]));
