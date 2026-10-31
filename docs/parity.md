@@ -264,7 +264,7 @@ toward completion.
 - [ ] E10 Inline diff comments: annotations to composer chips | apps/web/src/components/diffs/DiffCommentAnnotation.tsx | w d m | L
 - [x] E11 Find in diff: search within diff | docs/user/keybindings.md | w d | M
 - [x] E12 Copy diff path: per-file button | apps/web/src/components/DiffFilePathCopyButton.tsx | w d | S
-- [x] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L | server done
+- [x] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L | server done | web done
 - [x] E14 Conversation rewind: trims provider history where supported | docs/user/composer.md | w d s | L
 - [ ] E15 Codex thread revert: native rollback integration | apps/server/src/provider/CodexThreadRevert.ts | s | M
 - [ ] E16 Native mobile diff: custom diff view with word diffs | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
@@ -287,12 +287,12 @@ toward completion.
 - [x] F12 Add existing folder: picker with filesystem browse | apps/web/src/components/CommandPaletteAddProject.tsx | w d m s | M | server done
 - [x] F13 Clone project: background clone, prompt early, retry and cancel | apps/web/src/components/ProjectCloneToastCoordinator.tsx | w d m s | L | server done
 - [x] F14 Clone SSH fallback: HTTPS when SSH is refused | docs/user/source-control.md | s | S | server done
-- [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done
+- [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done | web done
 - [x] F16 Initialize Git: vcs init from project | packages/contracts/src/rpc.ts | w d s | S | server done
-- [x] F17 Git actions: commit, push, create PR and combinations with phases | apps/web/src/components/GitActionsControl.tsx | w d m s | L | server done
+- [x] F17 Git actions: commit, push, create PR and combinations with phases | apps/web/src/components/GitActionsControl.tsx | w d m s | L | server done | web done
 - [ ] F18 AI commit and PR text: generated messages, titles, descriptions | apps/server/src/textGeneration/TextGeneration.ts | s | M
 - [ ] F19 Writing style: repo conventions or custom, follows templates | apps/web/src/components/settings/SourceControlWritingSettings.tsx | w d m s | M
-- [x] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M | server done
+- [x] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M | server done | web done
 - [ ] F21 Environment mode selector: local vs new worktree, environment choice | apps/web/src/components/BranchToolbarEnvModeSelector.tsx | w d m | M
 - [x] F22 Worktree creation: per thread with base branch | apps/web/src/components/WorktreeBaseBranchPicker.tsx | w d m s | L | server done
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M

@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -31,18 +31,40 @@ function previewBrowser(dir: string): string {
   return wrapper;
 }
 
-/** Answers `gh pr list` like the real CLI, so forge routes run with no network. */
-function standInGh(dir: string): string {
+export interface PullFixture {
+  number: number;
+  title: string;
+  [field: string]: unknown;
+}
+
+const pullRow = ({ number, ...rest }: PullFixture) => ({
+  number,
+  url: `https://github.com/o/r/pull/${number}`,
+  state: "OPEN",
+  headRefName: "h",
+  baseRefName: "main",
+  author: { login: "a" },
+  isDraft: false,
+  updatedAt: "2026-10-01T00:00:00Z",
+  labels: [],
+  reviewDecision: "",
+  statusCheckRollup: [],
+  body: "",
+  ...rest,
+});
+
+const STAND_IN_GH = resolve(WEB, "e2e/real/stand-in-gh.mjs");
+
+/** Puts the stand-in first on PATH as `gh`, with its pull requests in a file. */
+function standInGh(dir: string, pulls: PullFixture[]): { bin: string; state: string; log: string } {
   const bin = join(dir, "bin");
   mkdirSync(bin);
-  const pull = (number: number, title: string) =>
-    JSON.stringify({ number, title, url: `https://github.com/o/r/pull/${number}`, state: "OPEN", headRefName: "h", baseRefName: "main", author: { login: "a" }, isDraft: false, updatedAt: "2026-10-01T00:00:00Z", labels: [], reviewDecision: "", statusCheckRollup: [] });
-  writeFileSync(
-    join(bin, "gh"),
-    `#!/bin/sh\ncase "$1 $2" in\n  "pr list") echo '[${pull(42, "Fix the login")},${pull(77, "Tidy the docs")}]' ;;\n  "auth status") echo "Logged in to github.com" >&2 ;;\nesac\n`,
-    { mode: 0o755 },
-  );
-  return bin;
+  const state = join(dir, "gh-state.json");
+  const log = join(dir, "gh-calls.log");
+  writeFileSync(log, "");
+  writeFileSync(state, JSON.stringify({ pulls: pulls.map(pullRow), repos: [], next: 100, template: pullRow({ number: 0, title: "" }) }));
+  symlinkSync(STAND_IN_GH, join(bin, "gh"));
+  return { bin, state, log };
 }
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
@@ -73,12 +95,24 @@ export interface Service {
   repo: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   stop(): void;
+  /** What the stand-in `gh` was asked, oldest first. */
+  ghCalls(): string[][];
+  /** The stand-in's bare remote, for specs that read what was pushed. */
+  remote: string;
+}
+
+export interface ServiceOptions {
+  fakeEngines?: boolean;
+  scenes?: boolean;
+  /** Runs `gh` through the stand-in, with these pull requests on the forge. */
+  forge?: boolean | PullFixture[];
+  registry?: string;
 }
 
 /** A real `orbynd` on a fresh data directory, with the dev UI proxied to it. */
 export async function startService(
   port: number,
-  options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean; registry?: string } = {},
+  options: ServiceOptions = {},
 ): Promise<Service> {
   if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
   const dir = mkdtempSync(join(tmpdir(), "orbyn-e2e-"));
@@ -89,10 +123,12 @@ export async function startService(
       ? { ORBYN_CLAUDE_BIN: fake, ORBYN_CODEX_BIN: fake }
       : // Never an installed engine, so a run reads the same on every machine.
         { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: join(dir, "no-codex") };
-  const forgePath = options.forge ? `${standInGh(dir)}:` : "";
+  const forge = options.forge
+    ? standInGh(dir, options.forge === true ? [{ number: 42, title: "Fix the login" }, { number: 77, title: "Tidy the docs" }] : options.forge)
+    : null;
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forgePath}${process.env.PATH}`, ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...process.env, ...engines, ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}:` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {
@@ -118,10 +154,26 @@ export async function startService(
   git(repo, "init", "-q", "-b", "main");
   git(repo, "add", ".");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "First");
-  if (options.forge) git(repo, "remote", "add", "origin", "https://github.com/o/r.git");
+  if (options.forge) {
+    git(repo, "remote", "add", "origin", "https://github.com/o/r.git");
+    // Reads name the forge, pushes land in a bare repository next to the checkout.
+    const remote = join(dir, "remote.git");
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote]);
+    git(repo, "config", "url." + remote + ".pushInsteadOf", "https://github.com/o/r.git");
+    git(repo, "push", "-q", "origin", "main");
+    git(repo, "fetch", "-q", remote, "+refs/heads/*:refs/remotes/origin/*");
+  }
   return {
     folder,
     repo,
+    remote: join(dir, "remote.git"),
+    ghCalls: () =>
+      forge
+        ? readFileSync(forge.log, "utf8")
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as string[])
+        : [],
     page: `http://localhost:${port}/?token=${ready.token}`,
     async api<T>(method: string, path: string, body?: unknown) {
       const response = await fetch(`${ready.url}${path}`, {
@@ -145,7 +197,7 @@ export async function startService(
 }
 
 /** A signed-in workspace on one trusted repository, for specs that start from a thread. */
-export async function startProject(port: number, options: { fakeEngines?: boolean; scenes?: boolean; forge?: boolean; registry?: string } = {}) {
+export async function startProject(port: number, options: ServiceOptions = {}) {
   const service = await startService(port, options);
   await service.api("POST", "/api/workspace/setup", {});
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });

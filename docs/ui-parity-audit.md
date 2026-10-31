@@ -89,6 +89,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real empty state; rows on the mock | No forge on the test service, so rows, merge and review are not exercised for real |
 | Pull requests | Detail | Source: Summary, Timeline, Code | Built on the real routes | Not run against a forge; Guide, stacks and reactions absent |
+| Git | Actions | Source: split control with commit, push, pull request and their combinations, phases | Git menu in the header, dialog, phase list, Real against real Git and a stand-in gh | Menu, not a split button; no generated commit message |
+| Git | Branches | Source: picker, search, create | Dialog from the branch row, Real | Dialog, not a popover |
 | Open in editor | Details row | Source: Open in preferred, menu of detected editors | Built, list Real | Launch not run, to avoid opening the host's editor from tests |
 | Terminal drawer | Open and controls | Live: 483x279 in the main column, Split horizontally, Split vertically, New, Close at 21px, top right | Same controls and order, Real for new, split and close | Tabs in a top row, reference has a side list; scripts menu not run |
 | Files | Browser and viewer | Source: tree, search, viewer, reveal line | Built, Real tree, previews, safe edit, image, video, audio, PDF, font, hex and partial text from the raw route, Save file | Layout own; no office or ZIP view |

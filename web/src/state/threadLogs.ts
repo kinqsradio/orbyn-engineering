@@ -21,6 +21,8 @@ interface ThreadLogState {
   ingest(threadId: string, events: WireThreadEvent[]): void;
   setStream(threadId: string, status: StreamStatus, failure?: ApiFailure): void;
   addPrompt(threadId: string, prompt: LocalPrompt): void;
+  /** Marks the checkout changed, for work that leaves no event in the log. */
+  touchDiff(threadId: string): void;
 }
 
 const refreshesThread = (event: WireThreadEvent) =>
@@ -62,6 +64,9 @@ export const useThreadLogs = create<ThreadLogState>((set, get) => ({
     set((state) => ({
       streams: { ...state.streams, [threadId]: { status, failure: failure ?? null } },
     }));
+  },
+  touchDiff(threadId) {
+    set((state) => ({ diffVersion: { ...state.diffVersion, [threadId]: (state.diffVersion[threadId] ?? 0) + 1 } }));
   },
   addPrompt(threadId, prompt) {
     set((state) => ({
