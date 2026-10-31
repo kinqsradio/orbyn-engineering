@@ -10,6 +10,7 @@ const UPDATE_CHECKS: &str = "The background_update_checks setting, or ORBYN_OFFL
 const UPDATE_SETTING: &str = "background_update_checks";
 const PULLS_SETTING: &str = "poll_pull_requests";
 const AUTO_PULL_SETTING: &str = "auto_pull";
+const TITLES_SETTING: &str = crate::titles::AUTO_TITLES_SETTING;
 
 /// The list with no state filled in, which is what stays true of it.
 fn listed() -> Vec<NetworkRequest> {
@@ -53,6 +54,12 @@ fn listed() -> Vec<NetworkRequest> {
             "The auto_pull preference, off by default",
         ),
         row(
+            "A thread's title, through the engine's own CLI",
+            "The thread's engine",
+            "Once, when a new thread gets its first message",
+            "The auto_thread_titles preference",
+        ),
+        row(
             "OTLP connection check",
             "The configured collector",
             "Only when asked to test it",
@@ -68,6 +75,7 @@ impl Core {
         let updates = settings.background_update_checks != Some(false);
         let on = |key: &str| -> Result<bool> { Ok(self.preference(key, None)? == true) };
         let (pulls, auto_pull) = (on(PULLS_SETTING)?, on(AUTO_PULL_SETTING)?);
+        let titles = on(TITLES_SETTING)?;
         Ok(listed()
             .into_iter()
             .map(|mut row| {
@@ -77,6 +85,8 @@ impl Core {
                     (Some(PULLS_SETTING), pulls)
                 } else if row.control.contains(AUTO_PULL_SETTING) {
                     (Some(AUTO_PULL_SETTING), auto_pull)
+                } else if row.control.contains(TITLES_SETTING) {
+                    (Some(TITLES_SETTING), titles)
                 } else {
                     (None, false)
                 };

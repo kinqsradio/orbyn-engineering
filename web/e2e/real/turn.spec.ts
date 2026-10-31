@@ -37,6 +37,7 @@ test("a draft sends, then forks, rewinds and shows the turn's diff", async ({ pa
   const id = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
   await expect(page.locator(".msg-assistant").first()).toBeVisible({ timeout: 15_000 });
   await expect.poll(async () => (await service.api<Thread>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 }).toBeNull();
+  await expect(page.getByRole("navigation", { name: "Workspace" }).getByText("A fresh title")).toBeVisible();
 
   await page.getByRole("button", { name: /^Changes/ }).click();
   const sources = page.getByRole("radiogroup", { name: "Diff source" });

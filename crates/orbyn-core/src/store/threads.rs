@@ -347,6 +347,15 @@ impl Store {
     }
 
     /// Writes a generated title unless someone renamed the thread meanwhile.
+    /// How many runs a thread has been given, this one included.
+    pub fn run_count(&self, thread_id: &str) -> Result<i64> {
+        Ok(self.reader().query_row(
+            "SELECT COUNT(*) FROM runs WHERE thread_id = ?1",
+            [thread_id],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn apply_generated_title(&self, id: &str, expected: &str, title: &str) -> Result<bool> {
         self.commit(|tx, appended| {
             let changed = tx.execute(

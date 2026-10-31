@@ -330,7 +330,8 @@ pub trait EngineDriver: Send + Sync {
     }
 
     /// One prompt, one reply, no tools and no session. This spends the user's
-    /// engine usage, so it runs only when they ask for it.
+    /// engine usage, so a caller that does so unasked needs a setting and a row in
+    /// the network list.
     async fn one_shot(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
         Err(crate::error::CoreError::Unsupported(
             "This engine cannot answer a one-off request.".into(),

@@ -27,6 +27,7 @@ const refreshesThread = (event: WireThreadEvent) =>
   event.event.type === "RUN_STARTED" ||
   event.event.type === "RUN_FINISHED" ||
   event.event.type === "RUN_ERROR" ||
+  (event.event.type === "CUSTOM" && event.event.name === "thread.updated") ||
   (event.event.type === "ACTIVITY_SNAPSHOT" && event.event.activityType === "approval");
 
 const touchesFiles = (event: WireThreadEvent) =>

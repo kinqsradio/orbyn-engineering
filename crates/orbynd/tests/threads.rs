@@ -246,8 +246,34 @@ fn title_options(dir: &TempDir) -> (std::path::PathBuf, Options) {
     (record, options)
 }
 
+async fn set_preference(service: &Service, values: Value) {
+    let response = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": values }))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+}
+
+fn args_file(record: &std::path::Path) -> std::path::PathBuf {
+    record.with_extension("args")
+}
+
+async fn wait_for_title(service: &Service, thread: &str, title: &str) {
+    for _ in 0..200 {
+        if service.json(&format!("/api/threads/{thread}")).await["title"] == title {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("the title never became {title}");
+}
+
 #[tokio::test]
-async fn title_call_spends_usage_only_when_requested() {
+async fn a_first_message_names_the_thread_once_and_only_then() {
     let dir = TempDir::new();
     let (record, options) = title_options(&dir);
     let (service, thread) = setup(&dir, options, "codex").await;
@@ -257,24 +283,57 @@ async fn title_call_spends_usage_only_when_requested() {
     assert_eq!(status, 400, "an empty thread has nothing to title");
     service.admit(&thread, "please fix the login bug").await;
     service.finished(&thread).await;
-    service
-        .patch(&thread, json!({ "pinned": true, "unread": true }))
-        .await;
-    service.json("/api/threads").await;
-    assert!(
-        !record.exists(),
-        "nothing but a request may call the engine"
-    );
+    wait_for_title(&service, &thread, "A fresh title").await;
+    let prompt = std::fs::read_to_string(&record).unwrap();
+    assert!(prompt.contains("please fix the login bug"));
+    let args = std::fs::read_to_string(args_file(&record)).unwrap();
+    assert!(args.contains("fake-small"), "the small model: {args}");
+    let calls = |rows: Vec<Value>| {
+        rows.iter()
+            .filter(|row| row["action"] == "engine.one_shot")
+            .count()
+    };
+    assert_eq!(calls(service.audit(&thread).await), 1);
+
+    std::fs::remove_file(&record).unwrap();
+    service.admit(&thread, "and a second message").await;
+    service.finished(&thread).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!record.exists(), "only the first message spends usage");
+    assert_eq!(calls(service.audit(&thread).await), 1);
+}
+
+#[tokio::test]
+async fn the_titles_setting_turns_the_first_message_call_off() {
+    let dir = TempDir::new();
+    let (record, options) = title_options(&dir);
+    let (service, thread) = setup(&dir, options, "codex").await;
+    set_preference(&service, json!({ "auto_thread_titles": false })).await;
+    service.admit(&thread, "please fix the login bug").await;
+    service.finished(&thread).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!record.exists(), "the setting stops the call");
 
     let (status, body) = service
         .send(&format!("/api/threads/{thread}/title"), json!({}))
         .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["title"], "A fresh title");
-    let prompt = std::fs::read_to_string(&record).unwrap();
-    assert!(prompt.contains("please fix the login bug"));
     let actions = service.audit(&thread).await;
     assert!(actions.iter().any(|row| row["action"] == "engine.one_shot"));
+}
+
+#[tokio::test]
+async fn the_chosen_text_model_is_used_where_the_engine_lists_it() {
+    let dir = TempDir::new();
+    let (record, options) = title_options(&dir);
+    let (service, thread) = setup(&dir, options, "codex").await;
+    set_preference(&service, json!({ "text_generation_model": "fake-big" })).await;
+    service.admit(&thread, "first").await;
+    service.finished(&thread).await;
+    wait_for_title(&service, &thread, "A fresh title").await;
+    let args = std::fs::read_to_string(args_file(&record)).unwrap();
+    assert!(args.contains("fake-big"), "{args}");
 }
 
 #[tokio::test]

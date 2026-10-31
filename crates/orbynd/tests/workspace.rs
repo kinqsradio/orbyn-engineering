@@ -65,6 +65,12 @@ fn launches(file: &std::path::Path, mode: &str) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).unwrap())
         .filter(|entry| entry["mode"] == mode)
+        // A model list check can land first, from a folder of its own.
+        .filter(|entry| {
+            !entry["cwd"]
+                .as_str()
+                .is_some_and(|cwd| cwd.contains("orbyn-probe"))
+        })
         .collect()
 }
 

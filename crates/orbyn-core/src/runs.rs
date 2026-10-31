@@ -34,6 +34,7 @@ use crate::questions::QuestionDesk;
 use crate::selection;
 use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, AuditRecord, Store};
+use crate::titles::{self, TitleCall};
 use crate::util::new_id;
 use crate::workspace::{Workspace, check_target};
 use shape::EventShaper;
@@ -343,6 +344,7 @@ impl RunManager {
             },
         );
         self.remember_selection(&thread);
+        self.title_new_thread(&thread, &prompt);
         let manager = self.clone();
         let thread_id = thread.id.clone();
         let task = tokio::spawn({
@@ -374,6 +376,44 @@ impl RunManager {
             active.task = Some(task);
         }
         Ok(())
+    }
+
+    /// A thread's first message names it, in the background, so the run does not
+    /// wait for it and a failure leaves the default title and nothing else.
+    fn title_new_thread(self: &Arc<Self>, thread: &Thread, prompt: &str) {
+        let delegated = thread
+            .lifecycle
+            .as_ref()
+            .is_some_and(|l| l.relation.as_deref() == Some("subagent"));
+        let wanted = thread.title == titles::NEW_THREAD_TITLE
+            && !delegated
+            && RunKind::parse(prompt) == RunKind::Turn
+            && self
+                .store
+                .run_count(&thread.id)
+                .is_ok_and(|count| count == 1)
+            && titles::auto_titles_on(&self.store, &thread.project_id);
+        if !wanted {
+            return;
+        }
+        let Ok(driver) = self.engines.driver(&thread.engine) else {
+            return;
+        };
+        let (store, engines) = (self.store.clone(), self.engines.clone());
+        let (thread, message) = (thread.clone(), titles::first_message(prompt));
+        tokio::spawn(async move {
+            let call = TitleCall {
+                thread: &thread,
+                conversation: &message,
+                actor: "system:title",
+                source: "system",
+            };
+            if let Err(error) =
+                titles::generate_title(&store, &engines, driver.as_ref(), call).await
+            {
+                tracing::debug!(%error, "could not title a new thread");
+            }
+        });
     }
 
     /// What a person chose carries to new threads on this engine. A delegated
