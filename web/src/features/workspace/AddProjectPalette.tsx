@@ -4,13 +4,12 @@ import { api } from "../../api/client";
 import type { Project } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
-import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { dropTrailingSlash, expandHome, replaceHomePrefix, shortenHome, splitPath, withSlash } from "./pathInput";
+import { trackClone } from "./CloneJobs";
 
 type View = "sources" | "browse" | "new" | "clone";
 
-const CLONE_POLL_MS = 1000;
 
 function useFinish(onClose: () => void) {
   const putProject = useWorkspace((state) => state.putProject);
@@ -27,22 +26,6 @@ function useFinish(onClose: () => void) {
         : { name: "trust", projectId: project.id, threadId: null },
     );
   };
-}
-
-/** A clone runs in the background and lands wherever the person is by then. */
-async function followClone(id: string, onDone: (project: Project) => void) {
-  const { pushToast } = useUi.getState();
-  pushToast("Cloning project");
-  for (;;) {
-    await new Promise((done) => setTimeout(done, CLONE_POLL_MS));
-    const jobs = await api.clones().catch(() => null);
-    const job = jobs?.find((entry) => entry.id === id);
-    if (!job) return;
-    if (job.state === "running") continue;
-    if (job.state === "done" && job.project) onDone(job.project);
-    else if (job.state === "failed") pushToast(`Clone failed. ${job.error ?? ""}`.trim());
-    return;
-  }
 }
 
 function Keys({ back, select }: { back: boolean; select: boolean }) {
@@ -424,7 +407,7 @@ export function AddProjectPalette({ onBack, onClose }: { onBack(): void; onClose
           submit={async (url) => {
             const job = await api.startClone(url);
             onClose();
-            void followClone(job.id, finish);
+            trackClone(job, finish);
           }}
         />
       );

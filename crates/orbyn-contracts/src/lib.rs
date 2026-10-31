@@ -1657,6 +1657,42 @@ pub struct Diagnostics {
     pub active_runs: usize,
     pub terminals: usize,
     pub database: DatabaseStorage,
+    /// This service and everything it started, by process id.
+    pub processes: Vec<ServiceProcess>,
+    /// Oldest first, one sample a minute, in memory.
+    pub history: Vec<ResourceSample>,
+    /// Warnings and errors since the service started, newest first.
+    pub events: Vec<ServiceEvent>,
+}
+}
+
+wire! {
+pub struct ServiceProcess {
+    pub pid: u32,
+    pub parent: Option<u32>,
+    pub name: String,
+    #[ts(type = "number")]
+    pub memory_bytes: u64,
+    #[ts(type = "number")]
+    pub running_seconds: u64,
+}
+}
+
+wire! {
+pub struct ResourceSample {
+    pub at: String,
+    #[ts(type = "number")]
+    pub memory_bytes: u64,
+    pub processes: usize,
+}
+}
+
+wire! {
+pub struct ServiceEvent {
+    pub at: String,
+    pub level: String,
+    pub target: String,
+    pub message: String,
 }
 }
 

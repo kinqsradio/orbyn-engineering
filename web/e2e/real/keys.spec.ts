@@ -82,6 +82,28 @@ test("Shift+PageUp reads scrollback without leaving the terminal", async ({ page
   await expect(rows).toContainText("line300");
 });
 
+test("an address in the terminal opens in the Browser panel", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ linkTarget: "in-app" })));
+  await fresh(page);
+  await settled(service, threadIdOf(page));
+  await page.getByRole("button", { name: "Terminal" }).click();
+  const input = page.locator(".terminal-drawer-body .xterm-helper-textarea").first();
+  const line = page.locator(".terminal-drawer-body .xterm-rows > div").filter({ hasText: /^http:\/\/localhost:1\/x/ }).first();
+  // A shell still starting can lose what is typed, so this tries again until it answers.
+  await expect(async () => {
+    await input.focus();
+    await page.keyboard.type("printf 'http://%s\\n' localhost:1/x\n");
+    await expect(line).toBeVisible({ timeout: 4000 });
+  }).toPass({ timeout: 25_000 });
+  const place = await line.boundingBox();
+  if (!place) throw new Error("no line");
+  await page.mouse.move(place.x + 40, place.y + place.height / 2);
+  await page.mouse.move(place.x + 44, place.y + place.height / 2);
+  await expect(page.locator(".terminal-drawer-body .xterm-screen")).toHaveClass(/xterm-cursor-pointer/);
+  await page.mouse.click(place.x + 44, place.y + place.height / 2);
+  await expect(page.getByRole("combobox", { name: "Search or enter URL" })).toHaveValue(/localhost:1\/x/);
+});
+
 test("F6 walks the window's areas", async ({ page }) => {
   await fresh(page);
   await settled(service, threadIdOf(page));

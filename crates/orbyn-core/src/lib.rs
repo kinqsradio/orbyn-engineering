@@ -9,6 +9,7 @@ pub mod checkpoints;
 pub mod child_env;
 pub mod composer;
 pub mod computer;
+pub mod diagnostics;
 pub mod driver;
 pub mod engines;
 pub mod error;

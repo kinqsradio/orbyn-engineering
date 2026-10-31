@@ -295,7 +295,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [x] F10 Rescan: rediscover hosts and auth | packages/contracts/src/rpc.ts | w d s | S | server done | web done
 - [x] F11 New project: repo with README, icon, first commit, optional private publish | docs/user/source-control.md | w d m s | M | server done | web done
 - [x] F12 Add existing folder: picker with filesystem browse | apps/web/src/components/CommandPaletteAddProject.tsx | w d m s | M | server done
-- [x] F13 Clone project: background clone, prompt early, retry and cancel | apps/web/src/components/ProjectCloneToastCoordinator.tsx | w d m s | L | server done
+- [x] F13 Clone project: background clone, prompt early, retry and cancel | apps/web/src/components/ProjectCloneToastCoordinator.tsx | w d m s | L | server done | web done: Cancel, Retry and the reason on a card that stays
 - [x] F14 Clone SSH fallback: HTTPS when SSH is refused | docs/user/source-control.md | s | S | server done
 - [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done | web done
 - [x] F16 Initialize Git: vcs init from project | packages/contracts/src/rpc.ts | w d s | S | server done
@@ -356,7 +356,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [x] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M | server done
 - [x] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S | web done
 - [ ] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M
-- [ ] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S
+- [x] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S | web done: follows the Chat link setting
 - [x] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M | server done | web done
 - [ ] G8 Native mobile terminal: dedicated surface with paste and menu | apps/mobile/src/features/terminal/NativeTerminalSurface.tsx | m | L
 - [x] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S | server done
@@ -540,7 +540,7 @@ are not built in.
 - [x] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
 - [x] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S | web done
-- [ ] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server: counts and database only; no process or trace views
+- [x] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server done | web done: warnings and errors stand in for traces, and Stop ends a process, so no other signals
 - [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done | web done
 - [ ] K31 Product telemetry: hashed usage events, env opt-out | docs/user/telemetry.md | s d | M | [hosted]
 - [x] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S | server done | web done
@@ -554,7 +554,7 @@ are not built in.
 - [x] K40 Model picker shortcuts: toggle, previous and next provider, jump 1 to 9 inside the picker, Left or Shift+Tab to the provider list | docs/user/keybindings.md | w d | S | web done
 - [ ] K41 Composer menu shortcuts: model, host, cycle host, effort, step effort up and down (wrapping), permissions, workspace, previous worktree, branch, stash | docs/user/keybindings.md | w d | M | web done except host and cycle host, which need remote environments
 - [x] K42 Panel and navigation shortcuts: sidebar toggle, back and forward, right panel toggle, new, maximize, close, thread panel toggle, reopen closed tab, diff toggle, terminal toggle, split, new, close | packages/contracts/src/keybindings.ts | w d | M
-- [ ] K43 Preview shortcuts: toggle, refresh, focus URL, zoom in, out and reset | packages/contracts/src/keybindings.ts | w d | S
+- [x] K43 Preview shortcuts: toggle, refresh, focus URL, zoom in, out and reset | packages/contracts/src/keybindings.ts | w d | S
 - [x] K44 Search and new-thread shortcuts: palette, file picker, project search, find in thread, new thread, local new thread, new without project, open favorite editor, copy PR number | packages/contracts/src/keybindings.ts | w d | S
 - [x] K45 Theme shortcuts: pick theme, cycle appearance, toggle theme editor, open usage | packages/contracts/src/keybindings.ts | w d | S | web done
 - [x] K46 When contexts: terminal, preview, picker, composer, draft route, turn running, editable focus, web or desktop; negation, and, or, parentheses; last match wins | docs/user/keybindings.md | w d s | M

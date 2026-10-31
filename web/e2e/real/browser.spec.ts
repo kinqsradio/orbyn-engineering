@@ -64,6 +64,17 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   await page.setViewportSize({ width: 1700, height: 900 });
   await expect.poll(size, { timeout: 10_000 }).not.toBe(before);
 
+  const zoom = async () => (await service.api<{ zoom: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.zoom;
+  await frame.focus();
+  await page.keyboard.press("ControlOrMeta+=");
+  await expect.poll(zoom).toBeGreaterThan(1);
+  await page.keyboard.press("ControlOrMeta+0");
+  await expect.poll(zoom).toBe(1);
+  await page.keyboard.press("ControlOrMeta+-");
+  await expect.poll(zoom).toBeLessThan(1);
+  await page.keyboard.press("ControlOrMeta+0");
+  await expect.poll(zoom).toBe(1);
+
   await page.getByRole("button", { name: "Take control" }).click();
   await expect(page.getByRole("button", { name: "Give control back" })).toBeVisible();
   await frame.click();
