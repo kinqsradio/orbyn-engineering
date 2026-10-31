@@ -19,10 +19,12 @@ interface Prefs {
   /** The terminal drawer under the conversation. */
   terminalOpen: boolean;
   sidebarCollapsed: boolean;
+  sidebarWidth: number;
   /** Sidebar groups the viewer has opened or closed. */
   groups: Record<string, boolean>;
 }
 
+export const DEFAULT_SIDEBAR_WIDTH = 208;
 const TOAST_MS = 4000;
 let toastCounter = 0;
 
@@ -38,6 +40,7 @@ const defaults: Prefs = {
   detailsOpen: true,
   terminalOpen: false,
   sidebarCollapsed: false,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   groups: {},
 };
 
@@ -58,6 +61,7 @@ interface UiState extends Prefs {
   setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
   toggleSidebar(): void;
+  setSidebarWidth(width: number): void;
   toggleGroup(group: string, fallback: boolean): void;
   setDraft(threadId: string, text: string): void;
   setLastThread(threadId: string): void;
@@ -72,6 +76,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   detailsOpen: state.detailsOpen,
   terminalOpen: state.terminalOpen,
   sidebarCollapsed: state.sidebarCollapsed,
+  sidebarWidth: state.sidebarWidth,
   groups: state.groups,
 });
 
@@ -151,6 +156,10 @@ export const useUi = create<UiState>((set, get) => {
     },
     toggleSidebar() {
       set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));
+      savePrefs();
+    },
+    setSidebarWidth(width) {
+      set({ sidebarWidth: width });
       savePrefs();
     },
     toggleGroup(group, fallback) {

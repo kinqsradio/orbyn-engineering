@@ -17,6 +17,7 @@ import type {
   PolicyRule,
   Project,
   ProjectRemoval,
+  QueuedMessage,
   Run,
   ServerInfo,
   ServerSettings,
@@ -116,6 +117,18 @@ export async function request<T>(
 const q = encodeURIComponent;
 
 export const api = {
+  queue: (threadId: string, signal?: AbortSignal) =>
+    request<QueuedMessage[]>("GET", `/api/threads/${q(threadId)}/queue`, undefined, signal),
+  enqueue: (threadId: string, prompt: string, attachmentIds: string[]) =>
+    request<QueuedMessage>("POST", `/api/threads/${q(threadId)}/queue`, {
+      prompt,
+      attachment_ids: attachmentIds,
+    }),
+  resumeQueue: (threadId: string) => request<void>("POST", `/api/threads/${q(threadId)}/queue/resume`),
+  removeQueued: (id: string) => request<void>("DELETE", `/api/queue/${q(id)}`),
+  sendQueuedNow: (id: string) => request<void>("POST", `/api/queue/${q(id)}/send-now`),
+  steer: (threadId: string, prompt: string) =>
+    request<void>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
   patchThread: (id: string, body: UpdateThread) =>
     request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
   mentions: (threadId: string, query: string, signal?: AbortSignal) =>

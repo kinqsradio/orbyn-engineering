@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Brain,
   CircleCheck,
   PanelBottom,
   PanelLeft,
@@ -13,11 +14,9 @@ import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
 import type { Project, RunState, Thread } from "../../api/types";
-import { elapsed, relativeTime, runStateLabels } from "../../lib/format";
-import { toFailure } from "../../lib/useAsync";
+import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
-import { useNow } from "../../lib/useNow";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
@@ -106,7 +105,10 @@ function TopBar({
 
 const statusSentence = (state: RunState, tools: number): string => {
   if (state === "awaiting_approval") return "Waiting for your approval";
-  if (state === "running" && tools > 0) return tools === 1 ? "Waiting on 1 tool" : `Waiting on ${tools} tools`;
+  if (state === "running") {
+    if (tools === 0) return "Thinking";
+    return tools === 1 ? "Waiting on 1 tool" : `Waiting on ${tools} tools`;
+  }
   return runStateLabels[state];
 };
 
@@ -116,11 +118,7 @@ function RunStatusLine({ thread }: { thread: Thread }) {
   const active = thread.active_run;
   const log = useThreadLogs((store) => store.logs[thread.id]);
   const tools = useMemo(() => (active ? runningTools(log?.items ?? []) : []), [log, active]);
-  const now = useNow(active !== null);
-  const refreshAll = useWorkspace((store) => store.refreshAll);
   const putThread = useWorkspace((store) => store.putThread);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (!state) return <div className="thread-state" role="status" />;
   if (!active) {
@@ -148,35 +146,16 @@ function RunStatusLine({ thread }: { thread: Thread }) {
     );
   }
 
-  const stop = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.cancelRun(active.id);
-      void refreshAll();
-    } catch (failure) {
-      setError(toFailure(failure).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="thread-state run-status-row" role="status">
-      <span className={`status-dot ${state === "awaiting_approval" ? "tone-warn" : "tone-info"}`} aria-hidden />
+      {state === "running" && tools.length === 0 ? (
+        <Brain size={14} aria-hidden />
+      ) : (
+        <span className={`status-dot ${state === "awaiting_approval" ? "tone-warn" : "tone-info"}`} aria-hidden />
+      )}
       <span className="run-status text-sweep">{statusSentence(state, tools.length)}</span>
       {tools.length > 0 ? (
         <span className="run-status-detail">{tools.map((tool) => tool.name).join(", ")}</span>
-      ) : (
-        <span className="run-status-detail">{elapsed(active.started_at, now)}</span>
-      )}
-      <button type="button" className="text-action" disabled={busy} onClick={() => void stop()}>
-        Stop
-      </button>
-      {error ? (
-        <span className="field-error" role="alert">
-          {error}
-        </span>
       ) : null}
     </div>
   );

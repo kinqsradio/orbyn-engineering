@@ -1,6 +1,7 @@
 import {
   BarChart3,
   ChevronRight,
+  CircleDashed,
   FolderPlus,
   GitBranch,
   ListFilter,
@@ -27,7 +28,7 @@ import { toFailure } from "../../lib/useAsync";
 import { useNow } from "../../lib/useNow";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { routeHref, type Route } from "../../state/route";
-import { useUi } from "../../state/ui";
+import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { EngineGlyph, OrbynMark, ProjectBadge } from "../../ui/badges";
 import { Collapsible } from "../../ui/Collapsible";
@@ -48,10 +49,18 @@ function RowStatus({ thread }: { thread: Thread }) {
   const now = useNow(active !== null);
   if (active) {
     const waiting = active.state === "awaiting_approval";
-    const label = active.state === "admitted" ? "Queued" : waiting ? "Waiting" : "Working";
+    if (waiting) {
+      return (
+        <span className="row-status tone-warn">
+          <span className="status-dot" aria-hidden />
+          Approval
+        </span>
+      );
+    }
+    const label = active.state === "admitted" ? "Queued" : "Working";
     return (
-      <span className={`row-status ${waiting ? "tone-warn" : "tone-info"}`}>
-        <span className="status-dot" aria-hidden />
+      <span className="row-status tone-info">
+        <CircleDashed size={14} className="spin" aria-hidden />
         {label} {elapsed(active.started_at, now)}
       </span>
     );
@@ -336,6 +345,55 @@ function Group({
   );
 }
 
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 420;
+const clampWidth = (width: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)));
+
+/** Resizes live through a CSS variable; the preference saves when the drag ends. */
+function SidebarRail() {
+  const width = useUi((state) => state.sidebarWidth);
+  const setWidth = useUi((state) => state.setSidebarWidth);
+  const [dragging, setDragging] = useState(false);
+  const latest = useRef(width);
+  const preview = (next: number) =>
+    document.querySelector<HTMLElement>(".shell")?.style.setProperty("--sidebar-w", `${next}px`);
+
+  return (
+    <div
+      className="sidebar-rail"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuenow={width}
+      aria-valuemin={MIN_WIDTH}
+      aria-valuemax={MAX_WIDTH}
+      tabIndex={0}
+      data-dragging={dragging || undefined}
+      title="Drag to resize"
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        latest.current = width;
+        setDragging(true);
+      }}
+      onPointerMove={(event) => {
+        if (!dragging) return;
+        latest.current = clampWidth(event.clientX);
+        preview(latest.current);
+      }}
+      onLostPointerCapture={() => {
+        setDragging(false);
+        setWidth(latest.current);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        setWidth(clampWidth(width + (event.key === "ArrowRight" ? 16 : -16)));
+      }}
+      onDoubleClick={() => setWidth(DEFAULT_SIDEBAR_WIDTH)}
+    />
+  );
+}
+
 function SidebarFoot({ route }: { route: Route }) {
   return (
     <div className="sidebar-foot">
@@ -521,6 +579,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         </div>
       ) : null}
       <SidebarFoot route={route} />
+      <SidebarRail />
     </nav>
   );
 });

@@ -39,7 +39,7 @@ test("a dropped stream shows reconnecting and loses nothing", async ({ page }) =
   const box = page.getByRole("textbox", { name: /^Message/ });
   await box.fill("stream please");
   await box.press("Enter");
-  await expect(page.getByText(/^Worked for/)).toBeVisible();
+  await expect(page.getByText(/^Work(ed|ing) for/)).toBeVisible();
   await page.evaluate(() => fetch("/__mock/drop-streams"));
   await expect(page.getByText(/^Reconnecting/)).toBeVisible();
   await expect(page.locator(".thread-state")).toHaveText("Completed", { timeout: 10_000 });
@@ -72,10 +72,13 @@ test("Escape closes a dialog and returns focus to its opener", async ({ page }) 
   await page.goto("/#/settings/engines");
   const open = page.getByRole("button", { name: "Update to 2.1.20" });
   await open.click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: /^Update / });
+  await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(dialog).toBeHidden();
   await expect(open).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
 });
 
 test("keyboard focus is visible and reduced motion stops animation", async ({ page }) => {
@@ -182,4 +185,32 @@ test("disclosures animate height over 200 ms", async ({ page }) => {
   });
   expect(transition).toEqual({ property: "height", duration: "0.2s" });
   await expect(page.locator(".work .trace").first()).toBeVisible();
+});
+
+test("settings float over the workspace and close back to it", async ({ page }) => {
+  await page.goto("/#/threads/t-done");
+  await expect(page.getByRole("heading", { name: "Explain how the event log resumes" })).toBeVisible();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page).toHaveURL(/threads\/t-done/);
+});
+
+test("the sidebar rail resizes and remembers", async ({ page }) => {
+  await page.goto("/#/threads/t-done");
+  const rail = page.getByRole("separator", { name: "Resize sidebar" });
+  const box = await rail.boundingBox();
+  await page.mouse.move(box!.x + 8, 300);
+  await page.mouse.down();
+  await page.mouse.move(300, 300);
+  await page.mouse.up();
+  await expect.poll(async () => (await page.locator(".sidebar").boundingBox())?.width).toBe(300);
+  await page.reload();
+  await expect.poll(async () => (await page.locator(".sidebar").boundingBox())?.width).toBe(300);
+});
+
+test("code blocks get a language header and highlighted tokens", async ({ page }) => {
+  await page.goto("/#/threads/t-done");
+  await expect(page.locator(".code-lang").first()).toHaveText("rust");
+  await expect(page.locator(".code-line span[style]").first()).toBeAttached();
 });

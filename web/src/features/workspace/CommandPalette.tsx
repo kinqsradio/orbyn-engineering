@@ -130,6 +130,18 @@ export function CommandPalette({ onClose }: { onClose(): void }) {
           );
         })}
       </div>
+      <footer className="palette-foot">
+        <span>
+          <kbd>↑</kbd>
+          <kbd>↓</kbd> Navigate
+        </span>
+        <span>
+          <kbd>Enter</kbd> Select
+        </span>
+        <span>
+          <kbd>Esc</kbd> Close
+        </span>
+      </footer>
     </dialog>
   );
 }

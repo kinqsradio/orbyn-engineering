@@ -126,6 +126,7 @@
   position: relative;
   min-width: 0;
   padding: 0 4px;
+  color: color-mix(in srgb, var(--color-text) 90%, transparent);
 }
 .item-work + .item-message .msg-assistant {
   margin-top: 2px;
@@ -322,12 +323,43 @@
   font-size: 0.85em;
   overflow-wrap: anywhere;
 }
-.md pre {
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  background: var(--color-raised);
-  box-shadow: inset 0 0 0 1px var(--color-divider);
-  line-height: 1.5;
+.code-card {
+  margin: 0.65rem 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+}
+.code-card:last-child {
+  margin-bottom: 0;
+}
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 6px 6px 0 12px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.code-actions {
+  display: flex;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.code-card:hover .code-actions,
+.code-card:focus-within .code-actions {
+  opacity: 1;
+}
+.code-card pre {
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  color: var(--code-text);
+  font-size: 13px;
+  line-height: 1.375;
+}
+.code-card[data-wrap] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .md blockquote {
   padding-left: 12px;
@@ -346,19 +378,19 @@
   overflow-x: auto;
 }
 .md table {
+  width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-small);
 }
 .md th,
 .md td {
-  padding: 6px 12px 6px 0;
+  padding: 0.45rem 0.75rem 0.45rem 0;
   border-bottom: 1px solid var(--color-divider);
   text-align: left;
   vertical-align: top;
 }
 .md th {
-  color: var(--color-muted);
-  font-weight: 500;
+  padding-block: 0.55rem;
+  font-weight: 600;
 }
 
 /* Reasoning, tools, other activity */
@@ -444,18 +476,12 @@
 .approval {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  background: var(--color-raised);
-  box-shadow: inset 0 0 0 1px var(--color-outline);
+  gap: 4px;
+  padding: 2px 4px;
   min-width: 0;
 }
 .approval-closed {
   gap: 2px;
-  padding: 2px 4px;
-  background: transparent;
-  box-shadow: none;
   color: var(--color-muted);
 }
 .approval-closed .approval-touches {
@@ -512,7 +538,30 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 6px;
+  gap: 2px 8px;
+  font-size: var(--text-meta);
+}
+.approval-actions .btn {
+  min-height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  line-height: 16px;
+}
+.approval-actions .btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text);
+}
+.approval-actions .btn-primary {
+  color: var(--color-text);
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .approval-actions .btn {
+    min-height: var(--hit);
+    padding: 0 8px 0 0;
+  }
 }
 .approval-note {
   color: var(--color-faint);
@@ -762,6 +811,35 @@
 }
 .send-btn:hover:not(:disabled) {
   transform: scale(1.05);
+}
+.stop-btn {
+  background: var(--color-danger);
+  color: var(--color-onAccent);
+}
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-lg);
+  background: var(--color-raised);
+  box-shadow: inset 0 0 0 1px var(--color-divider);
+}
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--hit);
+  font-size: var(--text-small);
+}
+.queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .send-btn:disabled {
   background: var(--color-sendIdle);

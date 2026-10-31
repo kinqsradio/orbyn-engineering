@@ -75,7 +75,7 @@ export function ApprovalCard({
           <span className="status-dot tone-warn" aria-hidden />
         )}
         <h3>{approval.summary}</h3>
-        <span className="approval-state">{decided ? decided.label : "Waiting for you"}</span>
+        {decided ? <span className="approval-state">{decided.label}</span> : null}
       </header>
       <p className="approval-meta">
         {[actionLabels[approval.kind], engine].filter(Boolean).join(" · ")}
@@ -112,6 +112,7 @@ export function ApprovalCard({
       ) : null}
       {decided ? null : (
         <div className="approval-actions">
+          <span className="approval-state tone-warn">Waiting for approval</span>
           <Button tone="primary" small busy={pending === "allow"} disabled={pending !== null} onClick={() => void decide("allow")}>
             Allow
           </Button>

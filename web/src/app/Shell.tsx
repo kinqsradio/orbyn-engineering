@@ -1,5 +1,5 @@
 import { PanelLeft } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AddProject } from "../features/onboarding/AddProject";
 import { NewThread } from "../features/onboarding/NewThread";
 import { TrustFolder } from "../features/onboarding/TrustFolder";
@@ -18,7 +18,7 @@ import { IconButton } from "../ui/controls";
 
 const POLL_MS = 4000;
 
-function RouteView({ route, needsProject }: { route: Route; needsProject: boolean }) {
+function RouteView({ route, needsProject }: { route: Exclude<Route, { name: "settings" }>; needsProject: boolean }) {
   switch (route.name) {
     case "home":
       return needsProject ? <AddProject /> : <HomePage />;
@@ -32,8 +32,6 @@ function RouteView({ route, needsProject }: { route: Route; needsProject: boolea
       return <AddProject />;
     case "trust":
       return <TrustFolder projectId={route.projectId} threadId={route.threadId} />;
-    case "settings":
-      return <SettingsPage section={route.section} />;
   }
 }
 
@@ -93,6 +91,8 @@ export function Shell() {
   const pending = useWorkspace((state) => state.approvals.data?.length ?? 0);
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
+  const sidebarWidth = useUi((state) => state.sidebarWidth);
+  const behindSettings = useRef<Exclude<Route, { name: "settings" }>>({ name: "home" });
   const main = useRef<HTMLElement>(null);
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
@@ -127,11 +127,18 @@ export function Shell() {
   }, [pending]);
 
   const needsProject = projects !== null && projects.length === 0;
-  const onHome = route.name === "home" && !needsProject;
+  const underneath = route.name === "settings" ? behindSettings.current : route;
+  if (route.name !== "settings") behindSettings.current = route;
+  const onHome = underneath.name === "home" && !needsProject;
   const showNav = layout === "narrow" ? onHome : !collapsed;
 
   return (
-    <div className="shell" data-nav={showNav ? "shown" : "hidden"} data-layout={layout}>
+    <div
+      className="shell"
+      data-nav={showNav ? "shown" : "hidden"}
+      data-layout={layout}
+      style={{ "--sidebar-w": `${sidebarWidth}px` } as CSSProperties}
+    >
       <a className="skip-link" href="#main" onClick={(event) => {
         event.preventDefault();
         main.current?.focus();
@@ -141,18 +148,21 @@ export function Shell() {
       {showNav ? <Sidebar route={route} /> : null}
       <Toasts />
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
-      {collapsed && layout !== "narrow" && route.name !== "thread" ? (
+      {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (
         <IconButton className="expand-nav" label="Expand sidebar" onClick={toggleSidebar}>
           <PanelLeft size={16} aria-hidden />
         </IconButton>
       ) : null}
-      {layout === "narrow" && onHome ? (
+      {layout === "narrow" && onHome && route.name !== "settings" ? (
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">
-          <RouteView route={route} needsProject={needsProject} />
+          <RouteView route={underneath} needsProject={needsProject} />
         </main>
       )}
+      {route.name === "settings" ? (
+        <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
+      ) : null}
     </div>
   );
 }

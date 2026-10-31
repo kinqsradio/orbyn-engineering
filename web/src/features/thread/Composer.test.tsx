@@ -27,6 +27,7 @@ const box = () => screen.getByRole("textbox");
 
 function setup(over: Partial<Thread> = {}) {
   vi.spyOn(api, "thread").mockResolvedValue(thread);
+  if (!vi.isMockFunction(api.queue)) vi.spyOn(api, "queue").mockResolvedValue([]);
   return render(<Composer thread={{ ...thread, ...over }} engine={null} profileName={null} showContext />);
 }
 
@@ -69,14 +70,32 @@ describe("Composer", () => {
     expect(box()).toHaveValue("two");
   });
 
-  it("blocks sending during an active run but keeps typing", async () => {
+  it("queues a message during an active run instead of starting one", async () => {
     const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
+    const enqueue = vi.spyOn(api, "enqueue").mockResolvedValue({ id: "q1" } as never);
     setup({ active_run: { ...run, state: "running" } as Run });
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
     await userEvent.type(box(), "later{Enter}");
-    expect(box()).toHaveValue("later");
+    await waitFor(() => expect(enqueue).toHaveBeenCalledWith("t1", "later", []));
     expect(start).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    await waitFor(() => expect(box()).toHaveValue(""));
     start.mockRestore();
+    enqueue.mockRestore();
+  });
+
+  it("offers steer, send now and remove on a queued message", async () => {
+    const queue = vi.spyOn(api, "queue").mockResolvedValue([
+      { id: "q1", thread_id: "t1", prompt: "also check tests", attachment_ids: [], held: false, created_at: "" },
+    ]);
+    const steer = vi.spyOn(api, "steer").mockResolvedValue();
+    const remove = vi.spyOn(api, "removeQueued").mockResolvedValue();
+    setup({ active_run: { ...run, state: "running" } as Run });
+    await userEvent.click(await screen.findByRole("button", { name: /^Add to the running turn/ }));
+    await waitFor(() => expect(steer).toHaveBeenCalledWith("t1", "also check tests"));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("q1"));
+    queue.mockRestore();
+    steer.mockRestore();
+    remove.mockRestore();
   });
 
   it("keeps the draft and explains a failed start", async () => {

@@ -253,8 +253,11 @@ export function WorkGroupView({
   /** The group the current run is writing to. */
   latest: boolean;
 }) {
-  const running = live && latest ? runningTools(group.items) : [];
+  const current = live && latest;
+  const running = current ? runningTools(group.items) : [];
   const [open, setOpen] = useState(running.length === 1);
+  const now = useNow(current);
+  const started = group.items[0]?.ts;
   return (
     <div className="work">
       <Collapsible
@@ -263,7 +266,9 @@ export function WorkGroupView({
         summaryClassName="work-summary"
         summary={
           <>
-            <span>Worked for {group.seconds}s</span>
+            <span>
+              {current && started ? `Working for ${elapsed(started, now)}` : `Worked for ${group.seconds}s`}
+            </span>
             <ChevronRight size={14} className="chev" aria-hidden />
           </>
         }

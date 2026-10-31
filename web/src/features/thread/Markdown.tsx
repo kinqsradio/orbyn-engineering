@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { CodeBlock } from "./CodeBlock";
 
 /**
  * A small Markdown subset rendered to React elements. There is no HTML path:
@@ -229,11 +230,7 @@ function renderBlock(block: Block, key: number): ReactNode {
     case "paragraph":
       return <p key={key}>{withBreaks(block.text)}</p>;
     case "code":
-      return (
-        <pre key={key} tabIndex={0} data-lang={block.lang || undefined}>
-          <code>{block.text}</code>
-        </pre>
-      );
+      return <CodeBlock key={key} code={block.text} lang={block.lang} />;
     case "quote":
       return <blockquote key={key}>{block.blocks.map(renderBlock)}</blockquote>;
     case "list": {

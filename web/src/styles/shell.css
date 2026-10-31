@@ -31,6 +31,7 @@
 
 /* Sidebar */
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -340,6 +341,35 @@ details[open] > summary > .chev {
   background: var(--color-raised);
   color: var(--color-text);
   cursor: pointer;
+}
+.sidebar-rail {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: -8px;
+  bottom: 0;
+  width: 16px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-rail::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 2px;
+  background: var(--color-focus);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.sidebar-rail:hover::after,
+.sidebar-rail:focus-visible::after,
+.sidebar-rail[data-dragging]::after {
+  opacity: 0.6;
+}
+.shell[data-layout="narrow"] .sidebar-rail {
+  display: none;
 }
 .expand-nav {
   position: fixed;

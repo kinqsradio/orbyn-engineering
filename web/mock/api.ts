@@ -8,6 +8,7 @@ import type {
   Approval,
   EngineStatus,
   Project,
+  QueuedMessage,
   ServerSettings,
   Thread,
   UpdateStatus,
@@ -62,6 +63,7 @@ export function createMockApi(options: MockOptions = {}) {
   let updates: UpdateStatus = fixtures.updateStatus(2);
   let settings: ServerSettings = fixtures.serverSettings();
   let failStep: string | null = null;
+  let queued: QueuedMessage[] = [];
   let failures: Failure[] = [];
   let delayMs = 0;
   let idCounter = 0;
@@ -441,6 +443,9 @@ export function createMockApi(options: MockOptions = {}) {
         }
         break;
       }
+      case "DELETE /api/queue":
+        queued = queued.filter((item) => item.id !== seg[2]);
+        return { status: 204 };
       case "PATCH /api/threads": {
         const thread = threads.find((t) => t.id === seg[2]);
         if (!thread) return err(404, "not_found", "Thread not found.");
@@ -472,6 +477,7 @@ export function createMockApi(options: MockOptions = {}) {
               },
             };
           }
+          if (seg[3] === "queue") return { status: 200, body: queued.filter((q) => q.thread_id === seg[2]) };
           if (seg[3] === "commands") return { status: 200, body: fixtures.slashCommands };
           const thread = threads.find((t) => t.id === seg[2]);
           if (!thread) return err(404, "not_found", "Thread not found.");
@@ -542,6 +548,23 @@ export function createMockApi(options: MockOptions = {}) {
         };
         threads = [...threads, thread];
         return { status: 201, body: thread };
+      }
+      if (seg[1] === "threads" && seg[3] === "queue" && !seg[4]) {
+        const item: QueuedMessage = {
+          id: nextId("q"),
+          thread_id: seg[2] ?? "",
+          prompt: String(data.prompt),
+          attachment_ids: [],
+          held: false,
+          created_at: now(),
+        };
+        queued = [...queued, item];
+        return { status: 201, body: item };
+      }
+      if (seg[1] === "threads" && seg[3] === "steer") return { status: 202 };
+      if (seg[1] === "queue" && seg[3] === "send-now") {
+        queued = queued.filter((item) => item.id !== seg[2]);
+        return { status: 202 };
       }
       if (seg[1] === "threads" && seg[3] === "attachments") {
         return { status: 201, body: { id: nextId("att"), thread_id: seg[2], name: query.get("name") ?? "file", mime: "", size: 1, created_at: now() } };

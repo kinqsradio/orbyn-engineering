@@ -3,4 +3,4 @@ T3 Code, studied for behaviour and measured for values such as sizes, durations,
 easing curves and colours. No T3 Code source is included.
 
 Third-party packages keep their own licenses, in node_modules after install:
-React (MIT), Zustand (MIT), xterm.js (MIT), lucide-react (ISC), Inter (OFL-1.1).
+React (MIT), Zustand (MIT), xterm.js (MIT), lucide-react (ISC), Inter (OFL-1.1), Shiki (MIT).

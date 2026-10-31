@@ -1,5 +1,5 @@
-import { ArrowUp, Folder, GitBranch, Paperclip, ShieldCheck, ShieldOff, X } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowUp, Folder, GitBranch, Paperclip, ShieldCheck, ShieldOff, Square, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
 import type { Attachment, EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
@@ -11,6 +11,7 @@ import { IconButton } from "../../ui/controls";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { Menu } from "../../ui/Menu";
+import { QueuedMessages } from "./QueuedMessages";
 import { insertToken, triggerAt } from "./skillMention";
 
 const accessLabels: Record<PermissionMode, string> = {
@@ -60,6 +61,8 @@ export function Composer({
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const refreshAll = useWorkspace((state) => state.refreshAll);
   const [accessMenu, setAccessMenu] = useState<{ x: number; y: number } | null>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const putThread = useWorkspace((state) => state.putThread);
@@ -68,7 +71,13 @@ export function Composer({
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const busy = thread.active_run !== null;
-  const canSend = draft.trim() !== "" && !busy && !sending;
+  const canSend = draft.trim() !== "" && !sending;
+  const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
+  const reloadQueue = queue.reload;
+  const runId = thread.active_run?.id ?? null;
+  useEffect(() => {
+    reloadQueue();
+  }, [runId, reloadQueue]);
 
   const trigger = menuDismissed ? null : triggerAt(draft, caret);
   const lookupKey = trigger ? `${thread.id}:${trigger.char}:${trigger.query}` : `${thread.id}:idle`;
@@ -112,12 +121,15 @@ export function Composer({
     setError(null);
     try {
       await beforeSend?.();
-      const run = await api.startRun(thread.id, prompt.trim(), attachments.map((file) => file.id));
+      const ids = attachments.map((file) => file.id);
+      const run = busy ? null : await api.startRun(thread.id, prompt.trim(), ids);
+      if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
       setDraft(thread.id, current === prompt ? "" : current);
-      addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
+      if (run) addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
+      if (busy) reloadQueue();
       void refreshThread(thread.id);
     } catch (failure) {
       onSendFailed?.();
@@ -128,7 +140,7 @@ export function Composer({
       }
       setError(
         known.code === "thread_busy"
-          ? "A run is already active in this thread. Your message is kept."
+          ? "A run started first. Your message is kept, so send it again to queue it."
           : `Couldn't start the run. ${known.message} Your message is kept.`,
       );
       void refreshThread(thread.id);
@@ -187,6 +199,20 @@ export function Composer({
     }
   };
 
+  const stop = async () => {
+    if (!thread.active_run) return;
+    setStopping(true);
+    setError(null);
+    try {
+      await api.cancelRun(thread.active_run.id);
+      void refreshAll();
+    } catch (failure) {
+      setError(`Couldn't stop the run. ${toFailure(failure).message}`);
+    } finally {
+      setStopping(false);
+    }
+  };
+
   const unmanaged = engine !== null && !engine.capabilities.managed;
   const access = thread.lifecycle?.permission_mode ?? "supervised";
   const engineName = engine?.name ?? thread.engine;
@@ -205,6 +231,7 @@ export function Composer({
           {error}
         </p>
       ) : null}
+      <QueuedMessages threadId={thread.id} items={queue.data ?? []} running={busy} onChange={reloadQueue} />
       <div className="composer-box">
         {menuOpen ? (
           <ul className="mention-menu" role="listbox" aria-label="Suggestions">
@@ -299,9 +326,27 @@ export function Composer({
               <dd>{thread.model ?? "Default model"}</dd>
             </div>
           </dl>
-          <button type="submit" className="send-btn" aria-label="Send" aria-busy={sending || undefined} disabled={!canSend}>
-            <ArrowUp size={16} aria-hidden />
-          </button>
+          {busy && !draft.trim() ? (
+            <button
+              type="button"
+              className="send-btn stop-btn"
+              aria-label="Stop"
+              disabled={stopping}
+              onClick={() => void stop()}
+            >
+              <Square size={12} fill="currentColor" aria-hidden />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="send-btn"
+              aria-label={busy ? "Queue" : "Send"}
+              aria-busy={sending || undefined}
+              disabled={!canSend}
+            >
+              <ArrowUp size={16} aria-hidden />
+            </button>
+          )}
         </div>
       </div>
       <div className="composer-context" hidden={!showContext}>

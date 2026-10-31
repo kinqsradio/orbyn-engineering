@@ -33,6 +33,7 @@ export type { PolicyEffect } from "../generated/PolicyEffect";
 export type { PolicyRule } from "../generated/PolicyRule";
 export type { Project } from "../generated/Project";
 export type { ProjectRemoval } from "../generated/ProjectRemoval";
+export type { QueuedMessage } from "../generated/QueuedMessage";
 export type { Run } from "../generated/Run";
 export type { RunState } from "../generated/RunState";
 export type { ServerInfo } from "../generated/ServerInfo";
