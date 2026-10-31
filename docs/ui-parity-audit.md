@@ -23,6 +23,10 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Sidebar | Footer | Live: 32px at x 8, 44, 80; update x 167 | Settings, update only | x 166; Pull requests and Usage hidden |
 | Sidebar | Working status | Live: spinner, blue "Working Ns" | Match | Spin 1000 ms |
 | Sidebar | Approval status | Live: warn "Approval" | Match, Real | Dot, not their icon |
+| Sidebar | Limited and Question | Source: request states on the row | Limited, Question, Real | Own label for a question |
+| Sidebar | Woke | Source: dismissible badge after an early wake | Match, Real | Badge text only, no icon |
+| Sidebar | Draft row | Source: unsent marker, discard, undo with attachments | Match, Real | One draft at a time, not one per project |
+| Timeline | Limit stop | Source: Limited, Resume, Resume at reset, Snooze until reset | Banner above the composer, Real | Layout own |
 | Sidebar | Multi-line rows | Live: selected row, three lines | Built | Unread title weight unobserved |
 | Hover card | Older thread | Live: 165 ms to show, x +4, width 320, radius 6, 150 ms | Match | Delay 150 ms set |
 | Draft | Heading | Live: 30px, -0.75px, line 36 | Match, own wording removed | Same wording as reference |
@@ -70,13 +74,17 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Approval placeholder | Live | Match | Declines, then queues |
 | Composer | Mentions, commands | Source | Built | Real returned none in an empty repo |
 | Composer | Pull requests, threads | Source: # browse and search, @ lookup, chips | Menu Real against a stand-in gh; inserts a Markdown link | Link text, no chip until the rich editor |
-| Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double | Long-press flip absent |
+| Composer | Queue and steer | Source: setting picks the default, the alternate key flips it | Match, Real, steer through the protocol double; an engine with no mid-turn input takes it next turn, and a refused one goes to the queue | Long-press flip absent; no per-message delivered mark in the timeline |
+| Composer | Compact controls | Source: narrow composers fold controls into one menu | Below 440 wide, Real | Own icon |
+| Composer | Text decline | Source: typed reply declines Claude with feedback | Match, Real through the fake Claude | n/a |
+| Thread | Goal | Source: end line, /goal clear, pause, resume | End line and the row's Goal status, Real | Pause and Resume on Codex only |
+| Timeline | Lifecycle rows | Source: dividers for restarts, handoffs and context boundaries | Notices for restart, lost session, engine switch, compaction, rewind, Real | Plain notices, not dividers |
 | Composer | Send shortcut | Source: Enter, Mod+Enter multiline, Mod+Enter | Match, Real | 0 |
 | Composer | Recall, stash, large paste, drop | Source | Match, Real | Stash keeps text only, attachments are not stashed |
 | Composer | Message limit | Source: 120,000, draft kept | Match, Real | Counted in the client as well as the service |
 | Composer | Uploads | Source: each file on add, retry, remove, blocks send | Match, Real | Failure text inline, no progress bar |
 | Composer | Queue edit | Source: back to the composer | Match, Real | An existing draft keeps its text, the prompt joins after it |
-| Composer | Plan | Source | Button, /plan, /default, Real | Shift+Tab left to focus movement |
+| Composer | Plan | Source | Button, /plan, /default, Shift+Tab, Real; Labs turns them off | Inside a list Shift+Tab outdents first |
 | Composer | Context meter, /usage-limits | Source | Match, Real; the meter compacts on native engines | Compaction tick absent |
 | Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | 0 |
 | Composer | Live Markdown | Source: rich editor that keeps literal markers | Styled layer under a transparent textarea, Real; markers stay and bold, headings and code keep their width | Italic is an underline and code stays in the body font, so the caret never drifts |
@@ -90,6 +98,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Layout | Pane width | Live: 360 default, resized per thread | Match, Real; double-click resets | Default follows the window, as measured before |
 | Layout | Narrow | Source: right panel becomes a sheet at 980 and under | Replaces the thread with Back to thread | Own shape below the wide breakpoint |
 | Layout | Independent scrolling | Source: each pane scrolls alone | Real at both ends, parked and during a run: details, Diff, Files, Terminal, Browser, sidebar | The cause was absolute children, such as sr-only text, escaping the transcript and giving `.main` something to scroll |
+| Layout | Side chat | Source: /side, /btw, + menu, tab with own composer, Bring back, Delete, listed in details | Match, Real | Launcher instead of the + menu; one open at a time |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real on a stand-in gh: author, label, draft, review, checks, quick actions, bulk close | Filters are one menu, not groups |
 | Pull requests | Detail | Source: Summary, Timeline, Code | Real on a stand-in gh: title, description, base, reviewers, labels, checks, comments, threads, reactions, viewed marks, line review, merge, draft, branch actions, stack, checkout | Guide absent; no revision picker on Code |
@@ -112,6 +121,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Sections | Live: General, Appearance, Chat, Diffs & pull requests, Keybindings, SnapShots, Providers, Threads, Browser, Devices, Scheduled tasks, Projects, Source control, Worktrees, Environments, Sharing & access, Maintenance, Labs, About, Archive | 15 backed, all load Real | SnapShots, Browser, Devices hidden; Environments and Sharing out of scope |
 | Settings | Keybindings | Source: table, capture, conflicts | Built on the real rules; the shell now runs every rule through when contexts, Real | Row layout own; mod+digit falls back in the client, the service lists no jump rules |
 | Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
+| Settings | Advanced folds | Source: collapsed sections | Branch names and the open source list, Real | Fewer folds than the reference |
+| Settings | Network | Own: every automatic outbound request | Maintenance, Real | n/a |
 | Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
 | Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook and after-thread kinds; signature, filters, repeats, age, address and deliveries log | The address shows once, when issued, so reopening needs a new one |
 | Settings | Notifications | Live: Thread, In-app | Off, notifications, sound or both, and in-app, Real | System alerts only in a hidden window, which now keeps polling while work runs |

@@ -48,6 +48,50 @@ fn launches(path: &std::path::Path, mode: &str) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn a_typed_reply_reaches_claude_as_the_reason_it_was_declined() {
+    let dir = TempDir::new();
+    let log = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(true, &log), "claude").await;
+    service.admit(&thread, "[approve]").await;
+    let approval = loop {
+        let pending = service.json("/api/approvals?state=pending").await;
+        if let Some(first) = pending.as_array().and_then(|list| list.first()) {
+            break first["id"].as_str().unwrap().to_owned();
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    let (code, body) = service
+        .send(
+            &format!("/api/approvals/{approval}/decide"),
+            json!({ "allow": false, "remember": false, "feedback": "use the other file" }),
+        )
+        .await;
+    assert_eq!(code, 200, "{body}");
+    service.finished(&thread).await;
+    assert_eq!(launches(&log, "claude-denied"), ["use the other file"]);
+}
+
+#[tokio::test]
+async fn restarting_the_session_starts_fresh_and_carries_the_conversation() {
+    let dir = TempDir::new();
+    let log = dir.path().join("l");
+    let (service, thread) = setup(&dir, engines(false, &log), "codex").await;
+    service.admit(&thread, "remember the pier").await;
+    service.finished(&thread).await;
+    let (code, body) = service
+        .send(&format!("/api/threads/{thread}/restart-session"), json!({}))
+        .await;
+    assert_eq!(code, 204, "{body}");
+    service.admit(&thread, "next").await;
+    service.finished(&thread).await;
+    let turns = launches(&log, "codex-turn");
+    assert!(
+        turns.last().unwrap().contains("remember the pier"),
+        "{turns:?}"
+    );
+}
+
+#[tokio::test]
 async fn codex_lists_its_visible_models_with_their_efforts() {
     let dir = TempDir::new();
     let (service, _) = setup(&dir, engines(false, &dir.path().join("l")), "codex").await;

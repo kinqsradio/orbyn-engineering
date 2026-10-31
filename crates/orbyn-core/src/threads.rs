@@ -16,6 +16,8 @@ const PULL_WATCH_TICKS: u32 = 2;
 /// Automatic pull runs every 30 minutes.
 const AUTO_PULL_TICKS: u32 = 30;
 
+const LIMIT_CONTINUATION: &str = "Continue where you left off.";
+
 impl Core {
     pub fn update_thread(&self, id: &str, patch: &UpdateThread, actor: &str) -> Result<Thread> {
         let thread = self.store.update_thread(id, patch, actor)?;
@@ -84,6 +86,16 @@ impl Core {
         Ok(report)
     }
 
+    /// Starts the continuations that are due, overdue ones after a restart included.
+    /// One that can't start yet stays scheduled for the next pass.
+    pub fn resume_limited(&self) {
+        for id in self.store.due_resumes(unix_now()).unwrap_or_default() {
+            if let Err(error) = self.runs.admit(&id, LIMIT_CONTINUATION, "system:limit") {
+                tracing::debug!(%error, "a limit continuation did not start");
+            }
+        }
+    }
+
     /// Runs the periodic rules until `stop` fires.
     pub async fn run_lifecycle(&self, stop: tokio_util::sync::CancellationToken) {
         let mut ticks = tokio::time::interval(std::time::Duration::from_secs(60));
@@ -102,6 +114,7 @@ impl Core {
                     {
                         self.watch_pulls().await;
                     }
+                    self.resume_limited();
                     self.run_due_tasks().await;
                     if let Ok(mode) = self.preference("app_update_mode", None) {
                         self.updates.auto_install(mode.as_str().unwrap_or_default()).await;

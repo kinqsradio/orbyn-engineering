@@ -160,6 +160,14 @@ fn audit(tx: &Transaction<'_>, actor: &str, action: &str, id: &str, detail: Valu
     Ok(())
 }
 
+/// What a limit stop saves, and what the settings say to do about it.
+pub struct LimitStop {
+    pub message: String,
+    pub resets_at: Option<String>,
+    pub resume: bool,
+    pub snooze: bool,
+}
+
 impl Store {
     /// Applies one patch in one transaction: it lands whole or not at all.
     pub fn update_thread(&self, id: &str, patch: &UpdateThread, actor: &str) -> Result<Thread> {
@@ -287,6 +295,7 @@ impl Store {
                 let value = archived.then(|| stamp.clone());
                 if archived {
                     tx.execute("DELETE FROM pull_watches WHERE thread_id = ?1", [id])?;
+                    clear_limit(tx, id)?;
                 }
                 tx.execute(
                     "UPDATE threads SET archived_at = ?2, pinned_at =
@@ -309,6 +318,14 @@ impl Store {
                 )?;
                 notify(tx, appended, id, "wake")?;
             }
+            if patch.dismiss_woke == Some(true) {
+                tx.execute("UPDATE threads SET woke_at = NULL WHERE id = ?1", [id])?;
+                notify(tx, appended, id, "woke_dismissed")?;
+            }
+            if let Some(resume) = patch.resume_at_reset {
+                schedule_resume(tx, id, resume)?;
+                notify(tx, appended, id, "limit_resume")?;
+            }
             if let Some(until) = &snooze {
                 let archived: bool = tx.query_row(
                     "SELECT archived_at IS NOT NULL FROM threads WHERE id = ?1",
@@ -327,6 +344,56 @@ impl Store {
             Ok(())
         })?;
         self.thread(id)
+    }
+
+    /// Records that a run stopped on a limit, with the choices the settings make for it.
+    pub fn stop_on_limit(&self, id: &str, stop: &LimitStop) -> Result<()> {
+        self.commit(|tx, appended| {
+            let future = stop
+                .resets_at
+                .as_deref()
+                .and_then(parse_time)
+                .is_some_and(|at| at > unix_now());
+            let scheduled = future.then_some(()).filter(|()| stop.resume);
+            tx.execute(
+                "UPDATE threads SET limit_message = ?2, limit_stopped_at = ?3, limit_resets_at = ?4,
+                    limit_resume_at = ?5 WHERE id = ?1",
+                params![
+                    id,
+                    stop.message,
+                    now(),
+                    stop.resets_at,
+                    scheduled.and(stop.resets_at.as_deref())
+                ],
+            )?;
+            if future && stop.snooze {
+                tx.execute(
+                    "UPDATE threads SET snoozed_until = ?2 WHERE id = ?1",
+                    params![id, stop.resets_at],
+                )?;
+            }
+            notify(tx, appended, id, "limit")
+        })
+    }
+
+    /// Threads whose scheduled continuation is due, snoozed ones included: a reset
+    /// that hid the thread is the same reset that wakes it.
+    pub fn due_resumes(&self, now_at: i64) -> Result<Vec<String>> {
+        let reader = self.reader();
+        let mut statement = reader.prepare(
+            "SELECT id, limit_resume_at FROM threads
+             WHERE limit_resume_at IS NOT NULL AND archived_at IS NULL AND settled_at IS NULL",
+        )?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows
+            .into_iter()
+            .filter(|(_, at)| parse_time(at).is_none_or(|at| at <= now_at))
+            .map(|(id, _)| id)
+            .collect())
     }
 
     /// Logs a thread-level notice outside any run.
@@ -559,13 +626,58 @@ pub fn default_settings() -> ServerSettings {
     }
 }
 
+/// Ends a snooze before its time, and leaves a note that it did.
+pub(super) fn wake_early(tx: &Transaction<'_>, id: &str) -> Result<()> {
+    tx.execute(
+        "UPDATE threads SET woke_at = ?2, snoozed_until = NULL
+         WHERE id = ?1 AND snoozed_until IS NOT NULL",
+        params![id, now()],
+    )?;
+    Ok(())
+}
+
+pub(super) fn clear_limit(tx: &Transaction<'_>, id: &str) -> Result<()> {
+    tx.execute(
+        "UPDATE threads SET limit_message = NULL, limit_stopped_at = NULL, limit_resets_at = NULL,
+            limit_resume_at = NULL WHERE id = ?1",
+        [id],
+    )?;
+    Ok(())
+}
+
+fn schedule_resume(tx: &Transaction<'_>, id: &str, resume: bool) -> Result<()> {
+    if !resume {
+        tx.execute(
+            "UPDATE threads SET limit_resume_at = NULL WHERE id = ?1",
+            [id],
+        )?;
+        return Ok(());
+    }
+    let resets: Option<String> = tx.query_row(
+        "SELECT limit_resets_at FROM threads WHERE id = ?1",
+        [id],
+        |row| row.get(0),
+    )?;
+    if resets.is_none() {
+        return Err(CoreError::Invalid(
+            "The engine did not say when this limit resets.".into(),
+        ));
+    }
+    tx.execute(
+        "UPDATE threads SET limit_resume_at = limit_resets_at WHERE id = ?1",
+        [id],
+    )?;
+    Ok(())
+}
+
 fn settle(tx: &Transaction<'_>, appended: &mut Appended, id: &str, actor: &str) -> Result<()> {
     // Settling removes the pin and ends any snooze.
     tx.execute(
-        "UPDATE threads SET settled_at = ?2, pinned_at = NULL, snoozed_until = NULL
+        "UPDATE threads SET settled_at = ?2, pinned_at = NULL, snoozed_until = NULL, woke_at = NULL
          WHERE id = ?1",
         params![id, now()],
     )?;
+    clear_limit(tx, id)?;
     tx.execute("DELETE FROM pull_watches WHERE thread_id = ?1", [id])?;
     audit(tx, actor, "thread.settle", id, Value::Null)?;
     notify(tx, appended, id, "settle")

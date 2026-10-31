@@ -1,6 +1,8 @@
 import { api } from "../../api/client";
 import type { Thread, UpdateThread } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
+import { pullsApi } from "../pulls/pullsApi";
+import { threadToken } from "../thread/skillMention";
 import { navigate, parseRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
@@ -79,6 +81,9 @@ export function snoozeThreads(threads: readonly Thread[], until: Date) {
     pushUndo("Snoozed", () => patch(thread, { wake: true }).catch((f: unknown) => toastFailure("undo", f))),
   );
 }
+
+export const dismissWoke = (thread: Thread) =>
+  each([thread], "dismiss that", () => ({ dismiss_woke: true }));
 
 export const wakeThreads = (threads: readonly Thread[]) =>
   each(threads, "wake the thread", () => ({ wake: true }));
@@ -180,4 +185,12 @@ export async function copyText(text: string, done: string) {
   } catch {
     pushToast("Couldn't copy.");
   }
+}
+
+/** The thread's pull request if it has one, otherwise a link that pastes as a thread chip. */
+export async function copyReference(thread: Thread) {
+  const pulls = await pullsApi.linked(thread.id).catch(() => []);
+  const first = pulls[0];
+  if (first) await copyText(first.url, `Copied #${first.number}`);
+  else await copyText(threadToken(thread.id, thread.title), "Copied thread reference");
 }

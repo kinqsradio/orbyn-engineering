@@ -3,6 +3,7 @@ import {
   Copy,
   FileDiff,
   Gauge,
+  MessagesSquare,
   Monitor,
   SquareTerminal,
   EllipsisVertical,
@@ -12,7 +13,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { EngineLimits, EngineStatus, Thread } from "../../api/types";
-import { elapsed } from "../../lib/format";
+import { compactAge, elapsed } from "../../lib/format";
+import { showSideChat, sideChatsOf } from "../panels/sideChat";
 import { useAsync } from "../../lib/useAsync";
 import { useNow } from "../../lib/useNow";
 import { navigate } from "../../state/route";
@@ -86,6 +88,26 @@ function ThreadMenu({ thread }: { thread: Thread }) {
           </p>
         </ConfirmDialog>
       ) : null}
+    </div>
+  );
+}
+
+function SideChatRows({ threadId }: { threadId: string }) {
+  const threads = useWorkspace((state) => state.threads);
+  const chats = useMemo(() => sideChatsOf(threads, threadId), [threads, threadId]);
+  if (chats.length === 0) return null;
+  return (
+    <div className="details-section">
+      <div className="details-head">
+        <span>Side chats</span>
+      </div>
+      {chats.map((chat) => (
+        <button key={chat.id} type="button" className="detail-row" onClick={() => showSideChat(chat.id)}>
+          <MessagesSquare size={16} aria-hidden />
+          <span>{chat.title}</span>
+          <span className="detail-meta">{compactAge(chat.updated_at)}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -238,6 +260,7 @@ export function DetailsCard({
           </>
         ) : null}
       </div>
+      <SideChatRows threadId={thread.id} />
       {runningCount > 0 ? (
         <div className="details-section">
           <div className="details-head">

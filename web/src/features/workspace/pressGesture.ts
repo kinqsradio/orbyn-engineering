@@ -3,7 +3,8 @@ const DRAG_DISTANCE = 6;
 export interface PressHandlers {
   onStart(): void;
   onMove(y: number): void;
-  onEnd(): void;
+  /** Where the pointer let go. */
+  onEnd(at: { x: number; y: number }): void;
   onCancel(): void;
 }
 
@@ -37,11 +38,11 @@ export function trackPress(start: { clientX: number; clientY: number }, handlers
     event.preventDefault();
     handlers.onMove(event.clientY);
   }
-  function up() {
+  function up(event: PointerEvent) {
     cleanup();
     if (!active) return;
     swallowClick();
-    handlers.onEnd();
+    handlers.onEnd({ x: event.clientX, y: event.clientY });
   }
   function cancel() {
     cleanup();

@@ -3,7 +3,7 @@ import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings
 import { readJson, writeJson } from "../lib/storage";
 
 export type ThemeChoice = "system" | "light" | "dark";
-export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser";
+export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
 export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
@@ -22,6 +22,8 @@ interface Prefs {
   panelMaximized: boolean;
   /** The pane's width for this thread; null follows the window. */
   panelWidth: number | null;
+  /** The side chat the panel shows. */
+  sideChat: string | null;
   /** The current thread's layout is the fields above; others wait here. */
   layouts: Record<string, ThreadLayout>;
   layoutKey: string;
@@ -71,6 +73,10 @@ interface Prefs {
   persistentComposerContext: boolean;
   /** Lists skills in the `/` menu as well as under `$`. */
   skillsInSlashMenu: boolean;
+  /** Offers Plan with its button, commands and Shift+Tab. */
+  planControls: boolean;
+  /** The circle in the composer showing how full the context is. */
+  contextMeter: boolean;
   /** Saved prompts by thread, newest first. */
   stashes: Record<string, StashedPrompt[]>;
   threadNotifications: boolean;
@@ -82,6 +88,8 @@ interface Prefs {
   confirmDelete: boolean;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
+  /** The project the unsent draft belongs to, so its row opens it there. */
+  draftProject: string | null;
 }
 
 export interface Typography {
@@ -109,6 +117,7 @@ export interface ThreadLayout {
   terminalOpen: boolean;
   panelMaximized: boolean;
   panelWidth: number | null;
+  sideChat: string | null;
 }
 
 export const DRAFT_LAYOUT = "draft";
@@ -133,6 +142,7 @@ const defaults: Prefs = {
   terminalOpen: false,
   panelMaximized: false,
   panelWidth: null,
+  sideChat: null,
   layouts: {},
   layoutKey: DRAFT_LAYOUT,
   sidebarCollapsed: false,
@@ -169,6 +179,8 @@ const defaults: Prefs = {
   fontSmoothing: true,
   persistentComposerContext: false,
   skillsInSlashMenu: false,
+  planControls: true,
+  contextMeter: true,
   stashes: {},
   threadNotifications: false,
   threadSound: false,
@@ -177,6 +189,7 @@ const defaults: Prefs = {
   confirmArchive: false,
   confirmDelete: true,
   lastModel: null,
+  draftProject: null,
 };
 
 interface UiState extends Prefs {
@@ -231,6 +244,7 @@ const layoutDefaults: ThreadLayout = {
   terminalOpen: defaults.terminalOpen,
   panelMaximized: defaults.panelMaximized,
   panelWidth: defaults.panelWidth,
+  sideChat: defaults.sideChat,
 };
 
 const currentLayout = (state: Prefs): ThreadLayout => ({
@@ -241,6 +255,7 @@ const currentLayout = (state: Prefs): ThreadLayout => ({
   terminalOpen: state.terminalOpen,
   panelMaximized: state.panelMaximized,
   panelWidth: state.panelWidth,
+  sideChat: state.sideChat,
 });
 
 /** The newest layouts stay; object order is insertion order. */
@@ -260,6 +275,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   terminalOpen: state.terminalOpen,
   panelMaximized: state.panelMaximized,
   panelWidth: state.panelWidth,
+  sideChat: state.sideChat,
   layouts: state.layouts,
   layoutKey: state.layoutKey,
   sidebarCollapsed: state.sidebarCollapsed,
@@ -296,6 +312,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   fontSmoothing: state.fontSmoothing,
   persistentComposerContext: state.persistentComposerContext,
   skillsInSlashMenu: state.skillsInSlashMenu,
+  planControls: state.planControls,
+  contextMeter: state.contextMeter,
   stashes: state.stashes,
   threadNotifications: state.threadNotifications,
   threadSound: state.threadSound,
@@ -304,13 +322,14 @@ const prefsOf = (state: Prefs): Prefs => ({
   confirmArchive: state.confirmArchive,
   confirmDelete: state.confirmDelete,
   lastModel: state.lastModel,
+  draftProject: state.draftProject,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
 function savedPrefs(): Partial<Prefs> {
   const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
   const panelTab =
-    saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls"
+    saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls" || saved.panelTab === "side"
       ? saved.panelTab
       : null;
   return { ...saved, panelTab, layouts: saved.layouts ?? {} };

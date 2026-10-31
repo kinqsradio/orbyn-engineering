@@ -1,5 +1,5 @@
 import { composerMarkup } from "./composerMarkup";
-import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, Square, X,
+import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, SlidersHorizontal, Square, X,
   RotateCcw,
 } from "lucide-react";
 import {
@@ -13,14 +13,16 @@ import {
   type KeyboardEvent,
 } from "react";
 import { api } from "../../api/client";
-import { useCommand } from "../../app/shortcuts";
+import { useCommand as useSharedCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { useDraftStore } from "../onboarding/draftStore";
 import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
+import { Menu } from "../../ui/Menu";
 import { useWorkspace } from "../../state/workspace";
 import { ComposerBanners, ContextMeter, InlineLimits, StashDrawer, StopNotice } from "./ComposerExtras";
 import {
@@ -35,8 +37,9 @@ import {
 import { ACCESS, EffortTrigger, useTraitsMenu } from "./ComposerTraits";
 import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
-import { resolveModel, useEngineModels } from "./modelStore";
+import { effortOption, effortValue, resolveModel, useEngineModels } from "./modelStore";
 import { QueuedMessages } from "./QueuedMessages";
+import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
 import { insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
 
@@ -64,13 +67,24 @@ const MAX_PROMPT_CHARS = 120_000;
 const STYLED_CHARS = 20_000;
 const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
+/** Commands go to the thread's own composer; a side chat's stays out of their way. */
+const useOwnCommand = (side: boolean, command: string, handler: () => boolean | void) =>
+  useSharedCommand(command, () => (side ? false : handler()));
+
 const NO_STASHES: StashedPrompt[] = [];
 const effortButton = () => document.querySelector<HTMLElement>("[data-effort-trigger]");
 const LOCAL_COMMANDS: Suggestion[] = [
   { value: "plan", detail: "Switch to Plan" },
   { value: "default", detail: "Switch back to Build" },
   { value: "usage-limits", detail: "Show usage limits" },
+  { value: "side", detail: "Ask in a side chat" },
+  { value: "btw", detail: "Ask in a side chat" },
 ];
+const PLAN_COMMANDS = new Set(["plan", "default"]);
+/** Below this the footer's controls fold into one menu. */
+const NARROW_BAR = 440;
+const WIDE = 1000;
+const MENU_LIFT = 150;
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
 
@@ -80,6 +94,7 @@ export function Composer({
   beforeSend,
   onSendFailed,
   showContext,
+  side = false,
 }: {
   thread: Thread;
   engine: EngineStatus | null;
@@ -88,6 +103,8 @@ export function Composer({
   onSendFailed?(): void;
   /** The checkout, branch and access row, shown when nothing else carries them. */
   showContext: boolean;
+  /** This composer belongs to a side chat in the panel. */
+  side?: boolean;
 }) {
   const draft = useUi((state) => state.drafts[thread.id] ?? "");
   const setDraft = useUi((state) => state.setDraft);
@@ -106,12 +123,28 @@ export function Composer({
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
   const shiftPaste = useRef(false);
+  const bar = useRef<HTMLDivElement>(null);
+  const [narrowBar, setNarrowBar] = useState(false);
+  const [overflow, setOverflow] = useState<{ x: number; y: number } | null>(null);
+  const openOverflow = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setOverflow({ x: rect.left, y: rect.top - MENU_LIFT });
+  };
+  useLayoutEffect(() => {
+    const element = bar.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setNarrowBar((entry?.contentRect.width ?? WIDE) < NARROW_BAR));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const caretAfterEdit = useRef<number | null>(null);
   const mirror = useRef<HTMLDivElement>(null);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
   const sendShortcut = useUi((state) => state.sendShortcut);
   const persistentContext = useUi((state) => state.persistentComposerContext);
   const skillsInSlash = useUi((state) => state.skillsInSlashMenu);
+  const planControls = useUi((state) => state.planControls);
+  const contextMeter = useUi((state) => state.contextMeter);
   const stashes = useUi((state) => state.stashes[thread.id] ?? NO_STASHES);
   const log = useThreadLogs((state) => state.logs[thread.id]);
   const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
@@ -143,7 +176,9 @@ export function Composer({
     if (trigger.char === "/") {
       const commands = await api.commands(thread.id, signal);
       const needle = trigger.query.toLowerCase();
-      const local = LOCAL_COMMANDS.filter((command) => command.value.includes(needle));
+      const local = LOCAL_COMMANDS.filter(
+        (command) => command.value.includes(needle) && (planControls || !PLAN_COMMANDS.has(command.value)),
+      );
       const skills = skillsInSlash ? (await api.mentions(thread.id, trigger.query, signal)).skills : [];
       return [
         ...local,
@@ -220,20 +255,35 @@ export function Composer({
   };
 
   const send = async (followUp: "default" | "opposite" = "default") => {
-    if (!canSend) return;
+    if (!canSend) return false;
     const prompt = draft;
-    if (runLocal(prompt)) return;
+    if (runLocal(prompt)) return false;
+    const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
+    if (sideChat) {
+      setDraft(thread.id, "");
+      void openSideChat(thread, sideChat[1]?.trim() || null);
+      return false;
+    }
     const queued = followUpBehavior === "queue";
     const steering = busy && (followUp === "default" ? !queued : queued);
     setSending(true);
     setError(null);
     try {
       await beforeSend?.();
+      // Claude hears a typed reply as the reason it was declined, so nothing is queued.
+      if (pendingHere.length > 0 && engine?.capabilities.decline_feedback) {
+        await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false, prompt.trim())));
+        setDraft(thread.id, "");
+        void refreshThread(thread.id);
+        return true;
+      }
       await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false)));
       const ids = attachments.flatMap((file) => file.id ?? []);
       const run = busy ? null : await api.startRun(thread.id, prompt.trim(), ids);
-      if (steering) await api.steer(thread.id, prompt.trim());
-      else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
+      if (steering) {
+        const steered = await api.steer(thread.id, prompt.trim());
+        if (steered.state === "queued") useUi.getState().pushToast("This engine reads it on its next turn");
+      } else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
       setRecall(null);
       // Text typed after pressing Send stays; only what was sent is removed.
@@ -242,12 +292,13 @@ export function Composer({
       if (run) addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
       if (busy) reloadQueue();
       void refreshThread(thread.id);
+      return true;
     } catch (failure) {
       onSendFailed?.();
       const known = toFailure(failure);
       if (known.code === "folder_untrusted") {
         navigate({ name: "trust", projectId: thread.project_id, threadId: thread.id });
-        return;
+        return false;
       }
       setError(
         known.code === "thread_busy"
@@ -257,6 +308,7 @@ export function Composer({
             : `Couldn't start the run. ${known.message} Your message is kept.`,
       );
       void refreshThread(thread.id);
+      return false;
     } finally {
       setSending(false);
     }
@@ -304,8 +356,15 @@ export function Composer({
         caretAfterEdit.current = next.caret;
         return;
       }
+      if (event.shiftKey && planControls && !busy && thread.lifecycle) {
+        event.preventDefault();
+        void setPlanMode(!planMode);
+        return;
+      }
     }
     if (event.key !== "Enter") return;
+    // Left to the shell, whose rule sends and opens a new thread.
+    if (event.altKey && (event.metaKey || event.ctrlKey)) return;
     if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
       const next = continueListLine(draft, element.selectionStart);
       if (next) {
@@ -344,6 +403,12 @@ export function Composer({
     if (event.dataTransfer.files.length > 0) upload([...event.dataTransfer.files]);
   };
 
+  const droppedHere = useDraftStore((state) => state.dropped[thread.id]);
+  useEffect(() => {
+    if (!droppedHere) return;
+    upload(useDraftStore.getState().takeDropped(thread.id));
+  });
+
   const stash = () => {
     const stored = useUi.getState().stashes;
     const list = stored[thread.id] ?? [];
@@ -376,10 +441,16 @@ export function Composer({
     field.current?.focus();
   };
 
-  useCommand("composer.stash", () => {
+  useOwnCommand(side, "composer.stash", () => {
     stash();
   });
-  useCommand("thread.steerQueuedMessage", () => {
+  useOwnCommand(side, "composer.sendAndNewThread", () => {
+    if (!canSend) return false;
+    void send().then((sent) => {
+      if (sent) navigate({ name: "new", projectId: thread.scratch ? null : thread.project_id });
+    });
+  });
+  useOwnCommand(side, "thread.steerQueuedMessage", () => {
     const oldest = queue.data?.[0];
     if (!oldest || !busy) return false;
     void api
@@ -477,7 +548,7 @@ export function Composer({
       setError(`Couldn't change the model. ${toFailure(failure).message}`);
     }
   };
-  useCommand("thread.editQueuedMessage", () => {
+  useOwnCommand(side, "thread.editQueuedMessage", () => {
     const last = queue.data?.at(-1);
     if (!last) return false;
     void api.removeQueued(last.id).then(() => {
@@ -486,15 +557,27 @@ export function Composer({
     });
   });
 
-  useCommand("composer.effort", () => {
+  useOwnCommand(side, "composer.effort", () => {
     const trigger = effortButton();
     if (!trigger) return false;
     traits.openAt(trigger, false);
   });
 
-  useCommand("composer.mode", () => {
-    void setPlanMode(!planMode);
+  useOwnCommand(side, "composer.mode", () => {
+    const trigger = effortButton();
+    if (!trigger || unmanaged) return false;
+    traits.openAt(trigger, true);
   });
+  const stepEffort = (step: 1 | -1) => {
+    const values = effortOption(model)?.values ?? [];
+    if (values.length === 0 || busy) return false;
+    const at = values.findIndex((value) => value.id === effortValue(model, thread.effort ?? null)?.id);
+    const next = values[(Math.max(at, 0) + step + values.length) % values.length];
+    if (next) void setEffort(next.id);
+    return true;
+  };
+  useOwnCommand(side, "composer.increaseEffort", () => stepEffort(1));
+  useOwnCommand(side, "composer.decreaseEffort", () => stepEffort(-1));
   const traits = useTraitsMenu({
     model,
     effort: thread.effort ?? null,
@@ -637,7 +720,9 @@ export function Composer({
           aria-describedby="composer-help"
           placeholder={
             pendingHere.length > 0
-              ? "Send a message to decline and redirect the agent"
+              ? engine?.capabilities.decline_feedback
+                ? "Type a reply to decline with feedback"
+                : "Send a message to decline and redirect the agent"
               : "Ask anything. @ files, $ skills, / commands"
           }
           data-autofocus={layout === "narrow" ? undefined : true}
@@ -646,7 +731,7 @@ export function Composer({
         <span id="composer-help" className="sr-only">
           Enter to send, Shift+Enter for a new line
         </span>
-        <div className="composer-bar">
+        <div ref={bar} className="composer-bar">
           <input
             ref={filePicker}
             type="file"
@@ -672,19 +757,27 @@ export function Composer({
               <span>{stashes.length}</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className="composer-control"
-            aria-pressed={planMode}
-            data-on={planMode || undefined}
-            disabled={busy || !thread.lifecycle}
-            onClick={() => void setPlanMode(!planMode)}
-          >
-            <ListChecks size={14} aria-hidden />
-            <span>Plan</span>
-          </button>
+          {(planControls || planMode) && !narrowBar ? (
+            <button
+              type="button"
+              className="composer-control"
+              aria-pressed={planMode}
+              data-on={planMode || undefined}
+              disabled={busy || !thread.lifecycle}
+              onClick={() => void setPlanMode(!planMode)}
+            >
+              <ListChecks size={14} aria-hidden />
+              <span>Plan</span>
+            </button>
+          ) : null}
           <span className="composer-spacer" />
-          <ContextMeter threadId={thread.id} disabled={busy} />
+          {contextMeter ? <ContextMeter threadId={thread.id} disabled={busy} /> : null}
+          {narrowBar ? (
+            <IconButton label="Composer controls" onClick={(event) => openOverflow(event.currentTarget)}>
+              <SlidersHorizontal size={16} aria-hidden />
+            </IconButton>
+          ) : null}
+          <span className="composer-controls" data-folded={narrowBar || undefined}>
           {engine ? (
             <ModelPickerTrigger
               engines={installed}
@@ -715,6 +808,7 @@ export function Composer({
               <span>{ACCESS[access].label}</span>
             </button>
           ) : null}
+          </span>
           {busy && !draft.trim() ? (
             <button
               type="button"
@@ -784,6 +878,44 @@ export function Composer({
         </dl>
       </div>
       {traits.menu}
+      {overflow ? (
+        <Menu
+          x={overflow.x}
+          y={overflow.y}
+          label="Composer controls"
+          onClose={() => setOverflow(null)}
+          items={[
+            {
+              label: model?.label ?? thread.model ?? engineName,
+              disabled: busy,
+              onSelect: () => document.querySelector<HTMLElement>("form.composer [data-model-trigger]")?.click(),
+            },
+            {
+              label: "Effort",
+              disabled: busy,
+              onSelect: () => {
+                const trigger = effortButton();
+                if (trigger) traits.openAt(trigger, false);
+              },
+            },
+            ...(unmanaged
+              ? []
+              : [
+                  {
+                    label: `Permissions: ${ACCESS[access].label}`,
+                    disabled: busy,
+                    onSelect: () => {
+                      const trigger = effortButton();
+                      if (trigger) traits.openAt(trigger, true);
+                    },
+                  },
+                ]),
+            ...(planControls
+              ? [{ label: "Plan", selected: planMode, disabled: busy, onSelect: () => void setPlanMode(!planMode) }]
+              : []),
+          ]}
+        />
+      ) : null}
       </div>
     </form>
   );

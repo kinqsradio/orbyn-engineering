@@ -461,10 +461,11 @@ pub(super) fn admit_in(
     }
     // Your own message wakes the thread and restores it to active work.
     tx.execute(
-        "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0
+        "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0, woke_at = NULL
          WHERE id = ?1",
         [thread_id],
     )?;
+    super::threads::clear_limit(tx, thread_id)?;
     let run = Run {
         id: new_id(),
         thread_id: thread_id.to_owned(),
@@ -549,10 +550,7 @@ fn close_run(
         )?;
     }
     // An answer or a failure ends a snooze early.
-    tx.execute(
-        "UPDATE threads SET snoozed_until = NULL WHERE id = ?1",
-        [thread_id],
-    )?;
+    super::threads::wake_early(tx, thread_id)?;
     let target = wire_name(to)?;
     insert_audit(
         tx,

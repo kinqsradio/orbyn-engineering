@@ -116,6 +116,7 @@ function Rows({
   rows,
   active,
   selected,
+  extra,
   showEngine,
   jumps,
   engineName,
@@ -127,12 +128,13 @@ function Rows({
   rows: PickerRow[];
   active: number;
   selected: Selection;
+  extra: readonly Selection[];
   showEngine: boolean;
   jumps: boolean;
   engineName(engine: string): string;
   favorites: readonly string[];
   onHover(index: number): void;
-  onPick(row: PickerRow): void;
+  onPick(row: PickerRow, adding: boolean): void;
   onFavorite(row: PickerRow): void;
 }) {
   return (
@@ -140,7 +142,9 @@ function Rows({
       {rows.map((row, index) => {
         const key = modelKey(row.engine, row.model.id);
         const favorite = favorites.includes(key);
-        const isSelected = row.engine === selected.engine && row.model.id === selected.model;
+        const isSelected = [selected, ...extra].some(
+          (entry) => row.engine === entry.engine && row.model.id === entry.model,
+        );
         return (
           <div
             key={key}
@@ -149,7 +153,7 @@ function Rows({
             className="model-row"
             data-active={index === active || undefined}
             onPointerMove={() => onHover(index)}
-            onClick={() => onPick(row)}
+            onClick={(event) => onPick(row, event.shiftKey)}
           >
             <div className="model-row-text">
               <span>{row.model.label}</span>
@@ -190,16 +194,21 @@ function Rows({
 function ModelPopover({
   engines,
   selected,
+  extra,
   anchor,
   disabledReason,
   onPick,
+  onToggleExtra,
   onClose,
 }: {
   engines: EngineStatus[];
   selected: Selection;
+  extra: readonly Selection[];
   anchor: DOMRect;
   disabledReason?(engine: EngineStatus): string | null;
   onPick(selection: Selection): void;
+  /** Shift-click adds a model, for starting one thread on each. */
+  onToggleExtra?(selection: Selection): void;
   onClose(): void;
 }) {
   const favorites = useUi((state) => state.modelFavorites);
@@ -241,8 +250,13 @@ function ModelPopover({
       ? allRows.filter((row) => favorites.includes(modelKey(row.engine, row.model.id)))
       : allRows.filter((row) => row.engine === tab);
   const tabs = [FAVORITES, ...engines.map((engine) => engine.id)];
-  const pick = (row: PickerRow) => {
-    onPick({ engine: row.engine, model: row.model.id });
+  const pick = (row: PickerRow, adding = false) => {
+    const choice = { engine: row.engine, model: row.model.id };
+    if (adding && onToggleExtra) {
+      if (choice.engine !== selected.engine || choice.model !== selected.model) onToggleExtra(choice);
+      return;
+    }
+    onPick(choice);
     onClose();
   };
   const toggleFavorite = (row: PickerRow) => {
@@ -341,6 +355,7 @@ function ModelPopover({
             rows={rows}
             active={active}
             selected={selected}
+            extra={extra}
             showEngine={searching || tab === FAVORITES}
             jumps={jumps}
             engineName={engineName}
@@ -371,15 +386,20 @@ function ModelPopover({
 export function ModelPickerTrigger({
   engines,
   selected,
+  extra = [],
   disabled,
   disabledReason,
   onPick,
+  onToggleExtra,
 }: {
   engines: EngineStatus[];
   selected: Selection;
+  /** Models added beside the selected one. */
+  extra?: readonly Selection[];
   disabled?: boolean;
   disabledReason?(engine: EngineStatus): string | null;
   onPick(selection: Selection): void;
+  onToggleExtra?(selection: Selection): void;
 }) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const models = useEngineModels(selected.engine);
@@ -393,7 +413,7 @@ export function ModelPickerTrigger({
   const name = model ? shortModelName(model.label) : (selected.model ?? engine?.name ?? "No engine");
 
   useCommand("modelPicker.toggle", () => {
-    if (button.current?.disabled) return false;
+    if (button.current?.disabled || button.current?.closest("[data-side-chat]")) return false;
     button.current?.click();
   });
 
@@ -412,15 +432,18 @@ export function ModelPickerTrigger({
       >
         {engine ? <EngineGlyph name={engine.name} /> : null}
         <span>{name}</span>
+        {extra.length > 0 ? <span className="model-extra">+{extra.length}</span> : null}
         {engines.length === 0 ? <ChevronDown size={12} aria-hidden /> : null}
       </button>
       {anchor ? (
         <ModelPopover
           engines={engines}
           selected={{ engine: selected.engine, model: model?.id ?? selected.model }}
+          extra={extra}
           anchor={anchor}
           disabledReason={disabledReason}
           onPick={onPick}
+          onToggleExtra={onToggleExtra}
           onClose={close}
         />
       ) : null}
