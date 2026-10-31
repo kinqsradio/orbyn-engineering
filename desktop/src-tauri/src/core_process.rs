@@ -2,7 +2,7 @@
 //! makes the service exit when this process dies, even after a crash.
 
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Arc;
@@ -18,8 +18,15 @@ struct Ready {
     token: String,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ServiceMessage {
+    CheckAppUpdate,
+    InstallAppUpdate,
+}
+
 pub struct CoreProcess {
-    stdin: ChildStdin,
+    stdin: std::sync::Mutex<ChildStdin>,
     child: Arc<std::sync::Mutex<Child>>,
     stopping: Arc<AtomicBool>,
     app_url: url::Url,
@@ -41,6 +48,7 @@ fn sidecar_path() -> Result<PathBuf, String> {
 impl CoreProcess {
     pub fn start(
         app: &AppHandle,
+        on_message: impl Fn(ServiceMessage) + Send + 'static,
         on_exit: impl FnOnce(String) + Send + 'static,
     ) -> Result<Self, String> {
         let data_dir = app
@@ -88,7 +96,12 @@ impl CoreProcess {
             let mut lines = BufReader::new(stdout).lines();
             let first = lines.next().and_then(Result::ok).unwrap_or_default();
             let _ = sender.send(first);
-            for _ in lines.by_ref() {}
+            for line in lines.by_ref().map_while(Result::ok) {
+                // Unknown lines are ignored so newer services can add messages.
+                if let Ok(message) = serde_json::from_str::<ServiceMessage>(&line) {
+                    on_message(message);
+                }
+            }
             // Poll so `stop` can still take the lock and force a kill.
             let status = loop {
                 match watched.lock().expect("core child").try_wait() {
@@ -112,7 +125,7 @@ impl CoreProcess {
             .map_err(|_| "The local service sent an invalid address.".to_string())?;
         app_url.query_pairs_mut().append_pair("token", &ready.token);
         Ok(Self {
-            stdin,
+            stdin: std::sync::Mutex::new(stdin),
             child,
             stopping,
             app_url,
@@ -121,6 +134,14 @@ impl CoreProcess {
 
     pub fn app_url(&self) -> url::Url {
         self.app_url.clone()
+    }
+
+    /// Sends one newline-delimited JSON message to the service.
+    pub fn send(&self, message: &serde_json::Value) {
+        if let Ok(mut stdin) = self.stdin.lock() {
+            let _ = writeln!(stdin, "{message}");
+            let _ = stdin.flush();
+        }
     }
 
     /// Closing stdin asks the service to shut down cleanly and stop its engines.
