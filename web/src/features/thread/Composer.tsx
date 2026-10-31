@@ -1,3 +1,4 @@
+import { composerMarkup } from "./composerMarkup";
 import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, Square, X,
   RotateCcw,
 } from "lucide-react";
@@ -59,6 +60,8 @@ interface ShownAttachment {
 
 /** The service refuses longer messages; here the draft stays and says so first. */
 const MAX_PROMPT_CHARS = 120_000;
+/** Past this a keystroke would lag behind the styling, so the text stays plain. */
+const STYLED_CHARS = 20_000;
 const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
 const NO_STASHES: StashedPrompt[] = [];
@@ -103,6 +106,7 @@ export function Composer({
   const [stashOpen, setStashOpen] = useState(false);
   const shiftPaste = useRef(false);
   const caretAfterEdit = useRef<number | null>(null);
+  const mirror = useRef<HTMLDivElement>(null);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
   const sendShortcut = useUi((state) => state.sendShortcut);
   const persistentContext = useUi((state) => state.persistentComposerContext);
@@ -122,6 +126,7 @@ export function Composer({
   const busy = thread.active_run !== null;
   const uploading = attachments.some((file) => file.id === null);
   const overBy = charactersOver(draft);
+  const styled = useMemo(() => (draft && draft.length <= STYLED_CHARS ? composerMarkup(draft) : null), [draft]);
   const canSend = draft.trim() !== "" && !sending && !uploading && overBy === 0;
   const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
   const reloadQueue = queue.reload;
@@ -181,6 +186,7 @@ export function Composer({
     // Before the next paint, so a key pressed right after lands at the caret.
     if (caretAfterEdit.current !== null) element.setSelectionRange(caretAfterEdit.current, caretAfterEdit.current);
     caretAfterEdit.current = null;
+    if (mirror.current) mirror.current.scrollTop = element.scrollTop;
   }, [draft]);
 
   const pick = (suggestion: Suggestion) => {
@@ -582,8 +588,23 @@ export function Composer({
             {overBy.toLocaleString()} characters over the {MAX_PROMPT_CHARS.toLocaleString()} limit. Your message stays here.
           </p>
         ) : null}
+        <div className="composer-field">
+        {styled ? (
+          <div ref={mirror} className="composer-mirror" aria-hidden>
+            {styled.map((span, at) => (
+              <span key={at} data-md={span.kind === "text" ? undefined : span.kind}>
+                {span.text}
+              </span>
+            ))}
+            {"\n"}
+          </div>
+        ) : null}
         <textarea
           ref={field}
+          data-styled={styled ? true : undefined}
+          onScroll={(event) => {
+            if (mirror.current) mirror.current.scrollTop = event.currentTarget.scrollTop;
+          }}
           rows={1}
           value={draft}
           onChange={(event) => {
@@ -605,6 +626,7 @@ export function Composer({
           }
           data-autofocus={layout === "narrow" ? undefined : true}
         />
+        </div>
         <span id="composer-help" className="sr-only">
           Enter to send, Shift+Enter for a new line
         </span>

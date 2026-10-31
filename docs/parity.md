@@ -113,7 +113,7 @@ toward completion.
 ## B. Composer
 - [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done | web done
 - [x] B2 Large paste to attachment: 32 KiB or more becomes a file, shift-paste keeps it editable | docs/user/composer.md | w d | S
-- [ ] B3 Live Markdown styling: rich editor that keeps literal markers | apps/web/src/components/ComposerPromptEditorTiptap.tsx | w d m | L
+- [x] B3 Live Markdown styling: rich editor that keeps literal markers | apps/web/src/components/ComposerPromptEditorTiptap.tsx | w d m | L | web done
 - [x] B4 List and quote editing: Shift+Enter continue, Tab nest | docs/user/composer.md | w d | M
 - [ ] B5 Code block editing: indent, language picker, exit rules | apps/web/src/components/chat/ComposerCodeBlockNodeView.tsx | w d | M
 - [x] B6 Attachments: 100 files; 10 MiB per image, 80 MiB images total, 50 MiB other | docs/user/composer.md | w d m s | L | server done | web done
@@ -525,7 +525,7 @@ are not built in.
 - [x] K21 Timestamp format: locale, 12-hour, 24-hour | packages/contracts/src/settings.ts | w d m | S
 - [ ] K22 Environment identification: artwork, pill, none | packages/contracts/src/settings.ts | w d | S
 - [ ] K23 Material You: Android dynamic colors and layout | docs/user/appearance.md | m | M
-- [ ] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M
+- [x] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M | web done
 - [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S
 - [x] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S

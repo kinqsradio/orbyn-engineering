@@ -34,25 +34,29 @@ export function GeneralSection() {
   const confirmArchive = useUi((state) => state.confirmArchive);
   const confirmDelete = useUi((state) => state.confirmDelete);
   const setPrefs = useUi((state) => state.setPrefs);
+  const sound = useUi((state) => state.threadSound);
   return (
     <>
       {heading("General")}
       <SettingGroup title="Notifications">
         <SettingRow
           title="Thread notifications"
-          description="System alerts when a thread finishes, fails, or needs input or approval."
+          description="When a thread finishes, fails, or needs input or approval."
         >
           <select
             aria-label="Thread notifications"
-            value={notifications ? "on" : "off"}
+            value={notifications ? (sound ? "both" : "alert") : sound ? "sound" : "off"}
             onChange={(event) => {
-              const on = event.target.value === "on";
-              if (on && "Notification" in window) void Notification.requestPermission();
-              setPrefs({ threadNotifications: on });
+              const { value } = event.target;
+              const alert = value === "alert" || value === "both";
+              if (alert && "Notification" in window) void Notification.requestPermission();
+              setPrefs({ threadNotifications: alert, threadSound: value === "sound" || value === "both" });
             }}
           >
             <option value="off">Off</option>
-            <option value="on">On</option>
+            <option value="alert">Notifications</option>
+            <option value="sound">Sound</option>
+            <option value="both">Notifications and sound</option>
           </select>
         </SettingRow>
         <Toggle

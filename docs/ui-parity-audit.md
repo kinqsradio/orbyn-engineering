@@ -78,7 +78,8 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Composer | Queue edit | Source: back to the composer | Match, Real | An existing draft keeps its text, the prompt joins after it |
 | Composer | Plan | Source | Button, /plan, /default, Real | Shift+Tab left to focus movement |
 | Composer | Context meter, /usage-limits | Source | Match, Real; the meter compacts on native engines | Compaction tick absent |
-| Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | No live Markdown styling |
+| Composer | List editing | Source: Shift+Enter continues, Tab nests | Match, Real | 0 |
+| Composer | Live Markdown | Source: rich editor that keeps literal markers | Styled layer under a transparent textarea, Real; markers stay and bold, headings and code keep their width | Italic is an underline and code stays in the body font, so the caret never drifts |
 | Approval | Inline row | Live: target, Waiting for approval, Decline, Approve, More | Match, Real | Always allow persists, so no "this session" |
 | Approval | Question panel | Source | Built, Real: answered through the protocol double | Layout own |
 | Command palette | Open | Live: y 90, 576x420, radius 16, blur 16, items 32 radius 4 | Match | Fewer actions |
@@ -113,7 +114,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Appearance | Source: presets per scheme, editor, import and export, typography | Match, Real | Own preset names, no inspector, no T3 catalogue |
 | Settings | Search | Source: finds settings | Finds sections by the settings inside, Real | Section level |
 | Settings | Scheduled tasks | Source | List, new, edit, pause, run, delete, Real; interval, fixed time with days, webhook and after-thread kinds; signature, filters, repeats, age, address and deliveries log | The address shows once, when issued, so reopening needs a new one |
-| Settings | Notifications | Live: Thread, In-app | Built | System alerts only in a hidden window |
+| Settings | Notifications | Live: Thread, In-app | Off, notifications, sound or both, and in-app, Real | System alerts only in a hidden window, which now keeps polling while work runs |
 | Settings | Providers | Live name | Engines moved here, Real | Layout own |
 | Settings | ACP registry | Source: search and add agents | Search, add, remove, Real against a local registry file | First listed install route only |
 | Settings | Threads | Live name | Auto-settle, titles, snooze presets, Real | Presets are minutes only, no time of day |

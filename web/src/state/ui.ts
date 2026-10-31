@@ -74,6 +74,8 @@ interface Prefs {
   /** Saved prompts by thread, newest first. */
   stashes: Record<string, StashedPrompt[]>;
   threadNotifications: boolean;
+  /** A short tone for the same events, with or without the system alert. */
+  threadSound: boolean;
   inAppNotifications: boolean;
   confirmUnpin: boolean;
   confirmArchive: boolean;
@@ -169,6 +171,7 @@ const defaults: Prefs = {
   skillsInSlashMenu: false,
   stashes: {},
   threadNotifications: false,
+  threadSound: false,
   inAppNotifications: false,
   confirmUnpin: false,
   confirmArchive: false,
@@ -295,6 +298,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   skillsInSlashMenu: state.skillsInSlashMenu,
   stashes: state.stashes,
   threadNotifications: state.threadNotifications,
+  threadSound: state.threadSound,
   inAppNotifications: state.inAppNotifications,
   confirmUnpin: state.confirmUnpin,
   confirmArchive: state.confirmArchive,

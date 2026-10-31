@@ -906,6 +906,60 @@
 .composer textarea:focus-visible {
   outline: none;
 }
+.composer-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* The text sits underneath, so styling can't change a width and move the caret. */
+.composer-mirror {
+  position: absolute;
+  inset: 0;
+  min-height: 62px;
+  padding: 17px 16px 8px;
+  overflow: hidden;
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.625;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+.composer textarea[data-styled] {
+  position: relative;
+  color: transparent;
+  caret-color: var(--color-text);
+}
+.composer textarea[data-styled]::selection {
+  background: color-mix(in srgb, var(--color-info) 28%, transparent);
+  color: transparent;
+}
+.composer-mirror [data-md="marker"],
+.composer-mirror [data-md="quote"],
+.composer-mirror [data-md="list"] {
+  color: var(--color-muted);
+}
+.composer-mirror [data-md="bold"],
+.composer-mirror [data-md="heading"] {
+  text-shadow: 0.35px 0 0 currentColor;
+}
+.composer-mirror [data-md="italic"] {
+  color: var(--color-textSoft);
+  text-decoration: underline dotted color-mix(in srgb, var(--color-muted) 50%, transparent);
+}
+.composer-mirror [data-md="strike"] {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.composer-mirror [data-md="code"],
+.composer-mirror [data-md="fence"] {
+  border-radius: var(--radius-sm);
+  background: var(--color-chip);
+}
+.composer-mirror [data-md="link"] {
+  color: var(--color-info);
+}
 .composer-bar {
   display: flex;
   align-items: center;
