@@ -5,6 +5,7 @@ mod api;
 mod preview_routes;
 mod pulls;
 mod raw_files;
+mod recent_events;
 mod stream;
 mod terminal_ws;
 mod ui;
@@ -28,7 +29,10 @@ use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 /// A little over the largest allowed file; core enforces the exact limits.
@@ -384,6 +388,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/diagnostics", get(api::diagnostics))
         .route("/api/diagnostics/repair", post(api::repair_database))
+        .route(
+            "/api/diagnostics/processes/{pid}/stop",
+            post(api::stop_process),
+        )
         .route("/api/diagnostics/otlp", post(api::check_otlp))
         .route(
             "/api/storage/cleanup",
@@ -649,6 +657,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         Core::open(core_config(&args, base_url.clone())?).map_err(|error| error.to_string())?,
     );
     core.mcp.bind_host(&core);
+    orbyn_core::diagnostics::start_sampling();
     let token = random_token().map_err(|error| error.to_string())?;
     let (key_digest, new_key) = if args.remote {
         let (digest, key) = remote_key(&core).map_err(|error| error.to_string())?;
@@ -723,11 +732,15 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_env("ORBYN_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(
+                    EnvFilter::try_from_env("ORBYN_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+                ),
         )
-        .with_writer(std::io::stderr)
+        .with(recent_events::RecentEvents.with_filter(LevelFilter::WARN))
         .init();
     let cli = Cli::parse();
     let outcome = match cli.command {

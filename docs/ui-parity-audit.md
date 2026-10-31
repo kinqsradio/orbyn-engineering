@@ -28,7 +28,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Sidebar | Working status | Live: spinner, blue "Working Ns" | Match | Spin 1000 ms |
 | Sidebar | Approval status | Live: warn "Approval" | Match, Real | Dot, not their icon |
 | Sidebar | Limited and Question | Source: request states on the row | Limited, Question, Real | Own label for a question |
-| Sidebar | Woke | Source: dismissible badge after an early wake | Match, Real | Badge text only, no icon |
+| Sidebar | Woke | Source: dismissible badge after an early wake | Match, Real | Own icon |
 | Sidebar | Draft row | Source: unsent marker, discard, undo with attachments | Match, Real | One draft at a time, not one per project |
 | Timeline | Limit stop | Source: Limited, Resume, Resume at reset, Snooze until reset | Banner above the composer, Real | Layout own |
 | Sidebar | Multi-line rows | Live: selected row, three lines | Built | Unread title weight unobserved |
@@ -115,6 +115,10 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
 | Palette | Messages | Source: all words, opens at the message | Messages group, Real, scrolls to the row or the fold that holds it | Word highlights not drawn |
+| Browser | Keys | Source: refresh, focus URL, zoom | Match, Real | 0 |
+| Terminal | Links | Source: addresses open in preview | Follows the Chat link setting, Real | Own address pattern |
+| Add project | Clone status | Source: toast with retry and cancel | Card with Cancel, Retry, Dismiss, Real | Lost on reload; no progress |
+| Maintenance | Diagnostics | Source: processes, signals, traces, resource history | Service tree with Stop, peak memory, recent warnings, Real | Line of text, not a chart; warnings, not spans |
 | Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward from the page's history, reload, control, record, start page, the page follows the panel's size, Real on headless shell | No zoom, devices or profiles |
 | Diff | Sources | Source: turn, thread, branch, commits | All five, Real | Picker is a select |
 | Diff | Restore a file | Source | Per-file in Turn, Real, reports a later edit instead of overwriting it | Latest turn only |
