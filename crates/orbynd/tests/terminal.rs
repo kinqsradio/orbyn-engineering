@@ -1,8 +1,6 @@
 //! Terminals through the real service: several per thread, read-only observers,
 //! scrollback and project scripts.
 
-#![cfg(unix)]
-
 mod support;
 
 use std::time::Duration;
@@ -16,6 +14,16 @@ use tokio_tungstenite::tungstenite::Message;
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
+/// A line for the terminal's shell that prints `label-sum`, worked out by the shell so
+/// the echoed line itself never matches.
+fn sum_line(label: &str, left: u32, right: u32) -> Message {
+    #[cfg(windows)]
+    let line = format!("echo \"{label}-$({left}+{right})\"\r");
+    #[cfg(not(windows))]
+    let line = format!("echo {label}-$(({left}+{right}))\r");
+    Message::binary(line.into_bytes())
+}
+
 async fn socket(service: &Service, thread: &str, terminal: &str, observe: bool) -> Socket {
     let url = format!(
         "{}/ws/terminal/{thread}/{terminal}?token={}&observe={observe}",
@@ -27,7 +35,8 @@ async fn socket(service: &Service, thread: &str, terminal: &str, observe: bool) 
 
 async fn until_seen(socket: &mut Socket, text: &str) -> bool {
     let mut seen = String::new();
-    tokio::time::timeout(Duration::from_secs(10), async {
+    // PowerShell takes a while to start on a shared runner.
+    tokio::time::timeout(Duration::from_secs(45), async {
         while let Some(Ok(frame)) = socket.next().await {
             if let Message::Binary(bytes) = frame {
                 seen.push_str(&String::from_utf8_lossy(&bytes));
@@ -67,9 +76,7 @@ async fn a_thread_holds_several_terminals_with_their_own_output_and_splits() {
     let other = second["id"].as_str().unwrap();
 
     let mut one = socket(&service, &thread, id, false).await;
-    one.send(Message::binary(b"echo first-$((1+1))\r".to_vec()))
-        .await
-        .unwrap();
+    one.send(sum_line("first", 1, 1)).await.unwrap();
     assert!(until_seen(&mut one, "first-2").await);
     let back = service
         .json(&format!(
@@ -130,14 +137,8 @@ async fn an_observer_sees_output_and_cannot_type() {
     let id = info["id"].as_str().unwrap();
     let mut owner = socket(&service, &thread, id, false).await;
     let mut observer = socket(&service, &thread, id, true).await;
-    observer
-        .send(Message::binary(b"echo intruder-$((3+4))\r".to_vec()))
-        .await
-        .unwrap();
-    owner
-        .send(Message::binary(b"echo owner-$((2+3))\r".to_vec()))
-        .await
-        .unwrap();
+    observer.send(sum_line("intruder", 3, 4)).await.unwrap();
+    owner.send(sum_line("owner", 2, 3)).await.unwrap();
     assert!(until_seen(&mut observer, "owner-5").await);
     let back = service
         .json(&format!("/api/threads/{thread}/terminals/{id}/scrollback"))
@@ -167,11 +168,11 @@ async fn scripts_come_from_the_project_file_and_need_trust() {
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
     let body = service.json(&format!("/api/threads/{thread}")).await;
     let cwd = std::path::PathBuf::from(body["cwd"].as_str().unwrap());
-    std::fs::write(
-        cwd.join("orbyn.json"),
-        r#"{"scripts":[{"name":"Say hi","command":"echo script-$((5+6))"}]}"#,
-    )
-    .unwrap();
+    #[cfg(windows)]
+    let file = r#"{"scripts":[{"name":"Say hi","command":"echo script-11"}]}"#;
+    #[cfg(not(windows))]
+    let file = r#"{"scripts":[{"name":"Say hi","command":"echo script-$((5+6))"}]}"#;
+    std::fs::write(cwd.join("orbyn.json"), file).unwrap();
     let view = service
         .json(&format!("/api/threads/{thread}/scripts"))
         .await;
@@ -187,7 +188,7 @@ async fn scripts_come_from_the_project_file_and_need_trust() {
     assert_eq!(info["script"], "Say hi");
     let id = info["id"].as_str().unwrap();
     let mut found = false;
-    for _ in 0..400 {
+    for _ in 0..1600 {
         let back = service
             .json(&format!("/api/threads/{thread}/terminals/{id}/scrollback"))
             .await;
@@ -236,7 +237,7 @@ async fn a_settle_script_runs_in_the_threads_own_worktree() {
     std::fs::create_dir_all(&repo).unwrap();
     std::fs::write(
         repo.join("orbyn.json"),
-        r#"{"scripts":[{"name":"Tidy","command":"touch settled-here","runOnSettle":true}]}"#,
+        r#"{"scripts":[{"name":"Tidy","command":"echo done> settled-here","runOnSettle":true}]}"#,
     )
     .unwrap();
     for args in [
