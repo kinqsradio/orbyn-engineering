@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::pipes::{exit_message, lines, one_shot_cli, resolve_engine, spawn_engine};
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
-    MCP_SERVER_NAME, RunHandle, RunSpec, UpdatePlan,
+    MCP_SERVER_NAME, RunHandle, RunKind, RunSpec, UpdatePlan,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -48,7 +48,7 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
         "--verbose",
         "--include-partial-messages",
         "--permission-mode",
-        "default",
+        if spec.plan { "plan" } else { "default" },
         "--mcp-config",
     ]
     .iter()
@@ -141,8 +141,19 @@ impl EngineDriver for ClaudeDriver {
         let args = run_args(&spec, &mcp_config);
         let process = spawn_engine(&command, &args, &spec.cwd)?;
         let cancel = CancellationToken::new();
-        let task = tokio::spawn(run_protocol(process, spec, events, cancel.clone()));
-        Ok(RunHandle { cancel, task })
+        let (input, steering) = mpsc::unbounded_channel();
+        let task = tokio::spawn(run_protocol(
+            process,
+            spec,
+            events,
+            steering,
+            cancel.clone(),
+        ));
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: Some(input),
+        })
     }
 }
 
@@ -150,6 +161,7 @@ async fn run_protocol(
     mut process: super::pipes::EngineProcess,
     spec: RunSpec,
     events: mpsc::Sender<EngineEvent>,
+    mut steering: mpsc::UnboundedReceiver<String>,
     cancel: CancellationToken,
 ) {
     // The prompt goes over stdin, never argv: it can exceed ARG_MAX and argv is
@@ -164,7 +176,7 @@ async fn run_protocol(
     if let Err(error) = wrote {
         tracing::debug!(%error, "could not write the prompt");
     }
-    let stdin = process.stdin;
+    let mut stdin = process.stdin;
     let mut mapper = StreamMapper::default();
     let mut stream = lines(process.stdout);
     let mut outcome = None;
@@ -172,6 +184,14 @@ async fn run_protocol(
         tokio::select! {
             biased;
             () = cancel.cancelled() => break false,
+            Some(text) = steering.recv() => {
+                // The CLI folds a message sent mid-turn into the running turn.
+                let frame = format!("{}\n", user_frame(&text));
+                if let Err(error) = stdin.write_all(frame.as_bytes()).await {
+                    tracing::debug!(%error, "could not steer the run");
+                }
+                let _ = stdin.flush().await;
+            }
             line = stream.next() => {
                 let Some(line) = line else { break true };
                 let Ok(line) = line else { continue };
@@ -212,8 +232,16 @@ async fn run_protocol(
     let _ = events.send(EngineEvent::Finished(outcome)).await;
 }
 
+/// Slash commands reach the CLI bare, or it would read them as ordinary text.
 fn user_message(spec: &RunSpec) -> String {
-    json!({ "type": "user", "message": { "role": "user", "content": spec.prompt } }).to_string()
+    match spec.kind {
+        RunKind::Turn => user_frame(&spec.prompt),
+        _ => user_frame(&spec.user_prompt),
+    }
+}
+
+fn user_frame(text: &str) -> String {
+    json!({ "type": "user", "message": { "role": "user", "content": text } }).to_string()
 }
 
 fn parse_auth_status(status: i32, stdout: &str) -> orbyn_contracts::AuthState {
@@ -526,6 +554,8 @@ mod tests {
             checkout: PathBuf::from("/workspace/repo/app"),
             prompt: "hello".into(),
             user_prompt: "hello".into(),
+            kind: RunKind::Turn,
+            plan: false,
             model: Some("sonnet".into()),
             resume: Some("sess".into()),
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),

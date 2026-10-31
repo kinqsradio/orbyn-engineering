@@ -176,6 +176,27 @@ impl Store {
                 )?;
                 notify(tx, appended, id, "auto_settle")?;
             }
+            if let Some(mode) = patch.permission_mode {
+                tx.execute(
+                    "UPDATE threads SET permission_mode = ?2 WHERE id = ?1",
+                    params![id, super::wire_name(mode)?],
+                )?;
+                audit(
+                    tx,
+                    actor,
+                    "thread.permission_mode",
+                    id,
+                    json!({ "mode": mode }),
+                )?;
+                notify(tx, appended, id, "permission_mode")?;
+            }
+            if let Some(plan) = patch.plan_mode {
+                tx.execute(
+                    "UPDATE threads SET plan_mode = ?2 WHERE id = ?1",
+                    params![id, plan],
+                )?;
+                notify(tx, appended, id, "plan_mode")?;
+            }
             if let Some(settled) = patch.settled {
                 if settled {
                     if busy {

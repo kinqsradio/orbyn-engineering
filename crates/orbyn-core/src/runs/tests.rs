@@ -74,7 +74,11 @@ impl EngineDriver for ScriptDriver {
     ) -> Result<RunHandle> {
         let cancel = CancellationToken::new();
         let task = (self.script)(spec, events, cancel.clone());
-        Ok(RunHandle { cancel, task })
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: None,
+        })
     }
 }
 

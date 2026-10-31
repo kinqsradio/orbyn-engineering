@@ -74,98 +74,7 @@ impl Store {
     /// Makes the run durable before any process exists. The partial unique
     /// index, not a prior read, is what makes the second admission lose.
     pub fn admit_run(&self, admission: Admission<'_>) -> Result<Run> {
-        let Admission {
-            thread_id,
-            prompt,
-            actor,
-        } = admission;
-        self.commit(|tx, appended| {
-            let row: Option<(String, bool, bool)> = tx
-                .query_row(
-                    "SELECT threads.engine, projects.trusted, threads.archived_at IS NOT NULL
-                     FROM threads JOIN projects ON projects.id = threads.project_id
-                     WHERE threads.id = ?1",
-                    [thread_id],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
-                .optional()?;
-            let (engine, trusted, archived) =
-                row.ok_or_else(|| CoreError::NotFound("thread".into()))?;
-            if !trusted {
-                return Err(CoreError::FolderUntrusted);
-            }
-            if archived {
-                return Err(CoreError::ThreadArchived);
-            }
-            // Your own message wakes the thread and restores it to active work.
-            tx.execute(
-                "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0
-                 WHERE id = ?1",
-                [thread_id],
-            )?;
-            let run = Run {
-                id: new_id(),
-                thread_id: thread_id.to_owned(),
-                state: RunState::Admitted,
-                error: None,
-                started_at: now(),
-                ended_at: None,
-            };
-            let inserted = tx.execute(
-                "INSERT INTO runs (id, thread_id, engine, state, owner_epoch, started_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    run.id,
-                    run.thread_id,
-                    engine,
-                    wire_name(run.state)?,
-                    self.epoch,
-                    run.started_at
-                ],
-            );
-            match inserted {
-                Err(rusqlite::Error::SqliteFailure(failure, _))
-                    if failure.code == rusqlite::ErrorCode::ConstraintViolation =>
-                {
-                    return Err(CoreError::ThreadBusy);
-                }
-                other => other?,
-            };
-            insert_audit(
-                tx,
-                &AuditRecord {
-                    actor: actor.to_owned(),
-                    action: "run.admit".into(),
-                    target: engine,
-                    decision: None,
-                    source: "user".into(),
-                    thread_id: Some(run.thread_id.clone()),
-                    run_id: Some(run.id.clone()),
-                    detail: json!({ "prompt_bytes": prompt.len() }),
-                },
-            )?;
-            let events = [
-                AgUiEvent::RunStarted {
-                    thread_id: run.thread_id.clone(),
-                    run_id: run.id.clone(),
-                },
-                AgUiEvent::TextMessageStart {
-                    message_id: format!("{}:prompt", run.id),
-                    role: "user".into(),
-                },
-                AgUiEvent::TextMessageContent {
-                    message_id: format!("{}:prompt", run.id),
-                    delta: prompt.to_owned(),
-                },
-                AgUiEvent::TextMessageEnd {
-                    message_id: format!("{}:prompt", run.id),
-                },
-            ];
-            for event in &events {
-                insert_event(tx, appended, thread_id, Some(&run.id), event)?;
-            }
-            Ok(run)
-        })
+        self.commit(|tx, appended| admit_in(tx, appended, &self.epoch, &admission))
     }
 
     pub fn run(&self, id: &str) -> Result<Run> {
@@ -319,6 +228,103 @@ impl Store {
     }
 }
 
+pub(super) fn admit_in(
+    tx: &Transaction<'_>,
+    appended: &mut Appended,
+    epoch: &str,
+    admission: &Admission<'_>,
+) -> Result<Run> {
+    let &Admission {
+        thread_id,
+        prompt,
+        actor,
+    } = admission;
+    let row: Option<(String, bool, bool)> = tx
+        .query_row(
+            "SELECT threads.engine, projects.trusted, threads.archived_at IS NOT NULL
+             FROM threads JOIN projects ON projects.id = threads.project_id
+             WHERE threads.id = ?1",
+            [thread_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let (engine, trusted, archived) = row.ok_or_else(|| CoreError::NotFound("thread".into()))?;
+    if !trusted {
+        return Err(CoreError::FolderUntrusted);
+    }
+    if archived {
+        return Err(CoreError::ThreadArchived);
+    }
+    // Your own message wakes the thread and restores it to active work.
+    tx.execute(
+        "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0
+         WHERE id = ?1",
+        [thread_id],
+    )?;
+    let run = Run {
+        id: new_id(),
+        thread_id: thread_id.to_owned(),
+        state: RunState::Admitted,
+        error: None,
+        started_at: now(),
+        ended_at: None,
+    };
+    let inserted = tx.execute(
+        "INSERT INTO runs (id, thread_id, engine, state, owner_epoch, started_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            run.id,
+            run.thread_id,
+            engine,
+            wire_name(run.state)?,
+            epoch,
+            run.started_at
+        ],
+    );
+    match inserted {
+        Err(rusqlite::Error::SqliteFailure(failure, _))
+            if failure.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            return Err(CoreError::ThreadBusy);
+        }
+        other => other?,
+    };
+    insert_audit(
+        tx,
+        &AuditRecord {
+            actor: actor.to_owned(),
+            action: "run.admit".into(),
+            target: engine,
+            decision: None,
+            source: "user".into(),
+            thread_id: Some(run.thread_id.clone()),
+            run_id: Some(run.id.clone()),
+            detail: json!({ "prompt_bytes": prompt.len() }),
+        },
+    )?;
+    let events = [
+        AgUiEvent::RunStarted {
+            thread_id: run.thread_id.clone(),
+            run_id: run.id.clone(),
+        },
+        AgUiEvent::TextMessageStart {
+            message_id: format!("{}:prompt", run.id),
+            role: "user".into(),
+        },
+        AgUiEvent::TextMessageContent {
+            message_id: format!("{}:prompt", run.id),
+            delta: prompt.to_owned(),
+        },
+        AgUiEvent::TextMessageEnd {
+            message_id: format!("{}:prompt", run.id),
+        },
+    ];
+    for event in &events {
+        insert_event(tx, appended, thread_id, Some(&run.id), event)?;
+    }
+    Ok(run)
+}
+
 fn close_run(
     tx: &Transaction<'_>,
     appended: &mut Appended,
@@ -329,6 +335,14 @@ fn close_run(
     actor: &str,
 ) -> Result<(Run, Vec<Approval>)> {
     let expired = expire_pending(tx, appended, run_id, thread_id, actor)?;
+    // A stop, failure or crash keeps queued work from starting on its own, except
+    // a message whose send-now caused the stop.
+    if to != RunState::Completed {
+        tx.execute(
+            "UPDATE queued_messages SET held = 1 WHERE thread_id = ?1 AND urgent = 0",
+            [thread_id],
+        )?;
+    }
     // An answer or a failure ends a snooze early.
     tx.execute(
         "UPDATE threads SET snoozed_until = NULL WHERE id = ?1",

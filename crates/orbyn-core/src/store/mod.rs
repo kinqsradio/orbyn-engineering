@@ -6,6 +6,7 @@ mod approvals;
 mod catalog;
 mod hub;
 mod migrations;
+mod queue;
 mod runs;
 #[cfg(test)]
 mod tests;
@@ -560,6 +561,8 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
             position: row.get("position")?,
             parent_thread_id: row.get("parent_thread_id")?,
             relation: row.get("relation")?,
+            permission_mode: parse_wire(0, row.get("permission_mode")?)?,
+            plan_mode: row.get("plan_mode")?,
         }),
     })
 }

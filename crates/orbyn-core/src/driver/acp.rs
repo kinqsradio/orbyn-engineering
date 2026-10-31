@@ -77,7 +77,11 @@ impl EngineDriver for AcpDriver {
         let process = spawn_engine(&command, &args, &spec.cwd)?;
         let cancel = CancellationToken::new();
         let task = tokio::spawn(run_protocol(process, spec, events, cancel.clone()));
-        Ok(RunHandle { cancel, task })
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: None,
+        })
     }
 }
 

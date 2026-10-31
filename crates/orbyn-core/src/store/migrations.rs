@@ -1,7 +1,7 @@
 //! Ordered, forward-only schema. Each entry applies once inside a transaction
 //! and is recorded in `schema_migrations`. Published entries never change.
 
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, INITIAL), (2, THREAD_LIFECYCLE)];
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, INITIAL), (2, THREAD_LIFECYCLE), (3, COMPOSER)];
 
 const THREAD_LIFECYCLE: &str = r#"
 ALTER TABLE threads ADD COLUMN parent_thread_id TEXT REFERENCES threads(id) ON DELETE CASCADE;
@@ -16,6 +16,32 @@ ALTER TABLE threads ADD COLUMN auto_settle INTEGER;
 ALTER TABLE threads ADD COLUMN settle_hold INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE threads ADD COLUMN position REAL NOT NULL DEFAULT 0;
 CREATE INDEX threads_by_parent ON threads(parent_thread_id);
+"#;
+
+const COMPOSER: &str = r#"
+ALTER TABLE threads ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'supervised';
+ALTER TABLE threads ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE queued_messages (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    prompt TEXT NOT NULL,
+    attachment_ids TEXT NOT NULL,
+    held INTEGER NOT NULL DEFAULT 0,
+    -- Sent next, ahead of the order, and not held by the stop it caused.
+    urgent INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX queued_by_thread ON queued_messages(thread_id, urgent);
+CREATE TABLE attachments (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX attachments_by_thread ON attachments(thread_id);
 "#;
 
 const INITIAL: &str = r#"

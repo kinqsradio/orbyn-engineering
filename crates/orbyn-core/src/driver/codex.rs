@@ -17,7 +17,7 @@ use super::pipes::{EngineProcess, exit_message, one_shot_cli, resolve_engine, sp
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
-    RunHandle, RunSpec, UpdatePlan, ask_paths, diff_activity,
+    RunHandle, RunKind, RunSpec, UpdatePlan, ask_paths, diff_activity,
 };
 use crate::approvals::Verdict;
 use crate::engines::maintenance;
@@ -112,14 +112,20 @@ impl EngineDriver for CodexDriver {
         let args = [OsString::from("app-server")];
         let process = spawn_engine(&command, &args, &spec.cwd)?;
         let cancel = CancellationToken::new();
+        let (input, steering) = mpsc::unbounded_channel();
         let task = tokio::spawn(run_protocol(
             process,
             spec,
             self.sandbox.clone(),
             events,
+            steering,
             cancel.clone(),
         ));
-        Ok(RunHandle { cancel, task })
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: Some(input),
+        })
     }
 }
 
@@ -138,6 +144,7 @@ async fn run_protocol(
     spec: RunSpec,
     sandbox: String,
     events: mpsc::Sender<EngineEvent>,
+    mut steering: mpsc::UnboundedReceiver<String>,
     cancel: CancellationToken,
 ) {
     let (rpc, mut inbound) = RpcClient::start(process.stdin, process.stdout, false);
@@ -182,6 +189,21 @@ async fn run_protocol(
                 }
             }
             () = sleep_until(deadline), if deadline.is_some() => break EngineOutcome::Cancelled,
+            Some(text) = steering.recv() => {
+                if let Some(turn) = &turn_id {
+                    let rpc = rpc.clone();
+                    let params = json!({
+                        "threadId": session,
+                        "expectedTurnId": turn,
+                        "input": [{ "type": "text", "text": text, "text_elements": [] }],
+                    });
+                    tokio::spawn(async move {
+                        if let Err(error) = rpc.call("turn/steer", params, CALL_TIMEOUT).await {
+                            tracing::debug!(%error, "could not steer the run");
+                        }
+                    });
+                }
+            }
             message = inbound.recv() => {
                 let Some(message) = message else {
                     if interrupted_at.is_some() {
@@ -280,6 +302,33 @@ async fn open_turn(
         .ok_or_else(|| CoreError::EngineUnavailable("Codex returned no thread id.".into()))?
         .to_owned();
     let _ = events.send(EngineEvent::Session(session.clone())).await;
+    match &spec.kind {
+        RunKind::Compact => {
+            rpc.call(
+                "thread/compact/start",
+                json!({ "threadId": session }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+            return Ok((session, None));
+        }
+        RunKind::Goal(objective) => {
+            rpc.call(
+                "thread/goal/set",
+                json!({ "threadId": session, "objective": objective }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+            if objective.is_none() {
+                let _ = events
+                    .send(EngineEvent::Finished(EngineOutcome::Completed))
+                    .await;
+                return Ok((session, None));
+            }
+        }
+        RunKind::Turn => {}
+    }
+    let policy = if spec.plan { "read-only" } else { sandbox };
     let turn = rpc
         .call(
             "turn/start",
@@ -287,7 +336,7 @@ async fn open_turn(
                 "threadId": session,
                 "input": [{ "type": "text", "text": spec.prompt, "text_elements": [] }],
                 "cwd": spec.checkout,
-                "sandboxPolicy": sandbox_policy(sandbox, &spec.checkout),
+                "sandboxPolicy": sandbox_policy(policy, &spec.checkout),
             }),
             CALL_TIMEOUT,
         )
@@ -985,6 +1034,8 @@ mod tests {
             checkout: "/workspace/repo/app".into(),
             prompt: "p".into(),
             user_prompt: "p".into(),
+            kind: RunKind::Turn,
+            plan: false,
             model: None,
             resume: None,
             mcp_url: Some("http://127.0.0.1:1/mcp/x".into()),

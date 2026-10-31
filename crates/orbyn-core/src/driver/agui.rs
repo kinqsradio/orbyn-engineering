@@ -85,7 +85,11 @@ impl EngineDriver for AguiDriver {
             events,
             cancel.clone(),
         ));
-        Ok(RunHandle { cancel, task })
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: None,
+        })
     }
 }
 

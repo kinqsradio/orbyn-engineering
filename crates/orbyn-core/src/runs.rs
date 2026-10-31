@@ -7,26 +7,29 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use orbyn_contracts::{EngineTier, Run, RunState, Thread};
+use orbyn_contracts::{
+    AgUiEvent, EngineTier, PermissionMode, QueuedMessage, Run, RunState, Thread,
+};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::approvals::{ActionAsk, ApprovalGate, RunScope, WriteScope};
-use crate::driver::{EngineEvent, EngineOutcome, PermissionRequest, RunHandle, RunSpec};
+use crate::composer::check_prompt;
+use crate::driver::{EngineEvent, EngineOutcome, PermissionRequest, RunHandle, RunKind, RunSpec};
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
 use crate::git::{git, text};
 use crate::mcp::{McpBinding, McpService};
 use crate::skills::{SkillRoute, SkillService};
 use crate::store::{Admission, Store};
+use crate::util::new_id;
 use crate::workspace::{Workspace, check_target};
 
 /// Longest a driver gets to stop before its task is aborted, which drops the
 /// process owner and kills the tree.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_BUFFER: usize = 1024;
-const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
 /// Where a thread's run may write: its checkout, and on a library thread never
 /// the nested projects.
@@ -71,6 +74,8 @@ struct RunContext<'a> {
     branch: Option<&'a str>,
     library_thread: bool,
     route: &'a SkillRoute,
+    plan: bool,
+    files: &'a [PathBuf],
 }
 
 /// The short bootstrap in front of each run's prompt. Nesting does not prove an
@@ -108,6 +113,15 @@ fn run_context(context: &RunContext<'_>) -> String {
         text.push_str(&context.route.selection.join(", "));
         text.push_str(".\n");
     }
+    if context.plan {
+        text.push_str("Plan mode: read and propose a plan. Change nothing.\n");
+    }
+    if !context.files.is_empty() {
+        text.push_str("Attached files:\n");
+        for file in context.files {
+            text.push_str(&format!("- {}\n", file.display()));
+        }
+    }
     text.push_str("</orbyn_context>");
     text
 }
@@ -139,6 +153,7 @@ pub struct RunManager {
 struct ActiveRun {
     cancel: CancellationToken,
     task: Option<JoinHandle<()>>,
+    input: Option<mpsc::UnboundedSender<String>>,
 }
 
 impl RunManager {
@@ -169,16 +184,21 @@ impl RunManager {
     /// Admits a run and starts it. The `202` reply and the first events can
     /// reach a client in either order; both are consistent with the log.
     pub fn admit(self: &Arc<Self>, thread_id: &str, prompt: &str, actor: &str) -> Result<Run> {
-        if prompt.trim().is_empty() {
-            return Err(CoreError::Invalid("Enter a prompt to start a run.".into()));
-        }
-        if prompt.len() > MAX_PROMPT_BYTES {
-            return Err(CoreError::Invalid("This prompt is too long.".into()));
-        }
+        self.admit_with(thread_id, prompt, &[], actor)
+    }
+
+    pub fn admit_with(
+        self: &Arc<Self>,
+        thread_id: &str,
+        prompt: &str,
+        attachments: &[String],
+        actor: &str,
+    ) -> Result<Run> {
+        check_prompt(prompt)?;
         let thread = self.store.thread(thread_id)?;
         self.engines.driver(&thread.engine)?;
+        self.attachment_files(thread_id, attachments)?;
         let root = self.workspace.root()?;
-        let scope = write_scope(&root, Path::new(&thread.cwd));
         let run = self.workspace.admit_with(|| {
             self.engines.admit_with(&thread.engine, || {
                 self.store.admit_run(Admission {
@@ -188,6 +208,33 @@ impl RunManager {
                 })
             })
         })?;
+        self.launch(thread, run.clone(), prompt.to_owned(), attachments, &root)?;
+        Ok(run)
+    }
+
+    fn attachment_files(&self, thread_id: &str, ids: &[String]) -> Result<Vec<PathBuf>> {
+        let stored = self.store.list_attachments(thread_id)?;
+        ids.iter()
+            .map(|id| {
+                stored
+                    .iter()
+                    .find(|(attachment, _)| attachment.id == *id)
+                    .map(|(_, path)| PathBuf::from(path))
+                    .ok_or_else(|| CoreError::Invalid("That attachment is not ready.".into()))
+            })
+            .collect()
+    }
+
+    fn launch(
+        self: &Arc<Self>,
+        thread: Thread,
+        run: Run,
+        prompt: String,
+        attachments: &[String],
+        root: &Path,
+    ) -> Result<()> {
+        let files = self.attachment_files(&thread.id, attachments)?;
+        let scope = write_scope(root, Path::new(&thread.cwd));
         let cancel = CancellationToken::new();
         // Registered before the task starts, so a cancel cannot miss it.
         self.lock().insert(
@@ -195,18 +242,21 @@ impl RunManager {
             ActiveRun {
                 cancel: cancel.clone(),
                 task: None,
+                input: None,
             },
         );
         let manager = self.clone();
+        let thread_id = thread.id.clone();
         let task = tokio::spawn({
             let run_id = run.id.clone();
-            let prompt = prompt.to_owned();
             async move {
                 let supervised = {
                     let manager = manager.clone();
                     let run_id = run_id.clone();
                     tokio::spawn(async move {
-                        manager.execute(thread, run_id, prompt, scope, cancel).await;
+                        manager
+                            .execute(thread, run_id, prompt, files, scope, cancel)
+                            .await;
                     })
                 };
                 // A panic in the run must not strand it as active.
@@ -218,12 +268,103 @@ impl RunManager {
                     );
                 }
                 manager.lock().remove(&run_id);
+                manager.drain(&thread_id);
             }
         });
         if let Some(active) = self.lock().get_mut(&run.id) {
             active.task = Some(task);
         }
-        Ok(run)
+        Ok(())
+    }
+
+    /// Starts the next queued message if the thread is free. A failure leaves
+    /// the message queued, so nothing typed is lost.
+    pub fn drain(self: &Arc<Self>, thread_id: &str) {
+        if let Err(error) = self.try_drain(thread_id) {
+            tracing::warn!(%error, "could not start the next queued message");
+        }
+    }
+
+    fn try_drain(self: &Arc<Self>, thread_id: &str) -> Result<()> {
+        let thread = self.store.thread(thread_id)?;
+        let root = self.workspace.root()?;
+        let next = self.workspace.admit_with(|| {
+            self.engines
+                .admit_with(&thread.engine, || self.store.admit_next(thread_id, "user"))
+        })?;
+        if let Some((run, message)) = next {
+            self.launch(thread, run, message.prompt, &message.attachment_ids, &root)?;
+        }
+        Ok(())
+    }
+
+    /// Queues a message and starts it at once if the thread is idle.
+    pub fn enqueue(
+        self: &Arc<Self>,
+        thread_id: &str,
+        prompt: &str,
+        attachments: &[String],
+    ) -> Result<QueuedMessage> {
+        check_prompt(prompt)?;
+        let thread = self.store.thread(thread_id)?;
+        if thread.lifecycle.and_then(|l| l.archived_at).is_some() {
+            return Err(CoreError::ThreadArchived);
+        }
+        self.attachment_files(thread_id, attachments)?;
+        let message = self.store.enqueue(thread_id, prompt, attachments)?;
+        self.drain(thread_id);
+        Ok(message)
+    }
+
+    /// Sends one queued message next. A running turn is stopped for it.
+    pub fn send_now(self: &Arc<Self>, id: &str) -> Result<()> {
+        let message = self.store.mark_urgent(id)?;
+        match self.store.thread(&message.thread_id)?.active_run {
+            Some(run) => self.cancel(&run.id),
+            None => {
+                self.drain(&message.thread_id);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn resume_queue(self: &Arc<Self>, thread_id: &str) -> Result<()> {
+        self.store.thread(thread_id)?;
+        self.store.release_queue(thread_id)?;
+        self.drain(thread_id);
+        Ok(())
+    }
+
+    /// Adds text to the running turn, for engines that accept it.
+    pub fn steer(&self, thread_id: &str, prompt: &str) -> Result<()> {
+        check_prompt(prompt)?;
+        let run = self
+            .store
+            .thread(thread_id)?
+            .active_run
+            .ok_or_else(|| CoreError::Invalid("Nothing is running to steer.".into()))?;
+        let input = self
+            .lock()
+            .get(&run.id)
+            .and_then(|active| active.input.clone())
+            .ok_or_else(|| CoreError::Unsupported("This engine cannot be steered.".into()))?;
+        let message_id = format!("{}:{}:prompt", run.id, new_id());
+        for event in [
+            AgUiEvent::TextMessageStart {
+                message_id: message_id.clone(),
+                role: "user".into(),
+            },
+            AgUiEvent::TextMessageContent {
+                message_id: message_id.clone(),
+                delta: prompt.to_owned(),
+            },
+            AgUiEvent::TextMessageEnd { message_id },
+        ] {
+            self.store.append_run_event(&run.id, &event)?;
+        }
+        input
+            .send(prompt.to_owned())
+            .map_err(|_| CoreError::RunClosed)
     }
 
     /// Requests cancellation. The run reaches `cancelled` once its engine is down.
@@ -273,19 +414,32 @@ impl RunManager {
         thread: Thread,
         run_id: String,
         prompt: String,
+        files: Vec<PathBuf>,
         write_scope: WriteScope,
         cancel: CancellationToken,
     ) {
+        let lifecycle = thread.lifecycle.clone();
         let scope = RunScope {
             run_id: run_id.clone(),
             thread_id: thread.id.clone(),
             engine: thread.engine.clone(),
             write_scope: Some(write_scope),
+            mode: lifecycle
+                .as_ref()
+                .map_or(PermissionMode::Supervised, |l| l.permission_mode),
+            plan: lifecycle.is_some_and(|l| l.plan_mode),
         };
         let run_dir = self.runs_dir.join(&run_id);
         let mut token = None;
         let outcome = self
-            .drive(&thread, &scope, prompt, &run_dir, &mut token, &cancel)
+            .drive(
+                &thread,
+                &scope,
+                (prompt, files),
+                &run_dir,
+                &mut token,
+                &cancel,
+            )
             .await;
         if let Some(token) = token {
             self.mcp.revoke(&token);
@@ -316,13 +470,13 @@ impl RunManager {
         &self,
         thread: &Thread,
         scope: &RunScope,
-        prompt: String,
+        message: (String, Vec<PathBuf>),
         run_dir: &Path,
         token: &mut Option<String>,
         cancel: &CancellationToken,
     ) -> EngineOutcome {
         match self
-            .start(thread, scope, prompt, run_dir, token, cancel)
+            .start(thread, scope, message, run_dir, token, cancel)
             .await
         {
             Ok(Some((handle, events))) => self.pump(thread, scope, handle, events, cancel).await,
@@ -336,7 +490,7 @@ impl RunManager {
         &self,
         thread: &Thread,
         scope: &RunScope,
-        prompt: String,
+        (prompt, files): (String, Vec<PathBuf>),
         run_dir: &Path,
         token: &mut Option<String>,
         cancel: &CancellationToken,
@@ -381,6 +535,8 @@ impl RunManager {
             branch: branch_name(&checkout).await.as_deref(),
             library_thread,
             route: &route,
+            plan: scope.plan,
+            files: &files,
         });
         let native = descriptor.tier == EngineTier::Native;
         let spec = RunSpec {
@@ -389,6 +545,8 @@ impl RunManager {
             cwd: if native { root } else { checkout.clone() },
             checkout,
             prompt: format!("{context}\n\n{prompt}"),
+            kind: RunKind::parse(&prompt),
+            plan: scope.plan,
             user_prompt: prompt,
             model: thread.model.clone(),
             resume: self.store.engine_session(&thread.id)?,
@@ -397,6 +555,9 @@ impl RunManager {
         };
         let (sender, receiver) = mpsc::channel(EVENT_BUFFER);
         let handle = driver.start_run(spec, sender).await?;
+        if let Some(active) = self.lock().get_mut(&scope.run_id) {
+            active.input.clone_from(&handle.input);
+        }
         if let Err(error) = self.store.mark_running(&scope.run_id) {
             handle.cancel.cancel();
             handle.task.abort();

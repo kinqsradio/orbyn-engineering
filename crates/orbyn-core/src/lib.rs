@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod approvals;
+pub mod composer;
 pub mod computer;
 pub mod driver;
 pub mod engines;

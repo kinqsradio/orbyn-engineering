@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use orbyn_contracts::{ActionKind, Approval, ApprovalState, PolicyEffect};
+use orbyn_contracts::{ActionKind, Approval, ApprovalState, PermissionMode, PolicyEffect};
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
@@ -79,6 +79,20 @@ pub struct RunScope {
     pub engine: String,
     /// `None` only for callers with no file access at all.
     pub write_scope: Option<WriteScope>,
+    pub mode: PermissionMode,
+    pub plan: bool,
+}
+
+/// True when the thread's mode answers an action nobody wrote a rule for.
+/// Computer and browser actions always reach a person or a rule.
+fn mode_accepts(mode: PermissionMode, kind: ActionKind) -> bool {
+    match (mode, kind) {
+        (_, ActionKind::Computer | ActionKind::Browser) | (PermissionMode::Supervised, _) => false,
+        (PermissionMode::FullAccess, _) => true,
+        (PermissionMode::Auto, ActionKind::Command | ActionKind::FileChange) => true,
+        (PermissionMode::AutoEdits, ActionKind::FileChange) => true,
+        _ => false,
+    }
 }
 
 /// One action an engine wants to take.
@@ -168,8 +182,19 @@ impl ApprovalGate {
         if let Some(denied) = self.outside_scope(scope, &ask)? {
             return Ok(denied);
         }
+        if scope.plan && ask.kind == ActionKind::FileChange {
+            return Ok(Verdict::Deny("Plan mode changes nothing.".to_owned()));
+        }
         let rules = self.store.list_rules()?;
-        let decision = policy::evaluate(&rules, ask.kind, &ask.target, &scope.engine);
+        let mut decision = policy::evaluate(&rules, ask.kind, &ask.target, &scope.engine);
+        if decision.effect == PolicyEffect::Ask
+            && decision.rule_id.is_none()
+            && mode_accepts(scope.mode, ask.kind)
+        {
+            decision.effect = PolicyEffect::Allow;
+            decision.source = "permission_mode".into();
+            decision.reason = "Accepted by the thread's permission mode".into();
+        }
         if decision.effect != PolicyEffect::Ask {
             self.store.append_audit(&AuditRecord {
                 actor: format!("engine:{}", scope.engine),
@@ -346,6 +371,8 @@ mod tests {
                 thread_id: thread.id,
                 engine: "fake".into(),
                 write_scope: None,
+                mode: PermissionMode::Supervised,
+                plan: false,
             },
         }
     }
@@ -382,6 +409,67 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
+    }
+
+    #[test]
+    fn modes_widen_only_what_they_name() {
+        use ActionKind::{Browser, Command, Computer, FileChange, Network};
+        use PermissionMode::{Auto, AutoEdits, FullAccess, Supervised};
+        assert!(!mode_accepts(Supervised, FileChange));
+        assert!(mode_accepts(AutoEdits, FileChange));
+        assert!(!mode_accepts(AutoEdits, Command));
+        assert!(mode_accepts(Auto, Command));
+        assert!(!mode_accepts(Auto, Network));
+        assert!(mode_accepts(FullAccess, Network));
+        for kind in [Computer, Browser] {
+            assert!(!mode_accepts(FullAccess, kind), "{kind:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn full_access_still_loses_to_a_deny_rule_and_to_the_write_scope() {
+        let mut f = fixture();
+        f.scope.mode = PermissionMode::FullAccess;
+        let dir = TempDir::new();
+        std::fs::create_dir_all(dir.path().join("checkout")).unwrap();
+        f.scope.write_scope = Some(WriteScope {
+            checkout: dir.path().join("checkout"),
+            engine_cwd: dir.path().to_path_buf(),
+            excluded: Vec::new(),
+        });
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_secs(1));
+        assert!(gate.request(&f.scope, ask()).await.is_allowed());
+        let outside = ActionAsk {
+            kind: ActionKind::FileChange,
+            target: "../elsewhere".into(),
+            summary: "w".into(),
+            detail: Value::Null,
+            paths: Vec::new(),
+        };
+        assert!(!gate.request(&f.scope, outside).await.is_allowed());
+        rule(&f.store, PolicyEffect::Deny);
+        assert!(!gate.request(&f.scope, ask()).await.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn plan_mode_refuses_edits_without_asking() {
+        let mut f = fixture();
+        f.scope.plan = true;
+        let gate = ApprovalGate::new(f.store.clone(), Duration::from_secs(1));
+        let edit = ActionAsk {
+            kind: ActionKind::FileChange,
+            target: "a".into(),
+            summary: "w".into(),
+            detail: Value::Null,
+            paths: Vec::new(),
+        };
+        assert!(!gate.request(&f.scope, edit).await.is_allowed());
+        assert!(
+            f.store
+                .pending_for_thread(&f.scope.thread_id)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

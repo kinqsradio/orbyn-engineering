@@ -187,6 +187,7 @@ fn claude(args: &[String]) {
     stop(0);
 
     let mut answer = "hello from claude".to_owned();
+    let mut lines = lines;
     if has(&prompt, "approve") || has(&prompt, "crash-in-approval") {
         block(
             1,
@@ -251,9 +252,20 @@ fn claude(args: &[String]) {
     }
     if has(&prompt, "hang") {
         // Stays alive until stdin closes, like the real CLI between turns.
-        for _ in lines {}
-        return;
+        match lines.next() {
+            Some(steer) => {
+                answer = format!(
+                    "steered: {}",
+                    steer
+                        .pointer("/message/content")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                );
+            }
+            None => return,
+        }
     }
+    record_launch("claude-prompt", std::slice::from_ref(&prompt));
     block(2, json!({ "type": "text", "text": "" }));
     delta(2, json!({ "type": "text_delta", "text": answer }));
     stop(2);
@@ -345,6 +357,15 @@ fn codex() {
             "turn/interrupt" => {
                 send(&json!({ "id": id, "result": {} }));
                 codex_finish(&state, "interrupted");
+            }
+            "thread/compact/start" => {
+                record_launch("codex-compact", &[]);
+                send(&json!({ "id": id, "result": {} }));
+                codex_finish(&state, "completed");
+            }
+            "thread/goal/set" => {
+                record_launch("codex-goal", &[message["params"].to_string()]);
+                send(&json!({ "id": id, "result": {} }));
             }
             _ => {
                 if id != Value::Null && !method.is_empty() {
@@ -540,8 +561,20 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
                 codex_finish(state, "interrupted");
                 return;
             }
+            if message["method"] == "turn/steer" {
+                send(&json!({ "id": message["id"], "result": { "turnId": "turn-1" } }));
+                answer = format!(
+                    "steered: {}",
+                    message["params"]["input"][0]["text"]
+                        .as_str()
+                        .unwrap_or_default()
+                );
+                break;
+            }
         }
-        return;
+        if !answer.starts_with("steered") {
+            return;
+        }
     }
     codex_note(
         state,

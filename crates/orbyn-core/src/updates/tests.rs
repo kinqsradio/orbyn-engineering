@@ -76,7 +76,11 @@ impl EngineDriver for Fake {
                 .send(EngineEvent::Finished(EngineOutcome::Cancelled))
                 .await;
         });
-        Ok(RunHandle { cancel, task })
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: None,
+        })
     }
 }
 

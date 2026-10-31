@@ -69,6 +69,25 @@ wakes share the transaction that caused them. Thread activity never changes the
 saved order. A running thread or descendant is never settled automatically or
 deleted. Lifecycle changes are logged as `CUSTOM thread.updated`.
 
+## Composer
+
+A queued message becomes a run in one transaction, so it cannot start twice or
+vanish. A run ending in anything but success holds the queue until a resume, and
+new messages join a held queue; recovery holds it too. `send-now` puts one message
+first and stops the running turn, and only that message escapes the hold. Prompts
+are capped at 120,000 characters. `/compact` and `/goal` reach Claude bare as its
+own commands and Codex as `thread/compact/start` and `thread/goal/set`.
+
+Permission modes are answered in the gate, not by engine flags, so no engine runs
+unmanaged. `auto_edits`, `auto` and `full_access` accept what no rule covers. A rule
+still wins, computer and browser actions still ask, and the write scope is checked
+first. Plan mode refuses file changes, runs Claude in `plan` and Codex read-only.
+
+Attachments stay in app data, never in a target, and are removed with their thread.
+The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per other
+file. A record exists only once its bytes are in place, and a message naming an
+attachment that is not ready is refused before anything is admitted.
+
 ## Approval lifecycle
 
 ```text
@@ -285,6 +304,15 @@ accept `?token=` because browsers cannot set headers on them.
 | `POST /api/updates/app/apply` | Ask the shell to install (`202`, `409 runs_active`, `422` on a server) |
 | `POST /api/updates/apply-all` | `ApplyAllResult`; engines, library, app; stops at the first failure |
 | `POST /api/threads/:id/runs` | Admit a run (`202`, `409 thread_busy`, `403 folder_untrusted`) |
+| `GET, POST /api/threads/:id/queue` | `QueuedMessage[]`; queue a message, which starts at once if idle |
+| `POST /api/threads/:id/queue/resume` | Release a held queue |
+| `PATCH, DELETE /api/queue/:id` | Edit or remove a queued message |
+| `POST /api/queue/:id/send-now` | Send next, stopping a running turn for it |
+| `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported) |
+| `GET, POST /api/threads/:id/attachments?name=` | Raw upload body; `Content-Type` is the kind |
+| `DELETE /api/attachments/:id` | Remove an attachment |
+| `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills and unignored files |
+| `GET /api/threads/:id/commands` | `SlashCommand[]` |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |

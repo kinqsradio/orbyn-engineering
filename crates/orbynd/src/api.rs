@@ -11,9 +11,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
     ApiError, ApprovalState, CloneProject, ComputerAction, CreatePolicyRule, CreateThread,
-    CustomEngine, DecideApproval, EngineTier, FsEntry, FsListing, ImportProject,
-    LibraryUpdateRequest, NewProject, ReorderThreads, ServerInfo, ServerSettings, SkillProfile,
-    StartRun, UpdateThread, WorkspaceSetup,
+    CustomEngine, DecideApproval, EditQueuedMessage, EngineTier, EnqueueMessage, FsEntry,
+    FsListing, ImportProject, LibraryUpdateRequest, NewProject, ReorderThreads, ServerInfo,
+    ServerSettings, SkillProfile, StartRun, SteerRun, UpdateThread, WorkspaceSetup,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -357,8 +357,137 @@ pub async fn start_run(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<StartRun>,
 ) -> ApiResult<impl IntoResponse> {
-    let run = state.core.runs.admit(&id, &body.prompt, LOCAL_USER)?;
+    let run = state
+        .core
+        .runs
+        .admit_with(&id, &body.prompt, &body.attachment_ids, LOCAL_USER)?;
     Ok((StatusCode::ACCEPTED, Json(run)))
+}
+
+pub async fn list_queue(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.thread(&id)?;
+    Ok(Json(state.core.store.list_queue(&id)?))
+}
+
+pub async fn enqueue(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<EnqueueMessage>,
+) -> ApiResult<impl IntoResponse> {
+    let message = state
+        .core
+        .runs
+        .enqueue(&id, &body.prompt, &body.attachment_ids)?;
+    Ok((StatusCode::CREATED, Json(message)))
+}
+
+pub async fn edit_queued(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<EditQueuedMessage>,
+) -> ApiResult<impl IntoResponse> {
+    orbyn_core::composer::check_prompt(&body.prompt)?;
+    Ok(Json(state.core.store.edit_queued(&id, &body.prompt)?))
+}
+
+pub async fn remove_queued(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.store.remove_queued(&id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn send_queued_now(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.runs.send_now(&id)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn resume_queue(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.runs.resume_queue(&id)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn steer(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<SteerRun>,
+) -> ApiResult<StatusCode> {
+    state.core.runs.steer(&id, &body.prompt)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[derive(Deserialize)]
+pub struct UploadQuery {
+    name: String,
+}
+
+pub async fn upload_attachment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> ApiResult<impl IntoResponse> {
+    let mime = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let attachment = state.core.add_attachment(&id, &query.name, mime, &body)?;
+    Ok((StatusCode::CREATED, Json(attachment)))
+}
+
+pub async fn list_attachments(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.thread(&id)?;
+    let attachments: Vec<_> = state
+        .core
+        .store
+        .list_attachments(&id)?
+        .into_iter()
+        .map(|(attachment, _)| attachment)
+        .collect();
+    Ok(Json(attachments))
+}
+
+pub async fn remove_attachment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.remove_attachment(&id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct MentionQuery {
+    #[serde(default)]
+    q: String,
+}
+
+pub async fn mentions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<MentionQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.mentions(&id, &query.q).await?))
+}
+
+pub async fn slash_commands(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.slash_commands(&id)?))
 }
 
 pub async fn cancel_run(
@@ -572,6 +701,8 @@ pub async fn computer_action(
                 thread_id: thread.id.clone(),
                 engine: thread.engine.clone(),
                 write_scope: None,
+                mode: orbyn_contracts::PermissionMode::Supervised,
+                plan: false,
             };
             state.core.computer.act(Caller::Run(&scope), action).await?
         }

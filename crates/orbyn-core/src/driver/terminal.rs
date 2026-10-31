@@ -106,7 +106,11 @@ impl EngineDriver for TerminalDriver {
             };
             let _ = events.send(EngineEvent::Finished(outcome)).await;
         });
-        Ok(RunHandle { cancel, task })
+        Ok(RunHandle {
+            cancel,
+            task,
+            input: None,
+        })
     }
 }
 

@@ -70,6 +70,79 @@ pub struct ThreadLifecycle {
     pub parent_thread_id: Option<String>,
     /// `fork`, `side` or `subagent` when `parent_thread_id` is set.
     pub relation: Option<String>,
+    pub permission_mode: PermissionMode,
+    pub plan_mode: bool,
+}
+}
+
+wire_enum! {
+pub enum PermissionMode {
+    /// Asks before commands and edits.
+    Supervised,
+    /// Accepts edits inside the checkout.
+    AutoEdits,
+    /// Also accepts commands.
+    Auto,
+    /// Accepts everything policy does not refuse. Writes stay in the checkout.
+    FullAccess,
+}
+}
+
+wire! {
+pub struct QueuedMessage {
+    pub id: String,
+    pub thread_id: String,
+    pub prompt: String,
+    pub attachment_ids: Vec<String>,
+    /// Held messages wait for a resume after a stop, failure or restart.
+    pub held: bool,
+    pub created_at: String,
+}
+}
+
+wire! {
+pub struct EnqueueMessage {
+    pub prompt: String,
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
+}
+}
+
+wire! {
+pub struct EditQueuedMessage {
+    pub prompt: String,
+}
+}
+
+wire! {
+pub struct SteerRun {
+    pub prompt: String,
+}
+}
+
+wire! {
+pub struct Attachment {
+    pub id: String,
+    pub thread_id: String,
+    pub name: String,
+    pub mime: String,
+    pub size: u64,
+    pub created_at: String,
+}
+}
+
+wire! {
+pub struct Mentions {
+    pub skills: Vec<String>,
+    /// Paths relative to the checkout.
+    pub files: Vec<String>,
+}
+}
+
+wire! {
+pub struct SlashCommand {
+    pub name: String,
+    pub description: String,
 }
 }
 
@@ -104,6 +177,12 @@ pub struct UpdateThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub auto_settle: Option<AutoSettleChoice>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission_mode: Option<PermissionMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub plan_mode: Option<bool>,
 }
 }
 
@@ -763,6 +842,9 @@ pub struct CreateThread {
 wire! {
 pub struct StartRun {
     pub prompt: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub attachment_ids: Vec<String>,
 }
 }
 

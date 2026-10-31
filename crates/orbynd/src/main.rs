@@ -28,6 +28,8 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
+/// A little over the largest allowed file; core enforces the exact limits.
+const UPLOAD_LIMIT: usize = 51 * 1024 * 1024;
 const REMOTE_KEY_SETTING: &str = "remote_key_sha256";
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const SANDBOX_MODES: &[&str] = &["read-only", "workspace-write", "danger-full-access"];
@@ -176,6 +178,29 @@ fn router(state: AppState) -> Router {
         .route("/api/updates/check", post(api::check_updates))
         .route("/api/updates/app/apply", post(api::apply_app_update))
         .route("/api/updates/apply-all", post(api::apply_all_updates))
+        .route(
+            "/api/threads/{id}/queue",
+            get(api::list_queue).post(api::enqueue),
+        )
+        .route("/api/threads/{id}/queue/resume", post(api::resume_queue))
+        .route(
+            "/api/queue/{id}",
+            axum::routing::patch(api::edit_queued).delete(api::remove_queued),
+        )
+        .route("/api/queue/{id}/send-now", post(api::send_queued_now))
+        .route("/api/threads/{id}/steer", post(api::steer))
+        .route(
+            "/api/threads/{id}/attachments",
+            get(api::list_attachments)
+                .post(api::upload_attachment)
+                .layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
+        )
+        .route(
+            "/api/attachments/{id}",
+            axum::routing::delete(api::remove_attachment),
+        )
+        .route("/api/threads/{id}/mentions", get(api::mentions))
+        .route("/api/threads/{id}/commands", get(api::slash_commands))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(

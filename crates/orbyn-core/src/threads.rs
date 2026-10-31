@@ -22,8 +22,12 @@ impl Core {
     }
 
     pub fn delete_thread(&self, id: &str, actor: &str) -> Result<()> {
+        let files = self.store.family_attachment_paths(id)?;
         for deleted in self.store.delete_thread(id, actor)? {
             self.terminals.close(&deleted);
+        }
+        for file in files {
+            let _ = std::fs::remove_file(file);
         }
         Ok(())
     }

@@ -82,6 +82,9 @@ pub struct RunSpec {
     pub prompt: String,
     /// The prompt alone, for engines that cannot take context.
     pub user_prompt: String,
+    pub kind: RunKind,
+    /// Plan mode: the engine may read and propose, not change anything.
+    pub plan: bool,
     pub model: Option<String>,
     /// The engine's own session id from an earlier run of this thread.
     pub resume: Option<String>,
@@ -130,6 +133,32 @@ impl From<AgUiEvent> for EngineEvent {
 pub struct RunHandle {
     pub cancel: CancellationToken,
     pub task: JoinHandle<()>,
+    /// Takes steering text while the run works, for engines that accept it.
+    pub input: Option<mpsc::UnboundedSender<String>>,
+}
+
+/// What this run asks of the engine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RunKind {
+    Turn,
+    /// `/compact`.
+    Compact,
+    /// `/goal <objective>`; `None` clears the goal.
+    Goal(Option<String>),
+}
+
+impl RunKind {
+    pub fn parse(prompt: &str) -> Self {
+        let text = prompt.trim();
+        if text == "/compact" {
+            return Self::Compact;
+        }
+        match text.strip_prefix("/goal ").map(str::trim) {
+            Some("clear") => Self::Goal(None),
+            Some(objective) if !objective.is_empty() => Self::Goal(Some(objective.to_owned())),
+            _ => Self::Turn,
+        }
+    }
 }
 
 #[async_trait]
@@ -241,6 +270,19 @@ pub(crate) fn diff_activity(diff: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slash_commands_are_recognized_only_when_exact() {
+        assert_eq!(RunKind::parse(" /compact "), RunKind::Compact);
+        assert_eq!(
+            RunKind::parse("/goal tests pass"),
+            RunKind::Goal(Some("tests pass".into()))
+        );
+        assert_eq!(RunKind::parse("/goal clear"), RunKind::Goal(None));
+        assert_eq!(RunKind::parse("/goal"), RunKind::Turn);
+        assert_eq!(RunKind::parse("/compactly please"), RunKind::Turn);
+        assert_eq!(RunKind::parse("please /compact"), RunKind::Turn);
+    }
 
     #[test]
     fn diff_activity_counts_changed_lines() {
