@@ -262,7 +262,7 @@ function useGlobalKeys(route: Route) {
         }
       }
       const digit = /^Digit([1-9])$/.exec(event.code);
-      if (digit && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+      if (digit && !event.defaultPrevented && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
         if (runShellCommand(`thread.jump.${digit[1]}`, route)) event.preventDefault();
         return;
       }

@@ -38,6 +38,8 @@ test("send shortcut modes follow the setting", async ({ page }) => {
   await page.goto(`${service.page}#/settings/chat`);
   await page.getByRole("combobox", { name: "Send shortcut" }).selectOption("mod-enter");
   await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
+  await expect(box(page)).toBeFocused();
   await box(page).fill("one");
   await box(page).press("Enter");
   await expect(box(page)).not.toHaveValue("");
@@ -142,6 +144,7 @@ test("keyboard rules come from the service: terminal, details, palette, next thr
   await page.keyboard.press("Escape");
   await page.keyboard.press("ControlOrMeta+Shift+BracketRight");
   await expect.poll(() => page.url()).toContain(first);
+  await expect(box(page)).toBeFocused();
   await page.keyboard.press("ControlOrMeta+Shift+p");
   await expect
     .poll(async () => (await service.api<{ lifecycle: { pinned_at: string | null } }>("GET", `/api/threads/${threadIdOf(page)}`)).lifecycle.pinned_at)
