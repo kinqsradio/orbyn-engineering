@@ -503,7 +503,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     const needle = query.trim().toLowerCase();
     if (!needle) return [];
     return scoped
-      .filter((thread) => !thread.lifecycle?.archived_at)
+      .filter((thread) => !thread.lifecycle?.archived_at && thread.lifecycle?.relation !== "side")
       .filter((thread) =>
         searchFields(thread, list.find((p) => p.id === thread.project_id)?.name ?? "").includes(needle),
       )

@@ -13,7 +13,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { api } from "../../api/client";
-import { useCommand } from "../../app/shortcuts";
+import { useCommand as useSharedCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -38,6 +38,7 @@ import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
 import { resolveModel, useEngineModels } from "./modelStore";
 import { QueuedMessages } from "./QueuedMessages";
+import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
 import { insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
 
@@ -65,12 +66,18 @@ const MAX_PROMPT_CHARS = 120_000;
 const STYLED_CHARS = 20_000;
 const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
+/** Commands go to the thread's own composer; a side chat's stays out of their way. */
+const useOwnCommand = (side: boolean, command: string, handler: () => boolean | void) =>
+  useSharedCommand(command, () => (side ? false : handler()));
+
 const NO_STASHES: StashedPrompt[] = [];
 const effortButton = () => document.querySelector<HTMLElement>("[data-effort-trigger]");
 const LOCAL_COMMANDS: Suggestion[] = [
   { value: "plan", detail: "Switch to Plan" },
   { value: "default", detail: "Switch back to Build" },
   { value: "usage-limits", detail: "Show usage limits" },
+  { value: "side", detail: "Ask in a side chat" },
+  { value: "btw", detail: "Ask in a side chat" },
 ];
 const MAX_HEIGHT_RATIO = 0.4;
 const MENU_ROWS = 6;
@@ -81,6 +88,7 @@ export function Composer({
   beforeSend,
   onSendFailed,
   showContext,
+  side = false,
 }: {
   thread: Thread;
   engine: EngineStatus | null;
@@ -89,6 +97,8 @@ export function Composer({
   onSendFailed?(): void;
   /** The checkout, branch and access row, shown when nothing else carries them. */
   showContext: boolean;
+  /** This composer belongs to a side chat in the panel. */
+  side?: boolean;
 }) {
   const draft = useUi((state) => state.drafts[thread.id] ?? "");
   const setDraft = useUi((state) => state.setDraft);
@@ -224,6 +234,12 @@ export function Composer({
     if (!canSend) return false;
     const prompt = draft;
     if (runLocal(prompt)) return false;
+    const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
+    if (sideChat) {
+      setDraft(thread.id, "");
+      void openSideChat(thread, sideChat[1]?.trim() || null);
+      return false;
+    }
     const queued = followUpBehavior === "queue";
     const steering = busy && (followUp === "default" ? !queued : queued);
     setSending(true);
@@ -387,16 +403,16 @@ export function Composer({
     field.current?.focus();
   };
 
-  useCommand("composer.stash", () => {
+  useOwnCommand(side, "composer.stash", () => {
     stash();
   });
-  useCommand("composer.sendAndNewThread", () => {
+  useOwnCommand(side, "composer.sendAndNewThread", () => {
     if (!canSend) return false;
     void send().then((sent) => {
       if (sent) navigate({ name: "new", projectId: thread.scratch ? null : thread.project_id });
     });
   });
-  useCommand("thread.steerQueuedMessage", () => {
+  useOwnCommand(side, "thread.steerQueuedMessage", () => {
     const oldest = queue.data?.[0];
     if (!oldest || !busy) return false;
     void api
@@ -494,7 +510,7 @@ export function Composer({
       setError(`Couldn't change the model. ${toFailure(failure).message}`);
     }
   };
-  useCommand("thread.editQueuedMessage", () => {
+  useOwnCommand(side, "thread.editQueuedMessage", () => {
     const last = queue.data?.at(-1);
     if (!last) return false;
     void api.removeQueued(last.id).then(() => {
@@ -503,13 +519,13 @@ export function Composer({
     });
   });
 
-  useCommand("composer.effort", () => {
+  useOwnCommand(side, "composer.effort", () => {
     const trigger = effortButton();
     if (!trigger) return false;
     traits.openAt(trigger, false);
   });
 
-  useCommand("composer.mode", () => {
+  useOwnCommand(side, "composer.mode", () => {
     void setPlanMode(!planMode);
   });
   const traits = useTraitsMenu({

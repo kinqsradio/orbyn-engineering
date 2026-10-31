@@ -213,19 +213,56 @@ impl Core {
 
     pub fn fork_thread(&self, id: &str, request: &ForkThread, actor: &str) -> Result<Thread> {
         let parent = self.store.thread(id)?;
-        if parent.active_run.is_some() && request.run_id.is_none() {
+        if parent.active_run.is_some() && request.run_id.is_none() && !request.side {
             return Err(CoreError::ThreadBusy);
         }
         let through = match &request.run_id {
             Some(run) => self.store.last_seq_of_run(id, run)?,
             None => self.store.latest_seq(id)?,
         };
-        let title = request
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("Fork of {}", parent.title));
-        self.audit_thread(actor, "thread.fork", id, json!({ "through": through }))?;
-        self.store.fork_thread(&parent, through, &title)
+        let title = request.title.clone().unwrap_or_else(|| {
+            if request.side {
+                SIDE_CHAT_TITLE.to_owned()
+            } else {
+                format!("Fork of {}", parent.title)
+            }
+        });
+        let relation = if request.side { "side" } else { "fork" };
+        self.audit_thread(
+            actor,
+            "thread.fork",
+            id,
+            json!({ "through": through, "relation": relation }),
+        )?;
+        self.store.fork_thread(&parent, through, &title, relation)
+    }
+
+    /// Gives a side chat's own messages to its parent's next run. It joins whatever
+    /// the next run already carries, and the parent keeps its engine session.
+    pub fn bring_back(&self, side_id: &str, actor: &str) -> Result<()> {
+        let side = self.store.thread(side_id)?;
+        let lifecycle = side.lifecycle.as_ref();
+        let parent = lifecycle
+            .filter(|lifecycle| lifecycle.relation.as_deref() == Some("side"))
+            .and_then(|lifecycle| lifecycle.parent_thread_id.clone())
+            .ok_or_else(|| CoreError::Invalid("Only a side chat can be brought back.".into()))?;
+        if self.store.thread(&parent)?.active_run.is_some() {
+            return Err(CoreError::ThreadBusy);
+        }
+        let text = self.store.side_transcript(side_id)?;
+        if text.trim().is_empty() {
+            return Err(CoreError::Invalid(
+                "This side chat has no messages yet.".into(),
+            ));
+        }
+        self.audit_thread(
+            actor,
+            "thread.bring_back",
+            &parent,
+            json!({ "side": side_id }),
+        )?;
+        self.store
+            .add_to_handoff(&parent, &format!("From a side chat:\n{text}"))
     }
 
     /// The files this run's engine reported writing, from its stored items.
@@ -300,6 +337,8 @@ impl Core {
         self.store.thread(id)
     }
 }
+
+const SIDE_CHAT_TITLE: &str = "Side chat";
 
 #[cfg(test)]
 mod tests {

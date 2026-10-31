@@ -450,6 +450,9 @@ pub struct ForkThread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub title: Option<String>,
+    /// A side chat: allowed while the parent runs, and kept out of the thread list.
+    #[serde(default)]
+    pub side: bool,
 }
 }
 

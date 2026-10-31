@@ -413,7 +413,7 @@ export function ModelPickerTrigger({
   const name = model ? shortModelName(model.label) : (selected.model ?? engine?.name ?? "No engine");
 
   useCommand("modelPicker.toggle", () => {
-    if (button.current?.disabled) return false;
+    if (button.current?.disabled || button.current?.closest("[data-side-chat]")) return false;
     button.current?.click();
   });
 

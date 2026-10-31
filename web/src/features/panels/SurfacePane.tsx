@@ -5,6 +5,7 @@ import {
   Files,
   GitPullRequest,
   Maximize2,
+  MessagesSquare,
   Minimize2,
   PanelBottom,
   PanelRight,
@@ -27,10 +28,12 @@ import { BrowserPanel } from "./BrowserPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FilesPanel } from "./FilesPanel";
 import { LinkedPulls } from "./LinkedPulls";
+import { closeSideChat, openSideChat } from "./sideChat";
+import { SideChatPane } from "./SideChatPane";
 import { RIGHT_TABS } from "./tabs";
 
 interface LauncherAction {
-  id: ContextTab;
+  id: ContextTab | "new-side";
   label: string;
   icon: LucideIcon;
   shortcut: string;
@@ -55,11 +58,13 @@ function Launcher({ thread }: { thread: Thread }) {
     { id: "files", label: "Files", icon: Files, shortcut: "F", available: true },
     { id: "activity", label: "Activity", icon: Activity, shortcut: "A", available: activity },
     { id: "pulls", label: "Pull requests", icon: GitPullRequest, shortcut: "P", available: true },
+    { id: "new-side", label: "Side chat", icon: MessagesSquare, shortcut: "S", available: true },
   ];
 
   const open = (action: LauncherAction) => {
     if (action.id === "terminal" && terminalOpen) return;
-    toggle(action.id);
+    if (action.id === "new-side") void openSideChat(thread, null);
+    else toggle(action.id);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -185,7 +190,7 @@ export function SurfacePane({
               >
                 {label}
               </button>
-              <button type="button" aria-label={`Close ${label}`} className="surface-close" onClick={() => closeSurface(id)}>
+              <button type="button" aria-label={`Close ${label}`} className="surface-close" onClick={() => (id === "side" ? closeSideChat() : closeSurface(id))}>
                 <X size={12} aria-hidden />
               </button>
             </span>
@@ -218,6 +223,8 @@ export function SurfacePane({
               <FilesPanel threadId={thread.id} />
             ) : tab === "activity" ? (
               <ActivityPanel threadId={thread.id} />
+            ) : tab === "side" ? (
+              <SideChatPane parent={thread} />
             ) : (
               <LinkedPulls thread={thread} />
             )}

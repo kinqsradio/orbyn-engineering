@@ -85,6 +85,11 @@ manual one leaves `woke_at` until dismissed. Thread activity never changes the
 saved order. A running thread or descendant is never settled automatically or
 deleted. Lifecycle changes are logged as `CUSTOM thread.updated`.
 
+A side chat is a fork with relation `side`: it may start while its parent runs, stays
+out of the thread list, works in the parent's folder and starts `supervised`. Bring back
+adds its own messages to the parent's handoff and leaves the parent's engine session
+alone, so the next run carries them once. It needs an idle parent.
+
 A run that fails on a usage or rate limit leaves a limit on its thread: the engine's
 words, when it stopped and the reset if the engine gave one. Any new run, settle or
 archive clears it. With a reset in the future, `auto_resume_limited_threads` schedules a
