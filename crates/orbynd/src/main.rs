@@ -146,7 +146,15 @@ fn router(state: AppState) -> Router {
         )
         .route(
             "/api/threads/{id}",
-            get(api::get_thread).delete(api::delete_thread),
+            get(api::get_thread)
+                .patch(api::update_thread)
+                .delete(api::delete_thread),
+        )
+        .route("/api/threads/order", post(api::reorder_threads))
+        .route("/api/threads/{id}/title", post(api::regenerate_title))
+        .route(
+            "/api/settings",
+            get(api::get_settings).put(api::put_settings),
         )
         .route("/api/threads/{id}/runs", post(api::start_run))
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
@@ -298,6 +306,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
 
     let stop = CancellationToken::new();
     tokio::spawn(wait_for_stop(args.parent_stdin, stop.clone()));
+    let lifecycle = {
+        let (core, stop) = (core.clone(), stop.clone());
+        tokio::spawn(async move { core.run_lifecycle(stop).await })
+    };
     let shutdown = stop.clone();
     let server = tokio::spawn(async move {
         axum::serve(listener, app)
@@ -306,6 +318,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     });
     stop.cancelled().await;
     tracing::info!("stopping");
+    let _ = lifecycle.await;
     core.shutdown().await;
     // Open streams never finish on their own; they end with the process.
     let _ = tokio::time::timeout(SHUTDOWN_GRACE, server).await;

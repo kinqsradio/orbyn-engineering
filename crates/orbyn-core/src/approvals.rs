@@ -230,6 +230,8 @@ mod tests {
                 cwd: "/r".into(),
                 worktree: None,
                 skill_profile: None,
+                parent_thread_id: None,
+                relation: None,
             })
             .unwrap();
         let run = store

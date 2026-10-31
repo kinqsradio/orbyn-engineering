@@ -159,6 +159,14 @@ pub trait EngineDriver: Send + Sync {
         spec: RunSpec,
         events: mpsc::Sender<EngineEvent>,
     ) -> Result<RunHandle>;
+
+    /// One prompt, one reply, no tools and no session. This spends the user's
+    /// engine usage, so it runs only when they ask for it.
+    async fn one_shot(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot answer a one-off request.".into(),
+        ))
+    }
 }
 
 /// Sends a request to the run owner and waits for its verdict. A closed channel

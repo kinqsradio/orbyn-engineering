@@ -119,6 +119,19 @@ impl Service {
         response.json().await.unwrap()
     }
 
+    pub async fn patch(&self, thread: &str, body: Value) -> (u16, Value) {
+        let response = self
+            .client
+            .patch(format!("{}/api/threads/{thread}", self.url))
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        let status = response.status().as_u16();
+        (status, response.json().await.unwrap_or(Value::Null))
+    }
+
     pub async fn send(&self, path: &str, body: Value) -> (u16, Value) {
         let response = self.post(path).json(&body).send().await.unwrap();
         let status = response.status().as_u16();

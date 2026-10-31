@@ -7,6 +7,9 @@ the real service and has a test or an observed run. Mock-only UI does not count.
 
 Surfaces: w web, d desktop, m mobile, s server, c cli.
 
+A row marked `| server done` has its service behavior finished and tested; any
+web, desktop or mobile surface on that row is tracked by that client's owner.
+
 ## Rows Orbyn will not copy as written
 
 - `[auth-risk]` rows that hold, broker or read engine credentials break hard rule 1
@@ -26,30 +29,30 @@ Surfaces: w web, d desktop, m mobile, s server, c cli.
 - [ ] A8 Multi-model fan-out: shift-click models, one thread and worktree each | apps/web/src/components/chat/useMultipleModelSend.ts | w d | M
 - [ ] A9 New thread in this worktree: reuses an existing worktree | docs/user/thread-sidebar.md | w d | S
 - [ ] A10 Use last project: mobile default for new threads, toggleable | docs/user/thread-sidebar.md | m | S
-- [ ] A11 Pin and unpin: keeps thread above active work, scroll stays put | apps/web/src/components/Sidebar.tsx | w d m s | S
+- [x] A11 Pin and unpin: keeps thread above active work, scroll stays put | apps/web/src/components/Sidebar.tsx | w d m s | S | server done
 - [ ] A12 Undo notices: 5-second undo for unpin, settle, snooze, archive, draft discard | apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx | w d m | M
 - [ ] A13 Drop files on a thread row: opens thread with files attached | docs/user/thread-sidebar.md | w d | S
 - [ ] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L
-- [ ] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M
+- [x] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
 - [ ] A16 Arrange threads sheet: mobile drag handles, plus move up/down | apps/mobile/src/features/threads/ThreadArrangementSheet.tsx | m | M
-- [ ] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S
+- [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S | server done
 - [ ] A18 Title instructions: per-environment or per-project guidance | apps/web/src/components/settings/ThreadTitleInstructionsSettings.tsx | w d s | S
-- [ ] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S
+- [x] A19 Rename thread: F2 on focused row, also via agents | docs/user/keyboard-focus.md | w d s | S | server done
 - [ ] A20 Working section: folds threads waiting on subagents, watches, monitors | packages/contracts/src/settings.ts | w d m | M
 - [ ] A21 Boring sidebar: active threads foldered by project | apps/web/src/components/sidebar/SidebarProjectFolderHeader.tsx | w d | M
 - [ ] A22 Multiline sidebar rows: optional taller rows | packages/contracts/src/settings.ts | w d | S
-- [ ] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M
+- [x] A23 Settle and un-settle: parks work, dismisses async questions, closes idle terminals | docs/user/thread-sidebar.md | w d m s | M | server done
 - [ ] A24 Auto-settle rules: idle days, on merge, keep threads with a PR | packages/contracts/src/settings.ts | s | M
-- [ ] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S
+- [x] A25 Per-thread auto-settle: Enabled or Disabled from thread menu | docs/user/thread-sidebar.md | w d m s | S | server done
 - [ ] A26 Press-drag bulk settle: drag across rows to settle, unsettle or wake | docs/user/thread-sidebar.md | w d | M
 - [ ] A27 Run-on-settle script: reclaims disk in the thread's own worktree | packages/contracts/src/t3ProjectFile.ts | s | S
-- [ ] A28 Snooze presets: up to 8 duration or time-of-day options | apps/web/src/components/settings/SnoozePresetsSettings.tsx | w d m s | M
+- [x] A28 Snooze presets: up to 8 duration or time-of-day options | apps/web/src/components/settings/SnoozePresetsSettings.tsx | w d m s | M | server done
 - [ ] A29 Custom snooze: date/time or duration dialog | apps/web/src/components/CustomSnoozeDialog.tsx | w d m | S
 - [ ] A30 Bulk snooze: applies to multi-selected threads | docs/user/thread-sidebar.md | w d | S
-- [ ] A31 Wake rules: returns early on approval, answer, failure or your message | docs/user/thread-sidebar.md | w d m s | M
-- [ ] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S
-- [ ] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M
-- [ ] A34 Mark unread: flags a thread | packages/contracts/src/orchestrationV2.ts | w d m s | S
+- [x] A31 Wake rules: returns early on approval, answer, failure or your message | docs/user/thread-sidebar.md | w d m s | M | server done
+- [x] A32 Archive and archive panel: unarchive and browse history | apps/web/src/components/settings/ArchivedThreadsPanel.tsx | w d m s | S | server done
+- [x] A33 Delete thread: removes thread, side chats, pages and linked tasks | packages/contracts/src/orchestrationV2.ts | w d m s | M | server done
+- [x] A34 Mark unread: flags a thread | packages/contracts/src/orchestrationV2.ts | w d m s | S | server done
 - [ ] A35 Confirmations: toggles for archive, delete, unpin | packages/contracts/src/settings.ts | w d | S
 - [ ] A36 Copy reference/thread/ID: PR link first, then thread chip, then bare ID | docs/user/thread-sidebar.md | w d m | S
 - [ ] A37 Palette thread search: title, branch, PR, project with frecency ranking | apps/web/src/components/CommandPalette.logic.ts | w d m | M

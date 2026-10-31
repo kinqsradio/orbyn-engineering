@@ -42,6 +42,8 @@ fn thread_in(store: &Store, project: &str) -> String {
             cwd: "/repo".into(),
             worktree: None,
             skill_profile: None,
+            parent_thread_id: None,
+            relation: None,
         })
         .unwrap()
         .id
@@ -434,4 +436,159 @@ fn deleting_an_active_thread_is_refused_and_audit_survives_deletion() {
     f.store.finish_run(&run, RunState::Completed, None).unwrap();
     f.store.delete_thread(&f.thread, "a").unwrap();
     assert!(!f.store.list_audit(Some(&f.thread), 50).unwrap().is_empty());
+}
+
+fn rules(now: i64, days: Option<i64>) -> LifecycleRules {
+    LifecycleRules {
+        now,
+        idle_seconds: days.map(|days| days * 86_400),
+        keep_pull_requests: false,
+    }
+}
+
+const DAY: i64 = 86_400;
+
+fn patch() -> orbyn_contracts::UpdateThread {
+    orbyn_contracts::UpdateThread::default()
+}
+
+#[test]
+fn idle_threads_settle_but_recent_or_opted_out_ones_stay() {
+    let f = fixture();
+    let now = crate::util::unix_now();
+    assert!(
+        f.store
+            .lifecycle_tick(rules(now, Some(3)))
+            .unwrap()
+            .settled
+            .is_empty()
+    );
+    let later = now + 4 * DAY;
+    assert!(
+        f.store
+            .lifecycle_tick(rules(later, None))
+            .unwrap()
+            .settled
+            .is_empty()
+    );
+
+    let mut disabled = patch();
+    disabled.auto_settle = Some(orbyn_contracts::AutoSettleChoice::Disabled);
+    f.store.update_thread(&f.thread, &disabled, "t").unwrap();
+    assert!(
+        f.store
+            .lifecycle_tick(rules(later, Some(3)))
+            .unwrap()
+            .settled
+            .is_empty()
+    );
+
+    let mut enabled = patch();
+    enabled.auto_settle = Some(orbyn_contracts::AutoSettleChoice::Enabled);
+    f.store.update_thread(&f.thread, &enabled, "t").unwrap();
+    let report = f.store.lifecycle_tick(rules(later, None)).unwrap();
+    assert_eq!(report.settled, std::slice::from_ref(&f.thread));
+}
+
+#[test]
+fn a_running_thread_or_child_never_auto_settles() {
+    let f = fixture();
+    let later = crate::util::unix_now() + 10 * DAY;
+    let project = f.store.thread(&f.thread).unwrap().project_id;
+    let child = f
+        .store
+        .create_thread(NewThread {
+            project_id: project,
+            title: "child".into(),
+            engine: "fake".into(),
+            model: None,
+            cwd: "/repo".into(),
+            worktree: None,
+            skill_profile: None,
+            parent_thread_id: Some(f.thread.clone()),
+            relation: Some("subagent".into()),
+        })
+        .unwrap();
+    let run = running(&f.store, &child.id);
+    let report = f.store.lifecycle_tick(rules(later, Some(3))).unwrap();
+    assert!(report.settled.is_empty(), "{report:?}");
+    assert!(matches!(
+        f.store.delete_thread(&f.thread, "t"),
+        Err(CoreError::ThreadBusy)
+    ));
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    assert_eq!(f.store.delete_thread(&f.thread, "t").unwrap().len(), 2);
+    assert!(f.store.thread(&child.id).is_err());
+}
+
+#[test]
+fn unsettle_holds_off_auto_settle_until_new_activity() {
+    let f = fixture();
+    let later = crate::util::unix_now() + 10 * DAY;
+    let mut settle = patch();
+    settle.settled = Some(true);
+    f.store.update_thread(&f.thread, &settle, "t").unwrap();
+    let mut unsettle = patch();
+    unsettle.settled = Some(false);
+    f.store.update_thread(&f.thread, &unsettle, "t").unwrap();
+    assert!(
+        f.store
+            .lifecycle_tick(rules(later, Some(3)))
+            .unwrap()
+            .settled
+            .is_empty()
+    );
+    let run = running(&f.store, &f.thread);
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    let report = f.store.lifecycle_tick(rules(later, Some(3))).unwrap();
+    assert_eq!(report.settled, std::slice::from_ref(&f.thread));
+}
+
+#[test]
+fn due_snooze_wakes_unread_and_early_one_stays() {
+    let f = fixture();
+    let now = crate::util::unix_now();
+    let mut snooze = patch();
+    snooze.snoozed_until = Some("2999-01-01T00:00:00Z".into());
+    f.store.update_thread(&f.thread, &snooze, "t").unwrap();
+    assert!(
+        f.store
+            .lifecycle_tick(rules(now, None))
+            .unwrap()
+            .woken
+            .is_empty()
+    );
+    let end = crate::util::parse_time("2999-01-01T00:00:01Z").unwrap();
+    let report = f.store.lifecycle_tick(rules(end, None)).unwrap();
+    assert_eq!(report.woken, std::slice::from_ref(&f.thread));
+    let thread = f.store.thread(&f.thread).unwrap();
+    let lifecycle = thread.lifecycle.unwrap();
+    assert!(lifecycle.snoozed_until.is_none());
+    assert!(lifecycle.unread);
+}
+
+#[test]
+fn snoozed_threads_do_not_auto_settle_and_lifecycle_changes_reach_followers() {
+    let f = fixture();
+    let receiver = f.store.hub().subscribe(&f.thread);
+    let mut snooze = patch();
+    snooze.snoozed_until = Some("2999-01-01T00:00:00Z".into());
+    f.store.update_thread(&f.thread, &snooze, "t").unwrap();
+    assert!(receiver.has_changed().unwrap());
+    let later = crate::util::unix_now() + 10 * DAY;
+    assert!(
+        f.store
+            .lifecycle_tick(rules(later, Some(3)))
+            .unwrap()
+            .settled
+            .is_empty()
+    );
+}
+
+#[test]
+fn old_rows_gain_lifecycle_defaults() {
+    let f = fixture();
+    let lifecycle = f.store.thread(&f.thread).unwrap().lifecycle.unwrap();
+    assert!(!lifecycle.unread);
+    assert!(lifecycle.parent_thread_id.is_none());
 }

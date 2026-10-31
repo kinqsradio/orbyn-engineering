@@ -15,7 +15,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::pipes::{exit_message, lines, resolve_engine, spawn_engine};
+use super::pipes::{exit_message, lines, one_shot_cli, resolve_engine, spawn_engine};
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
     MCP_SERVER_NAME, RunHandle, RunSpec, UpdatePlan,
@@ -115,6 +115,21 @@ impl EngineDriver for ClaudeDriver {
 
     fn npm_package(&self) -> Option<&str> {
         Some(maintenance::CLAUDE.npm_package)
+    }
+
+    async fn one_shot(&self, prompt: &str, model: Option<&str>) -> Result<String> {
+        let mut args = vec![
+            "-p",
+            "--output-format",
+            "text",
+            "--tools",
+            "",
+            "--no-session-persistence",
+        ];
+        if let Some(model) = model {
+            args.extend(["--model", model]);
+        }
+        one_shot_cli(&self.program, &args, prompt).await
     }
 
     async fn start_run(

@@ -9,12 +9,13 @@ mod migrations;
 mod runs;
 #[cfg(test)]
 mod tests;
+mod threads;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use orbyn_contracts::{
-    AgUiEvent, AuditEvent, Project, Run, RunState, Thread, ThreadEvent, Worktree,
+    AgUiEvent, AuditEvent, Project, Run, RunState, Thread, ThreadEvent, ThreadLifecycle, Worktree,
 };
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params};
 use serde::Serialize;
@@ -27,6 +28,8 @@ use crate::util::{new_id, now};
 pub use approvals::{NewApproval, RememberRule};
 pub use hub::EventHub;
 pub use runs::{Admission, Recovery};
+use threads::thread_family;
+pub use threads::{LifecycleRules, TickReport, default_settings};
 
 const ACTIVE_STATES: &str = "('admitted', 'starting', 'running', 'awaiting_approval')";
 
@@ -58,6 +61,8 @@ pub struct NewThread {
     pub cwd: String,
     pub worktree: Option<Worktree>,
     pub skill_profile: Option<String>,
+    pub parent_thread_id: Option<String>,
+    pub relation: Option<String>,
 }
 
 impl Store {
@@ -200,11 +205,13 @@ impl Store {
         let stamp = now();
         let worktree = new.worktree.as_ref();
         self.commit(|tx, _| {
+            // New threads open at the top of the active list.
             tx.execute(
                 "INSERT INTO threads (id, project_id, title, engine, model, cwd,
                     worktree_path, worktree_branch, worktree_base, skill_profile,
-                    created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
+                    created_at, updated_at, position, parent_thread_id, relation)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11,
+                    (SELECT COALESCE(MIN(position), 0) - 1 FROM threads), ?12, ?13)",
                 params![
                     id,
                     new.project_id,
@@ -217,6 +224,8 @@ impl Store {
                     worktree.map(|w| &w.base),
                     new.skill_profile,
                     stamp,
+                    new.parent_thread_id,
+                    new.relation,
                 ],
             )?;
             Ok(())
@@ -227,28 +236,22 @@ impl Store {
     pub fn thread(&self, id: &str) -> Result<Thread> {
         let conn = self.reader();
         let thread = conn
-            .query_row(
-                "SELECT id, project_id, title, engine, model, cwd, worktree_path,
-                    worktree_branch, worktree_base, skill_profile, created_at, updated_at
-                 FROM threads WHERE id = ?1",
-                [id],
-                thread_row,
-            )
+            .query_row("SELECT * FROM threads WHERE id = ?1", [id], thread_row)
             .optional()?
             .ok_or_else(|| CoreError::NotFound("thread".into()))?;
         with_run_state(&conn, thread)
     }
 
-    pub fn list_threads(&self, project_id: Option<&str>) -> Result<Vec<Thread>> {
+    /// Live threads, or archived ones, pinned first and then by saved position.
+    pub fn list_threads(&self, project_id: Option<&str>, archived: bool) -> Result<Vec<Thread>> {
         let conn = self.reader();
         let mut statement = conn.prepare(
-            "SELECT id, project_id, title, engine, model, cwd, worktree_path,
-                worktree_branch, worktree_base, skill_profile, created_at, updated_at
-             FROM threads WHERE (?1 IS NULL OR project_id = ?1)
-             ORDER BY updated_at DESC",
+            "SELECT * FROM threads
+             WHERE (?1 IS NULL OR project_id = ?1) AND (archived_at IS NOT NULL) = ?2
+             ORDER BY pinned_at IS NULL, position, created_at DESC",
         )?;
         let threads = statement
-            .query_map([project_id], thread_row)?
+            .query_map(params![project_id, archived], thread_row)?
             .collect::<Result<Vec<_>, _>>()?;
         threads
             .into_iter()
@@ -256,19 +259,24 @@ impl Store {
             .collect()
     }
 
-    /// Deletes a thread and its log. Refused while a run is active, because the
-    /// owner still has effects in flight. Audit rows outlive the thread.
-    pub fn delete_thread(&self, id: &str, actor: &str) -> Result<()> {
-        self.commit(|tx, _| {
-            let active: i64 = tx.query_row(
-                &format!(
-                    "SELECT COUNT(*) FROM runs WHERE thread_id = ?1 AND state IN {ACTIVE_STATES}"
-                ),
-                [id],
-                |row| row.get(0),
-            )?;
-            if active > 0 {
-                return Err(CoreError::ThreadBusy);
+    /// Deletes a thread with its descendants and their logs. Refused while any
+    /// of them has a run, because that owner still has effects in flight. Audit
+    /// rows outlive the threads. Returns every deleted id.
+    pub fn delete_thread(&self, id: &str, actor: &str) -> Result<Vec<String>> {
+        let deleted = self.commit(|tx, _| {
+            let family = thread_family(tx, id)?;
+            for member in &family {
+                let active: i64 = tx.query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM runs WHERE thread_id = ?1
+                         AND state IN {ACTIVE_STATES}"
+                    ),
+                    [member],
+                    |row| row.get(0),
+                )?;
+                if active > 0 {
+                    return Err(CoreError::ThreadBusy);
+                }
             }
             insert_audit(
                 tx,
@@ -280,17 +288,19 @@ impl Store {
                     source: "user".into(),
                     thread_id: Some(id.to_owned()),
                     run_id: None,
-                    detail: Value::Null,
+                    detail: serde_json::json!({ "family": family }),
                 },
             )?;
             let deleted = tx.execute("DELETE FROM threads WHERE id = ?1", [id])?;
             if deleted == 0 {
                 return Err(CoreError::NotFound("thread".into()));
             }
-            Ok(())
+            Ok(family)
         })?;
-        self.hub.remove(id);
-        Ok(())
+        for member in &deleted {
+            self.hub.remove(member);
+        }
+        Ok(deleted)
     }
 
     /// Events after `after` in `seq` order.
@@ -526,6 +536,17 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
         last_run_state: None,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        lifecycle: Some(ThreadLifecycle {
+            pinned_at: row.get("pinned_at")?,
+            archived_at: row.get("archived_at")?,
+            settled_at: row.get("settled_at")?,
+            snoozed_until: row.get("snoozed_until")?,
+            unread: row.get("unread")?,
+            auto_settle: row.get("auto_settle")?,
+            position: row.get("position")?,
+            parent_thread_id: row.get("parent_thread_id")?,
+            relation: row.get("relation")?,
+        }),
     })
 }
 

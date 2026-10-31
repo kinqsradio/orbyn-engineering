@@ -80,19 +80,29 @@ impl Store {
             actor,
         } = admission;
         self.commit(|tx, appended| {
-            let row: Option<(String, bool)> = tx
+            let row: Option<(String, bool, bool)> = tx
                 .query_row(
-                    "SELECT threads.engine, projects.trusted FROM threads
-                     JOIN projects ON projects.id = threads.project_id
+                    "SELECT threads.engine, projects.trusted, threads.archived_at IS NOT NULL
+                     FROM threads JOIN projects ON projects.id = threads.project_id
                      WHERE threads.id = ?1",
                     [thread_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
                 .optional()?;
-            let (engine, trusted) = row.ok_or_else(|| CoreError::NotFound("thread".into()))?;
+            let (engine, trusted, archived) =
+                row.ok_or_else(|| CoreError::NotFound("thread".into()))?;
             if !trusted {
                 return Err(CoreError::FolderUntrusted);
             }
+            if archived {
+                return Err(CoreError::ThreadArchived);
+            }
+            // Your own message wakes the thread and restores it to active work.
+            tx.execute(
+                "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0
+                 WHERE id = ?1",
+                [thread_id],
+            )?;
             let run = Run {
                 id: new_id(),
                 thread_id: thread_id.to_owned(),
@@ -319,6 +329,11 @@ fn close_run(
     actor: &str,
 ) -> Result<(Run, Vec<Approval>)> {
     let expired = expire_pending(tx, appended, run_id, thread_id, actor)?;
+    // An answer or a failure ends a snooze early.
+    tx.execute(
+        "UPDATE threads SET snoozed_until = NULL WHERE id = ?1",
+        [thread_id],
+    )?;
     let target = wire_name(to)?;
     insert_audit(
         tx,

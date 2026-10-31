@@ -197,6 +197,8 @@ impl Core {
             cwd,
             worktree,
             skill_profile: request.skill_profile,
+            parent_thread_id: None,
+            relation: None,
         })
     }
 

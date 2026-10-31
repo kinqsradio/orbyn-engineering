@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use futures_util::stream::Stream;
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
@@ -17,6 +17,7 @@ use crate::util::tail;
 /// One protocol line. Engines can emit whole file contents in a single frame.
 const MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 const STDERR_TAIL_BYTES: usize = 8 * 1024;
+const ONE_SHOT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 pub(crate) struct EngineProcess {
     pub child: ManagedChild,
@@ -83,6 +84,35 @@ pub(crate) fn spawn_engine(
         stdout,
         stderr: StderrTail::default().start(stderr),
     })
+}
+
+/// Runs a CLI once from a neutral folder with the prompt on stdin, so no
+/// repository config or hooks load and the prompt stays out of argv.
+pub(crate) async fn one_shot_cli(program: &str, args: &[&str], prompt: &str) -> Result<String> {
+    let command = resolve_engine(program)?;
+    let args: Vec<OsString> = args.iter().map(OsString::from).collect();
+    let mut process = spawn_engine(&command, &args, &std::env::temp_dir())?;
+    let mut stdout = process.stdout;
+    let mut stdin = process.stdin;
+    let child = &mut process.child;
+    let work = async {
+        stdin.write_all(prompt.as_bytes()).await?;
+        drop(stdin);
+        let mut output = String::new();
+        stdout.read_to_string(&mut output).await?;
+        let status = child.wait().await?;
+        Ok::<_, std::io::Error>((status, output))
+    };
+    let (status, output) = tokio::time::timeout(ONE_SHOT_TIMEOUT, work)
+        .await
+        .map_err(|_| CoreError::EngineUnavailable("The engine did not answer in time.".into()))??;
+    if !status.success() {
+        return Err(CoreError::EngineUnavailable(exit_message(
+            Some(status),
+            &process.stderr,
+        )));
+    }
+    Ok(output)
 }
 
 pub(crate) fn lines(

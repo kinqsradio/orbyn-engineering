@@ -49,6 +49,102 @@ pub struct Thread {
     pub last_run_state: Option<RunState>,
     pub created_at: String,
     pub updated_at: String,
+    /// Always present from the service; optional so older payloads still parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lifecycle: Option<ThreadLifecycle>,
+}
+}
+
+wire! {
+pub struct ThreadLifecycle {
+    pub pinned_at: Option<String>,
+    pub archived_at: Option<String>,
+    pub settled_at: Option<String>,
+    pub snoozed_until: Option<String>,
+    pub unread: bool,
+    /// `None` follows the settings; `Some` is the thread's own choice.
+    pub auto_settle: Option<bool>,
+    /// Lower sorts first. Thread activity never changes it.
+    pub position: f64,
+    pub parent_thread_id: Option<String>,
+    /// `fork`, `side` or `subagent` when `parent_thread_id` is set.
+    pub relation: Option<String>,
+}
+}
+
+wire! {
+/// `PATCH /api/threads/:id`. Absent fields are left alone.
+#[derive(Default)]
+pub struct UpdateThread {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pinned: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub archived: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub settled: Option<bool>,
+    /// RFC 3339 time in the future.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub snoozed_until: Option<String>,
+    /// True ends a snooze early.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub wake: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub unread: Option<bool>,
+    /// `null` clears the thread's own choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub auto_settle: Option<AutoSettleChoice>,
+}
+}
+
+wire_enum! {
+pub enum AutoSettleChoice {
+    Inherit,
+    Enabled,
+    Disabled,
+}
+}
+
+wire! {
+pub struct ReorderThreads {
+    /// Thread ids in their new order. Ids left out keep their position.
+    pub ids: Vec<String>,
+}
+}
+
+wire! {
+pub struct AutoSettleSettings {
+    /// Idle days before settling; `None` turns the idle rule off.
+    pub after_days: Option<u32>,
+    pub on_merge: bool,
+    pub keep_pull_requests: bool,
+}
+}
+
+wire! {
+pub struct SnoozePreset {
+    pub label: String,
+    /// Minutes from now, up to 30 days.
+    pub minutes: u32,
+}
+}
+
+wire! {
+/// Service-wide settings. Fields only ever get added, with defaults.
+pub struct ServerSettings {
+    pub auto_settle: AutoSettleSettings,
+    pub snooze_presets: Vec<SnoozePreset>,
+    pub title_instructions: Option<String>,
 }
 }
 

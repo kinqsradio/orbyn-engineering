@@ -15,6 +15,17 @@ pub fn now() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
 }
 
+/// Unix seconds for an RFC 3339 time.
+pub fn parse_time(text: &str) -> Option<i64> {
+    time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc3339)
+        .ok()
+        .map(time::OffsetDateTime::unix_timestamp)
+}
+
+pub fn unix_now() -> i64 {
+    time::OffsetDateTime::now_utc().unix_timestamp()
+}
+
 pub fn random_bytes<const N: usize>() -> Result<[u8; N]> {
     let mut bytes = [0u8; N];
     getrandom::fill(&mut bytes)

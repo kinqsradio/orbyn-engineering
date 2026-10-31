@@ -19,6 +19,10 @@ pub enum CoreError {
     EngineBusy(String),
     #[error("{0}")]
     EngineUnavailable(String),
+    #[error("this thread is archived")]
+    ThreadArchived,
+    #[error("{0}")]
+    Unsupported(String),
     #[error("{0}")]
     UpdateUnavailable(String),
     #[error("{0}")]
@@ -63,6 +67,8 @@ impl CoreError {
             Self::AlreadyDecided(_) => "already_decided",
             Self::EngineBusy(_) => "engine_busy",
             Self::EngineUnavailable(_) => "engine_unavailable",
+            Self::ThreadArchived => "thread_archived",
+            Self::Unsupported(_) => "unsupported",
             Self::UpdateUnavailable(_) => "update_unavailable",
             Self::UpdateFailed(_) => "update_failed",
             Self::PolicyDenied(_) => "policy_denied",
@@ -85,11 +91,12 @@ impl CoreError {
             Self::FolderUntrusted | Self::PolicyDenied(_) => 403,
             Self::ThreadBusy
             | Self::AlreadyDecided(_)
+            | Self::ThreadArchived
             | Self::EngineBusy(_)
             | Self::StaleOwner
             | Self::RunClosed
             | Self::InvalidTransition { .. } => 409,
-            Self::UpdateUnavailable(_) => 422,
+            Self::UpdateUnavailable(_) | Self::Unsupported(_) => 422,
             Self::EngineUnavailable(_) | Self::Computer(_) | Self::UpdateFailed(_) => 502,
             _ => 500,
         }

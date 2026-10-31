@@ -24,6 +24,8 @@ fn main() {
         "auth" => println!("{}", json!({ "loggedIn": true, "authMethod": "fake" })),
         "login" => println!("Logged in using fake"),
         "app-server" => codex(),
+        "-p" if !args.iter().any(|arg| arg == "--input-format") => one_shot(),
+        "exec" => one_shot(),
         "-p" => claude(&args),
         "acp" => acp(),
         "agui" => agui(&args),
@@ -94,6 +96,24 @@ fn mcp_call(url: &str, id: u64, method: &str, params: Value) -> (u16, Value) {
         url,
         &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
     )
+}
+
+/// A one-off prompt on stdin, answered on stdout. Each call is recorded,
+/// because in a real engine each one spends the user's usage.
+fn one_shot() {
+    let mut prompt = String::new();
+    std::io::stdin().read_to_string(&mut prompt).expect("stdin");
+    if let Ok(path) = std::env::var("ORBYN_FAKE_ONE_SHOT_FILE") {
+        std::fs::write(path, &prompt).expect("record");
+    }
+    if prompt.contains("[slow-title]") {
+        std::thread::sleep(std::time::Duration::from_millis(600));
+    }
+    if prompt.contains("[bad-title]") {
+        eprintln!("title failure");
+        std::process::exit(4);
+    }
+    println!("\"A fresh title.\"\nextra line");
 }
 
 // Claude Code stream-json.

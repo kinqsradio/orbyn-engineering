@@ -55,6 +55,16 @@ admitted -> starting -> running <-> awaiting_approval
   process's recovery would fence runs that are still alive.
 - Pending approvals expire in the same transaction that ends a run.
 
+## Thread lifecycle
+
+Settling removes a pin and ends a snooze; it needs no active run and closes the
+thread's terminals. Un-settling returns a thread to the top and holds off automatic
+settling until new activity. Archiving hides a thread and refuses new runs. Your
+message, an approval request and a run ending all wake a snoozed thread; those
+wakes share the transaction that caused them. Thread activity never changes the
+saved order. A running thread or descendant is never settled automatically or
+deleted. Lifecycle changes are logged as `CUSTOM thread.updated`.
+
 ## Approval lifecycle
 
 ```text
@@ -173,7 +183,11 @@ accept `?token=` because browsers cannot set headers on them.
 | `GET /api/info` | `ServerInfo` |
 | `GET, POST /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `GET /api/fs/browse?path=` | `FsListing` for the folder picker; no `path` means home |
-| `GET /api/threads?project_id=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads |
+| `GET /api/threads?project_id=&archived=`, `POST /api/threads`, `GET, DELETE /api/threads/:id` | Threads |
+| `PATCH /api/threads/:id` | `UpdateThread`: rename, pin, archive, settle, snooze, wake, unread, auto-settle |
+| `POST /api/threads/order` | Save order; a stale id rejects the whole list |
+| `POST /api/threads/:id/title` | Regenerate the title. Spends engine usage, so only on request |
+| `GET, PUT /api/settings` | `ServerSettings` |
 | `POST /api/threads/:id/runs` | Admit a run (`202`, `409 thread_busy`, `403 folder_untrusted`) |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |

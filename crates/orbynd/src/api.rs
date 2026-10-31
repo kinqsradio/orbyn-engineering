@@ -11,8 +11,8 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
     ApiError, ApprovalState, ComputerAction, CreatePolicyRule, CreateProject, CreateThread,
-    CustomEngine, DecideApproval, EngineTier, FsEntry, FsListing, ServerInfo, SkillProfile,
-    StartRun,
+    CustomEngine, DecideApproval, EngineTier, FsEntry, FsListing, ReorderThreads, ServerInfo,
+    ServerSettings, SkillProfile, StartRun, UpdateThread,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::skills::DEFAULT_PROFILE;
@@ -197,15 +197,17 @@ pub async fn browse(Query(query): Query<BrowseQuery>) -> ApiResult<Json<FsListin
 #[derive(Deserialize)]
 pub struct ThreadsQuery {
     project_id: Option<String>,
+    archived: Option<bool>,
 }
 
 pub async fn list_threads(
     State(state): State<AppState>,
     Query(query): Query<ThreadsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(
-        state.core.store.list_threads(query.project_id.as_deref())?,
-    ))
+    Ok(Json(state.core.store.list_threads(
+        query.project_id.as_deref(),
+        query.archived.unwrap_or(false),
+    )?))
 }
 
 pub async fn create_thread(
@@ -229,9 +231,43 @@ pub async fn delete_thread(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
-    state.core.store.delete_thread(&id, LOCAL_USER)?;
-    state.core.terminals.close(&id);
+    state.core.delete_thread(&id, LOCAL_USER)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_thread(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(patch): ApiJson<UpdateThread>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.update_thread(&id, &patch, LOCAL_USER)?))
+}
+
+pub async fn regenerate_title(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.regenerate_title(&id, LOCAL_USER).await?))
+}
+
+pub async fn reorder_threads(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<ReorderThreads>,
+) -> ApiResult<StatusCode> {
+    state.core.store.reorder_threads(&body.ids)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.store.settings()?))
+}
+
+pub async fn put_settings(
+    State(state): State<AppState>,
+    ApiJson(settings): ApiJson<ServerSettings>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.store.save_settings(&settings, LOCAL_USER)?;
+    Ok(Json(settings))
 }
 
 pub async fn start_run(

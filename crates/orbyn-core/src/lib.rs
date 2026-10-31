@@ -16,6 +16,7 @@ pub mod skills;
 pub mod sse;
 pub mod store;
 pub mod terminal;
+pub mod threads;
 pub mod util;
 
 #[cfg(test)]

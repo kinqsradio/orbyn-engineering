@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
+use super::pipes::{EngineProcess, exit_message, one_shot_cli, resolve_engine, spawn_engine};
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
@@ -85,6 +85,23 @@ impl EngineDriver for CodexDriver {
 
     fn npm_package(&self) -> Option<&str> {
         Some(maintenance::CODEX.npm_package)
+    }
+
+    async fn one_shot(&self, prompt: &str, model: Option<&str>) -> Result<String> {
+        let mut args = vec![
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--color",
+            "never",
+        ];
+        if let Some(model) = model {
+            args.extend(["--model", model]);
+        }
+        args.push("-");
+        one_shot_cli(&self.program, &args, prompt).await
     }
 
     async fn start_run(

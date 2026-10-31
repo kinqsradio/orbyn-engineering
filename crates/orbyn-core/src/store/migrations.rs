@@ -1,7 +1,22 @@
 //! Ordered, forward-only schema. Each entry applies once inside a transaction
 //! and is recorded in `schema_migrations`. Published entries never change.
 
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, INITIAL)];
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, INITIAL), (2, THREAD_LIFECYCLE)];
+
+const THREAD_LIFECYCLE: &str = r#"
+ALTER TABLE threads ADD COLUMN parent_thread_id TEXT REFERENCES threads(id) ON DELETE CASCADE;
+ALTER TABLE threads ADD COLUMN relation TEXT;
+ALTER TABLE threads ADD COLUMN pinned_at TEXT;
+ALTER TABLE threads ADD COLUMN archived_at TEXT;
+ALTER TABLE threads ADD COLUMN settled_at TEXT;
+ALTER TABLE threads ADD COLUMN snoozed_until TEXT;
+ALTER TABLE threads ADD COLUMN unread INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE threads ADD COLUMN auto_settle INTEGER;
+-- Un-settling holds off automatic settling until new activity.
+ALTER TABLE threads ADD COLUMN settle_hold INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE threads ADD COLUMN position REAL NOT NULL DEFAULT 0;
+CREATE INDEX threads_by_parent ON threads(parent_thread_id);
+"#;
 
 const INITIAL: &str = r#"
 CREATE TABLE projects (
