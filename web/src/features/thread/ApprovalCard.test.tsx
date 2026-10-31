@@ -25,7 +25,7 @@ describe("ApprovalCard", () => {
     expect(screen.getByRole("heading", { name: "Run tests" })).toBeInTheDocument();
     expect(screen.getByText("cargo test")).toBeInTheDocument();
     expect(screen.getByText("/repo")).toBeInTheDocument();
-    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code/)).toBeInTheDocument();
   });
 
   it.each([

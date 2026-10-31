@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { MockApi } from "../../mock/api";
@@ -411,10 +411,42 @@ describe("App against the mock API", () => {
     })) as unknown as typeof window.matchMedia;
     render(<App />);
     const details = await screen.findByRole("complementary", { name: "Thread details" });
-    expect(await within(details).findByText("+42 -3")).toBeInTheDocument();
+    await waitFor(() => expect(details).toHaveTextContent("+42 -3"));
     expect(within(details).getByText("approval-timeout")).toBeInTheDocument();
     expect(within(details).queryByText("Commit")).toBeNull();
     expect(within(details).queryByText(/Open in editor/)).toBeNull();
+  });
+
+  it("offers only surfaces it can back", async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("min-width"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    go("#/threads/t-done");
+    render(<App />);
+    const launcher = await screen.findByLabelText("Open a surface");
+    expect(within(launcher).getByRole("button", { name: /Terminal/ })).toBeEnabled();
+    expect(within(launcher).getByRole("button", { name: /Diff/ })).toBeDisabled();
+    expect(within(launcher).queryByRole("button", { name: /Browser/ })).toBeNull();
+  });
+
+  it("opens an empty thread as a draft, with the project in the heading", async () => {
+    go("#/threads/t-empty");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "What should we work on in marketing-site?" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "or choose another project" })).toBeInTheDocument();
+    expect(screen.getByText("Current checkout")).toBeInTheDocument();
+  });
+
+  it("sets the panel animation duration from Appearance", async () => {
+    go("#/settings/appearance");
+    render(<App />);
+    const slider = await screen.findByRole("slider", { name: /Panel animations/ });
+    expect(slider).toHaveValue("0");
+    fireEvent.change(slider, { target: { value: "240" } });
+    expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"panelAnimationMs":240');
   });
 
   it("switches and remembers the theme", async () => {

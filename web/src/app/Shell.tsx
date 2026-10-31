@@ -8,6 +8,7 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { ApprovalsPage, HomePage } from "../features/workspace/Attention";
 import { Sidebar } from "../features/workspace/Sidebar";
+import { usePanelAnimationAttribute } from "../lib/panelAnimations";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
 import { useUi, type ContextTab } from "../state/ui";
@@ -48,7 +49,7 @@ function useGlobalKeys(route: Route) {
       if (event.key === "Escape" && !event.defaultPrevented) {
         if (route.name === "thread" && !document.querySelector("dialog[open]")) {
           const { panelOpen, closePanel } = useUi.getState();
-          if (panelOpen) closePanel();
+          if (panelOpen === true) closePanel();
         }
         return;
       }
@@ -98,6 +99,7 @@ export function Shell() {
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
 
   useGlobalKeys(route);
+  usePanelAnimationAttribute(routeKey);
   useRouteFocus(routeKey, threadReady, main);
 
   useEffect(() => {

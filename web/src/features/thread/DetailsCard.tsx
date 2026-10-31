@@ -2,7 +2,6 @@ import {
   Activity,
   Copy,
   FileDiff,
-  Folder,
   GitBranch,
   Monitor,
   SquareTerminal,
@@ -94,7 +93,7 @@ function ChangesRow({ threadId }: { threadId: string }) {
   const diff = useAsync(`details-diff:${threadId}`, (signal) => api.diff(threadId, signal));
   const { reload } = diff;
   const togglePanel = useUi((state) => state.togglePanel);
-  const showing = useUi((state) => state.panelOpen && state.panelTab === "diff");
+  const showing = useUi((state) => state.panelOpen === true && state.panelTab === "diff");
 
   useEffect(() => {
     if (version > 0) reload();
@@ -117,7 +116,7 @@ function ChangesRow({ threadId }: { threadId: string }) {
         <span className="detail-meta">Unavailable</span>
       ) : diff.data ? (
         <span className="detail-meta">
-          +{added} -{removed}
+          <span className="diff-add">+{added}</span> <span>-{removed}</span>
         </span>
       ) : null}
     </button>
@@ -178,6 +177,7 @@ export function DetailsCard({
           <IconButton label={`Copy folder path ${thread.cwd}`} onClick={copyPath}>
             <Copy size={14} aria-hidden />
           </IconButton>
+          <ThreadMenu thread={thread} />
           {compact ? (
             <IconButton label="Close details" onClick={onClose}>
               <X size={14} aria-hidden />
@@ -197,11 +197,6 @@ export function DetailsCard({
             <span>{branch}</span>
           </div>
         ) : null}
-        <div className="detail-row detail-row-static" title={thread.cwd}>
-          <Folder size={16} aria-hidden />
-          <span className="detail-dim">{thread.worktree ? "Worktree" : "Project folder"}</span>
-          <span className="detail-meta detail-meta-text">{thread.cwd.split(/[\\/]/).filter(Boolean).at(-1)}</span>
-        </div>
         {profileName ? (
           <div className="detail-row detail-row-static">
             <span className="detail-dim detail-label">Skill profile</span>
@@ -222,13 +217,14 @@ export function DetailsCard({
           </>
         ) : null}
       </div>
-      <div className="details-section">
-        <div className="details-head">
-          <span>{runningCount > 0 ? `This run · ${runningCount} running` : "Thread"}</span>
-          <ThreadMenu thread={thread} />
+      {runningCount > 0 ? (
+        <div className="details-section">
+          <div className="details-head">
+            <span>This run · {runningCount} running</span>
+          </div>
+          <RunningList threadId={thread.id} active={thread.active_run !== null} />
         </div>
-        <RunningList threadId={thread.id} active={thread.active_run !== null} />
-      </div>
+      ) : null}
     </aside>
   );
 }

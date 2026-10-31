@@ -417,8 +417,8 @@ input[type="radio"] {
 .skeleton {
   height: 16px;
   border-radius: var(--radius-xs);
-  background: var(--color-surfaceMuted);
-  animation: pulse 1.4s ease-in-out infinite;
+  background: var(--color-chip);
+  animation: skeleton 2.4s infinite;
 }
 .skeleton:nth-child(3n) {
   width: 60%;
@@ -506,6 +506,22 @@ input[type="radio"] {
 }
 .dialog::backdrop {
   background: var(--color-backdrop);
+  backdrop-filter: blur(4px);
+  transition: opacity 200ms;
+}
+.dialog {
+  transition:
+    scale 150ms,
+    opacity 150ms;
+}
+@starting-style {
+  .dialog[open] {
+    scale: 0.98;
+    opacity: 0;
+  }
+  .dialog[open]::backdrop {
+    opacity: 0;
+  }
 }
 .dialog-head {
   display: flex;
@@ -565,7 +581,135 @@ input[type="radio"] {
 }
 
 .spin {
-  animation: spin 1.1s linear infinite;
+  animation: spin 1s linear infinite;
+}
+/* Stepped loops, after upstream's index.css (see web/NOTICE). A handful of
+   discrete frames per cycle instead of one per vsync. They read
+   --visible-animation-state, so nothing runs off screen. */
+@keyframes skeleton {
+  0%,
+  42% {
+    opacity: 1;
+    animation-timing-function: steps(4);
+  }
+  50%,
+  92% {
+    opacity: 0.55;
+    animation-timing-function: steps(4);
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes status-pulse {
+  0%,
+  40% {
+    opacity: 1;
+    animation-timing-function: steps(6);
+  }
+  50%,
+  90% {
+    opacity: 0.5;
+    animation-timing-function: steps(6);
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes status-ping {
+  0% {
+    opacity: 0.9;
+    scale: 0.75;
+    animation-timing-function: steps(8);
+  }
+  40%,
+  100% {
+    opacity: 0;
+    scale: 2;
+  }
+}
+@keyframes live-tool-shine {
+  from {
+    background-position:
+      -4.5rem 0,
+      0 0;
+  }
+  to {
+    background-position:
+      calc(100% + 4.5rem) 0,
+      0 0;
+  }
+}
+@keyframes live-activity-focus {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.status-dot {
+  position: relative;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  animation: status-pulse 2s infinite;
+  animation-play-state: var(--visible-animation-state, paused);
+}
+.status-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: status-ping 2s infinite;
+  animation-play-state: var(--visible-animation-state, paused);
+}
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  .live-tool-shine {
+    color: transparent;
+    background-image:
+      linear-gradient(to right, transparent, var(--color-text), transparent),
+      linear-gradient(var(--color-muted), var(--color-muted));
+    background-size:
+      4.5rem 100%,
+      100% 100%;
+    background-repeat: no-repeat;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: live-tool-shine 2.2s steps(30) infinite;
+    animation-play-state: var(--visible-animation-state, paused);
+  }
+}
+.collapsible-panel {
+  height: var(--collapsible-panel-height, auto);
+  overflow: hidden;
+  transition: height 200ms;
+}
+.collapsible-panel[data-collapsed] {
+  height: 0;
+}
+.menu,
+.mention-menu {
+  transition:
+    scale 100ms,
+    opacity 100ms;
+}
+.menu {
+  transform-origin: top right;
+}
+.mention-menu {
+  transform-origin: bottom left;
+}
+@starting-style {
+  .menu,
+  .mention-menu {
+    scale: 0.98;
+    opacity: 0;
+  }
 }
 @keyframes spin {
   to {

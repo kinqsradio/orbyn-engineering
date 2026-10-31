@@ -1,11 +1,11 @@
-import { CircleAlert, CircleCheck, CircleSlash, Clock } from "lucide-react";
+import { CircleCheck, CircleSlash, Clock } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { Approval, JsonValue } from "../../api/types";
 import { actionLabels, fullTime, relativeTime } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
-import { Button, Pill } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import { touchesOf } from "./approvalDetail";
 import { approvalFromContent } from "./projection";
 
@@ -70,46 +70,31 @@ export function ApprovalCard({
     >
       <header className="approval-head">
         {decided ? (
-          <decided.icon size={16} aria-hidden />
+          <decided.icon size={14} aria-hidden />
         ) : (
-          <CircleAlert size={16} className="approval-icon" aria-hidden />
+          <span className="status-dot tone-warn" aria-hidden />
         )}
         <h3>{approval.summary}</h3>
-        {decided ? <Pill>{decided.label}</Pill> : <Pill tone="warn">Needs your decision</Pill>}
+        <span className="approval-state">{decided ? decided.label : "Waiting for you"}</span>
       </header>
-      <dl className="approval-meta">
-        <div>
-          <dt>Action</dt>
-          <dd>{actionLabels[approval.kind]}</dd>
-        </div>
-        {engine ? (
-          <div>
-            <dt>Engine</dt>
-            <dd>{engine}</dd>
-          </div>
-        ) : null}
-        <div>
-          <dt>Asked</dt>
-          <dd>
-            <time dateTime={approval.created_at} title={fullTime(approval.created_at)}>
-              {relativeTime(approval.created_at)}
-            </time>
-          </dd>
-        </div>
+      <p className="approval-meta">
+        {[actionLabels[approval.kind], engine].filter(Boolean).join(" · ")}
+        {" · "}
+        <time dateTime={approval.created_at} title={fullTime(approval.created_at)}>
+          {relativeTime(approval.created_at)}
+        </time>
         {source ? (
-          <div>
-            <dt>Thread</dt>
-            <dd>
-              <a href={source.href}>{source.label}</a>
-            </dd>
-          </div>
+          <>
+            {" · "}
+            <a href={source.href}>{source.label}</a>
+          </>
         ) : null}
-      </dl>
+      </p>
       {touches.length > 0 ? (
         <dl className="approval-touches">
           {touches.map((touch) => (
             <div key={touch.label}>
-              <dt>{touch.label}</dt>
+              <dt className="sr-only">{touch.label}</dt>
               {touch.values.map((value) => (
                 <dd key={value}>
                   <code>{value}</code>
@@ -126,20 +111,18 @@ export function ApprovalCard({
         </details>
       ) : null}
       {decided ? null : (
-        <>
-          <div className="approval-actions">
-            <Button tone="primary" small busy={pending === "allow"} disabled={pending !== null} onClick={() => void decide("allow")}>
-              Allow
-            </Button>
-            <Button small tone="danger" busy={pending === "deny"} disabled={pending !== null} onClick={() => void decide("deny")}>
-              Deny
-            </Button>
-            <Button small tone="quiet" busy={pending === "always"} disabled={pending !== null} onClick={() => void decide("always")}>
-              Always allow this
-            </Button>
-          </div>
-          <p className="approval-note">Always allow stores a rule for this exact target in Policy.</p>
-        </>
+        <div className="approval-actions">
+          <Button tone="primary" small busy={pending === "allow"} disabled={pending !== null} onClick={() => void decide("allow")}>
+            Allow
+          </Button>
+          <Button small busy={pending === "deny"} disabled={pending !== null} onClick={() => void decide("deny")}>
+            Deny
+          </Button>
+          <Button small tone="quiet" busy={pending === "always"} disabled={pending !== null} onClick={() => void decide("always")}>
+            Always allow this
+          </Button>
+          <span className="approval-note">Stores a rule for this exact target.</span>
+        </div>
       )}
       {error ? (
         <p className="field-error" role="alert">

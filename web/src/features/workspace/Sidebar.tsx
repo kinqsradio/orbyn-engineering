@@ -1,7 +1,6 @@
 import {
   BarChart3,
   ChevronRight,
-  CircleDashed,
   FolderPlus,
   GitBranch,
   ListFilter,
@@ -13,17 +12,18 @@ import {
   SquarePen,
   X,
   CircleCheck,
-  Hand,
   Unplug,
 } from "lucide-react";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Project, Thread } from "../../api/types";
 import { compactAge, elapsed } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
+import { useVisibleAnimations } from "../../lib/visibleAnimation";
 import { routeHref, type Route } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { EngineGlyph, OrbynMark, ProjectBadge } from "../../ui/badges";
+import { Collapsible } from "../../ui/Collapsible";
 import { IconButton, Pill } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { ApprovalsLink } from "./ApprovalsLink";
@@ -31,17 +31,17 @@ import { groupThreads } from "./groups";
 import { UpdatePill } from "./Updates";
 
 const DONE_WINDOW_MS = 5 * 60_000;
+const RECENT_LIMIT = 12;
 
 function RowStatus({ thread }: { thread: Thread }) {
   const active = thread.active_run;
   const now = useNow(active !== null);
   if (active) {
     const waiting = active.state === "awaiting_approval";
-    const Icon = waiting ? Hand : CircleDashed;
     const label = active.state === "admitted" ? "Queued" : waiting ? "Waiting" : "Working";
     return (
       <span className={`row-status ${waiting ? "tone-warn" : "tone-info"}`}>
-        <Icon size={14} aria-hidden />
+        <span className="status-dot" aria-hidden />
         {label} {elapsed(active.started_at, now)}
       </span>
     );
@@ -165,14 +165,21 @@ function Group({
   const open = useUi((state) => state.groups[id] ?? defaultOpen);
   const toggle = useUi((state) => state.toggleGroup);
   return (
-    <section className="group">
-      <button type="button" className="group-head" aria-expanded={open} onClick={() => toggle(id, defaultOpen)}>
-        <span>{label}</span>
-        <span className="group-count">{count}</span>
-        <ChevronRight size={14} className="chev" aria-hidden />
-      </button>
-      {open ? <ul className="thread-list group-list">{children}</ul> : null}
-    </section>
+    <Collapsible
+      className="group"
+      open={open}
+      onOpenChange={() => toggle(id, defaultOpen)}
+      summaryClassName="group-head"
+      summary={
+        <>
+          <span>{label}</span>
+          <span className="group-count">{count}</span>
+          <ChevronRight size={14} className="chev" aria-hidden />
+        </>
+      }
+    >
+      <ul className="thread-list group-list">{children}</ul>
+    </Collapsible>
   );
 }
 
@@ -214,6 +221,9 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [needsAttention, setNeedsAttention] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const nav = useRef<HTMLElement>(null);
+  useVisibleAnimations(nav);
   const selectedThread = route.name === "thread" ? route.id : null;
   const list = useMemo(() => projects.data ?? [], [projects.data]);
 
@@ -239,12 +249,14 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     (project) => !Object.values(threads).some((thread) => thread.project_id === project.id),
   );
   const filtering = query.trim() !== "" || needsAttention;
+  const selectedAt = groups.recent.findIndex((thread) => thread.id === selectedThread);
+  const recentLimit = Math.max(RECENT_LIMIT, selectedAt + 1);
   const row = (thread: Thread) => (
     <ThreadRow key={thread.id} thread={thread} selected={thread.id === selectedThread} />
   );
 
   return (
-    <nav className="sidebar" aria-label="Workspace">
+    <nav ref={nav} className="sidebar" aria-label="Workspace">
       <div className="sidebar-top">
         <IconButton label="Collapse sidebar" onClick={toggleSidebar}>
           <PanelLeft size={16} aria-hidden />
@@ -317,10 +329,17 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         ) : groups.recent.length === 0 && groups.working.length === 0 && groups.settled.length === 0 && filtering ? (
           <p className="sidebar-empty">No matching threads</p>
         ) : (
-          <ul className="thread-list">
-            {groups.recent.map(row)}
-            {filtering ? null : emptyProjects.map((project) => <EmptyProjectRow key={project.id} project={project} />)}
-          </ul>
+          <>
+            <ul className="thread-list">
+              {(showAll || filtering ? groups.recent : groups.recent.slice(0, recentLimit)).map(row)}
+              {filtering ? null : emptyProjects.map((project) => <EmptyProjectRow key={project.id} project={project} />)}
+            </ul>
+            {!showAll && !filtering && groups.recent.length > recentLimit ? (
+              <button type="button" className="show-more" onClick={() => setShowAll(true)}>
+                Show {groups.recent.length - recentLimit} more
+              </button>
+            ) : null}
+          </>
         )}
       </div>
       {groups.working.length > 0 || groups.settled.length > 0 ? (

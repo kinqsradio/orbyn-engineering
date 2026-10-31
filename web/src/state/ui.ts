@@ -7,9 +7,13 @@ export type ContextTab = RightTab | "terminal";
 
 interface Prefs {
   theme: ThemeChoice;
-  /** The right panel with Diff and Activity. */
-  panelOpen: boolean;
-  panelTab: RightTab;
+  /** The surface pane. Null follows the layout: open only when there's room. */
+  panelOpen: boolean | null;
+  /** The surface showing; null is the launcher. */
+  panelTab: RightTab | null;
+  openSurfaces: RightTab[];
+  /** Panel and hero motion in ms, 0 to 400. 0 is off, upstream's default. */
+  panelAnimationMs: number;
   /** The floating details card on wide layouts. */
   detailsOpen: boolean;
   /** The terminal drawer under the conversation. */
@@ -26,8 +30,10 @@ const DRAFTS_KEY = "orbyn.drafts.v1";
 
 const defaults: Prefs = {
   theme: "dark",
-  panelOpen: false,
-  panelTab: "diff",
+  panelOpen: null,
+  panelTab: null,
+  openSurfaces: [],
+  panelAnimationMs: 0,
   detailsOpen: true,
   terminalOpen: false,
   sidebarCollapsed: false,
@@ -42,6 +48,11 @@ interface UiState extends Prefs {
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   togglePanel(tab: ContextTab): void;
   closePanel(): void;
+  setPanelOpen(open: boolean): void;
+  /** Back to the launcher, keeping open surfaces. */
+  showLauncher(): void;
+  closeSurface(tab: RightTab): void;
+  setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
   toggleSidebar(): void;
   setBackgroundChecks(enabled: boolean): void;
@@ -54,6 +65,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   theme: state.theme,
   panelOpen: state.panelOpen,
   panelTab: state.panelTab,
+  openSurfaces: state.openSurfaces,
+  panelAnimationMs: state.panelAnimationMs,
   detailsOpen: state.detailsOpen,
   terminalOpen: state.terminalOpen,
   sidebarCollapsed: state.sidebarCollapsed,
@@ -64,7 +77,7 @@ const prefsOf = (state: Prefs): Prefs => ({
 /** Saved preferences may predate a field or carry a removed value. */
 function savedPrefs(): Partial<Prefs> {
   const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
-  const panelTab = saved.panelTab === "activity" ? "activity" : "diff";
+  const panelTab = saved.panelTab === "diff" || saved.panelTab === "activity" ? saved.panelTab : null;
   return { ...saved, panelTab };
 }
 
@@ -83,13 +96,43 @@ export const useUi = create<UiState>((set, get) => {
       if (tab === "terminal") {
         set((state) => ({ terminalOpen: !state.terminalOpen }));
       } else {
-        const { panelOpen, panelTab } = get();
-        set(panelOpen && panelTab === tab ? { panelOpen: false } : { panelOpen: true, panelTab: tab });
+        const { panelOpen, panelTab, openSurfaces } = get();
+        set(
+          panelOpen === true && panelTab === tab
+            ? { panelOpen: false }
+            : {
+                panelOpen: true,
+                panelTab: tab,
+                openSurfaces: openSurfaces.includes(tab) ? openSurfaces : [...openSurfaces, tab],
+              },
+        );
       }
       savePrefs();
     },
     closePanel() {
       set({ panelOpen: false });
+      savePrefs();
+    },
+    setPanelOpen(open) {
+      set({ panelOpen: open });
+      savePrefs();
+    },
+    showLauncher() {
+      set({ panelOpen: true, panelTab: null });
+      savePrefs();
+    },
+    closeSurface(tab) {
+      set((state) => {
+        const openSurfaces = state.openSurfaces.filter((surface) => surface !== tab);
+        return {
+          openSurfaces,
+          panelTab: state.panelTab === tab ? (openSurfaces.at(-1) ?? null) : state.panelTab,
+        };
+      });
+      savePrefs();
+    },
+    setPanelAnimationMs(ms) {
+      set({ panelAnimationMs: Math.min(Math.max(ms, 0), 400) });
       savePrefs();
     },
     toggleDetails() {

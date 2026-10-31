@@ -12,6 +12,7 @@ import { memo, useState } from "react";
 import { elapsed, prettyJson } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
 import { EngineGlyph } from "../../ui/badges";
+import { Collapsible } from "../../ui/Collapsible";
 import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
@@ -48,14 +49,19 @@ function Message({ item, live }: { item: MessageItem; live: boolean }) {
 function Reasoning({ item, live }: { item: ReasoningItem; live: boolean }) {
   const streaming = live && !item.done;
   return (
-    <details className="trace">
-      <summary>
-        <ChevronRight size={16} className="chev" aria-hidden />
-        <Brain size={16} aria-hidden />
-        <span>{streaming ? "Reasoning…" : "Reasoning"}</span>
-      </summary>
+    <Collapsible
+      className="trace"
+      summaryClassName="trace-summary"
+      summary={
+        <>
+          <ChevronRight size={14} className="chev" aria-hidden />
+          <Brain size={14} aria-hidden />
+          <span className={streaming ? "live-tool-shine" : undefined}>Reasoning</span>
+        </>
+      }
+    >
       <div className="trace-body trace-prose">{item.text}</div>
-    </details>
+    </Collapsible>
   );
 }
 
@@ -76,20 +82,26 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
   const finished = item.result !== null || item.done;
   const running = live && !finished;
   return (
-    <details className="trace">
-      <summary>
-        <ChevronRight size={16} className="chev" aria-hidden />
-        <Wrench size={16} aria-hidden />
-        <span className="trace-name">{item.name}</span>
-        <code className="trace-arg">{firstValue(item.args)}</code>
-        {running ? (
-          <Loader2 size={16} className="spin trace-end" role="img" aria-label="Running" />
-        ) : finished ? (
-          <Check size={16} className="trace-end" role="img" aria-label="Finished" />
-        ) : (
-          <CircleDashed size={16} className="trace-end" role="img" aria-label="No result" />
-        )}
-      </summary>
+    <Collapsible
+      className="trace"
+      data-live={running || undefined}
+      summaryClassName="trace-summary"
+      summary={
+        <>
+          <ChevronRight size={14} className="chev" aria-hidden />
+          <Wrench size={14} aria-hidden />
+          <span className={running ? "trace-name live-tool-shine" : "trace-name"}>{item.name}</span>
+          <code className="trace-arg">{firstValue(item.args)}</code>
+          {running ? (
+            <span className="sr-only">Running</span>
+          ) : finished ? (
+            <Check size={14} className="trace-end" role="img" aria-label="Finished" />
+          ) : (
+            <CircleDashed size={14} className="trace-end" role="img" aria-label="No result" />
+          )}
+        </>
+      }
+    >
       <div className="trace-body">
         <h4>Arguments</h4>
         <pre tabIndex={0}>{prettyJson(item.args) || "None"}</pre>
@@ -102,7 +114,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
           </>
         ) : null}
       </div>
-    </details>
+    </Collapsible>
   );
 }
 
@@ -140,7 +152,7 @@ function Plan({ item, live }: { item: PlanItem; live: boolean }) {
 
 function DiffSummary({ item }: { item: DiffSummaryItem }) {
   const openPanel = useUi((state) => state.togglePanel);
-  const panelShowing = useUi((state) => state.panelOpen && state.panelTab === "diff");
+  const panelShowing = useUi((state) => state.panelOpen === true && state.panelTab === "diff");
   const added = item.files.reduce((sum, file) => sum + (file.additions ?? 0), 0);
   const removed = item.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0);
   return (
@@ -166,15 +178,20 @@ function DiffSummary({ item }: { item: DiffSummaryItem }) {
 
 function Activity({ item }: { item: ActivityItem }) {
   return (
-    <details className="trace">
-      <summary>
-        <ChevronRight size={16} className="chev" aria-hidden />
-        <span className="trace-name">{item.activityType}</span>
-      </summary>
+    <Collapsible
+      className="trace"
+      summaryClassName="trace-summary"
+      summary={
+        <>
+          <ChevronRight size={14} className="chev" aria-hidden />
+          <span className="trace-name">{item.activityType}</span>
+        </>
+      }
+    >
       <div className="trace-body">
         <pre tabIndex={0}>{JSON.stringify(item.content, null, 2)}</pre>
       </div>
-    </details>
+    </Collapsible>
   );
 }
 
@@ -240,17 +257,23 @@ export function WorkGroupView({
   const [open, setOpen] = useState(running.length === 1);
   return (
     <div className="work">
-      <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-        <summary>
-          <span>Worked for {group.seconds}s</span>
-          <ChevronRight size={14} className="chev" aria-hidden />
-        </summary>
+      <Collapsible
+        open={open}
+        onOpenChange={setOpen}
+        summaryClassName="work-summary"
+        summary={
+          <>
+            <span>Worked for {group.seconds}s</span>
+            <ChevronRight size={14} className="chev" aria-hidden />
+          </>
+        }
+      >
         <div className="work-log">
           {group.items.map((item) => (
             <WorkEntry key={item.key} item={item} live={live} />
           ))}
         </div>
-      </details>
+      </Collapsible>
       <hr />
       {running.length > 1 ? <RunningStack tools={running} /> : null}
     </div>

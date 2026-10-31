@@ -1,4 +1,4 @@
-import { ArrowUp, GitBranch } from "lucide-react";
+import { ArrowUp, Folder, GitBranch, ShieldCheck, ShieldOff } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
 import type { EngineStatus, SkillSummary, Thread } from "../../api/types";
@@ -9,7 +9,6 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
-import { Pill } from "../../ui/controls";
 import { insertMention, mentionAt } from "./skillMention";
 
 const MAX_HEIGHT_RATIO = 0.4;
@@ -19,10 +18,15 @@ export function Composer({
   thread,
   engine,
   profileName,
+  beforeSend,
+  onSendFailed,
 }: {
   thread: Thread;
   engine: EngineStatus | null;
   profileName: string | null;
+  /** Runs first and may hold the send, as the hero transition does. */
+  beforeSend?(): Promise<void>;
+  onSendFailed?(): void;
 }) {
   const draft = useUi((state) => state.drafts[thread.id] ?? "");
   const setDraft = useUi((state) => state.setDraft);
@@ -76,6 +80,7 @@ export function Composer({
     setSending(true);
     setError(null);
     try {
+      await beforeSend?.();
       const run = await api.startRun(thread.id, prompt.trim());
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
@@ -83,6 +88,7 @@ export function Composer({
       addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
       void refreshThread(thread.id);
     } catch (failure) {
+      onSendFailed?.();
       const known = toFailure(failure);
       if (known.code === "folder_untrusted") {
         navigate({ name: "trust", projectId: thread.project_id, threadId: thread.id });
@@ -136,6 +142,7 @@ export function Composer({
         void send();
       }}
     >
+      <div className="composer-inner">
       {error ? (
         <p className="field-error composer-error" role="alert">
           {error}
@@ -181,27 +188,10 @@ export function Composer({
         </span>
         <div className="composer-bar">
           <dl className="composer-left">
-            {branch ? (
-              <div title={thread.cwd}>
-                <dt className="sr-only">Checkout</dt>
-                <dd className="composer-branch">
-                  <GitBranch size={14} aria-hidden />
-                  {branch}
-                </dd>
-              </div>
-            ) : null}
             {profileName ? (
               <div>
                 <dt className="sr-only">Skill profile</dt>
                 <dd>{profileName}</dd>
-              </div>
-            ) : null}
-            {unmanaged ? (
-              <div>
-                <dt className="sr-only">Governance</dt>
-                <dd>
-                  <Pill tone="warn">Unmanaged</Pill>
-                </dd>
               </div>
             ) : null}
           </dl>
@@ -222,6 +212,36 @@ export function Composer({
             <ArrowUp size={16} aria-hidden />
           </button>
         </div>
+      </div>
+      <div className="composer-context">
+        <dl>
+          <div title={thread.cwd}>
+            <dt className="sr-only">Checkout</dt>
+            <dd>
+              <Folder size={12} aria-hidden />
+              {thread.worktree ? "Worktree" : "Current checkout"}
+            </dd>
+          </div>
+          {branch ? (
+            <div>
+              <dt className="sr-only">Branch</dt>
+              <dd>
+                <GitBranch size={12} aria-hidden />
+                {branch}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+        <dl>
+          <div>
+            <dt className="sr-only">Access</dt>
+            <dd className={unmanaged ? "tone-warn" : undefined}>
+              {unmanaged ? <ShieldOff size={12} aria-hidden /> : <ShieldCheck size={12} aria-hidden />}
+              {unmanaged ? "Unmanaged" : "Asks before acting"}
+            </dd>
+          </div>
+        </dl>
+      </div>
       </div>
     </form>
   );

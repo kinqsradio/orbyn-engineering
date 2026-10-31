@@ -1,8 +1,14 @@
 Orbyn Engineering's web interface follows the visual design of T3 Code
 (https://github.com/pingdotgg/t3code, revision 50c1c5dc). No T3 Code source
-file was copied. Colour, radius and spacing token values were taken from:
+file was copied whole. These files take values or adapt small parts:
 
-  web/src/styles/tokens.css, derived from apps/web/src/index.css
+  web/src/styles/tokens.css            tokens from apps/web/src/index.css
+  web/src/styles/base.css              keyframes from apps/web/src/index.css
+  web/src/lib/panelAnimations.ts       from apps/web/src/panelAnimations.ts
+  web/src/lib/visibleAnimation.ts      from apps/web/src/lib/visibleAnimation.ts
+  web/src/features/thread/heroTransition.ts
+      from apps/web/src/components/chat/useDraftHeroLayoutTransition.ts
+      and draftHeroTransition.ts
 
 MIT License
 

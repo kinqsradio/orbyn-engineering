@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  CircleDashed,
   PanelBottom,
   PanelLeft,
   PanelRight,
@@ -10,11 +9,13 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { api } from "../../api/client";
 import type { Project, RunState, Thread } from "../../api/types";
 import { elapsed, runStateLabels } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
-import { useLayoutWidth } from "../../lib/useLayout";
+import { usePanelAnimations, usePanelPresence } from "../../lib/panelAnimations";
+import { isWide, useLayoutWidth } from "../../lib/useLayout";
 import { useNow } from "../../lib/useNow";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
@@ -23,12 +24,13 @@ import { engineById, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
 import { IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
-import { ContextPanel } from "../panels/ContextPanel";
+import { SurfacePane } from "../panels/SurfacePane";
 import { TerminalPanel } from "../panels/TerminalPanel";
 import { ApprovalsLink } from "../workspace/ApprovalsLink";
 import { threadRunState } from "../workspace/RunState";
 import { Composer } from "./Composer";
 import { DetailsCard } from "./DetailsCard";
+import { useHeroTransition, waitForHeroTransition } from "./heroTransition";
 import { runningTools } from "./timeline";
 import { Transcript } from "./Transcript";
 
@@ -36,18 +38,21 @@ function TopBar({
   thread,
   project,
   detailsShown,
+  paneShown,
   onToggleDetails,
+  onTogglePane,
 }: {
   thread: Thread;
   project: Project | null;
   detailsShown: boolean;
+  paneShown: boolean;
   onToggleDetails(): void;
+  onTogglePane(): void;
 }) {
   const layout = useLayoutWidth();
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
   const terminalOpen = useUi((state) => state.terminalOpen);
-  const diffOpen = useUi((state) => state.panelOpen);
   const togglePanel = useUi((state) => state.togglePanel);
   const narrow = layout === "narrow";
 
@@ -83,12 +88,12 @@ function TopBar({
         <IconButton label="Details" pressed={detailsShown} onClick={onToggleDetails}>
           <Rows3 size={16} aria-hidden />
         </IconButton>
-        {narrow ? null : (
+        {narrow || paneShown ? null : (
           <>
             <IconButton label="Terminal" pressed={terminalOpen} onClick={() => togglePanel("terminal")}>
               <PanelBottom size={16} aria-hidden />
             </IconButton>
-            <IconButton label="Diff" pressed={diffOpen} onClick={() => togglePanel("diff")}>
+            <IconButton label="Surfaces" onClick={onTogglePane}>
               <PanelRight size={16} aria-hidden />
             </IconButton>
           </>
@@ -140,8 +145,8 @@ function RunStatusLine({ thread }: { thread: Thread }) {
 
   return (
     <div className="thread-state run-status-row" role="status">
-      <CircleDashed size={16} aria-hidden className={state === "awaiting_approval" ? "tone-warn" : undefined} />
-      <span className="run-status">{statusSentence(state, tools.length)}</span>
+      <span className={`status-dot ${state === "awaiting_approval" ? "tone-warn" : "tone-info"}`} aria-hidden />
+      <span className="run-status live-tool-shine">{statusSentence(state, tools.length)}</span>
       {tools.length > 0 ? (
         <span className="run-status-detail">{tools.map((tool) => tool.name).join(", ")}</span>
       ) : (
@@ -199,6 +204,25 @@ function TerminalDrawer({ threadId, open, onClose }: { threadId: string; open: b
   );
 }
 
+function DraftHero({ project }: { project: Project | null }) {
+  return (
+    <div className="hero">
+      <h2 className="hero-title">
+        {project ? (
+          <>
+            What should we work on in <strong>{project.name}</strong>?
+          </>
+        ) : (
+          "What should we work on?"
+        )}
+      </h2>
+      <a className="hero-alt" href={routeHref({ name: "new", projectId: null })}>
+        or choose another project
+      </a>
+    </div>
+  );
+}
+
 export function ThreadView({ id }: { id: string }) {
   const thread = useWorkspace((state) => state.threads[id]);
   const missing = useWorkspace((state) => state.missingThreads[id]);
@@ -206,14 +230,23 @@ export function ThreadView({ id }: { id: string }) {
   const engines = useWorkspace((state) => state.engines.data);
   const projects = useWorkspace((state) => state.projects.data);
   const setLastThread = useUi((state) => state.setLastThread);
-  const panelOpen = useUi((state) => state.panelOpen);
+  const panelPref = useUi((state) => state.panelOpen);
   const closePanel = useUi((state) => state.closePanel);
+  const setPanelOpen = useUi((state) => state.setPanelOpen);
   const detailsPref = useUi((state) => state.detailsOpen);
   const toggleDetailsPref = useUi((state) => state.toggleDetails);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const togglePanel = useUi((state) => state.togglePanel);
   const layout = useLayoutWidth();
+  const wide = isWide(layout);
   const [detailsOverlay, setDetailsOverlay] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+  const [docked, setDocked] = useState(false);
+  const stream = useThreadLogs((state) => state.streams[id]?.status);
+  const hasContent = useThreadLogs(
+    (state) => (state.logs[id]?.items.length ?? 0) > 0 || (state.prompts[id]?.length ?? 0) > 0,
+  );
+  const animation = usePanelAnimations();
   useThreadStream(id);
 
   useEffect(() => {
@@ -226,6 +259,18 @@ export function ThreadView({ id }: { id: string }) {
     () => projects?.find((p) => p.id === thread?.project_id) ?? null,
     [projects, thread?.project_id],
   );
+
+  const hero =
+    !docked &&
+    !hasContent &&
+    stream === "live" &&
+    thread !== undefined &&
+    thread.active_run === null &&
+    thread.last_run_state === null;
+  const { groupRef, anchorRef, capture } = useHeroTransition(hero, animation.active, animation.durationMs);
+
+  const panelOpen = panelPref ?? layout === "xwide";
+  const panelPresent = usePanelPresence(panelOpen, animation.active, animation.durationMs);
 
   if (!thread) {
     if (missing) {
@@ -248,12 +293,19 @@ export function ThreadView({ id }: { id: string }) {
     );
   }
 
-  const wide = layout === "wide";
   const engine = engineById(engines, thread.engine);
   const unmanaged = engine !== null && !engine.capabilities.managed;
-  const swapped = panelOpen && !wide;
+  const swapped = panelOpen && (!wide || maximized);
   const terminalTakesOver = terminalOpen && layout === "narrow";
-  const detailsShown = wide ? detailsPref && !panelOpen : detailsOverlay;
+  const detailsFit = layout === "xwide" || !panelOpen;
+  const detailsShown = wide ? detailsPref && detailsFit : detailsOverlay;
+
+  const beforeSend = async () => {
+    if (!hero) return;
+    capture();
+    flushSync(() => setDocked(true));
+    await waitForHeroTransition();
+  };
 
   return (
     <div className="thread-layout">
@@ -267,9 +319,11 @@ export function ThreadView({ id }: { id: string }) {
           thread={thread}
           project={project}
           detailsShown={detailsShown}
+          paneShown={panelOpen && wide}
           onToggleDetails={() => (wide ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
+          onTogglePane={() => setPanelOpen(true)}
         />
-        <div className="thread-stage" hidden={terminalTakesOver}>
+        <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined}>
           <StreamBanner threadId={id} />
           {project && !project.trusted ? (
             <p className="banner banner-warn">
@@ -284,13 +338,30 @@ export function ThreadView({ id }: { id: string }) {
               {engine?.name} can't ask permission, so Orbyn can't gate its actions.
             </p>
           ) : null}
-          <Transcript
-            threadId={id}
-            active={thread.active_run !== null}
-            engineName={engine?.name ?? thread.engine}
-            footer={<RunStatusLine thread={thread} />}
-          />
-          <Composer thread={thread} engine={engine} profileName={profileName} />
+          {hero ? null : (
+            <Transcript
+              threadId={id}
+              active={thread.active_run !== null}
+              engineName={engine?.name ?? thread.engine}
+              footer={<RunStatusLine thread={thread} />}
+            />
+          )}
+          <div className="composer-lane">
+            <div ref={groupRef} className="composer-group">
+              <div className="composer-stack">
+                {hero ? <DraftHero project={project} /> : null}
+                <div ref={anchorRef}>
+                  <Composer
+                    thread={thread}
+                    engine={engine}
+                    profileName={profileName}
+                    beforeSend={beforeSend}
+                    onSendFailed={() => setDocked(false)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <TerminalDrawer threadId={id} open={terminalOpen} onClose={() => togglePanel("terminal")} />
         {detailsShown ? (
@@ -303,7 +374,19 @@ export function ThreadView({ id }: { id: string }) {
           />
         ) : null}
       </section>
-      {panelOpen ? <ContextPanel thread={thread} overlay={!wide} onReturn={closePanel} /> : null}
+      {panelPresent ? (
+        <SurfacePane
+          thread={thread}
+          overlay={!wide}
+          closing={!panelOpen}
+          maximized={maximized}
+          onToggleMaximize={() => setMaximized(!maximized)}
+          onReturn={() => {
+            setMaximized(false);
+            closePanel();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

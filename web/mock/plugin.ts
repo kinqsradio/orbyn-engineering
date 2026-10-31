@@ -30,6 +30,7 @@ export function mockApi(): Plugin {
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
+    res.write(": connected\n\n");
     const send = (event: { seq: number }) =>
       res.write(`id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`);
     for (const event of mock.events(threadId, after)) send(event);
