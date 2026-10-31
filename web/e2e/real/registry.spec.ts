@@ -3,7 +3,6 @@ import { createServer, type Server } from "node:http";
 import { startProject, type Service } from "./service";
 
 /** The ACP registry section, against a local registry file. */
-const PORT = 5286;
 const REGISTRY_PORT = 5287;
 const CATALOG = {
   agents: [
@@ -20,11 +19,11 @@ test.beforeAll(async () => {
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify(CATALOG));
   }).listen(REGISTRY_PORT);
-  ({ service } = await startProject(PORT, { fakeEngines: true, registry: `http://127.0.0.1:${REGISTRY_PORT}/registry.json` }));
+  ({ service } = await startProject({ fakeEngines: true, registry: `http://127.0.0.1:${REGISTRY_PORT}/registry.json` }));
 });
 
-test.afterAll(() => {
-  service.stop();
+test.afterAll(async () => {
+  await service.stop();
   registry.close();
 });
 

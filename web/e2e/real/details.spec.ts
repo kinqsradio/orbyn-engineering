@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** The thread's surroundings: details rows, relations, new messages, the Working shelf. */
-const PORT = 5297;
 
 interface Listed {
   id: string;
@@ -25,7 +24,7 @@ const fresh = async (page: Page, prompt: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true, forge: true }));
+  ({ service, projectId } = await startProject({ scenes: true, forge: true }));
 
 });
 test.afterAll(() => service.stop());

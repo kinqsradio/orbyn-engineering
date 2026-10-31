@@ -2,13 +2,12 @@ import { expect, test } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Rich turns the real service parsed from engine notifications. */
-const PORT = 5279;
 
 let service: Service;
 let projectId = "";
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 

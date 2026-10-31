@@ -3,7 +3,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Default rules from the real service reach the surface that owns each command. */
-const PORT = 5291;
 
 let service: Service;
 let projectId = "";
@@ -16,7 +15,7 @@ const fresh = async (page: Page, prompt = "[scene:usage] hello") => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1400, height: 900 }));

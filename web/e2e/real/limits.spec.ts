@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** A provider's limit stop through the real service, from the row to the continuation. */
-const PORT = 5293;
 
 interface Listed {
   id: string;
@@ -29,7 +28,7 @@ const started = async (page: Page, prompt: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1400, height: 900 }));

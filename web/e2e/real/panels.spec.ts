@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** The chat, the panels and the sidebar scroll on their own. */
-const PORT = 5284;
 
 let service: Service;
 let projectId = "";
@@ -33,7 +32,7 @@ async function expectChatUntouched(page: Page, target: Locator) {
 }
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
   const lines = Array.from({ length: 400 }, (_, at) => `line ${at}`).join("\n");
   writeFileSync(join(service.repo, "big.txt"), `${lines}\n`);
   execFileSync("git", ["add", "."], { cwd: service.repo });

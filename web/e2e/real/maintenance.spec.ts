@@ -6,23 +6,22 @@ import { join } from "node:path";
 import { startProject, type Service } from "./service";
 
 /** Per-project settings, telemetry addresses and storage cleanup on the real service. */
-const PORT = 5287;
 
 let service: Service;
 let projectId = "";
 let collector: Server;
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true }));
+  ({ service, projectId } = await startProject({ fakeEngines: true }));
   collector = createServer((request, response) => {
     response.statusCode = request.url === "/refuses" ? 403 : 200;
     response.end();
   });
   await new Promise<void>((done) => collector.listen(0, "127.0.0.1", done));
 });
-test.afterAll(() => {
+test.afterAll(async () => {
   collector.close();
-  service.stop();
+  await service.stop();
 });
 
 const project = (key: string) =>

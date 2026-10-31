@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Rows the sidebar, thread menu and details card already serve, on the real service. */
-const PORT = 5281;
 
 let service: Service;
 let projectId = "";
@@ -21,7 +20,7 @@ const make = (title: string) =>
   service.api<Thread>("POST", "/api/threads", { project_id: projectId, engine, model: null, title, worktree: null, skill_profile: null });
 
 test.beforeAll(async () => {
-  const started = await startProject(PORT, { fakeEngines: true });
+  const started = await startProject({ fakeEngines: true });
   service = started.service;
   projectId = started.projectId;
   engine = started.engines[0]?.id ?? "";

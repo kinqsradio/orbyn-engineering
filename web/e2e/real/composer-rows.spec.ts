@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Composer rows that reach the engine, through the real service. */
-const PORT = 5296;
 
 let service: Service;
 let projectId = "";
@@ -16,7 +15,7 @@ const fresh = async (page: Page, prompt: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true }));
+  ({ service, projectId } = await startProject({ fakeEngines: true }));
 });
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1400, height: 900 }));
