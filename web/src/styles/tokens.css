@@ -1,0 +1,139 @@
+/* Brand tokens. Values and names follow Orbyn's theme owners:
+   packages/core/src/theme/presentation.ts and desktop/src/styles/theme.css. */
+:root {
+  color-scheme: light;
+  --color-background: #fafafa;
+  --color-surface: #ffffff;
+  --color-surfaceMuted: #f4f4f5;
+  --color-border: #e4e4e7;
+  --color-divider: #eeeeef;
+  --color-text: #202124;
+  --color-textSoft: #52525b;
+  --color-muted: #67676f;
+  --color-faint: #6b6b74;
+  --color-accent: #2563eb;
+  --color-accentPressed: #1d4ed8;
+  --color-accentSoft: #eff6ff;
+  --color-danger: #b42318;
+  --color-dangerSoft: #fff1f0;
+  --color-onAccent: #ffffff;
+  --color-sunken: #f4f4f5;
+  --color-hover: #f4f4f5;
+  --color-chip: #f4f4f5;
+  --color-chipText: #3f3f46;
+  --color-selected: #eff6ff;
+  --color-selectedText: #1d4ed8;
+  --color-accentText: #1d4ed8;
+  --color-borderStrong: #d4d4d8;
+  --color-borderHover: #a1a1aa;
+  --color-track: #e4e4e7;
+  --color-focus: #2563eb;
+  --color-focusSoft: #93c5fd;
+  --color-warn: #8a6116;
+  --color-warnSoft: #fbf1dc;
+  --color-warnBorder: #f1dfb5;
+  --color-info: #3d6390;
+  --color-infoSoft: #e8eff7;
+  --color-infoBorder: #d8e2ef;
+  --color-dangerPressed: #99492f;
+  --color-dangerBorder: #f1d9d0;
+  --color-backdrop: #00000066;
+  --color-shadow: #00000014;
+  --color-diffAdd: #e8f5ec;
+  --color-diffAddText: #1a6b3a;
+  --color-diffDel: #fff1f0;
+  --color-diffDelText: #b42318;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* The type scale. Six sizes, nothing in between. */
+  --text-caption: 11px;
+  --text-small: 13px;
+  --text-body: 15px;
+  --text-title: 18px;
+  --text-heading: 24px;
+  --text-display: 36px;
+
+  --control-h: 40px;
+  --control-h-sm: 32px;
+  --control-fs: 15px;
+  --control-fs-sm: 13px;
+  --control-pad-x: 12px;
+  --button-h: 36px;
+  --button-h-sm: 32px;
+  --button-fs: 13px;
+  --hit: 32px;
+
+  --motion-fast: 100ms;
+  --motion-base: 140ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --font-sans: "DM Sans Variable", "DM Sans", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --sidebar-w: 272px;
+  --context-w: 460px;
+  --reading-w: 760px;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+    --control-h-sm: 36px;
+    --control-fs: 16px;
+    --control-fs-sm: 16px;
+    --button-h: 44px;
+    --button-h-sm: 36px;
+    --button-fs: 15px;
+    --hit: 44px;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #171717;
+  --color-surface: #202020;
+  --color-surfaceMuted: #292929;
+  --color-border: #383838;
+  --color-divider: #303030;
+  --color-text: #f4f4f5;
+  --color-textSoft: #d4d4d8;
+  --color-muted: #a1a1aa;
+  --color-faint: #999999;
+  --color-accent: #93c5fd;
+  --color-accentPressed: #bfdbfe;
+  --color-accentSoft: #213047;
+  --color-danger: #fda29b;
+  --color-dangerSoft: #402522;
+  --color-onAccent: #17233a;
+  --color-sunken: #1c1c1c;
+  --color-hover: #303030;
+  --color-chip: #303030;
+  --color-chipText: #e4e4e7;
+  --color-selected: #213047;
+  --color-selectedText: #bfdbfe;
+  --color-accentText: #93c5fd;
+  --color-borderStrong: #525252;
+  --color-borderHover: #737373;
+  --color-track: #404040;
+  --color-focus: #93c5fd;
+  --color-focusSoft: #3b82f6;
+  --color-warn: #e5bd6c;
+  --color-warnSoft: #352c1b;
+  --color-warnBorder: #594a28;
+  --color-info: #9cbde4;
+  --color-infoSoft: #1c2736;
+  --color-infoBorder: #33445a;
+  --color-dangerPressed: #f4a68c;
+  --color-dangerBorder: #5a3328;
+  --color-backdrop: #000000a6;
+  --color-shadow: #00000066;
+  --color-diffAdd: #1b2e22;
+  --color-diffAddText: #8fd6a8;
+  --color-diffDel: #402522;
+  --color-diffDelText: #fda29b;
+}
