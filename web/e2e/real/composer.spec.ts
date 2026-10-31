@@ -26,7 +26,7 @@ async function newThread(page: Page, prompt = "[scene:usage] hello") {
 
 test("sent prompts recall with the arrows, and the context meter reads the engine's usage", async ({ page }) => {
   await newThread(page);
-  await expect(page.getByRole("img", { name: /^Context 60% used/ })).toBeVisible();
+  await expect(page.getByLabel(/^Context 60% used/)).toBeVisible();
   await box(page).press("ArrowUp");
   await expect(box(page)).toHaveValue("[scene:usage] hello");
   await box(page).press("ArrowDown");
