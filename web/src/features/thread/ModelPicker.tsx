@@ -2,6 +2,7 @@ import { Check, ChevronDown, Search, Star } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { EngineStatus } from "../../api/types";
+import { useCommand } from "../../app/shortcuts";
 import { useUi } from "../../state/ui";
 import { EngineGlyph } from "../../ui/badges";
 import { modKeyLabel } from "../workspace/threadUndo";
@@ -211,6 +212,7 @@ function ModelPopover({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
   const input = useRef<HTMLInputElement>(null);
+  const rail = useRef<HTMLDivElement>(null);
   const jumps = useHeldMod();
 
   useLayoutEffect(() => input.current?.focus(), []);
@@ -269,6 +271,9 @@ function ModelPopover({
       event.preventDefault();
       const step = event.key === "ArrowDown" ? 1 : -1;
       setActive((Math.max(active, step > 0 ? -1 : 0) + step + rows.length) % Math.max(rows.length, 1));
+    } else if ((event.key === "ArrowLeft" && !query) || (event.key === "Tab" && event.shiftKey)) {
+      event.preventDefault();
+      rail.current?.querySelector<HTMLButtonElement>("[aria-pressed=true]")?.focus();
     } else if (event.key === "Enter") {
       event.preventDefault();
       const row = rows[Math.max(active, searching ? 0 : -1)];
@@ -300,7 +305,7 @@ function ModelPopover({
 
   return (
     <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" onClose={onClose}>
-      <div className="model-rail" role="toolbar" aria-label="Providers">
+      <div ref={rail} className="model-rail" role="toolbar" aria-label="Providers">
         {tabButton(FAVORITES, "Favorites", <Star size={20} fill="currentColor" aria-hidden />, false)}
         <hr />
         {engines.map((engine) => {
@@ -387,16 +392,10 @@ export function ModelPickerTrigger({
   }, []);
   const name = model ? shortModelName(model.label) : (selected.model ?? engine?.name ?? "No engine");
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "m") {
-        event.preventDefault();
-        setAnchor((open) => (open ? null : (button.current?.getBoundingClientRect() ?? null)));
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  useCommand("modelPicker.toggle", () => {
+    if (button.current?.disabled) return false;
+    button.current?.click();
+  });
 
   return (
     <>

@@ -1,5 +1,6 @@
 import { Bell, BellOff, Link2Off } from "lucide-react";
 import { useState } from "react";
+import { useCommand } from "../../app/shortcuts";
 import type { Thread } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -59,6 +60,11 @@ export function LinkedPulls({ thread }: { thread: Thread }) {
   const act = (work: Promise<void>, done: () => void) => {
     work.then(done, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));
   };
+  useCommand("pullRequest.copyNumber", () => {
+    const first = linked.data?.[0];
+    if (!first) return false;
+    void navigator.clipboard?.writeText(`#${first.number}`).then(() => pushToast(`Copied #${first.number}`));
+  });
   const refresh = async () => {
     try {
       linked.setData(await pullsApi.refreshLinked(thread.id));

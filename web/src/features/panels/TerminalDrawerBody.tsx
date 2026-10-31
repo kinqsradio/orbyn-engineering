@@ -1,3 +1,4 @@
+import { useCommand } from "../../app/shortcuts";
 import { Columns2, Eye, Play, Plus, Rows2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { request } from "../../api/client";
@@ -69,16 +70,18 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
       fail(failure);
     }
   };
+  const split = (direction: "horizontal" | "vertical") => void open({ split_of: shown?.[0]?.id ?? MAIN, direction });
+  useCommand("terminal.split", () => split("horizontal"));
+  useCommand("terminal.splitVertical", () => split("vertical"));
+  useCommand("terminal.new", () => void open({}));
+  useCommand("terminal.close", () => {
+    const first = shown?.[0];
+    if (first && first.id !== MAIN) void close(first);
+    else onClose();
+  });
   const scriptList = (scripts.data?.file as { scripts?: { name: string }[] } | null | undefined)?.scripts ?? [];
-  const onKey = (event: React.KeyboardEvent) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d" && shown?.[0]) {
-      event.preventDefault();
-      void open({ split_of: shown[0].id, direction: event.shiftKey ? "vertical" : "horizontal" });
-    }
-  };
-
   return (
-    <div className="terminal-drawer-body" onKeyDownCapture={onKey}>
+    <div className="terminal-drawer-body">
       <div className="terminal-tabs" role="tablist" aria-label="Terminals">
         <button type="button" role="tab" aria-selected={active === MAIN} onClick={() => setActive(MAIN)}>
           Terminal
@@ -103,13 +106,13 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
           <>
             <IconButton
               label="Split terminal horizontally"
-              onClick={() => void open({ split_of: shown?.[0]?.id ?? MAIN, direction: "horizontal" })}
+              onClick={() => split("horizontal")}
             >
               <Columns2 size={14} aria-hidden />
             </IconButton>
             <IconButton
               label="Split terminal vertically"
-              onClick={() => void open({ split_of: shown?.[0]?.id ?? MAIN, direction: "vertical" })}
+              onClick={() => split("vertical")}
             >
               <Rows2 size={14} aria-hidden />
             </IconButton>

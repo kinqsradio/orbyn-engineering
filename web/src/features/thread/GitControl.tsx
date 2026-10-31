@@ -1,6 +1,7 @@
 import { Check, ChevronDown, CloudUpload, GitBranch, GitCommitHorizontal, GitPullRequest, Plus, Upload, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../../api/client";
+import { useCommand } from "../../app/shortcuts";
 import type { BranchInfo, GitActionResult, GitPhase, Thread } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useThreadLogs } from "../../state/threadLogs";
@@ -312,6 +313,10 @@ function BranchDialog({ thread, onClose }: { thread: Thread; onClose(): void }) 
 /** The branch row of the details card, which opens the switcher. */
 export function BranchRow({ thread, branch }: { thread: Thread; branch: string }) {
   const [open, setOpen] = useState(false);
+  useCommand("composer.branch", () => {
+    if (thread.active_run) return false;
+    setOpen(true);
+  });
   return (
     <>
       <button

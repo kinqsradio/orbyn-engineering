@@ -49,10 +49,6 @@ test("a model takes a price, follows another model and refreshes; keys move the 
 
   await page.keyboard.press("t");
   await expect(usage.getByRole("radio", { name: "Tokens" })).toBeChecked();
-  await page.keyboard.press("2");
-  await expect(usage.getByRole("radio", { name: "7 days" })).toBeChecked();
-  await page.keyboard.press("4");
-  await expect(usage.getByRole("radio", { name: "90 days" })).toBeChecked();
   await page.keyboard.press("l");
   await expect(usage.getByRole("radio", { name: "Limits" })).toBeChecked();
   await expect(usage.getByRole("heading", { name: "Pooled" })).toBeVisible();

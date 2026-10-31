@@ -1,0 +1,96 @@
+import { expect, test, type Page } from "@playwright/test";
+import { readFileSync, writeFileSync } from "node:fs";
+import { send, settled, startProject, threadIdOf, type Service } from "./service";
+
+/** Default rules from the real service reach the surface that owns each command. */
+const PORT = 5291;
+
+let service: Service;
+let projectId = "";
+
+const box = (page: Page) => page.getByRole("textbox", { name: /^Message/ });
+const fresh = async (page: Page, prompt = "[scene:usage] hello") => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, prompt);
+  await expect(page).toHaveURL(/#\/threads\//);
+};
+
+test.beforeAll(async () => {
+  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+});
+test.afterAll(() => service.stop());
+test.beforeEach(({ page }) => page.setViewportSize({ width: 1400, height: 900 }));
+
+test("composer keys open the model picker, effort and the branch switcher", async ({ page }) => {
+  await fresh(page);
+  await settled(service, threadIdOf(page));
+  await box(page).press("ControlOrMeta+Shift+m");
+  const picker = page.getByRole("dialog", { name: "Choose a model" });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("textbox", { name: "Search models" }).press("ArrowLeft");
+  await expect(picker.locator(".model-tab:focus")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await box(page).press("ControlOrMeta+Shift+e");
+  await expect(page.getByRole("menu", { name: "Composer options" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await box(page).press("ControlOrMeta+Shift+g");
+  await expect(page.getByRole("dialog", { name: "Switch branch" })).toBeVisible();
+});
+
+test("alt+up takes the last queued message back, and terminal keys split and close", async ({ page }) => {
+  await fresh(page, "[hang]");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => (await service.api<{ active_run: { state: string } | null }>("GET", `/api/threads/${threadIdOf(page)}`)).active_run?.state).toBe("running");
+  await box(page).fill("come back");
+  await box(page).press("Enter");
+  await expect(page.getByLabel("Queued messages").getByText("come back")).toBeVisible();
+  await expect(box(page)).toHaveValue("");
+  await box(page).press("Alt+ArrowUp");
+  await expect(box(page)).toHaveValue("come back");
+  await box(page).fill("");
+  await page.getByRole("button", { name: "Stop" }).click();
+  await settled(service, threadIdOf(page));
+
+  await page.getByRole("button", { name: "Terminal" }).click();
+  await page.locator(".terminal-drawer-body .xterm-helper-textarea").first().focus();
+  await page.keyboard.press("ControlOrMeta+n");
+  await expect.poll(async () => (await service.api<unknown[]>("GET", `/api/threads/${threadIdOf(page)}/terminals`)).length).toBeGreaterThan(1);
+  await page.locator(".terminal-splits .xterm-helper-textarea").first().focus();
+  await page.keyboard.press("ControlOrMeta+d");
+  await expect(page.locator(".terminal-splits .xterm")).toHaveCount(2);
+});
+
+test("F6 walks the window's areas", async ({ page }) => {
+  await fresh(page);
+  await settled(service, threadIdOf(page));
+  await box(page).focus();
+  await page.keyboard.press("F6");
+  await expect(box(page)).not.toBeFocused();
+  await page.keyboard.press("Shift+F6");
+  await expect(box(page)).toBeFocused();
+});
+
+test("usage period keys come from the rules", async ({ page }) => {
+  await page.goto(`${service.page}#/usage`);
+  const usage = page.getByRole("dialog", { name: "Usage" });
+  await expect(usage).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Shift+2");
+  await expect(usage.getByRole("radio", { name: "7 days" })).toBeChecked();
+  await page.keyboard.press("ControlOrMeta+Shift+4");
+  await expect(usage.getByRole("radio", { name: "90 days" })).toBeChecked();
+});
+
+test("a keybindings file that changes or breaks says so when you come back", async ({ page }) => {
+  await page.goto(service.page);
+  const view = await service.api<{ path: string }>("GET", "/api/keybindings");
+  await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
+  writeFileSync(view.path, JSON.stringify([{ key: "mod+shift+y", command: "sidebar.toggle" }]));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByText("Keybindings reloaded")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Shift+y");
+  await expect(page.getByRole("button", { name: "Expand sidebar" }).or(page.locator(".sidebar[data-collapsed]")).first()).toBeVisible();
+  writeFileSync(view.path, "{ not json");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByText(/The keybindings file has a problem/)).toBeVisible();
+  expect(readFileSync(view.path, "utf8")).toBe("{ not json");
+});
