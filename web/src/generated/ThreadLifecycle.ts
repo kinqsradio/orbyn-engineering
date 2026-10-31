@@ -22,4 +22,12 @@ woke_at?: string,
 /**
  * The engine stopped on a usage or rate limit and nothing has run since.
  */
-limit?: ThreadLimit, };
+limit?: ThreadLimit, 
+/**
+ * When you were last in this thread.
+ */
+visited_at?: string, 
+/**
+ * A pull request is being watched for this thread.
+ */
+watching?: boolean, };

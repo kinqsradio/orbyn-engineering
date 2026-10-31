@@ -27,6 +27,13 @@ const isSnoozed = (thread: Thread, now: number) => {
   return Boolean(until) && new Date(until ?? 0).getTime() > now;
 };
 
+export interface WorkingShelf {
+  enabled: boolean;
+  waiting: ReadonlySet<string>;
+}
+
+const FOLD_WORKING: WorkingShelf = { enabled: true, waiting: new Set() };
+
 /**
  * Where a thread sits, from what the server reports. The open thread stays put
  * while it runs, and a thread waiting on you stays in the list.
@@ -37,6 +44,7 @@ export function sectionOf(
   selectedId: string | null,
   /** Where the open thread was when you came to it. */
   held: SidebarSection | null = null,
+  shelf: WorkingShelf = FOLD_WORKING,
 ): SidebarSection | null {
   const lifecycle = thread.lifecycle;
   if (!lifecycle) {
@@ -51,7 +59,20 @@ export function sectionOf(
   if (isSnoozed(thread, now)) return "snoozed";
   if (lifecycle.pinned_at) return "pinned";
   const needsYou = thread.active_run?.state === "awaiting_approval";
-  return thread.active_run && !needsYou && thread.id !== selectedId ? "working" : "active";
+  const failed = !thread.active_run && thread.last_run_state === "failed";
+  const waiting = !failed && (lifecycle.watching === true || shelf.waiting.has(thread.id));
+  const working = (thread.active_run && !needsYou) || (!thread.active_run && waiting);
+  return shelf.enabled && working && thread.id !== selectedId ? "working" : "active";
+}
+
+/** Parents of a delegated thread that is still running. */
+export function waitingOnDelegates(threads: readonly Thread[]): ReadonlySet<string> {
+  const waiting = new Set<string>();
+  for (const thread of threads) {
+    const parent = thread.lifecycle?.parent_thread_id;
+    if (parent && thread.lifecycle?.relation === "subagent" && thread.active_run) waiting.add(parent);
+  }
+  return waiting;
 }
 
 export function arrangeThreads(
@@ -59,10 +80,12 @@ export function arrangeThreads(
   now: number,
   selectedId: string | null,
   held: SidebarSection | null = null,
+  workingSection = true,
 ): ThreadSections {
   const sections: ThreadSections = { pinned: [], active: [], working: [], snoozed: [], settled: [] };
+  const shelf = { enabled: workingSection, waiting: waitingOnDelegates(threads) };
   for (const thread of threads) {
-    const section = sectionOf(thread, now, selectedId, held);
+    const section = sectionOf(thread, now, selectedId, held, shelf);
     if (section) sections[section].push(thread);
   }
   sections.pinned.sort(savedOrder);

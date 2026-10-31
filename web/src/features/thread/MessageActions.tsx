@@ -1,4 +1,4 @@
-import { Check, Copy, GitBranch, Pencil, Undo2 } from "lucide-react";
+import { Check, Copy, GitBranch, GitBranchPlus, Pencil, Undo2 } from "lucide-react";
 import { createContext, useContext, useState } from "react";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
@@ -45,11 +45,29 @@ export function MessageActions({ text, runId, role }: { text: string; runId: str
     }
   };
 
+  /** Leaves this thread alone: the new one starts before the message, with it in the composer. */
+  const editInNewThread = async () => {
+    if (!threadId || !runId) return;
+    try {
+      const child = await api.forkBefore(threadId, runId);
+      useWorkspace.getState().putThread(child);
+      useUi.getState().setDraft(child.id, text);
+      navigate({ name: "thread", id: child.id });
+    } catch (failure) {
+      pushToast(`Couldn't fork. ${toFailure(failure).message}`);
+    }
+  };
+
   return (
     <div className="msg-actions">
       {role === "user" && runId ? (
         <IconButton label="Edit from here" disabled={busy} onClick={() => setRewinding(true)}>
           <Pencil size={14} aria-hidden />
+        </IconButton>
+      ) : null}
+      {role === "user" && runId ? (
+        <IconButton label="Edit in a new thread" onClick={() => void editInNewThread()}>
+          <GitBranchPlus size={14} aria-hidden />
         </IconButton>
       ) : null}
       <IconButton label="Copy message" onClick={copy}>

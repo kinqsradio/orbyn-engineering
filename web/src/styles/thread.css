@@ -3025,3 +3025,18 @@ button.context-meter:hover:not(:disabled) {
   flex: 1;
   min-height: 0;
 }
+.visit-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  color: var(--color-primary);
+  font-size: var(--text-meta);
+}
+.visit-mark::after {
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.4;
+  content: "";
+}

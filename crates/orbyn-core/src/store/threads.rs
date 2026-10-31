@@ -318,6 +318,12 @@ impl Store {
                 )?;
                 notify(tx, appended, id, "wake")?;
             }
+            if patch.visited == Some(true) {
+                tx.execute(
+                    "UPDATE threads SET visited_at = ?2 WHERE id = ?1",
+                    params![id, stamp],
+                )?;
+            }
             if patch.dismiss_woke == Some(true) {
                 tx.execute("UPDATE threads SET woke_at = NULL WHERE id = ?1", [id])?;
                 notify(tx, appended, id, "woke_dismissed")?;
@@ -373,6 +379,18 @@ impl Store {
                 )?;
             }
             notify(tx, appended, id, "limit")
+        })
+    }
+
+    /// Counts an automatic continuation, and says whether this thread may have one.
+    pub fn take_resume_try(&self, id: &str, most: i64) -> Result<bool> {
+        self.commit(|tx, _| {
+            let changed = tx.execute(
+                "UPDATE threads SET resume_tries = resume_tries + 1
+                 WHERE id = ?1 AND resume_tries < ?2 AND archived_at IS NULL",
+                params![id, most],
+            )?;
+            Ok(changed == 1)
         })
     }
 

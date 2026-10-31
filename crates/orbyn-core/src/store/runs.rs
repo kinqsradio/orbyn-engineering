@@ -30,6 +30,8 @@ pub struct Recovery {
     pub stopped_runs: usize,
     /// Admitted runs whose message never reached an engine, now back in the queue.
     pub returned_messages: usize,
+    /// Threads whose run a dead process left mid-work.
+    pub interrupted_threads: Vec<String>,
 }
 
 /// The owner and state read inside the writing transaction.
@@ -307,6 +309,9 @@ impl Store {
                     recovery.stopped_runs += 1;
                 } else {
                     recovery.interrupted_runs += 1;
+                    if !unsent {
+                        recovery.interrupted_threads.push(thread_id.clone());
+                    }
                 }
                 recovery.expired_approvals += expired.len();
                 if unsent && return_message(tx, &run_id, &thread_id)? {
@@ -466,6 +471,12 @@ pub(super) fn admit_in(
         [thread_id],
     )?;
     super::threads::clear_limit(tx, thread_id)?;
+    if !admission.actor.starts_with("system:") {
+        tx.execute(
+            "UPDATE threads SET resume_tries = 0 WHERE id = ?1",
+            [thread_id],
+        )?;
+    }
     let run = Run {
         id: new_id(),
         thread_id: thread_id.to_owned(),
