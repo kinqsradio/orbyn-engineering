@@ -103,17 +103,20 @@ struct RunContext<'a> {
     runs_at_library: bool,
     library_thread: bool,
     route: &'a SkillRoute,
+    /// The engine has the MCP server, and so `skill_search` and `skill_load`.
+    skill_tools: bool,
     plan: bool,
     files: &'a [PathBuf],
     handoff: Option<&'a str>,
 }
 
-/// The short bootstrap in front of each run's prompt. Nesting does not prove an
-/// engine loaded a target's rules, so this tells it to read them.
+/// The short bootstrap in front of each run's prompt. It leads with what the engine
+/// can do, since a first turn that read mostly limits once said it had no files to
+/// look at. Nesting does not prove an engine loaded a target's rules, so
+/// this tells it to read them.
 fn run_context(context: &RunContext<'_>) -> String {
-    let mut text = format!(
-        "<orbyn_context>\nShared library: {} at {}{}.\nTarget Git root: {}.\n\
-         Selected checkout: {} on {}{}.\n",
+    let library = format!(
+        "{} at {}{}",
         context.library.display(),
         context.revision,
         if context.dirty {
@@ -121,43 +124,48 @@ fn run_context(context: &RunContext<'_>) -> String {
         } else {
             ""
         },
-        context.target_root.display(),
-        context.checkout.display(),
-        context
-            .branch
-            .unwrap_or(if context.checkout_revision.is_some() {
-                "a detached HEAD"
-            } else {
-                "no branch"
-            }),
-        context
-            .checkout_revision
-            .map_or_else(String::new, |revision| format!(" at {revision}")),
     );
+    let mut text = String::from("<orbyn_context>\n");
     if context.library_thread {
-        text.push_str("This thread works on the library itself. Leave repo/ alone.\n");
+        text.push_str(&format!(
+            "Checkout: the shared library, {library}. Leave repo/ alone.\n"
+        ));
     } else {
-        text.push_str(
-            "Work and write only in the selected checkout. The library is read-only here.\n\
-             Read the target's root and applicable nested instructions directly (AGENTS.md, \
-             AGENT.md, CLAUDE.md, codex.md, .cursorrules, CONTRIBUTING.md): discovery across a \
-             Git boundary is not guaranteed. Target rules specialize shared methods.\n",
-        );
+        text.push_str(&format!(
+            "Checkout: {} on {}{}.\n",
+            context.checkout.display(),
+            context
+                .branch
+                .unwrap_or(if context.checkout_revision.is_some() {
+                    "a detached HEAD"
+                } else {
+                    "no branch"
+                }),
+            context
+                .checkout_revision
+                .map_or_else(String::new, |revision| format!(" at {revision}")),
+        ));
+        if context.target_root != context.checkout {
+            text.push_str(&format!(
+                "It is a worktree of {}.\n",
+                context.target_root.display()
+            ));
+        }
+        text.push_str(&format!(
+            "You can read it with your usual file and shell tools, so open its files directly.\n\
+             Make changes only in the checkout. The shared library is for reference: {library}.\n\
+             Before changing code, read the instructions at the checkout's root and near the \
+             files you touch (AGENTS.md, AGENT.md, CLAUDE.md, codex.md, .cursorrules, \
+             CONTRIBUTING.md). They specialize shared methods.\n"
+        ));
     }
     if context.runs_at_library && !context.library_thread {
         text.push_str(
-            "Your working directory is the library, not the checkout: use absolute paths under \
-             the selected checkout, and run commands from there.\n",
+            "Your shell starts in the library, so use absolute paths under the checkout and run \
+             commands from there.\n",
         );
     }
-    if !context.route.native {
-        text.push_str("Find skills with the skill_search and skill_load tools.\n");
-    }
-    if !context.route.selection.is_empty() {
-        text.push_str("Skills in scope: ");
-        text.push_str(&context.route.selection.join(", "));
-        text.push_str(".\n");
-    }
+    text.push_str(&skills_line(context));
     if context.plan {
         text.push_str("Plan mode: read and propose a plan. Change nothing.\n");
     }
@@ -174,6 +182,24 @@ fn run_context(context: &RunContext<'_>) -> String {
     }
     text.push_str("</orbyn_context>");
     text
+}
+
+/// Names skills only where nothing else can: native discovery and the tools already
+/// know the selection, and every name here is read on every first turn.
+fn skills_line(context: &RunContext<'_>) -> String {
+    let route = context.route;
+    let names = route.selection.join(", ");
+    if route.selection.is_empty() {
+        String::new()
+    } else if !route.native && context.skill_tools {
+        "Find shared skills with the skill_search and skill_load tools.\n".to_owned()
+    } else if !route.native {
+        format!("Shared skills, each at skills/<name>/SKILL.md in the library: {names}.\n")
+    } else if route.limited {
+        format!("Use only these shared skills: {names}.\n")
+    } else {
+        String::new()
+    }
 }
 
 /// What the run manager is built from.
@@ -897,6 +923,7 @@ impl RunManager {
             runs_at_library: !driver.resolves_from_checkout(),
             library_thread,
             route: &route,
+            skill_tools: descriptor.capabilities.mcp,
             plan: scope.plan,
             files: &files,
             handoff: handoff.as_deref(),

@@ -235,11 +235,7 @@ async fn claude_starts_at_the_library_and_reaches_the_checkout_by_path() {
         .output()
         .unwrap();
     let head = String::from_utf8_lossy(&head.stdout).trim().to_owned();
-    assert!(prompt.contains(&format!(
-        "Selected checkout: {} on main at {head}",
-        repo.display()
-    )));
-    assert!(prompt.contains(&format!("Target Git root: {}", repo.display())));
+    assert!(prompt.contains(&format!("Checkout: {} on main at {head}", repo.display())));
     assert!(prompt.contains("use absolute paths"), "{prompt}");
     service.stop().await;
 }

@@ -31,6 +31,8 @@ pub struct SkillRoute {
     /// False sends the engine to the MCP tools.
     pub native: bool,
     pub selection: Vec<String>,
+    /// A chosen profile rather than the default set.
+    pub limited: bool,
 }
 
 pub struct SkillService {
@@ -185,6 +187,7 @@ impl SkillService {
         Ok(SkillRoute {
             native: route_is_native(supported, native_skills_available(&root)),
             selection: self.selection(profile)?,
+            limited: profile.is_some_and(|id| id != DEFAULT_PROFILE),
         })
     }
 

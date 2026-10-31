@@ -483,17 +483,25 @@ Skills come from the workspace, in place. Nothing is copied, packed or signed.
   `--add-dir <checkout>`. Its working directory is the library, so a relative path
   means the library, and the bootstrap tells it to use absolute paths and run
   commands from the checkout.
-- Codex's process and `thread/start` use the workspace root for `.agents/skills`
-  and `AGENTS.md`, and each `turn/start` sets `cwd` and
-  `sandboxPolicy.writableRoots` to the selected checkout. The turn's `cwd` must stay
-  the checkout: a real 0.166.0 turn against a local stub provider, with no model
-  involved, wrote to the checkout and was denied the library, but with the library
-  as its `cwd` it wrote to the library and relative paths landed there.
-  `command/exec` is not the same: it also let the app-server's own cwd be written,
-  and engines do not use it. It has a per-thread `mcp_servers.orbyn_engineering`
-  config and app-server approval requests.
+- Codex's process and `thread/start` use the workspace root, and each `turn/start`
+  sets `cwd` and `sandboxPolicy.writableRoots` to the selected checkout. The turn's
+  `cwd` must stay the checkout: a real 0.166.0 turn against a local stub provider, with
+  no model involved, wrote to the checkout and was denied the library, but with the
+  library as its `cwd` it wrote to the library and relative paths landed there.
+  `command/exec` is not the same: it also let the app-server's own cwd be written, and
+  engines do not use it. The same stub showed what a first turn sends: the environment
+  context, workspace root, permissions and `AGENTS.md` all come from the turn's `cwd`, so
+  nothing the model sees names the library, and neither its `AGENTS.md` nor its
+  `.agents/skills` reach it. Codex therefore takes skills from the MCP tools. The thread
+  stays at the library because moving it changes nothing the model sees and would load
+  the target's `.codex` config as the session's own. It has a per-thread
+  `mcp_servers.orbyn_engineering` config and app-server approval requests.
 - Non-native engines start in the checkout and reach skills through the MCP server,
-  or through the skill list in the bootstrap.
+  or through the skill list in the bootstrap. That list is only there for an engine
+  with neither: native discovery and the tools already know the selection, and a long
+  list in front of a first turn crowds out the request. The bootstrap leads with what
+  the engine can do, since a first turn that read mostly limits once answered that it
+  had no access to the checkout, with no tool call, though nothing stopped it.
 
 ## Workspace
 
