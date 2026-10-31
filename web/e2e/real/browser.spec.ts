@@ -54,6 +54,16 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   await expect(address).toHaveValue(new RegExp(`/two$`));
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(address).toHaveValue(new RegExp(`/one$`));
+  await page.getByRole("button", { name: "Forward", exact: true }).click();
+  await expect(address).toHaveValue(new RegExp(`/two$`));
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(address).toHaveValue(new RegExp(`/one$`));
+
+  const threadUrl = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
+  const size = async () => (await service.api<{ width: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.width;
+  const before = await size();
+  await page.setViewportSize({ width: 1700, height: 900 });
+  await expect.poll(size, { timeout: 10_000 }).not.toBe(before);
 
   await page.getByRole("button", { name: "Take control" }).click();
   await expect(page.getByRole("button", { name: "Give control back" })).toBeVisible();
