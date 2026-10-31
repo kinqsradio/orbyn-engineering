@@ -65,6 +65,7 @@ const STYLED_CHARS = 20_000;
 const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
 const NO_STASHES: StashedPrompt[] = [];
+const effortButton = () => document.querySelector<HTMLElement>("[data-effort-trigger]");
 const LOCAL_COMMANDS: Suggestion[] = [
   { value: "plan", detail: "Switch to Plan" },
   { value: "default", detail: "Switch back to Build" },
@@ -285,7 +286,7 @@ export function Composer({
     if (event.nativeEvent.isComposing) return;
     shiftPaste.current = event.shiftKey && event.key.toLowerCase() === "v";
     const element = event.currentTarget;
-    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.metaKey && !event.ctrlKey) {
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.metaKey && !event.ctrlKey && !event.altKey) {
       const edge = event.key === "ArrowUp" ? element.selectionStart === 0 : element.selectionEnd === draft.length;
       const step = edge ? recallStep(history, recall, draft, event.key === "ArrowUp" ? -1 : 1) : null;
       if (step) {
@@ -476,6 +477,21 @@ export function Composer({
       setError(`Couldn't change the model. ${toFailure(failure).message}`);
     }
   };
+  useCommand("thread.editQueuedMessage", () => {
+    const last = queue.data?.at(-1);
+    if (!last) return false;
+    void api.removeQueued(last.id).then(() => {
+      setDraft(thread.id, last.prompt);
+      reloadQueue();
+    });
+  });
+
+  useCommand("composer.effort", () => {
+    const trigger = effortButton();
+    if (!trigger) return false;
+    traits.openAt(trigger, false);
+  });
+
   useCommand("composer.mode", () => {
     void setPlanMode(!planMode);
   });

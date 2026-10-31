@@ -123,6 +123,10 @@ function runShellCommand(command: string, route: Route): boolean {
     case "chat.newWithoutProject":
       navigate({ name: "new", projectId: null });
       return true;
+    case "workspace.focusNext":
+      return cycleFocus(1);
+    case "workspace.focusPrevious":
+      return cycleFocus(-1);
     case "thread.previous":
       return stepThread(route, -1);
     case "thread.next":
@@ -132,6 +136,9 @@ function runShellCommand(command: string, route: Route): boolean {
   }
   if (route.name !== "thread") return false;
   switch (command) {
+    case "preview.toggle":
+      useUi.getState().togglePanel("browser");
+      return true;
     case "terminal.toggle":
       ui.togglePanel("terminal");
       return true;
@@ -163,6 +170,27 @@ function runShellCommand(command: string, route: Route): boolean {
     default:
       return false;
   }
+}
+
+/** The window's main areas, for moving between them without a pointer. */
+const FOCUS_AREAS = [
+  "nav[aria-label='Workspace'] .thread-row a, nav[aria-label='Workspace'] a",
+  ".transcript, [aria-label='Thread messages']",
+  ".composer textarea",
+  "[aria-label='Thread context'] button, .details button",
+];
+
+function cycleFocus(step: number): boolean {
+  const areas = FOCUS_AREAS.map((selector) => document.querySelector<HTMLElement>(selector)).filter((area) => area !== null);
+  if (areas.length === 0) return false;
+  const current = areas.findIndex((area, at) => {
+    const selector = FOCUS_AREAS[at] ?? "";
+    return area === document.activeElement || document.activeElement?.closest(selector.split(",")[0]?.split(" ")[0] ?? "") != null;
+  });
+  const next = areas[(current + step + areas.length) % areas.length];
+  if (next && !next.hasAttribute("tabindex") && next.tagName === "DIV") next.tabIndex = -1;
+  next?.focus();
+  return true;
 }
 
 function keyContext(route: Route): WhenContext {
@@ -274,6 +302,20 @@ function useGlobalKeys(route: Route) {
   const reload = keymap.reload;
   useCommand("keybindings.reload", reload);
   const rules = keymap.data?.rules ?? FALLBACK_RULES;
+  const pushToast = useUi((state) => state.pushToast);
+  const seenFile = useRef<string | null>(null);
+  useEffect(() => {
+    const data = keymap.data;
+    if (!data) return;
+    const signature = JSON.stringify([data.rules, data.issues]);
+    if (data.issues.length > 0 && signature !== seenFile.current) pushToast(`The keybindings file has a problem. ${data.issues[0] ?? ""}`);
+    else if (seenFile.current !== null && signature !== seenFile.current) pushToast("Keybindings reloaded");
+    seenFile.current = signature;
+  }, [keymap.data, pushToast]);
+  useEffect(() => {
+    window.addEventListener("focus", reload);
+    return () => window.removeEventListener("focus", reload);
+  }, [reload]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) {
@@ -286,7 +328,7 @@ function useGlobalKeys(route: Route) {
       if (undoKey(event)) return;
       // A focused surface that took the key, like the model picker's number jumps, keeps it.
       if (event.defaultPrevented) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) {
+      if (event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key)) {
         const context = keyContext(route);
         // The last rule wins, so the file overrides a default.
         for (const rule of [...rules].reverse()) {

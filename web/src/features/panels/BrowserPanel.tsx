@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import { request } from "../../api/client";
 import { readToken } from "../../api/token";
 import type { LocalServer, PreviewTab } from "../../api/types";
+import { useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
@@ -195,6 +196,9 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const searchEngine = useUi((state) => state.previewSearchEngine);
   const setPrefs = useUi((state) => state.setPrefs);
   const reload = tabs.reload;
+  useCommand("preview.focusUrl", () => {
+    document.querySelector<HTMLInputElement>("[data-preview-address]")?.focus();
+  });
   const list = tabs.data ?? [];
   const active = draftTab ? null : (list.find((tab) => tab.id === activeId) ?? list[0] ?? null);
 
@@ -240,6 +244,10 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     return () => clearInterval(timer);
   }, [watching, reload]);
   const shown = active?.url ?? "";
+  useCommand("preview.refresh", () => {
+    if (!shown) return false;
+    go(shown);
+  });
   const human = active?.control === "human";
 
   return (
@@ -282,6 +290,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         </IconButton>
         <input
           key={shown}
+          data-preview-address
           aria-label="Search or enter URL"
           placeholder="Search or enter URL"
           defaultValue={shown || address}

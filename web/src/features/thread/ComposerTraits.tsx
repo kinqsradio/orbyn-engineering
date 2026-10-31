@@ -176,6 +176,7 @@ export function EffortTrigger({
   const named = current === null || current.id === "max";
   return (
     <button
+      data-effort-trigger
       type="button"
       className="composer-control composer-effort"
       aria-label={parts.filter(Boolean).join(" · ")}

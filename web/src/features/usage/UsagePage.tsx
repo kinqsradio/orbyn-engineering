@@ -1,6 +1,7 @@
 import { ChevronDown, RefreshCw, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
+import { useCommand } from "../../app/shortcuts";
 import type { EngineLimits, LimitsOverview, UsageReport } from "../../api/types";
 import { readJson, writeJson } from "../../lib/storage";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -430,12 +431,15 @@ export function UsagePage({ onClose }: { onClose(): void }) {
       if (event.metaKey || event.ctrlKey || event.altKey || event.target instanceof HTMLInputElement) return;
       const next = { c: "cost", t: "tokens", l: "limits" }[event.key.toLowerCase()] as UsageMetric | undefined;
       if (next) setMetric(next);
-      const period = USAGE_PERIODS[Number(event.key) - 1];
-      if (period) setDays(period.days);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  useCommand("usage.period.day", () => setDays(1));
+  useCommand("usage.period.week", () => setDays(7));
+  useCommand("usage.period.month", () => setDays(30));
+  useCommand("usage.period.quarter", () => setDays(90));
 
   const refresh = async () => {
     setRefreshing(true);

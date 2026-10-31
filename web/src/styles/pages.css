@@ -1498,3 +1498,36 @@ kbd {
   padding: 4px 16px;
   font-size: var(--text-meta);
 }
+
+.setting-line-control:has(> :nth-child(2)) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pull-detail-head input.pull-base {
+  display: inline-block;
+  width: 96px;
+  min-height: 0;
+  height: 20px;
+  padding: 0 4px;
+  font-size: inherit;
+  vertical-align: baseline;
+}
+.pull-stack select {
+  width: auto;
+  min-height: var(--control-h-sm);
+  font-size: var(--control-fs-sm);
+}
+.pulls-list input.pull-pick {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-text);
+}
+.pull-quick .icon-btn {
+  opacity: 0;
+}
+.pulls-list li:hover .pull-quick .icon-btn,
+.pull-quick .icon-btn:focus-visible,
+.pull-quick .icon-btn[aria-pressed="true"] {
+  opacity: 1;
+}

@@ -1,6 +1,7 @@
 import { ChevronDown, SquareArrowOutUpRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../../api/client";
+import { useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
@@ -25,15 +26,9 @@ export function OpenInEditor({ threadId }: { threadId: string }) {
     }
   };
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "o" && primary) {
-        event.preventDefault();
-        void open(primary.id);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+  useCommand("editor.openFavorite", () => {
+    if (!primary) return false;
+    void open(primary.id);
   });
 
   if (!primary) return null;
