@@ -69,6 +69,44 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return "";
 }
 
+/** "7m", "2h", "3d": the sidebar's age column. */
+export function compactAge(iso: string, now = Date.now()): string {
+  const seconds = Math.max(0, (now - new Date(iso).getTime()) / 1000);
+  if (Number.isNaN(seconds)) return "";
+  if (seconds < 60) return "now";
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h`;
+  return `${Math.floor(seconds / 86_400)}d`;
+}
+
+/** "18s", "3m 05s": how long something has been going. */
+export function elapsed(fromIso: string, toMs: number): string {
+  const seconds = Math.max(0, Math.round((toMs - new Date(fromIso).getTime()) / 1000));
+  if (Number.isNaN(seconds)) return "";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/** Up to two letters for a project or engine badge, from its words. */
+export function monogram(name: string): string {
+  const words = name.split(/[\s_-]+/).filter(Boolean);
+  const first = words[0] ?? name;
+  const letters =
+    words.length > 1 ? `${first[0] ?? ""}${words[1]?.[0] ?? ""}` : first.slice(0, 2);
+  return letters.toUpperCase();
+}
+
+const BADGE_TINTS = 6;
+
+/** A stable tint per name, so a project keeps its colour across sessions. */
+export function badgeTint(name: string): number {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0;
+  return hash % BADGE_TINTS;
+}
+
 export function clockTime(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime())

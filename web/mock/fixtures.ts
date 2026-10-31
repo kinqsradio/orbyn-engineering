@@ -675,3 +675,76 @@ export const fsTree: Record<string, { parent: string | null; entries: { name: st
     ],
   },
 };
+
+/** The frozen comparison state: six recent threads, one working, 43 settled. */
+export function referenceState(now: number) {
+  const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString();
+  const project = (id: string, name: string): Project => ({
+    id,
+    name,
+    path: `/Users/dev/code/${name}`,
+    trusted: true,
+    is_git: true,
+    created_at: ago(864000),
+  });
+  const refProjects = [project("rp-1", "draftdesk"), project("rp-2", "orbitkit"), project("rp-3", "ledgerline")];
+  const row = (
+    id: string,
+    projectId: string,
+    title: string,
+    branch: string,
+    seconds: number,
+    state: RunState = "completed",
+  ): Thread => ({
+    id,
+    project_id: projectId,
+    title,
+    engine: "claude",
+    model: "Opus 5.5",
+    cwd: `/Users/dev/code/${projectId}`,
+    worktree: { path: `/Users/dev/code/${projectId}-wt/${branch}`, branch, base: "main" },
+    skill_profile: null,
+    active_run: null,
+    last_run_state: state,
+    created_at: ago(seconds + 600),
+    updated_at: ago(seconds),
+  });
+  const started = ago(25);
+  const active: Thread = {
+    ...row("rt-active", "rp-1", "Add Archive Export For Drafts", "main", 18, "running"),
+    active_run: { id: "rr-active", thread_id: "rt-active", state: "running", error: null, started_at: started, ended_at: null },
+  };
+  const refThreads: Thread[] = [
+    row("rt-1", "rp-1", "Offline drafts and sync status page do", "dev/offline-drafts-sync", 7 * 60),
+    row("rt-2", "rp-1", "Require sign-in before exporting", "dev/require-sign-in-export", 29 * 60),
+    row("rt-3", "rp-2", "Built-in Log Viewer Filters", "dev/log-viewer-filters", 3700),
+    row("rt-4", "rp-3", "Reserve ledgerline on npm for pre-release", "main", 7300),
+    row("rt-5", "rp-1", "Dark Theme Report Polish", "dev/dark-report", 4 * 3600),
+    row("rt-6", "rp-3", "Disk and memory check", "dev/health", 90),
+    active,
+    ...Array.from({ length: 43 }, (_, at) =>
+      row(`rt-old-${at}`, at % 2 ? "rp-2" : "rp-3", `Settled task ${at + 1}`, "main", 2 * 86400 + at * 3600),
+    ),
+  ];
+  const tool = (id: string, name: string): AgUiEvent => ({ type: "TOOL_CALL_START", toolCallId: id, toolCallName: name });
+  const at = (seconds: number, event: AgUiEvent, seq: number): WireThreadEvent => ({
+    seq,
+    thread_id: "rt-active",
+    run_id: "rr-active",
+    ts: ago(seconds),
+    event,
+  });
+  const events: AgUiEvent[] = [
+    { type: "RUN_STARTED", threadId: "rt-active", runId: "rr-active" },
+    ...user("ru1", "Add archive export to drafts with 4 parallel tasks"),
+    ...reasoning("rr1", "Four independent pieces can run at the same time."),
+    tool("rc1", "Export button"),
+    tool("rc2", "Archive API"),
+    tool("rc3", "Archive tests"),
+    tool("rc4", "Archive docs"),
+    ...assistant("ra1", "Okay, starting the four export tasks."),
+  ];
+  const stamps = [45, 45, 45, 45, 39, 35, 30, 25, 23, 21, 19, 18, 18, 18];
+  const log = events.map((event, index) => at(stamps[index] ?? 18, event, index + 1));
+  return { projects: refProjects, threads: refThreads, logs: { "rt-active": log } as Record<string, WireThreadEvent[]> };
+}

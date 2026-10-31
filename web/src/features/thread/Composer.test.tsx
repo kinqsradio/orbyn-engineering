@@ -27,6 +27,15 @@ const box = () => screen.getByRole("textbox");
 
 function setup(over: Partial<Thread> = {}) {
   vi.spyOn(api, "thread").mockResolvedValue(thread);
+  if (!vi.isMockFunction(api.skills)) {
+    vi.spyOn(api, "skills").mockResolvedValue({
+      version: "1",
+      digest: "d",
+      signature_valid: true,
+      source: null,
+      skills: [],
+    });
+  }
   return render(<Composer thread={{ ...thread, ...over }} engine={null} profileName={null} />);
 }
 
@@ -98,6 +107,27 @@ describe("Composer", () => {
     await userEvent.type(box(), "go{Enter}");
     await waitFor(() => expect(window.location.hash).toBe("#/trust/p/t1"));
     expect(useUi.getState().drafts.t1).toBe("go");
+    start.mockRestore();
+  });
+
+  it("completes a $ skill from the keyboard", async () => {
+    const skills = vi.spyOn(api, "skills").mockResolvedValue({
+      version: "1",
+      digest: "d",
+      signature_valid: true,
+      source: null,
+      skills: [{ name: "architect", category: "c", description: "Design", enabled: true }],
+    });
+    const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
+    setup();
+    await screen.findByRole("textbox");
+    await waitFor(() => expect(skills).toHaveBeenCalled());
+    await userEvent.type(box(), "use $ar");
+    expect(await screen.findByRole("listbox", { name: "Skills" })).toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    expect(box()).toHaveValue("use $architect ");
+    expect(start).not.toHaveBeenCalled();
+    skills.mockRestore();
     start.mockRestore();
   });
 

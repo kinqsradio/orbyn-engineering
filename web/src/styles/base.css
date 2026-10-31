@@ -17,7 +17,7 @@ body {
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-body);
-  line-height: 1.5;
+  line-height: 1.43;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -47,16 +47,13 @@ ol {
 }
 h1 {
   font-size: var(--text-heading);
-  font-weight: 600;
-  line-height: 1.25;
+  font-weight: 500;
+  line-height: 1.3;
 }
-h2 {
-  font-size: var(--text-body);
-  font-weight: 600;
-}
+h2,
 h3 {
   font-size: var(--text-body);
-  font-weight: 600;
+  font-weight: 500;
 }
 h1:focus {
   outline: none;
@@ -105,7 +102,7 @@ select {
   padding: 8px var(--control-pad-x);
   border: 1px solid var(--color-borderStrong);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--color-raised);
   color: var(--color-text);
   font-size: var(--control-fs);
   line-height: 1.4;
@@ -126,7 +123,7 @@ input[type="radio"] {
   height: 16px;
   margin: 0;
   flex: none;
-  accent-color: var(--color-accent);
+  accent-color: var(--color-primary);
 }
 [hidden] {
   display: none !important;
@@ -157,8 +154,8 @@ input[type="radio"] {
   min-height: var(--button-h);
   padding: 0 14px;
   border: 1px solid var(--color-borderStrong);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--color-text);
   font-size: var(--button-fs);
   font-weight: 500;
@@ -186,13 +183,13 @@ input[type="radio"] {
   padding: 0 10px;
 }
 .btn-primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: var(--color-onAccent);
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--color-accentPressed);
-  border-color: var(--color-accentPressed);
+  background: var(--color-primaryHover);
+  border-color: var(--color-primaryHover);
 }
 .btn-danger {
   border-color: var(--color-dangerBorder);
@@ -257,8 +254,8 @@ input[type="radio"] {
   height: 12px;
 }
 .pill-accent {
-  background: var(--color-accentSoft);
-  color: var(--color-accentText);
+  background: var(--color-infoSoft);
+  color: var(--color-info);
 }
 .pill-warn {
   background: var(--color-warnSoft);
@@ -282,17 +279,74 @@ input[type="radio"] {
   font-size: var(--text-caption);
   font-weight: 700;
 }
-.count-warn {
-  background: var(--color-warnSoft);
+.approvals-link .count {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  background: var(--color-warn);
+  color: var(--color-background);
+  font-size: var(--text-caption);
+  line-height: 1;
+}
+.tone-info {
+  color: var(--color-info);
+}
+.tone-warn {
   color: var(--color-warn);
 }
-.approvals-compact .count {
-  position: absolute;
-  top: -2px;
-  right: -4px;
-  min-width: 16px;
+.tone-danger {
+  color: var(--color-danger);
+}
+.tone-success {
+  color: var(--color-success);
+}
+.badge {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
   height: 16px;
-  padding: 0 4px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--tint) 18%, transparent);
+  color: var(--tint);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  line-height: 1;
+}
+.badge-0 {
+  --tint: var(--tint-0);
+}
+.badge-1 {
+  --tint: var(--tint-1);
+}
+.badge-2 {
+  --tint: var(--tint-2);
+}
+.badge-3 {
+  --tint: var(--tint-3);
+}
+.badge-4 {
+  --tint: var(--tint-4);
+}
+.badge-5 {
+  --tint: var(--tint-5);
+}
+.engine-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-chip);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* Fields */
@@ -304,9 +358,9 @@ input[type="radio"] {
 }
 .field > label,
 .fieldset > legend {
-  font-size: var(--text-small);
-  font-weight: 600;
-  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--color-muted);
 }
 .fieldset > legend {
   margin-bottom: 6px;
@@ -437,12 +491,12 @@ input[type="radio"] {
 
 /* Dialogs */
 .dialog {
-  width: min(480px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  background: var(--color-raised);
   color: var(--color-text);
   box-shadow: 0 16px 48px var(--color-shadow);
 }
@@ -462,6 +516,7 @@ input[type="radio"] {
 }
 .dialog-head h2 {
   font-size: var(--text-title);
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .dialog-body {
@@ -504,8 +559,8 @@ input[type="radio"] {
   right: 0;
   padding: 4px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  background: var(--color-raised);
   box-shadow: 0 8px 24px var(--color-shadow);
 }
 

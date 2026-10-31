@@ -30,9 +30,35 @@ describe("App against the mock API", () => {
     expect(await within(nav).findByText("Unmanaged")).toBeInTheDocument();
   });
 
-  it("collapses many threads behind a count", async () => {
+  it("pins Working open and keeps Settled collapsed behind a count", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    for (const thread of mock.threads.slice(10)) thread.updated_at = new Date(now - 3 * 86_400_000).toISOString();
     render(<App />);
-    expect(await screen.findByRole("button", { name: "Show 20 more" })).toBeInTheDocument();
+    const settled = await screen.findByRole("button", { name: /^Settled/ });
+    expect(settled).toHaveAttribute("aria-expanded", "false");
+    expect(await screen.findByRole("button", { name: /^Working/ })).toHaveAttribute("aria-expanded", "true");
+    await user.click(settled);
+    expect(settled).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("searches threads from the sidebar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Workspace" });
+    await within(nav).findByText("Upgrade tokio and fix the fallout");
+    await user.click(within(nav).getByRole("button", { name: "Search" }));
+    await user.type(within(nav).getByRole("searchbox", { name: "Search threads" }), "tokio");
+    expect(within(nav).queryByText("Explain how the event log resumes")).toBeNull();
+    expect(within(nav).getByText("Upgrade tokio and fix the fallout")).toBeInTheDocument();
+  });
+
+  it("offers engine updates from the sidebar foot", async () => {
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "1 engine update available" })).toHaveAttribute(
+      "href",
+      "#/settings/engines",
+    );
   });
 
   it("walks a new person from empty state to a thread", async () => {
@@ -104,7 +130,7 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     go("#/threads/t-site-approval");
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /^Cancel/ }));
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
     await waitFor(() => expect(screen.getByText("Run cancelled.")).toBeInTheDocument());
     expect(await screen.findByText("Expired")).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector(".thread-state")).toHaveTextContent("Cancelled"));
@@ -191,12 +217,30 @@ describe("App against the mock API", () => {
     expect(document.body.textContent).not.toMatch(/api key|paste your token/i);
   });
 
+  it("shows the thread details with real data only", async () => {
+    go("#/threads/t-approval");
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("min-width"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    render(<App />);
+    const details = await screen.findByRole("complementary", { name: "Thread details" });
+    expect(await within(details).findByText("+42 -3")).toBeInTheDocument();
+    expect(within(details).getByText("approval-timeout")).toBeInTheDocument();
+    expect(within(details).queryByText("Commit")).toBeNull();
+    expect(within(details).queryByText(/Open in editor/)).toBeNull();
+  });
+
   it("switches and remembers the theme", async () => {
     const user = userEvent.setup();
     go("#/settings/appearance");
     render(<App />);
-    await user.click(await screen.findByRole("radio", { name: "Dark" }));
+    expect(await screen.findByRole("radio", { name: "Dark" })).toBeChecked();
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"theme":"dark"');
+    await user.click(screen.getByRole("radio", { name: "Light" }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"theme":"light"');
   });
 });

@@ -17,7 +17,7 @@ export interface MockResponse {
   body?: unknown;
 }
 
-export type Scenario = "default" | "empty" | "remote" | "offline";
+export type Scenario = "default" | "empty" | "remote" | "offline" | "reference";
 
 type Subscriber = (event: WireThreadEvent) => void;
 
@@ -72,6 +72,13 @@ export function createMockApi(options: MockOptions = {}) {
     threads = next === "empty" ? [] : fixtures.threads();
     approvals = next === "empty" ? [] : fixtures.pendingApprovals();
     logs = next === "empty" ? {} : fixtures.logs();
+    if (next === "reference") {
+      const state = fixtures.referenceState(Date.now());
+      projects = state.projects;
+      threads = state.threads;
+      logs = state.logs;
+      approvals = [];
+    }
     engines = structuredClone(fixtures.engines);
     skills = structuredClone(fixtures.skills);
     profiles = structuredClone(fixtures.profiles);

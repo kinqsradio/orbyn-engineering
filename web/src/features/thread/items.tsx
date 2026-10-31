@@ -8,12 +8,15 @@ import {
   OctagonAlert,
   Wrench,
 } from "lucide-react";
-import { memo } from "react";
-import { prettyJson } from "../../lib/format";
+import { memo, useState } from "react";
+import { elapsed, prettyJson } from "../../lib/format";
+import { useNow } from "../../lib/useNow";
+import { EngineGlyph } from "../../ui/badges";
 import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
 import { Markdown } from "./Markdown";
+import { runningTools, type TimelineEntry, type WorkGroup, type WorkItem } from "./timeline";
 import type {
   ActivityItem,
   ApprovalItem,
@@ -22,7 +25,6 @@ import type {
   NoticeItem,
   PlanItem,
   ReasoningItem,
-  ThreadItem,
   ToolItem,
 } from "./projection";
 
@@ -31,7 +33,7 @@ function Message({ item, live }: { item: MessageItem; live: boolean }) {
     return (
       <div className="msg-user">
         <span className="sr-only">You said:</span>
-        <p>{item.text}</p>
+        <p className="msg-bubble">{item.text}</p>
       </div>
     );
   }
@@ -192,22 +194,87 @@ function Notice({ item }: { item: NoticeItem }) {
   );
 }
 
-function ItemView({ item, live, engine }: { item: ThreadItem; live: boolean; engine: string | null }) {
+function WorkEntry({ item, live }: { item: WorkItem; live: boolean }) {
   switch (item.kind) {
-    case "message":
-      return <Message item={item} live={live} />;
     case "reasoning":
       return <Reasoning item={item} live={live} />;
     case "tool":
       return <Tool item={item} live={live} />;
+    case "activity":
+      return <Activity item={item} />;
+  }
+}
+
+function RunningStack({ tools }: { tools: ToolItem[] }) {
+  const now = useNow(true);
+  const oldest = tools[0];
+  const shown = tools.slice(0, 3);
+  return (
+    <div className="tool-stack">
+      <span className="tool-avatars" aria-hidden>
+        {shown.map((tool) => (
+          <EngineGlyph key={tool.key} name={tool.name} />
+        ))}
+        {tools.length > shown.length ? <span className="tool-more">+{tools.length - shown.length}</span> : null}
+      </span>
+      <span className="tool-stack-text">
+        <strong>{tools.length} tools</strong>
+        <span className="tone-info">{tools.length} working</span>
+      </span>
+      {oldest ? <span className="tool-stack-time">{elapsed(oldest.ts, now)}</span> : null}
+    </div>
+  );
+}
+
+export function WorkGroupView({
+  group,
+  live,
+  latest,
+}: {
+  group: WorkGroup;
+  live: boolean;
+  /** The group the current run is writing to. */
+  latest: boolean;
+}) {
+  const running = live && latest ? runningTools(group.items) : [];
+  const [open, setOpen] = useState(running.length === 1);
+  return (
+    <div className="work">
+      <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary>
+          <span>Worked for {group.seconds}s</span>
+          <ChevronRight size={14} className="chev" aria-hidden />
+        </summary>
+        <div className="work-log">
+          {group.items.map((item) => (
+            <WorkEntry key={item.key} item={item} live={live} />
+          ))}
+        </div>
+      </details>
+      <hr />
+      {running.length > 1 ? <RunningStack tools={running} /> : null}
+    </div>
+  );
+}
+
+function ItemView({
+  item,
+  live,
+  engine,
+}: {
+  item: Exclude<TimelineEntry, WorkGroup>;
+  live: boolean;
+  engine: string | null;
+}) {
+  switch (item.kind) {
+    case "message":
+      return <Message item={item} live={live} />;
     case "approval":
       return <ApprovalEntry item={item} engine={engine} />;
     case "plan":
       return <Plan item={item} live={live} />;
     case "diff":
       return <DiffSummary item={item} />;
-    case "activity":
-      return <Activity item={item} />;
     case "notice":
       return <Notice item={item} />;
   }

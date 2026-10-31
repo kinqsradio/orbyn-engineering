@@ -1,3 +1,4 @@
+import { PanelLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { AddProject } from "../features/onboarding/AddProject";
 import { NewThread } from "../features/onboarding/NewThread";
@@ -10,6 +11,7 @@ import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, routeHref, useRoute, type Route } from "../state/route";
 import { useUi, type ContextTab } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
+import { IconButton } from "../ui/controls";
 
 const POLL_MS = 4000;
 
@@ -86,6 +88,8 @@ export function Shell() {
   const layout = useLayoutWidth();
   const projects = useWorkspace((state) => state.projects.data);
   const pending = useWorkspace((state) => state.approvals.data?.length ?? 0);
+  const collapsed = useUi((state) => state.sidebarCollapsed);
+  const toggleSidebar = useUi((state) => state.toggleSidebar);
   const main = useRef<HTMLElement>(null);
   const routeKey = routeHref(route);
   const threadReady = useWorkspace((state) => route.name !== "thread" || state.threads[route.id] !== undefined);
@@ -108,7 +112,8 @@ export function Shell() {
   }, [pending]);
 
   const needsProject = projects !== null && projects.length === 0;
-  const showNav = layout !== "narrow" || (route.name === "home" && !needsProject);
+  const onHome = route.name === "home" && !needsProject;
+  const showNav = layout === "narrow" ? onHome : !collapsed;
 
   return (
     <div className="shell" data-nav={showNav ? "shown" : "hidden"} data-layout={layout}>
@@ -119,7 +124,12 @@ export function Shell() {
         Skip to content
       </a>
       {showNav ? <Sidebar route={route} /> : null}
-      {layout === "narrow" && route.name === "home" && !needsProject ? (
+      {collapsed && layout !== "narrow" && route.name !== "thread" ? (
+        <IconButton className="expand-nav" label="Expand sidebar" onClick={toggleSidebar}>
+          <PanelLeft size={16} aria-hidden />
+        </IconButton>
+      ) : null}
+      {layout === "narrow" && onHome ? (
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">

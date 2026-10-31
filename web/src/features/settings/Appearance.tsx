@@ -2,9 +2,9 @@ import { useId } from "react";
 import { useUi, type ThemeChoice } from "../../state/ui";
 
 const choices: { value: ThemeChoice; label: string }[] = [
-  { value: "system", label: "Match system" },
-  { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "Match system" },
 ];
 
 const shortcuts: { keys: string; action: string }[] = [

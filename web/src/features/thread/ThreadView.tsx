@@ -1,129 +1,135 @@
 import {
   ArrowLeft,
-  CircleStop,
-  EllipsisVertical,
-  GitBranch,
+  CircleDashed,
+  PanelBottom,
+  PanelLeft,
   PanelRight,
+  Rows3,
   ShieldAlert,
-  Trash2,
   WifiOff,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
-import type { Thread } from "../../api/types";
-import { useLayoutWidth } from "../../lib/useLayout";
+import type { Project, RunState, Thread } from "../../api/types";
+import { elapsed, runStateLabels } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
-import { navigate, routeHref } from "../../state/route";
+import { useLayoutWidth } from "../../lib/useLayout";
+import { useNow } from "../../lib/useNow";
+import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
-import { Button, IconButton, LinkButton } from "../../ui/controls";
-import { ConfirmDialog } from "../../ui/Dialog";
+import { ProjectBadge } from "../../ui/badges";
+import { IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { ContextPanel } from "../panels/ContextPanel";
-import { CONTEXT_TABS } from "../panels/tabs";
+import { TerminalPanel } from "../panels/TerminalPanel";
 import { ApprovalsLink } from "../workspace/ApprovalsLink";
-import { RunStatePill, threadRunState } from "../workspace/RunState";
+import { threadRunState } from "../workspace/RunState";
 import { Composer } from "./Composer";
+import { DetailsCard } from "./DetailsCard";
+import { runningTools } from "./timeline";
 import { Transcript } from "./Transcript";
 
-function PanelToggles() {
-  const open = useUi((state) => state.panelOpen);
-  const tab = useUi((state) => state.panelTab);
-  const toggle = useUi((state) => state.togglePanel);
+function TopBar({
+  thread,
+  project,
+  detailsShown,
+  onToggleDetails,
+}: {
+  thread: Thread;
+  project: Project | null;
+  detailsShown: boolean;
+  onToggleDetails(): void;
+}) {
   const layout = useLayoutWidth();
-  if (layout === "narrow") {
-    // The panel has its own tabs, so one way in is enough on a phone.
-    return (
-      <IconButton label="Open diff, terminal and activity" onClick={() => toggle(tab)}>
-        <PanelRight size={16} aria-hidden />
-      </IconButton>
-    );
-  }
+  const collapsed = useUi((state) => state.sidebarCollapsed);
+  const toggleSidebar = useUi((state) => state.toggleSidebar);
+  const terminalOpen = useUi((state) => state.terminalOpen);
+  const diffOpen = useUi((state) => state.panelOpen);
+  const togglePanel = useUi((state) => state.togglePanel);
+  const narrow = layout === "narrow";
+
   return (
-    <div className="panel-toggles" role="group" aria-label="Context panel">
-      {CONTEXT_TABS.map(({ id, label, icon: Icon }) => (
-        <IconButton key={id} label={label} pressed={open && tab === id} onClick={() => toggle(id)}>
-          <Icon size={16} aria-hidden />
+    <header className="topbar">
+      {narrow ? (
+        <a className="icon-btn" href={routeHref({ name: "home" })} aria-label="Back to threads" title="Back to threads">
+          <ArrowLeft size={16} aria-hidden />
+        </a>
+      ) : collapsed ? (
+        <IconButton label="Expand sidebar" onClick={toggleSidebar}>
+          <PanelLeft size={16} aria-hidden />
         </IconButton>
-      ))}
-    </div>
+      ) : null}
+      <div className="crumbs">
+        {project ? (
+          <>
+            <ProjectBadge name={project.name} />
+            <span className="crumb-project" title={project.path}>
+              {project.name}
+            </span>
+            <span className="crumb-slash" aria-hidden>
+              /
+            </span>
+          </>
+        ) : null}
+        <h1 tabIndex={-1} data-page-title title={thread.title}>
+          {thread.title}
+        </h1>
+      </div>
+      <div className="layout-toggles" role="group" aria-label="Layout">
+        {narrow ? <ApprovalsLink /> : null}
+        <IconButton label="Details" pressed={detailsShown} onClick={onToggleDetails}>
+          <Rows3 size={16} aria-hidden />
+        </IconButton>
+        {narrow ? null : (
+          <>
+            <IconButton label="Terminal" pressed={terminalOpen} onClick={() => togglePanel("terminal")}>
+              <PanelBottom size={16} aria-hidden />
+            </IconButton>
+            <IconButton label="Diff" pressed={diffOpen} onClick={() => togglePanel("diff")}>
+              <PanelRight size={16} aria-hidden />
+            </IconButton>
+          </>
+        )}
+      </div>
+    </header>
   );
 }
 
-function ThreadMenu({ thread }: { thread: Thread }) {
-  const [open, setOpen] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const dropThread = useWorkspace((state) => state.dropThread);
-  const menu = useRef<HTMLDivElement>(null);
+const statusSentence = (state: RunState, tools: number): string => {
+  if (state === "awaiting_approval") return "Waiting for your approval";
+  if (state === "running" && tools > 0) return tools === 1 ? "Waiting on 1 tool" : `Waiting on ${tools} tools`;
+  return runStateLabels[state];
+};
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-      if (event instanceof MouseEvent && menu.current?.contains(event.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-
-  return (
-    <div className="menu-anchor" ref={menu}>
-      <IconButton label="Thread actions" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <EllipsisVertical size={16} aria-hidden />
-      </IconButton>
-      {open ? (
-        <div className="menu">
-          <Button
-            tone="quiet"
-            small
-            icon={<Trash2 size={16} aria-hidden />}
-            disabled={thread.active_run !== null}
-            onClick={() => {
-              setOpen(false);
-              setConfirming(true);
-            }}
-          >
-            Delete thread
-          </Button>
-        </div>
-      ) : null}
-      {confirming ? (
-        <ConfirmDialog
-          title="Delete thread?"
-          confirmLabel="Delete thread"
-          tone="danger"
-          onClose={() => setConfirming(false)}
-          onConfirm={async () => {
-            await api.deleteThread(thread.id);
-            dropThread(thread);
-            navigate({ name: "home" });
-          }}
-        >
-          <p>
-            “{thread.title}” and its log are removed from Orbyn. Files on disk and any worktree stay
-            where they are.
-          </p>
-        </ConfirmDialog>
-      ) : null}
-    </div>
-  );
-}
-
-function CancelRun({ runId }: { runId: string }) {
+/** The server's run state, with the Stop action, at the end of the conversation. */
+function RunStatusLine({ thread }: { thread: Thread }) {
+  const state = threadRunState(thread);
+  const active = thread.active_run;
+  const log = useThreadLogs((store) => store.logs[thread.id]);
+  const tools = useMemo(() => (active ? runningTools(log?.items ?? []) : []), [log, active]);
+  const now = useNow(active !== null);
+  const refreshAll = useWorkspace((store) => store.refreshAll);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const refreshAll = useWorkspace((state) => state.refreshAll);
-  const cancel = async () => {
+
+  if (!state) return <div className="thread-state" role="status" />;
+  if (!active) {
+    // Failed and cancelled runs already have a notice in the log.
+    return (
+      <div className="thread-state" role="status">
+        <span className={state === "interrupted" ? "run-status" : "sr-only"}>{runStateLabels[state]}</span>
+      </div>
+    );
+  }
+
+  const stop = async () => {
     setBusy(true);
     setError(null);
     try {
-      await api.cancelRun(runId);
+      await api.cancelRun(active.id);
       void refreshAll();
     } catch (failure) {
       setError(toFailure(failure).message);
@@ -131,60 +137,25 @@ function CancelRun({ runId }: { runId: string }) {
       setBusy(false);
     }
   };
+
   return (
-    <>
-      <Button small busy={busy} icon={<CircleStop size={16} aria-hidden />} onClick={() => void cancel()}>
-        <span>
-          Cancel<span className="wide-only"> run</span>
-        </span>
-      </Button>
+    <div className="thread-state run-status-row" role="status">
+      <CircleDashed size={16} aria-hidden className={state === "awaiting_approval" ? "tone-warn" : undefined} />
+      <span className="run-status">{statusSentence(state, tools.length)}</span>
+      {tools.length > 0 ? (
+        <span className="run-status-detail">{tools.map((tool) => tool.name).join(", ")}</span>
+      ) : (
+        <span className="run-status-detail">{elapsed(active.started_at, now)}</span>
+      )}
+      <button type="button" className="text-action" disabled={busy} onClick={() => void stop()}>
+        Stop
+      </button>
       {error ? (
         <span className="field-error" role="alert">
           {error}
         </span>
       ) : null}
-    </>
-  );
-}
-
-function ThreadHeader({ thread, profileName }: { thread: Thread; profileName: string | null }) {
-  const engines = useWorkspace((state) => state.engines.data);
-  const engine = engineById(engines, thread.engine);
-  const state = threadRunState(thread);
-  const layout = useLayoutWidth();
-
-  return (
-    <header className="thread-head">
-      {layout === "narrow" ? (
-        <a className="icon-btn" href={routeHref({ name: "home" })} aria-label="Back to threads" title="Back to threads">
-          <ArrowLeft size={16} aria-hidden />
-        </a>
-      ) : null}
-      <div className="thread-title">
-        <h1 tabIndex={-1} data-page-title>
-          {thread.title}
-        </h1>
-        <p className="thread-sub">
-          <span>{engine?.name ?? thread.engine}</span>
-          {thread.worktree ? (
-            <span className="thread-branch" title={thread.worktree.path}>
-              <GitBranch size={16} aria-hidden />
-              {thread.worktree.branch}
-            </span>
-          ) : null}
-          {profileName ? <span>{profileName}</span> : null}
-        </p>
-      </div>
-      <div className="thread-state" role="status">
-        {state ? <RunStatePill state={state} /> : null}
-      </div>
-      {thread.active_run ? <CancelRun runId={thread.active_run.id} /> : null}
-      <div className="thread-actions">
-        <PanelToggles />
-        {layout === "narrow" ? <ApprovalsLink compact /> : null}
-        <ThreadMenu thread={thread} />
-      </div>
-    </header>
+    </div>
   );
 }
 
@@ -213,6 +184,21 @@ function StreamBanner({ threadId }: { threadId: string }) {
   );
 }
 
+/** Keeps its socket and scrollback once opened; a phone shows it instead of the thread. */
+function TerminalDrawer({ threadId, open, onClose }: { threadId: string; open: boolean; onClose(): void }) {
+  const [opened, setOpened] = useState(open);
+  if (open && !opened) setOpened(true);
+  if (!opened) return null;
+  return (
+    <section className="drawer" hidden={!open} aria-label="Terminal">
+      <TerminalPanel threadId={threadId} />
+      <IconButton label="Close terminal" className="drawer-close" onClick={onClose}>
+        <X size={14} aria-hidden />
+      </IconButton>
+    </section>
+  );
+}
+
 export function ThreadView({ id }: { id: string }) {
   const thread = useWorkspace((state) => state.threads[id]);
   const missing = useWorkspace((state) => state.missingThreads[id]);
@@ -222,7 +208,12 @@ export function ThreadView({ id }: { id: string }) {
   const setLastThread = useUi((state) => state.setLastThread);
   const panelOpen = useUi((state) => state.panelOpen);
   const closePanel = useUi((state) => state.closePanel);
+  const detailsPref = useUi((state) => state.detailsOpen);
+  const toggleDetailsPref = useUi((state) => state.toggleDetails);
+  const terminalOpen = useUi((state) => state.terminalOpen);
+  const togglePanel = useUi((state) => state.togglePanel);
   const layout = useLayoutWidth();
+  const [detailsOverlay, setDetailsOverlay] = useState(false);
   useThreadStream(id);
 
   useEffect(() => {
@@ -257,42 +248,62 @@ export function ThreadView({ id }: { id: string }) {
     );
   }
 
+  const wide = layout === "wide";
   const engine = engineById(engines, thread.engine);
   const unmanaged = engine !== null && !engine.capabilities.managed;
-  const swapped = panelOpen && layout !== "wide";
+  const swapped = panelOpen && !wide;
+  const terminalTakesOver = terminalOpen && layout === "narrow";
+  const detailsShown = wide ? detailsPref && !panelOpen : detailsOverlay;
 
   return (
-    <div className="thread-layout" data-panel={panelOpen ? "open" : "closed"}>
-      <section className="thread-main" hidden={swapped} aria-label={thread.title}>
-        <ThreadHeader thread={thread} profileName={profileName} />
-        <StreamBanner threadId={id} />
-        {project && !project.trusted ? (
-          <p className="banner banner-warn">
-            <ShieldAlert size={16} aria-hidden />
-            <span>This folder isn't trusted yet, so engines can't run here.</span>
-            <a href={routeHref({ name: "trust", projectId: project.id, threadId: id })}>Review folder</a>
-          </p>
-        ) : null}
-        {unmanaged ? (
-          <p className="banner banner-warn">
-            <ShieldAlert size={16} aria-hidden />
-            {engine?.name} can't ask permission, so Orbyn can't gate its actions.
-          </p>
-        ) : null}
-        <Transcript
-          threadId={id}
-          active={thread.active_run !== null}
-          engineName={engine?.name ?? thread.engine}
-        />
-        <Composer thread={thread} engine={engine} profileName={profileName} />
-      </section>
-      {panelOpen ? (
-        <ContextPanel
+    <div className="thread-layout">
+      <section
+        className="thread-main"
+        hidden={swapped}
+        aria-label={thread.title}
+        data-details={wide && detailsShown ? "reserved" : undefined}
+      >
+        <TopBar
           thread={thread}
-          overlay={layout !== "wide"}
-          onReturn={closePanel}
+          project={project}
+          detailsShown={detailsShown}
+          onToggleDetails={() => (wide ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
         />
-      ) : null}
+        <div className="thread-stage" hidden={terminalTakesOver}>
+          <StreamBanner threadId={id} />
+          {project && !project.trusted ? (
+            <p className="banner banner-warn">
+              <ShieldAlert size={16} aria-hidden />
+              <span>This folder isn't trusted yet, so engines can't run here.</span>
+              <a href={routeHref({ name: "trust", projectId: project.id, threadId: id })}>Review folder</a>
+            </p>
+          ) : null}
+          {unmanaged ? (
+            <p className="banner banner-warn">
+              <ShieldAlert size={16} aria-hidden />
+              {engine?.name} can't ask permission, so Orbyn can't gate its actions.
+            </p>
+          ) : null}
+          <Transcript
+            threadId={id}
+            active={thread.active_run !== null}
+            engineName={engine?.name ?? thread.engine}
+            footer={<RunStatusLine thread={thread} />}
+          />
+          <Composer thread={thread} engine={engine} profileName={profileName} />
+        </div>
+        <TerminalDrawer threadId={id} open={terminalOpen} onClose={() => togglePanel("terminal")} />
+        {detailsShown ? (
+          <DetailsCard
+            thread={thread}
+            engine={engine}
+            profileName={profileName}
+            compact={!wide}
+            onClose={() => setDetailsOverlay(false)}
+          />
+        ) : null}
+      </section>
+      {panelOpen ? <ContextPanel thread={thread} overlay={!wide} onReturn={closePanel} /> : null}
     </div>
   );
 }

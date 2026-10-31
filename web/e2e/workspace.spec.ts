@@ -39,7 +39,7 @@ test("a dropped stream shows reconnecting and loses nothing", async ({ page }) =
   const box = page.getByRole("textbox", { name: /^Message/ });
   await box.fill("stream please");
   await box.press("Enter");
-  await expect(page.getByText("Reasoning")).toBeVisible();
+  await expect(page.getByText(/^Worked for/)).toBeVisible();
   await page.evaluate(() => fetch("/__mock/drop-streams"));
   await expect(page.getByText(/^Reconnecting/)).toBeVisible();
   await expect(page.locator(".thread-state")).toHaveText("Completed", { timeout: 10_000 });
@@ -59,9 +59,11 @@ test("narrow layout is one surface with a way back", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: /Explain how the event log/ }).click();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeHidden();
-  await page.getByRole("button", { name: /Open diff/ }).click();
+  await page.getByRole("button", { name: "Details" }).click();
+  await page.getByRole("button", { name: /^Changes/ }).click();
   await expect(page.getByRole("tablist", { name: "Context" })).toBeVisible();
   await page.getByRole("button", { name: "Back to thread" }).click();
+  await page.getByRole("button", { name: "Close details" }).click();
   await page.getByRole("link", { name: "Back to threads" }).click();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
 });

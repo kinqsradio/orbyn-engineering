@@ -1,4 +1,4 @@
-import "@fontsource-variable/dm-sans/wght.css";
+import "@fontsource-variable/inter/wght.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { captureToken } from "./api/token";

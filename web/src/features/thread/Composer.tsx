@@ -1,16 +1,19 @@
-import { Bot, Boxes, CornerDownLeft, SendHorizontal, Sparkles } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowUp } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../../api/client";
-import type { EngineStatus, Thread } from "../../api/types";
+import type { EngineStatus, SkillSummary, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
-import { toFailure } from "../../lib/useAsync";
+import { toFailure, useAsync } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { Button, Pill } from "../../ui/controls";
+import { EngineGlyph } from "../../ui/badges";
+import { Pill } from "../../ui/controls";
+import { insertMention, mentionAt } from "./skillMention";
 
 const MAX_HEIGHT_RATIO = 0.4;
+const MENU_ROWS = 6;
 
 export function Composer({
   thread,
@@ -29,8 +32,23 @@ export function Composer({
   const field = useRef<HTMLTextAreaElement>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [caret, setCaret] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const skills = useAsync("composer-skills", (signal) => api.skills(signal));
   const busy = thread.active_run !== null;
   const canSend = draft.trim() !== "" && !busy && !sending;
+
+  const mention = menuDismissed ? null : mentionAt(draft, caret);
+  const matches = useMemo<SkillSummary[]>(() => {
+    if (!mention) return [];
+    const needle = mention.query.toLowerCase();
+    return (skills.data?.skills ?? [])
+      .filter((skill) => skill.enabled && skill.name.toLowerCase().includes(needle))
+      .slice(0, MENU_ROWS);
+  }, [mention, skills.data]);
+  const menuOpen = matches.length > 0;
+  const active = Math.min(highlight, Math.max(matches.length - 1, 0));
 
   useLayoutEffect(() => {
     const element = field.current;
@@ -39,6 +57,14 @@ export function Composer({
     const limit = window.innerHeight * MAX_HEIGHT_RATIO;
     element.style.height = `${Math.min(element.scrollHeight + 2, limit)}px`;
   }, [draft]);
+
+  const pick = (skill: SkillSummary) => {
+    if (!mention) return;
+    const next = insertMention(draft, caret, mention.start, skill.name);
+    setDraft(thread.id, next.text);
+    setCaret(next.caret);
+    requestAnimationFrame(() => field.current?.setSelectionRange(next.caret, next.caret));
+  };
 
   const send = async () => {
     if (!canSend) return;
@@ -70,12 +96,33 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menuOpen) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setHighlight((active + step + matches.length) % matches.length);
+        return;
+      }
+      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+        event.preventDefault();
+        const skill = matches[active];
+        if (skill) pick(skill);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setMenuDismissed(true);
+        return;
+      }
+    }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     void send();
   };
 
   const unmanaged = engine !== null && !engine.capabilities.managed;
+  const engineName = engine?.name ?? thread.engine;
 
   return (
     <form
@@ -91,40 +138,51 @@ export function Composer({
         </p>
       ) : null}
       <div className="composer-box">
+        {menuOpen ? (
+          <ul className="mention-menu" role="listbox" aria-label="Skills">
+            {matches.map((skill, at) => (
+              <li key={skill.name} role="option" aria-selected={at === active}>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => pick(skill)}
+                >
+                  <span className="mention-name">${skill.name}</span>
+                  <span className="mention-detail">{skill.description}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <textarea
           ref={field}
           rows={1}
           value={draft}
-          onChange={(event) => setDraft(thread.id, event.target.value)}
+          onChange={(event) => {
+            setDraft(thread.id, event.target.value);
+            setCaret(event.target.selectionStart);
+            setHighlight(0);
+            setMenuDismissed(false);
+          }}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
           aria-label={`Message ${thread.title}`}
           aria-describedby="composer-help"
-          placeholder={busy ? "A run is active. You can keep typing." : "Describe the task"}
+          placeholder="Ask anything. $ skills"
           data-autofocus={layout === "narrow" ? undefined : true}
         />
+        <span id="composer-help" className="sr-only">
+          Enter to send, Shift+Enter for a new line
+        </span>
         <div className="composer-bar">
-          <dl className="composer-meta">
-            <div title="Engine">
-              <dt className="sr-only">Engine</dt>
-              <dd>
-                <Bot size={16} aria-hidden />
-                {engine?.name ?? thread.engine}
-              </dd>
-            </div>
-            <div title="Model">
-              <dt className="sr-only">Model</dt>
-              <dd>
-                <Boxes size={16} aria-hidden />
-                {thread.model ?? "Default model"}
-              </dd>
-            </div>
-            <div title="Skill profile">
-              <dt className="sr-only">Skill profile</dt>
-              <dd>
-                <Sparkles size={16} aria-hidden />
-                {profileName ?? "All skills"}
-              </dd>
-            </div>
+          <dl className="composer-left">
+            {profileName ? (
+              <div>
+                <dt className="sr-only">Skill profile</dt>
+                <dd>{profileName}</dd>
+              </div>
+            ) : null}
             {unmanaged ? (
               <div>
                 <dt className="sr-only">Governance</dt>
@@ -134,20 +192,22 @@ export function Composer({
               </div>
             ) : null}
           </dl>
-          <span id="composer-help" className="composer-help">
-            <CornerDownLeft size={16} aria-hidden />
-            <span>Enter to send, Shift+Enter for a new line</span>
-          </span>
-          <Button
-            type="submit"
-            tone="primary"
-            small
-            busy={sending}
-            disabled={!canSend}
-            icon={<SendHorizontal size={16} aria-hidden />}
-          >
-            Send
-          </Button>
+          <dl className="composer-right">
+            <div>
+              <dt className="sr-only">Engine</dt>
+              <dd>
+                <EngineGlyph name={engineName} />
+                <span className="sr-only">{engineName}</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="sr-only">Model</dt>
+              <dd>{thread.model ?? "Default model"}</dd>
+            </div>
+          </dl>
+          <button type="submit" className="send-btn" aria-label="Send" aria-busy={sending || undefined} disabled={!canSend}>
+            <ArrowUp size={16} aria-hidden />
+          </button>
         </div>
       </div>
     </form>

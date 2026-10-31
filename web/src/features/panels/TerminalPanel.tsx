@@ -10,9 +10,9 @@ const cssVar = (name: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 const terminalTheme = () => ({
-  background: cssVar("--color-sunken"),
+  background: cssVar("--color-raised"),
   foreground: cssVar("--color-text"),
-  cursor: cssVar("--color-accent"),
+  cursor: cssVar("--color-text"),
   selectionBackground: cssVar("--color-selected"),
 });
 

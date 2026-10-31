@@ -1,8 +1,68 @@
 import { describe, expect, it } from "vitest";
+import type { Thread } from "../../api/types";
 import { parsePatch } from "../panels/DiffPanel";
+import { groupThreads } from "../workspace/groups";
 import { touchesOf } from "./approvalDetail";
 import type { ThreadItem } from "./projection";
+import { insertMention, mentionAt } from "./skillMention";
+import { groupWork } from "./timeline";
 import { withLocalPrompts } from "./Transcript";
+
+describe("mentions", () => {
+  it("finds a $query at the caret only at a word start", () => {
+    expect(mentionAt("use $ar", 7)).toEqual({ start: 4, query: "ar" });
+    expect(mentionAt("$", 1)).toEqual({ start: 0, query: "" });
+    expect(mentionAt("cost$ar", 7)).toBeNull();
+    expect(mentionAt("$ar then", 8)).toBeNull();
+  });
+
+  it("replaces the query and places the caret after it", () => {
+    expect(insertMention("use $ar now", 7, 4, "architect")).toEqual({
+      text: "use $architect  now",
+      caret: 15,
+    });
+  });
+});
+
+describe("groupThreads", () => {
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  const thread = (id: string, hoursAgo: number, over: Partial<Thread> = {}) =>
+    ({
+      id,
+      active_run: null,
+      last_run_state: "completed",
+      updated_at: new Date(now - hoursAgo * 3_600_000).toISOString(),
+      ...over,
+    }) as Thread;
+
+  it("separates active, recent and settled", () => {
+    const groups = groupThreads(
+      [
+        thread("new", 1),
+        thread("old", 30),
+        thread("failed", 90, { last_run_state: "failed" }),
+        thread("live", 200, { active_run: { id: "r" } as Thread["active_run"] }),
+      ],
+      now,
+    );
+    expect(groups.working.map((t) => t.id)).toEqual(["live"]);
+    expect(groups.recent.map((t) => t.id)).toEqual(["new", "failed"]);
+    expect(groups.settled.map((t) => t.id)).toEqual(["old"]);
+  });
+});
+
+describe("groupWork", () => {
+  const base = { seq: 1, runId: "r" };
+  it("folds consecutive work and measures its span", () => {
+    const entries = groupWork([
+      { ...base, kind: "reasoning", key: "a", ts: "2026-10-31T10:00:00Z", text: "", done: true },
+      { ...base, kind: "tool", key: "b", ts: "2026-10-31T10:00:20Z", name: "Read", args: "", output: "", result: "ok", done: true },
+      { ...base, kind: "message", key: "c", ts: "2026-10-31T10:00:21Z", role: "assistant", text: "hi", done: true },
+    ]);
+    expect(entries.map((entry) => entry.kind)).toEqual(["work", "message"]);
+    expect(entries[0]).toMatchObject({ seconds: 20 });
+  });
+});
 
 describe("touchesOf", () => {
   it("picks known fields", () => {

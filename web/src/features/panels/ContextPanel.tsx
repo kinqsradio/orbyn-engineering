@@ -1,12 +1,10 @@
 import { ArrowLeft, X } from "lucide-react";
-import { useState } from "react";
 import type { Thread } from "../../api/types";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ActivityPanel } from "./ActivityPanel";
 import { DiffPanel } from "./DiffPanel";
-import { CONTEXT_TABS } from "./tabs";
-import { TerminalPanel } from "./TerminalPanel";
+import { RIGHT_TABS } from "./tabs";
 
 export function ContextPanel({
   thread,
@@ -20,9 +18,6 @@ export function ContextPanel({
 }) {
   const tab = useUi((state) => state.panelTab);
   const toggle = useUi((state) => state.togglePanel);
-  // The terminal keeps its socket and scrollback once opened.
-  const [terminalOpened, setTerminalOpened] = useState(tab === "terminal");
-  if (tab === "terminal" && !terminalOpened) setTerminalOpened(true);
   const select = (id: typeof tab) => {
     if (id !== tab) toggle(id);
   };
@@ -36,7 +31,7 @@ export function ContextPanel({
           </Button>
         ) : null}
         <div className="tabs" role="tablist" aria-label="Context">
-          {CONTEXT_TABS.map(({ id, label }) => (
+          {RIGHT_TABS.map(({ id, label }) => (
             <button
               key={id}
               type="button"
@@ -48,9 +43,9 @@ export function ContextPanel({
               onClick={() => select(id)}
               onKeyDown={(event) => {
                 if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-                const at = CONTEXT_TABS.findIndex((entry) => entry.id === id);
+                const at = RIGHT_TABS.findIndex((entry) => entry.id === id);
                 const step = event.key === "ArrowRight" ? 1 : -1;
-                const next = CONTEXT_TABS[(at + step + CONTEXT_TABS.length) % CONTEXT_TABS.length];
+                const next = RIGHT_TABS[(at + step + RIGHT_TABS.length) % RIGHT_TABS.length];
                 if (next) {
                   select(next.id);
                   document.getElementById(`context-tab-${next.id}`)?.focus();
@@ -68,27 +63,9 @@ export function ContextPanel({
         )}
       </header>
       <div className="context-body">
-        {tab === "diff" ? (
-          <div id="context-diff" role="tabpanel" aria-labelledby="context-tab-diff" className="tabpanel">
-            <DiffPanel threadId={thread.id} />
-          </div>
-        ) : null}
-        {tab === "activity" ? (
-          <div id="context-activity" role="tabpanel" aria-labelledby="context-tab-activity" className="tabpanel">
-            <ActivityPanel threadId={thread.id} />
-          </div>
-        ) : null}
-        {terminalOpened ? (
-          <div
-            id="context-terminal"
-            role="tabpanel"
-            aria-labelledby="context-tab-terminal"
-            className="tabpanel"
-            hidden={tab !== "terminal"}
-          >
-            <TerminalPanel threadId={thread.id} />
-          </div>
-        ) : null}
+        <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">
+          {tab === "diff" ? <DiffPanel threadId={thread.id} /> : <ActivityPanel threadId={thread.id} />}
+        </div>
       </div>
     </aside>
   );

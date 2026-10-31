@@ -6,8 +6,8 @@ const dir = join(process.cwd(), "src/styles");
 const files = readdirSync(dir).filter((name) => name.endsWith(".css"));
 const css = Object.fromEntries(files.map((name) => [name, readFileSync(join(dir, name), "utf8")]));
 
-const SCALE = new Set(["11", "13", "15", "16", "18", "24", "36"]);
-const RADII = new Set(["2", "4", "8", "12", "16", "50%", "999"]);
+const SCALE = new Set(["8", "11", "12", "13", "14", "16", "20"]);
+const RADII = new Set(["2", "4", "6", "8", "12", "16", "999"]);
 
 describe("design tokens", () => {
   it("keeps literal colours in the token owner only", () => {
