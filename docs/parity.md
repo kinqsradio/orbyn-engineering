@@ -107,6 +107,8 @@ toward completion.
 - [ ] A72 Landing states: no-projects hero, no-active-thread state, hosted empty state and draft hero with project name and heading | apps/web/src/components/NoProjectsHero.tsx | w d | S
 - [ ] A73 Header panel toggles: buttons for thread details panel, terminal drawer and right panel; right panel becomes a sheet at narrow widths | apps/web/src/components/chat/PanelLayoutControls.tsx | w d | S
 - [ ] A74 Hide environment threads: per-environment switch hides that server's threads from the sidebar, plus reconnect and disconnect failure banners | apps/web/src/components/chat/useSystemComposerBanners.tsx | w d | S
+- [ ] A75 Open thread holds its section: the thread you are in never jumps between Active, Finished and Settled until you leave it; a held thread that starts running becomes Active | src/sidebar-sections.ts | w d | S | beyond T3
+- [ ] A76 Edit sent prompt: forks before that message into a new thread in the same folder and puts the text back in its composer; files are not rewound | docs/rewind.md | w d s | S | beyond T3
 
 ## B. Composer
 - [x] B1 Message limit: 120,000 characters, oversize draft retained | docs/user/composer.md | w d m | S | server done
@@ -169,6 +171,11 @@ toward completion.
 - [ ] B58 Text direction: each composer block gets left-to-right or right-to-left direction from its own text | apps/web/src/composer-text-direction.ts | w d | S
 - [ ] B59 Composer editor switches: turn live Markdown styling off, show or hide skills in the slash menu (skills still appear with `$`), show context meter | packages/contracts/src/settings.ts | w d m | S
 - [ ] B60 Compact composer on phone: sheets for command popover, queued-message edit, attachment button and error notice | apps/mobile/src/features/threads/ComposerCommandPopover.tsx | m | M
+- [ ] B61 Steer delivery states: each mid-turn message reports pending, delivered or failed by id; a failed one returns to the queue; engines with no mid-turn input hold it for the next turn | src-tauri/src/providers/steering.rs | w d s | M
+- [ ] B62 Response style packs: per-thread output-saving packs added as one folded block only when the selection changes and every N messages | src/token-saver.ts | w d | M | beyond T3
+- [ ] B63 Workflow recipes: local step lists (prompt, slash command, check, approval) with a dry run showing supported, fallback or blocked per engine; run goes through the normal queue | docs/recipes.md | w d s | M | beyond T3
+- [ ] B64 Turn checks: optional run of the checkout's own quick check after a clean turn; a failure queues one editable fix message, never a loop; needs trusted folder | src-tauri/src/checks.rs | w d s | M | beyond T3
+- [ ] B65 Prompt context chips: documents and folders become context blocks; sent blocks render as read-only chips that open the file, reveal the path or show the text | src/message-attachments.ts | w d | M | beyond T3
 
 ## C. Timeline and rendered output
 - [ ] C1 Live streaming: per-turn or per-paragraph mode | packages/contracts/src/settings.ts | w d m s | L
@@ -207,6 +214,10 @@ toward completion.
 - [ ] C34 Changed files tree in timeline: per-turn file list with open-diff action | apps/web/src/components/chat/ChangedFilesTree.tsx | w d | S
 - [ ] C35 Error banner: thread-level error with dismiss and retry actions | apps/web/src/components/chat/ThreadErrorBanner.tsx | w d m | S
 - [ ] C36 Lifecycle rows: system dividers and lifecycle rows mark restarts, handoffs and context boundaries | apps/web/src/components/chat/V2LifecycleRow.tsx | w d m | S
+- [ ] C37 Sentence tool trace: each tool call is a verb-object row with kind icon; calls group in fives with a count summary; live view bounded to 30 rows; turn folds to a summary at the end | src/tool-trace.ts | w d | L
+- [ ] C38 Bounded tool snapshots: input preview 4 KiB, output preview 8 KiB, UTF-8-safe truncation notice, 64 snapshots per run | docs/providers.md | s | S
+- [ ] C39 Delta coalescing: text deltas merged for 33 ms or 8 KiB before sending, only new text per event | src-tauri/src/providers.rs | s | S
+- [ ] C40 Rich question content: agent questions render Markdown, charts and sanitised SVG or static HTML in an isolated root; remote images become links | src/rich-markdown.ts | w d | M | beyond T3
 
 ## D. Files, search and attachments
 - [x] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L | web done
@@ -237,6 +248,8 @@ toward completion.
 - [ ] D26 Open in editor over remote: for non-local environments the picker builds editor links (VS Code family, Cursor, Zed, JetBrains) to the host via SSH alias, Tailscale or mDNS name, or shows unavailable | apps/web/src/remoteOpen.ts | w d | M
 - [ ] D27 Attached file viewer controls: Copy contents, Save file, view toggle; on mobile Save or share and Open in file viewer; ZIP entries can be added to chat on mobile | docs/user/composer.md | w d m | M
 - [ ] D28 Mobile file browser: tree, source scroll position, image, video, web, ZIP and delimited previews with error state | apps/mobile/src/features/files/FileTreeBrowser.tsx | m | L
+- [ ] D29 Document viewer: PDF, Word and spreadsheet files open in a tab; zips size-checked before parsing; Word rendered in an isolated root | src/office-viewer.ts | w d | L | beyond T3
+- [ ] D30 Mockup sketcher: draw a sketch and attach it as an image | src/sketch.ts | w d | M | beyond T3
 
 ## E. Diffs, checkpoints and revert
 - [x] E1 Turn checkpoints: hidden git ref at each turn end | apps/server/src/checkpointing/CheckpointStore.ts | s | L | server done
@@ -257,6 +270,7 @@ toward completion.
 - [ ] E16 Native mobile diff: custom diff view with word diffs | apps/mobile/src/features/review/ReviewSheet.tsx | m | L
 - [ ] E17 Diff status markers: per-file added, modified, deleted, renamed badges and plus/minus counts | apps/web/src/components/diffs/DiffFileStatus.tsx | w d m | S
 - [ ] E18 Large diff loading: very large uncommitted diffs load files as you scroll; find covers loaded files only | docs/user/keybindings.md | w d | S
+- [ ] E19 Write-attributed changes: a turn's change list holds only files the thread declared (begin and complete handshake) or the engine reported, frozen at tool completion; never inferred from status; caps 200 paths, 1 MiB per file, 32 MiB per turn | docs/turn-changes.md | s w | L | beyond T3
 
 ## F. Source control, worktrees and pull requests
 - [x] F1 GitHub connection: saved token, env token, or gh | docs/user/source-control.md | w d s | M | server done, through `gh` only: saved and env tokens stay out under rule 1
@@ -323,6 +337,8 @@ toward completion.
 - [ ] F62 PR environment assignment: a repository present on several environments lists each PR once, preferring the current environment | apps/web/src/components/pullRequest/pullRequestProjectAssignment.logic.ts | w d | S
 - [x] F63 Retention for artifacts and logs: storage cleanup also removes browser artifacts and logs after N days, with per-kind report entries | packages/contracts/src/settings.ts | w d s | M | server done
 - [ ] F64 Previous worktree directories: old worktree locations stay discoverable after changing the worktree directory | packages/contracts/src/settings.ts | s | S
+- [ ] F65 Windows Git paths: strip the extended-length prefix before worktree creation; keep stored paths canonical | src-tauri/src/workspace.rs | s | S
+- [ ] F66 Jujutsu checkouts: status and change panel for non-colocated repositories | docs/jj.md | s w | L | beyond T3
 
 ## G. Terminal
 - [x] G1 Thread terminals: per-thread drawer, persistent across switches | apps/web/src/components/ThreadTerminalDrawer.tsx | w d m s | L | server done
@@ -336,6 +352,9 @@ toward completion.
 - [x] G9 Fish handling: startup tweak avoiding query waits | docs/user/terminal.md | s | S | server done
 - [x] G10 Project scripts control: run scripts, keybindings per script | apps/web/src/components/ProjectScriptsControl.tsx | w d m s | M | server done
 - [ ] G11 Mobile terminal preferences: font size 6 to 14 in half steps, theme, paste handling, session menu with status labels, exit navigation | apps/mobile/src/features/terminal/terminalPreferences.ts | m | S
+- [ ] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S
+- [ ] G13 Terminal close order: end the process tree before closing the pseudo console so the close cannot hang | src-tauri/src/terminal.rs | s | S
+- [ ] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3
 
 ## H. Browser preview and devices
 - [ ] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
@@ -382,6 +401,7 @@ toward completion.
 - [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
 - [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
 - [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
+- [ ] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S
 
 ## I. Providers
 - [ ] I1 Codex CLI login: existing install and login | docs/user/providers-codex.md | s | M | [auth-risk]
@@ -437,6 +457,15 @@ toward completion.
 - [ ] I51 Version compatibility warning: provider card flags versions with known problems and offers recommended version install | docs/user/install.md | w d m s | M
 - [ ] I52 Update route by installer: Homebrew, npm, pnpm, Yarn, Bun, Volta, Vite+ detected; mise handled manually; Cursor and Antigravity update with the app | docs/user/install.md | s w d | M
 - [ ] I53 Provider discovery: server-host PATH lookup, binary path override, Cursor `cursor-agent` name | docs/user/faq.md | s w | S
+- [ ] I54 Child environment hygiene: remove AppImage variables, the nested-session marker and vendor desktop markers from every engine spawn | src-tauri/src/child_env.rs | s | S
+- [ ] I55 Prefer saved login: scrub inherited credential and endpoint variables so the engine uses its own login; report only variable names and endpoint origin | src-tauri/src/providers/claude_auth.rs | s w | M | beyond T3
+- [ ] I56 Login probe without secrets: run the engine's own status command with settings sources empty, time and size bounded, output wiped; map to signed in, not signed in, other credentials, unknown | src-tauri/src/providers/claude_auth.rs | s | S
+- [ ] I57 Agent telemetry switch: one setting applies each engine's own telemetry opt-outs to every spawn; coverage table shows off, manual or unknown per engine | src-tauri/src/providers/privacy.rs | s w d | M | beyond T3
+- [ ] I58 Codex fast tier from catalog: offered only when the model list names the tier | src-tauri/src/command_operations.rs | s w | S
+- [ ] I59 Discovery without leftovers: engines that report per-model options only after a switch are probed in throwaway sessions that are deleted afterwards | src-tauri/src/providers/devin.rs | s | M
+- [ ] I60 Model health pauses: a failing model is paused with a cooldown that survives restart; same model on another engine is offered as failover; Settings can allow it now | src-tauri/src/model_health.rs | s w | M | beyond T3
+- [ ] I61 Warm next turn: start the next Claude process in the background and adopt it only when every launch input matches | src-tauri/src/providers/warm.rs | s | M | beyond T3
+- [ ] I62 Extra engines: Kimi Code, DeepSeek, Command Code, Cline, Kilo Code, Hermes Agent and ZCode with their documented quirks (Cline effort by flag, ZCode private protocol) | docs/providers.md | s | L | beyond T3
 
 ## J. Usage and limits
 - [x] J1 Usage page: tokens, cache savings, estimated cost | apps/web/src/components/usage/UsagePage.tsx | w d m s | L | server done
@@ -464,6 +493,7 @@ toward completion.
 - [ ] J23 Usage charts: per-provider chart and share bar | apps/web/src/components/usage/UsageProviderChart.tsx | w d | S
 - [ ] J24 Mobile usage page: daily chart, environment selection, pooled limits, ChatGPT summary | apps/mobile/src/features/usage/UsageRouteScreen.tsx | m | M
 - [ ] J25 Usage in thread details: setting shows usage row, off by default | packages/contracts/src/settings.ts | w d | S
+- [ ] J26 Resume at reset: when an engine reports a reset time, offer to send Continue at that time; overdue resumes recovered at startup before queued messages | src-tauri/src/providers/limits.rs | s w | M | beyond T3
 
 ## K. Settings, appearance and notifications
 - [ ] K1 Settings scope: choose project and environments, fan-out edit | apps/web/src/components/settings/SettingsScopeSentence.tsx | w d m | L
@@ -521,6 +551,8 @@ toward completion.
 - [ ] K53 Default theme and environment icon: default theme preference with set time, machine-kind icon picker | apps/web/src/components/settings/EnvironmentIconPicker.tsx | w d | S
 - [ ] K54 New projects base directory: default parent folder for new and cloned projects | packages/contracts/src/settings.ts | w d s | S
 - [ ] K55 Settings navigation: sidebar nav, breadcrumb, section deep links across 24 settings pages | apps/web/src/components/settings/SettingsSidebarNav.tsx | w d | M
+- [ ] K56 Capability inventory: read-only list of each engine's commands, MCP server names, hook event names, plugin names and skill folders; no secrets, bodies or absolute config paths | docs/capabilities.md | w d s | M | beyond T3
+- [ ] K57 Network disclosure: Settings lists every automatic outbound request with host and cadence | README.md | w d | S | beyond T3
 
 ## L. Remote access, pairing and auth
 - [ ] L1 T3 Connect tunnel: reach host without port forwarding | docs/user/remote-access.md | w d m c s | L | [hosted]
@@ -592,6 +624,9 @@ toward completion.
 - [x] M14 Batch thread creation: agents start many threads | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done
 - [ ] M15 Secret request tool: agent requests secret securely | apps/server/src/secrets/SecretRequests.ts | s | M | [auth-risk]
 - [x] M16 Portable handoffs: budgeted history with fresh-session recovery | packages/provider-core/src/handoffBudget.ts | s | L | server done
+- [ ] M17 After-thread trigger: a schedule that fires when another thread finishes, optionally only on success; run history capped at 200 per thread | docs/schedules.md | s w | M
+- [ ] M18 Silence watchdog: a delegated run with no event for twice the longest tool timeout is stopped; waits on approvals and questions do not count | src-tauri/src/architect/watchdog.rs | s | S
+- [ ] M19 Interrupted marking: a Stop is saved before the signal so a quit after it is not counted as restart interruption; unfinished tool rows get an interrupted note | src-tauri/src/storage.rs | s | M
 
 ## N. MCP tools for agents
 - [ ] N1 Environment: `t3_environment_read`, `t3_environment_preferences_update` | apps/server/src/mcp/toolkits/environment/tools.ts | s | M
@@ -616,6 +651,7 @@ toward completion.
 - [x] N20 Scheduling: `schedule_task`, `list_scheduled_tasks`, `delete_scheduled_task`, `run_scheduled_task_now` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | server done, as `orbyn_*`
 - [ ] N21 Agent requests: `request_secret`, `create_threads` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M | [auth-risk]
 - [ ] N22 Links: `t3_environment_links`, `_link`, `_unlink` | apps/server/src/mcp/toolkits/orchestrator/tools.ts | s | M
+- [ ] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M
 
 ## O. CLI
 - [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M
@@ -644,6 +680,7 @@ toward completion.
 - [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M
 - [ ] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S
 - [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S
+- [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3
 
 ## P. Desktop shell
 - [ ] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L
@@ -673,6 +710,14 @@ toward completion.
 - [ ] P25 Desktop packaging channels: winget, Homebrew cask, deb (self-updating with password prompt), AUR stable and nightly, Nix, GitHub Releases | docs/user/install.md | d | M
 - [ ] P26 CLI install scripts: shell and PowerShell installers to `~/.local/bin`, nightly channel and exact-version pins, Intel Mac desktop only | docs/user/install.md | c | M
 - [ ] P27 System theme following: reads Linux color scheme and OS theme | apps/desktop/src/electron/LinuxColorScheme.ts | d | S
+- [ ] P28 Menu-bar popover: icon with running count; popover lists running, needs you, finished unseen and plan usage read on open | src-tauri/src/tray.rs | d | L | beyond T3
+- [ ] P29 Quick launcher: global shortcut opens a small window for new and running threads; manual open when shortcut registration fails | src-tauri/src/overlay.rs | d | L | beyond T3
+- [ ] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S
+- [ ] P31 Deterministic tool search path: ordered install folders, version-manager defaults and npm prefix read from config, added once at startup without sourcing a shell | src-tauri/src/providers/launch.rs | d s | M | alternative to P2
+- [ ] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M
+- [ ] P33 Packaged-app startup smoke: install the built package on a disposable hosted runner with isolated profile folders and no secrets, and check it stays alive | scripts/release/ci-startup-smoke.mjs | d c | M
+- [ ] P34 Release evidence: per-asset checksums, installer and lockfile SBOMs, coverage report where an empty scan reads "incomplete", actions pinned by commit | docs/releasing.md | c | M
+- [ ] P35 Notarization check: require credentials for Developer ID builds, verify with stapler and spctl, retry stapling | scripts/release/build.mjs | d c | S
 
 ## Q. Mobile
 - [ ] Q1 Adaptive workspace: phone tabs, tablet panes, inspector | apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx | m | L
