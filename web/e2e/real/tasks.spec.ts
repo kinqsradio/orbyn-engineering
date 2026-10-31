@@ -101,3 +101,27 @@ test("an after-thread task names the thread it follows", async ({ page }) => {
   const tasks = await service.api<{ name: string; schedule: { after_thread: string; only_on_success: boolean } }[]>("GET", "/api/tasks");
   expect(tasks.find((task) => task.name === "Review after")?.schedule).toMatchObject({ after_thread: thread.id, only_on_success: true });
 });
+
+test("a task pauses, runs now, edits and goes", async ({ page }) => {
+  await tasksPage(page);
+  await page.getByRole("button", { name: "New task" }).click();
+  const dialog = page.getByRole("dialog", { name: "New scheduled task" });
+  await dialog.getByLabel("Name").fill("Hourly");
+  await dialog.getByLabel("Prompt").fill("[scene:usage] check");
+  await dialog.getByRole("button", { name: "Save task" }).click();
+  await expect(dialog).toBeHidden();
+  const task = async () => (await service.api<{ name: string; enabled: boolean; last_status: string }[]>("GET", "/api/tasks")).find((entry) => entry.name.startsWith("Hourly"));
+  await page.getByRole("switch", { name: "Enable Hourly" }).click();
+  await expect.poll(async () => (await task())?.enabled).toBe(false);
+  await page.getByRole("switch", { name: "Enable Hourly" }).click();
+  await expect.poll(async () => (await task())?.enabled).toBe(true);
+  await page.getByRole("button", { name: "Run Hourly" }).click();
+  await expect.poll(async () => (await task())?.last_status).not.toBe("never");
+  await page.getByRole("button", { name: "Edit Hourly" }).click();
+  const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
+  await edit.getByLabel("Name").fill("Hourly check");
+  await edit.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Hourly check" }).click();
+  await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeHidden();
+});

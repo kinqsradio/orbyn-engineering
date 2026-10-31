@@ -131,6 +131,33 @@ test("in a thread of its own the files go back, and the restore can be undone", 
   expect(existsSync(added)).toBe(false);
 });
 
+test("edit from here rewinds with or without the files", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  const engines = await service.api<{ id: string }[]>("GET", "/api/engines");
+  const thread = await service.api<{ id: string; cwd: string }>("POST", "/api/threads", {
+    project_id: projectId,
+    engine: engines.find((engine) => engine.id === "codex")?.id,
+    title: "Rewinds",
+    model: null,
+    worktree: "rewinds",
+    skill_profile: null,
+  });
+  await page.goto(`${service.page}#/threads/${thread.id}`);
+  await send(page, "[scene:usage] first ask");
+  await settled(service, thread.id);
+  const file = join(thread.cwd, "README.md");
+  const before = readFileSync(file, "utf8");
+  writeFileSync(file, "changed by the turn\n");
+  await page.locator(".msg-user").last().hover();
+  await page.getByRole("button", { name: "Edit from here" }).last().click();
+  const dialog = page.getByRole("dialog", { name: "Edit from here?" });
+  await dialog.getByLabel("Also restore files to this point").check();
+  await dialog.getByRole("button", { name: "Rewind" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("textbox", { name: /^Message/ })).toHaveValue("[scene:usage] first ask");
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
+
 test("publish creates the remote for a project that has none", async ({ page }) => {
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.folder });
   git(service.folder, "init", "-q", "-b", "main");
