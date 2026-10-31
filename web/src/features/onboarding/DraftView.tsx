@@ -21,6 +21,7 @@ import { DraftProjectPicker } from "./DraftProjectPicker";
 type OpenMenu = { kind: "checkout"; x: number; y: number };
 
 const DRAFT_KEY = "new-thread";
+export const SCRATCH = "scratch";
 
 /** Files wait here until a thread exists, so a project switch or the trust step keeps them. */
 const useDraftFiles = create<{ files: File[]; set(files: File[]): void }>((set) => ({
@@ -76,6 +77,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const projects = useVisibleProjects();
   const engines = useWorkspace((state) => state.engines.data);
   const putThread = useWorkspace((state) => state.putThread);
+  const targets = useWorkspace((state) => state.managed.data?.targets);
   const addPrompt = useThreadLogs((state) => state.addPrompt);
   const field = useRef<HTMLTextAreaElement>(null);
   const [chosenProject, setChosenProject] = useState(projectId);
@@ -101,7 +103,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   }, []);
 
   if (!projects || !engines) return <div className="page"><Loading label="Loading" rows={3} /></div>;
-  const project: Project | null = projects.find((p) => p.id === chosenProject) ?? projects[0] ?? null;
+  const scratch = chosenProject === SCRATCH;
+  const project: Project | null = scratch
+    ? null
+    : (projects.find((p) => p.id === chosenProject) ?? projects[0] ?? null);
   const installed = engines.filter((e) => e.installed);
   const engine =
     installed.find((e) => e.id === choice?.engine) ??
@@ -110,12 +115,9 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     null;
   const unmanaged = engine !== null && !engine.capabilities.managed;
 
-  if (!project) {
-    return (
-      <NoProjects />
-    );
-  }
+  if (!project && !scratch) return <NoProjects />;
 
+  const branch = targets?.find((target) => target.project_id === project?.id)?.branch ?? null;
   const setPrompt = (text: string) => setDraft(DRAFT_KEY, text);
   const pickedModel = choice?.engine === engine?.id ? (choice?.model ?? null) : null;
   const pickedEffort = choice?.engine === engine?.id ? (choice?.effort ?? null) : null;
@@ -129,7 +131,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const send = async () => {
     const text = prompt.trim();
     if (!text || busy || !engine) return;
-    if (!project.trusted) {
+    if (project && !project.trusted) {
       navigate({ name: "trust", projectId: project.id, threadId: null });
       return;
     }
@@ -137,7 +139,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     setError(null);
     try {
       const thread = await api.createThread({
-        project_id: project.id,
+        ...(project ? { project_id: project.id } : {}),
         engine: engine.id,
         model: pickedModel,
         title: null,
@@ -172,12 +174,41 @@ export function DraftView({ projectId }: { projectId: string | null }) {
           <div className="composer-stack">
             <div className="hero">
               <h1 className="hero-title" tabIndex={-1} data-page-title>
-                What should we build in{" "}
-                <button type="button" className="hero-project" aria-haspopup="listbox" aria-expanded={picker !== null} onClick={(event) => setPicker(event.currentTarget.getBoundingClientRect())}>
-                  {project.name}
-                </button>
-                ?
+                {project ? (
+                  <>
+                    What should we build in{" "}
+                    <button
+                      type="button"
+                      className="hero-project"
+                      aria-haspopup="listbox"
+                      aria-expanded={picker !== null}
+                      onClick={(event) => setPicker(event.currentTarget.getBoundingClientRect())}
+                    >
+                      {project.name}
+                    </button>
+                    ?
+                  </>
+                ) : (
+                  "What should we work on?"
+                )}
               </h1>
+              <p className="hero-sub">
+                {project ? (
+                  <button type="button" className="hero-link" onClick={() => setChosenProject(SCRATCH)}>
+                    or start without a project
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="hero-project"
+                    aria-haspopup="listbox"
+                    aria-expanded={picker !== null}
+                    onClick={(event) => setPicker(event.currentTarget.getBoundingClientRect())}
+                  >
+                    No project
+                  </button>
+                )}
+              </p>
             </div>
             <form
               className="composer"
@@ -273,6 +304,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                   </div>
                 </div>
                 <div className="composer-context">
+                  {project ? (
                   <dl>
                     <div>
                       <dt className="sr-only">Checkout</dt>
@@ -288,6 +320,15 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         </button>
                       </dd>
                     </div>
+                    {worktree === null && branch ? (
+                      <div>
+                        <dt className="sr-only">Branch</dt>
+                        <dd>
+                          <GitBranch size={12} aria-hidden />
+                          {branch}
+                        </dd>
+                      </div>
+                    ) : null}
                     {worktree !== null ? (
                       <div>
                         <dt className="sr-only">Worktree purpose</dt>
@@ -305,6 +346,9 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                       </div>
                     ) : null}
                   </dl>
+                  ) : (
+                    <span />
+                  )}
                   {unmanaged ? (
                     <span>Unmanaged</span>
                   ) : (
@@ -340,7 +384,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       {picker ? (
         <DraftProjectPicker
           projects={projects}
-          current={project.id}
+          current={project?.id ?? ""}
           anchor={picker}
           onClose={() => setPicker(null)}
           onPick={(next) => {

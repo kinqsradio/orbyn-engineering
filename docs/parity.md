@@ -34,10 +34,10 @@ toward completion.
 
 ## A. Threads and sidebar
 - [ ] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
-- [ ] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S
-- [x] A3 Thread without project: starts with no project, can move machine before send | docs/user/thread-sidebar.md | w d m | M | server done
+- [x] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S | web done
+- [x] A3 Thread without project: starts with no project, can move machine before send | docs/user/thread-sidebar.md | w d m | M | server done | web done
 - [x] A4 Scratch folders: dated per-thread folder kept after thread deletion | docs/user/thread-sidebar.md | s | S | server done
-- [x] A5 Turn into project: adopts the folder in place, with sibling threads | packages/contracts/src/orchestrationV2.ts | w d s | M | server done
+- [x] A5 Turn into project: adopts the folder in place, with sibling threads | packages/contracts/src/orchestrationV2.ts | w d s | M | server done | web done
 - [ ] A6 Start in background: sends and opens another draft, one worktree each | docs/user/thread-sidebar.md | w d | M
 - [ ] A7 Send and new thread: keyed send that leaves a fresh draft | packages/contracts/src/keybindings.ts | w d | S
 - [ ] A8 Multi-model fan-out: shift-click models, one thread and worktree each | apps/web/src/components/chat/useMultipleModelSend.ts | w d | M

@@ -190,6 +190,8 @@ export const api = {
 
   threads: (projectId: string, signal?: AbortSignal) =>
     request<Thread[]>("GET", `/api/threads?project_id=${q(projectId)}`, undefined, signal),
+  allThreads: (signal?: AbortSignal) => request<Thread[]>("GET", "/api/threads", undefined, signal),
+  adoptScratch: (threadId: string) => request<Project>("POST", `/api/threads/${q(threadId)}/adopt`, {}),
   thread: (id: string, signal?: AbortSignal) =>
     request<Thread>("GET", `/api/threads/${q(id)}`, undefined, signal),
   createThread: (body: CreateThread) => request<Thread>("POST", "/api/threads", body),

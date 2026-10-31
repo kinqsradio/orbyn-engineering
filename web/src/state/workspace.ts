@@ -46,6 +46,8 @@ interface WorkspaceState {
   refreshProjects(): Promise<void>;
   refreshThreads(projectId: string): Promise<void>;
   refreshThread(id: string): Promise<void>;
+  /** Scratch threads sit behind hidden projects, which project lists leave out. */
+  refreshScratch(): Promise<void>;
   refreshApprovals(): Promise<void>;
   refreshEngines(): Promise<void>;
   refreshAll(): Promise<void>;
@@ -273,6 +275,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  async refreshScratch() {
+    const current = claim("scratch");
+    try {
+      const list = (await api.allThreads()).filter((thread) => thread.scratch);
+      if (!current()) return;
+      set((state) => ({
+        threads: { ...state.threads, ...Object.fromEntries(list.map((t) => [t.id, t])) },
+      }));
+    } catch {
+      // Project threads still load; the next poll tries again.
+    }
+  },
+
   async refreshThread(id) {
     const current = claim(`thread:${id}`);
     try {
@@ -327,6 +342,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const projects = get().projects.data ?? [];
     await Promise.all([
       ...projects.map((p) => refreshThreads(p.id)),
+      get().refreshScratch(),
       refreshApprovals(),
       refreshManaged(),
       refreshUpdates(),
@@ -413,7 +429,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 export function useVisibleProjects(): Project[] | null {
   const projects = useWorkspace((state) => state.projects.data);
   const library = useWorkspace((state) => state.managed.data?.library?.path);
-  return useMemo(() => projects?.filter((project) => project.path !== library) ?? null, [projects, library]);
+  return useMemo(
+    () => projects?.filter((project) => project.path !== library && !project.scratch) ?? null,
+    [projects, library],
+  );
 }
 
 /** The engine record for a thread, if the engine list has loaded. */

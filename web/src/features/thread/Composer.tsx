@@ -358,6 +358,19 @@ export function Composer({
             disabled={busy}
             onOpen={(element) => traits.openAt(element, false)}
           />
+          {!showContext && !unmanaged ? (
+            <button
+              type="button"
+              className="composer-control composer-access"
+              aria-haspopup="menu"
+              aria-label={`Permissions: ${ACCESS[access].label}`}
+              disabled={busy || !thread.lifecycle}
+              onClick={(event) => traits.openAt(event.currentTarget, true)}
+            >
+              <AccessIcon size={14} aria-hidden />
+              <span>{ACCESS[access].label}</span>
+            </button>
+          ) : null}
           {busy && !draft.trim() ? (
             <button
               type="button"

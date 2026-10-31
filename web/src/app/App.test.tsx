@@ -297,8 +297,8 @@ describe("App against the mock API", () => {
   it("shows the selected branch in the thread", async () => {
     go("#/threads/t-approval");
     render(<App />);
-    const composer = (await screen.findByLabelText(/^Message/)).closest("form");
-    expect(within(composer as HTMLElement).getByText("approval-timeout")).toBeInTheDocument();
+    const nav = await screen.findByRole("navigation", { name: "Workspace" });
+    expect(await within(nav).findByText("approval-timeout")).toBeInTheDocument();
   });
 
   it("offers sign-in when the service asks for it, then opens", async () => {

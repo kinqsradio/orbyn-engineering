@@ -323,7 +323,7 @@ export function ThreadView({ id }: { id: string }) {
                     engine={engine}
                     beforeSend={beforeSend}
                     onSendFailed={() => setDocked(false)}
-                    showContext={hero || !detailsShown}
+                    showContext={hero}
                   />
                 </div>
               </div>

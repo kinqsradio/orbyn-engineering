@@ -23,7 +23,12 @@ fake ACP engine; everything else ran on the mock. No reference data is recorded 
 | Draft | Divider, pane | Capture: x 1189, 539 wide | x 1189, 539 wide | 0, re-measured |
 | Draft | Details card | Capture: 280, y 64-295 | 280, y 64-225 | Editor, script, commit rows hidden |
 | Draft | Launcher | Live: 7 surfaces | Terminal, Diff, Activity | Others hidden, no backend |
-| Draft | Secondary action | Live: or start without a project | Removed | Threads require a project |
+| Draft | No project state | Live: What should we work on?, No project picker below it, permissions alone under the composer | Match, Real | Scratch thread sent through the real service |
+| Draft | Project selected | Live: What should we build in, project as picker, or start without a project, checkout and branch left, permissions right | Match, Real | Heading to composer 49 |
+| Draft | Project picker | Live: 288 wide, centred under the name, Search projects..., projects, Add project | Match, Real | Text and files survive a switch and the trust step |
+| Draft | After first send | Live: strip gone, permission chip joins the composer footer, header shows project and title | Match, mock and Real | Details card has fewer rows, see below |
+| Add project | Palette sources | Live: Sources: New project, Local folder, Git URL, then hosts; path field with Add, Directories, Backspace Back | Match, Real for Local folder | Host sources hidden, no backend; no clone destination step |
+| Landing | No projects | Source: What should we work on?, Add project, Start without a project | Match, Real | 0 |
 | Hero | First send | Live: at 0 ms snaps y 394 to 768 with no animation | Match at default | With a duration, FLIP asserted |
 | Timeline | Live header | Live: "Working for Ns" with rule | Match | 0 |
 | Timeline | Thinking row | Live: band 2200 ms stepped | Match | Sweep and band asserted |

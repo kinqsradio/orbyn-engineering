@@ -211,7 +211,7 @@ export function ThreadRow({
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const unmanaged = engine?.capabilities.managed === false;
-  const projectName = project?.name ?? "Unknown project";
+  const projectName = thread.scratch ? "No project" : (project?.name ?? "Unknown project");
   const engineName = engine?.name ?? thread.engine;
   const [hover, setHover] = useState<DOMRect | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

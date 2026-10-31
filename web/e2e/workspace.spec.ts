@@ -221,7 +221,7 @@ test("the draft heading keeps its distance from the composer", async ({ page }) 
     await page.goto("/#/new");
     const heading = await page.locator(".hero-title").boundingBox();
     const composer = await page.locator(".composer-box").boundingBox();
-    expect((composer?.y ?? 0) - ((heading?.y ?? 0) + (heading?.height ?? 0))).toBe(47);
+    expect((composer?.y ?? 0) - ((heading?.y ?? 0) + (heading?.height ?? 0))).toBe(49);
   }
 });
 

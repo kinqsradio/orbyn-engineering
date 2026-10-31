@@ -155,6 +155,18 @@ export async function reorderThreads(ordered: readonly Thread[]) {
   }
 }
 
+/** The folder stays where it is and becomes a project, with every thread in it. */
+export async function turnIntoProject(thread: Thread) {
+  try {
+    const project = await api.adoptScratch(thread.id);
+    const { putProject, refreshThreads } = useWorkspace.getState();
+    putProject(project);
+    await refreshThreads(project.id);
+  } catch (failure) {
+    toastFailure("turn it into a project", failure);
+  }
+}
+
 export async function copyText(text: string, done: string) {
   const { pushToast } = useUi.getState();
   try {

@@ -4,6 +4,7 @@ import {
   Clock,
   Copy,
   Folder,
+  FolderInput,
   FolderTree,
   GitBranch,
   Hash,
@@ -33,6 +34,7 @@ import {
   setUnread,
   settleThreads,
   snoozeThreads,
+  turnIntoProject,
   unpinThreads,
   unsettleThreads,
   wakeThreads,
@@ -103,11 +105,22 @@ export function threadMenuItems(input: ThreadMenuInput): MenuItem[] {
     { label: "Rename thread", icon: icon(Pencil), separatorBefore: true, onSelect: input.onRename },
     { label: "Regenerate title", icon: icon(RefreshCw), onSelect: () => void regenerateTitles([thread]) },
     { label: "Mark unread", icon: icon(MailOpen), onSelect: () => void setUnread([thread], true) },
-    {
-      label: input.filterActive ? "Show all projects" : `Filter by ${input.projectName}`,
-      icon: icon(FolderTree),
-      onSelect: input.onFilter,
-    },
+    ...(thread.scratch
+      ? [
+          {
+            label: "Turn into project",
+            icon: icon(FolderInput),
+            disabled: running,
+            onSelect: () => void turnIntoProject(thread),
+          },
+        ]
+      : [
+          {
+            label: input.filterActive ? "Show all projects" : `Filter by ${input.projectName}`,
+            icon: icon(FolderTree),
+            onSelect: input.onFilter,
+          },
+        ]),
     {
       label: "Auto-settle behavior",
       icon: icon(SlidersHorizontal),
@@ -136,11 +149,15 @@ export function threadMenuItems(input: ThreadMenuInput): MenuItem[] {
         { label: "Thread ID", icon: icon(Hash), onSelect: () => void copyText(thread.id, "Copied thread ID") },
       ],
     },
-    {
-      label: "Project settings",
-      icon: icon(Settings),
-      onSelect: () => navigate({ name: "settings", section: "projects" }),
-    },
+    ...(thread.scratch
+      ? []
+      : [
+          {
+            label: "Project settings",
+            icon: icon(Settings),
+            onSelect: () => navigate({ name: "settings", section: "projects" }),
+          },
+        ]),
     {
       label: "Archive thread",
       icon: icon(Archive),

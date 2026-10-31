@@ -25,6 +25,8 @@ function makeLibrary(root: string): string {
 export interface Service {
   /** The dev server in front of the real service, token included. */
   page: string;
+  /** A plain folder outside any library, for the add-folder flow. */
+  folder: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   stop(): void;
 }
@@ -52,7 +54,10 @@ export async function startService(port: number): Promise<Service> {
       timeout: 15_000,
     })
     .toBe(true);
+  const folder = join(dir, "my-folder");
+  mkdirSync(folder);
   return {
+    folder,
     page: `http://localhost:${port}/?token=${ready.token}`,
     async api<T>(method: string, path: string, body?: unknown) {
       const response = await fetch(`${ready.url}${path}`, {
