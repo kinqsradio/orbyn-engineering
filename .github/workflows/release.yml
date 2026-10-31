@@ -31,7 +31,6 @@ jobs:
             bundles: nsis
     env:
       ORBYN_TARGET: ${{ matrix.target }}
-      ORBYN_SKILLS_DIR: ${{ github.workspace }}/skills-library/skills
       ORBYN_UPDATE_PUBKEY: ${{ vars.ORBYN_UPDATE_PUBKEY }}
       ORBYN_UPDATE_ENDPOINT: ${{ vars.ORBYN_UPDATE_ENDPOINT }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -45,11 +44,6 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          persist-credentials: false
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: kinqsradio/orbyn-fullstack-skills
-          path: skills-library
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:

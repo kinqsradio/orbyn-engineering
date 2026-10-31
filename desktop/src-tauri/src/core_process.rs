@@ -67,8 +67,6 @@ impl CoreProcess {
             .arg(&data_dir)
             .arg("--ui-dir")
             .arg(resources.join("ui"))
-            .arg("--skills-dir")
-            .arg(resources.join("skills"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());

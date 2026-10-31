@@ -12,7 +12,7 @@ const binary = join(binaries, readdirSync(binaries).find((f) => f.startsWith("or
 const data = mkdtempSync(join(tmpdir(), "orbyn-smoke-"));
 const service = spawn(
   binary,
-  ["serve", "--data-dir", data, "--ui-dir", join(root, "build/ui"), "--skills-dir", join(root, "build/skills")],
+  ["serve", "--data-dir", data, "--ui-dir", join(root, "build/ui")],
   { stdio: ["pipe", "pipe", "inherit"] },
 );
 

@@ -1,6 +1,0 @@
-{
-  "schema_version": 1,
-  "categories": ["Engineering practice"],
-  "skills": [{ "name": "sample-skill", "category": "Engineering practice", "related": [] }],
-  "retired_skills": []
-}
