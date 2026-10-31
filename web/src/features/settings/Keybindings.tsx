@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { request } from "../../api/client";
+import { runHandlers } from "../../app/shortcuts";
 import type { KeybindingsView } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button } from "../../ui/controls";
@@ -30,7 +31,10 @@ export function KeybindingsSection() {
       .join("+");
     setEditing(null);
     request<KeybindingsView>("POST", "/api/keybindings", { key, command, when, remove: false }).then(
-      view.setData,
+      (next) => {
+        view.setData(next);
+        runHandlers("keybindings.reload");
+      },
       (failure: unknown) => setError(toFailure(failure).message),
     );
   };

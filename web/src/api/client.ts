@@ -1,5 +1,7 @@
 import { readToken } from "./token";
 import type {
+  EngineLimits,
+  KeybindingsView,
   ApplyAllResult,
   Approval,
   Attachment,
@@ -131,6 +133,10 @@ export const api = {
     request<void>("POST", `/api/threads/${q(threadId)}/steer`, { prompt }),
   patchThread: (id: string, body: UpdateThread) =>
     request<Thread>("PATCH", `/api/threads/${q(id)}`, body),
+  threadLimits: (threadId: string, signal?: AbortSignal) =>
+    request<EngineLimits>("GET", `/api/threads/${q(threadId)}/limits`, undefined, signal),
+  keybindings: (signal?: AbortSignal) =>
+    request<KeybindingsView>("GET", "/api/keybindings", undefined, signal),
   threadItem: (threadId: string, itemId: string, signal?: AbortSignal) =>
     request<unknown>("GET", `/api/threads/${q(threadId)}/items/${q(itemId)}`, undefined, signal),
   regenerateTitle: (id: string) => request<Thread>("POST", `/api/threads/${q(id)}/title`),

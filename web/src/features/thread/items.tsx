@@ -32,6 +32,8 @@ import { outputSpans } from "./ansi";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
 import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
+import { PlanCard } from "./PlanCard";
+import { proposedPlanIn, textAroundPlan } from "./proposedPlan";
 import {
   LIVE_ROW_LIMIT,
   type TimelineEntry,
@@ -59,16 +61,24 @@ const useThreadOfTimeline = () => use(TimelineThread);
 function Message({ item, live }: { item: MessageItem; live: boolean }) {
   if (item.role === "user") {
     return (
-      <div className="msg-user">
+      <div className="msg-user" data-minimap={item.key}>
         <span className="sr-only">You said:</span>
         <p className="msg-bubble">{item.text}</p>
         <MessageActions text={item.text} runId={item.runId} role="user" />
       </div>
     );
   }
+  const plan = item.done ? proposedPlanIn(item.text) : null;
   return (
     <div className="msg-assistant">
-      <Markdown text={item.text} />
+      {plan ? (
+        <>
+          {textAroundPlan(item.text) ? <Markdown text={textAroundPlan(item.text)} /> : null}
+          <PlanCard text={plan} />
+        </>
+      ) : (
+        <Markdown text={item.text} />
+      )}
       {live && !item.done ? <span className="caret" aria-hidden /> : null}
       {item.done ? <MessageActions text={item.text} runId={item.runId} role="assistant" /> : null}
     </div>
@@ -242,28 +252,51 @@ function Plan({ item, live }: { item: PlanItem; live: boolean }) {
   );
 }
 
+function ChangedFile({ file }: { file: DiffSummaryItem["files"][number] }) {
+  const revealDiff = useUi((state) => state.revealDiff);
+  return (
+    <li>
+      <button type="button" onClick={() => revealDiff(file.path)}>
+        <span title={file.path}>{file.path}</span>
+        {file.additions !== null ? <span className="diff-add">+{file.additions}</span> : null}
+        {file.deletions !== null ? <span className="diff-del">-{file.deletions}</span> : null}
+      </button>
+    </li>
+  );
+}
+
 function DiffSummary({ item }: { item: DiffSummaryItem }) {
   const openPanel = useUi((state) => state.togglePanel);
   const panelShowing = useUi((state) => state.panelOpen === true && state.panelTab === "diff");
+  const [open, setOpen] = useState(false);
   const added = item.files.reduce((sum, file) => sum + (file.additions ?? 0), 0);
   const removed = item.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0);
   return (
-    <div className="diff-summary">
-      <FileDiffIcon size={16} aria-hidden />
-      <span>
-        {item.files.length === 1 ? "1 file changed" : `${item.files.length} files changed`}
-      </span>
-      <span className="diff-add">+{added}</span>
-      <span className="diff-del">-{removed}</span>
-      <Button
-        small
-        tone="quiet"
-        onClick={() => {
-          if (!panelShowing) openPanel("diff");
-        }}
-      >
-        View diff
-      </Button>
+    <div className="diff-card">
+      <div className="diff-summary">
+        <FileDiffIcon size={16} aria-hidden />
+        <button type="button" className="diff-count" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {item.files.length === 1 ? "1 file changed" : `${item.files.length} files changed`}
+        </button>
+        <span className="diff-add">+{added}</span>
+        <span className="diff-del">-{removed}</span>
+        <Button
+          small
+          tone="quiet"
+          onClick={() => {
+            if (!panelShowing) openPanel("diff");
+          }}
+        >
+          View diff
+        </Button>
+      </div>
+      {open ? (
+        <ul className="changed-files" aria-label="Changed files">
+          {item.files.map((file) => (
+            <ChangedFile key={file.path} file={file} />
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

@@ -1,12 +1,14 @@
 import { Check, Copy, WrapText } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { highlight, type Token } from "./codeHighlight";
 
 /** `bare` drops the header, for a command shown above its output. */
 export function CodeBlock({ code, lang, bare = false }: { code: string; lang: string; bare?: boolean }) {
   const [tokens, setTokens] = useState<{ code: string; lines: Token[][] } | null>(null);
-  const [wrap, setWrap] = useState(false);
+  const wrapDefault = useUi((state) => state.wordWrap);
+  const [wrap, setWrap] = useState(wrapDefault);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {

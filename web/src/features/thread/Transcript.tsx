@@ -5,6 +5,7 @@ import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { TimelineRow, TimelineThread } from "./items";
+import { Minimap } from "./Minimap";
 import type { MessageItem, ThreadItem } from "./projection";
 import { arrangeTimeline, runningTools } from "./timeline";
 
@@ -66,6 +67,10 @@ export function Transcript({
     [items, log?.runs, activeRunId],
   );
   const tools = useMemo(() => (active ? runningTools(items) : []), [items, active]);
+  const turnPrompts = useMemo(
+    () => items.flatMap((item) => (item.kind === "message" && item.role === "user" ? [{ key: item.key, text: item.text }] : [])),
+    [items],
+  );
 
   const scroller = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
@@ -157,6 +162,7 @@ export function Transcript({
           {footer}
         </div>
       </div>
+      <Minimap items={turnPrompts} scroller={scroller} />
       {showJump ? (
         <Button small className="jump" icon={<ArrowDown size={16} aria-hidden />} onClick={jump}>
           Jump to latest

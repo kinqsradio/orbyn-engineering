@@ -76,6 +76,17 @@ export const scenes = {
     started(item("sa1", "collabAgentToolCall", { tool: "spawnAgent", status: "inProgress", agentPath: "researcher" })),
     { hold: true },
   ],
+  plan: message("pl", `Here is the plan.
+
+<proposed_plan>
+# Tidy the readme
+
+${Array.from({ length: 30 }, (_, at) => `- Step ${at + 1}`).join("\n")}
+</proposed_plan>`),
+  usage: [
+    { method: "thread/tokenUsage/updated", params: { tokenUsage: { total: { totalTokens: 600 }, last: { totalTokens: 20 }, modelContextWindow: 1000 } } },
+    ...message("us", "Counted."),
+  ],
   failure: [
     ...message("partial", "Starting."),
     { end: "failed", error: { message: "The engine stopped: quota reached" } },

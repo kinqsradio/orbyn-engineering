@@ -50,6 +50,12 @@ interface Prefs {
   timestampFormat: "locale" | "12-hour" | "24-hour";
   sendShortcut: "enter" | "mod-enter-multiline" | "mod-enter";
   followUpBehavior: "queue" | "steer";
+  /** Keeps checkout and branch under the composer after the first send. */
+  persistentComposerContext: boolean;
+  /** Lists skills in the `/` menu as well as under `$`. */
+  skillsInSlashMenu: boolean;
+  /** Saved prompts by thread, newest first. */
+  stashes: Record<string, StashedPrompt[]>;
   threadNotifications: boolean;
   inAppNotifications: boolean;
   confirmUnpin: boolean;
@@ -57,6 +63,12 @@ interface Prefs {
   confirmDelete: boolean;
   /** The last choice, which new threads start from. */
   lastModel: { engine: string; model: string | null; effort: string | null } | null;
+}
+
+export interface StashedPrompt {
+  id: string;
+  text: string;
+  at: string;
 }
 
 /** What each thread remembers of its layout. Drafts share the `draft` key until sent. */
@@ -113,6 +125,9 @@ const defaults: Prefs = {
   timestampFormat: "locale",
   sendShortcut: "enter",
   followUpBehavior: "queue",
+  persistentComposerContext: false,
+  skillsInSlashMenu: false,
+  stashes: {},
   threadNotifications: false,
   inAppNotifications: false,
   confirmUnpin: false,
@@ -134,6 +149,9 @@ interface UiState extends Prefs {
   /** A file the Files surface should open next, with the line to reveal. */
   fileReveal: { path: string; line: number | null; nonce: number } | null;
   revealFile(path: string, line: number | null): void;
+  /** A file the Diff surface should scroll to. */
+  diffReveal: { path: string; nonce: number } | null;
+  revealDiff(path: string): void;
   togglePanel(tab: ContextTab): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
@@ -216,6 +234,9 @@ const prefsOf = (state: Prefs): Prefs => ({
   timestampFormat: state.timestampFormat,
   sendShortcut: state.sendShortcut,
   followUpBehavior: state.followUpBehavior,
+  persistentComposerContext: state.persistentComposerContext,
+  skillsInSlashMenu: state.skillsInSlashMenu,
+  stashes: state.stashes,
   threadNotifications: state.threadNotifications,
   inAppNotifications: state.inAppNotifications,
   confirmUnpin: state.confirmUnpin,
@@ -262,6 +283,16 @@ export const useUi = create<UiState>((set, get) => {
     setTheme(theme) {
       set({ theme });
       savePrefs();
+    },
+    diffReveal: null,
+    revealDiff(path) {
+      const { openSurfaces } = get();
+      set({
+        diffReveal: { path, nonce: Date.now() },
+        panelOpen: true,
+        panelTab: "diff",
+        openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
+      });
     },
     fileReveal: null,
     revealFile(path, line) {

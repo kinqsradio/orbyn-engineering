@@ -98,6 +98,71 @@ test("rich Markdown renders: table, math, diagram, links, image and details", as
   await expect(threadLink).toHaveAttribute("href", "#/threads/THREAD");
 });
 
+test("a proposed plan shows as a card and can be implemented or saved", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:plan]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  const id = threadIdOf(page);
+  await settled(service, id);
+  const card = page.getByRole("region", { name: "Proposed plan" });
+  await expect(card.getByText("Tidy the readme")).toBeVisible();
+  await expect(card.locator(".plan-card-body")).toHaveAttribute("data-clipped", "true");
+  await card.getByRole("button", { name: "Expand plan" }).click();
+  await expect(card.getByText("Step 30")).toBeVisible();
+
+  await card.getByRole("button", { name: "Plan actions" }).click();
+  await page.getByRole("menuitem", { name: "Save to workspace" }).click();
+  const dialog = page.getByRole("dialog", { name: "Save plan to workspace" });
+  await expect(dialog.getByRole("textbox")).toHaveValue("tidy-the-readme.md");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
+
+  await expect(page.getByRole("status").filter({ hasText: "Plan ready" })).toBeVisible();
+  await page.getByRole("button", { name: "Implement plan" }).click();
+  await expect(page.getByText("PLEASE IMPLEMENT THIS PLAN:", { exact: false }).first()).toBeVisible();
+  await settled(service, id);
+});
+
+test("the minimap goes to a prompt and the error banner retries and dismisses", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 500 });
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:plan] first prompt");
+  await expect(page).toHaveURL(/#\/threads\//);
+  const id = threadIdOf(page);
+  await settled(service, id);
+  await send(page, "[scene:failure] second prompt");
+  await expect(page.locator(".thread-error")).toContainText("quota reached", { timeout: 15_000 });
+  await settled(service, id);
+  const map = page.getByRole("navigation", { name: "Prompts in this thread" });
+  await expect(map.getByRole("button")).toHaveCount(2);
+  await map.getByRole("button").first().click();
+  await expect(page.locator(".msg-user").first()).toBeInViewport();
+
+  await page.locator(".thread-error").getByRole("button", { name: "Retry" }).click();
+  await settled(service, id);
+  await expect(page.locator(".msg-user")).toHaveCount(3);
+  await page.locator(".thread-error").getByRole("button", { name: "Dismiss error" }).click();
+  await expect(page.locator(".thread-error")).toBeHidden();
+});
+
+test("changed files list per turn and open the diff; a delegated thread runs on its own", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:timeline]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  const id = threadIdOf(page);
+  await settled(service, id);
+  await page.getByRole("button", { name: "1 file changed" }).click();
+  await page.getByRole("list", { name: "Changed files" }).getByRole("button").click();
+  await expect(page.getByRole("radiogroup", { name: "Diff source" })).toBeVisible();
+
+  const child = await service.api<{ id: string }>("POST", `/api/threads/${id}/delegate`, { prompt: "[scene:usage] help" });
+  await page.goto(`${service.page}#/threads/${child.id}`);
+  await expect(page.getByText("Runs on its own")).toBeVisible();
+  await page.getByRole("button", { name: "Open parent" }).click();
+  await expect(page).toHaveURL(new RegExp(id));
+});
+
 test("a failed turn keeps its error in view and a command with no output says so", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:failure]");

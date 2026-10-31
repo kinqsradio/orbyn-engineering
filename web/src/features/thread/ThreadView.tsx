@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
+import { useCommand } from "../../app/shortcuts";
 import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
@@ -21,7 +22,7 @@ import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
-import { IconButton, LinkButton } from "../../ui/controls";
+import { Button, IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
 import { TerminalDrawerBody } from "../panels/TerminalDrawerBody";
@@ -30,6 +31,9 @@ import { Composer } from "./Composer";
 import { DetailsCard } from "./DetailsCard";
 import { composerSettled, useComposerDock } from "./heroTransition";
 import { runningTools } from "./timeline";
+import { implementPrompt, planTitle, proposedPlanIn } from "./proposedPlan";
+import { SubagentBar } from "./SubagentBar";
+import { ThreadErrorBanner } from "./ThreadBanners";
 import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
 
@@ -163,6 +167,31 @@ function RunStatusLine({ thread }: { thread: Thread }) {
   );
 }
 
+/** Once a turn has proposed a plan, offers to act on it. */
+function PlanBanner({ thread }: { thread: Thread }) {
+  const log = useThreadLogs((store) => store.logs[thread.id]);
+  const addPrompt = useThreadLogs((store) => store.addPrompt);
+  const putThread = useWorkspace((store) => store.putThread);
+  const last = log?.items.at(-1);
+  const plan = last?.kind === "message" && last.role !== "user" && last.done ? proposedPlanIn(last.text) : null;
+  if (!plan || thread.active_run) return null;
+  const implement = async () => {
+    if (thread.lifecycle?.plan_mode) putThread(await api.patchThread(thread.id, { plan_mode: false }));
+    const prompt = implementPrompt(plan);
+    const run = await api.startRun(thread.id, prompt);
+    addPrompt(thread.id, { runId: run.id, text: prompt });
+  };
+  return (
+    <div className="plan-banner" role="status">
+      <strong>Plan ready</strong>
+      <span>{planTitle(plan)}</span>
+      <Button small onClick={() => void implement()}>
+        Implement plan
+      </Button>
+    </div>
+  );
+}
+
 function StreamBanner({ threadId }: { threadId: string }) {
   const status = useThreadLogs((state) => state.streams[threadId]?.status);
   if (status !== "reconnecting") return null;
@@ -210,20 +239,12 @@ export function ThreadView({ id }: { id: string }) {
   const toggleDetailsPref = useUi((state) => state.toggleDetails);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const togglePanel = useUi((state) => state.togglePanel);
+  const chatWidth = useUi((state) => state.chatWidth);
   const layout = useLayoutWidth();
   const wide = isWide(layout);
   const [detailsOverlay, setDetailsOverlay] = useState(false);
   const [finding, setFinding] = useState(false);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setFinding(true);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  useCommand("chat.find", () => setFinding(true));
   const maximized = useUi((state) => state.panelMaximized);
   const setMaximized = useUi((state) => state.setPanelMaximized);
   const [docked, setDocked] = useState(false);
@@ -297,6 +318,7 @@ export function ThreadView({ id }: { id: string }) {
         hidden={swapped}
         aria-label={thread.title}
         data-details={wide && detailsShown ? "reserved" : undefined}
+        data-chat-width={chatWidth}
       >
         <TopBar
           thread={thread}
@@ -324,18 +346,24 @@ export function ThreadView({ id }: { id: string }) {
                 footer={<RunStatusLine thread={thread} />}
             />
           )}
+          <ThreadErrorBanner thread={thread} />
           <div className="composer-lane">
             <div ref={mover} className="composer-group">
               <div className="composer-stack">
                 {hero ? <DraftHero project={project} /> : null}
+                <PlanBanner thread={thread} />
                 <div ref={anchor}>
-                  <Composer
-                    thread={thread}
-                    engine={engine}
-                    beforeSend={beforeSend}
-                    onSendFailed={() => setDocked(false)}
-                    showContext={hero}
-                  />
+                  {thread.lifecycle?.relation === "subagent" ? (
+                    <SubagentBar thread={thread} />
+                  ) : (
+                    <Composer
+                      thread={thread}
+                      engine={engine}
+                      beforeSend={beforeSend}
+                      onSendFailed={() => setDocked(false)}
+                      showContext={hero}
+                    />
+                  )}
                 </div>
               </div>
             </div>
