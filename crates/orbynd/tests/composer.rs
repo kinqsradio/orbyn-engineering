@@ -125,6 +125,14 @@ async fn a_crash_holds_the_queue_across_restart() {
     let data = dir.path().join("data");
     let (mut service, thread) = setup(&dir, Options::default(), "codex").await;
     service.admit(&thread, "[hang]").await;
+    let started = async {
+        while !queue(&service, &thread).await.is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), started)
+        .await
+        .unwrap();
     enqueue(&service, &thread, "kept").await;
     service.kill();
     let reopened = Service::start(&data, Options::default());

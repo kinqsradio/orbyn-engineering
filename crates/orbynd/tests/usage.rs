@@ -144,7 +144,7 @@ async fn a_turn_can_set_the_mode_and_full_access_never_widens_codex_writes() {
     assert_eq!(params["approvalPolicy"], "never");
     assert_eq!(params["sandboxPolicy"]["type"], "workspaceWrite");
     assert_eq!(params["sandboxPolicy"]["networkAccess"], true);
-    let root = dir.path().join("library/repo/project");
+    let root = dir.path().join("library").join("repo").join("project");
     assert_eq!(params["sandboxPolicy"]["writableRoots"], json!([root]));
 }
 

@@ -32,6 +32,9 @@ fn source_repo(path: &Path) -> PathBuf {
     run_git(path, &["init", "-q", "-b", "main"]);
     run_git(path, &["config", "user.email", "t@example.com"]);
     run_git(path, &["config", "user.name", "T"]);
+    // Background maintenance would change `.git` while a test snapshots it.
+    run_git(path, &["config", "gc.auto", "0"]);
+    run_git(path, &["config", "maintenance.auto", "false"]);
     std::fs::write(path.join("a.txt"), "one\n").unwrap();
     commit_all(path, "first");
     crate::util::canonicalize(path).unwrap()
@@ -45,7 +48,7 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
             let kind = entry.file_type().unwrap();
             if kind.is_dir() {
                 walk(&path, into);
-            } else if kind.is_file() {
+            } else if kind.is_file() && path.extension().is_none_or(|e| e != "lock") {
                 into.insert(path.clone(), std::fs::read(&path).unwrap());
             }
         }
@@ -67,6 +70,8 @@ fn slugs_are_plain_and_never_a_worktree_root() {
         "separators cannot survive"
     );
     assert_eq!(name_from_url("git@github.com:a/b.git"), Some("b"));
+    assert_eq!(name_from_url(r"C:\Users\me\source\tool.git\"), Some("tool"));
+    assert_eq!(name_from_url(r"\\?\D:\work\app"), Some("app"));
     assert_eq!(name_from_url("https://x.test/a/b/"), Some("b"));
 }
 
@@ -94,7 +99,7 @@ async fn clone_lands_under_repo_and_a_failed_clone_leaves_nothing() {
         .clone_project(source.to_str().unwrap(), None, None)
         .await
         .unwrap();
-    assert!(project.path.ends_with("repo/upstream"));
+    assert!(Path::new(&project.path).ends_with(Path::new("repo").join("upstream")));
     assert!(Path::new(&project.path).join("a.txt").exists());
 
     let missing = dir.path().join("nowhere");

@@ -1302,7 +1302,10 @@ mod tests {
         assert_eq!(run_settings(&fast), Some(json!({ "fastMode": true })));
         let args = run_args(&fast, Path::new("/m"));
         let at = args.iter().position(|arg| arg == "--settings").unwrap();
-        assert_eq!(args[at + 1], "/run/settings.json");
+        assert_eq!(
+            args[at + 1],
+            Path::new("/run").join("settings.json").as_os_str()
+        );
         fast.options.insert(FAST_MODE.into(), "off".into());
         assert_eq!(run_settings(&fast), Some(json!({ "fastMode": false })));
     }

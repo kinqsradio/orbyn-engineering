@@ -53,10 +53,8 @@ async fn clone_setup_uses_the_configured_url() {
     assert!(body["targets"].as_array().unwrap().is_empty());
     assert_eq!(body["library"]["adopted"], false);
     assert!(
-        body["library"]["path"]
-            .as_str()
-            .unwrap()
-            .ends_with("data/workspace")
+        std::path::Path::new(body["library"]["path"].as_str().unwrap())
+            .ends_with(std::path::Path::new("data").join("workspace"))
     );
     assert_eq!(body["library"]["upstream"], "origin/main");
 }
@@ -112,7 +110,7 @@ async fn codex_thread_discovers_at_the_root_and_turns_write_in_the_checkout() {
     service.admit(&thread, "hi").await;
     assert_eq!(service.finished(&thread).await, "completed");
     let root = dir.path().join("library");
-    let checkout = root.join("repo/project");
+    let checkout = root.join("repo").join("project");
     // The first launch can be the short one that reads the model list.
     let run = launches(&file, "codex");
     assert_eq!(run.last().unwrap()["cwd"], root.to_str().unwrap());
@@ -193,8 +191,7 @@ async fn write_inside_the_checkout_still_asks() {
 fn tree(root: &std::path::Path, into: &mut Vec<(std::path::PathBuf, Vec<u8>)>) {
     for entry in std::fs::read_dir(root).unwrap().flatten() {
         let path = entry.path();
-        let text = path.to_string_lossy();
-        if text.ends_with(".git/objects") || text.ends_with(".git/refs/orbyn") {
+        if path.ends_with(".git/objects") || path.ends_with(".git/refs/orbyn") {
             continue;
         }
         if entry.file_type().unwrap().is_dir() {

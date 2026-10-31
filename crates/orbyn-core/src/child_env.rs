@@ -389,12 +389,13 @@ mod tests {
 
     #[test]
     fn an_appimage_is_removed_only_from_what_it_added() {
+        let data_dirs = std::env::join_paths(["/tmp/.mount/share", "/usr/share"]).unwrap();
         let inherited = vars(&[
             ("APPIMAGE", "/a/app.AppImage"),
             ("APPDIR", "/tmp/.mount"),
             ("ARGV0", "app"),
             ("LD_LIBRARY_PATH", "/tmp/.mount/usr/lib"),
-            ("XDG_DATA_DIRS", "/tmp/.mount/share:/usr/share"),
+            ("XDG_DATA_DIRS", data_dirs.to_str().unwrap()),
         ]);
         let changes = plan(&inherited, false, false);
         let gone = removed(&changes);
