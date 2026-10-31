@@ -720,10 +720,10 @@ are not built in.
 - [ ] P29 Quick launcher: global shortcut opens a small window for new and running threads; manual open when shortcut registration fails | src-tauri/src/overlay.rs | d | L | beyond T3
 - [x] P30 Idle-gated update install: install and restart only with no run active and two idle minutes; modes Automatic, Notify, Off | src/app-updates-policy.ts | d | S | server done: `off` stops installs here; background checks keep their own setting
 - [x] P31 Deterministic tool search path: ordered install folders, version-manager defaults and npm prefix read from config, added once at startup without sourcing a shell | src-tauri/src/providers/launch.rs | d s | M | alternative to P2 | server done: `crates` side; PATH for the desktop shell is the lead's
-- [ ] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M
+- [x] P32 Windows installer settings: per-user install, silent WebView2 bootstrapper, static C runtime, native arm64 build | scripts/release/build.mjs | d | M | per-user NSIS, embedded silent bootstrapper, static C runtime checked in CI on the installed files; arm64 is built, not run
 - [x] P33 Packaged-app startup smoke: install the built package on a disposable hosted runner with isolated profile folders and no secrets, and check it stays alive | scripts/release/ci-startup-smoke.mjs | d c | M | `scripts/smoke-app.mjs`: both platforms, and the UI must connect from the window
-- [ ] P34 Release evidence: per-asset checksums, installer and lockfile SBOMs, coverage report where an empty scan reads "incomplete", actions pinned by commit | docs/releasing.md | c | M
-- [ ] P35 Notarization check: require credentials for Developer ID builds, verify with stapler and spctl, retry stapling | scripts/release/build.mjs | d c | S
+- [x] P34 Release evidence: per-asset checksums, installer and lockfile SBOMs, coverage report where an empty scan reads "incomplete", actions pinned by commit | docs/releasing.md | c | M | `scripts/release-evidence.mjs`: checksums and a lockfile SBOM, and an empty source fails; installers themselves are not scanned
+- [ ] P35 Notarization check: require credentials for Developer ID builds, verify with stapler and spctl, retry stapling | scripts/release/build.mjs | d c | S | `scripts/verify-macos-release.sh` is written and checked for syntax only: no Developer ID build has run it
 
 ## Q. Mobile
 - [ ] Q1 Adaptive workspace: phone tabs, tablet panes, inspector | apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx | m | L

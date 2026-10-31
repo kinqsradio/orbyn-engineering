@@ -685,6 +685,15 @@ and on macOS Accessibility and Screen Recording, read without prompting. Install
 link in `~/.local/bin` on macOS and a `.cmd` under `%LOCALAPPDATA%\Orbyn\bin` on Windows,
 never touches `PATH`, and neither replaces nor removes a file the app didn't put there.
 
+The desktop job installs the built package and starts it with a private profile and no
+secrets: `scripts/smoke-app.mjs` waits for the UI to connect from the window, checks a
+second launch hands over, and sees the service end with the app. `scripts/smoke-package.mjs`
+only proves the service runs. The release job adds notarization checks, a SHA-256 per
+asset and a CycloneDX inventory from the lockfiles, which fails when a source is empty.
+Windows binaries link the C runtime statically, and the installer is per-user with the
+WebView2 bootstrapper embedded and silent. The release workflow publishes nothing: it
+leaves a bundle for a person to promote.
+
 The shell passes no data folder, so `orbynd` and the `orbyn` command agree on it, and it
 sets no `PATH`: `child_env` widens that for every child without sourcing a shell.
 

@@ -118,6 +118,9 @@ jobs:
         working-directory: desktop
       - run: npx tauri build --bundles ${{ matrix.bundles }}
         working-directory: desktop
+      - name: Release script tests
+        shell: bash
+        run: node --test scripts/release-evidence.test.mjs
       - name: Load the packaged service
         shell: bash
         run: node scripts/smoke-package.mjs
