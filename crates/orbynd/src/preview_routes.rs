@@ -8,8 +8,10 @@ use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    NavigatePreview, OpenPreview, PreviewControl, PreviewInput, ResizePreview, StepPreview,
+    ClearPreview, CreateBrowserProfile, NavigatePreview, OpenPreview, OpenPreviewFile, PickPreview,
+    PreviewControl, PreviewInput, PreviewView, ReloadPreview, ResizePreview, StepPreview,
 };
+use orbyn_core::preview::OpenHow;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::api::{ApiJson, ApiResult, AppState, LOCAL_USER};
@@ -29,9 +31,101 @@ pub async fn open(
 ) -> ApiResult<impl IntoResponse> {
     let tab = state
         .core
-        .open_preview(&id, &body.url, (body.width, body.height), LOCAL_USER)
+        .open_preview(
+            &id,
+            &body.url,
+            (body.width, body.height),
+            LOCAL_USER,
+            OpenHow {
+                private: body.private,
+                profile: body.profile,
+            },
+        )
         .await?;
     Ok((StatusCode::CREATED, Json(tab)))
+}
+
+pub async fn open_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<OpenPreviewFile>,
+) -> ApiResult<impl IntoResponse> {
+    let tab = state
+        .core
+        .open_preview_file(&id, &body.path, LOCAL_USER)
+        .await?;
+    Ok((StatusCode::CREATED, Json(tab)))
+}
+
+pub async fn view(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<PreviewView>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.previews.set_view(&id, &tab, &body).await?))
+}
+
+pub async fn reload(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<ReloadPreview>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state.core.previews.reload(&id, &tab, body.hard).await?,
+    ))
+}
+
+pub async fn clear(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<ClearPreview>,
+) -> ApiResult<StatusCode> {
+    state
+        .core
+        .previews
+        .clear(&id, &tab, body.cookies, body.cache)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn pick(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<PickPreview>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state.core.previews.pick(&id, &tab, body.x, body.y).await?,
+    ))
+}
+
+pub async fn profiles(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.browser_profiles()?))
+}
+
+pub async fn create_profile(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<CreateBrowserProfile>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.create_browser_profile(&body.name)?),
+    ))
+}
+
+pub async fn clear_profile(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.clear_browser_profile(&id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_profile(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    state.core.delete_browser_profile(&id)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn navigate(

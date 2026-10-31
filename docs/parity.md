@@ -369,18 +369,18 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 ## H. Browser preview and devices
 - [x] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L
 - [x] H2 Address bar and search engines: six engines plus custom template | packages/contracts/src/settings.ts | w d | S
-- [ ] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M
+- [x] H3 Zoom, viewport, appearance defaults: per-browser preferences | packages/contracts/src/preview.ts | w d | M | zoom and appearance per tab, defaults in `preview_zoom` and `preview_appearance`; the service side ran in a real browser
 - [x] H4 Local server discovery: lists ports from thread processes | apps/web/src/components/preview/useDiscoveredLocalServers.ts | w d m s | M
-- [ ] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M
+- [x] H5 Mini player: floating preview over chat | apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx | w d m | M | `PreviewFloat`, read-only; unit tested, not yet seen in the app
 - [ ] H6 Agent cursor: visual trace of agent input | apps/web/src/components/preview/AgentBrowserCursor.tsx | w d | M
-- [ ] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L
+- [x] H7 Picked element and annotation: page element to composer chip | apps/desktop/src/preview/PickPreload.ts | d | L | crosshair in the panel; the element is quoted into the draft; works in a streamed page, so desktop-only is lifted
 - [ ] H8 Recording: frame rate, key and mouse press overlays | apps/desktop/src/preview/RecordingInput.ts | d s | L | server: changed frames as JPEG files; no overlays or video
 - [ ] H9 Passkeys: bridge for sites in preview | apps/desktop/src/preview/Passkeys.ts | d | L
-- [ ] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M
+- [x] H10 Browser profiles: named profiles, clear profile | packages/contracts/src/browserProfile.ts | w d s | M | named profiles keep their folder and hold one tab at a time, since a browser locks its profile; no Settings page to add one yet, only the API
 - [ ] H11 Browser import: cookies from other browsers, one time | apps/desktop/src/preview/BrowserImport/BrowserImport.ts | d | L
 - [ ] H12 Safari import permission: Full Disk Access guidance | apps/desktop/src/preview/BrowserImport/SafariPermission.ts | d | M
 - [ ] H13 Default browser: macOS links open in T3 | docs/user/default-browser.md | d | M
-- [ ] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
+- [x] H14 Link target: system or in-app | packages/contracts/src/settings.ts | w d | S
 - [x] H15 Remote browser tabs: headless Chrome on host, streamed | docs/user/remote-access.md | w d m s | L, local only
 - [x] H16 Take control: agent/human handover, read-only watch | docs/user/remote-access.md | w d m s | L | server: human hold and read-only watch; agents do not act on a preview tab yet
 - [ ] H17 Remote clipboard, file picker, downloads: bridged to device | docs/user/remote-access.md | w d m | L
@@ -401,15 +401,15 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [ ] H32 Mobile device viewer: stream and control in app, shake detection | apps/mobile/src/features/devices/DevicePreviewRouteScreen.tsx | m | L
 - [ ] H33 SnapShots: window capture to draft with app metadata | apps/desktop/src/snapShot/DesktopSnapShot.ts | d | L
 - [ ] H34 SnapShot setup by platform: accessibility data, GNOME, KDE, Hyprland, Niri, shortcut, sound | apps/desktop/src/snapShot/LinuxSnapShot.ts | d | L
-- [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M
-- [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M
+- [ ] H35 Preview more menu: hard reload, DevTools, separate preview window, move to another panel, device toolbar toggle, light/dark/system appearance, zoom, clear cookies, clear cache | apps/web/src/components/preview/PreviewMoreMenu.tsx | w d | M | hard reload, zoom, appearance, device toolbar, clear cookies and cache done; DevTools, separate window and move to another panel are not
+- [ ] H36 Device toolbar: responsive mode, viewport presets, rotate, drag handles to resize the page | apps/web/src/browser/BrowserDeviceToolbar.tsx | w d | M | presets and rotate done; drag handles are not
 - [x] H37 Preview start page: recent URL cards, discovered local server cards, unreachable page with mapped error messages | apps/web/src/components/preview/PreviewEmptyState.tsx | w d | S
-- [ ] H38 Browser history and favicons: address bar suggestions from visited URLs, remembered tab icons | apps/web/src/browserHistoryStore.ts | w d | S
-- [ ] H39 Webview crash recovery: reloads a crashed page up to 3 times within 30 seconds with growing delay | apps/web/src/browser/webviewCrashRecovery.ts | d | S
-- [ ] H40 Incognito tabs: private tabs reopen only until reload or quit and reopen in a fresh session | docs/user/keybindings.md | w d | S
-- [ ] H41 Open file in preview: workspace files and terminal links open as browser tabs | apps/web/src/browser/openFileInPreview.ts | w d | S
-- [ ] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M
-- [ ] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
+- [ ] H38 Browser history and favicons: address bar suggestions from visited URLs, remembered tab icons | apps/web/src/browserHistoryStore.ts | w d | S | address bar suggestions done; favicons are not, since the UI blocks remote images
+- [x] H39 Webview crash recovery: reloads a crashed page up to 3 times within 30 seconds with growing delay | apps/web/src/browser/webviewCrashRecovery.ts | d | S | three growing tries in 30 seconds; a killed browser came back in a real run
+- [x] H40 Incognito tabs: private tabs reopen only until reload or quit and reopen in a fresh session | docs/user/keybindings.md | w d | S | private tabs stay out of history; every tab without a named profile already ends with the tab
+- [x] H41 Open file in preview: workspace files and terminal links open as browser tabs | apps/web/src/browser/openFileInPreview.ts | w d | S | HTML files from the Files panel, inside the checkout only; terminal links not yet
+- [x] H42 Agent browser access: global switch, per-project override, and device support onboarding flag | packages/contracts/src/settings.ts | w d s | M | `enable_agent_browser_access` now stops agent preview tools, globally or per project; the device flag is stored and unused
+- [x] H43 Auto-show floating preview: setting opens the mini player when an agent opens a page | packages/contracts/src/settings.ts | w d m | S
 - [ ] H44 Mobile browser preview: streamed page, tab menu, thread float; shake toggles device preview controls | apps/mobile/src/features/browser/BrowserTabMenu.tsx | m | M
 - [x] H45 Windows listener list: loopback listeners with process names from a bounded PowerShell query | src-tauri/src/local_servers.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 

@@ -1,4 +1,4 @@
-import { ChevronRight, Download, ExternalLink, File, Folder, Search } from "lucide-react";
+import { AppWindow, ChevronRight, Download, ExternalLink, File, Folder, Search } from "lucide-react";
 import { useState } from "react";
 import { api, request } from "../../api/client";
 import type { FileContent, FileEntry, SearchHit } from "../../api/types";
@@ -121,6 +121,14 @@ function Viewer({ threadId, path, line, onBack }: { threadId: string; path: stri
       pushToast(`Couldn't open it. ${toFailure(failure).message}`);
     }
   };
+  const openInBrowser = async () => {
+    try {
+      await request("POST", `/api/threads/${encodeURIComponent(threadId)}/previews/file`, { path });
+      useUi.getState().showInBrowser("");
+    } catch (failure) {
+      pushToast(`Couldn't open it. ${toFailure(failure).message}`);
+    }
+  };
   return (
     <div className="files-viewer">
       <div className="panel-bar">
@@ -131,6 +139,11 @@ function Viewer({ threadId, path, line, onBack }: { threadId: string; path: stri
         <a className="icon-btn" aria-label="Save file" title="Save file" href={rawUrl(threadId, path, true)} download>
           <Download size={14} aria-hidden />
         </a>
+        {/\.x?html?$/i.test(path) ? (
+          <IconButton label="Open in browser" onClick={() => void openInBrowser()}>
+            <AppWindow size={14} aria-hidden />
+          </IconButton>
+        ) : null}
         <IconButton label="Open in editor" onClick={() => void open()}>
           <ExternalLink size={14} aria-hidden />
         </IconButton>

@@ -1,12 +1,13 @@
-import { ArrowLeft, ArrowRight, Circle, Hand, Plus, RotateCw, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, PictureInPicture2, Plus, RotateCw, Smartphone, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
 import { request } from "../../api/client";
 import { readToken } from "../../api/token";
-import type { LocalServer, PreviewTab } from "../../api/types";
+import type { BrowserProfile, LocalServer, PickedElement, PreviewTab } from "../../api/types";
 import { useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
+import { Menu, type MenuItem } from "../../ui/Menu";
 
 const q = encodeURIComponent;
 const VIEWPORT = { width: 1280, height: 800 };
@@ -36,6 +37,38 @@ const RESIZE_DELAY_MS = 300;
 const RESIZE_SLACK = 8;
 const TAB_POLL_MS = 1000;
 
+const RECENT_LIMIT = 50;
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+/** Sizes a page can take. `null` follows the panel. */
+export const DEVICES: { id: string; label: string; size: { width: number; height: number } | null; phone: boolean }[] = [
+  { id: "fit", label: "Fit panel", size: null, phone: false },
+  { id: "phone", label: "Phone, 393 by 852", size: { width: 393, height: 852 }, phone: true },
+  { id: "large-phone", label: "Large phone, 430 by 932", size: { width: 430, height: 932 }, phone: true },
+  { id: "tablet", label: "Tablet, 820 by 1180", size: { width: 820, height: 1180 }, phone: true },
+  { id: "laptop", label: "Laptop, 1280 by 800", size: { width: 1280, height: 800 }, phone: false },
+  { id: "desktop", label: "Desktop, 1920 by 1080", size: { width: 1920, height: 1080 }, phone: false },
+];
+
+/** The next stop up or down from a zoom, which may sit between stops. */
+export function stepZoom(zoom: number, up: boolean): number {
+  const next = up ? ZOOM_STEPS.find((stop) => stop > zoom) : [...ZOOM_STEPS].reverse().find((stop) => stop < zoom);
+  return next ?? zoom;
+}
+
+/** Newest first, each once. */
+export function addRecent(recent: string[], url: string): string[] {
+  return [url, ...recent.filter((entry) => entry !== url)].slice(0, RECENT_LIMIT);
+}
+
+/** What a picked element adds to the message. It came from the page, so it is quoted. */
+export function pickedText(picked: PickedElement): string {
+  const lines = [`Element \`${picked.selector}\``];
+  if (picked.text) lines.push(`> ${picked.text.replace(/\n+/g, " ")}`);
+  lines.push("```html", picked.html.replaceAll("```", "` ` `"), "```");
+  return lines.join("\n");
+}
+
 /** The page follows the panel, within the sizes the service takes. */
 export function pageSize(width: number, height: number): { width: number; height: number } {
   const fit = (value: number) => Math.min(PAGE_MAX, Math.max(PAGE_MIN, Math.round(value)));
@@ -50,7 +83,20 @@ function frameSocket(threadId: string, tabId: string) {
 }
 
 /** The page's frames, with input forwarded while you hold control. */
-function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
+export function PageView({
+  threadId,
+  tab,
+  fitted: follow = true,
+  picking = false,
+  onPicked,
+}: {
+  threadId: string;
+  tab: PreviewTab;
+  /** False leaves the page at the size it was given. */
+  fitted?: boolean;
+  picking?: boolean;
+  onPicked?(picked: PickedElement): void;
+}) {
   const [frame, setFrame] = useState<string | null>(null);
   const [lost, setLost] = useState(false);
   const stage = useRef<HTMLImageElement>(null);
@@ -93,7 +139,7 @@ function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
   const fitted = useRef({ width: tab.width, height: tab.height });
   useEffect(() => {
     const element = area.current;
-    if (!element) return;
+    if (!element || !follow) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
@@ -112,9 +158,19 @@ function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [threadId, tab.id, pushToast]);
+  }, [threadId, tab.id, pushToast, follow]);
+  const click = (event: MouseEvent) => {
+    if (!picking) {
+      send({ kind: "click", ...point(event) });
+      return;
+    }
+    request<PickedElement>("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/pick`, point(event)).then(
+      (picked) => onPicked?.(picked),
+      (failure: unknown) => pushToast(`Couldn't read that element. ${toFailure(failure).message}`),
+    );
+  };
   return (
-    <div ref={area} className="browser-stage">
+    <div ref={area} className="browser-stage" data-picking={picking || undefined}>
       {frame ? (
         <img
           ref={stage}
@@ -124,19 +180,39 @@ function PageView({ threadId, tab }: { threadId: string; tab: PreviewTab }) {
           tabIndex={0}
           alt={`Page at ${tab.url}`}
           src={`data:image/jpeg;base64,${frame}`}
-          onClick={(event) => send({ kind: "click", ...point(event) })}
+          onClick={click}
           onKeyDown={onKey}
           onWheel={onWheel}
         />
       ) : (
         <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>
       )}
+      {tab.crashed ? (
+        <p className="browser-note" role="alert">
+          This page keeps crashing. Close the tab and open it again.
+        </p>
+      ) : null}
     </div>
   );
 }
 
 /** Reachable servers from this thread's processes, and pages opened before. */
-function StartPage({ threadId, onOpen }: { threadId: string; onOpen(url: string): void }) {
+function StartPage({
+  threadId,
+  onOpen,
+  profile,
+  setProfile,
+  isPrivate,
+}: {
+  threadId: string;
+  onOpen(url: string): void;
+  profile: string;
+  setProfile(id: string): void;
+  isPrivate: boolean;
+}) {
+  const profiles = useAsync("browser-profiles", (signal) =>
+    request<BrowserProfile[]>("GET", "/api/browser-profiles", undefined, signal),
+  );
   const servers = useAsync(`servers:${threadId}`, (signal) =>
     request<LocalServer[]>("GET", `/api/threads/${q(threadId)}/servers`, undefined, signal),
   );
@@ -147,6 +223,20 @@ function StartPage({ threadId, onOpen }: { threadId: string; onOpen(url: string)
     <div className="browser-start">
       <h3>No preview yet</h3>
       <p>Type a URL above, or run a dev script. Browser-ready localhost servers will show up here automatically.</p>
+      {isPrivate ? <p>This tab is private: its pages stay out of your history.</p> : null}
+      {profiles.data && profiles.data.length > 0 ? (
+        <label className="browser-profile">
+          Profile
+          <select aria-label="Profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
+            <option value="">None, ends with the tab</option>
+            {profiles.data.map((entry) => (
+              <option key={entry.id} value={entry.id} disabled={entry.in_use}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       {list.length > 0 ? (
         <ul aria-label="Local servers">
           {list.map((server) => (
@@ -193,6 +283,15 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [isPrivate, setPrivate] = useState(false);
+  const [profile, setProfile] = useState("");
+  /** The device each tab is shown as, while the toolbar is open. */
+  const [devices, setDevices] = useState<Record<string, string>>({});
+  const [toolbar, setToolbar] = useState(false);
+  const recent = useUi((state) => state.recentUrls);
+  const waiting = useUi((state) => state.previewRequest);
   const searchEngine = useUi((state) => state.previewSearchEngine);
   const setPrefs = useUi((state) => state.setPrefs);
   const reload = tabs.reload;
@@ -203,8 +302,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const active = draftTab ? null : (list.find((tab) => tab.id === activeId) ?? list[0] ?? null);
 
   const remember = (url: string) => {
-    const recent = useUi.getState().recentUrls;
-    setPrefs({ recentUrls: [url, ...recent.filter((entry) => entry !== url)].slice(0, 8) });
+    setPrefs({ recentUrls: addRecent(useUi.getState().recentUrls, url) });
   };
   const act = async (work: () => Promise<unknown>) => {
     setError(null);
@@ -221,17 +319,77 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const go = (raw: string) => {
     const url = resolveAddress(raw, searchEngine);
     setAddress(url);
-    remember(url);
+    if (!(active?.private ?? isPrivate)) remember(url);
     void act(async () => {
       if (active) {
         await request("POST", `${base}/${q(active.id)}/navigate`, { url });
       } else {
-        const made = await request<PreviewTab>("POST", base, { url, ...VIEWPORT });
+        const how = { private: isPrivate, ...(profile ? { profile } : {}) };
+        const made = await request<PreviewTab>("POST", base, { url, ...VIEWPORT, ...how });
         setDraftTab(false);
         setActiveId(made.id);
+        setPrivate(false);
       }
     });
   };
+  const view = (change: { zoom?: number; appearance?: string; mobile?: boolean }) => {
+    if (active) void act(() => request("POST", `${base}/${q(active.id)}/view`, change));
+  };
+  const reloadPage = (hard: boolean) => {
+    if (active) void act(() => request("POST", `${base}/${q(active.id)}/reload`, { hard }));
+  };
+  const clear = (what: { cookies?: boolean; cache?: boolean }) => {
+    if (active) void act(() => request("POST", `${base}/${q(active.id)}/clear`, what));
+  };
+  const device = active ? (devices[active.id] ?? "fit") : "fit";
+  const setDevice = (id: string, rotate = false) => {
+    if (!active) return;
+    const chosen = DEVICES.find((entry) => entry.id === id);
+    setDevices((all) => ({ ...all, [active.id]: id }));
+    if (!chosen?.size) {
+      view({ mobile: false });
+      return;
+    }
+    const size = rotate ? { width: active.height, height: active.width } : chosen.size;
+    void act(async () => {
+      await request("POST", `${base}/${q(active.id)}/resize`, size);
+      await request("POST", `${base}/${q(active.id)}/view`, { mobile: chosen.phone });
+    });
+  };
+  const openWaiting = useRef(go);
+  useEffect(() => {
+    openWaiting.current = go;
+  });
+  useEffect(() => {
+    if (waiting === null) return;
+    useUi.getState().showInBrowser(null);
+    // An empty request only brings the panel forward, for a tab already made.
+    if (waiting) openWaiting.current(waiting);
+    else reload();
+  }, [waiting, reload]);
+  const onPicked = (picked: PickedElement) => {
+    const { drafts, setDraft } = useUi.getState();
+    const before = drafts[threadId] ?? "";
+    setDraft(threadId, `${before ? `${before.trimEnd()}\n\n` : ""}${pickedText(picked)}\n`);
+    setPicking(false);
+  };
+  const moreItems = (tab: PreviewTab): MenuItem[] => [
+    { label: "Hard reload", onSelect: () => reloadPage(true) },
+    { label: "Zoom in", disabled: stepZoom(tab.zoom, true) === tab.zoom, onSelect: () => view({ zoom: stepZoom(tab.zoom, true) }) },
+    { label: "Zoom out", disabled: stepZoom(tab.zoom, false) === tab.zoom, onSelect: () => view({ zoom: stepZoom(tab.zoom, false) }) },
+    { label: "Actual size", disabled: tab.zoom === 1, onSelect: () => view({ zoom: 1 }) },
+    {
+      label: "Appearance",
+      separatorBefore: true,
+      children: [
+        { label: "System", selected: tab.appearance === "system", onSelect: () => view({ appearance: "system" }) },
+        { label: "Light", selected: tab.appearance === "light", onSelect: () => view({ appearance: "light" }) },
+        { label: "Dark", selected: tab.appearance === "dark", onSelect: () => view({ appearance: "dark" }) },
+      ],
+    },
+    { label: "Clear cookies", separatorBefore: true, destructive: true, onSelect: () => clear({ cookies: true }) },
+    { label: "Clear cache", destructive: true, onSelect: () => clear({ cache: true }) },
+  ];
   const step = (back: boolean) => {
     if (!active) return;
     void act(() => request("POST", `${base}/${q(active.id)}/history`, { back }));
@@ -264,7 +422,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
                 setActiveId(tab.id);
               }}
             >
-              {tab.url.replace(/^https?:\/\//, "") || "New tab"}
+              {tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"}
             </button>
             <IconButton
               label="Close tab"
@@ -274,8 +432,23 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
             </IconButton>
           </span>
         ))}
-        <IconButton label="New tab" onClick={() => setDraftTab(true)}>
+        <IconButton
+          label="New tab"
+          onClick={() => {
+            setPrivate(false);
+            setDraftTab(true);
+          }}
+        >
           <Plus size={14} aria-hidden />
+        </IconButton>
+        <IconButton
+          label="New private tab"
+          onClick={() => {
+            setPrivate(true);
+            setDraftTab(true);
+          }}
+        >
+          <EyeOff size={14} aria-hidden />
         </IconButton>
       </div>
       <div className="browser-bar">
@@ -291,6 +464,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         <input
           key={shown}
           data-preview-address
+          list="browser-history"
           aria-label="Search or enter URL"
           placeholder="Search or enter URL"
           defaultValue={shown || address}
@@ -298,8 +472,19 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
             if (event.key === "Enter" && event.currentTarget.value.trim()) go(event.currentTarget.value);
           }}
         />
+        <datalist id="browser-history">
+          {recent.map((url) => (
+            <option key={url} value={url} />
+          ))}
+        </datalist>
         {active ? (
           <>
+            <IconButton label="Pick an element" pressed={picking} onClick={() => setPicking(!picking)}>
+              <Crosshair size={14} aria-hidden />
+            </IconButton>
+            <IconButton label="Device toolbar" pressed={toolbar} onClick={() => setToolbar(!toolbar)}>
+              <Smartphone size={14} aria-hidden />
+            </IconButton>
             <IconButton
               label={human ? "Give control back" : "Take control"}
               pressed={human}
@@ -320,22 +505,52 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
             >
               {active.recording ? <Square size={14} aria-hidden /> : <Circle size={14} aria-hidden />}
             </IconButton>
+            <IconButton label="Float over chat" onClick={() => useUi.getState().setPreviewFloat({ threadId, tabId: active.id })}>
+              <PictureInPicture2 size={14} aria-hidden />
+            </IconButton>
+            <IconButton
+              label="More page actions"
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                const box = event.currentTarget.getBoundingClientRect();
+                setMenu({ x: box.right - 180, y: box.bottom + 4 });
+              }}
+            >
+              <MoreHorizontal size={14} aria-hidden />
+            </IconButton>
           </>
         ) : null}
       </div>
+      {menu && active ? <Menu x={menu.x} y={menu.y} label="Page actions" items={moreItems(active)} onClose={() => setMenu(null)} /> : null}
+      {toolbar && active ? (
+        <div className="browser-devices" role="toolbar" aria-label="Device toolbar">
+          <select aria-label="Device" value={device} onChange={(event) => setDevice(event.target.value)}>
+            {DEVICES.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+          <span>
+            {active.width} by {active.height}
+          </span>
+          <IconButton label="Rotate" disabled={device === "fit"} onClick={() => setDevice(device, true)}>
+            <RotateCw size={14} aria-hidden />
+          </IconButton>
+        </div>
+      ) : null}
       {error ? (
         <p className="field-error" role="alert">
           {error}
         </p>
       ) : null}
       {active ? (
-        <PageView threadId={threadId} tab={active} />
+        <PageView threadId={threadId} tab={active} fitted={device === "fit"} picking={picking} onPicked={onPicked} />
       ) : busy ? (
         <p className="browser-note" role="status">
           Connecting...
         </p>
       ) : (
-        <StartPage threadId={threadId} onOpen={go} />
+        <StartPage threadId={threadId} onOpen={go} profile={profile} setProfile={setProfile} isPrivate={isPrivate} />
       )}
     </div>
   );

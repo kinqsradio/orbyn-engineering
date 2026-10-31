@@ -711,6 +711,19 @@ Recording keeps the changed frames as numbered JPEG files in
 `<data>/browser-artifacts`, with no video encoder. Agents do not act on a preview tab
 yet, so taking control only guards against a watcher's stray input.
 
+A tab's zoom, appearance and phone layout are set with `/view`. Zoom keeps the frame the
+same size and lays the page out smaller, 0.25 to 3 times. New tabs start from the
+`preview_zoom` and `preview_appearance` settings. A tab with no named profile ends with its
+profile. A named profile lives in `<data>/browser-profiles`, survives restarts, and holds
+one tab at a time because a browser locks its profile folder. A private tab only stays
+out of the UI's history. `/previews/file` opens a file inside the checkout as `file:`,
+which agents and the address bar cannot reach. Picking an element reads it and changes
+nothing, and what it returns comes from the page, so the UI quotes it into the draft for a
+person to read before sending. A browser that dies is started again on the same profile and
+page, up to three times in 30 seconds after 1, 2 and 4 seconds, and then the tab reports
+`crashed`. This only runs while someone watches. `enable_agent_browser_access`, off
+globally or for a project, refuses every `orbyn_preview_*` tool.
+
 Back and forward step through web pages only, so the blank page a browser starts on
 and anything else not `http` or `https` is passed over, and at either end nothing
 happens. A link clicked in the page changes where a tab is with nobody telling this
@@ -934,6 +947,10 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
 | `POST .../previews/:tab/history`, `/resize` | `StepPreview`; `ResizePreview`, `400` outside 100 to 4096; both to `PreviewTab` |
 | `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
+| `POST .../previews/file` | `OpenPreviewFile` to `PreviewTab`, inside the checkout |
+| `POST .../previews/:tab/view`, `/reload`, `/clear`, `/pick` | `PreviewView`; `ReloadPreview`; `ClearPreview`; `PickPreview` to `PickedElement` |
+| `GET, POST /api/browser-profiles` | `BrowserProfile[]`; `CreateBrowserProfile` |
+| `DELETE /api/browser-profiles/:id`, `POST .../clear` | Remove, or empty, a profile no tab has open |
 | `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
 | `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |
 | `GET /ws/terminal/:thread_id` | Main PTY: binary in/out, JSON text frame `{cols,rows}` resizes |

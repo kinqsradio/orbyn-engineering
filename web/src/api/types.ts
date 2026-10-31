@@ -67,6 +67,8 @@ export type { QueuedMessage } from "../generated/QueuedMessage";
 export type { Run } from "../generated/Run";
 export type { RunState } from "../generated/RunState";
 export type { ServerInfo } from "../generated/ServerInfo";
+export type { BrowserProfile } from "../generated/BrowserProfile";
+export type { PickedElement } from "../generated/PickedElement";
 export type { ShellEvent } from "../generated/ShellEvent";
 export type { ShellStatus } from "../generated/ShellStatus";
 export type { ServerSettings } from "../generated/ServerSettings";

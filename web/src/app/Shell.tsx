@@ -20,6 +20,7 @@ import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from 
 import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
+import { PreviewFloat } from "../features/panels/PreviewFloat";
 import { Toasts } from "../ui/Toasts";
 import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
@@ -477,6 +478,7 @@ export function Shell() {
       </a>
       {showNav ? <Sidebar route={route} /> : null}
       <BackgroundAnnouncer />
+      <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
       <Toasts />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
       {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (
