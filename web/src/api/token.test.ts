@@ -3,10 +3,10 @@ import { captureToken, readToken } from "./token";
 
 describe("captureToken", () => {
   it("moves the token to sessionStorage and clears it from the URL", () => {
-    window.history.replaceState(null, "", "/?token=abc&keep=1#/threads/t");
+    window.history.replaceState(null, "", "/?token=abc&keep=1&service_origin=http%3A%2F%2F127.0.0.1%3A3001#/threads/t");
     captureToken();
     expect(readToken()).toBe("abc");
-    expect(window.location.search).toBe("?keep=1");
+    expect(window.location.search).toBe("?keep=1&service_origin=http%3A%2F%2F127.0.0.1%3A3001");
     expect(window.location.hash).toBe("#/threads/t");
     window.history.replaceState(null, "", "/");
   });

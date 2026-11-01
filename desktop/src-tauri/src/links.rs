@@ -23,6 +23,9 @@ impl ServicePort {
 
 /// True for the shell's loader, the running service and what a page makes itself.
 pub fn stays_inside(url: &Url, port: u16) -> bool {
+    if crate::desktop_origin::is_startup(url) {
+        return true;
+    }
     match url.scheme() {
         "tauri" => url.host_str() == Some("localhost"),
         "about" | "blob" | "data" => true,

@@ -696,7 +696,9 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     } else {
         (None, None)
     };
-    let access = Arc::new(Access::new(&token, args.allowed_hosts.clone(), key_digest));
+    let access = Arc::new(
+        Access::new(&token, args.allowed_hosts.clone(), key_digest).with_desktop(args.parent_stdin),
+    );
     let app = router(AppState {
         core: core.clone(),
         access,
