@@ -74,7 +74,7 @@ test("project settings explain inheritance and reset only their own override", a
     const b = await api<{ id: string }>("POST", "/api/projects/create", { name: "inheritance-b", readme: true });
     await api("POST", `/api/projects/${a.id}/trust`, {});
     await api("PUT", "/api/preferences", { values: { auto_thread_titles: false } });
-    writeFileSync(join(a.path, "orbyn.json"), '{"defaultThreadEnvMode":"worktree","worktreeSubmodules":"skip"}\n');
+    writeFileSync(join(a.path, "orbyn.json"), '{"defaultThreadEnvMode":"worktree","worktreeSubmodules":"none"}\n');
     await api("PUT", "/api/preferences", { values: { auto_pull: true, default_model: "same-model" } });
     await api("PUT", `/api/projects/${a.id}/preferences`, { values: { auto_pull: false, default_model: "same-model" } });
     await api("PUT", `/api/projects/${b.id}/preferences`, { values: { auto_pull: false } });
@@ -93,6 +93,13 @@ test("project settings explain inheritance and reset only their own override", a
     await page.goto(`http://localhost:${port}/?token=${ready.token}#/settings/projects`);
     await page.getByRole("button", { name: "Settings for inheritance-a", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "inheritance-a settings", exact: true });
+    const submodules = dialog.locator(".setting-line").filter({ has: page.getByText("Submodules", { exact: true }) });
+    await expect(submodules.getByRole("combobox")).toHaveValue("none");
+    await submodules.getByRole("combobox").selectOption("top-level");
+    await expect(submodules.getByRole("button", { name: "Reset Submodules to default", exact: true })).toBeEnabled();
+    expect((await api<Pref[]>("GET", `/api/preferences?project_id=${a.id}`)).find((entry) => entry.key === "worktree_submodules")?.value).toBe("top-level");
+    await submodules.getByRole("button", { name: "Reset Submodules to default", exact: true }).click();
+    await expect(submodules.getByRole("combobox")).toHaveValue("none");
     const checkoutRow = dialog.locator(".setting-line").filter({ has: page.getByText("Default checkout", { exact: true }) });
     await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
     await checkoutRow.getByRole("button", { name: /Inherited from orbyn.json.*Show where/ }).click();

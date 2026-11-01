@@ -292,8 +292,8 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
                 title: "Submodules",
                 options: [
                   { value: "recursive", label: "Recursive" },
-                  { value: "top_level", label: "Top level" },
-                  { value: "skip", label: "Skip" },
+                  { value: "top-level", label: "Top level only" },
+                  { value: "none", label: "Skip" },
                 ],
               },
             ],

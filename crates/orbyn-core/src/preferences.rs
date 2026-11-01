@@ -41,7 +41,25 @@ macro_rules! defs {
 
 const BACKGROUND: &[&str] = &["balanced", "saver", "performance"];
 const STREAMING: &[&str] = &["paragraph", "turn"];
-const SUBMODULES: &[&str] = &["recursive", "top_level", "skip"];
+const SUBMODULES: &[&str] = &["recursive", "top-level", "none", "top_level", "skip"];
+
+/// Preserve older stored values without exposing their retired wire spellings.
+pub(crate) fn submodule_mode(value: &str) -> &str {
+    match value {
+        "top_level" => "top-level",
+        "skip" => "none",
+        value => value,
+    }
+}
+
+fn normalized(key: &str, value: Value) -> Value {
+    if key == "worktree_submodules"
+        && let Some(text) = value.as_str()
+    {
+        return json!(submodule_mode(text));
+    }
+    value
+}
 const NAMING: &[&str] = &["static", "semantic", "custom"];
 const ENV_MODE: &[&str] = &["local", "worktree"];
 const MERGE: &[&str] = &["", "merge", "squash", "rebase"];

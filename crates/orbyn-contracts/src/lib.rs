@@ -1694,7 +1694,7 @@ pub struct ProjectFile {
     /// `local` or `worktree`.
     #[serde(default)]
     pub default_thread_env_mode: Option<String>,
-    /// `recursive`, `top_level` or `skip`.
+    /// `recursive`, `top-level` or `none`. Older spellings are normalized on read.
     #[serde(default)]
     pub worktree_submodules: Option<String>,
     #[serde(default)]

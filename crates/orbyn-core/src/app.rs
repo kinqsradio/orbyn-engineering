@@ -485,7 +485,7 @@ mod preference_consumer_tests {
                 .unwrap()
                 .submodules
         };
-        assert_eq!(current(), "skip");
+        assert_eq!(current(), "none");
         core.set_preferences(
             None,
             &[("worktree_submodules".into(), json!("recursive"))].into(),
@@ -497,7 +497,7 @@ mod preference_consumer_tests {
             &[("worktree_submodules".into(), json!("top_level"))].into(),
         )
         .unwrap();
-        assert_eq!(current(), "top_level");
+        assert_eq!(current(), "top-level");
         core.set_preferences(
             Some(&project.id),
             &[("worktree_submodules".into(), serde_json::Value::Null)].into(),
@@ -509,7 +509,7 @@ mod preference_consumer_tests {
             &[("worktree_submodules".into(), serde_json::Value::Null)].into(),
         )
         .unwrap();
-        assert_eq!(current(), "skip");
+        assert_eq!(current(), "none");
         core.shutdown().await;
     }
 }

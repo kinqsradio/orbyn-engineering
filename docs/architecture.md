@@ -437,6 +437,10 @@ submodule behavior resolve Project override → Environment override → the act
 `orbyn.json` (or fallback `t3.json`) → built-in default. Explicit equal-valued
 overrides remain overrides; resetting removes them without changing project files.
 Invalid file settings reject the whole file rather than partially applying it.
+Submodule values are `recursive`, `top-level` and `none`. They initialize nested
+modules, direct modules only, or no modules, respectively. Earlier `top_level` and
+`skip` spellings remain accepted and normalize on read without rewriting stored
+settings or project files; UI edits use the canonical values.
 A new draft waits for the selected checkout's effective mode; explicit checkout
 choices and reused worktrees win, and late responses cannot change another project.
 A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards

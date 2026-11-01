@@ -138,7 +138,7 @@ pub struct WorktreeOptions {
     pub prefix: String,
     pub base: Option<String>,
     pub from_origin: bool,
-    /// `recursive`, `top_level` or `skip`.
+    /// `recursive`, `top-level` or `none`; legacy spellings remain readable.
     pub submodules: String,
     /// An absolute folder for new worktrees, instead of beside the repository.
     pub directory: Option<PathBuf>,
@@ -150,7 +150,7 @@ impl Default for WorktreeOptions {
             prefix: "feat".to_owned(),
             base: None,
             from_origin: false,
-            submodules: "skip".to_owned(),
+            submodules: "none".to_owned(),
             directory: None,
         }
     }
@@ -230,8 +230,8 @@ pub async fn create_worktree(
     )
     .await?;
     let submodules: &[&str] = match options.submodules.as_str() {
-        "skip" => &[],
-        "top_level" => &["submodule", "update", "--init"],
+        "none" | "skip" => &[],
+        "top-level" | "top_level" => &["submodule", "update", "--init"],
         _ => &["submodule", "update", "--init", "--recursive"],
     };
     // A submodule that cannot be fetched leaves the worktree usable.

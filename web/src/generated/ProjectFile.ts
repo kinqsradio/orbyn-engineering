@@ -10,6 +10,6 @@ export type ProjectFile = { icon_path: string | null,
  */
 default_thread_env_mode: string | null, 
 /**
- * `recursive`, `top_level` or `skip`.
+ * `recursive`, `top-level` or `none`. Older spellings are normalized on read.
  */
 worktree_submodules: string | null, scripts: Array<ProjectScript>, };

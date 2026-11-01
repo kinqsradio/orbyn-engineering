@@ -42,7 +42,7 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
     let url = format!("/api/preferences?project_id={project}");
     for (key, value) in [
         ("default_thread_env_mode", "worktree"),
-        ("worktree_submodules", "skip"),
+        ("worktree_submodules", "none"),
     ] {
         let view = row(&service.json(&url).await, key);
         assert_eq!(view["source"], "file");
@@ -63,7 +63,7 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
     assert_eq!(row(&views, "worktree_submodules")["value"], "recursive");
     assert_eq!(
         row(&views, "worktree_submodules")["project_file"]["value"],
-        "skip"
+        "none"
     );
     // Equal-to-default values still have an explicit override and can be reset.
     let views = set(
@@ -98,7 +98,7 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
     )
     .unwrap();
     let views = service.json(&url).await;
-    assert_eq!(row(&views, "worktree_submodules")["value"], "top_level");
+    assert_eq!(row(&views, "worktree_submodules")["value"], "top-level");
     assert_eq!(
         row(&views, "worktree_submodules")["project_file"]["path"],
         "orbyn.json"

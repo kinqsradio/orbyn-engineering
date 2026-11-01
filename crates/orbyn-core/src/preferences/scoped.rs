@@ -10,7 +10,7 @@ use orbyn_contracts::{
 };
 use serde_json::{Value, json};
 
-use super::{DEFINITIONS, Kind, check, definition, setting_key};
+use super::{DEFINITIONS, Kind, check, definition, normalized, setting_key};
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::store::scoped_settings::{ServerSettingField, SettingWrite, SettingsSnapshot};
@@ -112,7 +112,7 @@ pub(super) fn resolved_views(
             };
             Ok(PreferenceView {
                 key: definition.key.into(),
-                value,
+                value: normalized(definition.key, value),
                 default,
                 source: source.into(),
                 project_file,
@@ -338,7 +338,7 @@ fn rows(
                     Ok(ScopedPreferenceOverride {
                         project_id: project.id.clone(),
                         name: project.name.clone(),
-                        value: serde_json::from_str(text)?,
+                        value: normalized(key, serde_json::from_str(text)?),
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;

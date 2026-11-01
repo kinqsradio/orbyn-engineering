@@ -47,8 +47,11 @@ fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
     let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
     let value: Value =
         serde_json::from_str(&text).map_err(|error| format!("This file is not valid: {error}"))?;
-    let file: ProjectFile = serde_json::from_value(snake_keys(value))
+    let mut file: ProjectFile = serde_json::from_value(snake_keys(value))
         .map_err(|error| format!("This file is not valid: {error}"))?;
+    if let Some(mode) = file.worktree_submodules.as_mut() {
+        *mode = crate::preferences::submodule_mode(mode).to_owned();
+    }
     if file
         .default_thread_env_mode
         .as_deref()
@@ -59,9 +62,9 @@ fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
     if file
         .worktree_submodules
         .as_deref()
-        .is_some_and(|mode| !["recursive", "top_level", "skip"].contains(&mode))
+        .is_some_and(|mode| !["recursive", "top-level", "none"].contains(&mode))
     {
-        return Err("worktreeSubmodules must be recursive, top_level or skip.".into());
+        return Err("worktreeSubmodules must be recursive, top-level or none.".into());
     }
     if file.scripts.len() > MAX_SCRIPTS {
         return Err(format!("A project file can hold {MAX_SCRIPTS} scripts."));
@@ -220,7 +223,7 @@ mod tests {
         let view = read_project_file(&dir);
         assert_eq!(view.path.as_deref(), Some("t3.json"));
         let file = view.file.unwrap();
-        assert_eq!(file.worktree_submodules.as_deref(), Some("skip"));
+        assert_eq!(file.worktree_submodules.as_deref(), Some("none"));
         assert!(file.scripts[0].run_on_settle);
         std::fs::write(dir.join("orbyn.json"), "{ nope").unwrap();
         let view = read_project_file(&dir);
