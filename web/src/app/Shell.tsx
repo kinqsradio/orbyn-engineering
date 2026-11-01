@@ -70,16 +70,15 @@ const openThread = (route: Route) => {
   return id ? useWorkspace.getState().threads[id] : undefined;
 };
 
-function jumpRows(route: Route) {
+function jumpRows() {
   const { threads } = useWorkspace.getState();
-  const openId = route.name === "thread" ? route.id : null;
-  return threadsFlat(arrangeThreads(Object.values(threads), Date.now(), openId)).filter(
+  return threadsFlat(arrangeThreads(Object.values(threads), Date.now())).filter(
     (thread) => !thread.lifecycle?.settled_at,
   );
 }
 
 function stepThread(route: Route, step: number): boolean {
-  const rows = jumpRows(route);
+  const rows = jumpRows();
   if (rows.length === 0) return false;
   const at = rows.findIndex((thread) => route.name === "thread" && thread.id === route.id);
   const next = rows[(at + step + rows.length) % rows.length];
@@ -93,7 +92,7 @@ function runShellCommand(command: string, route: Route): boolean {
   const thread = openThread(route);
   const jump = /^thread\.jump\.(\d)$/.exec(command);
   if (jump) {
-    const row = jumpRows(route)[Number(jump[1]) - 1];
+    const row = jumpRows()[Number(jump[1]) - 1];
     if (row) navigate({ name: "thread", id: row.id });
     return row !== undefined;
   }

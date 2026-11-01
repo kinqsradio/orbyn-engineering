@@ -40,7 +40,7 @@ test("a limit stop shows Limited, and Resume at reset can be cancelled", async (
   await expect(banner(page)).toContainText("Resets");
   await banner(page).getByRole("button", { name: "Resume at reset" }).click();
   await expect.poll(async () => (await thread(id)).lifecycle.limit?.resume_at).toBe("2100-01-01T00:00:00Z");
-  await banner(page).getByRole("button", { name: "Cancel resume" }).click();
+  await banner(page).getByRole("button", { name: "Cancel auto-resume" }).click();
   await expect.poll(async () => (await thread(id)).lifecycle.limit?.resume_at).toBeNull();
 });
 
@@ -49,6 +49,9 @@ test("Snooze until reset hides the thread until the allowance returns", async ({
   await banner(page).getByRole("button", { name: "Snooze until reset" }).click();
   await expect.poll(async () => (await thread(id)).lifecycle.snoozed_until).toBe("2100-01-01T00:00:00Z");
   await expect(row(page, id)).toHaveAttribute("data-section", "snoozed");
+  await banner(page).getByRole("button", { name: "Wake now", exact: true }).click();
+  await expect.poll(async () => (await thread(id)).lifecycle.snoozed_until).toBeNull();
+  await expect(banner(page).getByRole("button", { name: "Snooze until reset", exact: true })).toBeVisible();
 });
 
 test("Resume continues the thread and clears the limit", async ({ page }) => {

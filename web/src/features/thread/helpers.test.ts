@@ -55,7 +55,6 @@ describe("groupThreads", () => {
         thread("live", 200, { active_run: { id: "r" } as Thread["active_run"] }),
       ],
       now,
-      null,
     );
     expect(groups.working.map((t) => t.id)).toEqual(["live"]);
     expect(groups.active.map((t) => t.id).sort()).toEqual(["failed", "new"]);
@@ -83,7 +82,6 @@ describe("groupThreads", () => {
         thread("gone", 1, { lifecycle: { ...lifecycle, archived_at: "2026-10-31T11:00:00Z" } }),
       ],
       now,
-      null,
     );
     expect(groups.active.map((t) => t.id)).toEqual(["kept"]);
     expect(groups.settled.map((t) => t.id)).toEqual(["done"]);
