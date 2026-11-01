@@ -15,7 +15,7 @@ use crate::error::{CoreError, Result};
 use crate::git::{git, is_git_repo, linked_worktrees, text};
 use crate::store::{AuditRecord, NewProject};
 use crate::util::{canonicalize, new_id, now};
-use crate::workspace::{guard_library, resolve_project};
+use crate::workspace::{ProjectRoot, guard_library, resolve_project};
 
 const WORKTREE_SUFFIX: &str = "-wt";
 
@@ -104,7 +104,14 @@ impl Core {
         if self.store.list_projects()?.iter().any(|p| p.path == path) {
             return Ok(());
         }
-        self.register_project(&root, "Skills library", false)?;
+        self.register_project(
+            &ProjectRoot {
+                is_git: is_git_repo(&root),
+                path: root,
+            },
+            "Skills library",
+            false,
+        )?;
         Ok(())
     }
 
@@ -166,14 +173,19 @@ impl Core {
         }
         std::fs::rename(staging, path)?;
         let resolved = resolve_project(&self.workspace.root()?, path).await?;
-        self.register_project(&resolved.path, slug, true)
+        self.register_project(&resolved, slug, true)
     }
 
-    fn register_project(&self, path: &Path, name: &str, managed: bool) -> Result<Project> {
+    fn register_project(
+        &self,
+        project: &ProjectRoot,
+        name: &str,
+        managed: bool,
+    ) -> Result<Project> {
         self.store.add_project(NewProject {
-            path: &path.to_string_lossy(),
+            path: &project.path.to_string_lossy(),
             name,
-            is_git: is_git_repo(path),
+            is_git: project.is_git,
             managed,
             scratch: false,
         })
@@ -209,7 +221,7 @@ impl Core {
         );
         let text = resolved.path.to_string_lossy().into_owned();
         self.audit_project("project.add", &text, json!({ "is_git": resolved.is_git }))?;
-        self.register_project(&resolved.path, &name, false)
+        self.register_project(&resolved, &name, false)
     }
 
     fn audit_project(&self, action: &str, target: &str, detail: serde_json::Value) -> Result<()> {
@@ -361,7 +373,7 @@ impl Core {
                 tracing::debug!(%error, "could not make the first commit");
             }
         }
-        self.register_project(&resolved.path, &slug, true)
+        self.register_project(&resolved, &slug, true)
     }
 
     /// Forgets a project and its threads. The folder stays, always, unless Orbyn

@@ -8,6 +8,7 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
+import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 
 const LINE_LIMIT = 2000;
 
@@ -249,18 +250,26 @@ export function DiffPanel({ threadId }: { threadId: string }) {
   const collapsed = useUi((state) => state.diffFilesCollapsed);
   const hideTests = useUi((state) => state.diffHideTests);
   const reveal = useUi((state) => state.diffReveal);
+  const resolved = useResolvedThreadPath(threadId, reveal ? { ...reveal, basis: "repository" } : null);
+  const consume = useUi((state) => state.consumeDiffReveal);
   const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!reveal) return;
+    if (reveal.threadId !== threadId || useWorkspace.getState().threads[threadId]?.cwd !== reveal.cwd) consume(reveal.nonce);
+  }, [reveal, threadId, resolved.key, consume]);
 
   useEffect(() => {
     if (version > 0) reload();
   }, [version, reload]);
 
   useEffect(() => {
-    if (!reveal) return;
-    root.current
-      ?.querySelector(`[data-diff-file="${CSS.escape(reveal.path)}"]`)
-      ?.scrollIntoView({ block: "start" });
-  }, [reveal, diff.data]);
+    const path = resolved.value?.repository_path;
+    if (!path || !reveal || useUi.getState().diffReveal?.nonce !== reveal.nonce
+      || useWorkspace.getState().threads[threadId]?.cwd !== reveal.cwd) return;
+    const target = root.current?.querySelector(`[data-diff-file="${CSS.escape(path)}"]`);
+    if (target) { target.scrollIntoView({ block: "start" }); consume(reveal.nonce); }
+  }, [reveal, resolved.value, diff.data, consume, threadId]);
 
   if (diff.status === "loading") return <Loading label="Loading diff" />;
   if (diff.status === "error" && !diff.data) {

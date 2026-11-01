@@ -1,4 +1,5 @@
 import { PreparationRetryButton } from "./ThreadBanners";
+import { useWorkspace } from "../../state/workspace";
 import { MessageActions } from "./MessageActions";
 import {
   AppWindow,
@@ -256,9 +257,13 @@ function Plan({ item, live }: { item: PlanItem; live: boolean }) {
 
 function ChangedFile({ file }: { file: DiffSummaryItem["files"][number] }) {
   const revealDiff = useUi((state) => state.revealDiff);
+  const threadId = useThreadOfTimeline();
   return (
     <li>
-      <button type="button" onClick={() => revealDiff(file.path)}>
+      <button type="button" onClick={() => {
+        const thread = threadId ? useWorkspace.getState().threads[threadId] : null;
+        if (thread) revealDiff(file.path, { threadId: thread.id, cwd: thread.cwd });
+      }}>
         <span title={file.path}>{file.path}</span>
         {file.additions !== null ? <span className="diff-add">+{file.additions}</span> : null}
         {file.deletions !== null ? <span className="diff-del">-{file.deletions}</span> : null}

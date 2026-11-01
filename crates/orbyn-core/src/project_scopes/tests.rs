@@ -342,7 +342,7 @@ async fn metadata_deadline_stops_and_reaps_its_owned_git_process() {
 }
 
 #[tokio::test]
-async fn registration_records_the_actual_root_and_plain_folders_are_complete() {
+async fn subfolder_registration_retains_the_selected_folder_and_plain_folders_are_complete() {
     let dir = TempDir::new();
     let core = core(&dir).await;
     let root = dir.path().join("repo");
@@ -352,7 +352,9 @@ async fn registration_records_the_actual_root_and_plain_folders_are_complete() {
         .add_project(root.join("nested").to_str().unwrap())
         .await
         .unwrap();
-    assert_eq!(Path::new(&project.path), root);
+    assert_eq!(Path::new(&project.path), root.join("nested"));
+    assert!(project.is_git);
+    assert!(!project.trusted);
     let plain = dir.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
     let plain = core.add_project(plain.to_str().unwrap()).await.unwrap();
@@ -364,7 +366,7 @@ async fn registration_records_the_actual_root_and_plain_folders_are_complete() {
         group(&catalog, &project.id).members[0]
             .repository_relative_path
             .as_deref(),
-        Some("")
+        Some("nested")
     );
     let member = &group(&catalog, &plain.id).members[0];
     assert!(member.metadata_complete && member.repository_key.is_none());

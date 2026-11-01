@@ -56,6 +56,10 @@ const limitStop = (resetsAt) => [
 ];
 
 export const scenes = {
+  "subfolder-links": [
+    ...message("subfolder-links", "Read [repository path](packages/web/kept.txt:2), [local path](kept.txt:1), [other local path](other.txt:1), and [sibling path](../../README.md)."),
+    { method: "turn/diff/updated", params: { diff: "diff --git a/packages/web/kept.txt b/packages/web/kept.txt\n--- a/packages/web/kept.txt\n+++ b/packages/web/kept.txt\n@@ -1 +1 @@\n-child-base\n+child-diff-new\n" } },
+  ],
   "pull-link": message("pull-link", "See [the pull request](https://github.com/o/r/pull/42)."),
   limit: limitStop(4102444800),
   "limit-open": limitStop(undefined),

@@ -194,8 +194,8 @@ async fn check_nested(root: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Resolves a folder to register in place: its real path, then its Git root when
-/// it has one. A folder outside Git stands as it is. Both the path and the Git root
+/// Resolves a folder to register in place, retaining its real selected path.
+/// Both the path and its enclosing Git root
 /// must clear the library, and so must a linked worktree's primary clone. Only Git
 /// metadata is read, so no project code runs.
 pub async fn resolve_project(root: &Path, path: &Path) -> Result<ProjectRoot> {
@@ -230,7 +230,7 @@ pub async fn resolve_project(root: &Path, path: &Path) -> Result<ProjectRoot> {
         check_nested(root, &top).await?;
     }
     Ok(ProjectRoot {
-        path: top,
+        path: real,
         is_git: true,
     })
 }
@@ -980,9 +980,10 @@ mod tests {
             );
         }
 
-        // A folder in a repository resolves to its Git root.
+        // A folder in a repository keeps the selected physical scope.
         let picked = resolve_project(&root, &repo.join("app/src")).await.unwrap();
-        assert_eq!(picked.path, repo.join("app"));
+        assert_eq!(picked.path, repo.join("app/src"));
+        assert!(picked.is_git);
 
         // Any folder outside is fine, in Git or not.
         let plain = dir.path().join("plain");

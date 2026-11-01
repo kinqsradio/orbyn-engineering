@@ -76,6 +76,27 @@ pub fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
+/// Git coordinates belong to this checkout, independently of a selected project
+/// subfolder. Strip only Git's line terminator; spaces can belong to the path.
+pub async fn checkout_root(cwd: &Path) -> Result<PathBuf> {
+    let output = git(cwd, &["rev-parse", "--show-toplevel"]).await?;
+    let path = String::from_utf8_lossy(&output);
+    let path = path.strip_suffix('\n').unwrap_or(&path);
+    crate::util::canonicalize(Path::new(path)).map_err(Into::into)
+}
+
+/// Git lists the primary checkout first, including when invoked from a linked
+/// worktree's subfolder or a repository with a separate Git directory.
+pub async fn primary_checkout(cwd: &Path) -> Result<PathBuf> {
+    let output = git(cwd, &["worktree", "list", "--porcelain", "-z"]).await?;
+    let first = output.split(|byte| *byte == 0).next().unwrap_or_default();
+    let first = String::from_utf8_lossy(first);
+    let path = first
+        .strip_prefix("worktree ")
+        .ok_or_else(|| CoreError::Git("The primary checkout is unavailable.".into()))?;
+    crate::util::canonicalize(Path::new(path)).map_err(Into::into)
+}
+
 pub fn valid_purpose(purpose: &str) -> bool {
     !purpose.is_empty()
         && purpose.len() <= 64
@@ -166,7 +187,7 @@ pub async fn create_worktree(
             "Use lowercase letters, digits and hyphens for the worktree name.".into(),
         ));
     }
-    let path = worktree_path(repo, purpose)?;
+    let path = worktree_path(&primary_checkout(repo).await?, purpose)?;
     let path_text = path.to_string_lossy().into_owned();
     let head = text(&git(repo, &["rev-parse", "HEAD"]).await?);
     for registered in linked_worktrees(repo).await? {
@@ -300,7 +321,15 @@ pub async fn snapshot(cwd: &Path, reference: Option<&str>, index: &Path) -> Resu
     if let Some(head) = &head {
         with_index(vec!["read-tree".into(), text(head)]).await?;
     }
-    with_index(vec!["add".into(), "-A".into()]).await?;
+    // A selected ignored directory can still contain tracked files. Preserve
+    // those without forcing ignored additions into its checkpoint.
+    let ignored = git_raw(cwd, &["check-ignore", "--no-index", "-q", "."]).await?;
+    let stage = match ignored.status.code() {
+        Some(0) => "-u",
+        Some(1) => "-A",
+        _ => return Err(CoreError::Git(text(&ignored.stderr))),
+    };
+    with_index(vec!["add".into(), stage.into(), "--".into(), ".".into()]).await?;
     let tree = with_index(vec!["write-tree".into()]).await?;
     let mut commit = vec![
         "commit-tree".to_owned(),
@@ -373,6 +402,7 @@ pub async fn recent_commits(cwd: &Path, limit: u32) -> Result<Vec<CommitInfo>> {
 /// Makes the working files match `target`, leaving HEAD, the index and ignored
 /// files alone. `current` is a snapshot of the files as they are now.
 pub async fn restore_worktree(cwd: &Path, current: &str, target: &str) -> Result<()> {
+    let root = checkout_root(cwd).await?;
     let added = git(
         cwd,
         &[
@@ -383,6 +413,8 @@ pub async fn restore_worktree(cwd: &Path, current: &str, target: &str) -> Result
             "--diff-filter=A",
             target,
             current,
+            "--",
+            ".",
         ],
     )
     .await?;
@@ -390,8 +422,19 @@ pub async fn restore_worktree(cwd: &Path, current: &str, target: &str) -> Result
         .split(|byte| *byte == 0)
         .filter(|path| !path.is_empty())
     {
-        let path = cwd.join(String::from_utf8_lossy(path).as_ref());
+        let path = root.join(String::from_utf8_lossy(path).as_ref());
         std::fs::remove_file(path)?;
+    }
+    // A selected subtree can be absent from the target tree entirely. Its
+    // added files are already removed above; there is no restore path to match.
+    if git(
+        cwd,
+        &["ls-tree", "-r", "--name-only", "-z", target, "--", "."],
+    )
+    .await?
+    .is_empty()
+    {
+        return Ok(());
     }
     let mut command = Command::new("git");
     command
@@ -424,6 +467,8 @@ pub async fn restore_worktree(cwd: &Path, current: &str, target: &str) -> Result
 
 /// Changes against `base` (or HEAD), including untracked files.
 pub async fn diff(cwd: &Path, base: Option<&str>) -> Result<Vec<FileDiff>> {
+    let root = checkout_root(cwd).await?;
+    let cwd = root.as_path();
     let base = base.unwrap_or("HEAD");
     let mut files = tracked_diff(cwd, &[base]).await?;
     let listing = git(cwd, &["ls-files", "--others", "--exclude-standard", "-z"]).await?;
@@ -435,6 +480,8 @@ pub async fn diff(cwd: &Path, base: Option<&str>) -> Result<Vec<FileDiff>> {
 }
 
 async fn tracked_diff(cwd: &Path, range: &[&str]) -> Result<Vec<FileDiff>> {
+    let root = checkout_root(cwd).await?;
+    let cwd = root.as_path();
     let mut statuses_args = vec![
         "diff",
         "--no-ext-diff",
@@ -452,7 +499,8 @@ async fn tracked_diff(cwd: &Path, range: &[&str]) -> Result<Vec<FileDiff>> {
     for (status, path) in parse_name_status(&statuses) {
         let mut patch_args = vec!["diff", "--no-ext-diff", "--no-textconv"];
         patch_args.extend(range);
-        patch_args.extend(["--", &path]);
+        let literal = format!(":(top,literal){path}");
+        patch_args.extend(["--", &literal]);
         let patch = git(cwd, &patch_args).await?;
         let (additions, deletions) = counts.get(&path).copied().unwrap_or((0, 0));
         files.push(FileDiff {
@@ -638,6 +686,141 @@ mod tests {
         git(&repo, &["add", "."]).await.unwrap();
         git(&repo, &["commit", "-q", "-m", "first"]).await.unwrap();
         repo
+    }
+
+    #[tokio::test]
+    async fn subfolder_worktrees_stay_beside_the_primary_clone() {
+        let dir = TempDir::new();
+        let repo = repo(dir.path()).await;
+        let child = repo.join("packages/web");
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join("kept.txt"), "one\n").unwrap();
+        git(&repo, &["add", "."]).await.unwrap();
+        git(&repo, &["commit", "-qm", "nested"]).await.unwrap();
+        let first = create_worktree(&child, "first", &WorktreeOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            Path::new(&first.path),
+            worktree_path(&repo, "first").unwrap()
+        );
+        let second = create_worktree(
+            &Path::new(&first.path).join("packages/web"),
+            "second",
+            &WorktreeOptions::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            Path::new(&second.path),
+            worktree_path(&repo, "second").unwrap()
+        );
+        assert!(!repo.join("packages/web-wt").exists());
+    }
+
+    #[tokio::test]
+    async fn subfolder_diffs_use_repository_paths_but_checkpoints_restore_only_the_selected_tree() {
+        let dir = TempDir::new();
+        let repo = repo(dir.path()).await;
+        let child = repo.join("packages/web");
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join("kept.txt"), "one\n").unwrap();
+        git(&repo, &["add", "."]).await.unwrap();
+        git(&repo, &["commit", "-qm", "nested"]).await.unwrap();
+        let before = snapshot(&child, None, &dir.path().join("before-index"))
+            .await
+            .unwrap();
+        std::fs::write(child.join("kept.txt"), "inside-two\n").unwrap();
+        std::fs::write(child.join("new.txt"), "inside-new\n").unwrap();
+        std::fs::write(repo.join("a.txt"), "outside-two\n").unwrap();
+        std::fs::write(repo.join("outside.txt"), "outside-new\n").unwrap();
+        let files = diff(&child, None).await.unwrap();
+        for (path, marker) in [
+            ("packages/web/kept.txt", "inside-two"),
+            ("packages/web/new.txt", "inside-new"),
+            ("a.txt", "outside-two"),
+            ("outside.txt", "outside-new"),
+        ] {
+            let file = files
+                .iter()
+                .find(|file| file.path == path)
+                .unwrap_or_else(|| panic!("missing {path}: {files:?}"));
+            assert!(
+                file.patch.contains(marker),
+                "empty or misaddressed patch for {path}"
+            );
+        }
+        let after = snapshot(&child, None, &dir.path().join("after-index"))
+            .await
+            .unwrap();
+        let changes = diff_between(&child, &before, &after).await.unwrap();
+        assert_eq!(changes.len(), 2);
+        assert!(
+            changes
+                .iter()
+                .all(|file| file.path.starts_with("packages/web/"))
+        );
+        restore_worktree(&child, &after, &before).await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(child.join("kept.txt")).unwrap(),
+            "one\n"
+        );
+        assert!(!child.join("new.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(repo.join("a.txt")).unwrap(),
+            "outside-two\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.join("outside.txt")).unwrap(),
+            "outside-new\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn restoring_an_empty_subfolder_checkpoint_keeps_the_selected_folder() {
+        let dir = TempDir::new();
+        let repo = repo(dir.path()).await;
+        let child = repo.join("empty");
+        std::fs::create_dir_all(&child).unwrap();
+        let before = snapshot(&child, None, &dir.path().join("before-index"))
+            .await
+            .unwrap();
+        std::fs::write(child.join("added.txt"), "new child file\n").unwrap();
+        let after = snapshot(&child, None, &dir.path().join("after-index"))
+            .await
+            .unwrap();
+        let index = git(&repo, &["ls-files", "--stage", "-z"]).await.unwrap();
+        restore_worktree(&child, &after, &before).await.unwrap();
+        assert!(child.is_dir());
+        assert!(!child.join("added.txt").exists());
+        assert_eq!(
+            git(&repo, &["ls-files", "--stage", "-z"]).await.unwrap(),
+            index
+        );
+        assert!(repo.join("a.txt").is_file());
+    }
+
+    #[tokio::test]
+    async fn subfolder_ignored_scope_checkpoints_keep_tracked_files() {
+        let dir = TempDir::new();
+        let repo = repo(dir.path()).await;
+        let child = repo.join("ignored");
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join("tracked.txt"), "before\n").unwrap();
+        git(&repo, &["add", "."]).await.unwrap();
+        git(&repo, &["commit", "-qm", "tracked child"])
+            .await
+            .unwrap();
+        std::fs::write(repo.join(".gitignore"), "ignored/\n").unwrap();
+        std::fs::write(child.join("tracked.txt"), "after\n").unwrap();
+        std::fs::write(child.join("ignored.txt"), "not captured\n").unwrap();
+        let captured = snapshot(&child, None, &dir.path().join("ignored-index"))
+            .await
+            .unwrap();
+        let files = diff_between(&child, "HEAD", &captured).await.unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "ignored/tracked.txt");
+        assert!(files[0].patch.contains("after"));
     }
 
     #[tokio::test]

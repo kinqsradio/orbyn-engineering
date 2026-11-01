@@ -16,9 +16,10 @@ use orbyn_contracts::{
     DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
     GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull,
     MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject,
-    ReorderThreads, RestoreChanges, RestoreWorkspace, RetryPreparation, RewindThread, ServerInfo,
-    ServerSettings, SetPreferences, SkillProfile, StartRun, SteerResult, SteerRun, SubmitReview,
-    SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
+    ReorderThreads, ResolveThreadPath, RestoreChanges, RestoreWorkspace, RetryPreparation,
+    RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerResult,
+    SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask,
+    WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -525,6 +526,14 @@ pub async fn file_tree(
     Query(query): Query<PathQuery>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.list_files(&id, &query.path).await?))
+}
+
+pub async fn resolve_thread_path(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<ResolveThreadPath>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.resolve_thread_path(&id, &body).await?))
 }
 
 pub async fn ignored_files(

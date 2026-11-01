@@ -13,6 +13,19 @@ async fn first_launch_works_with_no_setup_and_no_network() {
     assert_eq!(status["configured"], true);
     assert_eq!(status["library"]["snapshot"], true);
     assert_eq!(status["library"]["adopted"], false);
+    let projects = service.json("/api/projects").await;
+    let snapshot = projects
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|project| project["path"] == status["library"]["path"])
+        .unwrap();
+    assert_eq!(
+        snapshot["is_git"],
+        std::path::Path::new(status["library"]["path"].as_str().unwrap())
+            .join(".git")
+            .exists()
+    );
     assert!(
         status["default_url"]
             .as_str()

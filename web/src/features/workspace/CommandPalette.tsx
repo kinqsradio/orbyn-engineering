@@ -174,7 +174,9 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       return;
     }
     if (typeof entry.route === "object" && "file" in entry.route) {
-      useUi.getState().revealFile(entry.route.file, entry.route.line);
+      const route = parseRoute(window.location.hash);
+      const thread = route.name === "thread" ? useWorkspace.getState().threads[route.id] : null;
+      if (thread) useUi.getState().revealFile(entry.route.file, entry.route.line, { threadId: thread.id, cwd: thread.cwd });
       onClose();
       return;
     }

@@ -1,6 +1,8 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { ResolveThreadPath } from "../generated/ResolveThreadPath";
+import type { ResolvedThreadPath } from "../generated/ResolvedThreadPath";
 import type {
   BranchInfo,
   GitAction,
@@ -267,6 +269,8 @@ export const api = {
   forceStop: (threadId: string) => request<unknown>("POST", `/api/threads/${q(threadId)}/force-stop`, {}),
   diff: (threadId: string, signal?: AbortSignal, scope?: string) =>
     request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff${scope ? `?scope=${scope}` : ""}`, undefined, signal),
+  resolveThreadPath: (threadId: string, body: ResolveThreadPath, signal?: AbortSignal) =>
+    request<ResolvedThreadPath>("POST", `/api/threads/${q(threadId)}/paths/resolve`, body, signal),
   checkpoints: (threadId: string, signal?: AbortSignal) =>
     request<Checkpoint[]>("GET", `/api/threads/${q(threadId)}/checkpoints`, undefined, signal),
   runChanges: (threadId: string, runId: string, signal?: AbortSignal) =>

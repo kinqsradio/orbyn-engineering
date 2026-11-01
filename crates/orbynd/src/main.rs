@@ -224,6 +224,10 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/usage", get(api::thread_usage))
         .route("/api/threads/{id}/files", get(api::file_tree))
         .route("/api/threads/{id}/files/ignored", get(api::ignored_files))
+        .route(
+            "/api/threads/{id}/paths/resolve",
+            post(api::resolve_thread_path),
+        )
         .route("/api/threads/{id}/files/search", get(api::search_files))
         .route(
             "/api/threads/{id}/files/content",

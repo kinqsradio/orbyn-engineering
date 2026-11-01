@@ -133,14 +133,18 @@ async fn adding_registers_in_place_untrusted_and_touches_nothing() {
     let project = core.add_project(picked.to_str().unwrap()).await.unwrap();
     assert_eq!(
         PathBuf::from(&project.path),
-        source,
-        "the Git root is the project"
+        picked,
+        "the selected physical folder is the project"
     );
     assert!(!project.trusted);
     assert!(!project.managed);
     assert_eq!(snapshot(&source), before);
-    let repeat = core.add_project(source.to_str().unwrap()).await;
+    let repeat = core.add_project(picked.to_str().unwrap()).await;
     assert!(matches!(repeat, Err(CoreError::ProjectExists(_))));
+    let parent = core.add_project(source.to_str().unwrap()).await.unwrap();
+    assert_ne!(parent.id, project.id);
+    assert_eq!(PathBuf::from(parent.path), source);
+    assert!(!parent.trusted);
     let plain = dir.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
     assert!(

@@ -528,15 +528,39 @@ include directives and URL rewrites remain explicitly unobserved, without openin
 include files. Global/system configuration is excluded. They share the library reader guard until their children finish.
 
 The harness library is excluded from selectable targets and recipe overrides; missing
-workspace state fails instead of broadening scope. The catalog reports actual registered paths and repository-relative paths. Current
-registration normalizes Git subfolders to the Git root, so their relative path is
-empty; this read does not invent subfolder projects. A missing checkout remains
+workspace state fails instead of broadening scope. Registration retains the canonical
+selected physical folder, including a repository subfolder, as its identity and local
+cwd/configuration root. Duplicate Add requests are rejected for that exact folder;
+CLI activation reuses an exact registration. Trust is independent of a registered
+parent or sibling. Git identity and repository-relative
+paths are separate catalog observations. Existing root registrations keep their
+identity; registering a child does not rewrite them. A missing checkout remains
 unavailable. Failed or unobserved metadata is explicit and prevents resolving a logical
 repository group whose membership may be incomplete; completed physical fallbacks do
 not. An explicit checkout target is shown with that checkout’s project name. Its parent
 logical group is not marked selected in the picker; switching to the group requires
 choosing it explicitly. Unknown or stale selections never widen to All projects. An absent selection or
 explicit All projects means environment defaults, not a project-override fan-out.
+
+New worktrees use the primary clone’s fixed sibling `<repo>-wt/<purpose>` root,
+including requests from a selected child or another linked worktree. A local thread
+uses its selected folder; a worktree thread uses the whole new worktree root for
+files, configuration, scripts and engine cwd. Git status and review diffs use the
+whole repository and repository-relative paths. Checkpoint capture and restore stay
+within the selected subtree, including tracked files in an ignored selected folder;
+restoring a child leaves sibling changes and untracked files untouched.
+
+`POST /api/threads/:id/paths/resolve` maps a reference with an explicit thread or
+repository coordinate basis and expected cwd into optional checkout and repository
+paths. It returns no file content. Thread links prefer an existing safe file after
+stripping the longest repeated workspace suffix, then try the literal thread path.
+Only existing safe files inside cwd receive a checkout path; missing tracked files
+and sibling Git patches may retain repository coordinates for diff navigation.
+Ordinary file reads/writes and engine scope remain bounded to thread cwd. File and
+diff reveal intents are transient, capture thread/cwd before resolution, and consume
+only their own nonce. Route/cwd changes and newer navigation invalidate stale
+responses, including when an older request completes last.
+
 `POST /api/settings/preferences/query` resolves environment, logical-project or
 physical-checkout rows from one SQLite read snapshot. Effective values that differ
 are Mixed; equal explicit overrides keep their source and remain resettable. All

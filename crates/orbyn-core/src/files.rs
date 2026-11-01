@@ -9,7 +9,8 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 
 use orbyn_contracts::{
-    EditorInfo, FileContent, FileEntry, OpenInEditor, SearchHit, Thread, WriteFile,
+    EditorInfo, FileContent, FileEntry, OpenInEditor, ResolveThreadPath, ResolvedThreadPath,
+    SearchHit, Thread, ThreadPathBasis, WriteFile,
 };
 use serde_json::json;
 
@@ -310,7 +311,129 @@ fn revision_of(bytes: &[u8]) -> String {
     sha256_hex(bytes)
 }
 
+/// A model can repeat the selected workspace suffix in a relative link. Prefer
+/// the longest matching suffix, but only when its stripped target is a real file.
+fn repeated_workspace_path(cwd: &Path, path: &Path) -> Option<PathBuf> {
+    let cwd: Vec<_> = cwd
+        .components()
+        .filter_map(|part| match part {
+            Component::Normal(name) => Some(name),
+            _ => None,
+        })
+        .collect();
+    let parts: Vec<_> = path.components().collect();
+    if !parts
+        .iter()
+        .all(|part| matches!(part, Component::Normal(_)))
+    {
+        return None;
+    }
+    for count in (1..=cwd.len().min(parts.len().saturating_sub(1))).rev() {
+        let matches = cwd[cwd.len() - count..]
+            .iter()
+            .zip(&parts[..count])
+            .all(|(left, right)| {
+                let right = right.as_os_str();
+                if cfg!(windows) {
+                    left.to_string_lossy().to_lowercase() == right.to_string_lossy().to_lowercase()
+                } else {
+                    *left == right
+                }
+            });
+        if matches {
+            return Some(parts[count..].iter().collect());
+        }
+    }
+    None
+}
+
+fn navigation_file(scope: &WriteScope, target: &Path) -> Option<String> {
+    let cwd = crate::util::canonicalize(&scope.checkout).ok()?;
+    let target = crate::approvals::resolve_existing(target)?;
+    let relative = target.strip_prefix(cwd).ok()?;
+    let path = relative.to_string_lossy().replace('\\', "/");
+    let full = inside(scope, &path).ok()?;
+    std::fs::symlink_metadata(full)
+        .ok()?
+        .is_file()
+        .then_some(path)
+}
+
 impl Core {
+    /// Resolve navigation coordinates without granting a new filesystem root.
+    pub async fn resolve_thread_path(
+        &self,
+        id: &str,
+        request: &ResolveThreadPath,
+    ) -> Result<ResolvedThreadPath> {
+        let (thread, scope) = self.file_scope(id)?;
+        if thread.cwd != request.cwd {
+            return Err(CoreError::StaleOwner);
+        }
+        if request.path.len() > 4096 || request.path.is_empty() {
+            return Err(CoreError::Invalid(
+                "That path is outside this checkout.".into(),
+            ));
+        }
+        let project = self.store.project(&thread.project_id)?;
+        let repository = match crate::git::checkout_root(&scope.checkout).await {
+            Ok(root) => Some(root),
+            Err(error) if project.is_git => return Err(error),
+            Err(_) => None,
+        };
+        let input = Path::new(&request.path);
+        let target = if input.is_absolute() {
+            input.to_path_buf()
+        } else {
+            match request.basis {
+                ThreadPathBasis::Repository => repository
+                    .as_ref()
+                    .ok_or_else(|| CoreError::Git("This folder is not a Git checkout.".into()))?
+                    .join(input),
+                ThreadPathBasis::Thread => {
+                    let stripped = repeated_workspace_path(&scope.checkout, input)
+                        .map(|path| scope.checkout.join(path));
+                    stripped
+                        .filter(|path| navigation_file(&scope, path).is_some())
+                        .unwrap_or_else(|| scope.checkout.join(input))
+                }
+            }
+        };
+        let target = crate::approvals::resolve_existing(&target);
+        let excluded = target.as_ref().is_none_or(|path| {
+            names_git(path)
+                || scope.excluded.iter().any(|excluded| {
+                    crate::util::canonicalize(excluded)
+                        .is_ok_and(|excluded| path.starts_with(excluded))
+                })
+        });
+        let checkout_path = if excluded {
+            None
+        } else {
+            target
+                .as_ref()
+                .and_then(|target| navigation_file(&scope, target))
+        };
+        let repository_path = if excluded {
+            None
+        } else {
+            repository
+                .as_ref()
+                .zip(target.as_ref())
+                .and_then(|(root, path)| path.strip_prefix(root).ok())
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+        };
+        if self.store.thread(id)?.cwd != request.cwd {
+            return Err(CoreError::StaleOwner);
+        }
+        Ok(ResolvedThreadPath {
+            cwd: thread.cwd,
+            checkout_path,
+            repository_path,
+        })
+    }
+
     /// A thread's checkout, gated on trust like any other work in the folder.
     pub(crate) fn file_scope(&self, thread_id: &str) -> Result<(Thread, WriteScope)> {
         let thread = self.store.thread(thread_id)?;
