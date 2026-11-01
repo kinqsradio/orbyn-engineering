@@ -288,6 +288,18 @@ parity review even though its proposed popover is excluded.
   No native model selection or composer turn was attempted. A new real-service
   browser regression checks visible xterm text on initial action attach and tab
   return; it passes against the frozen Core, so the native failure is not yet reduced.
+- Shortcut ownership correction `21bbdd3` makes xterm reservation agree with live
+  dispatch eligibility: plain input, false `when` conditions, inactive routes and
+  dialogs keep their keys; an eligible pending catalog can own its shortcut. Four
+  regressions failed before and pass after; three real-service shortcut cases pass.
+  The later combined action/editor/preview/setup/defaults/rendering run passed all
+  19 cases against the schema 19 preparation candidate. Web check, 281 unit tests
+  and production build also pass. Preparation is still uncommitted: review found
+  that Retry must preserve its original provider/model after a later selection
+  change, and that ownership seam is being resolved before final qualification.
+  A separate terminal relay EOF investigation is in progress; neither this run nor
+  earlier main CI qualifies its pending changes. A collaboration wait call was
+  aborted before dispatch; it was not retried through another wait mechanism.
 
 ### Verified in this pickup
 
@@ -387,6 +399,13 @@ not commit it. Move it to a real secret store before any release.
    the remaining custom-form bindings, repository-subfolder registration and
    project actions; K1/K2/K5/K9 remain partial. The direct-coordinate sidebar audit
    passed; no product defect was established by earlier AX-target observations.
+   Keep custom forms faithful to their actual targets: the pinned T3 telemetry
+   form requires one environment; its storage worktree rules support project and
+   checkout scope separately from environment cleanup; custom models belong to
+   provider-instance configuration. Do not fan out a whole global preference
+   object merely because these forms share the scope selector. Reference owners
+   are `TelemetryExportSettings.tsx`, `StorageSettings.tsx` and
+   `ProviderInstanceCard.tsx` under T3's settings components.
    I33 ACP sessions
    and M3 remain next backend slices.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
