@@ -9,6 +9,7 @@ interface Listed {
   model: string | null;
   cwd: string;
   worktree: { path: string; branch: string } | null;
+  active_run: { state: string } | null;
   lifecycle: { settled_at: string | null };
 }
 
@@ -152,18 +153,25 @@ test("files dropped on a row wait in that thread's composer", async ({ page }) =
   await expect(page.getByRole("button", { name: "Remove dropped.txt" })).toBeVisible();
 });
 
-test("the open thread stays where it was until you leave it", async ({ page }) => {
-  const held = await newThread("Hold me");
-  const other = await newThread("Other row");
-  await page.goto(`${service.page}#/threads/${held.id}`);
-  await expect(row(page, "Hold me")).toHaveAttribute("data-section", "active");
-  await service.api("PATCH", `/api/threads/${held.id}`, { settled: true });
-  // Long enough for the page's next poll to carry the settle.
-  await page.waitForTimeout(5_000);
-  await expect(row(page, "Hold me")).toHaveAttribute("data-section", "active");
-  await page.locator(`li[data-thread-item="${other.id}"] a`).click();
-  await page.getByRole("button", { name: "Settled" }).click();
-  await expect(row(page, "Hold me")).toHaveAttribute("data-section", "settled");
+test("the open thread follows its lifecycle without leaving its route", async ({ page }) => {
+  const selected = await newThread("Selected lifecycle");
+  const route = `#/threads/${selected.id}`;
+  const item = page.locator(`li[data-thread-item="${selected.id}"]`);
+  const current = () => service.api<Listed>("GET", `/api/threads/${selected.id}`);
+  await page.goto(`${service.page}${route}`);
+  await expect(item).toHaveAttribute("data-section", "active");
+  await service.api("POST", `/api/threads/${selected.id}/runs`, { prompt: "[hang]" });
+  await expect.poll(async () => (await current()).active_run?.state).toBe("running");
+  await expect(item).toHaveAttribute("data-section", "working");
+  await expect(page).toHaveURL((url) => url.hash === route);
+  await service.api("POST", `/api/threads/${selected.id}/force-stop`, {});
+  await expect.poll(async () => (await current()).active_run).toBeNull();
+  await expect(item).toHaveAttribute("data-section", "active");
+  await expect(page).toHaveURL((url) => url.hash === route);
+  await service.api("PATCH", `/api/threads/${selected.id}`, { settled: true });
+  await expect.poll(async () => (await current()).lifecycle.settled_at).toEqual(expect.any(String));
+  await expect(item).toHaveAttribute("data-section", "settled");
+  await expect(page).toHaveURL((url) => url.hash === route);
 });
 
 test("the project folder menu and pen button start a thread", async ({ page }) => {

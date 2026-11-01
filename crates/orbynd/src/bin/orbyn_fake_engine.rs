@@ -82,6 +82,17 @@ fn record_pid() {
     }
 }
 
+fn record_claude_control(frame: &Value) {
+    if let Ok(path) = std::env::var("ORBYN_FAKE_CLAUDE_CONTROL_FILE") {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        writeln!(file, "{frame}").unwrap();
+    }
+}
+
 fn send(value: &Value) {
     let mut out = std::io::stdout().lock();
     writeln!(out, "{value}").expect("stdout");
@@ -170,6 +181,8 @@ fn claude(args: &[String]) {
         return;
     };
     if first["type"] == "control_request" {
+        assert_eq!(first["request"]["subtype"], "initialize");
+        record_claude_control(&first);
         if std::env::var_os("ORBYN_FAKE_NO_INITIALIZE").is_some() {
             return;
         }
@@ -192,6 +205,55 @@ fn claude(args: &[String]) {
         }}));
         let Some(next) = lines.next() else { return };
         first = next;
+        record_claude_control(&first);
+        if first["type"] == "control_request" && first["request"]["subtype"] == "get_usage" {
+            assert!(args.iter().any(|arg| arg == "--no-session-persistence"));
+            assert!(args.iter().any(|arg| arg == "--strict-mcp-config"));
+            let mcp: Value =
+                serde_json::from_slice(&std::fs::read(flag("--mcp-config").unwrap()).unwrap())
+                    .unwrap();
+            let settings: Value =
+                serde_json::from_slice(&std::fs::read(flag("--settings").unwrap()).unwrap())
+                    .unwrap();
+            assert_eq!(mcp, json!({ "mcpServers": {} }));
+            assert_eq!(settings, json!({ "disableAllHooks": true }));
+            assert_eq!(
+                std::env::var("ENABLE_CLAUDEAI_MCP_SERVERS").unwrap(),
+                "false"
+            );
+            assert_eq!(std::env::var("CLAUDE_CODE_AUTO_CONNECT_IDE").unwrap(), "0");
+            let mode = std::env::var("ORBYN_FAKE_CLAUDE_USAGE").unwrap_or_default();
+            if mode == "silent" {
+                // EOF is the probe's cleanup path; this is not a model turn.
+                for _ in lines {}
+                return;
+            }
+            if mode == "error" {
+                send(&json!({ "type": "control_response", "response": {
+                    "subtype": "error", "request_id": first["request_id"], "error": "SECRET-MARKER failure",
+                }}));
+                return;
+            }
+            let response = if mode == "malformed" {
+                json!({ "account": "SECRET-MARKER" })
+            } else if mode == "unavailable" || mode.is_empty() {
+                json!({ "rate_limits_available": false, "rate_limits": null })
+            } else {
+                json!({ "rate_limits_available": true, "subscription_type": "pro",
+                    "account": { "token": "SECRET-MARKER" }, "session": { "private": "SECRET-MARKER" },
+                    "rate_limits": {
+                        "five_hour": { "utilization": 54.0, "resets_at": "2027-01-15T08:00:00Z" },
+                        "seven_day": { "utilization": 18.4, "resets_at": null },
+                        "model_scoped": [{ "display_name": "Fable", "utilization": 73.0, "resets_at": null }],
+                        "extra_usage": { "is_enabled": true, "monthly_limit": 100.0, "used_credits": 25.0 }
+                    }
+                })
+            };
+            send(&json!({ "type": "control_response", "response": {
+                "subtype": "success", "request_id": first["request_id"], "response": response,
+            }}));
+            return;
+        }
     }
     let prompt = first
         .pointer("/message/content")

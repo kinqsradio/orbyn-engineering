@@ -3,6 +3,7 @@ import { request } from "../../api/client";
 import type { Question, QuestionRequest } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button } from "../../ui/controls";
+import { Markdown } from "./Markdown";
 
 const POLL_MS = 1500;
 
@@ -29,8 +30,8 @@ function QuestionRow({
 }) {
   return (
     <fieldset className="question">
-      <legend>{question.header || question.question}</legend>
-      {question.header ? <p>{question.question}</p> : null}
+      <legend className={question.header ? undefined : "sr-only"}>{question.header || question.question}</legend>
+      <Markdown text={question.question} />
       <div className="question-options">
         {question.options.map((option) => {
           const on = picked.includes(option.label);
@@ -119,8 +120,14 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
           question={question}
           picked={picked[question.id] ?? []}
           other={others[question.id] ?? ""}
-          onPick={(labels) => setPicked({ ...picked, [question.id]: labels })}
-          onOther={(text) => setOthers({ ...others, [question.id]: text })}
+          onPick={(labels) => {
+            setPicked((current) => ({ ...current, [question.id]: labels }));
+            setOthers((current) => ({ ...current, [question.id]: "" }));
+          }}
+          onOther={(text) => {
+            setOthers((current) => ({ ...current, [question.id]: text }));
+            if (text.trim()) setPicked((current) => ({ ...current, [question.id]: [] }));
+          }}
         />
       ))}
       {error ? (

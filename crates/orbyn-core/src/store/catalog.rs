@@ -236,32 +236,35 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    /// `None` drops the project's own value.
-    pub fn set_project_preference(
+    /// Prepared preference changes commit together; `None` removes an override.
+    /// Global keys include their settings namespace; project keys are catalog names.
+    pub(crate) fn set_preference_values(
         &self,
-        project_id: &str,
-        key: &str,
-        value: Option<&str>,
+        project_id: Option<&str>,
+        values: &[(String, Option<String>)],
     ) -> Result<()> {
         self.commit(|tx, _| {
-            match value {
-                Some(value) => tx.execute(
-                    "INSERT INTO project_preferences (project_id, key, value) VALUES (?1, ?2, ?3)
-                     ON CONFLICT (project_id, key) DO UPDATE SET value = excluded.value",
-                    rusqlite::params![project_id, key, value],
-                )?,
-                None => tx.execute(
-                    "DELETE FROM project_preferences WHERE project_id = ?1 AND key = ?2",
-                    rusqlite::params![project_id, key],
-                )?,
-            };
-            Ok(())
-        })
-    }
-
-    pub fn clear_setting(&self, key: &str) -> Result<()> {
-        self.commit(|tx, _| {
-            tx.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+            for (key, value) in values {
+                match (project_id, value.as_deref()) {
+                    (Some(project), Some(value)) => tx.execute(
+                        "INSERT INTO project_preferences (project_id, key, value) VALUES (?1, ?2, ?3)
+                         ON CONFLICT (project_id, key) DO UPDATE SET value = excluded.value",
+                        params![project, key, value],
+                    )?,
+                    (Some(project), None) => tx.execute(
+                        "DELETE FROM project_preferences WHERE project_id = ?1 AND key = ?2",
+                        params![project, key],
+                    )?,
+                    (None, Some(value)) => tx.execute(
+                        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                        params![key, value],
+                    )?,
+                    (None, None) => {
+                        tx.execute("DELETE FROM settings WHERE key = ?1", [key])?
+                    }
+                };
+            }
             Ok(())
         })
     }

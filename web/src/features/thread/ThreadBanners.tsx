@@ -25,6 +25,8 @@ export function LimitBanner({ thread }: { thread: Thread }) {
   const failed = (error: unknown) => pushToast(`Couldn't do that. ${toFailure(error).message}`);
   const patch = (body: UpdateThread) => api.patchThread(thread.id, body).then(putThread, failed);
   const future = limit.resets_at !== null && new Date(limit.resets_at).getTime() > Date.now();
+  const snoozedUntilReset = future && thread.lifecycle?.snoozed_until != null &&
+    Date.parse(thread.lifecycle.snoozed_until) === Date.parse(limit.resets_at ?? "");
   return (
     <div className="thread-error" role="status" aria-label="Limited">
       <Gauge size={14} aria-hidden />
@@ -44,17 +46,17 @@ export function LimitBanner({ thread }: { thread: Thread }) {
       </Button>
       {future ? (
         <Button small tone="quiet" onClick={() => void patch({ resume_at_reset: limit.resume_at === null })}>
-          {limit.resume_at ? "Cancel resume" : "Resume at reset"}
+          {limit.resume_at ? "Cancel auto-resume" : "Resume at reset"}
         </Button>
       ) : null}
-      {future && limit.resets_at !== thread.lifecycle?.snoozed_until ? (
+      {future ? (
         <Button
           small
           tone="quiet"
           icon={<Clock size={12} aria-hidden />}
-          onClick={() => void patch({ snoozed_until: limit.resets_at ?? undefined })}
+          onClick={() => void patch(snoozedUntilReset ? { wake: true } : { snoozed_until: limit.resets_at ?? undefined })}
         >
-          Snooze until reset
+          {snoozedUntilReset ? "Wake now" : "Snooze until reset"}
         </Button>
       ) : null}
     </div>

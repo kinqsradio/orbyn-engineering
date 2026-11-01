@@ -479,15 +479,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     return projectFilter.length === 0 ? all : all.filter((thread) => projectFilter.includes(thread.project_id));
   }, [threads, projectFilter]);
 
-  const hold = useRef<{ id: string; section: SidebarSection | null } | null>(null);
-  if (hold.current?.id !== selectedThread || (hold.current && hold.current.section === null)) {
-    const open = selectedThread ? threads[selectedThread] : undefined;
-    hold.current =
-      selectedThread === null
-        ? null
-        : { id: selectedThread, section: open ? sectionOf(open, Date.now(), selectedThread) : null };
-  }
-  const sections = arrangeThreads(scoped, Date.now(), selectedThread, hold.current?.section ?? null, workingSection);
+  const sections = arrangeThreads(scoped, Date.now(), workingSection);
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
   const orderedRef = useRef<Thread[]>([]);
   orderedRef.current = threadsFlat(sections);
@@ -902,7 +894,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           ) : (
             <ul className="thread-list" role="list" aria-label="Thread search results">
               {results.map((thread, at) =>
-                row(thread, sectionOf(thread, Date.now(), selectedThread) ?? "active", false, at === highlight),
+                row(thread, sectionOf(thread, Date.now()) ?? "active", false, at === highlight),
               )}
             </ul>
           )

@@ -251,6 +251,14 @@ limits appear only where an engine reports them itself, as Codex does through
 `account/rateLimits/read`, cached for five minutes; `?force=true` reads again and
 spends no model usage. `/api/limits` also gives one number per window length across
 engines, the highest used percentage, since that engine stops first.
+Windows with an unknown duration remain separate, because an absent duration does
+not establish that they share a budget.
+Claude uses its unmodified CLI's promptless `initialize` then `get_usage` control
+requests in the same isolated probe as model discovery. Initialization and usage have
+separate bounded deadlines, and the child is stopped and reaped before its temporary
+folder is removed. Only reported subscription windows and the named plan leave the
+driver; account, session and behavior blocks are discarded. An unavailable, unsupported
+or unusable report stays unknown. No credential file or SDK is needed by Orbyn.
 
 ## Checkpoints
 

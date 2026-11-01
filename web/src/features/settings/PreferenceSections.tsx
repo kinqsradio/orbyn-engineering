@@ -151,7 +151,6 @@ export function GeneralSection() {
             title: "Providers",
             rows: [
               { key: "enable_provider_update_checks", title: "Check providers for updates" },
-              { key: "prefer_saved_login", title: "Prefer saved login" },
             ],
           },
           {
@@ -284,8 +283,8 @@ export function ChatSection() {
                   { value: "never", label: "Never" },
                 ],
               },
-              { key: "snooze_limited_threads", title: "Snooze threads that hit a limit" },
-              { key: "auto_resume_limited_threads", title: "Resume at reset" },
+              { key: "snooze_limited_threads", title: "Snooze until limits reset" },
+              { key: "auto_resume_limited_threads", title: "Resume after usage limits" },
             ],
           },
         ]}

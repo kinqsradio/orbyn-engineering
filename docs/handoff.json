@@ -18,10 +18,10 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "f74e4054a95234eff6e7998886ee1cef78b1a4b6",
+    "revision": "800293b8c638be63dbf04b9666ead24173e546fa",
     "diff_sha256": null
   },
-  "owner": "Next engineering agent",
+  "owner": "Orbyn Engineering",
   "owned_files": [
     "crates/",
     "web/",
@@ -33,41 +33,83 @@
   "status": "in_progress",
   "completed": [
     {
-      "result": "365 of 573 in-scope parity rows done",
+      "result": "Explicit row scope and counting helper prepared; checklist ticks are separate from runtime verification",
       "evidence": [
-        "docs/parity.md"
+        "docs/parity.md",
+        "scripts/count-parity.py",
+        "scripts/test_count_parity.py"
       ]
     },
     {
-      "result": "Automatic skills library with no setup step",
+      "result": "Initial main CI runs for #64, #66, #67 and #57 passed",
       "evidence": [
-        "PR #56",
-        "PR #57"
+        "GitHub Actions runs 41255124680, 41255128267, 41255131886, 41255273202"
       ]
     },
     {
-      "result": "E2E stabilized and required on main",
+      "result": "PRs #68, #58, #61, #62 and #63 merged after required checks passed",
       "evidence": [
-        "PR #59",
-        "branch protection on main"
+        "main history through 93dd502",
+        "docs/handoff.md: Initial PR queue"
       ]
     },
     {
-      "result": "Real Codex turn through the UI read a project file",
+      "result": "Packaged automatic first launch and one real Codex core turn passed on frozen 2786f94",
       "evidence": [
-        "docs/handoff.md: Verified"
+        "docs/handoff.md: Verified in this pickup",
+        "target/builder-2-packaged-2786f94/first-launch.json",
+        "target/builder-2-packaged-2786f94/live-codex-first-launch.json"
+      ]
+    },
+    {
+      "result": "Library reader/replacement coordination repair merged after all required PR checks passed",
+      "evidence": [
+        "PR70 headf3cc52b; CI41260222681 all six required jobs passed; merged58d2bed"
+      ]
+    },
+    {
+      "result": "PR71 settings provenance, PR72 removal of unsupported controls and PR74 question Markdown merged after all required PR checks passed",
+      "evidence": [
+        "Main2bbfff6,51a95eb,800293b; source counts remain declarations, with K2/C40 partial"
       ]
     }
   ],
   "verification": [
     {
-      "check": "CI on main for #64, #66, #67 and #57",
+      "check": "Initial main CI for #64, #66, #67, #57 and #68",
       "required": true,
-      "state": "unverified",
-      "evidence": []
+      "state": "passed",
+      "evidence": [
+        "GitHub Actions runs 41255124680, 41255128267, 41255131886, 41255273202, 41256683039"
+      ]
     },
     {
-      "check": "Packaged first launch with automatic provisioning",
+      "check": "Packaged first launch with automatic provisioning on 2786f94",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "target/builder-2-packaged-2786f94/first-launch.json"
+      ]
+    },
+    {
+      "check": "One real Codex packaged-core turn on 2786f94",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "target/builder-2-packaged-2786f94/live-codex-first-launch.json"
+      ]
+    },
+    {
+      "check": "PR60 currentheaddde3260 and final integrated mainCI",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "Currentheaddde3260 integrates main58d2bed;65 localrealservice tests andClippy passed; currentheadCI pending",
+        "Older348b88b run41257920148 WindowsRust stillrunning atlastobservation"
+      ]
+    },
+    {
+      "check": "Final integrated package full walkthrough and native composer",
       "required": true,
       "state": "unverified",
       "evidence": []
@@ -85,20 +127,44 @@
       "evidence": []
     },
     {
-      "check": "Installed-app smoke on macOS",
+      "check": "Integrated main58d2bed after workspace repair",
       "required": true,
       "state": "passed",
       "evidence": [
-        "CI desktop jobs"
+        "GitHub Actions41261277808 all six required jobs passed"
+      ]
+    },
+    {
+      "check": "Integrated main51a95eb Windows app startup",
+      "required": true,
+      "state": "failed",
+      "evidence": [
+        "GitHub Actions41262630943: Windows installed app never started service before90s; no root cause proven"
+      ]
+    },
+    {
+      "check": "Integrated main800293b",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "GitHub Actions41263153043 running; both desktop jobs passed including package/native smoke"
+      ]
+    },
+    {
+      "check": "Packaged native smoke on frozen main2bbfff6",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "target/builder-2-packaged-2bbfff6/artifact.json"
       ]
     }
   ],
   "decisions": [],
-  "next_action": "Confirm the four in-progress main CI runs are green, then follow Next actions in docs/handoff.md.",
+  "next_action": "Diagnose Windows startup, verify main800293b CI41263153043, fix PR76 stale E2E expectation, and qualify current PR heads; continue the full in-scope backlog.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "kinqsradio/orbyn-engineering main at f74e405"
+      "main800293b; PR70/71/72/74 merged green; PR60/69/73/75/76/77/78 open at last observation"
     ]
   }
 }

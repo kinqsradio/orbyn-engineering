@@ -4,16 +4,21 @@ import type { ReactNode } from "react";
 export function SettingRow({
   title,
   description,
+  actions,
   children,
 }: {
   title: string;
   description?: string;
+  actions?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div className="setting-line">
       <div className="setting-line-text">
-        <span className="setting-line-title">{title}</span>
+        <div className="setting-line-heading">
+          <span className="setting-line-title">{title}</span>
+          {actions}
+        </div>
         {description ? <span className="setting-line-desc">{description}</span> : null}
       </div>
       {children ? <div className="setting-line-control">{children}</div> : null}

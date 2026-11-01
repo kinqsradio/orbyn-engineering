@@ -38,5 +38,6 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
+rusqlite.workspace = true
 tokio-tungstenite.workspace = true
 windows-sys.workspace = true

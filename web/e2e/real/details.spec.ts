@@ -99,20 +99,18 @@ test("a watched thread goes to the Working shelf, unless that is off", async ({ 
   await expect(row(page, id)).toHaveAttribute("data-section", "active");
 });
 
-test("Edit in a new thread starts before the message and leaves this one alone", async ({ page }) => {
+test("user messages keep same-thread editing and assistant responses keep forks", async ({ page }) => {
   const id = await fresh(page, "[scene:usage] first");
   await settled(service, id);
-  await send(page, "[scene:usage] second");
-  await settled(service, id);
-  await expect(page.locator(".msg-user")).toHaveCount(2);
   await page.locator(".msg-user").last().hover();
-  await page.getByRole("button", { name: "Edit in a new thread" }).last().click();
-  await expect(page).not.toHaveURL(new RegExp(id));
-  await expect(box(page)).toHaveValue("[scene:usage] second");
+  await expect(page.getByRole("button", { name: "Edit in a new thread" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit from here" }).last()).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Fork from this response" }).last()).toBeEnabled();
+  await page.getByRole("button", { name: "Edit from here" }).last().click();
+  await expect(page.getByRole("dialog", { name: "Edit from here?" })).toBeVisible();
+  await page.getByRole("dialog", { name: "Edit from here?" }).getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(id));
   await expect(page.locator(".msg-user")).toHaveCount(1);
-  const thread = await service.api<{ cwd: string }>("GET", `/api/threads/${threadIdOf(page)}`);
-  expect(thread.cwd).toBe((await service.api<{ cwd: string }>("GET", `/api/threads/${id}`)).cwd);
-  await box(page).fill("");
 });
 
 test("a pull request link opens in the panel, and its menu offers the host", async ({ page }) => {
