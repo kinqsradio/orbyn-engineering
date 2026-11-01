@@ -2,6 +2,6 @@
 
 export type LimitWindow = { 
 /**
- * `primary` or `secondary`.
+ * The engine's window ID; Codex uses `primary` and `secondary`.
  */
 id: string, label: string, used_percent: number, window_minutes: bigint | null, resets_at: string | null, };

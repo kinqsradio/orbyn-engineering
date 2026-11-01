@@ -5,6 +5,150 @@ mod support;
 use serde_json::{Value, json};
 use support::{Options, TempDir, setup, text_of};
 
+#[tokio::test]
+async fn claude_subscription_windows_use_control_ipc_without_a_prompt_or_account_data() {
+    let dir = TempDir::new();
+    let controls = dir.path().join("controls");
+    let launches = dir.path().join("launches");
+    let service = support::Service::start(
+        &dir.path().join("data"),
+        Options {
+            env: vec![
+                ("ORBYN_FAKE_CLAUDE_USAGE".into(), "available".into()),
+                (
+                    "ORBYN_FAKE_CLAUDE_CONTROL_FILE".into(),
+                    controls.to_string_lossy().into_owned(),
+                ),
+                (
+                    "ORBYN_FAKE_LAUNCH_FILE".into(),
+                    launches.to_string_lossy().into_owned(),
+                ),
+            ],
+            ..Options::default()
+        },
+    );
+    let response = service
+        .get("/api/engines/claude/limits")
+        .send()
+        .await
+        .unwrap();
+    let code = response.status();
+    let limits: Value = response.json().await.unwrap();
+    assert_eq!(code, 200, "{limits}");
+    assert_eq!(limits["plan"], "pro");
+    assert_eq!(limits["windows"][0]["label"], "Session");
+    assert_eq!(limits["windows"][0]["used_percent"], 54.0);
+    assert_eq!(limits["windows"][0]["window_minutes"], 300);
+    assert_eq!(limits["windows"][0]["resets_at"], "2027-01-15T08:00:00Z");
+    assert_eq!(limits["windows"][1]["label"], "Weekly");
+    assert!(limits["windows"][1]["resets_at"].is_null());
+    assert_eq!(limits["windows"][2]["label"], "Weekly · Fable");
+    assert_eq!(limits["windows"][3]["label"], "Monthly spend");
+    assert_eq!(limits["windows"][3]["used_percent"], 25.0);
+    assert!(!limits.to_string().contains("SECRET-MARKER"));
+    assert!(!limits.to_string().contains("account"));
+    assert!(!limits.to_string().contains("session"));
+    let frames = std::fs::read_to_string(&controls).unwrap();
+    let frames: Vec<Value> = frames
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(frames.len(), 2);
+    assert!(
+        frames
+            .iter()
+            .all(|frame| frame["type"] == "control_request")
+    );
+    assert_eq!(frames[0]["request"], json!({ "subtype": "initialize" }));
+    assert_eq!(frames[1]["request"], json!({ "subtype": "get_usage" }));
+    let log = std::fs::read_to_string(&launches).unwrap();
+    let probe: Value = log
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|entry| entry["mode"] == "claude-probe")
+        .unwrap();
+    let cwd = std::path::Path::new(probe["cwd"].as_str().unwrap());
+    assert!(
+        !cwd.exists(),
+        "the probe is reaped and its isolated cwd removed"
+    );
+    assert_ne!(cwd, dir.path());
+    let cached = service.json("/api/engines/claude/limits").await;
+    assert_eq!(cached, limits);
+    assert_eq!(
+        std::fs::read_to_string(&controls).unwrap().lines().count(),
+        2
+    );
+    let forced = service.json("/api/engines/claude/limits?force=true").await;
+    assert!(!forced.to_string().contains("SECRET-MARKER"));
+    assert_eq!(
+        std::fs::read_to_string(&controls).unwrap().lines().count(),
+        4
+    );
+    let overview = service.json("/api/limits").await;
+    let weekly = overview["pooled"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|window| window["window_minutes"] == 10080)
+        .unwrap();
+    assert_eq!(weekly["used_percent"], 73.0);
+    assert_eq!(
+        weekly["engines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|engine| **engine == "claude")
+            .count(),
+        1
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn claude_limits_stay_unknown_for_unavailable_errors_malformed_and_timed_out_replies() {
+    for (mode, expected) in [
+        ("error", 502),
+        ("unavailable", 422),
+        ("malformed", 502),
+        ("silent", 502),
+    ] {
+        let dir = TempDir::new();
+        let service = support::Service::start(
+            &dir.path().join("data"),
+            Options {
+                env: vec![("ORBYN_FAKE_CLAUDE_USAGE".into(), mode.into())],
+                ..Options::default()
+            },
+        );
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            service.get("/api/engines/claude/limits").send(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(response.status(), expected, "{mode}");
+        let body: Value = response.json().await.unwrap();
+        assert!(
+            !body.to_string().contains("SECRET-MARKER"),
+            "{mode}: {body}"
+        );
+        assert!(body.get("windows").is_none(), "{mode}: {body}");
+        if mode == "error" {
+            let overview = service.json("/api/limits").await;
+            let unavailable = overview["unavailable"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["engine"] == "claude")
+                .expect("an untyped error must remain visible as unavailable");
+            assert!(!unavailable.to_string().contains("SECRET-MARKER"));
+        }
+        service.stop().await;
+    }
+}
+
 fn write(path: std::path::PathBuf, text: &str) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, text).unwrap();

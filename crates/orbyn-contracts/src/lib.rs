@@ -1263,7 +1263,7 @@ pub struct EngineLimits {
 
 wire! {
 pub struct LimitWindow {
-    /// `primary` or `secondary`.
+    /// The engine's window ID; Codex uses `primary` and `secondary`.
     pub id: String,
     pub label: String,
     pub used_percent: f64,
