@@ -949,8 +949,11 @@ launchd, Task Scheduler or systemd, with no administrator rights. Each change is
 one file and some commands, and `--dry-run` shows it and does nothing. Installing again
 repairs it, uninstalling leaves all data, and neither reads a credential. What the manager
 starts is `orbyn service run`, which adds `service.env` from the data folder to `orbynd`'s
-environment: one `NAME=value` a line, taken literally, and a bad line stops the start
-with its number. That file is the person's and stays out of Orbyn's rules and store. It
+environment. It accepts dotenv assignments, optional `export`, quoted multiline values
+and comments without shell evaluation or variable expansion. Malformed assignments stop
+startup with a line number. The launcher keeps its inherited `PATH` and chosen
+`ORBYN_DATA_DIR`, including case variants on Windows. A missing file is ignored; other
+read failures stop startup. That file is the person's and stays out of Orbyn's rules and store. It
 shares the data folder's single lock, so a desktop app on the same folder cannot start
 while the service runs.
 

@@ -580,3 +580,195 @@ async fn browser_setup_leaves_the_supported_host_and_running_service_alone() {
     drop(service.child.stdin.take());
     service.stop().await;
 }
+
+#[tokio::test]
+async fn service_run_transfers_literal_environment_to_the_real_core() {
+    use orbyn_core::process::ManagedChild;
+    use std::{path::Path, process::Stdio, time::Duration};
+    use tokio::io::AsyncBufReadExt;
+    let dir = TempDir::new();
+    let home = dir.path().join("home");
+    let library = dir.path().join("library");
+    let bundle = dir.path().join("bundle with spaces # = $HOME");
+    let data = dir.path().join("data");
+    let decoy = dir.path().join("not-the-owned-data");
+    for folder in [&home, &bundle, &data, &library.join("skills")] {
+        std::fs::create_dir_all(folder).unwrap();
+    }
+    let global = home.join("git-config");
+    std::fs::write(&global, "").unwrap();
+    std::fs::write(library.join("AGENTS.md"), "fixture policy\n").unwrap();
+    std::fs::write(library.join(".gitignore"), "repo/\n").unwrap();
+    std::fs::write(library.join("skills/catalog.json"), r#"{"skills":[]}"#).unwrap();
+    std::fs::write(
+        library.join("service-env-marker"),
+        "from the selected bundle",
+    )
+    .unwrap();
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&library)
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("GIT_CONFIG_GLOBAL", &global)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "fixture git: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "--quiet", "--template=", "--initial-branch=main"]);
+    git(&["add", "--all"]);
+    git(&[
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "fixture",
+    ]);
+    let archive = bundle.join("library.tar");
+    git(&[
+        "archive",
+        "--format=tar",
+        &format!("--output={}", archive.display()),
+        "HEAD",
+    ]);
+    std::fs::write(bundle.join("REVISION"), "service-env-fixture\n").unwrap();
+    let literal = "first $HOME ${USER} $(whoami) # key=value\\runchanged\nsecond";
+    std::fs::write(data.join("service.env"), format!(
+        "\u{feff}# safe configuration only\nexport ORBYN_OFFLINE=1 # comment\nORBYN_LIBRARY_BUNDLE='{}'\nORBYN_WORKSPACE_URL=\"{literal}\"\nORBYN_DATA_DIR={}\norbyn_data_dir={}\nPATH=/not-a-path\nPath=/also-not-a-path\n",
+        bundle.display(), decoy.display(), decoy.display()
+    )).unwrap();
+    let mut command = tokio::process::Command::new(ORBYN);
+    command.env_clear();
+    for name in [
+        "PATH",
+        "Path",
+        "SystemRoot",
+        "SystemDrive",
+        "WINDIR",
+        "ComSpec",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "LANG",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command.env("ORBYN_OFFLINE", "1");
+    command
+        .arg("--data-dir")
+        .arg(&data)
+        .args(["service", "run"])
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("CFFIXED_USER_HOME", &home)
+        .env("LOCALAPPDATA", home.join("AppData/Local"))
+        .env("APPDATA", home.join("AppData/Roaming"))
+        .env("GIT_CONFIG_GLOBAL", &global)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("ORBYN_WORKSPACE_URL", "inherited-value")
+        .env_remove("ORBYN_LIBRARY_BUNDLE")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut process = ManagedChild::spawn(command).unwrap();
+    let mut lines = tokio::io::BufReader::new(process.child_mut().stdout.take().unwrap());
+    let mut line = String::new();
+    tokio::time::timeout(Duration::from_secs(20), lines.read_line(&mut line))
+        .await
+        .expect("service run readiness")
+        .unwrap();
+    assert!(!line.is_empty(), "service run must launch orbynd");
+    let ready: Value = serde_json::from_str(&line).unwrap();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let response = client
+        .get(format!("{}/api/workspace", ready["url"].as_str().unwrap()))
+        .bearer_auth(ready["token"].as_str().unwrap())
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    let workspace: Value = response.json().await.unwrap();
+    assert_eq!(workspace["default_url"], literal);
+    assert_eq!(workspace["library"]["snapshot"], true);
+    assert_eq!(
+        support::canonical(Path::new(workspace["library"]["path"].as_str().unwrap())),
+        support::canonical(data.join("workspace"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(data.join("workspace/service-env-marker")).unwrap(),
+        "from the selected bundle"
+    );
+    assert!(
+        data.join("workspace/.git").is_dir(),
+        "service.env cannot replace the inherited Git PATH"
+    );
+    assert!(
+        !decoy.exists(),
+        "service.env cannot redirect the owned data directory"
+    );
+    let handle: Value =
+        serde_json::from_slice(&std::fs::read(data.join("service.json")).unwrap()).unwrap();
+    assert_ne!(
+        handle["pid"].as_u64().unwrap() as u32,
+        process.child_mut().id().unwrap(),
+        "the API belongs to the real child daemon"
+    );
+    eprintln!(
+        "service.env proof: {}",
+        serde_json::json!({
+            "default_url": workspace["default_url"],
+            "snapshot": workspace["library"]["snapshot"],
+            "workspace_path": workspace["library"]["path"],
+            "bundle_marker": std::fs::read_to_string(data.join("workspace/service-env-marker")).unwrap(),
+            "git_metadata_present": data.join("workspace/.git").is_dir(),
+            "decoy_data_created": decoy.exists(),
+            "daemon_pid": handle["pid"],
+            "cli_pid": process.child_mut().id().unwrap()
+        })
+    );
+    #[cfg(unix)]
+    assert!(
+        Command::new("kill")
+            .args(["-TERM", &handle["pid"].to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    #[cfg(windows)]
+    process.terminate();
+    tokio::time::timeout(Duration::from_secs(5), process.wait())
+        .await
+        .expect("service fixture exits")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn unreadable_service_environment_stops_before_the_daemon_starts() {
+    let dir = TempDir::new();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("service.env"), [0xff, 0xfe]).unwrap();
+    let output = run(&data, &["service", "run"]).await;
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("service.env could not be read"));
+    assert!(!data.join("orbynd.lock").exists());
+    assert!(!data.join("service.json").exists());
+}

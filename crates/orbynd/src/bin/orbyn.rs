@@ -862,8 +862,19 @@ fn run_as_service(data: &Path) -> Outcome<()> {
     let values = match std::fs::read_to_string(data.join("service.env")) {
         Ok(text) => cli_service::parse_env(&text)
             .map_err(|error| Failure::new(format!("service.env: {error}")))?,
-        Err(_) => std::collections::BTreeMap::new(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::collections::BTreeMap::new()
+        }
+        Err(error) => {
+            return Err(Failure::new(format!(
+                "service.env could not be read: {error}"
+            )));
+        }
     };
+    let values = values
+        .into_iter()
+        .filter(|(name, _)| !cli_service::managed_env_name(name))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let args = values
         .get("ORBYN_LIBRARY_BUNDLE")
         .map_or_else(Vec::new, |path| {

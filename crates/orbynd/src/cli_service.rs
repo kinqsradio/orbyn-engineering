@@ -250,31 +250,100 @@ impl Install<'_> {
     }
 }
 
-/// `service.env`: one `NAME=value` a line, taken literally, because a person's secret
-/// can hold any character. Comments and blank lines are skipped. Orbyn reads nothing
-/// from it: it only goes into the service's own environment.
+/// Dotenv-style values, with no shell evaluation or variable expansion. Invalid
+/// assignments still stop startup with a line number rather than silently vanish.
 pub fn parse_env(text: &str) -> Result<BTreeMap<String, String>, String> {
+    let text = text.replace("\r\n", "\n");
     let mut values = BTreeMap::new();
-    for (index, line) in text.lines().enumerate() {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+    let (mut cursor, mut number) = (0, 1);
+    while cursor < text.len() {
+        let line_end = text[cursor..].find('\n').map_or(text.len(), |n| cursor + n);
+        let line = text[cursor..line_end].trim();
+        if line.is_empty()
+            || line.starts_with('#')
+            || (line.starts_with('\u{feff}') && !line.contains('='))
+        {
+            cursor = (line_end + 1).min(text.len());
+            number += 1;
             continue;
         }
-        let number = index + 1;
-        let (name, value) = line
+        let line = line
+            .strip_prefix("export ")
+            .or_else(|| line.strip_prefix("export\t"))
+            .unwrap_or(line)
+            .trim_start();
+        let (name, _) = line
             .split_once('=')
             .ok_or_else(|| format!("Line {number} has no `=`."))?;
-        let usable = !name.is_empty()
-            && !name.starts_with(|c: char| c.is_ascii_digit())
-            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if !usable {
+        let name = name.trim();
+        // The reference validates parsed keys as ASCII identifiers. A UTF-8
+        // BOM remains part of its key, so that entry is discarded, not renamed.
+        let discard_key = name.starts_with('\u{feff}');
+        if !discard_key
+            && (name.is_empty()
+                || name.starts_with(|c: char| c.is_ascii_digit())
+                || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        {
             return Err(format!(
                 "Line {number} does not start with a variable name."
             ));
         }
-        values.insert(name.to_owned(), value.to_owned());
+        let equals = text[cursor..line_end]
+            .find('=')
+            .expect("assignment has equals");
+        let start = cursor + equals + 1;
+        let value_text = text[start..].trim_start_matches([' ', '\t']);
+        let value_start = text.len() - value_text.len();
+        let (value, end) = if let Some(quote) = value_text
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '\'' | '"' | '`'))
+        {
+            let close = value_text[1..]
+                .find(quote)
+                .ok_or_else(|| format!("Line {number} has an unterminated quoted value."))?
+                + 1;
+            let value = &value_text[1..close];
+            let value = if quote == '"' {
+                value.replace("\\n", "\n")
+            } else {
+                value.to_owned()
+            };
+            let after = value_start + close + 1;
+            let end = text[after..].find('\n').map_or(text.len(), |n| after + n);
+            (value, end)
+        } else {
+            let raw = &text[start..line_end];
+            (
+                raw.split('#').next().unwrap_or_default().trim().to_owned(),
+                line_end,
+            )
+        };
+        if value.contains('\0') {
+            return Err(format!("Line {number} contains a null character."));
+        }
+        if !discard_key {
+            values.insert(name.to_owned(), value);
+        }
+        number += text[cursor..end]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count()
+            + 1;
+        cursor = (end + 1).min(text.len());
     }
     Ok(values)
+}
+
+/// These belong to the launching process, not to a service.env override. Names
+/// are compared without case because Windows environment names ignore case.
+/// ORBYN_DATA_DIR is the application-home control (T3CODE_HOME's counterpart).
+/// Manager names are compile-time constants and the launcher waits for its child
+/// directly, so neither manager identity nor launcher context has an env control.
+pub fn managed_env_name(name: &str) -> bool {
+    ["PATH", "ORBYN_DATA_DIR"]
+        .iter()
+        .any(|managed| name.eq_ignore_ascii_case(managed))
 }
 
 #[cfg(test)]
@@ -349,11 +418,38 @@ mod tests {
 
     #[test]
     fn the_environment_file_is_literal() {
-        let values = parse_env("# a note\n\nA=1\nB=\"two words\" # kept\r\nC=x=y\nD=\n").unwrap();
+        let values = parse_env("# a note\nexport A=1 # ignored\nB=\"two words # x=y $HOME ${USER} $(whoami)\" # ignored\r\nC=x=y\nD=\nMULTI='first\nsecond'\n").unwrap();
         assert_eq!(values["A"], "1");
-        assert_eq!(values["B"], "\"two words\" # kept");
+        assert_eq!(values["B"], "two words # x=y $HOME ${USER} $(whoami)");
         assert_eq!(values["C"], "x=y");
         assert_eq!(values["D"], "");
+        assert_eq!(values["MULTI"], "first\nsecond");
+    }
+
+    #[test]
+    fn dotenv_quote_and_bom_edges_match_the_reference_runtime() {
+        let values = parse_env(concat!(
+            r#"A="first\"second""#,
+            "\n",
+            r#"B="one\ntwo\rthree""#,
+            "\n\u{feff}IGNORED='first\nsecond'\n\u{feff}# heading\nC=kept\n"
+        ))
+        .unwrap();
+        assert_eq!(values["A"], r#"first\"#);
+        assert_eq!(values["B"], concat!("one\n", r#"two\rthree"#));
+        assert!(!values.contains_key("IGNORED"));
+        assert_eq!(values["C"], "kept");
+    }
+
+    #[test]
+    fn launcher_managed_names_map_to_the_actual_orbyn_controls() {
+        for name in ["PATH", "Path", "pAtH", "ORBYN_DATA_DIR", "orbyn_data_dir"] {
+            assert!(managed_env_name(name), "{name}");
+        }
+        // T3 protects its application home, not the system user's HOME.
+        assert!(!managed_env_name("HOME"));
+        assert!(!managed_env_name("USERPROFILE"));
+        assert!(!managed_env_name("ORBYN_WORKSPACE_URL"));
     }
 
     #[test]
@@ -362,5 +458,11 @@ mod tests {
         assert!(parse_env("1A=x").is_err());
         assert!(parse_env("A B=x").is_err());
         assert!(parse_env("=x").is_err());
+        assert!(parse_env("A=\0").is_err());
+        assert_eq!(
+            parse_env("A='first\nsecond'\nbad").unwrap_err(),
+            "Line 3 has no `=`."
+        );
+        assert!(parse_env("A='unfinished").is_err());
     }
 }
