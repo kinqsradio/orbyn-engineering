@@ -81,6 +81,28 @@ test("the diff surface: status, tests filter, find, split, whitespace, collapse,
   await expect(page.locator("[data-diff-file='notes.md']")).toBeVisible();
 });
 
+test("the file picker works before saved keybindings arrive", async ({ page }) => {
+  let releaseKeybindings = () => {};
+  const keybindingsReady = new Promise<void>((resolve) => { releaseKeybindings = resolve; });
+  await page.route("**/api/keybindings", async (route) => {
+    await keybindingsReady;
+    await route.continue();
+  });
+  try {
+    await page.goto(`${service.page}#/threads/${threadId}`);
+    await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+p");
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await expect(palette).toBeVisible();
+    await palette.getByRole("combobox", { name: "Search" }).fill("notes.md");
+    await palette.getByRole("button", { name: /notes.md/ }).click();
+    await expect(page.locator(".file-preview strong")).toHaveText("bold");
+  } finally {
+    releaseKeybindings();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});
+
 test("files preview by kind, keep the source, and save safely", async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${threadId}`);

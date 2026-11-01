@@ -200,6 +200,10 @@ impl Core {
             if !value.is_null() {
                 check(definition, value)?;
             }
+            if key == crate::engines::instances::PREFERENCE && !value.is_null() {
+                let list = crate::engines::instances::parse(value)?;
+                self.engines.check_instances(&list)?;
+            }
         }
         for (key, value) in values {
             let text = (!value.is_null()).then(|| value.to_string());
@@ -239,6 +243,7 @@ impl Core {
 
     /// Refuses an engine this project turned off.
     pub fn check_engine_enabled(&self, engine: &str, project_id: &str) -> Result<()> {
+        self.engines.check_enabled(engine)?;
         let disabled = self.preference("disabled_engines", Some(project_id))?;
         let off = disabled
             .as_array()

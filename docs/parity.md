@@ -36,10 +36,12 @@ toward completion.
 
 These stay unticked on purpose. Each needs something this scope leaves out:
 
-- Rule 1: `[auth-risk]` rows, and B51, K33, M15 and N21's `request_secret`, would have Orbyn hold or broker a credential.
+- Rule 1: `[auth-risk]` rows, and B51, K33, M15 and N21's `request_secret` (its `create_threads` half is `orbyn_threads_create`), would have Orbyn hold or broker a credential.
 - Remote and linked environments: A74, B52, D26, F50, F62, K1's environment half, K22, N22, O18, and the host keys in K41.
 - Hosted services: `[hosted]` rows such as K31, M10 and J22.
 - Providers with no CLI or protocol double here: I17, I22, I24 to I27, I46 to I50 and I62 can't be proved without a usage-spending engine.
+- Reach past a project: N6's create, clone and delete and N12's transfer. A tool reaches only its caller's project, which is the point of the per-thread token.
+- Engine workflow tools: M13 and N19's workflow stop show a run an engine's own workflow tool started, and no engine here reports one.
 - No backing here: A54 has no earlier database to migrate. K38's star prompt is an upstream growth prompt, not product behaviour.
 
 ## A. Threads and sidebar
@@ -417,8 +419,8 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 
 Surveyed against PandaCode 0.3.85's engine list. Any ACP agent runs here as a custom
 engine, with its models, modes and config options read from `session/new`. Engines with
-no row of their own are in I62. Per-engine launch flags, environment and login checks
-are not built in.
+no row of their own are in I62. A CLI that speaks ACP is found and launched by itself, per
+`engines/known.rs`; its login checks are not built in.
 
 - [ ] I1 Codex CLI login: existing install and login | docs/user/providers-codex.md | s | M | [auth-risk]
 - [ ] I2 Connect ChatGPT: managed sign-in with sharing | apps/server/src/provider/CodexChatGptAuth.ts | w d s | L | [auth-risk] [hosted]
@@ -453,8 +455,8 @@ are not built in.
 - [ ] I31 ACP v1/v2 negotiation: preview protocol with fallback | packages/provider-acp/src/AcpSessionRuntime.ts | s | L
 - [ ] I32 ACP sign-in: browser or terminal methods, sign out | apps/web/src/components/settings/ProviderAuthTerminal.tsx | w d m s | M | [auth-risk]
 - [ ] I33 ACP native sessions: list, import, delete | apps/web/src/components/settings/AcpSessionManagementSection.tsx | w d s | M
-- [ ] I34 Named ACP agents: Claude, Copilot, Devin, Droid adapters | packages/provider-acp-registry/src/droidAcp.ts | s | M
-- [ ] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L | server: stored only, no launch effect
+- [ ] I34 Named ACP agents: Claude, Copilot, Devin, Droid adapters | packages/provider-acp-registry/src/droidAcp.ts | s | M | server: Copilot and Devin launch when found; Claude runs natively, and Droid comes through the registry
+- [x] I35 Provider instances: multiple per driver, accent color, enable | apps/web/src/components/settings/ProviderInstanceCard.tsx | w d s | L | server done: `provider_instances` launches its own program and arguments; the model picker lists them as engines, and no settings page edits them yet
 - [ ] I36 Instance environment: variables with sensitive marking | packages/provider-core/src/instanceEnvironment.ts | w d s | M | [auth-risk]
 - [ ] I37 Provider credential store: server-side secret storage | apps/server/src/provider/ProviderCredentialStore.ts | s | L | [auth-risk]
 - [ ] I38 Provider install flow: start, cancel, subscribe, remove | apps/web/src/components/settings/ProviderSetupSection.tsx | w d s | M
@@ -462,7 +464,7 @@ are not built in.
 - [ ] I40 Model catalog: refreshed discovery with manifest | apps/server/src/provider/ModelManifest.ts | s | M | [hosted]
 - [ ] I41 Status banners: provider health in composer | apps/web/src/components/chat/ProviderStatusBanner.tsx | w d m | S
 - [x] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M | server done | web done
-- [ ] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S
+- [x] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S | server done: for one turn, with a warning, when the engine's own list has dropped the model
 - [x] I44 Text generation model: titles and branch names | packages/contracts/src/settings.ts | w d s | S
 - [ ] I45 Permission-mode matrix per provider: fx Supervised and Auto; Muse Supervised and Full; Pi Supervised, Auto-accept edits, Full (stored Auto shows Supervised); OpenCode Auto equals Supervised; mode change restarts the provider session | docs/user/permission-modes.md | w d m s | M
 - [ ] I46 fx behavior: shared machine login, Default model from `fx status`, Medium effort start, `$` skill dedupe rules, steer stops the turn, mode saved as fx default, sub-agent threads with shortened replies that wait on permission, unsupported list (plan, full access, commit and PR text, titles) | docs/user/providers-fx.md | s w | M
@@ -472,7 +474,7 @@ are not built in.
 - [ ] I50 Cursor behavior: per-instance sign-in, API key override, Change account and Sign out stop that instance's threads, `auto` maps to default model, read-only task sub-agent threads, interrupt-and-restart steering, Windows sandbox rules | docs/user/cursor.md | s w d m | M | [auth-risk]
 - [ ] I51 Version compatibility warning: provider card flags versions with known problems and offers recommended version install | docs/user/install.md | w d m s | M
 - [ ] I52 Update route by installer: Homebrew, npm, pnpm, Yarn, Bun, Volta, Vite+ detected; mise handled manually; Cursor and Antigravity update with the app | docs/user/install.md | s w d | M
-- [ ] I53 Provider discovery: server-host PATH lookup, binary path override, Cursor `cursor-agent` name | docs/user/faq.md | s w | S
+- [x] I53 Provider discovery: server-host PATH lookup, binary path override, Cursor `cursor-agent` name | docs/user/faq.md | s w | S | server done: the override is an instance's `program`
 - [x] I54 Child environment hygiene: remove AppImage variables, the nested-session marker and vendor desktop markers from every engine spawn | src-tauri/src/child_env.rs | s | S | server done
 - [x] I55 Prefer saved login: scrub inherited credential and endpoint variables so the engine uses its own login; report only variable names and endpoint origin | src-tauri/src/providers/claude_auth.rs | s w | M | beyond T3 | server done | web done
 - [x] I56 Login probe without secrets: run the engine's own status command with settings sources empty, time and size bounded, output wiped; map to signed in, not signed in, other credentials, unknown | src-tauri/src/providers/claude_auth.rs | s | S | server done: three states, with inherited keys reported by I55 rather than a fourth
@@ -481,7 +483,7 @@ are not built in.
 - [x] I59 Discovery without leftovers: engines that report per-model options only after a switch are probed in throwaway sessions that are deleted afterwards | src-tauri/src/providers/devin.rs | s | M | server done
 - [ ] I60 Model health pauses: a failing model is paused with a cooldown that survives restart; same model on another engine is offered as failover; Settings can allow it now | src-tauri/src/model_health.rs | s w | M | beyond T3
 - [ ] I61 Warm next turn: start the next Claude process in the background and adopt it only when every launch input matches | src-tauri/src/providers/warm.rs | s | M | beyond T3
-- [ ] I62 Extra engines: Kimi Code, DeepSeek, Command Code, Cline, Kilo Code, Hermes Agent and ZCode with their documented quirks (Cline effort by flag, ZCode private protocol) | docs/providers.md | s | L | beyond T3
+- [ ] I62 Extra engines: Kimi Code, DeepSeek, Command Code, Cline, Kilo Code, Hermes Agent and ZCode with their documented quirks (Cline effort by flag, ZCode private protocol) | docs/providers.md | s | L | beyond T3 | server: all but ZCode launch over ACP when found, proved with the fake agent only; Cline's effort flag and ZCode's protocol are not built
 
 ## J. Usage and limits
 - [x] J1 Usage page: tokens, cache savings, estimated cost | apps/web/src/components/usage/UsagePage.tsx | w d m s | L
@@ -652,7 +654,7 @@ are not built in.
 - [x] N5 Preview controls: `t3_preview_list`, `t3_preview_close` | apps/server/src/mcp/toolkits/previewControls/tools.ts | s | S | server done, as `orbyn_*`
 - [ ] N6 Projects: `t3_project_list`, `_read`, `_create`, `_update`, `_delete`, `_clone` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server: read and rename the caller's own project; create, clone and delete reach past it, so tools do not offer them
 - [x] N7 Thread launch: `t3_thread_launch` | apps/server/src/mcp/toolkits/project/tools.ts | s | M | server done, as `orbyn_*`
-- [ ] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L | server: open, navigate, back, forward and resize; dialogs and appearance not built
+- [x] N8 Browser automation: `preview_status`, `_open`, `_dialog`, `_navigate`, `_resize`, `_set_appearance` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L | server done: all six, under `orbyn_preview_*`, with back and forward
 - [ ] N9 Browser inspection: `preview_snapshot`, `_act`, `_evaluate`, `_wait_for` | apps/server/src/mcp/toolkits/preview/tools.ts | s | L
 - [x] N10 Browser recording: `preview_recording_start`, `_stop` | apps/server/src/mcp/toolkits/preview/tools.ts | s | M | server done, as `orbyn_*`: changed frames as JPEG files
 - [ ] N11 Devices: `device_list`, `_open`, `_screenshot`, `_close` | apps/server/src/mcp/toolkits/device/tools.ts | s | M
@@ -778,17 +780,22 @@ are not built in.
 - [ ] Q40 Legal documents: terms and privacy pages in settings | apps/mobile/src/features/settings/SettingsLegalRouteScreen.tsx | m | S
 
 ## R. RPC surface, grouped (`packages/contracts/src/rpc.ts`, plus `orchestrationV2.ts`)
-- [ ] R1 Projects (10): listEntries, listIgnoredFiles, readFile, searchContents, searchEntries, writeFile, mutate, ensureScratch, createNew, createFromThread | w d m s | L
-- [ ] R2 Shell, filesystem, sessions, assets (9): shell.openInEditor; filesystem.browse, getMetadata; agentSessions.scan, import; assets.createUrl, persistChatAttachments; attachments.createUploadUrl, delete | M
-- [ ] R3 MCP Apps (4): callTool, toolInfo, readResource, updateModelContext | M
-- [ ] R4 Provider (15): uploadFeedback; auth start, complete, respond, cancel, logout, subscribe; consumeResetCredit; chatgpt reconnect-profile, import-profile, handoff.subscribe; install start, cancel, subscribe, remove | L | [auth-risk]
-- [ ] R5 VCS and git (11): vcs pull, refreshStatus, listRefs, createWorktree, removeWorktree, createRef, switchRef, init; git runStackedAction, resolvePullRequest, preparePullRequestThread | L
-- [ ] R6 Review and terminal (10): review getBranchCommits, getDiffPreview, getDiffFileContents; terminal open, attach, observe, write, resize, clear, close | L
-- [ ] R7 Preview and devices (19): preview open, resize, adjust, close, list, clearProfile, reportProfiles, reportStatus, stopLocalServer; device configure, list, testHost, easAccount, simlockIdentity, open, close, shutdown, detail, action | L
-- [ ] R8 Server core (14): probe, getConfig, getNpmRelease, refreshProviders, updateProvider, updateServer, updateServerWithProgress, commitDesktopUpdate, upsertKeybinding, removeKeybinding, runStorageCleanup, getStorageCleanupReport, getDatabaseStorage, updateSettings | L
-- [ ] R9 ACP Registry (11): search, prepareAgent, uninstallManagedBinary, acceptUrlAuth, listSessions, importSession, deleteSession, listProviders, setProvider, disableProvider, logout | L | [auth-risk]
-- [ ] R10 Diagnostics and usage (12): discoverSourceControl, getTraceDiagnostics, getProcessDiagnostics, getHostResources, getProcessResourceHistory, getResourceTelemetryHistory, retryResourceTelemetry, checkOtlpEndpoint, prepareTriage, signalProcess, reportClientActivity, getUsageSummary, refreshUsageRates | M
-- [ ] R11 Links, tasks, secrets, sharing, cloud (15): peerLinks list, link, unlink, answerRequest; scheduledTasks subscribe, upsert, setEnabled, delete, runNow, rotateWebhookToken, listWebhookDeliveries, getWebhookDelivery; secrets.answerRequest; guestShare.create; cloud getRelayClientStatus, installRelayClient | L | [hosted]
-- [ ] R12 Pull requests (31): list, listStats, filterOptions, summary, routing, routingIdentity, stack, linkedThreads, detail, preview, checks, activity, reviewGuide, generateReviewGuide, threadComments, diffFileContents, filesViewed, changeBreakdown, setFilesViewed, runAction, update, comment, updateComment, submitReview, replyToThread, setThreadResolution, setReaction, invalidate, reportState, subscribeRefreshes, reviewerCandidates, requestReviewers, labelCandidates, setLabels | L
-- [ ] R13 Source control, clones, subscriptions (24): sourceControl lookupRepository, cloneRepository, publishRepository, signInStart, signInWait, signInCancel, appAccess, starred; projectClone start, cancel, retry; worktreeSetup.cancel; subscribe ProjectClones, VcsStatus, WorktreeSetup, TerminalMetadata, PreviewEvents, DiscoveredLocalServers, DeviceState, ServerConfig, ServerLifecycle, AuthAccess, ResourceTelemetry | L
-- [ ] R14 Orchestration (18): dispatchCommand, getTurnDiff, getFullThreadDiff, searchThreads, searchThread, searchThreadStream, getArchivedShellSnapshot, getThreadFamily, getWorktreeThreadIds, getOlderSettledThreads, getThreadProjection, getWorkflowScript, stopWorkflow, forceStopThread, getTurnItem, launchThread, subscribeShell, subscribeThread, subscribeCommandOutput | L
+
+Orbyn has HTTP routes where T3 has RPC methods. A group is ticked only when every method
+it names has an equivalent route, and each open group says what it lacks. Reconciled
+against `docs/architecture.md`'s route table on 1 November 2026.
+
+- [ ] R1 Projects (10): listEntries, listIgnoredFiles, readFile, searchContents, searchEntries, writeFile, mutate, ensureScratch, createNew, createFromThread | w d m s | L | server: all but `mutate`, which has no route: `files/content` only reads and saves
+- [ ] R2 Shell, filesystem, sessions, assets (9): shell.openInEditor; filesystem.browse, getMetadata; agentSessions.scan, import; assets.createUrl, persistChatAttachments; attachments.createUploadUrl, delete | M | server: open in editor, `fs/browse` and attachments; no `getMetadata`, session scan or import (I33), or asset URLs, since `files/raw` serves bytes
+- [ ] R3 MCP Apps (4): callTool, toolInfo, readResource, updateModelContext | M | not built: C24 to C26
+- [ ] R4 Provider (15): uploadFeedback; auth start, complete, respond, cancel, logout, subscribe; consumeResetCredit; chatgpt reconnect-profile, import-profile, handoff.subscribe; install start, cancel, subscribe, remove | L | [auth-risk] | server: `/api/acp/registry` covers install and remove; feedback (I9) is not built and the rest stays out under rule 1
+- [ ] R5 VCS and git (11): vcs pull, refreshStatus, listRefs, createWorktree, removeWorktree, createRef, switchRef, init; git runStackedAction, resolvePullRequest, preparePullRequestThread | L | server: all but `refreshStatus` and `removeWorktree`: a worktree is made with its thread and goes through storage cleanup
+- [x] R6 Review and terminal (10): review getBranchCommits, getDiffPreview, getDiffFileContents; terminal open, attach, observe, write, resize, clear, close | L | server done: `commits`, `diff` and `changes/file` for review; `/ws/terminal` and `/terminals` for terminals
+- [ ] R7 Preview and devices (19): preview open, resize, adjust, close, list, clearProfile, reportProfiles, reportStatus, stopLocalServer; device configure, list, testHost, easAccount, simlockIdentity, open, close, shutdown, detail, action | L | server: all of preview, with `reportProfiles` and `reportStatus` not needed since the service owns tabs; devices are not built (section H)
+- [ ] R8 Server core (14): probe, getConfig, getNpmRelease, refreshProviders, updateProvider, updateServer, updateServerWithProgress, commitDesktopUpdate, upsertKeybinding, removeKeybinding, runStorageCleanup, getStorageCleanupReport, getDatabaseStorage, updateSettings | L | server: all but `removeKeybinding`, and `updateServerWithProgress`, which `/api/updates/events` covers; `getNpmRelease` has no meaning without an npm package
+- [ ] R9 ACP Registry (11): search, prepareAgent, uninstallManagedBinary, acceptUrlAuth, listSessions, importSession, deleteSession, listProviders, setProvider, disableProvider, logout | L | [auth-risk] | server: search, install and remove; sessions are I33, and URL auth and provider logout stay out under rule 1
+- [ ] R10 Diagnostics and usage (12): discoverSourceControl, getTraceDiagnostics, getProcessDiagnostics, getHostResources, getProcessResourceHistory, getResourceTelemetryHistory, retryResourceTelemetry, checkOtlpEndpoint, prepareTriage, signalProcess, reportClientActivity, getUsageSummary, refreshUsageRates | M | server: `/api/diagnostics`, `/api/forges`, the OTLP check and `/api/usage`; process and resource telemetry, trace and triage are not built
+- [ ] R11 Links, tasks, secrets, sharing, cloud (15): peerLinks list, link, unlink, answerRequest; scheduledTasks subscribe, upsert, setEnabled, delete, runNow, rotateWebhookToken, listWebhookDeliveries, getWebhookDelivery; secrets.answerRequest; guestShare.create; cloud getRelayClientStatus, installRelayClient | L | [hosted] | server: all of `scheduledTasks` under `/api/tasks`; links, secrets, sharing and cloud are out of scope
+- [ ] R12 Pull requests (31): list, listStats, filterOptions, summary, routing, routingIdentity, stack, linkedThreads, detail, preview, checks, activity, reviewGuide, generateReviewGuide, threadComments, diffFileContents, filesViewed, changeBreakdown, setFilesViewed, runAction, update, comment, updateComment, submitReview, replyToThread, setThreadResolution, setReaction, invalidate, reportState, subscribeRefreshes, reviewerCandidates, requestReviewers, labelCandidates, setLabels | L | server: all but review guides (F42), `routing` and `routingIdentity` (F50)
+- [ ] R13 Source control, clones, subscriptions (24): sourceControl lookupRepository, cloneRepository, publishRepository, signInStart, signInWait, signInCancel, appAccess, starred; projectClone start, cancel, retry; worktreeSetup.cancel; subscribe ProjectClones, VcsStatus, WorktreeSetup, TerminalMetadata, PreviewEvents, DiscoveredLocalServers, DeviceState, ServerConfig, ServerLifecycle, AuthAccess, ResourceTelemetry | L | server: clones and publishing; sign-in stays out under rule 1, and subscriptions are SSE per stream, with no device or resource stream
+- [ ] R14 Orchestration (18): dispatchCommand, getTurnDiff, getFullThreadDiff, searchThreads, searchThread, searchThreadStream, getArchivedShellSnapshot, getThreadFamily, getWorktreeThreadIds, getOlderSettledThreads, getThreadProjection, getWorkflowScript, stopWorkflow, forceStopThread, getTurnItem, launchThread, subscribeShell, subscribeThread, subscribeCommandOutput | L | server: all but `getWorkflowScript` and `stopWorkflow` (M13); `subscribe*` are the event streams

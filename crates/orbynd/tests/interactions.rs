@@ -949,3 +949,75 @@ async fn mentions_and_commands_return_real_results() {
     assert_eq!(source_of("ship").as_deref(), Some("engine"));
     service.stop().await;
 }
+
+async fn set_preference(service: &Service, key: &str, value: Value) {
+    let response = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": { key: value } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+fn selection_of(events: &[Value]) -> Value {
+    events
+        .iter()
+        .rfind(|event| event["event"]["name"] == "engine.selection")
+        .expect("a selection is logged")["event"]["value"]
+        .clone()
+}
+
+#[tokio::test]
+async fn a_model_the_engine_dropped_runs_on_the_fallback_for_that_turn() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    set_preference(&service, "fallback_model", json!("fake-small")).await;
+    let (code, _) = service.patch(&thread, json!({ "model": "gone" })).await;
+    assert_eq!(code, 200);
+    service.admit(&thread, "hello").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let events = service.all_events(&thread).await;
+    assert_eq!(selection_of(&events)["model"], "fake-small");
+    let warned = events
+        .iter()
+        .any(|event| event["event"]["name"] == "engine.warning");
+    assert!(warned, "the person is told");
+    let kept = service.json(&format!("/api/threads/{thread}")).await;
+    assert_eq!(kept["model"], "gone", "the thread keeps its own choice");
+}
+
+#[tokio::test]
+async fn a_custom_model_or_a_fallback_the_engine_lacks_changes_nothing() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    set_preference(
+        &service,
+        "custom_models",
+        json!([{ "engine": "codex", "id": "mine" }]),
+    )
+    .await;
+    set_preference(&service, "fallback_model", json!("fake-small")).await;
+    service.patch(&thread, json!({ "model": "mine" })).await;
+    service.admit(&thread, "hello").await;
+    service.finished(&thread).await;
+    assert_eq!(
+        selection_of(&service.all_events(&thread).await)["model"],
+        "mine"
+    );
+
+    set_preference(&service, "fallback_model", json!("nothing")).await;
+    let shown = service.json(&format!("/api/threads/{thread}")).await;
+    let thread = service
+        .thread(shown["project_id"].as_str().unwrap(), "codex")
+        .await;
+    service.patch(&thread, json!({ "model": "gone" })).await;
+    service.admit(&thread, "hello").await;
+    service.finished(&thread).await;
+    assert_eq!(
+        selection_of(&service.all_events(&thread).await)["model"],
+        "gone"
+    );
+}

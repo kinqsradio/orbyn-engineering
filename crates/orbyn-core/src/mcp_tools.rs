@@ -149,6 +149,12 @@ const TOOLS: &[Tool] = &[
         &[],
     ),
     read(
+        "orbyn_preview_status",
+        "One preview tab: where it is, its size, view and state.",
+        &[("tab_id", "string")],
+        &["tab_id"],
+    ),
+    read(
         "orbyn_track_files",
         "Before writing files no tool reports, such as from a shell script, call this with \
          the checkout paths; call it again with done true afterwards.",
@@ -263,6 +269,22 @@ const TOOLS: &[Tool] = &[
             ("height", "number"),
         ],
         &["tab_id", "width", "height"],
+    ),
+    act(
+        "orbyn_preview_set_appearance",
+        "Set a preview tab's color scheme: system, light or dark.",
+        &[("tab_id", "string"), ("appearance", "string")],
+        &["tab_id", "appearance"],
+    ),
+    act(
+        "orbyn_preview_dialog",
+        "Answer the alert, confirm or prompt a page opened. `handled` is false if none was.",
+        &[
+            ("tab_id", "string"),
+            ("accept", "boolean"),
+            ("text", "string"),
+        ],
+        &["tab_id", "accept"],
     ),
     act(
         "orbyn_preview_close",
@@ -796,6 +818,30 @@ impl Core {
                 };
                 let (width, height) = (side("width")?, side("height")?);
                 json!(self.previews.resize(&own.id, &tab, width, height).await?)
+            }
+            "orbyn_preview_status" => {
+                let tab = self.own_preview(&own, args)?;
+                let tabs = self.previews.list(&own.id);
+                json!(tabs.into_iter().find(|view| view.id == tab))
+            }
+            "orbyn_preview_set_appearance" => {
+                let tab = self.own_preview(&own, args)?;
+                let view = orbyn_contracts::PreviewView {
+                    zoom: None,
+                    appearance: Some(text(args, "appearance")?.to_owned()),
+                    mobile: None,
+                };
+                json!(self.previews.set_view(&own.id, &tab, &view).await?)
+            }
+            "orbyn_preview_dialog" => {
+                let tab = self.own_preview(&own, args)?;
+                let accept = args
+                    .get("accept")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| CoreError::Invalid("Say whether to accept.".into()))?;
+                let answer = args.get("text").and_then(Value::as_str);
+                let handled = self.previews.answer_dialog(&own.id, &tab, accept, answer);
+                json!({ "handled": handled.await? })
             }
             "orbyn_preview_close" => {
                 let tab = self.own_preview(&own, args)?;

@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine};
+use super::pipes::{EngineProcess, exit_message, resolve_engine, spawn_engine_with};
 use super::rpc::{Inbound, RpcClient};
 use super::{
     EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe, MCP_SERVER_NAME,
@@ -39,11 +39,27 @@ const CONFIG_PREFIX: &str = "config:";
 
 pub struct AcpDriver {
     engine: CustomEngine,
+    env: &'static [(&'static str, &'static str)],
+    /// False for an agent that cannot ask before it edits.
+    asks: bool,
 }
 
 impl AcpDriver {
     pub fn new(engine: CustomEngine) -> Self {
-        Self { engine }
+        Self {
+            engine,
+            env: &[],
+            asks: true,
+        }
+    }
+
+    /// `engine`, launched the way the table says that agent has to be.
+    pub fn known(engine: CustomEngine, known: &crate::engines::known::KnownEngine) -> Self {
+        Self {
+            engine,
+            env: known.env,
+            asks: known.asks,
+        }
     }
 }
 
@@ -56,11 +72,11 @@ impl EngineDriver for AcpDriver {
             tier: EngineTier::Acp,
             capabilities: EngineCapabilities {
                 streaming: true,
-                approvals: true,
+                approvals: self.asks,
                 resume: false,
                 mcp: true,
                 sandbox: false,
-                managed: true,
+                managed: self.asks,
                 skill_delivery: vec![SkillDelivery::McpSkillServer],
                 goal_control: false,
                 decline_feedback: false,
@@ -82,7 +98,7 @@ impl EngineDriver for AcpDriver {
         let command = resolve_engine(&self.engine.target)?;
         let args: Vec<OsString> = self.engine.args.iter().map(OsString::from).collect();
         let dir = ProbeDir::new()?;
-        let process = spawn_engine(&command, &args, dir.path())?;
+        let process = spawn_engine_with(&command, &args, dir.path(), self.env)?;
         let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, true);
         let (id, session, init) = open_raw(&rpc, dir.path(), None).await?;
         let options = parse_session_options(&session);
@@ -105,7 +121,7 @@ impl EngineDriver for AcpDriver {
     ) -> Result<RunHandle> {
         let command = resolve_engine(&self.engine.target)?;
         let args: Vec<OsString> = self.engine.args.iter().map(OsString::from).collect();
-        let process = spawn_engine(&command, &args, &spec.cwd)?;
+        let process = spawn_engine_with(&command, &args, &spec.cwd, self.env)?;
         let cancel = CancellationToken::new();
         let task = tokio::spawn(run_protocol(process, spec, events, cancel.clone()));
         Ok(RunHandle {

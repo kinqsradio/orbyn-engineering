@@ -17,4 +17,12 @@ inherited_credentials?: Array<string>,
 /**
  * The origin of an inherited endpoint override, with no path or user info.
  */
-endpoint_origin?: string, };
+endpoint_origin?: string, 
+/**
+ * The engine this one is a named setup of.
+ */
+instance_of?: string, 
+/**
+ * A color for telling instances apart.
+ */
+accent?: string, };

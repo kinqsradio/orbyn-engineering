@@ -403,8 +403,13 @@ impl Workspace {
         };
         validate_library(&staging.0).await?;
         loop {
+            #[cfg(test)]
+            self.replacement_ready.notify_one();
+            let writer = self.library_access.write().await;
             self.check_replaceable(&state.root).await?;
-            match self.replace_library(&state, &staging.0) {
+            let replaced = self.replace_library(&state, &staging.0);
+            drop(writer);
+            match replaced {
                 Err(CoreError::RunsActive) if wait => tokio::time::sleep(self.idle_poll).await,
                 other => return other.map(|()| true),
             }
@@ -685,6 +690,134 @@ mod tests {
                 .snapshot
         );
         assert!(Workspace::leftovers(root.parent().unwrap()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn replacement_waits_for_a_library_reader_and_its_git_child() {
+        use std::future::{Future, poll_fn};
+        use std::process::Stdio;
+        use std::task::Poll;
+
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let dir = TempDir::new();
+        let upstream = library(&dir.path().join("upstream"));
+        let workspace = workspace(&dir, &upstream.to_string_lossy(), None);
+        workspace.provision().await.unwrap();
+        let root = workspace.root().unwrap();
+
+        // Use the same guard as public readers, with a real Git process whose cwd
+        // stays in the old library until its pipe closes. No global Git overrides.
+        let reader = workspace.library_access.read().await;
+        let mut child = tokio::process::Command::new("git")
+            .args(["cat-file", "--batch-check"])
+            .current_dir(&root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"HEAD\n")
+            .await
+            .unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(5), output.read_line(&mut line))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(line.contains(" commit "), "{line}");
+        assert!(child.try_wait().unwrap().is_none());
+
+        let mut upgrade = std::pin::pin!(workspace.upgrade_snapshot(false));
+        tokio::select! {
+            () = workspace.replacement_ready.notified() => {},
+            result = &mut upgrade => panic!("replacement passed the live reader: {result:?}"),
+            () = tokio::time::sleep(Duration::from_secs(10)) => panic!("clone never reached replacement"),
+        }
+        poll_fn(|cx| match upgrade.as_mut().poll(cx) {
+            Poll::Pending => Poll::Ready(()),
+            Poll::Ready(result) => panic!("replacement passed the live reader: {result:?}"),
+        })
+        .await;
+        assert!(
+            workspace.library_access.try_read().is_err(),
+            "replacement must queue behind the live library reader"
+        );
+        assert_eq!(
+            workspace.current().unwrap().snapshot.as_deref(),
+            Some(UNBUNDLED)
+        );
+
+        drop(child.stdin.take());
+        assert!(
+            tokio::time::timeout(Duration::from_secs(5), child.wait())
+                .await
+                .unwrap()
+                .unwrap()
+                .success()
+        );
+        drop(reader);
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), upgrade)
+                .await
+                .unwrap()
+                .unwrap()
+        );
+        let library = workspace.status(&[]).await.unwrap().library.unwrap();
+        assert!(!library.snapshot);
+        assert_eq!(library.upstream.as_deref(), Some("origin/main"));
+    }
+
+    #[tokio::test]
+    async fn public_library_readers_wait_for_replacement() {
+        use std::future::{Future, poll_fn};
+        use std::task::Poll;
+
+        async fn waits<F: Future>(workspace: &Workspace, reader: F) {
+            let writer = workspace.library_access.write().await;
+            let mut reader = std::pin::pin!(reader);
+            poll_fn(|cx| match reader.as_mut().poll(cx) {
+                Poll::Pending => Poll::Ready(()),
+                Poll::Ready(_) => panic!("library reader passed the replacement guard"),
+            })
+            .await;
+            // Queue a second writer after the reader. Once the first writer lets
+            // go, the reader must get its reservation before this writer can.
+            // A reader accidentally waiting on Git instead of the lock fails here.
+            let mut next_writer = std::pin::pin!(workspace.library_access.write());
+            poll_fn(|cx| match next_writer.as_mut().poll(cx) {
+                Poll::Pending => Poll::Ready(()),
+                Poll::Ready(_) => panic!("first writer did not retain its guard"),
+            })
+            .await;
+            drop(writer);
+            poll_fn(|cx| match next_writer.as_mut().poll(cx) {
+                Poll::Pending => Poll::Ready(()),
+                Poll::Ready(_) => panic!("library reader did not reserve the read guard"),
+            })
+            .await;
+            let _ = tokio::time::timeout(Duration::from_secs(5), reader)
+                .await
+                .unwrap();
+            drop(next_writer.await);
+        }
+
+        let dir = TempDir::new();
+        let workspace = workspace(&dir, &offline_url(&dir), None);
+        workspace.provision().await.unwrap();
+        waits(&workspace, workspace.status(&[])).await;
+        waits(&workspace, workspace.identity()).await;
+        waits(&workspace, workspace.upstream_revision()).await;
+        waits(&workspace, workspace.fetch()).await;
+        waits(&workspace, workspace.local_position()).await;
+        waits(&workspace, workspace.update(true)).await;
+        waits(&workspace, workspace.rollback()).await;
     }
 
     #[tokio::test]

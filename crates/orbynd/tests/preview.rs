@@ -18,6 +18,9 @@ const PAGE: &str = "<!doctype html><title>t</title>\
 ()=>{document.body.style.background='#f00';document.getElementById('b').remove()})</script>";
 
 /// A one-page server, so the test needs no network.
+/// Opens a dialog once it has loaded, which holds the page until it is answered.
+const ALERT_PAGE: &str = "<script>setTimeout(() => alert('hi'), 1500)</script>";
+
 fn serve_page() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -26,9 +29,14 @@ fn serve_page() -> u16 {
             let mut stream = stream;
             let mut buffer = [0u8; 2048];
             let _ = stream.read(&mut buffer);
+            let page = if buffer.starts_with(b"GET /alert") {
+                ALERT_PAGE
+            } else {
+                PAGE
+            };
             let reply = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{PAGE}",
-                PAGE.len()
+                "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
+                page.len()
             );
             let _ = stream.write_all(reply.as_bytes());
         }
@@ -266,6 +274,33 @@ async fn an_agent_records_a_page_in_its_own_tab() {
     )
     .await;
     assert_eq!(back["url"], format!("http://127.0.0.1:{port}/"));
+    let shown = call(
+        "orbyn_preview_set_appearance",
+        json!({ "tab_id": id, "appearance": "dark" }),
+    )
+    .await;
+    assert_eq!(shown["appearance"], "dark");
+    let status = call("orbyn_preview_status", json!({ "tab_id": id })).await;
+    assert_eq!(status["id"], id.as_str());
+    assert_eq!(status["appearance"], "dark");
+    let none = call(
+        "orbyn_preview_dialog",
+        json!({ "tab_id": id, "accept": true }),
+    )
+    .await;
+    assert_eq!(none["handled"], false);
+    call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "url": format!("http://127.0.0.1:{port}/alert") }),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let answered = call(
+        "orbyn_preview_dialog",
+        json!({ "tab_id": id, "accept": true }),
+    )
+    .await;
+    assert_eq!(answered["handled"], true);
     call("orbyn_preview_close", json!({ "tab_id": id })).await;
     service.stop().await;
 }
