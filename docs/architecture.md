@@ -361,6 +361,12 @@ and `preview_url` is set. The existing preview API validates the URL and owns it
 browser process. The new tab is selected without replacing another page; preview
 failure is reported separately from the already-started command. A late preview
 response does not switch surfaces after the user navigates to another thread.
+The version-fenced settings API also accepts targeted action add, update and
+remove operations. Each selected checkout starts from its own effective list;
+adding to Mixed actions preserves every member's other commands. Duplicate names,
+missing edit targets or invalid commands reject the whole group. The same membership
+and row revisions fence these edits; project files and unselected project overrides are
+not rewritten. An update preserves unknown fields on the selected action.
 The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets

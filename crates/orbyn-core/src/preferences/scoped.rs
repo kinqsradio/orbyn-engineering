@@ -217,6 +217,60 @@ fn set_value(
     Ok(value)
 }
 
+/// Targeted action edits derive a separate list from each checkout's effective
+/// value, so an append to Mixed settings cannot replace another member's actions.
+fn script_value(
+    snapshot: &SettingsSnapshot,
+    files: &Files,
+    key: &str,
+    project: Option<&str>,
+    edit: &PreferenceEdit,
+) -> Result<Value> {
+    if key != "default_project_scripts" {
+        return Err(CoreError::Invalid(
+            "Action edits apply only to project actions.".into(),
+        ));
+    }
+    let value = resolved_views(snapshot, files, project)?
+        .into_iter()
+        .find(|view| view.key == key)
+        .expect("validated catalog key")
+        .value;
+    let mut scripts = value
+        .as_array()
+        .cloned()
+        .ok_or_else(|| CoreError::Invalid("The current actions are not a list.".into()))?;
+    match edit {
+        PreferenceEdit::AddProjectScript { script } => scripts.push(serde_json::to_value(script)?),
+        PreferenceEdit::UpdateProjectScript { name, script } => {
+            let existing = scripts
+                .iter_mut()
+                .find(|entry| entry["name"].as_str() == Some(name))
+                .ok_or_else(|| CoreError::NotFound("project action".into()))?;
+            // Preserve forward metadata while replacing every known editable field.
+            let replacement = serde_json::to_value(script)?;
+            existing
+                .as_object_mut()
+                .ok_or_else(|| CoreError::Invalid("The current action is invalid.".into()))?
+                .extend(
+                    replacement
+                        .as_object()
+                        .expect("ProjectScript serializes as an object")
+                        .clone(),
+                );
+        }
+        PreferenceEdit::RemoveProjectScript { name } => {
+            let index = scripts
+                .iter()
+                .position(|entry| entry["name"].as_str() == Some(name))
+                .ok_or_else(|| CoreError::NotFound("project action".into()))?;
+            scripts.remove(index);
+        }
+        _ => return Err(CoreError::Invalid("Choose an action edit.".into())),
+    }
+    set_value(snapshot, files, key, project, &Value::Array(scripts))
+}
+
 fn keys(requested: &[String]) -> Result<Vec<String>> {
     let result = if requested.is_empty() {
         DEFINITIONS.iter().map(|d| d.key.to_owned()).collect()
@@ -482,6 +536,19 @@ impl Core {
                             for id in &ids {
                                 let merged = set_value(snapshot, &files, key, Some(id), value)?;
                                 prepare_write(&mut writes, key, Some(id), Some(&merged));
+                            }
+                        }
+                    }
+                    PreferenceEdit::AddProjectScript { .. }
+                    | PreferenceEdit::UpdateProjectScript { .. }
+                    | PreferenceEdit::RemoveProjectScript { .. } => {
+                        if ids.is_empty() {
+                            let value = script_value(snapshot, &files, key, None, edit)?;
+                            prepare_write(&mut writes, key, None, Some(&value));
+                        } else {
+                            for id in &ids {
+                                let value = script_value(snapshot, &files, key, Some(id), edit)?;
+                                prepare_write(&mut writes, key, Some(id), Some(&value));
                             }
                         }
                     }

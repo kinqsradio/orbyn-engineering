@@ -3104,6 +3104,9 @@ pub enum PreferenceEdit {
     Set { value: serde_json::Value },
     Inherit {},
     ResetOverrides { project_ids: Vec<String> },
+    AddProjectScript { script: ProjectScript },
+    UpdateProjectScript { name: String, script: ProjectScript },
+    RemoveProjectScript { name: String },
 }
 }
 wire! {

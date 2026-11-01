@@ -484,3 +484,143 @@ async fn real_scope_conflicts_and_sqlite_fault_leave_every_setting_unchanged() {
     drop(db);
     service.stop().await;
 }
+
+#[tokio::test]
+async fn action_edits_preserve_each_checkout_list_and_fence_the_whole_group() {
+    const KEY: &str = "default_project_scripts";
+    let dir = TempDir::new();
+    let (service, projects, scope) = fixture(&dir).await;
+    let mut files = Vec::new();
+    for (index, project) in projects.iter().enumerate() {
+        let file = Path::new(project["path"].as_str().unwrap()).join("orbyn.json");
+        let content = json!({"scripts":[{"name":format!("Local {index}"),"command":format!("echo checkout-{index}") }]}).to_string();
+        std::fs::write(&file, &content).unwrap();
+        files.push((file, content));
+    }
+    let initial = query(&service, scope.clone(), &[KEY]).await;
+    assert_eq!(row(&initial, KEY)["mixed"], true);
+    let add = json!({KEY:{"op":"add_project_script","script":{"name":"Shared","command":"echo shared","async":false,"run_on_worktree_create":true}}});
+    let request = edit_body(&initial, scope.clone(), add);
+    let (status, added) = put(&service, "/api/settings/preferences", request.clone()).await;
+    assert_eq!(status, 200, "{added}");
+    for member in row(&added, KEY)["members"].as_array().unwrap() {
+        let scripts = member["view"]["value"].as_array().unwrap();
+        assert_eq!(scripts.len(), 2);
+        assert!(scripts[0]["name"].as_str().unwrap().starts_with("Local "));
+        assert_eq!(scripts[1]["name"], "Shared");
+        assert_eq!(scripts[1]["async"], false);
+    }
+    assert_eq!(
+        put(&service, "/api/settings/preferences", request).await.0,
+        409
+    );
+    // A duplicate in only one checkout aborts the entire operation.
+    let duplicate = edit_body(
+        &added,
+        scope.clone(),
+        json!({KEY:{"op":"add_project_script","script":{"name":"Local 0","command":"echo duplicate"}}}),
+    );
+    assert_eq!(
+        put(&service, "/api/settings/preferences", duplicate)
+            .await
+            .0,
+        400
+    );
+    let unchanged = query(&service, scope.clone(), &[KEY]).await;
+    assert_eq!(row(&unchanged, KEY)["members"], row(&added, KEY)["members"]);
+    let update = edit_body(
+        &unchanged,
+        scope.clone(),
+        json!({KEY:{"op":"update_project_script","name":"Shared","script":{"name":"Renamed","command":"echo updated","async":false,"run_on_settle":true,"preview_url":"http://localhost:5173","auto_open_preview":true}}}),
+    );
+    let (status, updated) = put(&service, "/api/settings/preferences", update).await;
+    assert_eq!(status, 200, "{updated}");
+    for member in row(&updated, KEY)["members"].as_array().unwrap() {
+        assert_eq!(member["view"]["value"][1]["name"], "Renamed");
+        assert_eq!(member["view"]["value"][1]["command"], "echo updated");
+        assert_eq!(member["view"]["value"][1]["async"], false);
+        assert_eq!(member["view"]["value"][1]["auto_open_preview"], true);
+    }
+    let remove = edit_body(
+        &updated,
+        scope.clone(),
+        json!({KEY:{"op":"remove_project_script","name":"Renamed"}}),
+    );
+    let (status, removed) = put(&service, "/api/settings/preferences", remove).await;
+    assert_eq!(status, 200, "{removed}");
+    for member in row(&removed, KEY)["members"].as_array().unwrap() {
+        assert_eq!(member["view"]["value"].as_array().unwrap().len(), 1);
+        assert!(
+            member["view"]["value"][0]["name"]
+                .as_str()
+                .unwrap()
+                .starts_with("Local ")
+        );
+    }
+    let partial = edit_body(
+        &removed,
+        scope.clone(),
+        json!({KEY:{"op":"update_project_script","name":"Local 0","script":{"name":"Changed","command":"echo changed"}}}),
+    );
+    assert_eq!(
+        put(&service, "/api/settings/preferences", partial).await.0,
+        404
+    );
+    let after_partial = query(&service, scope.clone(), &[KEY]).await;
+    assert_eq!(
+        row(&after_partial, KEY)["members"],
+        row(&removed, KEY)["members"]
+    );
+    let missing = edit_body(
+        &removed,
+        scope.clone(),
+        json!({KEY:{"op":"remove_project_script","name":"Absent"}}),
+    );
+    assert_eq!(
+        put(&service, "/api/settings/preferences", missing).await.0,
+        404
+    );
+    let environment = query(&service, json!({}), &[KEY]).await;
+    let global = edit_body(
+        &environment,
+        json!({}),
+        json!({KEY:{"op":"add_project_script","script":{"name":"Environment","command":"echo environment"}}}),
+    );
+    let (status, global) = put(&service, "/api/settings/preferences", global).await;
+    assert_eq!(status, 200, "{global}");
+    assert_eq!(row(&global, KEY)["value"][0]["name"], "Environment");
+    let still_local = query(&service, scope, &[KEY]).await;
+    assert_eq!(
+        row(&still_local, KEY)["members"],
+        row(&removed, KEY)["members"]
+    );
+    let wrong = query(&service, json!({}), &["auto_pull"]).await;
+    let wrong = edit_body(
+        &wrong,
+        json!({}),
+        json!({"auto_pull":{"op":"add_project_script","script":{"name":"Wrong setting","command":"echo no"}}}),
+    );
+    assert_eq!(
+        put(&service, "/api/settings/preferences", wrong).await.0,
+        400
+    );
+    let first = projects[0]["id"].as_str().unwrap();
+    assert_eq!(put(&service, &format!("/api/projects/{first}/preferences"), json!({"values":{KEY:[{"name":"Local 0","command":"echo before","forward_metadata":{"kept":true}}]}})).await.0, 200);
+    let checkout = json!({"selection":{"kind":"checkout","group_key":still_local["catalog"]["selection"]["group_key"],"project_id":first}});
+    let before = query(&service, checkout.clone(), &[KEY]).await;
+    let update = edit_body(
+        &before,
+        checkout,
+        json!({KEY:{"op":"update_project_script","name":"Local 0","script":{"name":"Local edited","command":"echo after"}}}),
+    );
+    let (status, updated) = put(&service, "/api/settings/preferences", update).await;
+    assert_eq!(status, 200, "{updated}");
+    assert_eq!(
+        row(&updated, KEY)["value"][0]["forward_metadata"]["kept"],
+        true
+    );
+    assert_eq!(row(&updated, KEY)["value"][0]["command"], "echo after");
+    for (path, content) in files {
+        assert_eq!(std::fs::read_to_string(path).unwrap(), content);
+    }
+}
