@@ -971,6 +971,12 @@ adds no way in. `ORBYN_OPENER` names another program, or `-` to print what would
 nothing needs setting up, without creating a data directory or changing the host.
 Linux browser setup is outside the supported product scope and is not performed.
 
+A detached Windows `orbyn start` clears the inheritance flag on the launcher's
+original standard-stream handles before spawning `orbynd`. The launcher's streams
+remain usable for its result, while the daemon gets only its explicit null input/
+output and service log as standard streams. Redirecting the daemon's streams alone
+does not prevent Windows from inheriting an original pipe handle.
+
 `orbyn service` runs the service from this user's login through the OS's own manager:
 launchd on macOS or systemd on Linux, with no administrator rights. Background setup
 reports unsupported on Windows before invoking a manager or changing files, matching

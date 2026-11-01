@@ -5,6 +5,9 @@
 
 #[path = "../cli_service.rs"]
 mod cli_service;
+#[cfg(windows)]
+#[path = "../cli_stdio.rs"]
+mod cli_stdio;
 #[path = "../cli_trace.rs"]
 mod cli_trace;
 
@@ -668,6 +671,10 @@ fn start_detached(data: &Path) -> Outcome<()> {
     {
         use std::os::windows::process::CommandExt;
         const DETACHED_PROCESS: u32 = 0x0000_0008;
+        // Redirection supplies new handles, but CreateProcess also inherits
+        // existing handles marked inheritable, including the caller's pipes.
+        cli_stdio::detach_standard_streams()
+            .map_err(|error| Failure::new(format!("Could not detach service output: {error}")))?;
         command.creation_flags(DETACHED_PROCESS);
     }
     command
