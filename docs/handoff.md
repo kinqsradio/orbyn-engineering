@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `193f406`. Trust the repository over this document where they differ,
+`main` at `56d914d`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,16 +49,17 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `193f406`
+## Reconciled status at `56d914d`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
-At this revision there are 709 rows and 376 source checkboxes are ticked. The
-explicit scope metadata reports 535 included rows: 346 declared checked, 35
-partial, 152 open and 2 not doable as written. There are also 174 excluded and
-zero unresolved-scope rows. These source decisions do not qualify runtime behavior.
-These are checklist declarations, not a fresh verification count. The former
-365/573 calculation missed mobile-only rows and whole-row exclusions discarded
-local parts of mixed features; it is not a valid completion percentage.
+Main has 709 rows and 383 source checkboxes ticked. Its scope metadata reports
+533 included rows: 349 declared checked, 39 partial, 143 open and 2 not doable.
+There are 176 excluded and zero unresolved-scope rows. The settings branch after
+integration has 534 included: 344 declared checked, 47 partial, 141 open and 2 not
+doable, with 175 excluded and 384 source ticks. These are checklist declarations,
+not a fresh runtime verification count. Scope reconciliation and explicit partial
+rows mean the branch counts are not directly comparable as delivered features.
+The former 365/573 calculation is not a valid completion percentage.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
@@ -72,7 +73,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #61 | Merged at `9fafa3a` after all required checks passed. |
 | #62 | Merged at `f97abb8` after all required checks passed. |
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
-| #60 | Draft updated to `4425a71`, including main `193f406`. Baseline 895 local Rust tests passed (9 ignored); current local Clippy/fmt and 18 CLI tests pass. Windows `2018a5f` reached readiness but retained capture pipes; `0809cf3` stopped at a Windows-only test visibility error. That fixture is corrected; exact-head CI `41290079315` is running. No merge is claimed. Older Windows failures remain historical observations. Never merge without every required current-head check green. |
+| #60 | Merged as `56d914d` after exact head `4425a71` passed all six required jobs in `41290079315`, plus GitGuardian. Post-merge main `41291556483` also passed all six required jobs, including Windows packaged startup. The captured-pipe regression is fixed; this does not identify the older historical process holder. |
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
@@ -121,23 +122,19 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   All current-head checks passed before merge. An unrelated multi-model case
   failed once with pending run requests and passed in isolation; order/load
   sensitivity remains unproven rather than dismissed as a toast-only issue.
-- #60 is updated to `4425a71`, including main `193f406`. Windows run
-  `41287969189` at `2018a5f` failed its packaged CLI capture: the CLI had exited 0
-  and printed readiness, but inherited pipes drained only after tree cleanup.
-  The redirected detached daemon now starts after the launcher clears inheritance
-  on its original standard-stream handles. Run `41289505223` at `0809cf3` stopped
-  at a Windows-only test-helper visibility error; `4425a71` gives that test its own
-  disposable file fixture. Local Clippy/fmt and all 18 CLI tests pass (1 ignored
-  subprocess helper). Exact-head CI `41290079315` is running; Windows runtime
-  qualification is pending and no merge is claimed. Earlier baseline 895 Rust
-  tests (9 ignored) passed. The historical startup holder remains unidentified.
+- #60 merged as `56d914d` after exact head `4425a71` passed all six required
+  checks and GitGuardian. Main CI `41291556483` passed all six required jobs.
+  Windows `2018a5f` had reached readiness but retained capture pipes after launcher
+  exit; clearing inheritance on the launcher's original standard-stream handles
+  fixes that observed regression. `0809cf3` first exposed a Windows-only test-helper
+  visibility error, corrected in `4425a71`. The older startup holder is unidentified.
 - Service discovery now publishes a complete private file atomically before
   readiness. A concurrent-reader regression observed an empty file before the fix;
   the correction and immediate-read CLI checks pass. CLI commit `a7a99ed` is also
   integrated into settings as `ba4c0c7`, with readiness ordering in `62af2bc`.
 - #79 closed unmerged; its source is consolidated into `feat/settings-parity`,
-  in the `file-setting-inheritance` worktree. Local `8d9e344` includes main
-  `193f406`. The version-fenced settings API supports atomic logical-project edits,
+  in the `file-setting-inheritance` worktree. Local integration `7e32280` includes main
+  `56d914d`. The version-fenced settings API supports atomic logical-project edits,
   physical checkouts, Mixed, nullable Never, Inherit and targeted Reset all.
   Real-service browser and isolated packaged macOS runs verify common rows,
   preserved defaults/overrides, search and accurate physical-checkout labels.
@@ -197,6 +194,23 @@ credential-free engine routes. K38 has a concrete T3 counterpart and stays open.
 T3's Jujutsu discovery explicitly says unimplemented; it does not establish the
 proposed non-colocated status panel. The extra Orbyn tray requires a separate shell
 parity review even though its proposed popover is excluded.
+
+- Settings commit `0b575dc` binds the action editor to scoped add/update/remove.
+  It edits action names, commands, six icons, setup/wait/settle and preview options;
+  project dialogs now use the same version-fenced settings writer. Failed duplicate
+  and stale saves retain their drafts; adding to Mixed preserves distinct member
+  lists. Integrated source passed 951 Rust tests (9 ignored), Clippy, 277 web tests,
+  web check/build and 19 real-Core browser cases. A new Name-focus assertion then
+  failed; the corrected modal timing passes all three action-editor cases, including
+  Cancel focus restoration. An isolated packaged macOS fixture also verifies Name focus, six-icon
+  selection and native create/edit with flags checked through Core. Normal Quit
+  ends the two owned processes and removes service discovery. Receipt:
+  `target/settings-native/action-editor-0b575dc/native-observation.json`. It has a
+  release shell, debug Core/CLI, ad-hoc signing and a private profile; it does not
+  qualify a native engine turn, Windows hands-on or the final walkthrough. Successful
+  save focuses the parent dialog; opener restoration after refresh remains unqualified.
+  This is local source and fixture evidence, not section CI. Stable action IDs, shortcuts and preparation retry remain unfinished;
+  K9 is partial. Evidence: `target/settings-native/action-editor-*.log`.
 
 ### Verified in this pickup
 
@@ -281,10 +295,9 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Integrated main `193f406` run `41283340854` passed all six required jobs.
-   Resolve #60's Windows pipe-capture regression and verify `4425a71` CI, then merge only when every required
-   check is green. Reconcile the pending PR queue from current heads; older failed
-   or green heads do not qualify newer integrations.
+1. Integrated main `56d914d` run `41291556483` passed all six required jobs.
+   PR60 is merged. Keep subsequent section delivery fenced to all required green
+   current-head checks; historical passing heads do not qualify new integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
    visible deviations are removed, including extra tray behavior; route-held sidebar placement was removed by #76. Do not turn a missing reference into an invented control or an
    exclusion that silently lowers the goal.

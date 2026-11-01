@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "193f406b8a6b6d929b8ca91f7fbe6d1dc97b0503",
+    "revision": "56d914d4d8f907f6cd72a8e0334966080ffe6d59",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -88,6 +88,13 @@
         "PR81 head2317c6e: CI41282261011 all six required jobs and GitGuardian passed; merged193f406",
         "desktop-client-state/target/native-storage-fixed/persistence-observation.json"
       ]
+    },
+    {
+      "result": "CLI section PR60 merged after all required exact-head checks; integrated main is green",
+      "evidence": [
+        "PR60 head4425a71 CI41290079315 all six required jobs and GitGuardian passed; merged56d914d",
+        "Main56d914d CI41291556483 all six required jobs passed, including Windows installed-app startup"
+      ]
     }
   ],
   "verification": [
@@ -118,9 +125,10 @@
     {
       "check": "PR60 CLI-section integration and final CI",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "PR60 now4425a71, including main193f406. 2018a5f Windows CI41287969189 failed packaged capture after leader exit0 with pipes open. 0809cf3 Windows CI41289505223 stopped at a private test helper import; that fixture is corrected in4425a71. Current CI41290079315 running; no merge claimed. Local fmt/Clippy and18 CLI tests pass,1 subprocess helper ignored."
+        "Head4425a71 CI41290079315 all six required jobs and GitGuardian passed; merged56d914d",
+        "Post-merge main CI41291556483 all six required jobs passed; historical startup holder remains unidentified"
       ]
     },
     {
@@ -242,19 +250,30 @@
         "Real-orbynd scoped-preference regression failed before and passes after: distinct Mixed lists, duplicate/missing-target rollback, revision fencing, environment isolation, metadata preservation and unchanged files",
         "Generated PreferenceEdit.ts committed. Editor binding, full action editor and preparation retry remain incomplete; no section CI or merge claimed."
       ]
+    },
+    {
+      "check": "Scoped action editor local0b575dc",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "Integrated951 Rust tests passed,9 ignored; Clippy passed;277 web tests/check/build passed",
+        "19 real-Core browser cases passed; new focus assertion failed then all3 editor cases passed after timing correction",
+        "Packaged macOS fixture0b575dc: native Name focus, icon selection, create/edit and Core values passed; normal quit ended both owned processes and removed service handle. Release shell/debug Core+CLI, private profile, ad-hoc fixture identity. No section CI, Windows hands-on or final walkthrough; IDs/shortcuts/retry incomplete."
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Diagnose and verify PR60 head4425a71 Windows CI41290079315; merge only after every required exact-head check is green without squash. Continue settings from789a2f5: bind the T3 action editor to version-fenced action operations while preserving async save failure, Mixed lists and scope identity; add stable action identity for shortcuts and finish preparation retry. Then continue every remaining in-scope row through real orbynd, preserving all refusal boundaries.",
+  "next_action": "Finish settings action-editor verification and commit the UI binding; qualify the integrated packaged fixture. Add stable action identity and shortcuts, finish preparation retry and remaining custom-form/subfolder bindings. Then continue every remaining in-scope row through real orbynd, preserving all refusal boundaries.",
   "delivery": {
     "state": "merged",
     "evidence": [
       "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
       "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
       "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet.",
-      "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed."
+      "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed.",
+      "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete."
     ]
   }
 }
