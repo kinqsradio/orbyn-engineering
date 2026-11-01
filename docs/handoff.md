@@ -72,7 +72,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #61 | Merged at `9fafa3a` after all required checks passed. |
 | #62 | Merged at `f97abb8` after all required checks passed. |
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
-| #60 | Draft updated to `2018a5f`, including main `193f406`. Formatting, Clippy and all 895 local Rust tests passed (9 ignored), including the Windows background-service parity correction. Current-head CI `41287969189` is running; no merge is claimed. Older Windows failures remain historical observations. Never merge without every required current-head check green. |
+| #60 | Draft updated to `4425a71`, including main `193f406`. Baseline 895 local Rust tests passed (9 ignored); current local Clippy/fmt and 18 CLI tests pass. Windows `2018a5f` reached readiness but retained capture pipes; `0809cf3` stopped at a Windows-only test visibility error. That fixture is corrected; exact-head CI `41290079315` is running. No merge is claimed. Older Windows failures remain historical observations. Never merge without every required current-head check green. |
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
@@ -121,12 +121,16 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   All current-head checks passed before merge. An unrelated multi-model case
   failed once with pending run requests and passed in isolation; order/load
   sensitivity remains unproven rather than dismissed as a toast-only issue.
-- #60 is updated to `2018a5f` on `feat/cli-start`, including main `193f406`.
-  Bounded CLI capture, dotenv, trace and fixture repairs passed all 895 local Rust
-  tests (9 ignored), Clippy and formatting. Windows background setup now reports
-  unsupported, matching T3, instead of installing an extra Task Scheduler service.
-  CI `41287969189` is running; every required current-head check must pass before
-  merge. Native Windows GUI and real macOS login-service operations remain open.
+- #60 is updated to `4425a71`, including main `193f406`. Windows run
+  `41287969189` at `2018a5f` failed its packaged CLI capture: the CLI had exited 0
+  and printed readiness, but inherited pipes drained only after tree cleanup.
+  The redirected detached daemon now starts after the launcher clears inheritance
+  on its original standard-stream handles. Run `41289505223` at `0809cf3` stopped
+  at a Windows-only test-helper visibility error; `4425a71` gives that test its own
+  disposable file fixture. Local Clippy/fmt and all 18 CLI tests pass (1 ignored
+  subprocess helper). Exact-head CI `41290079315` is running; Windows runtime
+  qualification is pending and no merge is claimed. Earlier baseline 895 Rust
+  tests (9 ignored) passed. The historical startup holder remains unidentified.
 - Service discovery now publishes a complete private file atomically before
   readiness. A concurrent-reader regression observed an empty file before the fix;
   the correction and immediate-read CLI checks pass. CLI commit `a7a99ed` is also
@@ -169,6 +173,13 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   `8abc5fc` CLI and a private profile; it does not qualify the CLI section, native
   composer, final release package or Windows GUI. K9 remains partial for the
   complete action editor and preparation retry.
+- Settings commit `789a2f5` adds version-fenced action add/update/remove operations.
+  A real-orbynd regression verifies checkout-specific Mixed lists, whole-group
+  rollback for duplicates or absent targets, stale revisions, environment defaults,
+  forward metadata and unchanged project files. Baseline rejected the new operation;
+  current source passes 925 Rust tests (8 ignored), Clippy/fmt, 259 contract tests
+  and 277 web tests/check. Generated `PreferenceEdit.ts` is committed. This is the
+  API foundation for the editor, not a completed editor or K9 completion.
 - #81 fixes desktop state loss caused by per-launch service origins. A real native
   reproduction lost Light after quit/relaunch; the fixed package retained it across
   service recovery and full restart and rendered real media and a terminal prompt.
@@ -271,7 +282,7 @@ not commit it. Move it to a real secret store before any release.
 ## Next actions, in order
 
 1. Integrated main `193f406` run `41283340854` passed all six required jobs.
-   Finish #60's integrated local checks and current-head CI, then merge only when every required
+   Resolve #60's Windows pipe-capture regression and verify `4425a71` CI, then merge only when every required
    check is green. Reconcile the pending PR queue from current heads; older failed
    or green heads do not qualify newer integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing

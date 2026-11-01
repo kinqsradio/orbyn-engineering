@@ -120,7 +120,7 @@
       "required": true,
       "state": "unverified",
       "evidence": [
-        "PR60 updated to2018a5f, including main193f406. All895 local Rust tests passed,9 ignored; Clippy/fmt passed. Current-head CI41287969189 running; no merge claimed. Windows native GUI and real macOS login-service operations remain unverified."
+        "PR60 now4425a71, including main193f406. 2018a5f Windows CI41287969189 failed packaged capture after leader exit0 with pipes open. 0809cf3 Windows CI41289505223 stopped at a private test helper import; that fixture is corrected in4425a71. Current CI41290079315 running; no merge claimed. Local fmt/Clippy and18 CLI tests pass,1 subprocess helper ignored."
       ]
     },
     {
@@ -232,18 +232,29 @@
         "file-setting-inheritance/target/settings-native/action-preview/native-observation.json: both native menus opened a real local page, second preview and script tabs selected, normal shutdown reaped recorded children",
         "Fixture identity, private profile, release shell and re-signed debug Core with14 matching file-backed Mach-O sections; frozen8abc5fc CLI. Full action editor, preparation retry, final native composer and Windows remain incomplete"
       ]
+    },
+    {
+      "check": "Scoped project action operations local789a2f5",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "925 Rust tests passed,8 ignored;259 contracts tests/export and277 web tests/check passed; Clippy/fmt passed",
+        "Real-orbynd scoped-preference regression failed before and passes after: distinct Mixed lists, duplicate/missing-target rollback, revision fencing, environment isolation, metadata preservation and unchanged files",
+        "Generated PreferenceEdit.ts committed. Editor binding, full action editor and preparation retry remain incomplete; no section CI or merge claimed."
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Monitor PR60 head2018a5f CI41287969189 and resolve failures; merge only after every required exact-head check is green without squash. Continue the settings section from2af0657: complete T3 action editing and preparation retry, remaining K1/K2 forms, and then every remaining in-scope row through real orbynd. Preserve refusal boundaries.",
+  "next_action": "Diagnose and verify PR60 head4425a71 Windows CI41290079315; merge only after every required exact-head check is green without squash. Continue settings from789a2f5: bind the T3 action editor to version-fenced action operations while preserving async save failure, Mixed lists and scope identity; add stable action identity for shortcuts and finish preparation retry. Then continue every remaining in-scope row through real orbynd, preserving all refusal boundaries.",
   "delivery": {
     "state": "merged",
     "evidence": [
       "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
       "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
-      "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet."
+      "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet.",
+      "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed."
     ]
   }
 }
