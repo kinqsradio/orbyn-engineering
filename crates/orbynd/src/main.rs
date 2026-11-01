@@ -733,7 +733,6 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     if let Some(key) = new_key {
         start["access_key"] = json!(key);
     }
-    println!("{start}");
     let handle = core.config.data_dir.join(SERVICE_FILE);
     let found = json!({ "url": base_url, "token": token, "pid": std::process::id() });
     if let Err(error) =
@@ -741,6 +740,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     {
         tracing::warn!(%error, "the orbyn command will not find this service");
     }
+    println!("{start}");
 
     if let Some(mut lines) = shell_lines {
         // Every line after the first ready line is for the shell.
