@@ -212,6 +212,12 @@ parity review even though its proposed popover is excluded.
   This is local source and fixture evidence, not section CI. Stable action IDs, shortcuts and preparation retry remain unfinished;
   K9 is partial. Evidence: `target/settings-native/action-editor-*.log`.
 
+- Follow-up `f39a12a` fixes the successful-save focus issue observed in the
+  native fixture. The real-Core assertion failed before and passes after, with
+  focus returned after create, rename and delete; all three editor cases, 277 web
+  tests and check/build pass. This follow-up is source/browser qualified; the
+  earlier packaged receipt remains pinned to `0b575dc`.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68

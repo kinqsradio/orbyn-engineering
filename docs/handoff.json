@@ -258,14 +258,15 @@
       "evidence": [
         "Integrated951 Rust tests passed,9 ignored; Clippy passed;277 web tests/check/build passed",
         "19 real-Core browser cases passed; new focus assertion failed then all3 editor cases passed after timing correction",
-        "Packaged macOS fixture0b575dc: native Name focus, icon selection, create/edit and Core values passed; normal quit ended both owned processes and removed service handle. Release shell/debug Core+CLI, private profile, ad-hoc fixture identity. No section CI, Windows hands-on or final walkthrough; IDs/shortcuts/retry incomplete."
+        "Packaged macOS fixture0b575dc: native Name focus, icon selection, create/edit and Core values passed; normal quit ended both owned processes and removed service handle. Release shell/debug Core+CLI, private profile, ad-hoc fixture identity. No section CI, Windows hands-on or final walkthrough; IDs/shortcuts/retry incomplete.",
+        "Follow-upf39a12a restores successful-save focus: regression failed before and passes after create/rename/delete.3 real-Core cases,277 web tests,check/build pass; packaged receipt remains0b575dc."
       ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Finish settings action-editor verification and commit the UI binding; qualify the integrated packaged fixture. Add stable action identity and shortcuts, finish preparation retry and remaining custom-form/subfolder bindings. Then continue every remaining in-scope row through real orbynd, preserving all refusal boundaries.",
+  "next_action": "Publish the checked settings section batch and run every required exact-head CI check; merge without squash only when all are green. Continue stable action identity/shortcuts, preparation retry and remaining settings bindings, then every in-scope row through real orbynd.",
   "delivery": {
     "state": "merged",
     "evidence": [
