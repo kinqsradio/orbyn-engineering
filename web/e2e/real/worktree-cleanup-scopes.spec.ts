@@ -1,5 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { startProject } from "./service";
+
+const cleanupAdvanced = (page: Page) => page.locator(".collapsible-panel")
+  .filter({ has: page.locator("#worktrees-delete-settled") }).locator("..")
+  .getByRole("button", { name: "Advanced", exact: true });
 
 test("Custom captures the inherited legacy age for the selected project", async ({ page }) => {
   const { service, projectId } = await startProject({ fakeEngines: true });
@@ -37,7 +41,7 @@ test("worktree cleanup uses project Off, Custom and Inherit without changing env
     expect((await preference()).value).toEqual({ mode: "custom", rules: { settled_after_days: 12, forward: "environment" } });
     await mode.selectOption("custom");
     await expect(mode).toHaveValue("custom");
-    await page.getByRole("button", { name: "Advanced", exact: true }).last().click();
+    await cleanupAdvanced(page).click();
     const toggle = page.getByRole("switch", { name: "Delete settled worktrees", exact: true });
     await expect(toggle).not.toBeChecked();
     await toggle.click();
@@ -58,7 +62,7 @@ test("a conflicting worktree age keeps its draft and newer policy fields", async
     await service.api("PUT", "/api/preferences", { values: { worktree_cleanup: { mode: "custom", rules: { settled_after_days: 3 } } } });
     await page.goto(`${service.page}#/settings/worktrees`);
     await expect(page.getByRole("heading", { name: "Cleanup", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Advanced", exact: true }).last().click();
+    await cleanupAdvanced(page).click();
     const days = page.getByRole("spinbutton", { name: "Delete settled worktrees in days", exact: true });
     await expect(days).toHaveValue("3");
     await days.fill("0");
@@ -95,13 +99,13 @@ test("a late project save cannot replace an environment draft", async ({ page })
     const days = page.getByRole("spinbutton", { name: "Delete settled worktrees in days", exact: true });
     await page.goto(`${service.page}#/settings/worktrees?project=${encodeURIComponent(group.key)}`);
     await expect(page.getByLabel("Automatic worktree cleanup", { exact: true })).toHaveValue("custom");
-    await page.getByRole("button", { name: "Advanced", exact: true }).last().click();
+    await cleanupAdvanced(page).click();
     await days.fill("0"); await days.press("Tab"); await committed;
     const response = page.waitForResponse((item) => item.request().method() === "PUT" && new URL(item.url()).pathname === "/api/settings/preferences");
     await page.getByRole("button", { name: `Project scope: ${group.label}`, exact: true }).click();
     await page.getByRole("menuitemradio", { name: "All projects", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Cleanup", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Advanced", exact: true }).last().click();
+    await cleanupAdvanced(page).click();
     await expect(days).toHaveValue("3"); await days.fill("12");
     release(); await (await response).finished();
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
