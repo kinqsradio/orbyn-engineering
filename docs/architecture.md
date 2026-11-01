@@ -593,9 +593,18 @@ rows and thread lifecycle/title controls use scoped reads and revision-fenced ed
 Mixed controls do not save an untouched empty value. Provenance displays actual
 project, environment, file and default layers. Reset all deletes only the explicit
 listed project overrides. Each write stays attached to the scope that supplied its
-revision, including when navigation changes before it finishes. Custom provider and
-storage forms are not yet migrated to this context; their parity claims remain partial
-until those bindings and native walkthroughs are verified.
+revision, including when navigation changes before it finishes. Remaining provider
+controls and storage forms still need their own bindings and qualification; their
+parity claims stay partial until those and native walkthroughs are verified.
+
+Custom models belong to the local environment even while a valid project or checkout
+is selected. Their editor queries that explicit environment target and saves the raw
+list with its observed membership version and row revision. A conflicting edit
+refreshes both reads without clearing the person's draft or replacing newer models.
+Other engines' entries, unknown records and forward fields are preserved. Loading,
+unavailable selections and unsupported list shapes cannot submit a mutation. Once
+the preference commits, refreshing model discovery is a separate read and cannot
+turn that saved model into an apparently failed Add.
 
 OpenTelemetry export is an environment-only form. Project, checkout and unavailable
 selections show the reference's environment choice instead of editable global fields.
