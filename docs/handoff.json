@@ -120,7 +120,7 @@
       "required": true,
       "state": "unverified",
       "evidence": [
-        "Remote PR60 remains draft at dde3260; local4b484da includes main193f406; integrated local checks running, not pushed; older Windows failures remain historical observations"
+        "PR60 updated to2018a5f, including main193f406. All895 local Rust tests passed,9 ignored; Clippy/fmt passed. Current-head CI41287969189 running; no merge claimed. Windows native GUI and real macOS login-service operations remain unverified."
       ]
     },
     {
@@ -176,9 +176,9 @@
     {
       "check": "Integrated main2769161",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "GitHub Actions41265985286 running"
+        "GitHub Actions41265985286 completed successfully"
       ]
     },
     {
@@ -208,31 +208,32 @@
     {
       "check": "Integrated main193f406",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "GitHub Actions41283340854 running"
+        "GitHub Actions41283340854 completed successfully; all six required jobs passed"
       ]
     },
     {
-      "check": "Settings section local8d9e344",
+      "check": "Settings section localfb08731",
       "required": true,
       "state": "unverified",
       "evidence": [
-        "Local source gates: 914 Rust passed,8 ignored; Clippy/fmt and277 web tests/check/build passed; real-service browser and packaged macOS common-settings/script flows passed",
-        "file-setting-inheritance/target/settings-native; fixture identity and debug Core, Windows GUI unverified",
-        "K1/K2/K5 and other settings rows remain incomplete; section not pushed"
+        "Local source:924 Rust passed,8 ignored; Clippy/fmt and277 web tests/check/build passed; six real-orbynd setup browser cases passed with real setup processes and protocol-double engines",
+        "file-setting-inheritance/target/setup-gate-restart-fb08731; completed setup restart, interrupted setup failure and schema17 writer rejection; not native composer or Windows qualification",
+        "Earlier common-settings/menu native fixtures retained; K1/K2/K5/K9 and other settings rows remain partial; section not pushed"
       ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Verify main193f406 CI and CLI-section integration gates; continue remaining K1/K2/K5/K9 behavior and investigate native sidebar pointer activation, then every remaining in-scope row through real orbynd. Preserve refusal boundaries and merge only exact-head green batches without squash.",
+  "next_action": "Monitor PR60 head2018a5f CI41287969189 and resolve failures; merge only after every required exact-head check is green without squash. Continue the settings section fromfb08731: complete T3 action editing, preparation retry and preview consumers, remaining K1/K2 forms, and then every remaining in-scope row through real orbynd. Preserve refusal boundaries.",
   "delivery": {
     "state": "merged",
     "evidence": [
       "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
-      "PR80/81 merged green; main193f406 CI running. PR79 closed unmerged and consolidated into local settings section. CLI and settings section branches remain unpushed/incomplete."
+      "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
+      "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet."
     ]
   }
 }

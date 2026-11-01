@@ -72,7 +72,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #61 | Merged at `9fafa3a` after all required checks passed. |
 | #62 | Merged at `f97abb8` after all required checks passed. |
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
-| #60 | Still draft at remote head `dde3260`. CLI-section local integration `4b484da` includes main `193f406`; its current-head local gates are running. Local CLI additions and fixture repairs are not pushed. Older Windows failures remain historical observations. Never merge without every required current-head check green. |
+| #60 | Draft updated to `2018a5f`, including main `193f406`. Formatting, Clippy and all 895 local Rust tests passed (9 ignored), including the Windows background-service parity correction. Current-head CI `41287969189` is running; no merge is claimed. Older Windows failures remain historical observations. Never merge without every required current-head check green. |
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
@@ -85,7 +85,7 @@ Main `800293b` run `41263153043` passed all six required jobs. Later integrated
 main `0a48073` and `ed845d9` also
 passed. Main `04eb893` run `41269745565` passed all six required jobs. PR81 head
 `2317c6e` passed all six required jobs in `41282261011`, plus GitGuardian, before
-merging as `193f406`. Its post-merge main run `41283340854` is running.
+merging as `193f406`. Its post-merge main run `41283340854` passed all six required jobs.
 The historical Windows process holder is still unproven.
 
 ### Current continuation work
@@ -121,9 +121,16 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   All current-head checks passed before merge. An unrelated multi-model case
   failed once with pending run requests and passed in isolation; order/load
   sensitivity remains unproven rather than dismissed as a toast-only issue.
-- #60 remains draft; local `feat/cli-start` at `4b484da` includes main `193f406`.
-  Bounded CLI capture, dotenv and trace work plus fixture repairs remain local.
-  Current integrated checks are running. No current-head CI or merge is claimed.
+- #60 is updated to `2018a5f` on `feat/cli-start`, including main `193f406`.
+  Bounded CLI capture, dotenv, trace and fixture repairs passed all 895 local Rust
+  tests (9 ignored), Clippy and formatting. Windows background setup now reports
+  unsupported, matching T3, instead of installing an extra Task Scheduler service.
+  CI `41287969189` is running; every required current-head check must pass before
+  merge. Native Windows GUI and real macOS login-service operations remain open.
+- Service discovery now publishes a complete private file atomically before
+  readiness. A concurrent-reader regression observed an empty file before the fix;
+  the correction and immediate-read CLI checks pass. CLI commit `a7a99ed` is also
+  integrated into settings as `ba4c0c7`, with readiness ordering in `62af2bc`.
 - #79 closed unmerged; its source is consolidated into `feat/settings-parity`,
   in the `file-setting-inheritance` worktree. Local `8d9e344` includes main
   `193f406`. The version-fenced settings API supports atomic logical-project edits,
@@ -139,8 +146,18 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   regression failed before and passes after, including visible native output.
   Evidence is under `target/settings-native` in that worktree. This is an isolated
   fixture identity, private profile, release shell and debug Core with symbols
-  disabled, not final-release or Windows GUI qualification. Sidebar pointer
-  activation was unreliable during the walkthrough and remains to investigate.
+  disabled, not final-release or Windows GUI qualification. A subsequent direct
+  coordinate audit opened both Active and Settled thread titles successfully,
+  without changing Active placement. Earlier AX-target activation observations
+  remain retained; no product bug was established by them.
+- Settings commit `fb08731` implements synchronous setup admission, async overlap,
+  cancellation/drop cleanup, restart fencing and held queues after failed setup.
+  The first-run identity is stable across later admissions. Current source passed
+  924 Rust tests (8 ignored), Clippy/fmt, 277 web tests/check/build and six real-Core
+  browser cases. Setup is an actual process; engines in these cases are protocol
+  doubles. Fresh private-profile restart proof is retained under
+  `target/setup-gate-restart-fb08731`. Full action editing, preparation retry and
+  preview consumers remain incomplete; K9 stays partial and this section is local.
 - #81 fixes desktop state loss caused by per-launch service origins. A real native
   reproduction lost Light after quit/relaunch; the fixed package retained it across
   service recovery and full restart and rendered real media and a terminal prompt.
@@ -242,8 +259,8 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Verify integrated main `193f406` run `41283340854`. Finish #60's integrated local
-   checks and current-head CI, then merge only when every required
+1. Integrated main `193f406` run `41283340854` passed all six required jobs.
+   Finish #60's integrated local checks and current-head CI, then merge only when every required
    check is green. Reconcile the pending PR queue from current heads; older failed
    or green heads do not qualify newer integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
@@ -254,8 +271,9 @@ not commit it. Move it to a real secret store before any release.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
    F source control, D viewers, then the rest. The next settings slices are
    the remaining custom-form bindings, repository-subfolder registration and
-   project actions; K1/K2/K5 remain partial. Investigate the observed native
-   sidebar pointer activation. I33 ACP sessions
+   project actions; K1/K2/K5/K9 remain partial. The direct-coordinate sidebar audit
+   passed; no product defect was established by earlier AX-target observations.
+   I33 ACP sessions
    and M3 remain next backend slices.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
    package-service smoke now fails instead of warning, and the prior holder is unknown. A prior #60 Windows
