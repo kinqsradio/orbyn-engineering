@@ -145,10 +145,18 @@ test("project settings explain inheritance and reset only their own override", a
     await expect(popup).toBeHidden();
     expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
     const reset = row.getByRole("button", { name: `Reset ${title} to default`, exact: true });
-    const projectPreferences = `**/api/projects/${a.id}/preferences`;
+    const projectPreferences = "**/api/settings/preferences";
     // Only this failure response is injected; persistence checks use the real service.
-    await page.route(projectPreferences, (route) => route.fulfill({ status: 503, contentType: "application/json",
-      body: JSON.stringify({ code: "unavailable", message: "Reset unavailable. Try again." }) }));
+    await page.route(projectPreferences, async (route) => {
+      expect(route.request().method()).toBe("PUT");
+      const request = route.request().postDataJSON();
+      expect(request.scope.selection).toMatchObject({ kind: "checkout", project_id: a.id });
+      expect(request.membership_version).toEqual(expect.any(String));
+      expect(request.if_match.auto_pull).toEqual(expect.any(String));
+      expect(request.edits.auto_pull).toEqual({ op: "inherit" });
+      await route.fulfill({ status: 503, contentType: "application/json",
+        body: JSON.stringify({ code: "unavailable", message: "Reset unavailable. Try again." }) });
+    });
     await reset.click();
     await expect(dialog.getByRole("alert")).toHaveText(/Reset unavailable/);
     await expect(row.getByRole("switch")).not.toBeChecked();

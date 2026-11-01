@@ -276,7 +276,7 @@
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Publish checked identity slice876c1a6 to PR82, verify GitGuardian and all six required exact-head CI checks, and merge without squash only when all are green. Continue action shortcuts, preparation retry and every remaining in-scope row through real orbynd.",
+  "next_action": "Publish the checked identity and acceptance fixes to PR82; verify the fresh GitGuardian result after the owner-authorized false-positive classification, and every required current-head CI job. Merge only all-green without squash, then continue action shortcuts, preparation retry and all remaining in-scope rows through real orbynd.",
   "delivery": {
     "state": "merged",
     "evidence": [
@@ -286,7 +286,8 @@
       "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed.",
       "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete.",
       "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed.",
-      "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge."
+      "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge.",
+      "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted."
     ]
   }
 }

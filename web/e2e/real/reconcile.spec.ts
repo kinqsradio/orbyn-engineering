@@ -228,8 +228,12 @@ test("appearance: presets, editor, typography, contrast and settings search", as
   await expect.poll(() => color("--color-primary")).toBe("#7aa2f7");
   await page.reload();
   await expect.poll(() => color("--color-primary")).toBe("#7aa2f7");
-  await page.getByRole("searchbox", { name: "Search settings" }).fill("typography");
-  await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link")).toHaveText(["Appearance"]);
+  await page.getByRole("searchbox", { name: "Search settings" }).fill("Code font");
+  const results = page.getByRole("navigation", { name: "Settings sections" });
+  await expect(results.getByRole("link")).toHaveCount(1);
+  await expect(results.getByRole("link")).toHaveAccessibleName("Code font · Appearance");
+  await results.getByRole("link", { name: "Code font · Appearance", exact: true }).click();
+  await expect(page.locator("#appearance-code-font")).toBeFocused();
   await page.getByRole("searchbox", { name: "Search settings" }).fill("");
   await page.getByRole("combobox", { name: "Dark theme" }).selectOption("");
 });

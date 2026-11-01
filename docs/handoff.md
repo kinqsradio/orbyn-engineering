@@ -244,6 +244,16 @@ parity review even though its proposed popover is excluded.
   `target/settings-native/gitguardian-39375233-false-positive.png`. GitHub's exact
   current-head checks must still all be green before merge.
 
+- PR82 head `88f057a` CI `41293554098` failed two E2E assertions (196 passed):
+  the retired section-keyword search expectation and failure injection on the old
+  project-preferences route. Both failures reproduced locally. Acceptance now
+  checks the exact setting result and focused row, and injects reset failure on
+  the actual version-fenced route while asserting its checkout, membership and
+  revision. All 13 cases across reconcile, inheritance and search pass locally.
+  No test is skipped or check weakened. The Windows Rust job remained live at
+  `workspace.rs` in the last visible log; do not treat its observation as a failure
+  or restart it. A new head must pass every required job before merge.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
