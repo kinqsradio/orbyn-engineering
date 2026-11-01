@@ -99,6 +99,20 @@ pub async fn files(
     Ok(Json(state.core.pull_files(&id, number).await?))
 }
 
+pub async fn revisions(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.pull_revisions(&id, number).await?))
+}
+
+pub async fn revision_files(
+    State(state): State<AppState>,
+    Path((id, sha)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.revision_files(&id, &sha).await?))
+}
+
 pub async fn set_viewed(
     State(state): State<AppState>,
     Path((id, number)): Path<(String, u64)>,

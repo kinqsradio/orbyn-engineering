@@ -6,11 +6,13 @@ use serde_json::{Value, json};
 use support::{Options, Service, TempDir, library, run_git, setup};
 
 #[tokio::test]
-async fn first_run_is_blocked_until_setup() {
+async fn first_launch_works_with_no_setup_and_no_network() {
     let dir = TempDir::new();
     let service = Service::start(&dir.path().join("data"), Options::default());
     let status = service.json("/api/workspace").await;
-    assert_eq!(status["configured"], false);
+    assert_eq!(status["configured"], true);
+    assert_eq!(status["library"]["snapshot"], true);
+    assert_eq!(status["library"]["adopted"], false);
     assert!(
         status["default_url"]
             .as_str()
@@ -20,8 +22,14 @@ async fn first_run_is_blocked_until_setup() {
     let (code, body) = service
         .send("/api/projects/create", json!({ "name": "app" }))
         .await;
-    assert_eq!(code, 409);
-    assert_eq!(body["code"], "workspace_required");
+    assert_eq!(code, 201, "{body}");
+    let id = body["id"].as_str().unwrap();
+    service
+        .send(&format!("/api/projects/{id}/trust"), json!({}))
+        .await;
+    let thread = service.thread(id, "codex").await;
+    service.admit(&thread, "hello").await;
+    assert_eq!(service.finished(&thread).await, "completed");
 }
 
 #[tokio::test]

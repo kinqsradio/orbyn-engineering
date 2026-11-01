@@ -139,9 +139,9 @@ impl Service {
         (status, serde_json::from_str(&text).unwrap_or(Value::Null))
     }
 
-    /// Adopts a generated library unless the workspace is already set up.
+    /// Adopts a generated library in place of the empty one a bare service starts with.
     pub async fn ensure_workspace(&self, parent: &Path) {
-        if self.json("/api/workspace").await["configured"] == true {
+        if self.json("/api/workspace").await["library"]["snapshot"] != true {
             return;
         }
         let library = library(&parent.join("library"));

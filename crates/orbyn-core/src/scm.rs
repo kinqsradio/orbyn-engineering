@@ -12,7 +12,7 @@ use orbyn_contracts::{
     AddPullComment, BranchInfo, CheckoutPull, CreateBranch, EditPullComment, ForgeStatus,
     GitAction, GitActionResult, GitPhase, MergePull, Project, PublishProject, PullBulkResult,
     PullCandidate, PullCheck, PullCheckout, PullConversation, PullFile, PullList, PullListEntry,
-    PullListFailure, PullRequest, PullRequestDetail, PullRequestDraft, PullStack,
+    PullListFailure, PullRequest, PullRequestDetail, PullRequestDraft, PullRevision, PullStack,
     PullTimelineEvent, PullWatch, ReactPullComment, SetPullPeople, StackAction, SubmitReview,
     Thread, UpdatePull, WorkOnPull,
 };
@@ -569,6 +569,17 @@ impl Core {
             file.viewed = viewed.contains(&file.path);
         }
         Ok(files)
+    }
+
+    pub async fn pull_revisions(&self, project_id: &str, number: u64) -> Result<Vec<PullRevision>> {
+        let (project, forge) = self.pull_site(project_id).await?;
+        forge::pull_revisions(forge, Path::new(&project.path), number).await
+    }
+
+    /// One commit's files. Viewed marks belong to the whole pull request, not a commit.
+    pub async fn revision_files(&self, project_id: &str, sha: &str) -> Result<Vec<PullFile>> {
+        let (project, forge) = self.pull_site(project_id).await?;
+        forge::revision_files(forge, Path::new(&project.path), sha).await
     }
 
     pub async fn comment_pull(

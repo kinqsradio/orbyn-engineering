@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import { startProject, threadIdOf, type PullFixture, type Service } from "./service";
 
 /** The pull request surface through the real service and a stand-in `gh` that keeps state. */
-const PORT = 5288;
 
 const PATCH = "@@ -1,2 +1,3 @@\n keep\n-old\n+new\n+more";
 const fixtures: PullFixture[] = [
@@ -39,6 +38,20 @@ const fixtures: PullFixture[] = [
       { filename: "src/a.ts", status: "modified", additions: 2, deletions: 1, patch: PATCH },
       { filename: "src/b.ts", status: "added", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+b" },
     ],
+    commits: [
+      {
+        sha: "a1b2c3d4e5f6",
+        commit: { message: "Rename the helper\n\nWith more detail.", committer: { date: "2026-10-01T00:00:00Z" } },
+        author: { login: "ada" },
+        files: [{ filename: "src/a.ts", status: "modified", additions: 2, deletions: 1, patch: PATCH }],
+      },
+      {
+        sha: "f6e5d4c3b2a1",
+        commit: { message: "Add the second file", committer: { date: "2026-10-02T00:00:00Z" } },
+        author: { login: "grace" },
+        files: [{ filename: "src/b.ts", status: "added", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+b" }],
+      },
+    ],
   },
   { number: 2, title: "Second layer", headRefName: "feat-two", baseRefName: "feat-one", isDraft: true, author: { login: "grace" }, labels: [{ name: "docs" }] },
   { number: 3, title: "Unrelated fix", headRefName: "fix-three", author: { login: "ada" } },
@@ -62,7 +75,7 @@ const moreAction = async (page: Page, article: Locator, name: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true, forge: fixtures }));
+  ({ service, projectId } = await startProject({ fakeEngines: true, forge: fixtures }));
 });
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1500, height: 1000 }));
@@ -187,6 +200,19 @@ test("the code tab marks files viewed and submits line comments as one review", 
     body: "One thing.",
     comments: [{ path: "src/a.ts", line: 2, body: "Not this name.", side: "RIGHT" }],
   });
+});
+
+test("the code tab shows one commit at a time, then every change again", async ({ page }) => {
+  const article = await openPull(page, "First layer");
+  await article.getByRole("tab", { name: "Code" }).click();
+  const revision = article.getByRole("combobox", { name: "Revision" });
+  await revision.selectOption({ label: "2. Add the second file (f6e5d4c)" });
+  await expect(article.getByRole("status")).toHaveText("1 file in this commit");
+  await expect(article.getByText("src/b.ts")).toBeVisible();
+  await expect(article.getByText("src/a.ts")).toBeHidden();
+  await expect(article.getByRole("button", { name: /^Comment on line/ })).toHaveCount(0);
+  await article.getByRole("combobox", { name: "Revision" }).selectOption({ label: "All changes" });
+  await expect(article.getByRole("status")).toHaveText(/of 2 files viewed/);
 });
 
 test("the actions menu changes draft state, updates the branch and allows maintainer edits", async ({ page }) => {

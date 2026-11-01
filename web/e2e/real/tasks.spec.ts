@@ -3,7 +3,6 @@ import { createHmac } from "node:crypto";
 import { startProject, type Service } from "./service";
 
 /** Webhook tasks and the after-thread trigger, set up in Settings and fired for real. */
-const PORT = 5286;
 
 let service: Service;
 let projectId = "";
@@ -14,7 +13,7 @@ const tasksPage = async (page: Page) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 

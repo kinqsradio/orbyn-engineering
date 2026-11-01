@@ -3,7 +3,6 @@ import { createServer, type Server } from "node:http";
 import { startProject, type Service } from "./service";
 
 /** The Browser surface driving the service's headless Chrome. */
-const PORT = 5283;
 const SITE_PORT = 5293;
 
 let service: Service;
@@ -17,7 +16,7 @@ test.beforeAll(async () => {
     response.setHeader("Content-Type", "text/html");
     response.end(`<body style="margin:0;background:#2a6"><button style="width:100vw;height:100vh" onclick="fetch('/clicked')">${request.url}</button></body>`);
   }).listen(SITE_PORT);
-  const started = await startProject(PORT, { fakeEngines: true });
+  const started = await startProject({ fakeEngines: true });
   service = started.service;
   const thread = await service.api<{ id: string }>("POST", "/api/threads", {
     project_id: started.projectId,
@@ -29,8 +28,8 @@ test.beforeAll(async () => {
   });
   threadId = thread.id;
 });
-test.afterAll(() => {
-  service.stop();
+test.afterAll(async () => {
+  await service.stop();
   site.close();
 });
 
@@ -64,6 +63,17 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   const before = await size();
   await page.setViewportSize({ width: 1700, height: 900 });
   await expect.poll(size, { timeout: 10_000 }).not.toBe(before);
+
+  const zoom = async () => (await service.api<{ zoom: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.zoom;
+  await frame.focus();
+  await page.keyboard.press("ControlOrMeta+=");
+  await expect.poll(zoom).toBeGreaterThan(1);
+  await page.keyboard.press("ControlOrMeta+0");
+  await expect.poll(zoom).toBe(1);
+  await page.keyboard.press("ControlOrMeta+-");
+  await expect.poll(zoom).toBeLessThan(1);
+  await page.keyboard.press("ControlOrMeta+0");
+  await expect.poll(zoom).toBe(1);
 
   await page.getByRole("button", { name: "Take control" }).click();
   await expect(page.getByRole("button", { name: "Give control back" })).toBeVisible();

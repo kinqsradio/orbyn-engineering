@@ -4,7 +4,7 @@
  * except a turn whose prompt names `[scene:<name>]`: that turn plays the notifications
  * in `scenes.mjs`, so the real service parses content the double has no scenario for.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
@@ -48,6 +48,10 @@ if (args[0] !== "app-server") {
       if (step.deaf) {
         deaf = true;
         await new Promise(() => {});
+      }
+      if (step.headLink) {
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: checkout, encoding: "utf8" }).trim();
+        for (const part of step.headLink(`https://github.com/o/r/commit/${sha}`)) note(id, part.method, part.params);
       }
       if (step.method) note(id, step.method, step.params);
       if (step.end) return finish(id, step.end, step.error);
