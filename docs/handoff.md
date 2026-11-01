@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `58d2bed`. Trust the repository over this document where they differ,
+`main` at `800293b`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,12 +49,12 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `58d2bed`
+## Reconciled status at `800293b`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
 At this revision there are 709 rows and 376 source checkboxes are ticked. The
-explicit scope metadata reports 535 included rows: 346 declared checked, 33
-partial, 154 open and 2 not doable as written. There are also 174 excluded and
+explicit scope metadata reports 535 included rows: 346 declared checked, 35
+partial, 152 open and 2 not doable as written. There are also 174 excluded and
 zero unresolved-scope rows. These source decisions do not qualify runtime behavior.
 These are checklist declarations, not a fresh verification count. The former
 365/573 calculation missed mobile-only rows and whole-row exclusions discarded
@@ -78,38 +78,50 @@ None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
 setup response. Diagnostic-only PR70 head `3fa8f29` exposed setup HTTP500 in
 run `41259799372`. The coordination fix `f3cc52b` passed all six required checks
-in run `41260222681` and merged as `58d2bed`. Integrated main run `41261277808`
-is running. The historical Windows process holder is still unproven.
+in run `41260222681` and merged as `58d2bed`. Integrated main run
+`41261277808` passed all six required jobs. Later main
+`51a95eb` run `41262630943` failed its Windows installed-app startup smoke;
+current main `800293b` run `41263153043` is running. Its Windows package and
+native smoke passed, while Rust Windows and E2E were still running at observation.
+The historical Windows process holder is still unproven.
 
 ### Current continuation work
 
-- #70 merged at `58d2bed`: setup diagnostics plus library
-  reader/replacement coordination. A real held Git child regression failed without
-  the write guard. Local core workspace tests (31), daemon workspace tests (12),
-  core Clippy, formatting and diff checks pass. The historical Windows holder is
-  unproven; PR CI passed and integrated main CI is running.
-- #71 `feat/settings-inheritance`, head `e1a0eea` (main repair integrated): project-dialog provenance and
-  per-setting null reset for four non-file-backed preferences. All 233 web tests,
-  web check and one real-service browser test pass locally against product source
-  matching main `93dd502`. K1/K2 remain open for the rest of scope and inheritance.
-- #72 `fix/reference-surfaces`, head `425416c` (main repair integrated): removes four unreferenced controls.
-  Web check, 233 tests and four real-service browser tests pass locally; required
-  CI is running. This does not finish the remaining sidebar placement deviation.
-- #73 `fix/service-child-cleanup`, head `66b5e8f`, now targeting repaired main: owns Git helper
-  trees, joins service background tasks, awaits smoke shutdown and fails on leftover
-  profile locks. Git8, process6, engine7, parent-stdin1 and Node8 tests pass locally;
-  one Windows-only lock test awaits CI. Required package/native smoke remains in CI.
-- #74 `fix/question-markdown`, head `9331c11` (main repair integrated): C40 question prose uses the existing
-  Markdown renderer. Web check,231 tests,10 focused tests and a real-service browser
-  proof of Mermaid and persisted answers pass locally. The HTTP403 was
-  `folder_untrusted`; the owner explicitly authorized normal trust setup in the
-  disposable fixture. The product gate is unchanged. Media/native proof stays open.
-- Local `feat/claude-limits` is implementing CLI `get_usage`, with no SDK or direct
-  credentials access. #75 `fix/question-single-choice`, head `74f9274`, is stacked
-  on #74 and aligns offered/custom answer exclusivity with the T3 source. Its six
-  focused tests, web check and real-service answer regression pass locally. Neither
-  slice has landed. Local `fix/thread-lifecycle-parity` removes the route-held
-  sidebar deviation and aligns usage-limit controls; no completion claim yet.
+- #70 merged at `58d2bed` after all required checks passed. Its integrated main
+  run also passed. Library reader/replacement coordination has failing-before
+  real-process regression coverage; the historical Windows holder remains unknown.
+- #71 merged at `51a95eb` after all required PR checks passed: project-dialog
+  provenance and per-setting null reset for four non-file-backed preferences.
+  All 233 web tests and a real-service browser test passed. K1 remains open and
+  K2 is partial: logical-project scope, Mixed, full inheritance and Reset all remain.
+- #72 merged at `2bbfff6` after all required checks passed: removes four controls
+  without a T3 counterpart. Remaining sidebar and tray deviations are separate.
+- #73 current head `9652b09`: owns Git helper trees, joins background tasks and
+  makes package-smoke shutdown and profile cleanup failures fatal. Its earlier
+  Windows run `41261010085` failed before service readiness and left a locked
+  staging folder. The current diagnostic iteration traces fixed provisioning
+  phases and bounded known-PID descendant names, without reading command lines or
+  credentials. Current-head CI `41263428009` is running; no fix is yet proven on
+  Windows. Local Node, provisioning, Git, process and service regressions pass.
+- #74 merged at `800293b` after all required checks passed. Question Markdown and
+  Mermaid have a real-service browser proof. HTTP403 was `folder_untrusted`;
+  the owner authorized ordinary trust setup in the disposable fixture. Media and
+  native proof remain open.
+- #75 current head `b74c821` integrates main `800293b`. Offered and custom answers
+  are mutually exclusive for single and multiple choice questions. Six focused
+  tests, a real-service answer regression, web check and all 244 integrated web
+  tests pass locally. Current-head CI `41263352532` is running.
+- #76 current head `ecf76d4` removes route-held sidebar placement and aligns limit
+  recovery controls. Real-service browser proof passes, but required E2E is red:
+  an older test still asserts the removed route-held placement. Correct that test
+  to the T3 lifecycle contract, then qualify the new head before merging.
+- #77 current head `a9bf832` reports Claude subscription windows through the
+  promptless CLI `get_usage` protocol, without SDK or credential-file access.
+  Parser, real-service protocol and existing interaction regressions pass. All six
+  required current-head checks passed; live authenticated usage remains unverified.
+- #78 current head `27eae72` makes global/project preference-map updates atomic,
+  including null resets. Real SQLite-trigger rollback and retry regressions pass;
+  all six required current-head checks passed. Neither #77 nor #78 has merged.
 
 The source-audited rows are recorded explicitly in parity metadata. Added
 visible features without a T3 counterpart are excluded as replica requirements,
@@ -138,6 +150,14 @@ parity review even though its proposed popover is excluded.
 - The profile processes ended and disposable profiles were removed. The owner's
   installed app and data were untouched. The retained package and sanitized local
   receipts are under ignored `target/builder-2-packaged-2786f94/`.
+- A second frozen package built from main `2bbfff6` with
+  `PATH="/Users/anhdang/.cargo/bin:$PATH" npm run build -- --bundles app` in
+  `desktop` passed the maintained native smoke: window connection, second-launch
+  handoff, and child-service shutdown. It used a disposable profile and left the
+  owner's installation untouched. Artifact and file-hash manifest:
+  `target/builder-2-packaged-2bbfff6/verified-bundle/macos/Orbyn Engineering.app`.
+  Receipt: `target/builder-2-packaged-2bbfff6/artifact.json`. This does not qualify
+  later changes or a full walkthrough.
 
 ### Earlier evidence retained
 
@@ -194,8 +214,8 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Confirm integrated main `58d2bed` passes run `41261277808`. Finish #60 after
-   integrating this repair, diagnose any failure, and merge only when every required
+1. Diagnose Windows startup and verify current main `800293b` run `41263153043`.
+   Finish #60, diagnose any failure, and merge only when every required
    check is green. Reconcile the pending PR queue from current heads; older failed
    or green heads do not qualify newer integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
@@ -205,8 +225,9 @@ not commit it. Move it to a real secret store before any release.
 3. Rebuild the integrated macOS package and perform the full walkthrough, including
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
-   F source control, D viewers, then the rest. The next settings slice is inheritance
-   and reset in the existing project dialog; K1/K2 remain open. I33 ACP sessions
+   F source control, D viewers, then the rest. The next settings slices are
+   logical-project scope, inheritance, Mixed and
+   Reset all; K1 remains open and K2 is partial. I33 ACP sessions
    and M3 remain next backend slices.
 5. Fix the Windows `workspace` lock, identify the actual owner, and remove the
    package smoke's warning without masking the failure. A prior #60 Windows

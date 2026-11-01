@@ -252,7 +252,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [ ] C37 Sentence tool trace: each tool call is a verb-object row with kind icon; calls group in fives with a count summary; live view bounded to 30 rows; turn folds to a summary at the end | src/tool-trace.ts | w d | L
 - [x] C38 Bounded tool snapshots: input preview 4 KiB, output preview 8 KiB, UTF-8-safe truncation notice, 64 snapshots per run | docs/providers.md | s | S | server done: arguments 16 KiB rather than 4, because cut JSON no longer parses
 - [x] C39 Delta coalescing: text deltas merged for 33 ms or 8 KiB before sending, only new text per event | src-tauri/src/providers.rs | s | S | server done
-- [ ] C40 Rich question content: agent questions render Markdown, charts and sanitised SVG or static HTML in an isolated root; remote images become links | src/rich-markdown.ts | w d | M | beyond T3 | scope: mixed | local: question prose uses Markdown including supported Mermaid and media, as in apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx and ChatMarkdown.tsx | excludes: a separate arbitrary HTML or SVG question surface and a blanket remote-image-to-link rule not established by T3
+- [ ] C40 Rich question content: agent questions render Markdown, charts and sanitised SVG or static HTML in an isolated root; remote images become links | src/rich-markdown.ts | w d | M | beyond T3 | scope: mixed | local: question prose uses Markdown including supported Mermaid and media, as in apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx and ChatMarkdown.tsx | excludes: a separate arbitrary HTML or SVG question surface and a blanket remote-image-to-link rule not established by T3 | status: partial | remaining: PR74 renders question Markdown and Mermaid with a real-service browser proof; media and native evidence remain unverified
 
 ## D. Files, search and attachments
 - [x] D1 File browser panel: tree explorer in right panel | apps/web/src/components/files/FileBrowserPanel.tsx | w d m | L | web done
@@ -538,7 +538,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 
 ## K. Settings, appearance and notifications
 - [ ] K1 Settings scope: choose project and environments, fan-out edit | apps/web/src/components/settings/SettingsScopeSentence.tsx | w d m | L | scope: mixed | local: edit local environment defaults or one logical project and its local checkout members; changing defaults preserves project overrides | excludes: fan-out to remote environments
-- [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L
+- [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L | status: partial | remaining: PR71 adds provenance and per-row reset for four project preferences; logical-project checkout scope, Mixed, full inheritance and Reset all remain open
 - [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
 - [x] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S | web done
 - [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients | web done

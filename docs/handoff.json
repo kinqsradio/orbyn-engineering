@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "58d2bedbad06b58aadd9a41edc8ba3a079e4dc2e",
+    "revision": "800293b8c638be63dbf04b9666ead24173e546fa",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -66,6 +66,12 @@
       "evidence": [
         "PR70 headf3cc52b; CI41260222681 all six required jobs passed; merged58d2bed"
       ]
+    },
+    {
+      "result": "PR71 settings provenance, PR72 removal of unsupported controls and PR74 question Markdown merged after all required PR checks passed",
+      "evidence": [
+        "Main2bbfff6,51a95eb,800293b; source counts remain declarations, with K2/C40 partial"
+      ]
     }
   ],
   "verification": [
@@ -103,14 +109,6 @@
       ]
     },
     {
-      "check": "Main93dd502 integrated CI",
-      "required": true,
-      "state": "failed",
-      "evidence": [
-        "GitHub Actions41258061209: Windows Rust workspace update expected409 but retained unbundled snapshot; PR70 currentheadf3cc52b repair CI running"
-      ]
-    },
-    {
       "check": "Final integrated package full walkthrough and native composer",
       "required": true,
       "state": "unverified",
@@ -131,18 +129,42 @@
     {
       "check": "Integrated main58d2bed after workspace repair",
       "required": true,
+      "state": "passed",
+      "evidence": [
+        "GitHub Actions41261277808 all six required jobs passed"
+      ]
+    },
+    {
+      "check": "Integrated main51a95eb Windows app startup",
+      "required": true,
+      "state": "failed",
+      "evidence": [
+        "GitHub Actions41262630943: Windows installed app never started service before90s; no root cause proven"
+      ]
+    },
+    {
+      "check": "Integrated main800293b",
+      "required": true,
       "state": "unverified",
       "evidence": [
-        "GitHub Actions41261277808 running"
+        "GitHub Actions41263153043 running; both desktop jobs passed including package/native smoke"
+      ]
+    },
+    {
+      "check": "Packaged native smoke on frozen main2bbfff6",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "target/builder-2-packaged-2bbfff6/artifact.json"
       ]
     }
   ],
   "decisions": [],
-  "next_action": "Verify integrated main58d2bed CI41261277808, then finish PR60 current-head checks and follow Next actions in docs/handoff.md.",
+  "next_action": "Diagnose Windows startup, verify main800293b CI41263153043, fix PR76 stale E2E expectation, and qualify current PR heads; continue the full in-scope backlog.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "kinqsradio/orbyn-engineering main58d2bed; PR70 merged green; PR60/69/71/72/73/74/75 remain open"
+      "main800293b; PR70/71/72/74 merged green; PR60/69/73/75/76/77/78 open at last observation"
     ]
   }
 }
