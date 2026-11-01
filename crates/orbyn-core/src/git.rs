@@ -63,10 +63,8 @@ pub(crate) async fn git_raw(cwd: &Path, args: &[&str]) -> Result<std::process::O
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     crate::child_env::for_tool(command.as_std_mut());
-    command
-        .output()
-        .await
-        .map_err(|error| CoreError::Git(format!("Could not run git: {error}")))
+    let output = async { crate::process::ManagedChild::spawn(command)?.output().await }.await;
+    output.map_err(|error| CoreError::Git(format!("Could not run git: {error}")))
 }
 
 pub(crate) fn text(bytes: &[u8]) -> String {
@@ -576,6 +574,71 @@ fn parse_numstat(bytes: &[u8]) -> std::collections::HashMap<String, (u32, u32)> 
 mod tests {
     use super::*;
     use crate::testing::TempDir;
+
+    #[tokio::test]
+    async fn a_finished_git_leader_does_not_leave_helpers_holding_output() {
+        let dir = TempDir::new();
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            git_raw(
+                dir.path(),
+                &[
+                    "-c",
+                    "alias.detach=!(sleep 1; echo escaped > escaped) &",
+                    "detach",
+                ],
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(output.status.success(), "{}", text(&output.stderr));
+        assert!(
+            !dir.path().join("escaped").exists(),
+            "Git waited for a detached helper to finish"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_git_stops_its_helper_descendants() {
+        let dir = TempDir::new();
+        let root = dir.path().to_path_buf();
+        let ready = root.join("ready");
+        let escaped = root.join("escaped");
+        let task = tokio::spawn(async move {
+            // Git runs ! aliases through its shell on both supported platforms.
+            // The descendant has a bounded lifetime even on the failing baseline.
+            git_raw(
+                &root,
+                &[
+                    "-c",
+                    "alias.hold=!(sleep 1; echo escaped > escaped) & echo ready > ready; wait",
+                    "hold",
+                ],
+            )
+            .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !ready.exists() {
+                assert!(
+                    !task.is_finished(),
+                    "Git fixture exited before its handshake"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        let escaped = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !escaped.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        assert!(escaped.is_err(), "Git's descendant survived cancellation");
+    }
 
     async fn repo(dir: &Path) -> PathBuf {
         let repo = dir.join("project");
