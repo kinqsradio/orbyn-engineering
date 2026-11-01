@@ -222,12 +222,22 @@
         "file-setting-inheritance/target/setup-gate-restart-fb08731; completed setup restart, interrupted setup failure and schema17 writer rejection; not native composer or Windows qualification",
         "Earlier common-settings/menu native fixtures retained; K1/K2/K5/K9 and other settings rows remain partial; section not pushed"
       ]
+    },
+    {
+      "check": "Settings manual action previews local2af0657",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "277 web tests, check/build, four real-orbynd/headless-browser cases and existing script-default case passed",
+        "file-setting-inheritance/target/settings-native/action-preview/native-observation.json: both native menus opened a real local page, second preview and script tabs selected, normal shutdown reaped recorded children",
+        "Fixture identity, private profile, release shell and re-signed debug Core with14 matching file-backed Mach-O sections; frozen8abc5fc CLI. Full action editor, preparation retry, final native composer and Windows remain incomplete"
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Monitor PR60 head2018a5f CI41287969189 and resolve failures; merge only after every required exact-head check is green without squash. Continue the settings section fromfb08731: complete T3 action editing, preparation retry and preview consumers, remaining K1/K2 forms, and then every remaining in-scope row through real orbynd. Preserve refusal boundaries.",
+  "next_action": "Monitor PR60 head2018a5f CI41287969189 and resolve failures; merge only after every required exact-head check is green without squash. Continue the settings section from2af0657: complete T3 action editing and preparation retry, remaining K1/K2 forms, and then every remaining in-scope row through real orbynd. Preserve refusal boundaries.",
   "delivery": {
     "state": "merged",
     "evidence": [

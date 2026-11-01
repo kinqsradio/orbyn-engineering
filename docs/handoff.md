@@ -158,6 +158,17 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   doubles. Fresh private-profile restart proof is retained under
   `target/setup-gate-restart-fb08731`. Full action editing, preparation retry and
   preview consumers remain incomplete; K9 stays partial and this section is local.
+- Settings commit `2af0657` connects saved manual-action previews to both menus.
+  Web check/build, 277 unit tests and four real-Core/headless-browser cases pass;
+  the existing script-default regression also passes. An isolated packaged macOS
+  fixture opens the real local preview from native Details and terminal menus,
+  selects the second preview and script output tabs, then quits normally with its
+  service and all recorded child processes gone. Receipts are under
+  `target/settings-native/action-preview`. It has a release shell, re-signed debug
+  Core (all 14 file-backed Mach-O sections match the tested binary), frozen
+  `8abc5fc` CLI and a private profile; it does not qualify the CLI section, native
+  composer, final release package or Windows GUI. K9 remains partial for the
+  complete action editor and preparation retry.
 - #81 fixes desktop state loss caused by per-launch service origins. A real native
   reproduction lost Light after quit/relaunch; the fixed package retained it across
   service recovery and full restart and rendered real media and a terminal prompt.
