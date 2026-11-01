@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "800293b8c638be63dbf04b9666ead24173e546fa",
+    "revision": "27691610a6c8240d2737e398e095cf6e2be2335c",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -72,6 +72,14 @@
       "evidence": [
         "Main2bbfff6,51a95eb,800293b; source counts remain declarations, with K2/C40 partial"
       ]
+    },
+    {
+      "result": "PR75/77/78/69/76/73 merged only after all six required current-head checks passed; startup ownership is qualified by real-process regressions and fixture-identity native smoke",
+      "evidence": [
+        "main0a48073/f10d726/48f6b9e/ed845d9/be4417f/2769161",
+        "PR73 CI41264387275 all six jobs passed",
+        "service-child-cleanup/target/packaged-8abc5fc/fixture-identity/receipt.json"
+      ]
     }
   ],
   "verification": [
@@ -100,12 +108,12 @@
       ]
     },
     {
-      "check": "PR60 currentheaddde3260 and final integrated mainCI",
+      "check": "PR60 latest local35b5a31 integration and final CI",
       "required": true,
       "state": "unverified",
       "evidence": [
-        "Currentheaddde3260 integrates main58d2bed;65 localrealservice tests andClippy passed; currentheadCI pending",
-        "Older348b88b run41257920148 WindowsRust stillrunning atlastobservation"
+        "Current35b5a31 includes main2769161; inherited-pipe fixture still intermittent; no clean current-head gate or merge claimed",
+        "Historical WindowsRust runs41257920148 and41261589371 remained pending at last observation"
       ]
     },
     {
@@ -145,9 +153,9 @@
     {
       "check": "Integrated main800293b",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "GitHub Actions41263153043 running; both desktop jobs passed including package/native smoke"
+        "GitHub Actions41263153043 all six required jobs passed"
       ]
     },
     {
@@ -157,14 +165,32 @@
       "evidence": [
         "target/builder-2-packaged-2bbfff6/artifact.json"
       ]
+    },
+    {
+      "check": "Integrated main2769161",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "GitHub Actions41265985286 running"
+      ]
+    },
+    {
+      "check": "Frozen8abc5fc fixture-identity native smoke",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "service-child-cleanup/target/packaged-8abc5fc/fixture-identity/receipt.json; shell/plist/signature differ, sidecars/resources identical; original-identity failure retained"
+      ]
     }
   ],
-  "decisions": [],
-  "next_action": "Diagnose Windows startup, verify main800293b CI41263153043, fix PR76 stale E2E expectation, and qualify current PR heads; continue the full in-scope backlog.",
+  "decisions": [
+    "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
+  ],
+  "next_action": "Verify main2769161 CI; finish PR60 deterministic fixture diagnosis/current-head gates, PR79 inheritance and full local K1/K2; continue every remaining in-scope parity row through real orbynd.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "main800293b; PR70/71/72/74 merged green; PR60/69/73/75/76/77/78 open at last observation"
+      "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete"
     ]
   }
 }
