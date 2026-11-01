@@ -12,6 +12,7 @@ mod migrations;
 mod questions;
 mod queue;
 mod runs;
+pub(crate) mod scoped_settings;
 #[cfg(test)]
 mod tests;
 mod threads;

@@ -9,6 +9,10 @@ pub enum CoreError {
     NotFound(String),
     #[error("{0}")]
     Invalid(String),
+    #[error("Settings changed. Reload this scope before saving.")]
+    SettingsConflict,
+    #[error("This settings scope is unavailable. Choose an available scope.")]
+    SettingsScopeUnavailable,
     #[error("this thread already has an active run")]
     ThreadBusy,
     #[error("trust this folder before starting an engine in it")]
@@ -95,6 +99,8 @@ impl CoreError {
         match self {
             Self::NotFound(_) => "not_found",
             Self::Invalid(_) => "invalid_input",
+            Self::SettingsConflict => "settings_conflict",
+            Self::SettingsScopeUnavailable => "settings_scope_unavailable",
             Self::ThreadBusy => "thread_busy",
             Self::FolderUntrusted => "folder_untrusted",
             Self::AlreadyDecided(_) | Self::QuestionClosed(_) => "already_decided",
@@ -137,7 +143,9 @@ impl CoreError {
             Self::Invalid(_) => 400,
             Self::FileTooLarge { .. } => 413,
             Self::FolderUntrusted | Self::PolicyDenied(_) | Self::WorkspaceRefused(_) => 403,
-            Self::ThreadBusy
+            Self::SettingsConflict
+            | Self::SettingsScopeUnavailable
+            | Self::ThreadBusy
             | Self::AlreadyDecided(_)
             | Self::QuestionClosed(_)
             | Self::ProjectExists(_)

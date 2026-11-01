@@ -1173,9 +1173,12 @@ impl RunManager {
     ) -> EngineOutcome {
         let cancel = &stops.cancel;
         let mut cancelling = false;
-        let whole =
-            crate::preferences::stored_preference(&self.store, "response_streaming_mode", None)
-                .is_ok_and(|mode| mode == "turn");
+        let whole = crate::preferences::stored_preference(
+            &self.store,
+            "response_streaming_mode",
+            Some(&thread.project_id),
+        )
+        .is_ok_and(|mode| mode == "turn");
         let mut shaper = EventShaper::new(whole);
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
         tokio::pin!(stop_deadline);

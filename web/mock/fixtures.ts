@@ -20,7 +20,7 @@ import type {
 export const T0 = process.env.VITEST ? Date.UTC(2026, 9, 31, 9, 0, 0) : Date.now();
 export const iso = (offsetSeconds: number) => new Date(T0 + offsetSeconds * 1000).toISOString();
 
-export const info: ServerInfo = { version: "0.1.0", remote: false, platform: "macos" };
+export const info: ServerInfo = { version: "0.1.0", remote: false, platform: "macos", environment_label: "Test computer" };
 
 export const projects: Project[] = [
   {

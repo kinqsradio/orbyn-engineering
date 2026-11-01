@@ -236,39 +236,6 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    /// Prepared preference changes commit together; `None` removes an override.
-    /// Global keys include their settings namespace; project keys are catalog names.
-    pub(crate) fn set_preference_values(
-        &self,
-        project_id: Option<&str>,
-        values: &[(String, Option<String>)],
-    ) -> Result<()> {
-        self.commit(|tx, _| {
-            for (key, value) in values {
-                match (project_id, value.as_deref()) {
-                    (Some(project), Some(value)) => tx.execute(
-                        "INSERT INTO project_preferences (project_id, key, value) VALUES (?1, ?2, ?3)
-                         ON CONFLICT (project_id, key) DO UPDATE SET value = excluded.value",
-                        params![project, key, value],
-                    )?,
-                    (Some(project), None) => tx.execute(
-                        "DELETE FROM project_preferences WHERE project_id = ?1 AND key = ?2",
-                        params![project, key],
-                    )?,
-                    (None, Some(value)) => tx.execute(
-                        "INSERT INTO settings (key, value) VALUES (?1, ?2)
-                         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                        params![key, value],
-                    )?,
-                    (None, None) => {
-                        tx.execute("DELETE FROM settings WHERE key = ?1", [key])?
-                    }
-                };
-            }
-            Ok(())
-        })
-    }
-
     /// Database size and what `VACUUM` would give back.
     pub fn database_storage(&self) -> Result<(u64, u64)> {
         let conn = self.reader();

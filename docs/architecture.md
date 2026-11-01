@@ -356,10 +356,57 @@ Orbyn does not hold a run for a setup script to finish.
 `ServerSettings` holds lifecycle and pricing. Everything else is in a fixed catalog of
 preferences, each with a default and a shape: an unknown key or a wrong shape is
 `400`, and a change applies all of its values or none. A preference resolves project,
-then global, then default, and only those marked `project_scoped` can be set per
+then environment, then the actual project file where supported, then default, and only those marked `project_scoped` can be set per
 project. The catalog holds no secret: provider environments and tokens stay out under
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
+
+`POST /api/settings/project-scopes` is a full-app read of registered local checkout
+groups and a typed selection. It accepts the client's `repository`, `repository_path`
+or `separate` grouping recipe and per-physical-project overrides. Repository identity
+uses a recognized origin before an upstream, so a fork remains its own project;
+HTTPS, SSH and SCP locators drop userinfo, query and fragment before opaque hashing.
+Path case and explicit ports stay distinct. Local/file or unrecognized remotes fall
+back to the physical project, never its display name. Git reads have capture and time
+budgets, cannot use transport or credential helpers, and never return or store a raw
+remote URL. Effective local and worktree configuration uses Git’s first fetch URL;
+include directives and URL rewrites remain explicitly unobserved, without opening
+include files. Global/system configuration is excluded. They share the library reader guard until their children finish.
+
+The harness library is excluded from selectable targets and recipe overrides; missing
+workspace state fails instead of broadening scope. The catalog reports actual registered paths and repository-relative paths. Current
+registration normalizes Git subfolders to the Git root, so their relative path is
+empty; this read does not invent subfolder projects. A missing checkout remains
+unavailable. Failed or unobserved metadata is explicit and prevents resolving a logical
+repository group whose membership may be incomplete; completed physical fallbacks do
+not. Unknown or stale selections never widen to All projects. An absent selection or
+explicit All projects means environment defaults, not a project-override fan-out.
+`POST /api/settings/preferences/query` resolves environment, logical-project or
+physical-checkout rows from one SQLite read snapshot. Effective values that differ
+are Mixed; equal explicit overrides keep their source and remain resettable. All
+projects edits environment defaults and lists explicit overrides without copying a
+value to every project. Project-group edits target only its registered members.
+
+`PUT /api/settings/preferences` requires the observed membership version and one
+revision per edited key. Set, Inherit and Reset overrides are distinct operations;
+Set null means Never for nullable lifecycle settings, while Inherit deletes the
+selected override. Object Set values are top-level field patches merged independently
+with each target's transaction-current effective object; unmentioned fields survive. Reset overrides carries explicit physical IDs and preserves the
+environment value. All affected global, lifecycle and project writes commit in one
+immediate SQLite transaction or none, preserving unrelated and unknown settings.
+Missing or changed scopes and stale revisions return typed 409 errors, never a
+broader write. These full-app routes do not add engine tool capabilities.
+
+Git and project-file observations precede SQLite. The immediate transaction fences
+registered IDs and paths, the observed catalog membership version, and each key's
+effective value and override presence. External Git/file changes after observation
+cannot share SQLite's atomic lock; no claim is made that those external files are
+transactional. Metadata uncertainty never broadens the selected member IDs. Query
+keys, values and response size are bounded. Runtime streaming, restart recovery,
+title generation, merge settling and idle settling use the same project resolver.
+`/api/info` supplies
+the local host display name for the fixed local environment label; it performs no
+remote lookup and adds no selectable remote environment.
 
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An
@@ -965,6 +1012,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
+| `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
 | `PATCH /api/projects/:id` | `RenameProject`: the name shown; the folder stays |
 | `DELETE /api/projects/:id?delete_files=&confirm=` | `ProjectRemoval`: unregisters; `delete_files` is `400` unless Orbyn made the folder, and can be `409 project_has_work` |

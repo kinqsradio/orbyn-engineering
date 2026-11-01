@@ -502,6 +502,14 @@ impl Store {
 
     /// Ends snoozes that are due and settles threads the rules cover.
     pub fn lifecycle_tick(&self, rules: LifecycleRules) -> Result<TickReport> {
+        self.lifecycle_tick_with_projects(rules, &BTreeMap::new())
+    }
+
+    pub(crate) fn lifecycle_tick_with_projects(
+        &self,
+        rules: LifecycleRules,
+        project_rules: &BTreeMap<String, (Option<i64>, bool)>,
+    ) -> Result<TickReport> {
         self.commit(|tx, appended| {
             let mut report = TickReport::default();
             let mut statement = tx
@@ -523,7 +531,7 @@ impl Store {
                 }
             }
             let mut statement = tx.prepare(
-                "SELECT id, updated_at, auto_settle FROM threads
+                "SELECT id, updated_at, auto_settle, project_id FROM threads
                  WHERE settled_at IS NULL AND archived_at IS NULL AND snoozed_until IS NULL
                     AND settle_hold = 0 AND COALESCE(auto_settle, 1) = 1",
             )?;
@@ -533,19 +541,24 @@ impl Store {
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, Option<bool>>(2)?,
+                        row.get::<_, String>(3)?,
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             drop(statement);
-            for (id, updated, own) in candidates {
+            for (id, updated, own, project) in candidates {
+                let (idle_seconds, keep_pull_requests) = project_rules
+                    .get(&project)
+                    .copied()
+                    .unwrap_or((rules.idle_seconds, rules.keep_pull_requests));
                 // A thread's own Enabled still needs a window when the global rule is off.
-                let window = rules.idle_seconds.or(own.map(|_| DEFAULT_IDLE_SECONDS));
+                let window = idle_seconds.or(own.map(|_| DEFAULT_IDLE_SECONDS));
                 let Some(window) = window else { continue };
                 if parse_time(&updated).is_none_or(|at| rules.now - at < window) {
                     continue;
                 }
                 if family_is_busy(tx, &id)?
-                    || (rules.keep_pull_requests && has_open_pull_request(tx, &id)?)
+                    || (keep_pull_requests && has_open_pull_request(tx, &id)?)
                 {
                     continue;
                 }
@@ -564,34 +577,7 @@ impl Store {
     }
 
     pub fn save_settings(&self, settings: &ServerSettings, actor: &str) -> Result<()> {
-        if settings.snooze_presets.len() > MAX_SNOOZE_PRESETS {
-            return Err(CoreError::Invalid("Keep to 8 snooze presets.".into()));
-        }
-        if settings
-            .snooze_presets
-            .iter()
-            .any(|preset| preset.minutes == 0 || preset.minutes > MAX_SNOOZE_MINUTES)
-        {
-            return Err(CoreError::Invalid(
-                "Snooze presets run from one minute to 30 days.".into(),
-            ));
-        }
-        if settings
-            .auto_settle
-            .after_days
-            .is_some_and(|days| days == 0 || days > MAX_AUTO_SETTLE_DAYS)
-        {
-            return Err(CoreError::Invalid(
-                "Auto-settle runs from 1 to 365 days.".into(),
-            ));
-        }
-        if settings
-            .title_instructions
-            .as_ref()
-            .is_some_and(|text| text.chars().count() > MAX_INSTRUCTION_CHARS)
-        {
-            return Err(CoreError::Invalid("Keep title instructions short.".into()));
-        }
+        validate_settings(settings)?;
         let text = serde_json::to_string(settings)?;
         self.commit(|tx, _| {
             insert_audit(
@@ -615,6 +601,38 @@ impl Store {
             Ok(())
         })
     }
+}
+
+pub(super) fn validate_settings(settings: &ServerSettings) -> Result<()> {
+    if settings.snooze_presets.len() > MAX_SNOOZE_PRESETS {
+        return Err(CoreError::Invalid("Keep to 8 snooze presets.".into()));
+    }
+    if settings
+        .snooze_presets
+        .iter()
+        .any(|preset| preset.minutes == 0 || preset.minutes > MAX_SNOOZE_MINUTES)
+    {
+        return Err(CoreError::Invalid(
+            "Snooze presets run from one minute to 30 days.".into(),
+        ));
+    }
+    if settings
+        .auto_settle
+        .after_days
+        .is_some_and(|days| days == 0 || days > MAX_AUTO_SETTLE_DAYS)
+    {
+        return Err(CoreError::Invalid(
+            "Auto-settle runs from 1 to 365 days.".into(),
+        ));
+    }
+    if settings
+        .title_instructions
+        .as_ref()
+        .is_some_and(|text| text.chars().count() > MAX_INSTRUCTION_CHARS)
+    {
+        return Err(CoreError::Invalid("Keep title instructions short.".into()));
+    }
+    Ok(())
 }
 
 const DEFAULT_IDLE_SECONDS: i64 = 3 * 24 * 60 * 60;

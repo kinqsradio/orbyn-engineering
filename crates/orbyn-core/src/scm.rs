@@ -292,7 +292,8 @@ impl Core {
             merged |= fresh.state == "merged";
             self.store.link_pull(id, &fresh)?;
         }
-        let on_merge = self.store.settings()?.auto_settle.on_merge;
+        let on_merge = self.preference("auto_settle_on_merge", Some(&thread.project_id))?
+            == serde_json::json!(true);
         let opted_out = thread.lifecycle.as_ref().and_then(|l| l.auto_settle) == Some(false);
         if merged && on_merge && !opted_out && thread.active_run.is_none() {
             let settle = orbyn_contracts::UpdateThread {

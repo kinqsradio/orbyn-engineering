@@ -73,13 +73,16 @@ impl Core {
     /// One pass of the periodic rules. `now` is passed in so tests can move time.
     pub fn lifecycle_tick(&self, now: i64) -> Result<TickReport> {
         let settings = self.store.settings()?.auto_settle;
-        let report = self.store.lifecycle_tick(LifecycleRules {
-            now,
-            idle_seconds: settings
-                .after_days
-                .map(|days| i64::from(days) * 24 * 60 * 60),
-            keep_pull_requests: settings.keep_pull_requests,
-        })?;
+        let report = self.store.lifecycle_tick_with_projects(
+            LifecycleRules {
+                now,
+                idle_seconds: settings
+                    .after_days
+                    .map(|days| i64::from(days) * 24 * 60 * 60),
+                keep_pull_requests: settings.keep_pull_requests,
+            },
+            &self.project_lifecycle_settings()?,
+        )?;
         for id in &report.settled {
             self.terminals.close(id);
             self.previews.close_thread(id);
@@ -101,13 +104,14 @@ impl Core {
     /// Picks up threads a restart interrupted, unless the setting is off. A thread that
     /// keeps dying stops after a few tries, and your own message resets the count.
     pub fn continue_interrupted(&self) {
-        let enabled = self
-            .preference("continue_threads_after_update", None)
-            .is_ok_and(|on| on == serde_json::json!(true));
-        if !enabled {
-            return;
-        }
         for id in &self.recovery.interrupted_threads {
+            let enabled = self.store.thread(id).ok().is_some_and(|thread| {
+                self.preference("continue_threads_after_update", Some(&thread.project_id))
+                    .is_ok_and(|on| on == serde_json::json!(true))
+            });
+            if !enabled {
+                continue;
+            }
             if !self
                 .store
                 .take_resume_try(id, MAX_RESUME_TRIES)

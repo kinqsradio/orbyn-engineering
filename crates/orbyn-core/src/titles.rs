@@ -56,7 +56,7 @@ fn smallest(models: &[ModelInfo]) -> Option<String> {
 /// the thread's own. The setting is one name and threads differ in engine, so a
 /// name this engine does not list is passed over, not sent.
 async fn title_model(store: &Store, engines: &EngineManager, thread: &Thread) -> Option<String> {
-    let chosen = stored_preference(store, TEXT_MODEL_SETTING, None)
+    let chosen = stored_preference(store, TEXT_MODEL_SETTING, Some(&thread.project_id))
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
         .filter(|model| !model.is_empty());
@@ -93,8 +93,7 @@ pub async fn generate_title(
     let instructions = own
         .as_str()
         .filter(|text| !text.trim().is_empty())
-        .map(str::to_owned)
-        .or(store.settings()?.title_instructions);
+        .map(str::to_owned);
     let prompt = format!(
         "Write a short title of at most eight words for this conversation. \
          Reply with only the title.{}\n\n<conversation>\n{conversation}\n</conversation>\n",

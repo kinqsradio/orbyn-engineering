@@ -6,7 +6,9 @@
 
 use std::collections::BTreeMap;
 
-use orbyn_contracts::{PreferenceFileValue, PreferenceView};
+use orbyn_contracts::PreferenceView;
+
+mod scoped;
 use serde_json::{Value, json};
 
 use crate::app::Core;
@@ -21,6 +23,7 @@ enum Kind {
     OneOf(&'static [&'static str]),
     List,
     Object,
+    Days,
 }
 
 struct Definition {
@@ -45,14 +48,17 @@ const MERGE: &[&str] = &["", "merge", "squash", "rebase"];
 const IDLE: &[&str] = &["on_return", "before_cache_expiry", "never"];
 
 const DEFINITIONS: &[Definition] = defs![
-    "response_streaming_mode" Kind::OneOf(STREAMING), "paragraph", false;
+    "response_streaming_mode" Kind::OneOf(STREAMING), "paragraph", true;
     "enable_provider_update_checks" Kind::Bool, true, false;
-    "continue_threads_after_update" Kind::Bool, true, false;
+    "continue_threads_after_update" Kind::Bool, true, true;
     "enable_agent_browser_access" Kind::Bool, true, true;
     "preview_zoom" Kind::Number, 1, false;
     "preview_appearance" Kind::OneOf(&["system", "light", "dark"]), "system", false;
     "preview_profiles" Kind::List, [], false;
-    "enable_agent_device_access" Kind::Bool, false, false;
+    "enable_agent_device_access" Kind::Bool, false, true;
+    "auto_settle_after_days" Kind::Days, 3, true;
+    "auto_settle_on_merge" Kind::Bool, true, true;
+    "auto_settle_keep_pull_requests" Kind::Bool, false, true;
     "auto_pull" Kind::Bool, false, true;
     "poll_pull_requests" Kind::Bool, true, false;
     "default_project_scripts" Kind::List, [], true;
@@ -68,7 +74,7 @@ const DEFINITIONS: &[Definition] = defs![
     "worktree_submodules" Kind::OneOf(SUBMODULES), "recursive", true;
     "worktree_location" Kind::Text, "", true;
     "add_project_base_directory" Kind::Text, "", false;
-    "text_generation_model" Kind::Text, "", false;
+    "text_generation_model" Kind::Text, "", true;
     "auto_thread_titles" Kind::Bool, true, true;
     "project_title_instructions" Kind::Text, "", true;
     "branch_naming_mode" Kind::OneOf(NAMING), "static", true;
@@ -113,6 +119,9 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
         Kind::OneOf(choices) => value.as_str().is_some_and(|text| choices.contains(&text)),
         Kind::List => value.is_array(),
         Kind::Object => value.is_object(),
+        Kind::Days => {
+            value.is_null() || value.as_u64().is_some_and(|days| (1..=365).contains(&days))
+        }
     };
     if fits {
         Ok(())
@@ -133,56 +142,21 @@ pub(crate) fn stored_preferences(
     store: &Store,
     project_id: Option<&str>,
 ) -> Result<Vec<PreferenceView>> {
-    let own: BTreeMap<String, String> = match project_id {
-        Some(project) => {
-            store.project(project)?;
-            store.project_preferences(project)?.into_iter().collect()
+    let snapshot = store.settings_snapshot()?;
+    // A no-project thread has a hidden scratch row for run ownership. Its
+    // settings are environment defaults; it is not a selectable project scope.
+    let project_id = match project_id {
+        Some(id) if !snapshot.projects.iter().any(|project| project.id == id) => {
+            if store.project(id)?.scratch {
+                None
+            } else {
+                return Err(CoreError::NotFound("project".into()));
+            }
         }
-        None => BTreeMap::new(),
+        id => id,
     };
-    let file = match project_id {
-        Some(id) => {
-            crate::project_file::read_project_file(std::path::Path::new(&store.project(id)?.path))
-        }
-        None => orbyn_contracts::ProjectFileView {
-            path: None,
-            file: None,
-            problem: None,
-        },
-    };
-    DEFINITIONS
-        .iter()
-        .map(|definition| {
-            let default = (definition.default)();
-            let global = store.setting(&setting_key(definition.key))?;
-            let local = own.get(definition.key).filter(|_| definition.project);
-            let project_file = file.file.as_ref().and_then(|contents| {
-                let value = match definition.key {
-                    "default_thread_env_mode" => contents.default_thread_env_mode.as_ref(),
-                    "worktree_submodules" => contents.worktree_submodules.as_ref(),
-                    _ => None,
-                }?;
-                Some(PreferenceFileValue {
-                    path: file.path.clone()?,
-                    value: json!(value),
-                })
-            });
-            let (value, source) = match (local, global, project_file.as_ref()) {
-                (Some(text), _, _) => (serde_json::from_str(text)?, "project"),
-                (None, Some(text), _) => (serde_json::from_str(&text)?, "global"),
-                (None, None, Some(file)) => (file.value.clone(), "file"),
-                (None, None, None) => (default.clone(), "default"),
-            };
-            Ok(PreferenceView {
-                key: definition.key.to_owned(),
-                value,
-                default,
-                source: source.to_owned(),
-                project_file,
-                project_scoped: definition.project,
-            })
-        })
-        .collect()
+    let files = scoped::observe_files(&snapshot, project_id)?;
+    scoped::resolved_views(&snapshot, &files, project_id)
 }
 
 /// One setting's effective value.
@@ -199,6 +173,36 @@ pub(crate) fn stored_preference(
 }
 
 impl Core {
+    pub(crate) fn project_lifecycle_settings(
+        &self,
+    ) -> Result<BTreeMap<String, (Option<i64>, bool)>> {
+        let snapshot = self.store.settings_snapshot()?;
+        snapshot
+            .projects
+            .iter()
+            .map(|project| {
+                let views = scoped::resolved_views(&snapshot, &BTreeMap::new(), Some(&project.id))?;
+                let value = |key: &str| {
+                    &views
+                        .iter()
+                        .find(|view| view.key == key)
+                        .expect("fixed catalog")
+                        .value
+                };
+                let days = value("auto_settle_after_days")
+                    .as_i64()
+                    .map(|days| days * 24 * 60 * 60);
+                Ok((
+                    project.id.clone(),
+                    (
+                        days,
+                        value("auto_settle_keep_pull_requests") == &json!(true),
+                    ),
+                ))
+            })
+            .collect()
+    }
+
     /// Every setting as it applies globally, or in `project_id`.
     pub fn preferences(&self, project_id: Option<&str>) -> Result<Vec<PreferenceView>> {
         stored_preferences(&self.store, project_id)
@@ -228,18 +232,23 @@ impl Core {
                 self.engines.check_instances(&list)?;
             }
         }
-        let prepared: Vec<_> = values
-            .iter()
-            .map(|(key, value)| {
-                let key = if project_id.is_some() {
-                    key.clone()
-                } else {
-                    setting_key(key)
-                };
-                (key, (!value.is_null()).then(|| value.to_string()))
-            })
-            .collect();
-        self.store.set_preference_values(project_id, &prepared)?;
+        self.store.change_settings(|snapshot| {
+            if let Some(id) = project_id
+                && !snapshot.projects.iter().any(|project| project.id == id)
+            {
+                return Err(CoreError::NotFound("project".into()));
+            }
+            let mut writes = Vec::new();
+            for (key, value) in values {
+                scoped::prepare_write(
+                    &mut writes,
+                    key,
+                    project_id,
+                    (!value.is_null()).then_some(value),
+                );
+            }
+            Ok(((), writes))
+        })?;
         self.apply_login_preference()
     }
 
@@ -336,6 +345,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn scoped_edits_are_explicit_and_null_is_only_a_nullable_value() {
+        use orbyn_contracts::{PreferenceEdit, ScopedPreferencesQuery};
+        assert!(serde_json::from_value::<PreferenceEdit>(json!({"op":"set"})).is_err());
+        assert!(
+            serde_json::from_value::<PreferenceEdit>(json!({"op":"inherit","value":null})).is_err()
+        );
+        assert!(serde_json::from_value::<ScopedPreferencesQuery>(json!({})).is_err());
+        assert!(serde_json::from_value::<ScopedPreferencesQuery>(json!({"scope":null})).is_err());
+        assert!(check(definition("auto_settle_after_days").unwrap(), &Value::Null).is_ok());
+        assert!(check(definition("auto_pull").unwrap(), &Value::Null).is_err());
+    }
+
+    #[test]
     fn defaults_fit_their_own_rules_and_keys_are_unique() {
         for definition in DEFINITIONS {
             check(definition, &(definition.default)()).unwrap();
@@ -354,5 +376,117 @@ mod tests {
         assert!(check(submodules, &json!("sometimes")).is_err());
         assert!(check(definition("auto_pull").unwrap(), &json!("yes")).is_err());
         assert!(definition("api_token").is_err());
+    }
+}
+
+#[cfg(test)]
+mod scoped_consumer_tests {
+    use super::*;
+    use crate::{
+        CoreConfig,
+        store::{NewProject, NewThread},
+        testing::TempDir,
+    };
+
+    #[test]
+    fn lifecycle_uses_each_projects_nullable_window_and_keeps_global_defaults_separate() {
+        let dir = TempDir::new();
+        let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
+        config.engines.lookup_latest = false;
+        let core = Core::open(config).unwrap();
+        let mut projects = Vec::new();
+        let mut threads = Vec::new();
+        for name in ["one", "two"] {
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(&path).unwrap();
+            let project = core
+                .store
+                .add_project(NewProject {
+                    path: path.to_str().unwrap(),
+                    name,
+                    is_git: false,
+                    managed: false,
+                    scratch: false,
+                })
+                .unwrap();
+            threads.push(
+                core.store
+                    .create_thread(NewThread {
+                        project_id: project.id.clone(),
+                        title: name.into(),
+                        engine: "fixture".into(),
+                        model: None,
+                        cwd: project.path.clone(),
+                        worktree: None,
+                        skill_profile: None,
+                        parent_thread_id: None,
+                        relation: None,
+                        scratch: false,
+                    })
+                    .unwrap(),
+            );
+            projects.push(project);
+        }
+        core.store
+            .change_settings(|_| {
+                Ok((
+                    (),
+                    vec![crate::store::scoped_settings::SettingWrite::ServerField {
+                        field:
+                            crate::store::scoped_settings::ServerSettingField::AutoSettleAfterDays,
+                        value: Value::Null,
+                    }],
+                ))
+            })
+            .unwrap();
+        core.set_preferences(
+            Some(&projects[0].id),
+            &BTreeMap::from([("auto_settle_after_days".into(), json!(1))]),
+        )
+        .unwrap();
+        assert!(
+            core.preference("auto_settle_after_days", None)
+                .unwrap()
+                .is_null()
+        );
+        let report = core
+            .lifecycle_tick(crate::util::unix_now() + 4 * 24 * 60 * 60)
+            .unwrap();
+        assert_eq!(report.settled, vec![threads[0].id.clone()]);
+        core.set_preferences(
+            None,
+            &BTreeMap::from([("response_streaming_mode".into(), json!("turn"))]),
+        )
+        .unwrap();
+        let scratch_path = dir.path().join("scratch");
+        std::fs::create_dir_all(&scratch_path).unwrap();
+        let scratch = core
+            .store
+            .add_project(NewProject {
+                path: scratch_path.to_str().unwrap(),
+                name: "scratch",
+                is_git: false,
+                managed: false,
+                scratch: true,
+            })
+            .unwrap();
+        assert_eq!(
+            core.preference("response_streaming_mode", Some(&scratch.id))
+                .unwrap(),
+            json!("turn")
+        );
+        assert!(matches!(
+            core.preference("response_streaming_mode", Some("missing")),
+            Err(CoreError::NotFound(_))
+        ));
+        assert!(
+            core.store
+                .thread(&threads[1].id)
+                .unwrap()
+                .lifecycle
+                .unwrap()
+                .settled_at
+                .is_none()
+        );
     }
 }

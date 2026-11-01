@@ -19,6 +19,15 @@ const EVENTS_KEPT: usize = 50;
 static HISTORY: Mutex<VecDeque<ResourceSample>> = Mutex::new(VecDeque::new());
 static EVENTS: Mutex<VecDeque<ServiceEvent>> = Mutex::new(VecDeque::new());
 
+impl crate::app::Core {
+    /// Local environment display name; no remote lookup or persistent identity.
+    pub fn environment_label(&self) -> String {
+        System::host_name()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| "Orbyn environment".to_owned())
+    }
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
