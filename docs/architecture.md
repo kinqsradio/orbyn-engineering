@@ -376,7 +376,14 @@ an engine update refuses while any run is active, and no run starts during an up
 
 A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
 `new_worktrees_start_from_origin` is on, falling back to HEAD, and
-`worktree_submodules`, where the project file's choice wins. `auto_pull` fast-forwards
+`worktree_submodules` through the shared preference resolver. Checkout mode and
+submodule behavior resolve Project override → Environment override → the actual
+`orbyn.json` (or fallback `t3.json`) → built-in default. Explicit equal-valued
+overrides remain overrides; resetting removes them without changing project files.
+Invalid file settings reject the whole file rather than partially applying it.
+A new draft waits for the selected checkout's effective mode; explicit checkout
+choices and reused worktrees win, and late responses cannot change another project.
+A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards
 a clean checkout on the remote's default branch every 30 minutes.
 
 `keybindings.json` lives in app data and holds only the person's changes over built-in

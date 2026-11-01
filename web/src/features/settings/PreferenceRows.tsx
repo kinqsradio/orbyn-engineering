@@ -181,7 +181,7 @@ function PreferenceInheritance({ row, view, global }: { row: PreferenceRow; view
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const summary = view.source === "project" ? "Overridden for this project" : "Inherited from environment";
+  const summary = view.source === "project" ? "Overridden for this project" : view.source === "file" ? `Inherited from ${view.project_file?.path ?? "project file"}` : "Inherited from environment";
   useLayoutEffect(() => {
     if (!open || !panel.current) return;
     const element = panel.current;
@@ -210,6 +210,7 @@ function PreferenceInheritance({ row, view, global }: { row: PreferenceRow; view
   const layers = [
     { label: "Project", value: view.source === "project" ? displayValue(row, view.value) : "Inherits", active: view.source === "project" },
     { label: "Environment", value: global.source === "global" ? displayValue(row, global.value) : "Inherits", active: view.source === "global" },
+    ...(view.project_file ? [{ label: view.project_file.path, value: displayValue(row, view.project_file.value), active: view.source === "file" }] : []),
     { label: "Default", value: displayValue(row, view.default), active: view.source === "default" },
   ];
   return (

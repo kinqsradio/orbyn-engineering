@@ -245,7 +245,7 @@ impl Core {
                         "Worktrees need a Git repository.".into(),
                     ));
                 }
-                let options = self.worktree_options(&project.id, &project.path, &request)?;
+                let options = self.worktree_options(&project.id, &request)?;
                 Some(git::create_worktree(Path::new(&project.path), purpose, &options).await?)
             }
             None => None,
@@ -302,12 +302,10 @@ impl Core {
         Ok(thread)
     }
 
-    /// The settings for a new worktree. The project file's submodule choice wins,
-    /// since it travels with the branch being checked out.
+    /// The settings for a new worktree use the shared preference resolver.
     fn worktree_options(
         &self,
         project_id: &str,
-        path: &str,
         request: &orbyn_contracts::CreateThread,
     ) -> Result<git::WorktreeOptions> {
         let text = |key: &str| -> Result<String> {
@@ -317,16 +315,12 @@ impl Core {
                 .unwrap_or_default()
                 .to_owned())
         };
-        let file = crate::project_file::read_project_file(Path::new(path)).file;
         Ok(git::WorktreeOptions {
             prefix: text("branch_name_prefix")?,
             base: request.base_branch.clone(),
             from_origin: self.preference("new_worktrees_start_from_origin", Some(project_id))?
                 == serde_json::json!(true),
-            submodules: match file.and_then(|file| file.worktree_submodules) {
-                Some(choice) => choice,
-                None => text("worktree_submodules")?,
-            },
+            submodules: text("worktree_submodules")?,
             directory: Some(text("worktree_location")?)
                 .filter(|location| !location.trim().is_empty())
                 .map(std::path::PathBuf::from),
@@ -456,5 +450,66 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             std::process::id().to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod preference_consumer_tests {
+    use super::*;
+    use crate::{CoreConfig, store::NewProject, testing::TempDir};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn worktree_creation_uses_the_same_submodule_precedence_as_preference_views() {
+        let dir = TempDir::new();
+        let root = dir.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("orbyn.json"), r#"{"worktreeSubmodules":"skip"}"#).unwrap();
+        let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
+        config.engines.lookup_latest = false;
+        let core = Core::open(config).unwrap();
+        let project = core
+            .store
+            .add_project(NewProject {
+                path: root.to_str().unwrap(),
+                name: "Project",
+                is_git: true,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
+        let request: orbyn_contracts::CreateThread =
+            serde_json::from_value(json!({ "project_id":project.id,"engine":"codex" })).unwrap();
+        let current = || {
+            core.worktree_options(&project.id, &request)
+                .unwrap()
+                .submodules
+        };
+        assert_eq!(current(), "skip");
+        core.set_preferences(
+            None,
+            &[("worktree_submodules".into(), json!("recursive"))].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "recursive");
+        core.set_preferences(
+            Some(&project.id),
+            &[("worktree_submodules".into(), json!("top_level"))].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "top_level");
+        core.set_preferences(
+            Some(&project.id),
+            &[("worktree_submodules".into(), serde_json::Value::Null)].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "recursive");
+        core.set_preferences(
+            None,
+            &[("worktree_submodules".into(), serde_json::Value::Null)].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "skip");
+        core.shutdown().await;
     }
 }

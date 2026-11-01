@@ -1601,15 +1601,25 @@ pub struct RunScript {
 }
 
 wire! {
+/// Effective preference value, built-in default and winning source (`default`,
+/// `file`, `global` or `project`). The optional project_file is the actual
+/// read-only file layer; project_scoped says whether project overrides are allowed.
 pub struct PreferenceView {
     pub key: String,
-    /// What applies here.
     pub value: Value,
     pub default: Value,
-    /// `default`, `global` or `project`.
     pub source: String,
-    /// A project may set its own value.
     pub project_scoped: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_file: Option<PreferenceFileValue>,
+}
+}
+
+wire! {
+pub struct PreferenceFileValue {
+    pub path: String,
+    pub value: Value,
 }
 }
 

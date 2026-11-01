@@ -1,4 +1,5 @@
 import { chooseDraftEngine } from "./draftEngine";
+import { useDraftCheckout } from "./useDraftCheckout";
 import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
@@ -136,7 +137,9 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const paneShown = panelPref === true && layoutWidth !== "narrow";
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
-  const [worktree, setWorktree] = useState<string | null>(reused);
+  const scratch = chosenProject === SCRATCH;
+  const project: Project | null = scratch ? null : (projects?.find((p) => p.id === chosenProject) ?? projects?.[0] ?? null);
+  const { worktree, setWorktree, loading: checkoutLoading, error: checkoutError } = useDraftCheckout(project, reused);
   const [extraModels, setExtraModels] = useState<ModelChoice[]>([]);
   const sendBackground = useRef<() => boolean>(() => false);
   useCommand("composer.sendBackground", () => sendBackground.current());
@@ -162,15 +165,8 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   useEffect(() => {
     setPrefs({ draftProject: chosenProject });
   }, [chosenProject, setPrefs]);
-  useEffect(() => {
-    if (reused) setWorktree(reused);
-  }, [reused]);
 
   if (!projects || !engines) return <div className="page"><Loading label="Loading" rows={3} /></div>;
-  const scratch = chosenProject === SCRATCH;
-  const project: Project | null = scratch
-    ? null
-    : (projects.find((p) => p.id === chosenProject) ?? projects[0] ?? null);
   const installed = engines.filter((e) => e.installed);
   const engine = chooseDraftEngine(installed, choice?.engine ?? null, pickedHere);
   const unmanaged = engine !== null && !engine.capabilities.managed;
@@ -233,7 +229,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
 
   const send = async () => {
     const text = prompt.trim();
-    if (!text || busy || !engine || untrusted()) return;
+    if (!text || busy || checkoutLoading || checkoutError || !engine || untrusted()) return;
     if (extraModels.length > 0) {
       void sendEach(text);
       return;
@@ -241,7 +237,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     setBusy(true);
     setError(null);
     try {
-      const purpose = worktree === null ? null : worktree === reused ? worktree : slugify(worktree);
+      const purpose = worktree === null ? null : worktree === reused ? worktree : slugify(worktree) || uniquePurpose(text, null);
       const thread = await launch({ engine: engine.id, model: pickedModel }, purpose, text, true);
       setPrefs({ lastModel: { engine: engine.id, model: pickedModel, effort: pickedEffort } });
       adoptLayout(thread.id);
@@ -258,7 +254,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   /** Starts without leaving: the next draft keeps its checkout choice, each send its own worktree. */
   const startInBackground = async () => {
     const text = prompt.trim();
-    if (!text || busy || !engine || untrusted()) return;
+    if (!text || busy || checkoutLoading || checkoutError || !engine || untrusted()) return;
     setBusy(true);
     setError(null);
     try {
@@ -305,7 +301,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   };
 
   sendBackground.current = () => {
-    if (!prompt.trim() || busy || !engine) return false;
+    if (!prompt.trim() || busy || checkoutLoading || checkoutError || !engine) return false;
     void (extraModels.length > 0 ? send() : startInBackground());
     return true;
   };
@@ -381,9 +377,9 @@ export function DraftView({ projectId }: { projectId: string | null }) {
               }}
             >
               <div className="composer-inner">
-                {error ? (
+                {error || checkoutError ? (
                   <p className="field-error composer-error" role="alert">
-                    {error}
+                    {error ?? checkoutError}
                   </p>
                 ) : null}
                 <div className="composer-box">
@@ -478,7 +474,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         No engine
                       </span>
                     )}
-                    <button type="submit" className="send-btn" aria-label="Send" disabled={!prompt.trim() || busy || !engine}>
+                    <button type="submit" className="send-btn" aria-label="Send" disabled={!prompt.trim() || busy || checkoutLoading || !!checkoutError || !engine}>
                       <ArrowUp size={16} aria-hidden />
                     </button>
                   </div>
@@ -606,6 +602,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
           anchor={picker}
           onClose={() => setPicker(null)}
           onPick={(next) => {
+            if (next.id !== project?.id) setReused(null);
             setChosenProject(next.id);
             setPicker(null);
             field.current?.focus();

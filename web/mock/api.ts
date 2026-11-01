@@ -345,6 +345,8 @@ export function createMockApi(options: MockOptions = {}) {
           return { status: 202 };
         }
         break;
+      case "GET /api/preferences":
+        return { status: 200, body: [{ key: "default_thread_env_mode", value: "local", default: "local", source: "default", project_scoped: true }] };
       case "GET /api/settings":
         return { status: 200, body: settings };
       case "PUT /api/settings":

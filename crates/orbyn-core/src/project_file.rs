@@ -49,6 +49,20 @@ fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
         serde_json::from_str(&text).map_err(|error| format!("This file is not valid: {error}"))?;
     let file: ProjectFile = serde_json::from_value(snake_keys(value))
         .map_err(|error| format!("This file is not valid: {error}"))?;
+    if file
+        .default_thread_env_mode
+        .as_deref()
+        .is_some_and(|mode| !["local", "worktree"].contains(&mode))
+    {
+        return Err("defaultThreadEnvMode must be local or worktree.".into());
+    }
+    if file
+        .worktree_submodules
+        .as_deref()
+        .is_some_and(|mode| !["recursive", "top_level", "skip"].contains(&mode))
+    {
+        return Err("worktreeSubmodules must be recursive, top_level or skip.".into());
+    }
     if file.scripts.len() > MAX_SCRIPTS {
         return Err(format!("A project file can hold {MAX_SCRIPTS} scripts."));
     }

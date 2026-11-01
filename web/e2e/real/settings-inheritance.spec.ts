@@ -53,7 +53,7 @@ test("project settings explain inheritance and reset only their own override", a
     const kept = ["PATH", "Path", "SystemRoot", "TEMP", "TMP", "TMPDIR", "LANG"];
     const env = { ...Object.fromEntries(kept.filter((key) => process.env[key]).map((key) => [key, process.env[key]])),
       HOME: profile, CFFIXED_USER_HOME: profile, USERPROFILE: profile, ORBYN_OFFLINE: "1",
-      ORBYN_CLAUDE_BIN: join(profile, "no-claude"), ORBYN_CODEX_BIN: join(profile, "no-codex"),
+      ORBYN_CLAUDE_BIN: join(profile, "no-claude"), ORBYN_CODEX_BIN: process.env.ORBYN_FAKE_ENGINE ?? resolve(web, "../target/debug/orbyn-fake-engine"),
       CODEX_HOME: join(profile, "codex"), CLAUDE_CONFIG_DIR: join(profile, "claude"),
       GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com" };
     const git = (...args: string[]) => execFileSync("git", args, { cwd: library, env, stdio: "ignore" });
@@ -70,8 +70,11 @@ test("project settings explain inheritance and reset only their own override", a
       return response.json() as Promise<T>;
     }
     await api("POST", "/api/workspace/setup", {});
-    const a = await api<{ id: string }>("POST", "/api/projects/create", { name: "inheritance-a", readme: true });
+    const a = await api<{ id: string; path: string }>("POST", "/api/projects/create", { name: "inheritance-a", readme: true });
     const b = await api<{ id: string }>("POST", "/api/projects/create", { name: "inheritance-b", readme: true });
+    await api("POST", `/api/projects/${a.id}/trust`, {});
+    await api("PUT", "/api/preferences", { values: { auto_thread_titles: false } });
+    writeFileSync(join(a.path, "orbyn.json"), '{"defaultThreadEnvMode":"worktree","worktreeSubmodules":"skip"}\n');
     await api("PUT", "/api/preferences", { values: { auto_pull: true, default_model: "same-model" } });
     await api("PUT", `/api/projects/${a.id}/preferences`, { values: { auto_pull: false, default_model: "same-model" } });
     await api("PUT", `/api/projects/${b.id}/preferences`, { values: { auto_pull: false } });
@@ -90,6 +93,17 @@ test("project settings explain inheritance and reset only their own override", a
     await page.goto(`http://localhost:${port}/?token=${ready.token}#/settings/projects`);
     await page.getByRole("button", { name: "Settings for inheritance-a", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "inheritance-a settings", exact: true });
+    const checkoutRow = dialog.locator(".setting-line").filter({ has: page.getByText("Default checkout", { exact: true }) });
+    await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
+    await checkoutRow.getByRole("button", { name: /Inherited from orbyn.json.*Show where/ }).click();
+    const checkoutLayers = dialog.getByRole("dialog", { name: "Default checkout", exact: true });
+    await expect(checkoutLayers.getByText("orbyn.json", { exact: true }).locator("..")).toHaveText(/New worktree/);
+    await expect(checkoutLayers.getByText("Default", { exact: true }).locator("..")).toHaveText(/Current checkout/);
+    await page.keyboard.press("Escape");
+    await checkoutRow.getByRole("combobox").selectOption("local");
+    await expect(checkoutRow.getByRole("button", { name: "Reset Default checkout to default", exact: true })).toBeEnabled();
+    await checkoutRow.getByRole("button", { name: "Reset Default checkout to default", exact: true }).click();
+    await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
     const title = "Pull the default branch automatically";
     const row = dialog.locator(".setting-line").filter({ has: page.getByText(title, { exact: true }) });
     const source = row.getByRole("button", { name: /Show where this value comes from/ });
@@ -146,6 +160,29 @@ test("project settings explain inheritance and reset only their own override", a
     await page.getByRole("button", { name: "Settings for inheritance-a", exact: true }).click();
     await expect(row.getByRole("switch")).not.toBeChecked();
     await expect(row.getByRole("button", { name: `Reset ${title} to default`, exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Done", exact: true }).click();
+    await page.goto(`http://localhost:${port}/#/new/${a.id}`);
+    await expect(page.getByRole("button", { name: "New worktree", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New worktree", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Current checkout", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Worktree purpose", exact: true })).toHaveCount(0);
+    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Use current checkout");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page).toHaveURL(/#\/threads\//);
+    const currentId = new URL(page.url()).hash.split("/").at(-1)!;
+    const currentThread = await api<{ worktree: null; cwd: string }>("GET", `/api/threads/${currentId}`);
+    expect(currentThread.worktree).toBeNull(); expect(currentThread.cwd).toBe(a.path);
+    await page.goto(`http://localhost:${port}/#/new/${a.id}`);
+    await expect(page.getByRole("button", { name: "New worktree", exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Use file checkout default");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page).toHaveURL(/#\/threads\//);
+    const isolatedId = new URL(page.url()).hash.split("/").at(-1)!;
+    const isolatedThread = await api<{ worktree: { path: string }; cwd: string }>("GET", `/api/threads/${isolatedId}`);
+    expect(isolatedThread.worktree.path).not.toBe(a.path);
+    expect(isolatedThread.cwd).toBe(isolatedThread.worktree.path);
+
   } catch (error) { failure = error; }
   finally {
     const cleanup = await Promise.allSettled(children.map(stop));

@@ -1,12 +1,12 @@
 //! Settings beyond `ServerSettings`, each with a default, and project overrides for
 //! the ones a project may set for itself. A key not listed here cannot be stored,
 //! and a value of the wrong shape is refused. Reading resolves project, then global,
-//! then default. Nothing here holds a secret: provider environments and tokens are
-//! left out under rule 1.
+//! then the project file for its two supported keys, then default. Provider
+//! environments and tokens are left out under rule 1.
 
 use std::collections::BTreeMap;
 
-use orbyn_contracts::PreferenceView;
+use orbyn_contracts::{PreferenceFileValue, PreferenceView};
 use serde_json::{Value, json};
 
 use crate::app::Core;
@@ -140,22 +140,45 @@ pub(crate) fn stored_preferences(
         }
         None => BTreeMap::new(),
     };
+    let file = match project_id {
+        Some(id) => {
+            crate::project_file::read_project_file(std::path::Path::new(&store.project(id)?.path))
+        }
+        None => orbyn_contracts::ProjectFileView {
+            path: None,
+            file: None,
+            problem: None,
+        },
+    };
     DEFINITIONS
         .iter()
         .map(|definition| {
             let default = (definition.default)();
             let global = store.setting(&setting_key(definition.key))?;
             let local = own.get(definition.key).filter(|_| definition.project);
-            let (value, source) = match (local, global) {
-                (Some(text), _) => (serde_json::from_str(text)?, "project"),
-                (None, Some(text)) => (serde_json::from_str(&text)?, "global"),
-                (None, None) => (default.clone(), "default"),
+            let project_file = file.file.as_ref().and_then(|contents| {
+                let value = match definition.key {
+                    "default_thread_env_mode" => contents.default_thread_env_mode.as_ref(),
+                    "worktree_submodules" => contents.worktree_submodules.as_ref(),
+                    _ => None,
+                }?;
+                Some(PreferenceFileValue {
+                    path: file.path.clone()?,
+                    value: json!(value),
+                })
+            });
+            let (value, source) = match (local, global, project_file.as_ref()) {
+                (Some(text), _, _) => (serde_json::from_str(text)?, "project"),
+                (None, Some(text), _) => (serde_json::from_str(&text)?, "global"),
+                (None, None, Some(file)) => (file.value.clone(), "file"),
+                (None, None, None) => (default.clone(), "default"),
             };
             Ok(PreferenceView {
                 key: definition.key.to_owned(),
                 value,
                 default,
                 source: source.to_owned(),
+                project_file,
                 project_scoped: definition.project,
             })
         })

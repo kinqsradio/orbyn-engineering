@@ -263,6 +263,7 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               },
               {
                 key: "default_thread_env_mode",
+                inheritance: true,
                 title: "Default checkout",
                 options: [
                   { value: "local", label: "Current checkout" },
@@ -287,6 +288,7 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               { key: "auto_pull", title: "Pull the default branch automatically", inheritance: true },
               {
                 key: "worktree_submodules",
+                inheritance: true,
                 title: "Submodules",
                 options: [
                   { value: "recursive", label: "Recursive" },
