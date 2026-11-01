@@ -26,10 +26,19 @@ cd web && npm run check && npm test
 
 ## Delivery
 
-Keep `main` current. Work lands as small, coherent pull requests from short-lived
-`feat/`, `fix/`, `docs/` or `chore/` branches. Required checks must pass on macOS,
-Windows and web before merge; auto-merge lands a green PR. Never merge red. Commit
-`web/src/generated` in the same commit as any contract change.
+For parity work, use one active branch per section. Make one small commit per
+completed row, and keep the commits separate so a regression can be found and
+reverted. Run the affected local checks before pushing.
+
+Open one pull request when a section or a coherent group of about 20 rows is
+ready. Merge it into `main` only after every required check is green on the current
+head: Rust and desktop on both macOS and Windows, Web, and E2E. Never weaken checks
+or merge red. Use a merge commit; do not squash the per-row commits. Keep branches
+current by merging `main` into active section branches at least daily, and deliver
+ready green batches daily. Use short-lived `feat/`, `fix/`, `docs/` or `chore/`
+branches named for the section or purpose.
+
+Commit `web/src/generated` in the same commit as every contract change.
 
 Commits and pull requests carry no agent or tool attribution. Do not add
 `Co-Authored-By` trailers for an assistant, generated-by lines, or a model or tool

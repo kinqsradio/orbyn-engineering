@@ -29,7 +29,7 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 | Engine login | Engines keep their own login. Orbyn never reads or stores engine credentials. Run the unmodified CLI. |
 | Claude | CLI only, never the Agent SDK. Keep it on the MCP approval gate, because its native modes would bypass the write scope. Never use `--bare`, which ignores subscription login. |
 | Default mode | Supervised, where T3 defaults to Full access. All four modes are offered. |
-| Delivery | Small PRs to `main`; merge when green, without waiting for the owner. No agent attribution anywhere. |
+| Delivery | One active branch per section, one small commit per completed row, local checks before pushing. Open a PR for a section or about 20 coherent rows; merge only with every required check green, without squashing. Keep active branches current with main at least daily and deliver ready green batches daily. No agent attribution anywhere. |
 | Autonomy | The owner makes no routine decisions: decide from T3's behaviour. Never ask for browser access; use the local references. |
 
 ## Rules that were broken, so read twice
@@ -87,6 +87,11 @@ passed. Current main `2769161` run `41265985286` is running.
 The historical Windows process holder is still unproven.
 
 ### Current continuation work
+
+The owner changed delivery after these initial PRs: subsequent parity work uses
+one branch per section and a section/about-20-row PR, retaining per-row commits.
+The settings slice #79 is being consolidated into the K-section branch rather than
+landed as a row PR. Policy/handoff maintenance is a separate documentation change.
 
 - Merged after all six required PR checks passed: #70 library coordination
   (`58d2bed`), #71 limited project provenance (`51a95eb`), #72 removal of unsupported

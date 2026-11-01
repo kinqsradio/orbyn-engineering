@@ -183,7 +183,9 @@
       ]
     }
   ],
-  "decisions": [],
+  "decisions": [
+    "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
+  ],
   "next_action": "Verify main2769161 CI; finish PR60 deterministic fixture diagnosis/current-head gates, PR79 inheritance and full local K1/K2; continue every remaining in-scope parity row through real orbynd.",
   "delivery": {
     "state": "merged",
