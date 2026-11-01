@@ -1,8 +1,8 @@
-import { ChevronRight, Copy, RefreshCw, Undo2 } from "lucide-react";
+import { ChevronRight, Copy, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
-import type { FileDiff, RestoreOutcome } from "../../api/types";
-import { toFailure, useAsync } from "../../lib/useAsync";
+import type { FileDiff } from "../../api/types";
+import { useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
@@ -143,26 +143,16 @@ const DIFF_SOURCES: { id: DiffSource; label: string }[] = [
 
 const STATUS_LETTER: Record<string, string> = { added: "A", deleted: "D", renamed: "R", modified: "M" };
 
-const RESTORE_NOTES: Record<RestoreOutcome, string> = {
-  restored: "is back as it was before this turn",
-  unchanged: "already matches this turn's start",
-  conflict: "changed after this turn, so it was left alone",
-  not_kept: "wasn't kept, so it can't be restored",
-};
-
 function FileRow({
   file,
   open,
   find,
   onToggle,
-  onRestore,
 }: {
   file: FileDiff;
   open: boolean;
   find: string;
   onToggle(): void;
-  /** Present when the turn kept both ends of this file. */
-  onRestore: (() => void) | null;
 }) {
   const pushToast = useUi((state) => state.pushToast);
   return (
@@ -185,11 +175,6 @@ function FileRow({
         >
           <Copy size={14} aria-hidden />
         </IconButton>
-        {onRestore ? (
-          <IconButton label={`Restore ${file.path} to before this turn`} onClick={onRestore}>
-            <Undo2 size={14} aria-hidden />
-          </IconButton>
-        ) : null}
       </div>
       {open ? <Patch patch={file.patch} find={find} /> : null}
     </li>
@@ -259,20 +244,6 @@ export function DiffPanel({ threadId }: { threadId: string }) {
     scope ? api.diff(threadId, signal, scope) : Promise.resolve([]),
   );
   const { reload } = diff;
-  const changes = useAsync(`changes:${threadId}:${source === "turn" ? (latestRun ?? "") : ""}:${version}`, (signal) =>
-    source === "turn" && latestRun ? api.runChanges(threadId, latestRun, signal) : Promise.resolve(null),
-  );
-  const pushToast = useUi((state) => state.pushToast);
-  const restore = async (path: string) => {
-    if (!latestRun) return;
-    try {
-      const [result] = await api.restoreChanges(threadId, latestRun, [path]);
-      pushToast(result ? `${path} ${RESTORE_NOTES[result.outcome]}` : `${path} wasn't in this turn`);
-      reload();
-    } catch (failure) {
-      pushToast(`Couldn't restore ${path}. ${toFailure(failure).message}`);
-    }
-  };
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [find, setFind] = useState("");
   const collapsed = useUi((state) => state.diffFilesCollapsed);
@@ -371,11 +342,6 @@ export function DiffPanel({ threadId }: { threadId: string }) {
               file={file}
               find={needle}
               open={collapsed === toggled.has(file.path)}
-              onRestore={
-                changes.data?.files.some((entry) => entry.path === file.path && entry.restorable)
-                  ? () => void restore(file.path)
-                  : null
-              }
               onToggle={() => {
                 const next = new Set(toggled);
                 if (!next.delete(file.path)) next.add(file.path);
