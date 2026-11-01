@@ -241,13 +241,30 @@ fn script_value(
         .cloned()
         .ok_or_else(|| CoreError::Invalid("The current actions are not a list.".into()))?;
     match edit {
-        PreferenceEdit::AddProjectScript { script } => scripts.push(serde_json::to_value(script)?),
+        PreferenceEdit::AddProjectScript { script } => {
+            let normalized = crate::project_file::validate_scripts(&serde_json::json!([script]))?;
+            scripts.push(serde_json::to_value(&normalized[0])?);
+        }
         PreferenceEdit::UpdateProjectScript { name, script } => {
+            let normalized = crate::project_file::validate_scripts(&Value::Array(scripts.clone()))?;
+            let identity = normalized
+                .iter()
+                .find(|action| &action.name == name)
+                .ok_or_else(|| CoreError::NotFound("project action".into()))?
+                .id
+                .clone();
+            if script.id.is_some() && script.id != identity {
+                return Err(CoreError::Invalid(
+                    "An action's ID cannot change during an edit.".into(),
+                ));
+            }
             let existing = scripts
                 .iter_mut()
                 .find(|entry| entry["name"].as_str() == Some(name))
                 .ok_or_else(|| CoreError::NotFound("project action".into()))?;
             // Preserve forward metadata while replacing every known editable field.
+            let mut script = script.clone();
+            script.id = identity;
             let replacement = serde_json::to_value(script)?;
             existing
                 .as_object_mut()

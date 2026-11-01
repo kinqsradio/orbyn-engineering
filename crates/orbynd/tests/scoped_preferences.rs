@@ -503,12 +503,17 @@ async fn action_edits_preserve_each_checkout_list_and_fence_the_whole_group() {
     let request = edit_body(&initial, scope.clone(), add);
     let (status, added) = put(&service, "/api/settings/preferences", request.clone()).await;
     assert_eq!(status, 200, "{added}");
+    let shared_id = row(&added, KEY)["members"][0]["view"]["value"][1]["id"]
+        .as_str()
+        .expect("a saved action needs a stable identity")
+        .to_owned();
     for member in row(&added, KEY)["members"].as_array().unwrap() {
         let scripts = member["view"]["value"].as_array().unwrap();
         assert_eq!(scripts.len(), 2);
         assert!(scripts[0]["name"].as_str().unwrap().starts_with("Local "));
         assert_eq!(scripts[1]["name"], "Shared");
         assert_eq!(scripts[1]["async"], false);
+        assert_eq!(scripts[1]["id"], shared_id);
     }
     assert_eq!(
         put(&service, "/api/settings/preferences", request).await.0,
@@ -540,7 +545,24 @@ async fn action_edits_preserve_each_checkout_list_and_fence_the_whole_group() {
         assert_eq!(member["view"]["value"][1]["command"], "echo updated");
         assert_eq!(member["view"]["value"][1]["async"], false);
         assert_eq!(member["view"]["value"][1]["auto_open_preview"], true);
+        assert_eq!(member["view"]["value"][1]["id"], shared_id);
     }
+    let change_identity = edit_body(
+        &updated,
+        scope.clone(),
+        json!({KEY:{"op":"update_project_script","name":"Renamed","script":{"id":"different-identity","name":"Renamed","command":"echo rejected"}}}),
+    );
+    assert_eq!(
+        put(&service, "/api/settings/preferences", change_identity)
+            .await
+            .0,
+        400
+    );
+    let after_rejected_identity = query(&service, scope.clone(), &[KEY]).await;
+    assert_eq!(
+        row(&after_rejected_identity, KEY)["members"],
+        row(&updated, KEY)["members"]
+    );
     let remove = edit_body(
         &updated,
         scope.clone(),
@@ -623,4 +645,90 @@ async fn action_edits_preserve_each_checkout_list_and_fence_the_whole_group() {
     for (path, content) in files {
         assert_eq!(std::fs::read_to_string(path).unwrap(), content);
     }
+}
+
+#[tokio::test]
+async fn distinct_action_ids_keep_similar_names_in_separate_real_terminals() {
+    let dir = TempDir::new();
+    let (service, projects, _) = fixture(&dir).await;
+    let id = projects[0]["id"].as_str().unwrap();
+    assert_eq!(
+        service
+            .send(&format!("/api/projects/{id}/trust"), json!({}))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        put(
+            &service,
+            &format!("/api/projects/{id}/preferences"),
+            json!({"values":{"default_project_scripts":[
+                {"id":"first-action","name":"Build one","command":"echo first-action-output"},
+                {"id":"second-action","name":"Build-one","command":"echo second-action-output"}
+            ]}})
+        )
+        .await
+        .0,
+        200
+    );
+    let (status, thread) = service
+        .send(
+            "/api/threads",
+            json!({"project_id":id,"engine":"codex","title":"Action identity fixture"}),
+        )
+        .await;
+    assert_eq!(status, 201, "{thread}");
+    let base = format!("/api/threads/{}", thread["id"].as_str().unwrap());
+    let available = service.json(&format!("{base}/scripts")).await;
+    assert_eq!(available["scripts"][0]["id"], "first-action");
+    assert_eq!(available["scripts"][1]["id"], "second-action");
+    let (status, first) = service
+        .send(&format!("{base}/scripts"), json!({"name":"Build one"}))
+        .await;
+    assert_eq!(status, 201, "{first}");
+    let (status, second) = service
+        .send(&format!("{base}/scripts"), json!({"name":"Build-one"}))
+        .await;
+    assert_eq!(status, 201, "{second}");
+    assert_ne!(
+        first["id"], second["id"],
+        "similar display names must not replace another action's process"
+    );
+    let terminals = service.json(&format!("{base}/terminals")).await;
+    assert!(
+        terminals
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|terminal| terminal["id"] == first["id"] && terminal["script"] == "Build one")
+    );
+    assert!(
+        terminals
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|terminal| terminal["id"] == second["id"] && terminal["script"] == "Build-one")
+    );
+    for (terminal, expected) in [
+        (&first, "first-action-output"),
+        (&second, "second-action-output"),
+    ] {
+        let path = format!(
+            "{base}/terminals/{}/scrollback",
+            terminal["id"].as_str().unwrap()
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let output = service.json(&path).await;
+                if output["text"].as_str().unwrap().contains(expected) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("each real action retains its own output");
+    }
+    service.stop().await;
 }

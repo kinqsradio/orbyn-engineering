@@ -1671,6 +1671,9 @@ pub struct TerminalScrollback {
 wire! {
 /// A team script from the project file.
 pub struct ProjectScript {
+    // Stable action identity; absent in legacy project files and saved lists.
+    #[serde(default)]
+    pub id: Option<String>,
     pub name: String,
     pub command: String,
     #[serde(default)]

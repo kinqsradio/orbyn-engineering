@@ -14,6 +14,7 @@ function actionsFrom(value: unknown): ProjectScript[] {
       || typeof entry.name !== "string" || typeof entry.command !== "string") return [];
     const fields = entry as Record<string, unknown>;
     return [{ ...fields, name: entry.name, command: entry.command,
+      id: typeof fields.id === "string" ? fields.id : null,
       icon: typeof fields.icon === "string" ? fields.icon : null,
       run_on_worktree_create: fields.run_on_worktree_create === true,
       async: fields.async !== false, run_on_settle: fields.run_on_settle === true,
@@ -22,7 +23,7 @@ function actionsFrom(value: unknown): ProjectScript[] {
   });
 }
 
-const empty = (): ProjectScript => ({ name: "", command: "", icon: "play", run_on_worktree_create: false,
+const empty = (): ProjectScript => ({ id: null, name: "", command: "", icon: "play", run_on_worktree_create: false,
   async: true, run_on_settle: false, preview_url: null, auto_open_preview: false });
 
 /** The list stays with the scope that supplied its revision and mutation owner. */

@@ -18,8 +18,9 @@ const MAX_SCRIPTS: usize = 50;
 
 /// The settings API and project files share the same executable script shape.
 pub(crate) fn validate_scripts(value: &Value) -> Result<Vec<ProjectScript>> {
-    let scripts: Vec<ProjectScript> = serde_json::from_value(value.clone())
+    let mut scripts: Vec<ProjectScript> = serde_json::from_value(value.clone())
         .map_err(|error| CoreError::Invalid(format!("Invalid project scripts: {error}")))?;
+    assign_script_ids(&mut scripts);
     check_scripts(&scripts).map_err(CoreError::Invalid)?;
     Ok(scripts)
 }
@@ -29,6 +30,7 @@ fn check_scripts(scripts: &[ProjectScript]) -> std::result::Result<(), String> {
         return Err(format!("A project can hold {MAX_SCRIPTS} scripts."));
     }
     let mut names = std::collections::BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
     for script in scripts {
         if script.name.trim().is_empty() || script.command.trim().is_empty() {
             return Err("Every script needs a name and a command.".into());
@@ -36,8 +38,35 @@ fn check_scripts(scripts: &[ProjectScript]) -> std::result::Result<(), String> {
         if !names.insert(script.name.as_str()) {
             return Err("Each script needs a different name.".into());
         }
+        if let Some(id) = &script.id {
+            if id.is_empty()
+                || id.len() > 128
+                || !id
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+            {
+                return Err(
+                    "Action IDs must be 1 to 128 letters, digits, hyphens or underscores.".into(),
+                );
+            }
+            if !ids.insert(id.as_str()) {
+                return Err("Each action needs a different ID.".into());
+            }
+        }
     }
     Ok(())
+}
+
+/// Legacy lists remain read-only; saving an action materializes this identity.
+fn assign_script_ids(scripts: &mut [ProjectScript]) {
+    for script in scripts {
+        if script.id.is_none() {
+            script.id = Some(format!(
+                "action-{}",
+                crate::util::sha256_hex(script.name.as_bytes())
+            ));
+        }
+    }
 }
 
 /// Reads the first file present. A bad file is reported and never half-applied.
@@ -95,6 +124,7 @@ fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
     {
         return Err("worktreeSubmodules must be recursive, top-level or none.".into());
     }
+    assign_script_ids(&mut file.scripts);
     check_scripts(&file.scripts)?;
     Ok(file)
 }
@@ -123,14 +153,15 @@ fn snake_keys(value: Value) -> Value {
     }
 }
 
-/// A script's terminal id: its name, lowercased, in plain characters.
-fn script_terminal(name: &str) -> String {
-    let slug: String = name
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    format!("script-{slug}")
+/// Manual action terminals follow identity, independently of display names.
+fn script_terminal(script: &ProjectScript) -> String {
+    format!(
+        "script-{}",
+        script
+            .id
+            .as_deref()
+            .expect("validated actions have identities")
+    )
 }
 
 impl Core {
@@ -234,7 +265,7 @@ impl Core {
             &thread.cwd,
             &script,
             actor,
-            &script_terminal(&script.name),
+            &script_terminal(&script),
         )
     }
 
@@ -317,7 +348,11 @@ mod tests {
 
     #[test]
     fn script_ids_stay_plain() {
-        assert_eq!(script_terminal("Dev Server!"), "script-dev-server-");
+        let actions = validate_scripts(
+            &json!([{"id":"dev-server","name":"Dev Server!","command":"echo ready"}]),
+        )
+        .unwrap();
+        assert_eq!(script_terminal(&actions[0]), "script-dev-server");
     }
 
     #[test]
@@ -331,9 +366,32 @@ mod tests {
             json!([{"name":"Dev","command":"echo one"},{"name":"Dev","command":"echo two"}]),
             json!([{"name":"Dev","command":"echo no","run_on_settle":"yes"}]),
             json!([{"name":"Dev","command":"echo no","async":"false"}]),
+            json!([{"id":"../escape","name":"Dev","command":"echo no"}]),
+            json!([{"id":"","name":"Dev","command":"echo no"}]),
+            json!([{"id":"same","name":"One","command":"echo one"},{"id":"same","name":"Two","command":"echo two"}]),
             json!([{"name":"Dev"}]),
         ] {
             assert!(validate_scripts(&value).is_err(), "{value}");
         }
+    }
+
+    #[test]
+    fn legacy_action_identity_is_deterministic_and_does_not_collapse_names() {
+        let source = json!([
+            {"name":"Dev Server", "command":"echo first"},
+            {"name":"Dev-Server", "command":"echo second"},
+            {"id":"team-build", "name":"Build", "command":"echo third"}
+        ]);
+        let first = validate_scripts(&source).unwrap();
+        let mut reversed = source.as_array().unwrap().clone();
+        reversed.reverse();
+        let second = validate_scripts(&Value::Array(reversed)).unwrap();
+        assert_ne!(first[0].id, first[1].id);
+        assert_eq!(first[0].id, second[2].id);
+        assert_eq!(first[2].id.as_deref(), Some("team-build"));
+        assert!(
+            source[0].get("id").is_none(),
+            "reading does not rewrite legacy data"
+        );
     }
 }

@@ -375,8 +375,21 @@ keeps the draft and reports the error; closing the form does not imply a success
 write. The Name field receives focus after the native modal enters the top layer.
 After closing the form, focus returns to its opener once the refreshed controls
 are enabled; renaming or deleting the opener's action returns focus to Add action.
-Deletion requires confirmation. Stable action IDs and environment-wide action
-shortcuts remain unfinished; this editor does not establish complete action parity.
+Deletion requires confirmation. An action's optional `id` is independent of its
+editable name and command. Readers derive a deterministic SHA-256 identity from
+the exact legacy name when it is absent, without writing project files or stored
+lists. New targeted saves materialize the ID; an edit preserves the observed ID
+across renames and rejects a request to change it. The same named legacy action
+has the same derived identity across checkouts, while names that collapse to one
+display slug remain distinct. Explicit IDs must be unique within a list and
+contain 1–128 ASCII letters, digits, hyphens or underscores.
+Manual terminals use the validated ID rather than a simplified display name, so
+running similarly named actions cannot replace each other's terminal or process.
+This is an additive reader/writer expansion with no database backfill or schema
+change. Existing writers may still replace a whole list, and legacy data remains
+readable; targeted editing is the identity-preserving operation. The data-directory
+lock continues to admit only one Core writer. Environment-wide action shortcuts
+remain unfinished; identity support does not establish complete action parity.
 The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets
