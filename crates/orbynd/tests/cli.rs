@@ -244,6 +244,104 @@ async fn start_leaves_a_service_running_after_it_exits() {
     Command::new("kill").arg(&pid).status().unwrap();
 }
 
+#[tokio::test]
+async fn start_reuses_a_registered_repository_from_a_child_folder() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let project = service.json(&format!("/api/threads/{thread}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let projects = service.json("/api/projects").await;
+    let root = std::path::PathBuf::from(
+        projects
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == project)
+            .unwrap()["path"]
+            .as_str()
+            .unwrap(),
+    );
+    let child = root.join("src");
+    std::fs::create_dir(&child).unwrap();
+    let report = parsed(
+        &run(
+            &dir.path().join("data"),
+            &["start", "--no-open", "--json", &child.to_string_lossy()],
+        )
+        .await,
+    );
+    assert_eq!(report["project"], project);
+    assert_eq!(
+        service
+            .json("/api/projects")
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        projects.as_array().unwrap().len()
+    );
+}
+
+#[tokio::test]
+async fn a_packaged_cli_serves_its_bundled_ui_on_a_fresh_start() {
+    for (binary_folder, resource_folder) in
+        [("Contents/MacOS", "Contents/Resources"), ("bin", "bin")]
+    {
+        let dir = TempDir::new();
+        let bin = dir.path().join(binary_folder);
+        let ui = dir.path().join(resource_folder).join("ui");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&ui).unwrap();
+        std::fs::write(
+            ui.join("index.html"),
+            "<!doctype html><title>Bundled UI</title>",
+        )
+        .unwrap();
+        let cli = bin.join(format!("orbyn{}", std::env::consts::EXE_SUFFIX));
+        std::fs::copy(ORBYN, &cli).unwrap();
+        std::fs::copy(
+            env!("CARGO_BIN_EXE_orbynd"),
+            bin.join(format!("orbynd{}", std::env::consts::EXE_SUFFIX)),
+        )
+        .unwrap();
+        let data = dir.path().join("data");
+        let data_arg = data.clone();
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new(cli)
+                .arg("--data-dir")
+                .arg(data_arg)
+                .args(["start", "--no-open", "--json"])
+                .env("ORBYN_OFFLINE", "1")
+                .output()
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        let report = parsed(&output);
+        assert_eq!(report["started"], true);
+        let found: Value =
+            serde_json::from_slice(&std::fs::read(data.join("service.json")).unwrap()).unwrap();
+        struct Stop(u64);
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                #[cfg(unix)]
+                let _ = Command::new("kill").arg(self.0.to_string()).status();
+                #[cfg(windows)]
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &self.0.to_string(), "/T", "/F"])
+                    .stdout(std::process::Stdio::null())
+                    .status();
+            }
+        }
+        let _stop = Stop(found["pid"].as_u64().unwrap());
+        let response = reqwest::get(found["url"].as_str().unwrap()).await.unwrap();
+        assert_eq!(response.status(), 200);
+        assert!(response.text().await.unwrap().contains("Bundled UI"));
+    }
+}
+
 #[test]
 fn a_bare_name_that_is_no_folder_is_an_error_and_opens_nothing() {
     let dir = TempDir::new();

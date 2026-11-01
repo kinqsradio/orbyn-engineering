@@ -304,11 +304,7 @@ mod tests {
         assert!(text.contains("<string>service</string>\n    <string>run</string>"));
         assert_eq!(
             plan.steps[1].args,
-            [
-                "bootstrap",
-                "gui/501",
-                "/home/a/Library/LaunchAgents/com.orbyn.engineering.plist"
-            ]
+            ["bootstrap", "gui/501", path.to_string_lossy().as_ref()]
         );
         assert!(plan.steps[0].may_fail, "nothing may be loaded yet");
     }

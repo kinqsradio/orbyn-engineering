@@ -174,6 +174,7 @@ enum ThemeCommand {
 struct Failure {
     message: String,
     code: u8,
+    api_error: Option<Value>,
 }
 
 impl Failure {
@@ -181,6 +182,7 @@ impl Failure {
         Self {
             message: message.into(),
             code: 1,
+            api_error: None,
         }
     }
 
@@ -189,6 +191,7 @@ impl Failure {
         Self {
             message: format!("No Orbyn service is running{detail}. Start one with `orbyn serve`."),
             code: 2,
+            api_error: None,
         }
     }
 }
@@ -248,11 +251,13 @@ impl Service {
             return Ok(value);
         }
         let message = value.get("message").and_then(Value::as_str);
-        Err(Failure::new(match (status, message) {
+        let mut failure = Failure::new(match (status, message) {
             (_, Some(message)) => message.to_owned(),
             (StatusCode::UNAUTHORIZED, None) => "The service refused this command.".to_owned(),
             (status, None) => format!("The service answered {status}."),
-        }))
+        });
+        failure.api_error = Some(value);
+        Err(failure)
     }
 
     async fn get(&self, path: &str) -> Outcome<Value> {
@@ -575,12 +580,41 @@ fn wait_for(mut command: Process) -> Outcome<()> {
 }
 
 fn run_service(args: &[String], data: Option<&Path>) -> Outcome<()> {
-    let mut command = Process::new(orbynd_path()?);
-    command.arg("serve").args(args);
+    let mut command = service_process(args)?;
     if let Some(data) = data {
         command.arg("--data-dir").arg(data);
     }
     wait_for(command)
+}
+
+/// The sidecars share the desktop bundle's resources. Explicit serve flags win.
+fn service_process(args: &[String]) -> Outcome<Process> {
+    let program = orbynd_path()?;
+    let mut command = Process::new(&program);
+    command.arg("serve");
+    if let Some(folder) = program.parent() {
+        let roots = [folder.join("../Resources"), folder.to_path_buf()];
+        if let Some(root) = roots
+            .iter()
+            .find(|root| root.join("ui/index.html").is_file())
+        {
+            let supplied = |flag: &str| {
+                args.iter()
+                    .any(|arg| arg == flag || arg.starts_with(&format!("{flag}=")))
+            };
+            if !supplied("--ui-dir") {
+                command.arg("--ui-dir").arg(root.join("ui"));
+            }
+            if root.join("library/library.tar").is_file()
+                && !supplied("--library-bundle")
+                && std::env::var_os("ORBYN_LIBRARY_BUNDLE").is_none()
+            {
+                command.arg("--library-bundle").arg(root.join("library"));
+            }
+        }
+    }
+    command.args(args);
+    Ok(command)
 }
 
 /// Reaches a service that answers, since `service.json` can outlive a crash.
@@ -596,9 +630,9 @@ fn start_detached(data: &Path) -> Outcome<()> {
         .map_err(|error| Failure::new(format!("{}: {error}", data.display())))?;
     let log = std::fs::File::create(data.join("service.log"))
         .map_err(|error| Failure::new(format!("The service log: {error}")))?;
-    let mut command = Process::new(orbynd_path()?);
+    let mut command = service_process(&[])?;
     command
-        .args(["serve", "--data-dir"])
+        .arg("--data-dir")
         .arg(data)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -650,7 +684,16 @@ async fn project_for(service: &Service, path: &Path) -> Outcome<String> {
             let body = json!({ "path": real });
             service
                 .call(Method::POST, "/api/projects/add", Some(body))
-                .await?
+                .await
+                .or_else(|failure| {
+                    if let Some(error) = &failure.api_error
+                        && error["code"] == "project_exists"
+                        && error["detail"]["id"].is_string()
+                    {
+                        return Ok(error["detail"].clone());
+                    }
+                    Err(failure)
+                })?
         }
     };
     project["id"]
@@ -812,8 +855,13 @@ fn run_as_service(data: &Path) -> Outcome<()> {
             .map_err(|error| Failure::new(format!("service.env: {error}")))?,
         Err(_) => std::collections::BTreeMap::new(),
     };
-    let mut command = Process::new(orbynd_path()?);
-    command.args(["serve", "--data-dir"]).arg(data).envs(values);
+    let args = values
+        .get("ORBYN_LIBRARY_BUNDLE")
+        .map_or_else(Vec::new, |path| {
+            vec!["--library-bundle".to_owned(), path.clone()]
+        });
+    let mut command = service_process(&args)?;
+    command.arg("--data-dir").arg(data).envs(values);
     wait_for(command)
 }
 

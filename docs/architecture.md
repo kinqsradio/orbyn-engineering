@@ -883,7 +883,10 @@ did not complete, and 2 when no service is running. `--json` prints the API's an
 `orbyn`, `orbyn <folder>` and `orbyn start` reuse a service that answers or start one that
 outlives the command, with its output in `service.log`, then open it in the browser with
 the token in the address, which the page moves out of history. A folder is registered
-first, untrusted, and reused if it is already a project. A bare name counts only if the
+first, untrusted, and reused if it is already a project, including when a child folder
+resolves to its Git root. A packaged CLI serves the UI and library snapshot beside the
+Windows sidecars or in the macOS bundle's Resources folder, just as the shell does.
+Explicit `serve` flags override those bundled paths. A bare name counts only if the
 folder exists, and nothing is started otherwise. The token is never printed. `orbyn app`
 goes through the `orbyn://` link, so it starts the desktop app by the system's own route and
 adds no way in. `ORBYN_OPENER` names another program, or `-` to print what would open.
