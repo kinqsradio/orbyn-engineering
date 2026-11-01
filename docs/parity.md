@@ -562,7 +562,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] K23 Material You: Android dynamic colors and layout | docs/user/appearance.md | m | M | scope: excluded | reason: mobile client only
 - [x] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M | web done
 - [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S
-- [x] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M
+- [x] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M | status: partial | remaining: profiles and cadence values are stored without runtime consumers; lock, battery and low-power pause behavior is not implemented
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
 - [x] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S | web done
 - [x] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server done | web done: warnings and errors stand in for traces, and Stop ends a process, so no other signals
