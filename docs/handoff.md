@@ -66,28 +66,36 @@ builds on both, and E2E. The repository is public and has no license yet.
 
 The active section branch is `feat/project-settings` in the
 `file-setting-inheritance` worktree. Main remains `58d86e9`; its post-merge CI
-`41322108228` passed every required job. Local row commits through `a17e748`
-implement selected Name CAS, registered Checkouts and removal, checked project
-images/automatic badges, bounded config reads, descendant-safe family removal and
-isolated test-provider discovery. Contract changes include their generated TS.
-This section is pushed to `origin/feat/project-settings`; remote head `fd36862`
-was verified after the checked commits. No section PR is open. Delivery remains section or
-about-20-row grouping, with separate commits and green exact-head merge gates.
+`41322108228` passed every required job. The section includes selected Name CAS,
+registered Checkouts and removal, checked project images/automatic badges,
+bounded config reads, descendant-safe family removal, isolated provider discovery,
+and the structured project icon picker. Implementation `7e3d25f` and stale-read
+correction `d76dd71` are pushed; the remote section ref was verified at full head
+`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No section PR is open. Delivery remains
+section/about-20-row grouping with separate commits and green exact-head merge gates.
 
-Final local Rust: 1043 passed, 9 existing ignored; formatting and workspace
-all-target Clippy passed. Web check, 332 unit tests and production build passed.
-The full rebuilt-daemon browser suite passed all 234 cases, with no skips or filters.
-Two earlier full runs are retained as red: 230/1 exposed a library-image request
-before workspace discovery; 231/1 exposed incidental host-provider discovery during
-fixture teardown. Focused regressions pass after their corrections; cleanup retries
-and strict API-error assertions are unchanged. A controlled provider terminated
-normally; the historical OpenCode writer PID is unproven.
+Final production Rust passed 1055 workspace tests with 9 existing ignored,
+formatting and all-target Clippy. The final metadata test file separately passed
+all eight cases, including actual populated schema-20 migration and writer fences.
+Web type/lint checks, 338 unit tests and the production build passed. Full default
+E2E passed 241/241 with no skips or filters on copied, unchanged executables; all
+707 recorded source/configuration/test inputs matched before and after. Receipts
+are `target/project-icon-refresh-final241-{start,end}.json` and its full log.
+
+Earlier red runs are retained: the library-image startup race, incidental host
+provider discovery, and stale project-list replies after committed icon/name
+changes or removal. The stale reply failed in a real-service browser case before
+the correction and passes after it. An earlier 240-case run passed while shared
+Cargo-cache executables changed; it is not single-executable qualification. One
+concurrent unit run timed out in the App streaming case at its unchanged five-
+second limit; focused 42 and full 338 reruns passed without limit changes. No cause
+is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
 Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
-doable out of 534 included. K6 and K7 moved from open to partial as tested slices
-landed locally; no checkbox or platform completion is inferred from that change.
-K7's structured icon picker is the current local slice; saved-image selection
-and K5's full model defaults remain next. Native/tool stops and missing release inputs below remain in force.
+doable out of 534 included. K6/K7 remain partial. Next are K7's reference Choose
+file search, saved paths, persistent image behavior and native chooser, followed
+by K5's full model defaults. Native/tool stops and missing release inputs below
+remain in force. No current-head hosted CI, native or Windows qualification is inferred.
 
 ### Initial PR queue
 
@@ -638,7 +646,7 @@ six icon scenarios. Screenshots cover Icons, Emoji and Monogram modes.
 The initial 240-case default browser run passed without skips or filters. Its
 shared Cargo-cache executable hashes changed early in the run while root Rust
 checks overlapped, so it does not qualify one unchanged executable. That receipt
-is retained. The next run uses copied executables under
+is retained. The final run used copied executables under
 `target/project-icon-frozen-runtime/7e3d25fefa-1793557011882993000/`: daemon
 `b06fa349aa8a9d765799e2027890ac2b25a4ed285eb209a90f0b72109ba9f2be`
 and companion `5c25596824b2b32eb266d1dffc4249d1e3858ea209b6db04a0b6d303378121e4`.
@@ -648,8 +656,22 @@ The follow-up production build and type/lint checks pass. One concurrent unit
 run passed 337/338 but timed out in the existing App streaming case at its
 unchanged five-second limit. All 42 App tests passed separately, followed by
 338/338 in the default full unit rerun without concurrent browser/build work. No
-cause is claimed and the red receipt is retained. The final 241-case default
-browser gate is running on the copied runtime. This follow-up is local; push
-remains gated on that result. No current-head hosted CI,
+cause is claimed and the red receipt is retained. The final default browser gate
+passed 241/241 on the copied runtime, with all 707 input hashes and both executable
+hashes unchanged. Implementation `7e3d25f` and correction `d76dd71` were pushed after
+local gates passed; the remote full head was read back as
+`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No current-head hosted CI,
 native/Windows or final reference walkthrough is inferred. K7 remains partial
 for saved-image selection and final platform evidence.
+
+
+Read-only preparation for the remaining K7 image behavior is pinned to the same
+T3 reference: Choose file opens a project-image path search in both local web and
+desktop. The representative selected project supplies search/thumbnail roots; the
+same relative path is saved on every selected physical member, with each member's
+own fallback if its file is absent. This flow does not upload or copy images.
+Desktop optionally adds the native external-file footer; its absolute saved path
+is a distinct explicit image authority and must not become an arbitrary path read.
+Reference persistent-cache and larger-image behavior remain qualification gaps;
+the current 1 MiB JSON-image reader is not proof of those behaviors. Continue this
+portion of K7 on the same section branch after verified delivery.
