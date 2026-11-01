@@ -343,6 +343,11 @@ after a minute. Named terminals stay until closed. Settling or archiving closes 
 all. `?observe=true` attaches read-only: input and resizes are dropped. Fish starts
 with `no-query-term` so it does not wait on terminal replies.
 
+A viewer attaches to a terminal ID and its process creation timestamp. Rerunning
+an action preserves the tab's stable ID but replaces its process; the viewer
+reattaches even when that tab stays selected. Ordinary metadata refreshes preserve
+the existing connection.
+
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
