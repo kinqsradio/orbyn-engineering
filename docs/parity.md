@@ -558,7 +558,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [x] K19 Glass, contrast, smoothing: visual tuning | packages/contracts/src/settings.ts | w d | S
 - [x] K20 Panel animations: 0–400 ms slider | apps/web/src/components/settings/PanelAnimationsPreview.tsx | w d | S
 - [x] K21 Timestamp format: locale, 12-hour, 24-hour | packages/contracts/src/settings.ts | w d m | S
-- [ ] K22 Environment identification: artwork, pill, none | packages/contracts/src/settings.ts | w d | S | scope: excluded | reason: remote environment identification
+- [ ] K22 Environment identification: artwork, pill, none | packages/contracts/src/settings.ts | w d | S | scope: mixed | local: Dev and Nightly artwork or version pill for the local environment | excludes: remote environment identity
 - [ ] K23 Material You: Android dynamic colors and layout | docs/user/appearance.md | m | M | scope: excluded | reason: mobile client only
 - [x] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M | web done
 - [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S
