@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, OtlpResult, PreferenceView } from "../../api/types";
-import type { NetworkRequest } from "../../generated/NetworkRequest";
 import type { ResourceSample } from "../../generated/ResourceSample";
 import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -30,27 +29,6 @@ const SIGNALS = [
   { key: "metrics_url", title: "Metrics" },
   { key: "logs_url", title: "Logs" },
 ];
-
-/** Everything the service may reach on its own, and what turns it off. */
-function NetworkGroup() {
-  const requests = useAsync("network-requests", (signal) =>
-    request<NetworkRequest[]>("GET", "/api/network", undefined, signal),
-  );
-  if (!requests.data) return null;
-  return (
-    <SettingGroup title="Network">
-      {requests.data.map((entry) => (
-        <SettingRow
-          key={`${entry.purpose}:${entry.host}`}
-          title={entry.purpose}
-          description={`${entry.host}, ${entry.cadence}. ${entry.control}`}
-        >
-          {entry.enabled ? "On" : "Off"}
-        </SettingRow>
-      ))}
-    </SettingGroup>
-  );
-}
 
 function TelemetryGroup() {
   const preferences = useAsync("observability", (signal) =>
@@ -278,7 +256,6 @@ export function MaintenanceSection() {
       </h1>
       <DiagnosticsGroup />
       <CleanupGroup />
-      <NetworkGroup />
       <TelemetryGroup />
       {library?.native_skills === false ? <FallbackNotice /> : null}
       {library ? <Library library={library} /> : null}
