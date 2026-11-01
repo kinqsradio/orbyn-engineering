@@ -62,6 +62,32 @@ valid completion percentage.
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
 
+### Current local section
+
+The active section branch is `feat/project-settings` in the
+`file-setting-inheritance` worktree. Main remains `58d86e9`; its post-merge CI
+`41322108228` passed every required job. Local row commits through `a17e748`
+implement selected Name CAS, registered Checkouts and removal, checked project
+images/automatic badges, bounded config reads, descendant-safe family removal and
+isolated test-provider discovery. Contract changes include their generated TS.
+This section is committed locally; its feature-branch push follows these checks. No section PR is open. Delivery remains section or
+about-20-row grouping, with separate commits and green exact-head merge gates.
+
+Final local Rust: 1043 passed, 9 existing ignored; formatting and workspace
+all-target Clippy passed. Web check, 332 unit tests and production build passed.
+The full rebuilt-daemon browser suite passed all 234 cases, with no skips or filters.
+Two earlier full runs are retained as red: 230/1 exposed a library-image request
+before workspace discovery; 231/1 exposed incidental host-provider discovery during
+fixture teardown. Focused regressions pass after their corrections; cleanup retries
+and strict API-error assertions are unchanged. A controlled provider terminated
+normally; the historical OpenCode writer PID is unproven.
+
+Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
+doable out of 534 included. K6 and K7 moved from open to partial as tested slices
+landed locally; no checkbox or platform completion is inferred from that change.
+K7's persisted icon/image controls and K5's full model defaults are the next code
+slices. Native/tool stops and missing release inputs below remain in force.
+
 ### Initial PR queue
 
 | PR | State |
@@ -87,7 +113,7 @@ passed. Main `04eb893` run `41269745565` passed all six required jobs. PR81 head
 merging as `193f406`. Its post-merge main run `41283340854` passed all six required jobs.
 The historical Windows process holder is still unproven.
 
-### Current continuation work
+### Historical continuation evidence
 
 The owner changed delivery after these initial PRs: subsequent parity work uses
 one branch per section and a section/about-20-row PR, retaining per-row commits.
@@ -434,6 +460,10 @@ stand-in forge races and the data-directory lock.
 
 ### Known bugs
 
+- K8's legacy config-reader alias/size race is corrected locally on
+  `feat/project-settings`: fixed filename and registered-root handle checks,
+  bounded probe reads and nonblocking Unix opens pass Core and real-service
+  regressions. It is not on main yet; new-head Windows CI remains required.
 - The historical Windows startup/`workspace` holder remains unidentified. #73
   removed the packaged-service smoke warning, made shutdown/profile-cleanup failures
   fatal, and fixed proven process/startup ownership defects. Its Windows checks
@@ -468,7 +498,7 @@ not commit it. Move it to a real secret store before any release.
 1. PR83 final head `96ada2b` passed all six required jobs in `41320346880`,
    plus GitGuardian; reviews and review threads were empty. It merged without
    squash as `58d86e9`. Windows Rust includes the final ConPTY and accepted-stop
-   corrections. Post-merge main CI `41322108228` is running at reconciliation.
+   corrections. Post-merge main CI `41322108228` passed all six required jobs.
    Primary main is fast-forwarded; `feat/project-settings` starts from the merge.
    Historical passing heads do not qualify later integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
@@ -524,3 +554,46 @@ native composer turn, real Windows hands-on walkthrough or live Claude turn.
 The original exact Windows cancellation trigger remains unproven despite the
 accepted-stop regressions and final Windows CI passing. All recorded stopped
 operations and missing release inputs remain in force.
+
+## Local Project settings continuation
+
+`feat/project-settings` follows merged main `58d86e9`. Local K6 evidence includes
+selected group/checkout Name CAS, registered Checkouts and file-preserving Danger
+removal, including explicit retry after partial failure. K7 now resolves checked
+local images in shared badges and derives the reference automatic name identity;
+structured icon/image overrides and their pickers remain unfinished. K8 closes the
+legacy project-file read boundary with actual-handle and root-redirect regressions.
+The final Rust workspace passed 1040 tests with 9 ignored, formatting and all-target
+Clippy. The web check, 332 unit tests and production build pass. The initial full
+browser run passed 230 cases and failed one: a startup badge requested the protected
+library image before workspace discovery. That failure and its trace are retained.
+The UI now waits for the known library path and keeps that identity on automatic
+fallback. The original strict API-error case, both image cases and a new delayed-
+workspace regression pass. That intermediate 232-case run and its teardown failure are retained below; final corrected qualification is 234/234.
+No new section PR, push, merge, native walkthrough or Windows execution is claimed.
+
+Direct local checklist count: 534 included, 343 declared checked, 50 partial,
+139 open and 2 not doable; 175 excluded, zero unresolved. These declarations do
+not constitute fresh runtime/platform verification. Main's earlier count remains
+pinned above until the local section lands.
+
+The second full browser run passed 231 cases and failed one teardown with
+`ENOTEMPTY` in the provider-model fixture. Its retained directory contained OpenCode
+DB/cache files, and the trace had a pending OpenCode model request. No historical
+writer PID or escaped vendor child was proved. A controlled provider shut down
+correctly on unchanged Core; a failing-before sentinel test instead established
+that ordinary fixtures discovered ambient host providers. The local fixture now
+selects an explicit discovery domain and private home/XDG/app-data environment;
+production discovery retains its default. Six affected service-browser cases and
+both cross-platform-launcher lifecycle cases pass, without changing cleanup retries
+or ignoring API errors. Final whole Rust is 1043 passed, 9 ignored, fmt/Clippy green;
+web is 332 unit tests plus check/build green. The rebuilt daemon's full 234-case
+browser run passed 234/234. Main still equals `58d86e9`; no section PR or merge is claimed.
+
+Final local qualification is green on source through `a17e748`: 1043 Rust tests
+passed with 9 existing ignored, workspace formatting/Clippy passed, and web
+check/332 unit tests/build passed. Full E2E passed 234/234 without filters or skips.
+Receipts: `target/project-settings-isolated-final-rust-receipt.json` and
+`target/project-settings-isolated-final-e2e.log`. The daemon stayed at SHA-256
+`5426c8ff5a4b3f714d412f67f643d41a4c70b8f1b4cf0a6dfc3107c1454ec2ec`.
+This is local fixture qualification, not new Windows/native or hosted CI evidence.

@@ -342,18 +342,32 @@
     {
       "check": "Post-merge main58d86e9",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "CI41322108228 in progress at reconciliation"
+        "CI41322108228 all six required jobs passed, including Windows Rust and both packaged startup jobs"
+      ]
+    },
+    {
+      "check": "Project settings continuation local K6 K7 K8",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "Name/Checkouts/Danger8 real-service browser cases; metadata3 real-service cases; final Core reader460passed2ignored and7 adjacent service cases; image2 browser cases; cache8 andidentity33 pure cases",
+        "Webcheck328unit/build passed; fullRust and231-case browser suites pending on frozen source. No Windows/native continuation qualification claimed",
+        "Final frozen Rust:1040 passed9ignored;workspacefmt/clippy passed; target/project-settings-final-rust-receipt.json records162unchanged inputs",
+        "Initial fullE2E230passed1failed library-image403, target/project-settings-final-e2e.log. Eligibility fix:4UI tests plus8cache/33identity tests; fullweb332/check/buildpassed; originalstrictsidebar+image2browsercasespassed; newdelayedworkspacecasepassed. Full232 rerun still required.",
+        "Second full browser231passed1failed ENOTEMPTY provider-model fixture. ActualwriterPIDunproven; ambientdiscovery failed-before and normalcontrolledcatalogshutdownpassed. Oldfixture/redreceipts retained.",
+        "Finalfamilyfix+isolationRust1043passed9ignored andfmt/workspaceclippy; target/project-settings-isolated-final-rust-receipt.json records163unchanged inputs. Web332/check/buildgreen. RebuiltCore234browsergate in progress.",
+        "Final sourcea17e748: full234E2Epassed0failed/no filters/skips; Rust1043passed9existingignored; fmt/workspaceclippy andwebcheck332unit/buildpassed. Daemon5426c8ff unchanged. Native/Windows/hosted continuation checks remain unverified."
       ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Verify post-merge main CI41322108228; continue K6 selected project details/name/checkouts/removal and K7 project icons on feat/project-settings, preserving all stopped native-control and permission boundaries. Run local gates before pushing; merge only all required exact-head checks green, without squash.",
+  "next_action": "Verify and push the locally green section commits, then continue K7 structured icon/image controls and K5 full model defaults on feat/project-settings. Open a section or coherent-about20-row PR when ready; merge without squash only every required exact-head check green. Main58d86e9 CI41322108228 remains green; preserve native/tool stops and owner release blockers.",
   "delivery": {
-    "state": "merged",
+    "state": "committed",
     "evidence": [
       "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
       "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
@@ -364,7 +378,11 @@
       "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge.",
       "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted.",
       "PR82 head9ac3dfa passed every required check and GitGuardian, merged without squash12748ac. Next action-shortcut work is local and not covered by that CI.",
-      "PR83 final96ada passed CI41320346880 all six jobs plus GitGuardian and merged58d86e9 without squash; next section is local feat/project-settings."
+      "PR83 final96ada passed CI41320346880 all six jobs plus GitGuardian and merged58d86e9 without squash; next section is local feat/project-settings.",
+      "feat/project-settings local K6/K7/K8 continuation; web check328unit/build passed; final fullRust/browser qualification running, no new push/PR/merge",
+      "Local row commits b09df17 selectedProjectName/Checkouts/Danger; ff9329f passiveimages/automaticidentity;52d1c1e boundedlegacyreader; badgeeligibility follow-up local, no push",
+      "fb4d59e preserves project family cleanup once; internal discovery/privatefixture isolation follow-up locally qualified but full234 pending. No push/PR/merge for this section.",
+      "All current local source committed separately througha17e748 after affected gates. Exact source receipts match frozen qualification; section-branch push follows, no PR/merge claimed."
     ]
   }
 }
