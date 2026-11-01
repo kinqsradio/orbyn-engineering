@@ -44,9 +44,20 @@ mod tests {
 
     #[test]
     fn detaching_a_borrowed_handle_preserves_its_contents_and_owner() {
-        let dir = orbyn_core::testing::TempDir::new();
-        let path = dir.path().join("stream.txt");
-        let mut file = std::fs::File::create(&path).unwrap();
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let path = std::env::temp_dir().join(format!("orbyn-stdio-{}", orbyn_core::util::new_id()));
+        // Declared before File so unwinding closes the handle before cleanup.
+        let _cleanup = Cleanup(path.clone());
+        let mut file = std::fs::File::options()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
         let handle = file.as_raw_handle();
         // SAFETY: file owns this handle until the end of the test. Both APIs
         // operate only on its inheritance flags, not on file ownership.
