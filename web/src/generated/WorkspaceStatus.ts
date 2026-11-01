@@ -4,6 +4,7 @@ import type { TargetStatus } from "./TargetStatus";
 
 export type WorkspaceStatus = { 
 /**
- * False until setup finishes; engines and projects wait for it.
+ * True once the library is in place, which startup sees to. Only a failure to
+ * write the data folder leaves it false.
  */
 configured: boolean, default_url: string, library: LibraryStatus | null, targets: Array<TargetStatus>, };

@@ -61,8 +61,10 @@ pub struct CoreConfig {
     pub data_dir: PathBuf,
     /// Loopback origin the per-run MCP URL is built from.
     pub base_url: String,
-    /// Where a first-run clone of the library comes from.
+    /// Where the clone that replaces the shipped snapshot comes from.
     pub workspace_url: String,
+    /// The folder of the library snapshot that ships with the app.
+    pub library_bundle: Option<PathBuf>,
     /// Release manifest for a server with no desktop shell.
     pub update_manifest: Option<String>,
     pub engines: EngineConfig,
@@ -82,6 +84,7 @@ impl CoreConfig {
             data_dir,
             base_url,
             workspace_url: crate::workspace::DEFAULT_LIBRARY_URL.to_owned(),
+            library_bundle: None,
             update_manifest: None,
             engines: EngineConfig::default(),
             approval_timeout: DEFAULT_APPROVAL_TIMEOUT,
@@ -159,6 +162,7 @@ impl Core {
             store.clone(),
             config.data_dir.clone(),
             config.workspace_url.clone(),
+            config.library_bundle.clone(),
         )?);
         let skills = Arc::new(SkillService::new(store.clone(), workspace.clone()));
         let computer = Arc::new(ComputerGateway::new(store.clone(), gate.clone(), backend));

@@ -231,8 +231,9 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
 
 /** The service provisions its own library; this only covers one that hasn't. */
 export async function libraryReady(service: Service) {
-  const { configured } = await service.api<{ configured: boolean }>("GET", "/api/workspace");
-  if (!configured) await service.api("POST", "/api/workspace/setup", {});
+  // A service starts on an empty library here, with no bundle and offline.
+  const { library } = await service.api<{ library?: { snapshot?: boolean } }>("GET", "/api/workspace");
+  if (library?.snapshot) await service.api("POST", "/api/workspace/setup", {});
 }
 
 /** A running service with one trusted repository, for specs that start from a thread. */
