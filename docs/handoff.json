@@ -18,10 +18,10 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "f74e4054a95234eff6e7998886ee1cef78b1a4b6",
+    "revision": "93dd5022d8e2797946617529a8555178891a1143",
     "diff_sha256": null
   },
-  "owner": "Next engineering agent",
+  "owner": "Orbyn Engineering",
   "owned_files": [
     "crates/",
     "web/",
@@ -33,41 +33,70 @@
   "status": "in_progress",
   "completed": [
     {
-      "result": "365 of 573 in-scope parity rows done",
+      "result": "Explicit row scope and counting helper prepared; checklist ticks are separate from runtime verification",
       "evidence": [
-        "docs/parity.md"
+        "docs/parity.md",
+        "scripts/count-parity.py",
+        "scripts/test_count_parity.py"
       ]
     },
     {
-      "result": "Automatic skills library with no setup step",
+      "result": "Initial main CI runs for #64, #66, #67 and #57 passed",
       "evidence": [
-        "PR #56",
-        "PR #57"
+        "GitHub Actions runs 41255124680, 41255128267, 41255131886, 41255273202"
       ]
     },
     {
-      "result": "E2E stabilized and required on main",
+      "result": "PRs #68, #58, #61, #62 and #63 merged after required checks passed",
       "evidence": [
-        "PR #59",
-        "branch protection on main"
+        "main history through 93dd502",
+        "docs/handoff.md: Initial PR queue"
       ]
     },
     {
-      "result": "Real Codex turn through the UI read a project file",
+      "result": "Packaged automatic first launch and one real Codex core turn passed on frozen 2786f94",
       "evidence": [
-        "docs/handoff.md: Verified"
+        "docs/handoff.md: Verified in this pickup",
+        "target/builder-2-packaged-2786f94/first-launch.json",
+        "target/builder-2-packaged-2786f94/live-codex-first-launch.json"
       ]
     }
   ],
   "verification": [
     {
-      "check": "CI on main for #64, #66, #67 and #57",
+      "check": "Initial main CI for #64, #66, #67, #57 and #68",
       "required": true,
-      "state": "unverified",
-      "evidence": []
+      "state": "passed",
+      "evidence": [
+        "GitHub Actions runs 41255124680, 41255128267, 41255131886, 41255273202, 41256683039"
+      ]
     },
     {
-      "check": "Packaged first launch with automatic provisioning",
+      "check": "Packaged first launch with automatic provisioning on 2786f94",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "target/builder-2-packaged-2786f94/first-launch.json"
+      ]
+    },
+    {
+      "check": "One real Codex packaged-core turn on 2786f94",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "target/builder-2-packaged-2786f94/live-codex-first-launch.json"
+      ]
+    },
+    {
+      "check": "PR #60 current head 348b88b and final integrated main CI",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "PR #60 CI run 41257920148 is running"
+      ]
+    },
+    {
+      "check": "Final integrated package full walkthrough and native composer",
       "required": true,
       "state": "unverified",
       "evidence": []
@@ -83,22 +112,14 @@
       "required": true,
       "state": "unverified",
       "evidence": []
-    },
-    {
-      "check": "Installed-app smoke on macOS",
-      "required": true,
-      "state": "passed",
-      "evidence": [
-        "CI desktop jobs"
-      ]
     }
   ],
   "decisions": [],
-  "next_action": "Confirm the four in-progress main CI runs are green, then follow Next actions in docs/handoff.md.",
+  "next_action": "Finish PR #60 current-head CI, merge only when all required checks pass, then follow Next actions in docs/handoff.md.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "kinqsradio/orbyn-engineering main at f74e405"
+      "kinqsradio/orbyn-engineering main at 93dd502; #60 remains open"
     ]
   }
 }

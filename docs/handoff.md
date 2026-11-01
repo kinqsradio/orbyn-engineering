@@ -1,8 +1,9 @@
 # Handoff
 
-Start here if you are picking this project up. Written 1 November 2026, at `main`
-`f74e405`. Trust the repository over this document where they differ, and update
-this file when its facts change.
+Start here if you are picking this project up. Reconciled 1 November 2026 against
+`main` at `93dd502`. Trust the repository over this document where they differ,
+and update this file when its facts change. The JSON record pins the product
+revision, not the later documentation commit; reconcile any newer main before acting.
 
 ## Goal
 
@@ -48,55 +49,72 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Status at `f74e405`
+## Reconciled status at `93dd502`
 
-- Checklist: 709 rows. 136 out of scope. **573 in scope, 365 done (64%), 203 open.**
-  5 more are ticked but still need their UI proven.
-- 62 PRs merged. About 56,600 lines of Rust and 25,700 of React.
-- Required checks: Rust on macos-15 and windows-2022, Web, desktop builds on both,
-  and E2E. The repository is public and has no license yet.
+Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
+At this revision there are 709 rows and 376 source checkboxes are ticked. The
+explicit scope metadata reports 527 included rows: 346 declared checked, 29
+partial, 150 open and 2 not doable as written. There are also 159 excluded and
+23 unresolved-scope rows. The unresolved rows must accompany the denominator.
+These are checklist declarations, not a fresh verification count. The former
+365/573 calculation missed mobile-only rows and whole-row exclusions discarded
+local parts of mixed features; it is not a valid completion percentage.
 
-Open rows by section: I 27, H 26, K 20, B 18, O 18, F 15, P 15, C 12, R 11, D 10,
-N 9, A 6, J 6, E 4, G 4, M 2. Each open row has its behaviour and reference path.
+Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
+builds on both, and E2E. The repository is public and has no license yet.
 
-### Open pull requests
+### Initial PR queue
 
-| PR | Rows | State |
-| --- | --- | --- |
-| #58 `feat/backend-rows` | I35, I53 | Mergeable, no failing checks recorded. Recheck on current `main`, then merge. |
-| #61 `feat/mcp-gaps` | N8 | Same. |
-| #62 `docs/rpc-reconcile` | R6 and gap notes | Same. |
-| #60 `feat/cli-start` | O1, O3, O10, O12, O25 | Windows Rust failed; cause not read. |
-| #63 `feat/fallback-model` | I43 | E2E failed; cause not read. |
+| PR | State |
+| --- | --- |
+| #68 | Merged at `2786f94`; its six required PR checks and subsequent main CI passed. |
+| #58 | Merged at `d0efd77` after all required checks passed. Provider-instance review also fixed update/admission exclusion, native-family policy and stale catalogs. Its settings surface remains partial. |
+| #61 | Merged at `9fafa3a` after all required checks passed. |
+| #62 | Merged at `f97abb8` after all required checks passed. |
+| #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
+| #60 | Updated head `348b88b`; CI is running. The Windows path assertion, bundled CLI resources, child-folder project reuse and service readiness/stop race have local regressions. Never merge until every required check passes on its current head. |
 
-None has auto-merge on.
+None has auto-merge on. Main CI after these latest integrations still needs
+terminal readback; earlier green heads do not qualify a later main tree.
 
-### Verified
+### Verified in this pickup
 
-- One real Codex turn recorded the chosen model, effort and tier. A second real turn
-  through the UI ran a tool and answered correctly from a real project file.
-- Real Claude `initialize` through `orbynd` returned live models and efforts, with
-  hooks and MCP off. Live model lists work in the UI.
-- Installed-app smoke on macOS; on Windows at #37.
-- Packaged macOS: deep links, single-instance handoff, keep-awake, CLI install.
-- E2E root causes fixed: `send` returning before the run existed, shared ports,
-  teardown races, waits under the poll interval, stand-in `gh` races and stale lock.
+- Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
+  also passed all six required jobs.
+- A macOS package built from frozen main `2786f94` passed the maintained native
+  smoke: real window connection, second-launch handoff, and service shutdown.
+- A fresh offline profile provisioned bundled library `ed3f1d37` automatically:
+  configured, 36 skills, native links present, no library problem, and one connected
+  native window. The untrusted library project is expected in that fresh profile.
+- One real Codex turn through that packaged core's service API completed with
+  `FIRST_LAUNCH_OK`, using `gpt-6-luna`, low effort and Standard tier. Selection was
+  logged, automatic titles were off, and no tool calls, approvals or questions
+  occurred. This did not exercise the native composer.
+- The profile processes ended and disposable profiles were removed. The owner's
+  installed app and data were untouched. The retained package and sanitized local
+  receipts are under ignored `target/builder-2-packaged-2786f94/`.
+
+### Earlier evidence retained
+
+Before this pickup, a real Codex UI turn read a project file. Claude `initialize`
+returned live models and efforts with hooks and MCP off. Earlier packaged macOS
+checks covered deep links, keep-awake and CLI installation; Windows install smoke
+was recorded at #37. These observations are historical, not a full walkthrough of
+current main. Earlier E2E repairs covered run admission, ports, teardown, polling,
+stand-in forge races and the data-directory lock.
 
 ### Not verified
 
-- CI for the last four merges to `main` (#64, #66, #67, #57) was still running when
-  this was written. Check them first.
-- No live Claude turn: the CLI is logged out on the development Mac.
-- Nobody has run the app on a real Windows machine. Windows beyond CI is unobserved.
-- The first-prompt fix (the bootstrap reword for a refusal with no tool call) has
-  not been proven with a real model.
-- Fast mode has not run in a real turn.
-- Native menu items, the Try again button and the dock badge were never exercised.
-- Notarization and the release workflow have never run. Signing is ad-hoc.
-- A packaged first launch since automatic provisioning, and the Windows no-symlink
-  fallback, have not been exercised.
-- The installed app on the development Mac is from `9aed05f` and still shows the
-  removed setup screen. Rebuild before judging it.
+- A full walkthrough and native-composer turn on the final integrated package.
+- A live Claude turn; the engine must use its own login on the test machine.
+- A hands-on real Windows run, including the no-symlink fallback, native menus,
+  deep links, keep-awake and CLI installation beyond their existing CI/unit evidence.
+- The first-prompt file-reading/refusal case. The successful constant-answer turn
+  proves real admission and response, but does not establish native skill discovery
+  or a real file/tool action after automatic provisioning.
+- Fast mode, Try again and the Dock badge in real use.
+- Notarization, a released update and the release workflow; signing remains ad-hoc.
+- The package receipt above is frozen at `2786f94`; it does not qualify later PRs.
 
 ### Known bugs
 
@@ -126,16 +144,24 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Confirm the four in-progress `main` runs are green. If not, fix `main` first.
-2. Recheck and merge #58, #61 and #62. Diagnose and fix #60 and #63.
-3. Rebuild the macOS app from `main`, launch it, and run a real Codex turn from a
-   fresh data directory to prove zero-setup first launch.
-4. Work open rows by user impact: K settings, B composer, I providers, C timeline,
-   F source control, D viewers, then the rest. I33 ACP sessions and M3 are next for
-   the backend.
-5. Fix the Windows `workspace` lock, and remove the smoke test's warning.
-6. Finish when every in-scope row is done or honestly marked not doable, a packaged
-   app passes a full walkthrough, and CI is green on `main`.
+1. Finish #60's current-head CI. Diagnose any failure, then merge only when every
+   required check is green. Confirm the final integrated main run is green.
+2. Keep row scope and partial evidence explicit. Resolve the 23 scope questions
+   from local T3 behavior references before implementing any proposed surface.
+   Do not turn a missing reference into an invented control or an exclusion that
+   silently lowers the goal.
+3. Rebuild the integrated macOS package and perform the full walkthrough, including
+   a minimal real turn through its native composer, in a fresh disposable profile.
+4. Work rows by user impact: K settings, B composer, I providers, C timeline,
+   F source control, D viewers, then the rest. The next settings slice is inheritance
+   and reset in the existing project dialog; K1/K2 remain open. I33 ACP sessions
+   and M3 remain next backend slices.
+5. Fix the Windows `workspace` lock, identify the actual owner, and remove the
+   package smoke's warning without masking the failure. A prior #60 Windows
+   package-start timeout remains a failed observation even if a later run passes.
+6. Finish only when every included row is done or honestly marked not doable,
+   unresolved scope is resolved, a packaged app passes a full walkthrough, and
+   CI is green on main. Missing release inputs below remain explicit blockers.
 
 ## How to work here
 
