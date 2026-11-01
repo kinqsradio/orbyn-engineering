@@ -19,6 +19,7 @@ pub mod files;
 pub mod forge;
 pub mod git;
 pub mod keybindings;
+pub mod local_trace;
 pub mod maintenance;
 pub mod mcp;
 pub mod mcp_tools;

@@ -134,10 +134,20 @@ pub async fn note_activity(
     request: Request,
     next: axum::middleware::Next,
 ) -> Response {
+    let route = request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map_or("operation", axum::extract::MatchedPath::as_str);
+    let timing = state
+        .core
+        .timings
+        .span(&format!("{} {route}", request.method()));
     if request.method() != axum::http::Method::GET {
         state.core.updates.note_activity();
     }
-    next.run(request).await
+    let response = next.run(request).await;
+    timing.finish(response.status().as_u16() < 400);
+    response
 }
 
 pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {

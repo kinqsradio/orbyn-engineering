@@ -31,6 +31,67 @@ fn launches(path: &std::path::Path) -> Vec<Value> {
         .collect()
 }
 
+#[test]
+fn simultaneous_fixture_launch_records_remain_complete_json_lines() {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let dir = TempDir::new();
+    let path = dir.path().join("launches");
+    let payload = "escaped\\\"".repeat(120);
+    let mut children = Vec::new();
+    for _ in 0..12 {
+        let spawned = Command::new(env!("CARGO_BIN_EXE_orbyn-fake-engine"))
+            .arg("app-server")
+            .args(std::iter::repeat_n(&payload, 8))
+            .env("ORBYN_FAKE_LAUNCH_FILE", &path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match spawned {
+            Ok(child) => children.push(child),
+            Err(error) => {
+                for child in &mut children {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                panic!("could not start fixture: {error}");
+            }
+        }
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut successful = true;
+    for child in &mut children {
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    successful &= status.success();
+                    break;
+                }
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => {
+                    successful = false;
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+            }
+        }
+    }
+    assert!(
+        successful,
+        "every owned fixture process exits and is reaped"
+    );
+    let records = launches(&path);
+    assert_eq!(records.len(), 12);
+    for record in records {
+        assert_eq!(record["args"].as_array().unwrap().len(), 9);
+        assert_eq!(record["args"][1], payload);
+    }
+}
+
 #[tokio::test]
 async fn an_instance_launches_its_own_program_under_its_own_name() {
     let dir = TempDir::new();

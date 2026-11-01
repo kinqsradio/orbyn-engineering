@@ -3,8 +3,16 @@
 //! through `service.json` in the data folder, which the service writes at start, and
 //! removes at exit.
 
+#[path = "../cli_service.rs"]
+mod cli_service;
+#[cfg(windows)]
+#[path = "../cli_stdio.rs"]
+mod cli_stdio;
+#[path = "../cli_trace.rs"]
+mod cli_trace;
+
 use std::path::{Path, PathBuf};
-use std::process::{Command as Process, ExitCode};
+use std::process::{Command as Process, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
@@ -15,6 +23,10 @@ use serde_json::{Value, json};
 const WAIT_LIMIT: Duration = Duration::from_secs(60 * 60);
 const WAIT_POLL: Duration = Duration::from_millis(200);
 const REPAIR_HINT_BYTES: u64 = 1024 * 1024 * 1024;
+/// How long a started service gets to say it is ready.
+const START_LIMIT: Duration = Duration::from_secs(20);
+/// Set to `-`, this prints what would have opened. Anything else is the program to use.
+const OPENER_VARIABLE: &str = "ORBYN_OPENER";
 
 #[derive(Parser)]
 #[command(
@@ -29,12 +41,30 @@ struct Cli {
     /// Print JSON instead of text.
     #[arg(long, global = true)]
     json: bool,
+    /// With no command, start the service and open it, on this folder if named.
+    path: Option<PathBuf>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// Start the service in the background if it is not running, and open it.
+    Start {
+        /// A folder to open, registered first if it is new. It starts untrusted.
+        path: Option<PathBuf>,
+        /// Start, and leave the browser alone.
+        #[arg(long)]
+        no_open: bool,
+    },
+    /// Open the desktop app, on a folder if named.
+    App { path: Option<PathBuf> },
+    /// Run the service from this user's login, with no terminal.
+    #[command(subcommand)]
+    Service(ServiceCommand),
+    /// Manage Orbyn's headless browser on this host.
+    #[command(subcommand)]
+    Browser(BrowserCommand),
     /// Run the service in this terminal, with `orbynd serve`'s options.
     Serve {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -56,6 +86,49 @@ enum Command {
     Project(ProjectCommand),
     #[command(subcommand)]
     Theme(ThemeCommand),
+    /// Inspect the local server trace file.
+    #[command(subcommand)]
+    Trace(TraceCommand),
+}
+
+#[derive(Subcommand)]
+enum TraceCommand {
+    /// Summarize local operation counts, rates and latency.
+    Summary {
+        /// Count spans that ended in this window, such as 30m or 2h.
+        #[arg(long, value_parser = cli_trace::duration)]
+        since: Option<Duration>,
+        /// Number of span names, busiest first.
+        #[arg(long, default_value_t = 25, value_parser = clap::value_parser!(u32).range(1..))]
+        limit: u32,
+    },
+}
+
+#[derive(Subcommand)]
+enum BrowserCommand {
+    /// Set up this host for Orbyn's browser.
+    Setup,
+}
+
+#[derive(Subcommand)]
+enum ServiceCommand {
+    /// Install and start it. Run again to repair one.
+    Install {
+        /// Show what would change and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Stop it and remove it from login. Threads and settings stay.
+    Uninstall {
+        #[arg(long)]
+        dry_run: bool,
+    },
+    Restart,
+    /// What this OS's service manager says.
+    Status,
+    /// What the service manager starts: `orbynd`, with `service.env` applied.
+    #[command(hide = true)]
+    Run,
 }
 
 #[derive(Subcommand)]
@@ -131,6 +204,7 @@ enum ThemeCommand {
 struct Failure {
     message: String,
     code: u8,
+    api_error: Option<Value>,
 }
 
 impl Failure {
@@ -138,6 +212,7 @@ impl Failure {
         Self {
             message: message.into(),
             code: 1,
+            api_error: None,
         }
     }
 
@@ -146,6 +221,7 @@ impl Failure {
         Self {
             message: format!("No Orbyn service is running{detail}. Start one with `orbyn serve`."),
             code: 2,
+            api_error: None,
         }
     }
 }
@@ -205,11 +281,13 @@ impl Service {
             return Ok(value);
         }
         let message = value.get("message").and_then(Value::as_str);
-        Err(Failure::new(match (status, message) {
+        let mut failure = Failure::new(match (status, message) {
             (_, Some(message)) => message.to_owned(),
             (StatusCode::UNAUTHORIZED, None) => "The service refused this command.".to_owned(),
             (status, None) => format!("The service answered {status}."),
-        }))
+        });
+        failure.api_error = Some(value);
+        Err(failure)
     }
 
     async fn get(&self, path: &str) -> Outcome<Value> {
@@ -507,22 +585,20 @@ async fn doctor(cli: &Cli, fix: bool) -> Outcome<()> {
 }
 
 /// `orbynd` sits beside this program in every install.
-fn run_service(args: &[String], data: Option<&Path>) -> Outcome<()> {
+fn orbynd_path() -> Outcome<PathBuf> {
     let name = if cfg!(windows) {
         "orbynd.exe"
     } else {
         "orbynd"
     };
-    let beside = std::env::current_exe()
+    std::env::current_exe()
         .ok()
         .and_then(|program| program.parent().map(|folder| folder.join(name)))
         .filter(|path| path.is_file())
-        .ok_or_else(|| Failure::new("orbynd was not found beside this program."))?;
-    let mut command = Process::new(beside);
-    command.arg("serve").args(args);
-    if let Some(data) = data {
-        command.arg("--data-dir").arg(data);
-    }
+        .ok_or_else(|| Failure::new("orbynd was not found beside this program."))
+}
+
+fn wait_for(mut command: Process) -> Outcome<()> {
     let status = command
         .status()
         .map_err(|error| Failure::new(format!("orbynd did not start: {error}")))?;
@@ -533,8 +609,378 @@ fn run_service(args: &[String], data: Option<&Path>) -> Outcome<()> {
     }
 }
 
+fn run_service(args: &[String], data: Option<&Path>) -> Outcome<()> {
+    let mut command = service_process(args)?;
+    if let Some(data) = data {
+        command.arg("--data-dir").arg(data);
+    }
+    wait_for(command)
+}
+
+/// The sidecars share the desktop bundle's resources. Explicit serve flags win.
+fn service_process(args: &[String]) -> Outcome<Process> {
+    let program = orbynd_path()?;
+    let mut command = Process::new(&program);
+    command.arg("serve");
+    if let Some(folder) = program.parent() {
+        let roots = [folder.join("../Resources"), folder.to_path_buf()];
+        if let Some(root) = roots
+            .iter()
+            .find(|root| root.join("ui/index.html").is_file())
+        {
+            let supplied = |flag: &str| {
+                args.iter()
+                    .any(|arg| arg == flag || arg.starts_with(&format!("{flag}=")))
+            };
+            if !supplied("--ui-dir") {
+                command.arg("--ui-dir").arg(root.join("ui"));
+            }
+            if root.join("library/library.tar").is_file()
+                && !supplied("--library-bundle")
+                && std::env::var_os("ORBYN_LIBRARY_BUNDLE").is_none()
+            {
+                command.arg("--library-bundle").arg(root.join("library"));
+            }
+        }
+    }
+    command.args(args);
+    Ok(command)
+}
+
+/// Reaches a service that answers, since `service.json` can outlive a crash.
+async fn live_service(data: &Path) -> Option<Service> {
+    let service = Service::find(data).ok()?;
+    service.call(Method::GET, "/api/info", None).await.ok()?;
+    Some(service)
+}
+
+/// Leaves a service running after this process ends, its output in the data folder.
+fn start_detached(data: &Path) -> Outcome<()> {
+    std::fs::create_dir_all(data)
+        .map_err(|error| Failure::new(format!("{}: {error}", data.display())))?;
+    let log = std::fs::File::create(data.join("service.log"))
+        .map_err(|error| Failure::new(format!("The service log: {error}")))?;
+    let mut command = service_process(&[])?;
+    command
+        .arg("--data-dir")
+        .arg(data)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(log);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        // Redirection supplies new handles, but CreateProcess also inherits
+        // existing handles marked inheritable, including the caller's pipes.
+        cli_stdio::detach_standard_streams()
+            .map_err(|error| Failure::new(format!("Could not detach service output: {error}")))?;
+        command.creation_flags(DETACHED_PROCESS);
+    }
+    command
+        .spawn()
+        .map_err(|error| Failure::new(format!("orbynd did not start: {error}")))?;
+    Ok(())
+}
+
+async fn ensure_service(data: &Path) -> Outcome<(Service, bool)> {
+    if let Some(service) = live_service(data).await {
+        return Ok((service, false));
+    }
+    start_detached(data)?;
+    let started = Instant::now();
+    while started.elapsed() < START_LIMIT {
+        if let Some(service) = live_service(data).await {
+            return Ok((service, true));
+        }
+        tokio::time::sleep(WAIT_POLL).await;
+    }
+    Err(Failure::new(format!(
+        "The service did not start. See {}.",
+        data.join("service.log").display()
+    )))
+}
+
+/// The project for a folder: the one registered there, or a new one.
+async fn project_for(service: &Service, path: &Path) -> Outcome<String> {
+    let real = std::fs::canonicalize(path)
+        .map_err(|_| Failure::new(format!("{} does not exist.", path.display())))?;
+    let projects = service.call(Method::GET, "/api/projects", None).await?;
+    let known = projects.as_array().into_iter().flatten().find(|project| {
+        project["path"]
+            .as_str()
+            .and_then(|known| std::fs::canonicalize(known).ok())
+            .is_some_and(|known| known == real)
+    });
+    let project = match known {
+        Some(project) => project.clone(),
+        None => {
+            let body = json!({ "path": real });
+            service
+                .call(Method::POST, "/api/projects/add", Some(body))
+                .await
+                .or_else(|failure| {
+                    if let Some(error) = &failure.api_error
+                        && error["code"] == "project_exists"
+                        && error["detail"]["id"].is_string()
+                    {
+                        return Ok(error["detail"].clone());
+                    }
+                    Err(failure)
+                })?
+        }
+    };
+    project["id"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| Failure::new("The service did not name that project."))
+}
+
+fn open(target: &str) -> Outcome<()> {
+    let opener = std::env::var(OPENER_VARIABLE).ok();
+    let mut command = match opener.as_deref() {
+        Some("-") => {
+            println!("{target}");
+            return Ok(());
+        }
+        Some(program) => Process::new(program),
+        None if cfg!(target_os = "macos") => Process::new("open"),
+        None if cfg!(windows) => {
+            let mut start = Process::new("cmd");
+            start.args(["/C", "start", ""]);
+            start
+        }
+        None => Process::new("xdg-open"),
+    };
+    command
+        .arg(target)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    match command.status() {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err(Failure::new(
+            "Nothing here could open that. The service is still running.",
+        )),
+    }
+}
+
+async fn start(cli: &Cli, path: Option<&Path>, no_open: bool) -> Outcome<()> {
+    let data = data_dir(cli)?;
+    let (service, started) = ensure_service(&data).await?;
+    let project = match path {
+        Some(path) => Some(project_for(&service, path).await?),
+        None => None,
+    };
+    if !no_open {
+        let route = project
+            .as_deref()
+            .map_or_else(|| "#/".to_owned(), |id| format!("#/new/{id}"));
+        open(&format!("{}/?token={}{route}", service.url, service.token))?;
+    }
+    if cli.json {
+        let report = json!({ "url": service.url, "started": started, "project": project });
+        println!("{report}");
+    } else if started {
+        println!("Started at {}", service.url);
+    } else {
+        println!("Already running at {}", service.url);
+    }
+    Ok(())
+}
+
+async fn open_app(cli: &Cli, path: Option<&Path>) -> Outcome<()> {
+    let Some(path) = path else {
+        return open("orbyn://");
+    };
+    let service = Service::find(&data_dir(cli)?)?;
+    let project = project_for(&service, path).await?;
+    open(&format!("orbyn://new/{project}"))
+}
+
+fn home_dir() -> Outcome<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .ok_or_else(|| Failure::new("No home folder was found."))
+}
+
+#[cfg(unix)]
+fn user_id(home: &Path) -> u32 {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(home).map_or(0, |meta| meta.uid())
+}
+
+#[cfg(not(unix))]
+fn user_id(_home: &Path) -> u32 {
+    0
+}
+
+fn run_step(step: &cli_service::Step) -> Outcome<std::process::Output> {
+    let output = Process::new(&step.program)
+        .args(&step.args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| Failure::new(format!("{}: {error}", step.program)))?;
+    if output.status.success() || step.may_fail {
+        return Ok(output);
+    }
+    Err(Failure::new(format!(
+        "{} failed: {}",
+        step.program,
+        String::from_utf8_lossy(&output.stderr).trim()
+    )))
+}
+
+fn show_plan(plan: &cli_service::Plan, json_output: bool) {
+    if json_output {
+        let steps: Vec<Value> = plan
+            .steps
+            .iter()
+            .map(|step| json!({ "program": step.program, "args": step.args }))
+            .collect();
+        let report = json!({
+            "file": plan.file.as_ref().map(|(path, _)| path),
+            "text": plan.file.as_ref().map(|(_, text)| text),
+            "remove": plan.remove,
+            "steps": steps,
+        });
+        println!("{report}");
+        return;
+    }
+    if let Some((path, text)) = &plan.file {
+        println!("Would write {}:\n{text}", path.display());
+    }
+    if let Some(path) = &plan.remove {
+        println!("Would remove {}", path.display());
+    }
+    for step in &plan.steps {
+        println!("Would run {} {}", step.program, step.args.join(" "));
+    }
+}
+
+fn apply_plan(plan: &cli_service::Plan) -> Outcome<()> {
+    if let Some((path, text)) = &plan.file {
+        let failed = |error: std::io::Error| Failure::new(format!("{}: {error}", path.display()));
+        if let Some(folder) = path.parent() {
+            std::fs::create_dir_all(folder).map_err(failed)?;
+        }
+        std::fs::write(path, text).map_err(failed)?;
+    }
+    for step in &plan.steps {
+        run_step(step)?;
+    }
+    if let Some(path) = &plan.remove {
+        match std::fs::remove_file(path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(Failure::new(format!("{}: {error}", path.display())));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Starts `orbynd` with `service.env` in its environment and stays with it, so the
+/// service manager watches the real process.
+fn run_as_service(data: &Path) -> Outcome<()> {
+    let values = match std::fs::read_to_string(data.join("service.env")) {
+        Ok(text) => cli_service::parse_env(&text)
+            .map_err(|error| Failure::new(format!("service.env: {error}")))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::collections::BTreeMap::new()
+        }
+        Err(error) => {
+            return Err(Failure::new(format!(
+                "service.env could not be read: {error}"
+            )));
+        }
+    };
+    let values = values
+        .into_iter()
+        .filter(|(name, _)| !cli_service::managed_env_name(name))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let args = values
+        .get("ORBYN_LIBRARY_BUNDLE")
+        .map_or_else(Vec::new, |path| {
+            vec!["--library-bundle".to_owned(), path.clone()]
+        });
+    let mut command = service_process(&args)?;
+    command.arg("--data-dir").arg(data).envs(values);
+    wait_for(command)
+}
+
+fn service_command(cli: &Cli, command: &ServiceCommand) -> Outcome<()> {
+    let data = data_dir(cli)?;
+    if matches!(command, ServiceCommand::Run) {
+        return run_as_service(&data);
+    }
+    let os = cli_service::Os::current().map_err(Failure::new)?;
+    let home = home_dir()?;
+    let program = std::env::current_exe()
+        .map_err(|error| Failure::new(format!("This program's path: {error}")))?;
+    let install = cli_service::Install {
+        os,
+        home: &home,
+        program: &program,
+        data: &data,
+        uid: user_id(&home),
+    };
+    let chosen = |plan: cli_service::Plan, dry_run: bool| {
+        if dry_run {
+            show_plan(&plan, cli.json);
+            Ok(())
+        } else {
+            apply_plan(&plan)
+        }
+    };
+    match command {
+        ServiceCommand::Install { dry_run } => chosen(install.install(), *dry_run),
+        ServiceCommand::Uninstall { dry_run } => chosen(install.uninstall(), *dry_run),
+        ServiceCommand::Restart => chosen(install.restart(), false),
+        ServiceCommand::Status => {
+            let mut step = install.status();
+            step.may_fail = true;
+            let output = run_step(&step)?;
+            print!("{}", String::from_utf8_lossy(&output.stdout));
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(Failure::new("The service is not installed."))
+            }
+        }
+        ServiceCommand::Run => Ok(()),
+    }
+}
+
 async fn run(cli: Cli) -> Outcome<()> {
-    match &cli.command {
+    let Some(command) = &cli.command else {
+        let path = cli.path.as_deref();
+        if path.is_some_and(|path| !path.is_dir()) {
+            return Err(Failure::new(format!(
+                "{} is neither a command nor a folder. See `orbyn help`.",
+                path.unwrap_or(Path::new("")).display()
+            )));
+        }
+        return start(&cli, path, false).await;
+    };
+    match command {
+        Command::Trace(TraceCommand::Summary { since, limit }) => {
+            return cli_trace::summary(&data_dir(&cli)?, *since, *limit, cli.json)
+                .map_err(Failure::new);
+        }
+        Command::Start { path, no_open } => return start(&cli, path.as_deref(), *no_open).await,
+        Command::App { path } => return open_app(&cli, path.as_deref()).await,
+        Command::Service(service) => return service_command(&cli, service),
+        Command::Browser(BrowserCommand::Setup) => {
+            if !cfg!(any(target_os = "macos", windows)) {
+                return Err(Failure::new(
+                    "Browser setup is not supported on this platform.",
+                ));
+            }
+            println!("Nothing to set up: Orbyn's browser runs as is on this system.");
+            return Ok(());
+        }
         Command::Serve { args } => return run_service(args, cli.data_dir.as_deref()),
         Command::Status => return status(&cli).await,
         Command::Doctor { fix, .. } => return doctor(&cli, *fix).await,
@@ -543,10 +989,10 @@ async fn run(cli: Cli) -> Outcome<()> {
     let service = Service::find(&data_dir(&cli)?)?;
     let json_output = cli.json;
     match cli.command {
-        Command::Thread(command) => thread_command(&service, command, json_output).await,
-        Command::Project(command) => project_command(&service, command, json_output).await,
-        Command::Theme(command) => theme_command(&service, command, json_output).await,
-        Command::Serve { .. } | Command::Status | Command::Doctor { .. } => Ok(()),
+        Some(Command::Thread(command)) => thread_command(&service, command, json_output).await,
+        Some(Command::Project(command)) => project_command(&service, command, json_output).await,
+        Some(Command::Theme(command)) => theme_command(&service, command, json_output).await,
+        _ => Ok(()),
     }
 }
 

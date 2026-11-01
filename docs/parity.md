@@ -695,33 +695,33 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [x] N23 Tool call budgets: app tools answer within 45 s, approval waits cap at 240 s, calls end when the client disconnects, bodies and results size-capped | src-tauri/src/providers/mcp_host.rs | s | M | server done: 512 KiB requests, 256 KiB replies; the permission prompt keeps its own timeout
 
 ## O. CLI
-- [ ] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M
+- [x] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M | server done, as `orbyn` and `orbyn start` | status: partial | remaining: opening a browser is opener-contract tested; a real CLI-launched browser still needs proof
 - [x] O2 `t3 serve`: headless server with host, LAN, Tailscale options | apps/server/src/cli/server.ts | c | M | server done, as `orbyn serve`; remote options are out of scope | scope: mixed | local: headless local service | excludes: LAN, Tailscale and other remote options
-- [ ] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S
+- [x] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S | server done, as `orbyn app`, through the `orbyn://` link | status: partial | remaining: no-path invocation does not select the current directory and the deep link is not acknowledged by the desktop; packaged project-opening proof remains open
 - [ ] O4 `t3 up`: prompted or flag-driven access setup | apps/server/src/cli/up.ts | c | L | [hosted] | scope: excluded | reason: remote access setup
 - [x] O5 `t3 status`: current access settings, JSON | apps/server/src/cli/up.ts | c | S | server done, as `orbyn status`, for the running service
 - [ ] O6 `t3 connect` and subcommands: login, link, status, publish, unlink, logout | apps/server/src/cli/connect.ts | c | L | [hosted] | scope: excluded | reason: hosted connection and sign-in
 - [ ] O7 `t3 pair`: pairing link with scopes and Tailscale | apps/server/src/cli/pair.ts | c | M | scope: excluded | reason: Tailscale pairing
 - [ ] O8 `t3 auth pairing`: create, list, revoke | apps/server/src/cli/auth.ts | c | M | scope: excluded | reason: pairing management
 - [ ] O9 `t3 auth session`: issue, list, revoke | apps/server/src/cli/auth.ts | c | M | scope: excluded | reason: remote client session management
-- [ ] O10 `t3 service`: install, update, restart, status, uninstall | apps/server/src/cli/service.ts | c | L
-- [ ] O11 `t3 service protect`: memory and OOM protection, undo | apps/server/src/cli/service.ts | c | M
-- [ ] O12 `service.env`: literal environment file | docs/user/background-service.md | c s | S
+- [x] O10 `t3 service`: install, update, restart, status, uninstall | apps/server/src/cli/service.ts | c | L | server done, as `orbyn service`: install again to update; macOS/Linux plans and dry runs tested without loading a real login service; Windows background setup reports unsupported, as in T3 | status: partial | remaining: real macOS service installation, update, restart, status and uninstall have not been exercised in an isolated OS service manager; Windows unsupported response awaits matrix execution
+- [ ] O11 `t3 service protect`: memory and OOM protection, undo | apps/server/src/cli/service.ts | c | M | scope: excluded | reason: pinned T3 supports this command only on Linux with systemd; neither is a supported product target
+- [x] O12 `service.env`: literal environment file | docs/user/background-service.md | c s | S | server done, in the data folder: dotenv quoting, comments, export and multiline values without shell expansion; launcher PATH/data directory are protected; missing files are ignored and other read failures stop startup | evidence: real `orbyn service run` and real `orbynd` workspace API verify exact literal values, selected bundle, owned data directory and inherited Git path on macOS; Windows execution awaits CI
 - [ ] O13 `t3 update`: exact version, channel, downgrade | apps/server/src/cli/update.ts | c | M
 - [ ] O14 `t3 uninstall`: removes launcher, service, versions | apps/server/src/cli/uninstall.ts | c | S
 - [x] O15 `t3 doctor`: database repair, dry run, fix | apps/server/src/cli/doctor.ts | c | M | server done, as `orbyn doctor`, `--dry-run` and `--fix`, through a running service
 - [x] O16 `t3 thread`: list, start, send, show with wait and JSON | apps/server/src/cli/thread.ts | c | M | server done, as `orbyn thread`
 - [x] O17 `t3 project`: add, remove, rename | apps/server/src/cli/project.ts | c | S | server done, as `orbyn project`
 - [ ] O18 `t3 environment`: link, list, unlink | apps/server/src/cli/environment.ts | c | M | scope: excluded | reason: linked environments
-- [x] O19 `t3 theme`: set, clear, show | apps/server/src/cli/theme.ts | c | S | server done, as `orbyn theme`, through the `default_theme` preference
-- [ ] O20 `t3 browser setup`: host sandbox and libraries | apps/server/src/cli/browser.ts | c | M
-- [ ] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S
+- [x] O19 `t3 theme`: set, clear, show | apps/server/src/cli/theme.ts | c | S | server done, as `orbyn theme`, through the `default_theme` preference | status: partial | remaining: set, clear and show change a stored preference; the running UI does not consume it or watch CLI theme files yet
+- [x] O20 `t3 browser setup`: host sandbox and libraries | apps/server/src/cli/browser.ts | c | M | scope: mixed | local: `orbyn browser setup` matches the macOS/Windows no-op response without requiring a service or changing the host | excludes: Linux AppArmor, package and font installation | evidence: real CLI with and without a real service on macOS; Windows execution awaits CI
+- [x] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S | evidence: real orbynd emits bounded operation timings and real CLI reads counts, latency percentiles, outcomes, since and limit online or offline; no request payloads in records | verification: macOS local checks; Windows execution awaits section CI
 - [ ] O22 `t3 triage`: starts Claude or Codex in terminal | apps/server/src/cli/triage.ts | c | S
 - [x] O23 Config inputs: flags, environment, home directory | apps/server/src/cli/config.ts | c | M | server done: `--data-dir` and `ORBYN_DATA_DIR`; `orbyn serve` takes `orbynd serve` options
 - [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M | scope: mixed | local: local ACP bridge, service launcher and credential-free history helpers | excludes: SSH helper
-- [ ] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S
+- [x] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S | server done, as `orbyn <path>`; `--data-dir` isolates a second service
 - [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S
-- [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3
+- [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3 | scope: excluded | reason: an internal comparative benchmark rather than a T3 product surface; optional engineering evidence remains useful
 
 ## P. Desktop shell
 - [x] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L | one managed `orbynd`; a pool serves remote hosts, which are out of scope | scope: mixed | local: one bundled local backend | excludes: a pool of remote hosts
