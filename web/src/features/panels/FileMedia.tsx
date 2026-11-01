@@ -1,3 +1,4 @@
+import { serviceUrl } from "../../api/origin";
 import { useEffect, useMemo, useState } from "react";
 import { readToken } from "../../api/token";
 import { toFailure } from "../../lib/useAsync";
@@ -25,7 +26,7 @@ export function rawUrl(threadId: string, path: string, download = false): string
   const query = new URLSearchParams({ path });
   if (token) query.set("token", token);
   if (download) query.set("download", "true");
-  return `/api/threads/${encodeURIComponent(threadId)}/files/raw?${query}`;
+  return serviceUrl(`/api/threads/${encodeURIComponent(threadId)}/files/raw?${query}`);
 }
 
 const CHUNK_BYTES = 64 * 1024;
@@ -85,19 +86,19 @@ export function FileMedia({ kind, threadId, path }: { kind: MediaKind; threadId:
     case "image":
       return (
         <div className="file-media">
-          <img src={url} alt={name} />
+          <img src={url} alt={name} crossOrigin="anonymous" />
         </div>
       );
     case "video":
       return (
         <div className="file-media">
-          <video src={url} controls aria-label={name} />
+          <video src={url} crossOrigin="anonymous" controls aria-label={name} />
         </div>
       );
     case "audio":
       return (
         <div className="file-media">
-          <audio src={url} controls aria-label={name} />
+          <audio src={url} crossOrigin="anonymous" controls aria-label={name} />
         </div>
       );
     case "pdf":

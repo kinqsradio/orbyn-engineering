@@ -1,3 +1,4 @@
+import { serviceSocketUrl } from "../../api/origin";
 import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
 import { request } from "../../api/client";
@@ -76,10 +77,9 @@ export function pageSize(width: number, height: number): { width: number; height
 }
 
 function frameSocket(threadId: string, tabId: string) {
-  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const token = readToken();
   const query = token ? `?token=${q(token)}` : "";
-  return new WebSocket(`${scheme}//${window.location.host}/ws/preview/${q(threadId)}/${q(tabId)}${query}`);
+  return new WebSocket(serviceSocketUrl(`/ws/preview/${q(threadId)}/${q(tabId)}${query}`));
 }
 
 /** The page's frames, with input forwarded while you hold control. */

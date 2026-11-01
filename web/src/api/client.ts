@@ -1,3 +1,4 @@
+import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
 import type {
@@ -113,7 +114,7 @@ export async function request<T>(
   let response: Response;
   const slow = setTimeout(() => onSlowRequest(), SLOW_REQUEST_MS);
   try {
-    response = await fetch(path, {
+    response = await fetch(serviceUrl(path), {
       method,
       credentials: "same-origin",
       signal,
@@ -178,7 +179,7 @@ export const api = {
   uploadAttachment: async (threadId: string, file: File): Promise<Attachment> => {
     let response: Response;
     try {
-      response = await fetch(`/api/threads/${q(threadId)}/attachments?name=${q(file.name)}`, {
+      response = await fetch(serviceUrl(`/api/threads/${q(threadId)}/attachments?name=${q(file.name)}`), {
         method: "POST",
         credentials: "same-origin",
         headers: { ...authHeaders(), "Content-Type": file.type || "application/octet-stream" },
