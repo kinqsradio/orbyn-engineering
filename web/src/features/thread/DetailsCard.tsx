@@ -6,7 +6,6 @@ import {
   GitPullRequest,
   MessagesSquare,
   Monitor,
-  Play,
   Server,
   SquareTerminal,
   EllipsisVertical,
@@ -35,6 +34,7 @@ import { OpenInEditor } from "./OpenInEditor";
 import { runningTools } from "./timeline";
 import type { ProjectScript } from "../../generated/ProjectScript";
 import { openActionPreview } from "./actionPreview";
+import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 function ThreadMenu({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false);
@@ -193,7 +193,7 @@ function ScriptRows({ threadId }: { threadId: string }) {
   };
   return list.map((script) => (
     <button key={script.name} type="button" className="detail-row" onClick={() => run(script)}>
-      <Play size={16} aria-hidden />
+      <ProjectActionIcon icon={script.icon} />
       <span>{script.name}</span>
     </button>
   ));

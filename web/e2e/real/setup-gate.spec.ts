@@ -119,9 +119,11 @@ test("editing a saved setup command preserves its setup role and synchronous fla
     await page.goto(`${service.page}#/settings/projects`);
     await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "my-repo settings", exact: true });
-    const scripts = dialog.getByLabel("Project scripts", { exact: true });
-    await scripts.fill("Setup: echo updated-setup");
-    await scripts.blur();
+    await dialog.getByRole("button", { name: "Edit Setup", exact: true }).click();
+    const action = page.getByRole("dialog", { name: "Edit Action", exact: true });
+    await action.getByLabel("Command", { exact: true }).fill("echo updated-setup");
+    await action.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(action).toHaveCount(0);
     await expect.poll(async () => {
       const preferences = await service.api<{ key: string; value: unknown }[]>("GET", `/api/preferences?project_id=${project.project_id}`);
       return preferences.find((row) => row.key === "default_project_scripts")?.value;

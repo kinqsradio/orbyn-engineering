@@ -35,18 +35,22 @@ test("a project sets its own defaults and turns a provider off", async ({ page }
   await page.getByRole("button", { name: "Settings for my-repo" }).click();
   const dialog = page.getByRole("dialog", { name: "my-repo settings" });
   await dialog.getByLabel("Default permissions").selectOption("full_access");
-  await dialog.getByLabel("Submodules").selectOption("skip");
+  await dialog.getByLabel("Submodules").selectOption("none");
   await dialog.getByRole("switch", { name: "Pull the default branch automatically" }).click();
   await dialog.getByLabel("Default model").fill("fable");
   await dialog.getByLabel("Default model").blur();
-  await dialog.getByLabel("Project scripts").fill("Test: npm test");
-  await dialog.getByLabel("Project scripts").blur();
+  await dialog.getByRole("button", { name: "Add action", exact: true }).click();
+  const action = page.getByRole("dialog", { name: "Add Action", exact: true });
+  await action.getByLabel("Name", { exact: true }).fill("Test");
+  await action.getByLabel("Command", { exact: true }).fill("npm test");
+  await action.getByRole("button", { name: "Save action", exact: true }).click();
+  await expect(action).toHaveCount(0);
   await dialog.getByRole("checkbox", { name: "Codex" }).click();
   await expect.poll(() => project("disabled_engines")).toEqual(["codex"]);
   expect(await project("default_permission_mode")).toBe("full_access");
-  expect(await project("worktree_submodules")).toBe("skip");
+  expect(await project("worktree_submodules")).toBe("none");
   expect(await project("auto_pull")).toBe(true);
-  expect(await project("default_project_scripts")).toEqual([{ name: "Test", command: "npm test" }]);
+  expect(await project("default_project_scripts")).toEqual([expect.objectContaining({ name: "Test", command: "npm test" })]);
 
   const thread = await service.api<{ id: string; model: string | null; lifecycle: { permission_mode: string } }>("POST", "/api/threads", {
     project_id: projectId,

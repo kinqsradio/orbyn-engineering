@@ -2,9 +2,10 @@ import { Trash2, TriangleAlert, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { ApiFailure, api } from "../../api/client";
 import type { LibraryStatus, TargetStatus } from "../../api/types";
-import type { ProjectScript } from "../../generated/ProjectScript";
 import { useWorkspace } from "../../state/workspace";
 import { PreferenceGroups } from "./PreferenceRows";
+import { ProjectActions } from "./ProjectActions";
+import { SettingRowIds } from "../../ui/SettingRow";
 import { Button, Pill } from "../../ui/controls";
 import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { Empty, ErrorState, Loading } from "../../ui/states";
@@ -222,38 +223,12 @@ function EngineToggles({ value, save }: { value: unknown; save(next: string[]): 
   );
 }
 
-/** One command per line, saved as the scripts new threads in this project offer. */
-type ScriptDraft = Partial<ProjectScript> & { name: string; command: string };
-function ScriptLines({ value, save }: { value: unknown; save(next: ScriptDraft[]): void }) {
-  const scripts = Array.isArray(value) ? (value as ScriptDraft[]) : [];
-  return (
-    <textarea
-      aria-label="Project scripts"
-      rows={3}
-      placeholder="Name: command"
-      key={JSON.stringify(scripts)}
-      defaultValue={scripts.map((script) => `${script.name}: ${script.command}`).join("\n")}
-      onBlur={(event) =>
-        save(
-          event.target.value
-            .split("\n")
-            .map((line) => /^([^:]+):\s*(.+)$/.exec(line.trim()))
-            .flatMap((match) => {
-              if (!match) return [];
-              const name = match[1] ?? "";
-              return [{ ...scripts.find((script) => script.name === name), name, command: match[2] ?? "" }];
-            }),
-        )
-      }
-    />
-  );
-}
 
 /** What this project sets for itself. Anything left alone follows the global setting. */
 function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string; name: string; onClose(): void }) {
   return (
     <Dialog title={`${name} settings`} onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
-      <PreferenceGroups
+      <SettingRowIds.Provider value={() => undefined}><PreferenceGroups
         projectId={projectId}
         groups={[
           {
@@ -283,8 +258,8 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               },
               {
                 key: "default_project_scripts",
-                title: "Scripts",
-                render: (value, save) => <ScriptLines value={value} save={save} />,
+                title: "Actions",
+                render: (value, _save, control) => <ProjectActions value={value} control={control} />,
               },
             ],
           },
@@ -305,7 +280,7 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
             ],
           },
         ]}
-      />
+      /></SettingRowIds.Provider>
     </Dialog>
   );
 }
@@ -403,6 +378,8 @@ export function ProjectsSection() {
           Projects
         </h1>
       </div>
+      <PreferenceGroups groups={[{ title: "Actions", rows: [{ key: "default_project_scripts", title: "Actions", inheritance: true,
+        render: (value, _save, control) => <ProjectActions value={value} control={control} /> }] }]} />
       {unsupported ? (
         <Empty title="No projects yet" />
       ) : managed.error && !managed.data ? (

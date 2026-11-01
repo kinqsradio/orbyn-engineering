@@ -354,7 +354,7 @@ hooks use this same resolver. The scripts response keeps the actual file content
 `file` and exposes the effective list separately in `scripts`; settings never rewrite
 the file. Opening a script terminal preserves its selected tab while the terminal
 list refreshes. Malformed files block execution, and script lists require unique nonempty
-names and nonempty commands. The existing command editor preserves a named script's
+names and nonempty commands. The action editor preserves a named script's
 role and options when editing its command. Both manual script menus open a new
 Browser tab after successful command launch when `auto_open_preview` is enabled
 and `preview_url` is set. The existing preview API validates the URL and owns its
@@ -367,6 +367,14 @@ adding to Mixed actions preserves every member's other commands. Duplicate names
 missing edit targets or invalid commands reject the whole group. The same membership
 and row revisions fence these edits; project files and unselected project overrides are
 not rewritten. An update preserves unknown fields on the selected action.
+The settings action form edits names, commands, icons, setup/wait/settle flags and
+preview options through these operations. Environment defaults, logical groups and
+physical project dialogs use the same version-fenced writer. A Mixed group offers
+Add action without treating one checkout's list as the group's list. A failed save
+keeps the draft and reports the error; closing the form does not imply a successful
+write. The Name field receives focus after the native modal enters the top layer.
+Deletion requires confirmation. Stable action IDs and environment-wide action
+shortcuts remain unfinished; this editor does not establish complete action parity.
 The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets

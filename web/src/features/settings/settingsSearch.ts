@@ -11,6 +11,7 @@ export interface SettingSearchItem {
 
 /** Labels shared by the actual rows and search; dynamic records are not settings. */
 export const SETTINGS: readonly SettingSearchItem[] = [
+  {"id": "projects-actions", "title": "Actions", "section": "projects"},
   {"id": "general-thread-notifications", "title": "Thread notifications", "section": "general"},
   {"id": "general-in-app-notifications", "title": "In-app notifications", "section": "general"},
   {"id": "general-rows", "title": "Rows", "section": "general"},

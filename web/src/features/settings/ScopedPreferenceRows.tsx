@@ -9,7 +9,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
-import { PreferenceInheritance, type PreferenceRow } from "./PreferenceRows";
+import { PreferenceInheritance, type PreferenceRow, type PreferenceControl, type PreferenceSaveResult } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 /** Read and mutation identities stay attached to the scope that produced them. */
@@ -31,23 +31,28 @@ export function ScopedRows({ groups, query }: {
   const result = list.data;
   const all = result.catalog.selection.kind === "all_projects";
   const disabled = busy || list.refreshing || result.catalog.selection.kind === "unavailable";
-  const save = (row: ScopedPreferenceRow, edit: PreferenceEdit) => {
-    if (pending.current || disabled) return;
+  const commit = async (row: ScopedPreferenceRow, edit: PreferenceEdit): Promise<PreferenceSaveResult> => {
+    if (pending.current || disabled) return { saved: false, error: null };
     pending.current = true;
     setBusy(true);
     setError(null);
-    void request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
-      scope: query, membership_version: result.catalog.version,
-      if_match: { [row.key]: row.revision }, edits: { [row.key]: edit },
-    }).then(() => {
+    try {
+      await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
+        scope: query, membership_version: result.catalog.version,
+        if_match: { [row.key]: row.revision }, edits: { [row.key]: edit },
+      });
       if (mounted.current) list.reload();
-    }, (failure: unknown) => {
-      if (mounted.current) setError(toFailure(failure).message);
-    }).finally(() => {
+      return { saved: true };
+    } catch (failure) {
+      const message = toFailure(failure).message;
+      if (mounted.current) setError(message);
+      return { saved: false, error: message };
+    } finally {
       pending.current = false;
       if (mounted.current) setBusy(false);
-    });
+    }
   };
+  const save = (row: ScopedPreferenceRow, edit: PreferenceEdit) => { void commit(row, edit); };
   return <>
     {error ? <p className="field-error" role="alert">{error} <button type="button" disabled={busy} onClick={list.reload}>Retry</button></p> : null}
     {groups.map((group) => <SettingGroup key={group.title} title={group.title}>
@@ -65,13 +70,13 @@ export function ScopedRows({ groups, query }: {
                 if (group) scope?.select({ kind: "checkout", group_key: group.key, project_id: id });
               }} />
             {!all && hasOverride ? <Button small tone="quiet" disabled={disabled}
-              aria-label={`Reset ${row.title} to default`} onClick={() => save(value, { op: "inherit" })}>Inherit</Button> : null}
+              aria-label={`Reset ${row.title} to default`} title="Reset to inherited value" onClick={() => save(value, { op: "inherit" })}>Inherit</Button> : null}
             {all && value.environment.source === "global" ? <Button small tone="quiet" disabled={disabled}
               aria-label={`Reset ${row.title} to default`} onClick={() => save(value, { op: "inherit" })}>Reset</Button> : null}
           </div>
         }>
           <fieldset className="preference-control" disabled={disabled || (!all && !value.project_scoped)} aria-busy={busy || undefined}>
-            <ValueControl key={value.revision} row={row} value={value} save={(next) => save(value, { op: "set", value: next as JsonValue })} />
+            <ValueControl key={value.revision} row={row} value={value} control={{ disabled: disabled || (!all && !value.project_scoped), mixed: value.mixed, commit: (edit) => commit(value, edit) }} save={(next) => save(value, { op: "set", value: next as JsonValue })} />
           </fieldset>
 
         </SettingRow>;
@@ -80,11 +85,11 @@ export function ScopedRows({ groups, query }: {
   </>;
 }
 
-function ValueControl({ row, value, save }: { row: PreferenceRow; value: ScopedPreferenceRow; save(value: unknown): void }) {
+function ValueControl({ row, value, save, control }: { row: PreferenceRow; value: ScopedPreferenceRow; control: PreferenceControl; save(value: unknown): void }) {
   const touched = useRef(false);
   if (row.render) return <div onChangeCapture={() => { touched.current = true; }}>
     {value.mixed ? <span>Mixed</span> : null}
-    {row.render(value.value, (next) => { if (!value.mixed || touched.current) save(next); })}
+    {row.render(value.value, (next) => { if (!value.mixed || touched.current) save(next); }, control)}
   </div>;
   if (row.options) return <select aria-label={row.title} value={value.mixed ? "__mixed__" : String(value.value ?? "")}
     onChange={(event) => save(row.parse ? row.parse(event.target.value) : event.target.value)}>

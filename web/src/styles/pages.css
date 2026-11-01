@@ -1655,3 +1655,17 @@ kbd {
 .settings-folded-head[aria-expanded="true"] .chev {
   transform: rotate(90deg);
 }
+
+.project-actions { display: grid; gap: 10px; min-width: 0; }
+.project-action-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.project-action-list > li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.project-action-summary { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.project-action-summary code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted); }
+.project-action-summary > span { color: var(--color-muted); font-size: var(--text-small); }
+.project-action-name { display: flex; align-items: center; gap: 8px; }
+.project-action-name > input { min-width: 0; flex: 1; }
+.project-action-icons { position: relative; }
+.project-action-icons > summary { display: flex; padding: 8px; cursor: pointer; border: 1px solid var(--color-border); border-radius: 6px; }
+.project-action-icons > div { position: absolute; z-index: 1; top: 100%; left: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; }
+.project-action-icons button { display: grid; justify-items: center; gap: 4px; padding: 8px; font-size: var(--text-small); }
+.project-action-icons button[aria-pressed="true"] { background: var(--color-hover); }

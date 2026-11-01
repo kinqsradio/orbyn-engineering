@@ -10,6 +10,7 @@ import { Menu } from "../../ui/Menu";
 import { TerminalPanel } from "./TerminalPanel";
 import type { ProjectScript } from "../../generated/ProjectScript";
 import { openActionPreview } from "../thread/actionPreview";
+import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 const MAIN = "main";
 const q = encodeURIComponent;
@@ -161,7 +162,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
           {...menu}
           label="Scripts"
           onClose={() => setMenu(null)}
-          items={scriptList.map((script) => ({ label: script.name, onSelect: () => void run(script) }))}
+          items={scriptList.map((script) => ({ label: script.name, icon: <ProjectActionIcon icon={script.icon} />, onSelect: () => void run(script) }))}
         />
       ) : null}
     </div>

@@ -1,16 +1,24 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { request } from "../../api/client";
 import type { PreferenceView } from "../../api/types";
+import type { PreferenceEdit } from "../../generated/PreferenceEdit";
+import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
 import { Collapsible } from "../../ui/Collapsible";
-import { Check, ChevronRight, Layers, Undo2 } from "lucide-react";
-import { SettingGroup, SettingRow } from "../../ui/SettingRow";
+import { Check, ChevronRight, Layers } from "lucide-react";
 import { Button, IconButton } from "../../ui/controls";
 import type { ScopedPreferenceMember } from "../../generated/ScopedPreferenceMember";
 import type { ScopedPreferenceOverride } from "../../generated/ScopedPreferenceOverride";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ScopedRows } from "./ScopedPreferenceRows";
+
+export type PreferenceSaveResult = { saved: true } | { saved: false; error: string | null };
+export interface PreferenceControl {
+  disabled: boolean;
+  mixed: boolean;
+  commit(edit: PreferenceEdit): Promise<PreferenceSaveResult>;
+}
 
 export interface PreferenceRow {
   key: string;
@@ -23,10 +31,8 @@ export interface PreferenceRow {
   parse?(value: string): unknown;
   multiline?: boolean;
   /** For a value none of the plain controls fit. */
-  render?(value: unknown, save: (next: unknown) => void): React.ReactNode;
+  render?(value: unknown, save: (next: unknown) => void, control: PreferenceControl): React.ReactNode;
 }
-
-const q = encodeURIComponent;
 
 /** Settings most people never need, closed until asked for. */
 export function Advanced({ children }: { children: React.ReactNode }) {
@@ -55,126 +61,23 @@ export function PreferenceGroups({
   projectId?: string;
 }) {
   const scope = useSettingsScope();
-  if (scope && !projectId) {
-    const query = scope.active ? scope.query : {};
-    return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} />;
-  }
-  // Reads, drafts and write callbacks belong to one project for their lifetime.
-  return <ScopedPreferenceGroups key={projectId ?? "global"} groups={groups} projectId={projectId} />;
+  if (projectId) return <ProjectPreferenceGroups key={projectId} groups={groups} projectId={projectId} />;
+  const query = scope?.active ? scope.query : {};
+  return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} />;
 }
 
-function ScopedPreferenceGroups({ groups, projectId }: {
+function ProjectPreferenceGroups({ groups, projectId }: {
   groups: { title: string; rows: PreferenceRow[] }[];
-  projectId?: string;
+  projectId: string;
 }) {
-  const send = (values: Record<string, unknown>) =>
-    request<PreferenceView[]>("PUT", projectId ? `/api/projects/${q(projectId)}/preferences` : "/api/preferences", { values });
-  const list = useAsync(`preferences:${projectId ?? ""}`, async (signal) => {
-    const [views, global] = await Promise.all([
-      request<PreferenceView[]>("GET", `/api/preferences${projectId ? `?project_id=${q(projectId)}` : ""}`, undefined, signal),
-      projectId ? request<PreferenceView[]>("GET", "/api/preferences", undefined, signal) : Promise.resolve(null),
-    ]);
-    return { views, global: global ?? views };
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const pending = useRef(false);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
-  if (list.status === "loading") return <Loading label="Loading settings" rows={3} />;
-  if (list.status === "error") {
-    return <ErrorState title="Couldn't load settings" failure={list.error} onRetry={list.reload} />;
-  }
-  const save = (key: string, value: unknown) => {
-    if (pending.current || list.refreshing) return;
-    pending.current = true;
-    setBusy(true);
-    setError(null);
-    send({ [key]: value }).then(
-      () => { if (mounted.current) list.reload(); },
-      (failure: unknown) => { if (mounted.current) setError(toFailure(failure).message); },
-    ).finally(() => {
-      pending.current = false;
-      if (mounted.current) setBusy(false);
-    });
-  };
-  return (
-    <>
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {groups.map((group) => (
-        <SettingGroup key={group.title} title={group.title}>
-          {group.rows.map((row) => {
-            const view = list.data.views.find((entry) => entry.key === row.key);
-            if (!view) return null;
-            const global = list.data.global.find((entry) => entry.key === row.key);
-            const value = view.value;
-            return (
-              <SettingRow key={row.key} title={row.title} description={row.description} actions={
-                projectId && row.inheritance && view.project_scoped && global ? (
-                  <div className="setting-inheritance-actions">
-                    <PreferenceInheritance row={row} view={view} global={global} />
-                    {view.source === "project" ? (
-                      <button type="button" className="icon-btn" aria-label={`Reset ${row.title} to default`} title="Reset to inherited value"
-                        disabled={busy || list.refreshing} onClick={() => save(row.key, null)}>
-                        <Undo2 size={12} aria-hidden />
-                      </button>
-                    ) : null}
-                  </div>
-                ) : undefined
-              }>
-                <fieldset className="preference-control" disabled={busy || list.refreshing} aria-busy={busy || list.refreshing || undefined}>
-                {row.render ? (
-                  row.render(value, (next) => save(row.key, next))
-                ) : row.options ? (
-                  <select
-                    aria-label={row.title}
-                    value={String(value ?? "")}
-                    onChange={(event) => save(row.key, row.parse ? row.parse(event.target.value) : event.target.value)}
-                  >
-                    {row.options.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : typeof view.default === "boolean" ? (
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    aria-label={row.title}
-                    checked={value === true}
-                    onChange={(event) => save(row.key, event.target.checked)}
-                  />
-                ) : row.multiline ? (
-                  <textarea aria-label={row.title} rows={2} key={String(value ?? "")} defaultValue={String(value ?? "")}
-                    onBlur={(event) => { if (event.target.value !== value) save(row.key, event.target.value); }} />
-                ) : (
-                  <input
-                    aria-label={row.title}
-                    type={typeof view.default === "number" ? "number" : "text"}
-                    key={String(value ?? "")}
-                    defaultValue={String(value ?? "")}
-                    onBlur={(event) => {
-                      const next = typeof view.default === "number" ? Number(event.target.value) : event.target.value;
-                      if (!Object.is(next, value)) save(row.key, next);
-                    }}
-                  />
-                )}
-                </fieldset>
-              </SettingRow>
-            );
-          })}
-        </SettingGroup>
-      ))}
-    </>
-  );
+  const catalog = useAsync(`project-preference-scope:${projectId}`, (signal) =>
+    request<ProjectScopeCatalog>("POST", "/api/settings/project-scopes", {}, signal));
+  if (catalog.status === "loading") return <Loading label="Loading settings" rows={3} />;
+  if (catalog.status === "error") return <ErrorState title="Couldn't load settings" failure={catalog.error} onRetry={catalog.reload} />;
+  const group = catalog.data.groups.find((candidate) => candidate.members.some((member) => member.project_id === projectId));
+  if (!group) return <ErrorState title="Couldn't load settings" failure={toFailure(new Error("This settings scope is unavailable."))} onRetry={catalog.reload} />;
+  const query = { selection: { kind: "checkout" as const, group_key: group.key, project_id: projectId } };
+  return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} />;
 }
 
 function displayValue(row: PreferenceRow, value: unknown): string {

@@ -3,15 +3,16 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api, request } from "../../api/client";
 import { GeneralSection } from "./PreferenceSections";
 import { MaintenanceSection } from "./Maintenance";
+import { scopedFixture } from "./scopedPreferenceFixture.test-support";
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 beforeEach(() => vi.mocked(request).mockReset());
 afterEach(() => vi.restoreAllMocks());
 it("keeps provider update preferences without a saved-login choice", async () => {
   vi.spyOn(api, "shell").mockResolvedValue({ attached: false, windows: 0, facts: { cli: null, permissions: [] } });
-  vi.mocked(request).mockResolvedValue([
+  vi.mocked(request).mockResolvedValue(scopedFixture([
     { key: "enable_provider_update_checks", value: true, default: true, source: "default", project_scoped: false },
     { key: "prefer_saved_login", value: true, default: false, source: "global", project_scoped: false },
-  ]);
+  ]));
   render(<GeneralSection />);
   expect(await screen.findByRole("switch", { name: "Check providers for updates" })).toBeChecked();
   expect(screen.queryByRole("switch", { name: "Prefer saved login" })).toBeNull();
