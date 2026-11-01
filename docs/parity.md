@@ -316,7 +316,7 @@ These stay unticked on purpose. Each needs something this scope leaves out:
 - [x] F31 PR list page: grouped filters across environments, quick actions | apps/web/src/components/pullRequest/PullRequestsPage.tsx | w d m s | L | server done | web done
 - [x] F32 PR summary tab: description, state, editing | apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx | w d m | M | server done | web done
 - [x] F33 PR timeline: activity with filters | apps/web/src/components/pullRequest/PullRequestTimelineTab.tsx | w d m | M | server done | web done
-- [x] F34 PR code tab: file review with revisions | apps/web/src/components/pullRequest/PullRequestCodeTab.tsx | w d m | L | server done | web: files, viewed marks and line comments; no revision picker
+- [x] F34 PR code tab: file review with revisions | apps/web/src/components/pullRequest/PullRequestCodeTab.tsx | w d m | L | server done | web done: files, viewed marks, line comments and one commit at a time; comments stay on the whole change
 - [x] F35 Checks popover: status detail, fork workflow approval | apps/web/src/components/pullRequest/PullRequestChecksPopover.tsx | w d m | M | server done | web done
 - [x] F36 Review submission: line drafts, submit review | apps/web/src/components/pullRequest/PullRequestReviewForm.tsx | w d m s | L | server done | web done
 - [x] F37 Comments and threads: reply, edit, resolve, react | apps/web/src/components/pullRequest/PullRequestCommentForm.tsx | w d m s | L | server done | web done
