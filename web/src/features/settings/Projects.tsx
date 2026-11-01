@@ -253,9 +253,9 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
           {
             title: "New threads",
             rows: [
-              { key: "default_engine", title: "Default engine" },
-              { key: "default_model", title: "Default model" },
-              { key: "default_permission_mode", title: "Default permissions", options: PERMISSIONS },
+              { key: "default_engine", title: "Default engine", inheritance: true },
+              { key: "default_model", title: "Default model", inheritance: true },
+              { key: "default_permission_mode", title: "Default permissions", options: PERMISSIONS, inheritance: true },
               {
                 key: "project_title_instructions",
                 title: "Title instructions",
@@ -284,7 +284,7 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
           {
             title: "Source control",
             rows: [
-              { key: "auto_pull", title: "Pull the default branch automatically" },
+              { key: "auto_pull", title: "Pull the default branch automatically", inheritance: true },
               {
                 key: "worktree_submodules",
                 title: "Submodules",
