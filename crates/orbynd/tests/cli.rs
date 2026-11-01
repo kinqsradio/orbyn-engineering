@@ -437,30 +437,31 @@ mod cli_capture;
 fn capture_deadline_cleans_a_descendant_that_inherited_output_pipes() {
     use std::{io::Write, time::Duration};
     let dir = TempDir::new();
-    let executable = dir
-        .path()
-        .join(format!("inherited-pipe{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        Command::new("rustc")
-            .arg(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("tests/fixtures/inherited_pipe.rs")
-            )
-            .arg("-o")
-            .arg(&executable)
-            .status()
-            .unwrap()
-            .success()
-    );
     let record = dir.path().join("helper");
-    let mut command = Command::new(executable);
-    command.env("ORBYN_PIPE_RECORD", &record);
+    let go = dir.path().join("go");
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--ignored",
+            "--exact",
+            "inherited_pipe_process_fixture",
+            "--nocapture",
+        ])
+        .env("ORBYN_PIPE_RECORD", &record)
+        .env("ORBYN_PIPE_GO", &go)
+        .env("ORBYN_PIPE_ROLE", "leader");
+    let ready = record.clone();
     let (send, receive) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
-        send.send(cli_capture::capture(command, Duration::from_secs(5)))
-            .unwrap();
+        send.send(cli_capture::capture_ready(
+            command,
+            Duration::from_secs(1),
+            go,
+            ready,
+        ))
+        .unwrap();
     });
-    let result = receive.recv_timeout(Duration::from_secs(10));
+    let result = receive.recv_timeout(Duration::from_secs(40));
     // Independent cleanup bounds the old, unbounded implementation as well.
     if result.is_err()
         && let Ok(text) = std::fs::read_to_string(&record)
@@ -482,11 +483,10 @@ fn capture_deadline_cleans_a_descendant_that_inherited_output_pipes() {
     let error = result.expect_err(
         "inherited pipes must fail at capture deadline, not return success after external cleanup",
     );
-    let mut evidence = std::fs::File::create(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/cli-capture-regression.txt"),
-    )
-    .unwrap();
+    let evidence_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/cli-capture-regression.txt");
+    std::fs::create_dir_all(evidence_path.parent().unwrap()).unwrap();
+    let mut evidence = std::fs::File::create(evidence_path).unwrap();
     writeln!(evidence, "{error}").unwrap();
     assert!(error.contains("timed out"), "{error}");
     assert!(
@@ -501,4 +501,48 @@ fn capture_deadline_cleans_a_descendant_that_inherited_output_pipes() {
         std::net::TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_err(),
         "descendant exited"
     );
+}
+
+/// Invoked only as an exact subprocess by the capture regression.
+#[test]
+#[ignore = "subprocess fixture; requires its own barrier and record paths"]
+fn inherited_pipe_process_fixture() {
+    use std::{io::Write, net::TcpListener, path::PathBuf, process::Stdio, thread, time::Duration};
+    let record = PathBuf::from(std::env::var_os("ORBYN_PIPE_RECORD").expect("fixture record"));
+    let go = PathBuf::from(std::env::var_os("ORBYN_PIPE_GO").expect("fixture barrier"));
+    if std::env::var("ORBYN_PIPE_ROLE").as_deref() == Ok("helper") {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        std::fs::write(
+            &record,
+            format!("{} {}", std::process::id(), listener.local_addr().unwrap()),
+        )
+        .unwrap();
+        loop {
+            thread::sleep(Duration::from_secs(60));
+        }
+    }
+    while !go.exists() {
+        thread::sleep(Duration::from_millis(10));
+    }
+    #[allow(
+        clippy::zombie_processes,
+        reason = "This fixture deliberately exits before its descendant; the capture owner kills the tree and asserts descendant exit."
+    )]
+    let _child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--ignored",
+            "--exact",
+            "inherited_pipe_process_fixture",
+            "--nocapture",
+        ])
+        .env("ORBYN_PIPE_ROLE", "helper")
+        .stdin(Stdio::null())
+        .spawn()
+        .unwrap();
+    while !record.exists() {
+        thread::sleep(Duration::from_millis(10));
+    }
+    println!("leader stdout");
+    eprintln!("leader stderr");
+    std::io::stdout().flush().unwrap();
 }

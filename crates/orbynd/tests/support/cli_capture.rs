@@ -6,6 +6,24 @@ use std::{
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 pub fn capture(command: Command, limit: Duration) -> Result<Output, String> {
+    capture_inner(command, limit, None)
+}
+
+/// Only the pipe-lifetime fixture separates readiness from the measured deadline.
+pub fn capture_ready(
+    command: Command,
+    limit: Duration,
+    go: std::path::PathBuf,
+    ready: std::path::PathBuf,
+) -> Result<Output, String> {
+    capture_inner(command, limit, Some((go, ready)))
+}
+
+fn capture_inner(
+    command: Command,
+    limit: Duration,
+    readiness: Option<(std::path::PathBuf, std::path::PathBuf)>,
+) -> Result<Output, String> {
     let label = format!(
         "{} {:?}",
         command.get_program().to_string_lossy(),
@@ -15,10 +33,15 @@ pub fn capture(command: Command, limit: Duration) -> Result<Output, String> {
         .enable_all()
         .build()
         .unwrap();
-    runtime.block_on(capture_async(command, limit, label))
+    runtime.block_on(capture_async(command, limit, label, readiness))
 }
 
-async fn capture_async(command: Command, limit: Duration, label: String) -> Result<Output, String> {
+async fn capture_async(
+    command: Command,
+    limit: Duration,
+    label: String,
+    readiness: Option<(std::path::PathBuf, std::path::PathBuf)>,
+) -> Result<Output, String> {
     let mut command = tokio::process::Command::from(command);
     command
         .stdin(Stdio::null())
@@ -30,7 +53,7 @@ async fn capture_async(command: Command, limit: Duration, label: String) -> Resu
     let mut child = command
         .spawn()
         .map_err(|e| format!("{label}: spawn: {e}"))?;
-    // The builder can retain cloned pipe handles; release those before EOF.
+    // Keep only the spawned child and capture pipes as live resource owners.
     drop(command);
     let pid = child.id().unwrap();
     #[cfg(unix)]
@@ -49,17 +72,50 @@ async fn capture_async(command: Command, limit: Duration, label: String) -> Resu
     let mut stderr = child.stderr.take().unwrap();
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let mut status = None;
-    let result = tokio::time::timeout(limit, async {
-        tokio::try_join!(
-            async {
-                status = Some(child.wait().await?);
-                Ok::<_, std::io::Error>(())
-            },
-            read(&mut stdout, &mut out),
-            read(&mut stderr, &mut err)
-        )
-    })
-    .await;
+    let mut stage = "capture";
+    let mut deadline = limit;
+    let ready = if let Some((go, ready)) = readiness {
+        // Ownership is established before the leader may create its descendant.
+        std::fs::write(go, b"go").expect("write fixture barrier");
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while !ready.is_file() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            // The measured phase concerns inherited pipes alone. Establish the
+            // leader's exit here, independently of its scheduling or final prints.
+            status = Some(child.wait().await?);
+            Ok::<_, std::io::Error>(())
+        })
+        .await
+    } else {
+        Ok(Ok(()))
+    };
+    let result = match ready {
+        Err(error) => {
+            stage = "fixture readiness";
+            deadline = Duration::from_secs(30);
+            Err(error)
+        }
+        Ok(Err(error)) => {
+            stage = "fixture readiness";
+            Ok(Err(error))
+        }
+        Ok(Ok(())) => {
+            tokio::time::timeout(limit, async {
+                tokio::try_join!(
+                    async {
+                        if status.is_none() {
+                            status = Some(child.wait().await?);
+                        }
+                        Ok::<_, std::io::Error>(())
+                    },
+                    read(&mut stdout, &mut out),
+                    read(&mut stderr, &mut err)
+                )
+            })
+            .await
+        }
+    };
     if let Ok(Ok(_)) = result {
         // A successful CLI start deliberately leaves its service running.
         #[cfg(windows)]
@@ -90,7 +146,7 @@ async fn capture_async(command: Command, limit: Duration, label: String) -> Resu
         _ => unreachable!(),
     };
     Err(format!(
-        "{label}: {reason} after {limit:?}; pid={pid}; status={status:?}; leader_exited_before_deadline={leader_exited_before_deadline}; reaped={}; drained={}\nstdout:\n{}\nstderr:\n{}",
+        "{label}: {reason} during {stage} after {deadline:?}; pid={pid}; status={status:?}; leader_exited_before_deadline={leader_exited_before_deadline}; reaped={}; drained={}\nstdout:\n{}\nstderr:\n{}",
         status.is_some(),
         matches!(drained, Ok(Ok(_))),
         String::from_utf8_lossy(&out),
