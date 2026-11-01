@@ -1,8 +1,9 @@
 # Handoff
 
-Start here if you are picking this project up. Written 1 November 2026, at `main`
-`f74e405`. Trust the repository over this document where they differ, and update
-this file when its facts change.
+Start here if you are picking this project up. Reconciled 1 November 2026 against
+`main` at `800293b`. Trust the repository over this document where they differ,
+and update this file when its facts change. The JSON record pins the product
+revision, not the later documentation commit; reconcile any newer main before acting.
 
 ## Goal
 
@@ -48,55 +49,142 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Status at `f74e405`
+## Reconciled status at `800293b`
 
-- Checklist: 709 rows. 136 out of scope. **573 in scope, 365 done (64%), 203 open.**
-  5 more are ticked but still need their UI proven.
-- 62 PRs merged. About 56,600 lines of Rust and 25,700 of React.
-- Required checks: Rust on macos-15 and windows-2022, Web, desktop builds on both,
-  and E2E. The repository is public and has no license yet.
+Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
+At this revision there are 709 rows and 376 source checkboxes are ticked. The
+explicit scope metadata reports 535 included rows: 346 declared checked, 35
+partial, 152 open and 2 not doable as written. There are also 174 excluded and
+zero unresolved-scope rows. These source decisions do not qualify runtime behavior.
+These are checklist declarations, not a fresh verification count. The former
+365/573 calculation missed mobile-only rows and whole-row exclusions discarded
+local parts of mixed features; it is not a valid completion percentage.
 
-Open rows by section: I 27, H 26, K 20, B 18, O 18, F 15, P 15, C 12, R 11, D 10,
-N 9, A 6, J 6, E 4, G 4, M 2. Each open row has its behaviour and reference path.
+Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
+builds on both, and E2E. The repository is public and has no license yet.
 
-### Open pull requests
+### Initial PR queue
 
-| PR | Rows | State |
-| --- | --- | --- |
-| #58 `feat/backend-rows` | I35, I53 | Mergeable, no failing checks recorded. Recheck on current `main`, then merge. |
-| #61 `feat/mcp-gaps` | N8 | Same. |
-| #62 `docs/rpc-reconcile` | R6 and gap notes | Same. |
-| #60 `feat/cli-start` | O1, O3, O10, O12, O25 | Windows Rust failed; cause not read. |
-| #63 `feat/fallback-model` | I43 | E2E failed; cause not read. |
+| PR | State |
+| --- | --- |
+| #68 | Merged at `2786f94`; its six required PR checks and subsequent main CI passed. |
+| #58 | Merged at `d0efd77` after all required checks passed. Provider-instance review also fixed update/admission exclusion, native-family policy and stale catalogs. Its settings surface remains partial. |
+| #61 | Merged at `9fafa3a` after all required checks passed. |
+| #62 | Merged at `f97abb8` after all required checks passed. |
+| #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
+| #60 | Updated head `dde3260` integrates repaired main; CI is running. The Windows path assertion, bundled CLI resources, child-folder project reuse and service readiness/stop race have local regressions. The integrated branch passed65 local CLI/engine/interaction/workspace tests and Clippy. The older348b88b Windows run was still running at last observation. Never merge until every required check passes on its current head. |
 
-None has auto-merge on.
+None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
+the workspace-update regression received an unbundled snapshot after ignoring the
+setup response. Diagnostic-only PR70 head `3fa8f29` exposed setup HTTP500 in
+run `41259799372`. The coordination fix `f3cc52b` passed all six required checks
+in run `41260222681` and merged as `58d2bed`. Integrated main run
+`41261277808` passed all six required jobs. Later main
+`51a95eb` run `41262630943` failed its Windows installed-app startup smoke;
+current main `800293b` run `41263153043` is running. Its Windows package and
+native smoke passed, while Rust Windows and E2E were still running at observation.
+The historical Windows process holder is still unproven.
 
-### Verified
+### Current continuation work
 
-- One real Codex turn recorded the chosen model, effort and tier. A second real turn
-  through the UI ran a tool and answered correctly from a real project file.
-- Real Claude `initialize` through `orbynd` returned live models and efforts, with
-  hooks and MCP off. Live model lists work in the UI.
-- Installed-app smoke on macOS; on Windows at #37.
-- Packaged macOS: deep links, single-instance handoff, keep-awake, CLI install.
-- E2E root causes fixed: `send` returning before the run existed, shared ports,
-  teardown races, waits under the poll interval, stand-in `gh` races and stale lock.
+- #70 merged at `58d2bed` after all required checks passed. Its integrated main
+  run also passed. Library reader/replacement coordination has failing-before
+  real-process regression coverage; the historical Windows holder remains unknown.
+- #71 merged at `51a95eb` after all required PR checks passed: project-dialog
+  provenance and per-setting null reset for four non-file-backed preferences.
+  All 233 web tests and a real-service browser test passed. K1 remains open and
+  K2 is partial: logical-project scope, Mixed, full inheritance and Reset all remain.
+- #72 merged at `2bbfff6` after all required checks passed: removes four controls
+  without a T3 counterpart. Remaining sidebar and tray deviations are separate.
+- #73 current head `9652b09`: owns Git helper trees, joins background tasks and
+  makes package-smoke shutdown and profile cleanup failures fatal. Its earlier
+  Windows run `41261010085` failed before service readiness and left a locked
+  staging folder. The current diagnostic iteration traces fixed provisioning
+  phases and bounded known-PID descendant names, without reading command lines or
+  credentials. Current-head CI `41263428009` is running; no fix is yet proven on
+  Windows. Local Node, provisioning, Git, process and service regressions pass.
+- #74 merged at `800293b` after all required checks passed. Question Markdown and
+  Mermaid have a real-service browser proof. HTTP403 was `folder_untrusted`;
+  the owner authorized ordinary trust setup in the disposable fixture. Media and
+  native proof remain open.
+- #75 current head `b74c821` integrates main `800293b`. Offered and custom answers
+  are mutually exclusive for single and multiple choice questions. Six focused
+  tests, a real-service answer regression, web check and all 244 integrated web
+  tests pass locally. Current-head CI `41263352532` is running.
+- #76 current head `ecf76d4` removes route-held sidebar placement and aligns limit
+  recovery controls. Real-service browser proof passes, but required E2E is red:
+  an older test still asserts the removed route-held placement. Correct that test
+  to the T3 lifecycle contract, then qualify the new head before merging.
+- #77 current head `a9bf832` reports Claude subscription windows through the
+  promptless CLI `get_usage` protocol, without SDK or credential-file access.
+  Parser, real-service protocol and existing interaction regressions pass. All six
+  required current-head checks passed; live authenticated usage remains unverified.
+- #78 current head `27eae72` makes global/project preference-map updates atomic,
+  including null resets. Real SQLite-trigger rollback and retry regressions pass;
+  all six required current-head checks passed. Neither #77 nor #78 has merged.
+
+The source-audited rows are recorded explicitly in parity metadata. Added
+visible features without a T3 counterpart are excluded as replica requirements,
+but removing existing deviations remains required before the final walkthrough.
+B65 sent context chips, C40 rich questions and D29 document previews are retained
+as real implementation gaps. J12 remains local because T3's CLI `get_usage`
+transport can report windows without the app reading credentials; J14 retains only
+credential-free engine routes. K38 has a concrete T3 counterpart and stays open.
+T3's Jujutsu discovery explicitly says unimplemented; it does not establish the
+proposed non-colocated status panel. The extra Orbyn tray requires a separate shell
+parity review even though its proposed popover is excluded.
+
+### Verified in this pickup
+
+- Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
+  also passed all six required jobs.
+- A macOS package built from frozen main `2786f94` passed the maintained native
+  smoke: real window connection, second-launch handoff, and service shutdown.
+- A fresh offline profile provisioned bundled library `ed3f1d37` automatically:
+  configured, 36 skills, native links present, no library problem, and one connected
+  native window. The untrusted library project is expected in that fresh profile.
+- One real Codex turn through that packaged core's service API completed with
+  `FIRST_LAUNCH_OK`, using `gpt-6-luna`, low effort and Standard tier. Selection was
+  logged, automatic titles were off, and no tool calls, approvals or questions
+  occurred. This did not exercise the native composer.
+- The profile processes ended and disposable profiles were removed. The owner's
+  installed app and data were untouched. The retained package and sanitized local
+  receipts are under ignored `target/builder-2-packaged-2786f94/`.
+- A second frozen package built from main `2bbfff6` with
+  `PATH="/Users/anhdang/.cargo/bin:$PATH" npm run build -- --bundles app` in
+  `desktop` passed the maintained native smoke: window connection, second-launch
+  handoff, and child-service shutdown. It used a disposable profile and left the
+  owner's installation untouched. Artifact and file-hash manifest:
+  `target/builder-2-packaged-2bbfff6/verified-bundle/macos/Orbyn Engineering.app`.
+  Receipt: `target/builder-2-packaged-2bbfff6/artifact.json`. This does not qualify
+  later changes or a full walkthrough.
+
+### Earlier evidence retained
+
+Before this pickup, a real Codex UI turn read a project file. Claude `initialize`
+returned live models and efforts with hooks and MCP off. Earlier packaged macOS
+checks covered deep links, keep-awake and CLI installation; Windows install smoke
+was recorded at #37. These observations are historical, not a full walkthrough of
+current main. Earlier E2E repairs covered run admission, ports, teardown, polling,
+stand-in forge races and the data-directory lock.
 
 ### Not verified
 
-- CI for the last four merges to `main` (#64, #66, #67, #57) was still running when
-  this was written. Check them first.
-- No live Claude turn: the CLI is logged out on the development Mac.
-- Nobody has run the app on a real Windows machine. Windows beyond CI is unobserved.
-- The first-prompt fix (the bootstrap reword for a refusal with no tool call) has
-  not been proven with a real model.
-- Fast mode has not run in a real turn.
-- Native menu items, the Try again button and the dock badge were never exercised.
-- Notarization and the release workflow have never run. Signing is ad-hoc.
-- A packaged first launch since automatic provisioning, and the Windows no-symlink
-  fallback, have not been exercised.
-- The installed app on the development Mac is from `9aed05f` and still shows the
-  removed setup screen. Rebuild before judging it.
+- A full walkthrough and native-composer turn on the final integrated package.
+  A copied `2786f94` bundle reached the native empty composer in an isolated profile.
+  The next tool call, opening its model picker, timed out without an answer and was
+  not retried or substituted. No native turn occurred; the picker result is unknown,
+  not a confirmed product defect. Receipt: `target/builder-2-native-audit/` in the
+  primary clone. Its app/service processes ended.
+- A live Claude turn; the engine must use its own login on the test machine.
+- A hands-on real Windows run, including the no-symlink fallback, native menus,
+  deep links, keep-awake and CLI installation beyond their existing CI/unit evidence.
+- The first-prompt file-reading/refusal case. The successful constant-answer turn
+  proves real admission and response, but does not establish native skill discovery
+  or a real file/tool action after automatic provisioning.
+- Fast mode, Try again and the Dock badge in real use.
+- Notarization, a released update and the release workflow; signing remains ad-hoc.
+- The package receipt above is frozen at `2786f94`; it does not qualify later PRs.
 
 ### Known bugs
 
@@ -126,16 +214,27 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Confirm the four in-progress `main` runs are green. If not, fix `main` first.
-2. Recheck and merge #58, #61 and #62. Diagnose and fix #60 and #63.
-3. Rebuild the macOS app from `main`, launch it, and run a real Codex turn from a
-   fresh data directory to prove zero-setup first launch.
-4. Work open rows by user impact: K settings, B composer, I providers, C timeline,
-   F source control, D viewers, then the rest. I33 ACP sessions and M3 are next for
-   the backend.
-5. Fix the Windows `workspace` lock, and remove the smoke test's warning.
-6. Finish when every in-scope row is done or honestly marked not doable, a packaged
-   app passes a full walkthrough, and CI is green on `main`.
+1. Diagnose Windows startup and verify current main `800293b` run `41263153043`.
+   Finish #60, diagnose any failure, and merge only when every required
+   check is green. Reconcile the pending PR queue from current heads; older failed
+   or green heads do not qualify newer integrations.
+2. Keep source scope decisions and partial evidence explicit. Verify existing
+   visible deviations are removed, including route-held sidebar placement and extra
+   tray behavior. Do not turn a missing reference into an invented control or an
+   exclusion that silently lowers the goal.
+3. Rebuild the integrated macOS package and perform the full walkthrough, including
+   a minimal real turn through its native composer, in a fresh disposable profile.
+4. Work rows by user impact: K settings, B composer, I providers, C timeline,
+   F source control, D viewers, then the rest. The next settings slices are
+   logical-project scope, inheritance, Mixed and
+   Reset all; K1 remains open and K2 is partial. I33 ACP sessions
+   and M3 remain next backend slices.
+5. Fix the Windows `workspace` lock, identify the actual owner, and remove the
+   package smoke's warning without masking the failure. A prior #60 Windows
+   package-start timeout remains a failed observation even if a later run passes.
+6. Finish only when every included row is done or honestly marked not doable,
+   unresolved scope is resolved, a packaged app passes a full walkthrough, and
+   CI is green on main. Missing release inputs below remain explicit blockers.
 
 ## How to work here
 
