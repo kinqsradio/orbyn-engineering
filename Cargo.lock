@@ -1036,6 +1036,7 @@ dependencies = [
  "orbyn-contracts",
  "orbyn-core",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",

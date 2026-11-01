@@ -186,7 +186,7 @@ impl Core {
         stored_preference(&self.store, key, project_id)
     }
 
-    /// Applies all of a change or none: every value is checked before any is kept.
+    /// Validates every value, then commits all preference changes in one transaction.
     pub fn set_preferences(
         &self,
         project_id: Option<&str>,
@@ -205,17 +205,18 @@ impl Core {
                 self.engines.check_instances(&list)?;
             }
         }
-        for (key, value) in values {
-            let text = (!value.is_null()).then(|| value.to_string());
-            match (project_id, text) {
-                (Some(project), text) => {
-                    self.store
-                        .set_project_preference(project, key, text.as_deref())?;
-                }
-                (None, Some(text)) => self.store.set_setting(&setting_key(key), &text)?,
-                (None, None) => self.store.clear_setting(&setting_key(key))?,
-            }
-        }
+        let prepared: Vec<_> = values
+            .iter()
+            .map(|(key, value)| {
+                let key = if project_id.is_some() {
+                    key.clone()
+                } else {
+                    setting_key(key)
+                };
+                (key, (!value.is_null()).then(|| value.to_string()))
+            })
+            .collect();
+        self.store.set_preference_values(project_id, &prepared)?;
         self.apply_login_preference()
     }
 
