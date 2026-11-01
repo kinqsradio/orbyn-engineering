@@ -226,6 +226,24 @@ parity review even though its proposed popover is excluded.
   retaining all stripping/equivalence assertions. The historical finding still needs
   a fresh check result; no ignore, check weakening, history rewrite or merge is claimed.
 
+- Settings `876c1a6` adds stable action identity without a database backfill.
+  Legacy readers derive IDs without rewriting files; targeted saves materialize
+  them and retain them across renames. IDs are bounded and unique, and identity
+  changes during editing are rejected. A real-PTY regression exposed that
+  `Build one` and `Build-one` both used `script-build-one`; manual terminals now
+  use the validated ID and preserve both commands' separate output. Both identity
+  regressions failed before and pass after. Final local evidence: 953 Rust tests
+  passed (9 ignored), 259 contract tests/export, Clippy/fmt, 277 web tests/check/build
+  and 14 real-Core browser cases. Generated `ProjectScript.ts` is committed. K9
+  remains partial for shortcuts, preparation retry and final platform qualification.
+- With the owner's explicit direction to use Chrome, GitGuardian incident
+  `39375233` was reviewed in the authenticated dashboard and classified
+  `Not a secret (false positive)`: the historical URL uses a literal placeholder in
+  a no-network parser test. This is one incident classification, not a detector,
+  repository exclusion or required-check change. Dashboard receipt:
+  `target/settings-native/gitguardian-39375233-false-positive.png`. GitHub's exact
+  current-head checks must still all be green before merge.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68

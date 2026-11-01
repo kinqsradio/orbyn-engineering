@@ -261,12 +261,22 @@
         "Packaged macOS fixture0b575dc: native Name focus, icon selection, create/edit and Core values passed; normal quit ended both owned processes and removed service handle. Release shell/debug Core+CLI, private profile, ad-hoc fixture identity. No section CI, Windows hands-on or final walkthrough; IDs/shortcuts/retry incomplete.",
         "Follow-upf39a12a restores successful-save focus: regression failed before and passes after create/rename/delete.3 real-Core cases,277 web tests,check/build pass; packaged receipt remains0b575dc."
       ]
+    },
+    {
+      "check": "Stable action identity local876c1a6",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "953 Rust tests passed,9 ignored;259 contract tests/export;Clippy/fmt;277 web tests/check/build;14 real-Core browser cases passed",
+        "Real-service rename identity and real-PTY terminal-collision regressions failed before and pass after; project files remain read-only",
+        "Generated ProjectScript.ts committed; no current-head section CI or native identity qualification claimed"
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Verify the synthetic userinfo fixture correction, publish it to PR82 and inspect GitGuardian39375233 plus every required exact-head CI check. Do not merge any red or pending check. Continue stable action identity/shortcuts, preparation retry and remaining in-scope rows through real orbynd.",
+  "next_action": "Publish checked identity slice876c1a6 to PR82, verify GitGuardian and all six required exact-head CI checks, and merge without squash only when all are green. Continue action shortcuts, preparation retry and every remaining in-scope row through real orbynd.",
   "delivery": {
     "state": "merged",
     "evidence": [
@@ -275,7 +285,8 @@
       "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet.",
       "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed.",
       "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete.",
-      "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed."
+      "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed.",
+      "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge."
     ]
   }
 }
