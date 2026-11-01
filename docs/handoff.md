@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `93dd502`. Trust the repository over this document where they differ,
+`main` at `58d2bed`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,13 +49,13 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `93dd502`
+## Reconciled status at `58d2bed`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
 At this revision there are 709 rows and 376 source checkboxes are ticked. The
-explicit scope metadata reports 532 included rows: 346 declared checked, 31
-partial, 153 open and 2 not doable as written. There are also 166 excluded and
-11 unresolved-scope rows. The unresolved rows must accompany the denominator.
+explicit scope metadata reports 535 included rows: 346 declared checked, 33
+partial, 154 open and 2 not doable as written. There are also 174 excluded and
+zero unresolved-scope rows. These source decisions do not qualify runtime behavior.
 These are checklist declarations, not a fresh verification count. The former
 365/573 calculation missed mobile-only rows and whole-row exclusions discarded
 local parts of mixed features; it is not a valid completion percentage.
@@ -76,34 +76,51 @@ builds on both, and E2E. The repository is public and has no license yet.
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
-setup response. PR #70 is the priority repair; its current required CI must pass
-before merge. Main after #61 and #62 passed, but those heads do not qualify #63.
+setup response. Diagnostic-only PR70 head `3fa8f29` exposed setup HTTP500 in
+run `41259799372`. The coordination fix `f3cc52b` passed all six required checks
+in run `41260222681` and merged as `58d2bed`. Integrated main run `41261277808`
+is running. The historical Windows process holder is still unproven.
 
 ### Current continuation work
 
-- #70 `fix/workspace-setup`, head `f3cc52b`: setup diagnostics plus library
+- #70 merged at `58d2bed`: setup diagnostics plus library
   reader/replacement coordination. A real held Git child regression failed without
   the write guard. Local core workspace tests (31), daemon workspace tests (12),
   core Clippy, formatting and diff checks pass. The historical Windows holder is
-  unproven; required CI is running.
-- #71 `feat/settings-inheritance`, head `6c733a6`: project-dialog provenance and
+  unproven; PR CI passed and integrated main CI is running.
+- #71 `feat/settings-inheritance`, head `e1a0eea` (main repair integrated): project-dialog provenance and
   per-setting null reset for four non-file-backed preferences. All 233 web tests,
   web check and one real-service browser test pass locally against product source
   matching main `93dd502`. K1/K2 remain open for the rest of scope and inheritance.
-- #72 `fix/reference-surfaces`, head `bfa6d4b`: removes four unreferenced controls.
+- #72 `fix/reference-surfaces`, head `425416c` (main repair integrated): removes four unreferenced controls.
   Web check, 233 tests and four real-service browser tests pass locally; required
   CI is running. This does not finish the remaining sidebar placement deviation.
-- Local `fix/service-child-cleanup` is investigating graceful package-smoke teardown
-  and owned library-upgrade children. Its changes are not yet reviewed or landed.
-- Local `fix/question-markdown` is implementing the proven Markdown part of C40.
-  No completion claim applies until its actual behavior and remaining media limits
-  are checked.
+- #73 `fix/service-child-cleanup`, head `66b5e8f`, now targeting repaired main: owns Git helper
+  trees, joins service background tasks, awaits smoke shutdown and fails on leftover
+  profile locks. Git8, process6, engine7, parent-stdin1 and Node8 tests pass locally;
+  one Windows-only lock test awaits CI. Required package/native smoke remains in CI.
+- #74 `fix/question-markdown`, head `9331c11` (main repair integrated): C40 question prose uses the existing
+  Markdown renderer. Web check,231 tests,10 focused tests and a real-service browser
+  proof of Mermaid and persisted answers pass locally. The HTTP403 was
+  `folder_untrusted`; the owner explicitly authorized normal trust setup in the
+  disposable fixture. The product gate is unchanged. Media/native proof stays open.
+- Local `feat/claude-limits` is implementing CLI `get_usage`, with no SDK or direct
+  credentials access. #75 `fix/question-single-choice`, head `74f9274`, is stacked
+  on #74 and aligns offered/custom answer exclusivity with the T3 source. Its six
+  focused tests, web check and real-service answer regression pass locally. Neither
+  slice has landed. Local `fix/thread-lifecycle-parity` removes the route-held
+  sidebar deviation and aligns usage-limit controls; no completion claim yet.
 
-The twelve source-audited rows are recorded explicitly in parity metadata. Added
+The source-audited rows are recorded explicitly in parity metadata. Added
 visible features without a T3 counterpart are excluded as replica requirements,
 but removing existing deviations remains required before the final walkthrough.
 B65 sent context chips, C40 rich questions and D29 document previews are retained
-as real implementation gaps. Eleven scope questions remain.
+as real implementation gaps. J12 remains local because T3's CLI `get_usage`
+transport can report windows without the app reading credentials; J14 retains only
+credential-free engine routes. K38 has a concrete T3 counterpart and stays open.
+T3's Jujutsu discovery explicitly says unimplemented; it does not establish the
+proposed non-colocated status panel. The extra Orbyn tray requires a separate shell
+parity review even though its proposed popover is excluded.
 
 ### Verified in this pickup
 
@@ -177,14 +194,14 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Repair current main's Windows workspace setup failure via #70, requiring the
-   full current-head matrix. Finish #60's current-head CI, diagnose any failure,
-   and merge only when every required check is green. Confirm final integrated
-   main is green before treating either repair as qualified.
-2. Keep row scope and partial evidence explicit. Resolve the 11 scope questions
-   from local T3 behavior references before implementing any proposed surface.
-   Do not turn a missing reference into an invented control or an exclusion that
-   silently lowers the goal.
+1. Confirm integrated main `58d2bed` passes run `41261277808`. Finish #60 after
+   integrating this repair, diagnose any failure, and merge only when every required
+   check is green. Reconcile the pending PR queue from current heads; older failed
+   or green heads do not qualify newer integrations.
+2. Keep source scope decisions and partial evidence explicit. Verify existing
+   visible deviations are removed, including route-held sidebar placement and extra
+   tray behavior. Do not turn a missing reference into an invented control or an
+   exclusion that silently lowers the goal.
 3. Rebuild the integrated macOS package and perform the full walkthrough, including
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,

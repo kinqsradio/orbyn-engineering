@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "93dd5022d8e2797946617529a8555178891a1143",
+    "revision": "58d2bedbad06b58aadd9a41edc8ba3a079e4dc2e",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -59,6 +59,12 @@
         "docs/handoff.md: Verified in this pickup",
         "target/builder-2-packaged-2786f94/first-launch.json",
         "target/builder-2-packaged-2786f94/live-codex-first-launch.json"
+      ]
+    },
+    {
+      "result": "Library reader/replacement coordination repair merged after all required PR checks passed",
+      "evidence": [
+        "PR70 headf3cc52b; CI41260222681 all six required jobs passed; merged58d2bed"
       ]
     }
   ],
@@ -120,14 +126,22 @@
       "required": true,
       "state": "unverified",
       "evidence": []
+    },
+    {
+      "check": "Integrated main58d2bed after workspace repair",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "GitHub Actions41261277808 running"
+      ]
     }
   ],
   "decisions": [],
-  "next_action": "Fix main Windows workspace setup failure with PR70 after its full required matrix passes; then finish PR60 and follow Next actions in docs/handoff.md.",
+  "next_action": "Verify integrated main58d2bed CI41261277808, then finish PR60 current-head checks and follow Next actions in docs/handoff.md.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "kinqsradio/orbyn-engineering main93dd502; PR60 remains open; PR70 repair and PR71/72 pending requiredCI"
+      "kinqsradio/orbyn-engineering main58d2bed; PR70 merged green; PR60/69/71/72/73/74/75 remain open"
     ]
   }
 }
