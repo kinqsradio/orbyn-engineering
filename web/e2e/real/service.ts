@@ -114,6 +114,8 @@ export interface Service {
 export interface ServiceOptions {
   /** Records only protocol-double launches, for controlled ordering assertions. */
   engineLaunchLog?: string;
+  /** Use production automatic provider discovery only in controlled lifecycle tests. */
+  discoverKnownEngines?: boolean;
   starred?: boolean;
   fakeEngines?: boolean;
   scenes?: boolean;
@@ -159,9 +161,20 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
   const forge = options.forge
     ? standInGh(dir, options.forge === true ? [{ number: 42, title: "Fix the login" }, { number: 77, title: "Tidy the docs" }] : options.forge, options.starred)
     : null;
+  const inherited: NodeJS.ProcessEnv = {};
+  for (const name of ["PATH", "Path", "SystemRoot", "SystemDrive", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL"]) {
+    if (process.env[name] !== undefined) inherited[name] = process.env[name];
+  }
+  const profile = {
+    HOME: dir, USERPROFILE: dir, CFFIXED_USER_HOME: dir,
+    XDG_CONFIG_HOME: join(dir, ".config"), XDG_CACHE_HOME: join(dir, ".cache"),
+    XDG_DATA_HOME: join(dir, ".local/share"), XDG_STATE_HOME: join(dir, ".local/state"),
+    XDG_RUNTIME_DIR: join(dir, ".run"), APPDATA: join(dir, ".appdata/roaming"), LOCALAPPDATA: join(dir, ".appdata/local"),
+  };
+  for (const path of Object.values(profile)) mkdirSync(path, { recursive: true, mode: 0o700 });
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...process.env, ...engines, ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}:` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", HOME: dir, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...inherited, ...profile, ...engines, ORBYN_KNOWN_ENGINE_IDS: options.discoverKnownEngines ? undefined : "[]", ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}:` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {

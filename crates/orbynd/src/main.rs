@@ -96,6 +96,17 @@ fn env_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|value| value == "1" || value == "true")
 }
 
+fn known_engine_ids(raw: Option<&std::ffi::OsStr>) -> Result<Option<Vec<String>>, String> {
+    raw.map(|value| {
+        let value = value
+            .to_str()
+            .ok_or_else(|| "ORBYN_KNOWN_ENGINE_IDS must be UTF-8 JSON.".to_owned())?;
+        serde_json::from_str(value)
+            .map_err(|_| "ORBYN_KNOWN_ENGINE_IDS must be a JSON array of strings.".to_owned())
+    })
+    .transpose()
+}
+
 fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String> {
     let data_dir = args
         .data_dir
@@ -124,6 +135,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
         codex_sandbox: sandbox,
         lookup_latest: !env_flag("ORBYN_OFFLINE"),
         update_timeout: defaults.update_timeout,
+        known_engine_ids: known_engine_ids(std::env::var_os("ORBYN_KNOWN_ENGINE_IDS").as_deref())?,
     };
     if let Ok(seconds) = std::env::var("ORBYN_APPROVAL_TIMEOUT_SECS") {
         let seconds: u64 = seconds
@@ -829,6 +841,29 @@ async fn main() -> std::process::ExitCode {
         Err(message) => {
             eprintln!("{message}");
             std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod known_engine_config_tests {
+    use super::known_engine_ids;
+    #[test]
+    fn known_discovery_config_is_optional_and_rejects_invalid_json() {
+        assert_eq!(known_engine_ids(None).unwrap(), None);
+        assert_eq!(
+            known_engine_ids(Some(std::ffi::OsStr::new("[]"))).unwrap(),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            known_engine_ids(Some(std::ffi::OsStr::new(r#"["opencode"]"#))).unwrap(),
+            Some(vec!["opencode".into()])
+        );
+        for value in ["", "broken", "null", "{}", "[1]", r#""opencode""#] {
+            assert!(
+                known_engine_ids(Some(std::ffi::OsStr::new(value))).is_err(),
+                "{value}"
+            );
         }
     }
 }

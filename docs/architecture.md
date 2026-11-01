@@ -716,6 +716,18 @@ response owner; a late save cannot clear a new draft or update a different scope
 Endpoint test results stay attached to their requested URL and generation. These
 bindings qualify local settings behavior, not running export or native parity.
 
+Automatic known-provider discovery defaults to all installed known CLIs. The
+internal `EngineConfig.known_engine_ids` can restrict that enumeration; absent means
+all, an explicit empty list means none. It leaves registered custom providers,
+explicit instances and direct known-provider lookup unchanged and is not an access
+rule. Service bootstrap accepts this optional list as UTF-8 JSON in
+`ORBYN_KNOWN_ENGINE_IDS`; malformed input fails startup without logging its value.
+Disposable browser fixtures choose an empty discovery domain and pass only selected
+runtime environment variables, with private home, XDG and Windows app-data paths.
+Controlled providers opt into production discovery to verify catalog shutdown;
+ordinary fixtures cannot accidentally probe providers installed on the host.
+Cleanup failures remain failures with the same retry budget.
+
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An
 instance has an id, a `driver`, and optionally a name, an accent, `enabled` and a `program`
