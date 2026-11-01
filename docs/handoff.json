@@ -365,9 +365,9 @@
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Verify and push the locally green section commits, then continue K7 structured icon/image controls and K5 full model defaults on feat/project-settings. Open a section or coherent-about20-row PR when ready; merge without squash only every required exact-head check green. Main58d86e9 CI41322108228 remains green; preserve native/tool stops and owner release blockers.",
+  "next_action": "Continue K7 structured icon/image controls and K5 full model defaults on pushed feat/project-settings. Current foundation is locally green:1043Rust9ignored,332webunit/check/build,234E2E. Open section/coherent-about20-row PR when ready; merge only every required exact-head check green without squash. Main58d86e9 CI41322108228 staysgreen; all native/tool stops and owner release blockers remain.",
   "delivery": {
-    "state": "committed",
+    "state": "pushed",
     "evidence": [
       "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
       "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
@@ -382,7 +382,8 @@
       "feat/project-settings local K6/K7/K8 continuation; web check328unit/build passed; final fullRust/browser qualification running, no new push/PR/merge",
       "Local row commits b09df17 selectedProjectName/Checkouts/Danger; ff9329f passiveimages/automaticidentity;52d1c1e boundedlegacyreader; badgeeligibility follow-up local, no push",
       "fb4d59e preserves project family cleanup once; internal discovery/privatefixture isolation follow-up locally qualified but full234 pending. No push/PR/merge for this section.",
-      "All current local source committed separately througha17e748 after affected gates. Exact source receipts match frozen qualification; section-branch push follows, no PR/merge claimed."
+      "All current local source committed separately througha17e748 after affected gates. Exact source receipts match frozen qualification; section-branch push follows, no PR/merge claimed.",
+      "Featurebranch origin/feat/project-settings pushed and remoteSHAverified fd36862580558b7c0daf0c57082f3e9eedc4e310. Tested runtime source unchanged; this documentation receipt records actual delivery. No section PR or merge."
     ]
   }
 }

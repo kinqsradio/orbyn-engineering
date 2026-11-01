@@ -70,7 +70,8 @@ The active section branch is `feat/project-settings` in the
 implement selected Name CAS, registered Checkouts and removal, checked project
 images/automatic badges, bounded config reads, descendant-safe family removal and
 isolated test-provider discovery. Contract changes include their generated TS.
-This section is committed locally; its feature-branch push follows these checks. No section PR is open. Delivery remains section or
+This section is pushed to `origin/feat/project-settings`; remote head `fd36862`
+was verified after the checked commits. No section PR is open. Delivery remains section or
 about-20-row grouping, with separate commits and green exact-head merge gates.
 
 Final local Rust: 1043 passed, 9 existing ignored; formatting and workspace
@@ -597,3 +598,9 @@ Receipts: `target/project-settings-isolated-final-rust-receipt.json` and
 `target/project-settings-isolated-final-e2e.log`. The daemon stayed at SHA-256
 `5426c8ff5a4b3f714d412f67f643d41a4c70b8f1b4cf0a6dfc3107c1454ec2ec`.
 This is local fixture qualification, not new Windows/native or hosted CI evidence.
+
+The section branch was pushed after local gates passed, with remote
+`refs/heads/feat/project-settings` verified at `fd36862580558b7c0daf0c57082f3e9eedc4e310`.
+This delivery receipt is documentation only; the tested runtime source is unchanged.
+No section PR or hosted current-head qualification is claimed. Continue the same
+branch with the unfinished settings slices before the section/about-20-row PR.
