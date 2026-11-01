@@ -3,6 +3,10 @@
 //! ignores OAuth, is never passed. Permissions reach Orbyn through the per-run
 //! MCP `approve` tool, not through this process's stdio.
 
+mod usage;
+
+use usage::parse_usage_report;
+
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::Path;
@@ -16,8 +20,9 @@ use orbyn_contracts::{
     ModelOptionValue, ProviderInstance, SkillDelivery, ThreadUsage,
 };
 use serde_json::{Value, json};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::sync::mpsc;
+use tokio_util::codec::{FramedRead, LinesCodec};
 use tokio_util::sync::CancellationToken;
 
 use super::pipes::{
@@ -38,6 +43,8 @@ use crate::util::{new_id, write_private};
 const EXIT_GRACE: Duration = Duration::from_secs(3);
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 const INITIALIZE_ID: &str = "orbyn-capabilities";
+const USAGE_ID: &str = "orbyn-usage";
+const USAGE_TIMEOUT: Duration = Duration::from_secs(4);
 /// More than any real reply. A process that keeps talking is not answering.
 const MAX_INITIALIZE_BYTES: usize = 4 * 1024 * 1024;
 /// Efforts the docs name, for the stand-in list only.
@@ -229,6 +236,10 @@ impl EngineDriver for ClaudeDriver {
         }))
     }
 
+    async fn limits(&self) -> Result<Option<Value>> {
+        parse_usage_report(&self.control_probe(true).await?)
+    }
+
     /// The list follows the CLI and its login: signing in changes which models
     /// appear, and an update can change everything.
     async fn catalog_key(&self) -> Option<String> {
@@ -288,6 +299,10 @@ impl ClaudeDriver {
     /// Reads the CLI's `initialize` response from a process that never gets a
     /// prompt, in an empty folder of its own.
     async fn initialize(&self) -> Result<Value> {
+        self.control_probe(false).await
+    }
+
+    async fn control_probe(&self, usage: bool) -> Result<Value> {
         let command = resolve_engine(&self.program)?;
         let dir = ProbeDir::new()?;
         let mcp_config = dir.path().join("mcp.json");
@@ -302,43 +317,71 @@ impl ClaudeDriver {
         )?;
         let args = capability_args(&mcp_config, &settings);
         let mut process = spawn_engine_with(&command, &args, dir.path(), CAPABILITY_ENV)?;
-        let frame = json!({
-            "type": "control_request",
-            "request_id": INITIALIZE_ID,
-            "request": { "subtype": "initialize" },
-        });
-        process
-            .stdin
-            .write_all(format!("{frame}\n").as_bytes())
-            .await?;
-        process.stdin.flush().await?;
-        let answer = tokio::time::timeout(INITIALIZE_TIMEOUT, read_initialize(process.stdout));
-        let response = answer.await.map_err(|_| {
-            CoreError::EngineUnavailable("Claude Code did not say what it offers in time.".into())
-        })?;
-        match response {
-            Some(response) => Ok(response),
-            None => {
-                let status = process.child.wait().await.ok();
-                Err(CoreError::EngineUnavailable(
-                    exit_message(status, &process.stderr).await,
-                ))
+        let mut stream = FramedRead::new(
+            process.stdout,
+            LinesCodec::new_with_max_length(MAX_INITIALIZE_BYTES),
+        );
+        let response = async {
+            let requests = if usage {
+                vec![
+                    (INITIALIZE_ID, "initialize", INITIALIZE_TIMEOUT),
+                    (USAGE_ID, "get_usage", USAGE_TIMEOUT),
+                ]
+            } else {
+                vec![(INITIALIZE_ID, "initialize", INITIALIZE_TIMEOUT)]
+            };
+            let mut answer = Value::Null;
+            for (id, subtype, deadline) in requests {
+                let frame = json!({ "type": "control_request", "request_id": id,
+                    "request": { "subtype": subtype } });
+                answer = tokio::time::timeout(deadline, async {
+                    process
+                        .stdin
+                        .write_all(format!("{frame}\n").as_bytes())
+                        .await?;
+                    process.stdin.flush().await?;
+                    read_control(&mut stream, id).await
+                })
+                .await
+                .map_err(|_| probe_failed())??;
             }
+            Ok(answer)
         }
+        .await;
+        drop(process.stdin);
+        drop(stream);
+        // A control-only probe has no turn to preserve. Always stop and reap it,
+        // including malformed replies and deadline failures, before its cwd goes.
+        process.child.terminate();
+        if !matches!(
+            tokio::time::timeout(EXIT_GRACE, process.child.wait()).await,
+            Ok(Ok(_))
+        ) && !matches!(
+            tokio::time::timeout(EXIT_GRACE, process.child.child_mut().kill()).await,
+            Ok(Ok(()))
+        ) {
+            return Err(probe_failed());
+        }
+        response
     }
 }
 
-/// The body of the matching `control_response`, or `None` if the stream ended. The
-/// reply carries account details, so it is never logged, and only the fields
-/// `parse_capabilities` names leave this file.
-async fn read_initialize(stdout: tokio::process::ChildStdout) -> Option<Value> {
-    let mut stream = lines(stdout);
+fn probe_failed() -> CoreError {
+    CoreError::EngineUnavailable("Claude Code did not report a usable control response.".into())
+}
+
+/// Read only the matching success body. Never return a CLI error payload or log
+/// frames: initialization and usage replies may also carry account information.
+async fn read_control<R: AsyncRead + Unpin>(
+    stream: &mut FramedRead<R, LinesCodec>,
+    id: &str,
+) -> Result<Value> {
     let mut seen = 0;
     while let Some(line) = stream.next().await {
-        let Ok(line) = line else { continue };
-        seen += line.len();
+        let line = line.map_err(|_| probe_failed())?;
+        seen += line.len() + 1;
         if seen > MAX_INITIALIZE_BYTES {
-            return None;
+            return Err(probe_failed());
         }
         let Ok(frame) = serde_json::from_str::<Value>(&line) else {
             continue;
@@ -346,13 +389,22 @@ async fn read_initialize(stdout: tokio::process::ChildStdout) -> Option<Value> {
         if frame.get("type").and_then(Value::as_str) != Some("control_response") {
             continue;
         }
-        let reply = frame.get("response")?;
-        if reply.get("request_id").and_then(Value::as_str) != Some(INITIALIZE_ID) {
+        let Some(reply) = frame.get("response") else {
+            continue;
+        };
+        if reply.get("request_id").and_then(Value::as_str) != Some(id) {
             continue;
         }
-        return reply.get("response").cloned();
+        if reply.get("subtype").and_then(Value::as_str) != Some("success") {
+            return Err(probe_failed());
+        }
+        return reply
+            .get("response")
+            .filter(|body| body.is_object())
+            .cloned()
+            .ok_or_else(probe_failed);
     }
-    None
+    Err(probe_failed())
 }
 
 /// Turns an `initialize` response into a catalog. Each model's effort list is its
@@ -1050,6 +1102,65 @@ fn result_outcome(frame: &Value) -> EngineOutcome {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn control_replies_match_ids_and_bound_untrusted_frames() {
+        let wire = format!(
+            "{}\n{}\n",
+            json!({ "type": "control_response", "response": {
+            "subtype": "success", "request_id": "other", "response": { "account": "PRIVATE-MARKER" } } }),
+            json!({ "type": "control_response", "response": { "subtype": "success", "request_id": USAGE_ID,
+                "response": { "rate_limits_available": false } } })
+        );
+        let mut stream = FramedRead::new(
+            wire.as_bytes(),
+            LinesCodec::new_with_max_length(MAX_INITIALIZE_BYTES),
+        );
+        assert_eq!(
+            read_control(&mut stream, USAGE_ID).await.unwrap(),
+            json!({ "rate_limits_available": false })
+        );
+        let oversized = vec![b'x'; MAX_INITIALIZE_BYTES + 1];
+        let mut stream = FramedRead::new(
+            oversized.as_slice(),
+            LinesCodec::new_with_max_length(MAX_INITIALIZE_BYTES),
+        );
+        assert!(read_control(&mut stream, USAGE_ID).await.is_err());
+        let error = format!(
+            "{}\n",
+            json!({ "type": "control_response", "response": {
+            "subtype": "error", "request_id": USAGE_ID, "error": "PRIVATE-MARKER" } })
+        );
+        let mut stream = FramedRead::new(
+            error.as_bytes(),
+            LinesCodec::new_with_max_length(MAX_INITIALIZE_BYTES),
+        );
+        assert!(
+            !read_control(&mut stream, USAGE_ID)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("PRIVATE-MARKER")
+        );
+    }
+
+    #[test]
+    fn quota_events_only_reject_the_turn_when_the_cli_says_rejected() {
+        assert!(
+            rejected_limit(
+                &json!({ "rate_limit_info": { "status": "allowed", "utilization": 0.8 } })
+            )
+            .is_none()
+        );
+        assert!(matches!(
+            rejected_limit(
+                &json!({ "rate_limit_info": { "status": "rejected", "resetsAt": 1800000000 } })
+            ),
+            Some(EngineEvent::Limited {
+                resets_at: Some(1800000000)
+            })
+        ));
+    }
 
     fn spec() -> RunSpec {
         RunSpec {
