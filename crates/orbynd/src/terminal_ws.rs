@@ -269,7 +269,8 @@ async fn serve(
                 }
             },
             message = receiver.next() => match message {
-                Some(Ok(Message::Binary(_) | Message::Text(_))) if observe => {}
+                Some(Ok(Message::Binary(_) | Message::Text(_)))
+                    if !input_allowed(observe, session.is_alive(), *output_state.borrow()) => {}
                 Some(Ok(Message::Binary(bytes))) => {
                     if session.write(&bytes).is_err() {
                         break;
@@ -339,10 +340,24 @@ fn queued_output(
     }
 }
 
+fn input_allowed(observe: bool, child_alive: bool, output_state: PtyOutputState) -> bool {
+    !observe && child_alive && output_state == PtyOutputState::Reading
+}
+
 #[cfg(test)]
 mod tests {
     use super::next_output;
     use orbyn_core::terminal::PtyOutputState;
+
+    #[test]
+    fn draining_output_does_not_extend_input_or_resize_authority() {
+        use super::input_allowed;
+        assert!(input_allowed(false, true, PtyOutputState::Reading));
+        assert!(!input_allowed(true, true, PtyOutputState::Reading));
+        assert!(!input_allowed(false, false, PtyOutputState::Reading));
+        assert!(!input_allowed(false, true, PtyOutputState::Ended));
+        assert!(!input_allowed(false, true, PtyOutputState::Closed));
+    }
 
     #[tokio::test]
     async fn child_exit_does_not_discard_pending_pty_output() {

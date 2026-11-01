@@ -351,7 +351,9 @@ the existing connection.
 Child exit does not close a terminal's output socket. The PTY reader records
 natural output completion only after its last scrollback and broadcast append;
 the socket drains queued chunks before closing. Late observers replay the retained
-scrollback and close when that stream has ended. Broadcast overflow retains the
+scrollback and close when that stream has ended. Writes and resizes require a live
+direct child and an open output stream; draining retained output grants no input
+authority, and observers remain read-only. Broadcast overflow retains the
 bounded latest chunks and emits an internal diagnostic, not a complete-history
 guarantee. Explicit terminal close or thread cleanup ends observation promptly
 even if an inherited PTY descriptor delays EOF. Process termination retains its
