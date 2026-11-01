@@ -265,7 +265,13 @@ async fn update_is_refused_while_a_run_is_active_and_removal_with_work_needs_con
             ..Options::default()
         },
     );
-    service.send("/api/workspace/setup", json!({})).await;
+    let (code, workspace) = service.send("/api/workspace/setup", json!({})).await;
+    assert_eq!(code, 200, "workspace setup: {workspace}");
+    assert!(workspace["library"]["snapshot"].is_null(), "{workspace}");
+    assert_eq!(
+        workspace["library"]["upstream"], "origin/main",
+        "{workspace}"
+    );
     let (_, project) = service
         .send("/api/projects/create", json!({ "name": "app" }))
         .await;
