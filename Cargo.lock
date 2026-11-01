@@ -1005,6 +1005,7 @@ dependencies = [
  "ed25519-dalek",
  "futures-util",
  "getrandom 0.3.4",
+ "icu_properties",
  "libc",
  "orbyn-contracts",
  "portable-pty",
@@ -1022,6 +1023,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "ulid",
+ "unicode-segmentation",
  "windows-sys 0.61.2",
 ]
 
@@ -2048,6 +2050,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "untrusted"

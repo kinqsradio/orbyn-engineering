@@ -243,6 +243,9 @@ async fn checkout(
         physical_key: opaque("checkout", &[&project.path]),
         project_id: project.id,
         name: project.name,
+        project_icon: project.project_icon,
+        favicon_path: project.favicon_path,
+        metadata_revision: project.metadata_revision,
         path: None,
         repository_key: None,
         repository_label: None,
@@ -462,15 +465,48 @@ pub(crate) fn fence_members(
 // ECMAScript WhiteSpace and LineTerminator, matching the reference Name field.
 // Rust trim includes NEL and omits BOM, so its Unicode predicate is different.
 fn trim_project_title(name: &str) -> &str {
-    name.trim_matches(|c| {
-        matches!(c,
-        '\u{0009}'..='\u{000D}' | '\u{0020}' | '\u{00A0}' | '\u{1680}' |
-        '\u{2000}'..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' |
-        '\u{205F}' | '\u{3000}' | '\u{FEFF}')
-    })
+    crate::project_icon_override::js_trim(name)
 }
 
 impl Core {
+    pub async fn change_project_icon(
+        &self,
+        request: &orbyn_contracts::ChangeProjectIcon,
+    ) -> Result<Vec<Project>> {
+        if request.expected_revisions.is_empty() || request.expected_revisions.len() > MAX_PROJECTS
+        {
+            return Err(CoreError::Invalid(
+                "Choose the selected projects once.".into(),
+            ));
+        }
+        for revision in request.expected_revisions.values() {
+            crate::project_icon_override::revision(revision)?;
+        }
+        let icon = request
+            .icon
+            .as_ref()
+            .map(crate::project_icon_override::validate)
+            .transpose()?;
+        let catalog = self.project_scope_catalog(&request.scope).await?;
+        if request.membership_version != catalog.version {
+            return Err(CoreError::SettingsConflict);
+        }
+        let ids = selected_members(&catalog)?;
+        if ids.is_empty() {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+        if ids.iter().collect::<BTreeSet<_>>()
+            != request.expected_revisions.keys().collect::<BTreeSet<_>>()
+        {
+            return Err(CoreError::SettingsConflict);
+        }
+        self.store.change_selected_project_icon(
+            &catalog,
+            &self.workspace.root()?,
+            &request.expected_revisions,
+            &icon,
+        )
+    }
     /// Rename only an explicitly selected, still-current set of physical projects.
     pub async fn rename_selected_projects(
         &self,

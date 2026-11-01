@@ -169,6 +169,9 @@ impl Store {
                 created_at: now(),
                 managed: new.managed,
                 scratch: new.scratch,
+                project_icon: None,
+                favicon_path: None,
+                metadata_revision: "0".into(),
             };
             tx.execute(
                 "INSERT INTO projects (id, name, path, trusted, is_git, created_at, managed,
@@ -204,18 +207,24 @@ impl Store {
             .ok_or_else(|| CoreError::NotFound("project".into()))
     }
 
-    /// Records the trust decision, audit first, in one transaction.
+    /// Return the committed name and revision without a second, racing read.
     pub fn rename_project(&self, id: &str, name: &str) -> Result<Project> {
-        let changed = self.commit(|tx, _| {
-            Ok(tx.execute(
-                "UPDATE projects SET name = ?2 WHERE id = ?1",
-                params![id, name],
-            )?)
-        })?;
-        if changed == 0 {
-            return Err(CoreError::NotFound("project".into()));
-        }
-        self.project(id)
+        self.commit(|tx, _| {
+            let project = tx
+                .query_row("SELECT * FROM projects WHERE id=?1", [id], project_row)
+                .optional()?
+                .ok_or_else(|| CoreError::NotFound("project".into()))?;
+            let revision = crate::project_icon_override::revision(&project.metadata_revision)?
+                .checked_add(1)
+                .ok_or_else(|| {
+                    CoreError::Invalid("Project metadata revision is exhausted.".into())
+                })?;
+            tx.execute(
+                "UPDATE projects SET name=?2, metadata_revision=?3 WHERE id=?1",
+                params![id, name, revision],
+            )?;
+            Ok(tx.query_row("SELECT * FROM projects WHERE id=?1", [id], project_row)?)
+        })
     }
 
     pub fn trust_project(&self, id: &str, actor: &str) -> Result<Project> {
@@ -336,17 +345,33 @@ impl Store {
     /// Makes a scratch folder an ordinary project for every thread in it.
     pub fn adopt_scratch(&self, project_id: &str, name: &str) -> Result<Project> {
         self.commit(|tx, _| {
+            let project = tx
+                .query_row(
+                    "SELECT * FROM projects WHERE id=?1",
+                    [project_id],
+                    project_row,
+                )
+                .optional()?
+                .ok_or_else(|| CoreError::NotFound("project".into()))?;
+            let revision = crate::project_icon_override::revision(&project.metadata_revision)?
+                .checked_add(1)
+                .ok_or_else(|| {
+                    CoreError::Invalid("Project metadata revision is exhausted.".into())
+                })?;
             tx.execute(
-                "UPDATE projects SET scratch = 0, name = ?2 WHERE id = ?1",
-                params![project_id, name],
+                "UPDATE projects SET scratch = 0, name = ?2, metadata_revision = ?3 WHERE id = ?1",
+                params![project_id, name, revision],
             )?;
             tx.execute(
                 "UPDATE threads SET scratch = 0 WHERE project_id = ?1",
                 [project_id],
             )?;
-            Ok(())
-        })?;
-        self.project(project_id)
+            Ok(tx.query_row(
+                "SELECT * FROM projects WHERE id=?1",
+                [project_id],
+                project_row,
+            )?)
+        })
     }
 
     pub fn thread(&self, id: &str) -> Result<Thread> {
@@ -674,6 +699,19 @@ fn parse_json<T: DeserializeOwned>(index: usize, text: &str) -> rusqlite::Result
 }
 
 fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
+    let stored_icon: Option<String> = row.get("project_icon")?;
+    let project_icon = stored_icon
+        .as_deref()
+        .map(crate::project_icon_override::read_stored)
+        .transpose()
+        .map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?
+        .flatten();
     Ok(Project {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -683,6 +721,9 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
         created_at: row.get("created_at")?,
         managed: row.get("managed")?,
         scratch: row.get("scratch")?,
+        project_icon,
+        favicon_path: row.get("favicon_path")?,
+        metadata_revision: row.get::<_, i64>("metadata_revision")?.to_string(),
     })
 }
 

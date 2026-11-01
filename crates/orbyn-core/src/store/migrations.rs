@@ -22,7 +22,17 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (18, PROJECT_SETUP),
     (19, PREPARATION_RETRY),
     (20, WORKTREE_CLEANUP),
+    (21, PROJECT_ICONS),
 ];
+
+// Older writers cannot honor icon metadata/revisions. Existing names and project
+// authority remain unchanged; old schemas refuse this version before writing.
+const PROJECT_ICONS: &str = r#"
+ALTER TABLE projects ADD COLUMN project_icon TEXT;
+ALTER TABLE projects ADD COLUMN favicon_path TEXT;
+ALTER TABLE projects ADD COLUMN metadata_revision INTEGER NOT NULL DEFAULT 0
+    CHECK(typeof(metadata_revision) = 'integer' AND metadata_revision >= 0);
+"#;
 
 // Semantic writer fence: older cleanup writers ignore project Off/Custom and
 // could remove a protected worktree. Preserve all existing values; schema 19

@@ -86,8 +86,8 @@ normally; the historical OpenCode writer PID is unproven.
 Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
 doable out of 534 included. K6 and K7 moved from open to partial as tested slices
 landed locally; no checkbox or platform completion is inferred from that change.
-K7's persisted icon/image controls and K5's full model defaults are the next code
-slices. Native/tool stops and missing release inputs below remain in force.
+K7's structured icon picker is the current local slice; saved-image selection
+and K5's full model defaults remain next. Native/tool stops and missing release inputs below remain in force.
 
 ### Initial PR queue
 
@@ -604,3 +604,27 @@ The section branch was pushed after local gates passed, with remote
 This delivery receipt is documentation only; the tested runtime source is unchanged.
 No section PR or hosted current-head qualification is claimed. Continue the same
 branch with the unfinished settings slices before the section/about-20-row PR.
+
+
+### Current structured project icon slice
+
+The current local K7 implementation adds Lucide, emoji and monogram choices,
+selected-member revision fences and explicit-null Reset. Schema 21 preserves
+existing projects while introducing nullable icon/image metadata and a shared
+revision advanced by selected Name, legacy rename and scratch promotion. Known
+commits update shared badges; optional images are invalidated on metadata changes.
+Conflicts retain drafts and require explicit Reload before another save. Direct
+API text remains case-preserving, while the picker applies the reference input
+normalization. Generated wire types include explicit nullable icon/image fields.
+
+Focused qualification passed six real-service browser cases and two additional
+screenshot captures covering all three picker modes. Web type/lint checks, 335
+unit tests and the production build pass. Final production workspace Clippy and
+formatting pass. The full workspace on final production code passed 1055 Rust
+tests, with 9 existing ignored; the additional populated-migration test was added
+after that compilation; all eight final metadata cases passed separately with
+the archived writer enabled, including populated migration. The default 240-case
+browser suite is still running. A real populated schema-20 fixture passed the
+live-old-writer fence, preservation through migration and a new schema-21 write. No native/Windows or hosted current-head qualification is inferred.
+K7 remains partial for image selection and final platform evidence. This slice
+is local and has not yet been pushed.

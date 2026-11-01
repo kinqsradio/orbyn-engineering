@@ -641,9 +641,11 @@ scratch and library roots are refused. A bounded authenticated JSON result carri
 optional base64 image bytes, a closed media type, source, relative path and a
 revision of the bytes plus MIME. The client constructs only a fixed image data
 URL, never injects SVG markup and never follows a caller-supplied asset URL.
-Project-file hints precede ordered automatic candidates and supported local source
-hints. No website is fetched or source executed. Saved icon overrides and image
-selection are separate unfinished metadata writers, not inferred from this read.
+Structured project icon overrides take display priority over passive images. For
+image resolution, a stored relative image path precedes project-file hints, ordered
+automatic candidates and supported local source hints; it passes the same checked
+registered-root reader. No website is fetched or source executed. Image selection
+remains unfinished; the structured icon writer does not grant external file access.
 
 Image input/output is bounded to 1 MiB; config/source text is bounded to 256 KiB
 per file and a 2 MiB aggregate source budget. Reads probe one extra byte to catch
@@ -663,7 +665,8 @@ Successful images expire after ten minutes; misses, errors and decode failures
 retry after one minute. Optional image requests have a 30-second deadline; timeout
 replaces the observation so an eventual old reply cannot publish, even when its
 transport ignores abort. A single unmount cannot cancel another badge's read.
-Root changes/removal and reconnect invalidate matching observations; routine
+Root changes/removal, structured icon or saved image changes, and reconnect
+invalidate matching observations; routine
 four-second project polling does not bypass the cache lifetime. No image bytes
 enter project lists, local storage or persisted UI state. Automatic fallback identity
 uses the normalized display name alone: Unicode letter/number words choose the
@@ -672,12 +675,41 @@ first word's last letter; uppercasing keeps two code points. A normalized en-US
 lowercase polynomial selects the reference's 18 named colors. The shared project
 badge owns this behavior without changing unrelated monogram helpers.
 
+Project Icon edits use the same selected physical-member fence as Name, with an
+observed membership version and exact decimal-string metadata revision per member.
+All comparisons precede writes in one immediate transaction; a stale member rejects
+the entire group. A set or explicit-null Reset changes only the structured icon,
+clears its saved image path and advances the revision. Missing `icon` is invalid.
+Known icon kinds are Lucide name plus one of 18 colors, emoji text, and monogram
+text plus color. Core applies JavaScript trim and UTF-16 limits, preserves direct
+API case/normalization, and limits command monograms to two extended graphemes
+with Unicode letter/number/mark/joiner rules. Unknown stored future kinds use the
+automatic display fallback; malformed known stored values fail explicitly.
+
+The picker freezes membership, physical IDs and revisions when opened. Cancel
+has no write. A conflict retains the draft and requires explicit reload before
+another save; a late response cannot replace a different selection's dialog.
+Committed rows update the workspace separately from subsequent catalog-read errors.
+The picker normalizes monogram input with NFKC and uppercasing; the renderer keeps
+received text unchanged. Package-owned Lucide loaders have a bounded component
+lifetime and unknown names use FolderCode. Saved image picking and native chooser
+qualification remain separate work.
+
+Schema 21 adds nullable `project_icon` JSON and `favicon_path`, and a nonnegative
+integer `metadata_revision` initially zero; wire revisions are decimal strings.
+Existing rows and unrelated columns remain intact. Selected Name, legacy Name and
+Icon writers advance this shared revision, using partial-column updates rather
+than replacing project rows. The existing exclusive data-directory service lock
+serializes old/new live writers. A schema-20 binary must refuse a schema-21 database
+before WAL setup or migration. Recovery requires the current writer or a complete
+pre-upgrade backup; never lower the schema marker or run the old writer on it.
+
 Project Name edits require an explicit group or checkout, its observed catalog
 version and the raw expected name of every selected physical member. Core matches
 JavaScript trim whitespace and rejects an empty result without a title-specific
 length limit. Aggregate rename fan-out/serialized response is bounded to 4 MiB,
 independently of the 512-target and transport-body limits. A dedicated immediate transaction rechecks all registered physical
-IDs/paths and every expected name before updating names only. Any conflict rejects
+IDs/paths and every expected name before updating the name and advancing the shared metadata revision. Any conflict rejects
 the entire group. Trust, folders, project files and other metadata are unchanged.
 The response contains committed rows from that transaction; subsequent catalog
 refresh is a separate read. Single-member groups display the physical title;
@@ -1490,6 +1522,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
 | `GET /api/projects/:id/icon` | `ProjectIconImage`; bounded passive registered-root metadata, no path or URL argument |
+| `POST /api/settings/projects/icon` | `ChangeProjectIcon` → `Project[]`; selected structured icon/reset with membership and metadata revision compare-and-set |
 | `POST /api/settings/projects/rename` | `RenameSelectedProjects` → `Project[]`; selected names with membership and raw-name compare-and-set |
 | `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |

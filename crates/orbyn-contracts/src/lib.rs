@@ -25,10 +25,40 @@ macro_rules! wire_enum {
     };
 }
 
+fn initial_project_metadata_revision() -> String {
+    "0".into()
+}
+
+wire_enum! {
+pub enum ProjectIconColor {
+    Gray, Red, Orange, Amber, Yellow, Lime, Green, Emerald, Teal,
+    Cyan, Sky, Blue, Indigo, Violet, Purple, Fuchsia, Pink, Rose,
+}
+}
+
+wire! {
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectIconOverride {
+    Lucide { name: String, color: ProjectIconColor },
+    Emoji { emoji: String },
+    Monogram { text: String, color: ProjectIconColor },
+}
+}
+
 wire! {
 pub struct Project {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub project_icon: Option<ProjectIconOverride>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub favicon_path: Option<String>,
+    /// Decimal storage revision, never a JavaScript floating-point counter.
+    #[serde(default = "initial_project_metadata_revision")]
+    #[ts(optional, as = "Option<String>")]
+    pub metadata_revision: String,
     pub path: String,
     /// Engines refuse to start until a person trusts this folder.
     pub trusted: bool,
@@ -115,8 +145,26 @@ pub struct RenameSelectedProjects {
 }
 }
 
+fn explicit_project_icon<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<ProjectIconOverride>, D::Error> {
+    Option::<ProjectIconOverride>::deserialize(deserializer)
+}
+
+wire! {
+#[serde(deny_unknown_fields)]
+/// Explicit null resets both structured and saved-image overrides.
+pub struct ChangeProjectIcon {
+    pub scope: ProjectScopesQuery,
+    pub membership_version: String,
+    pub expected_revisions: BTreeMap<String, String>,
+    #[serde(deserialize_with = "explicit_project_icon")]
+    pub icon: Option<ProjectIconOverride>,
+}
+}
+
 wire_enum! {
-pub enum ProjectIconSource { ProjectFile, Automatic }
+pub enum ProjectIconSource { SavedImage, ProjectFile, Automatic }
 }
 
 wire_enum! {
@@ -162,6 +210,15 @@ pub struct ProjectScopeCheckout {
     pub project_id: String,
     pub physical_key: String,
     pub name: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub project_icon: Option<ProjectIconOverride>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub favicon_path: Option<String>,
+    #[serde(default = "initial_project_metadata_revision")]
+    #[ts(optional, as = "Option<String>")]
+    pub metadata_revision: String,
     pub path: Option<String>,
     pub repository_key: Option<String>,
     pub repository_label: Option<String>,
@@ -3230,4 +3287,27 @@ pub struct ScopedPreferencesResult {
     pub catalog: ProjectScopeCatalog,
     pub rows: Vec<ScopedPreferenceRow>,
 }
+}
+
+#[cfg(test)]
+mod project_icon_request_tests {
+    use super::*;
+    #[test]
+    fn icon_reset_requires_explicit_null_and_a_typed_revision_map() {
+        let base = serde_json::json!({"scope":{},"membership_version":"v","expected_revisions":{"project":"0"}});
+        assert!(serde_json::from_value::<ChangeProjectIcon>(base.clone()).is_err());
+        let mut reset = base.clone();
+        reset["icon"] = Value::Null;
+        assert!(
+            serde_json::from_value::<ChangeProjectIcon>(reset.clone())
+                .unwrap()
+                .icon
+                .is_none()
+        );
+        reset["expected_revisions"]["project"] = serde_json::json!(0);
+        assert!(serde_json::from_value::<ChangeProjectIcon>(reset).is_err());
+        let mut unknown = base;
+        unknown["icon"] = serde_json::json!({"kind":"future"});
+        assert!(serde_json::from_value::<ChangeProjectIcon>(unknown).is_err());
+    }
 }

@@ -187,6 +187,13 @@ pub async fn project_scopes(
     Ok(Json(state.core.project_scope_catalog(&query).await?))
 }
 
+pub async fn change_project_icon(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::ChangeProjectIcon>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.change_project_icon(&body).await?))
+}
+
 pub async fn rename_selected_projects(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<orbyn_contracts::RenameSelectedProjects>,

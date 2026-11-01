@@ -433,7 +433,16 @@ impl Core {
         let library = self.workspace.root()?;
         let project = self.store.project(project_id)?;
         let mut scope = ImageScope::new(&project, &library)?;
-        let image = scope.resolve().await?;
+        let saved = match project.favicon_path.as_deref() {
+            Some(path) if !Path::new(path).is_absolute() => {
+                scope.image(path, ProjectIconSource::SavedImage).await?
+            }
+            _ => None,
+        };
+        let image = match saved {
+            Some(image) => Some(image),
+            None => scope.resolve().await?,
+        };
         let current = self.store.project(project_id)?;
         if current.path != project.path
             || current.scratch

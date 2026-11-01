@@ -12,6 +12,7 @@ base64 = "0.22"
 ed25519-dalek.workspace = true
 futures-util.workspace = true
 getrandom.workspace = true
+icu_properties = "=2.4.0"
 portable-pty.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
@@ -26,6 +27,7 @@ tokio-tungstenite.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 ulid.workspace = true
+unicode-segmentation = "=1.13.3"
 tar = { version = "0.4", default-features = false }
 
 [target.'cfg(unix)'.dependencies]

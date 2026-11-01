@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import * as projectImages from "../lib/projectImages";
+import { projects } from "../../mock/fixtures";
 import type { Approval } from "../api/types";
 import { useWorkspace } from "./workspace";
 
@@ -46,4 +48,25 @@ describe("workspace store", () => {
     expect(useWorkspace.getState().approvals.data).toEqual([]);
     expect(useWorkspace.getState().receipts.a?.state).toBe("allowed");
   });
+});
+
+
+it("invalidates passive image observations when committed or polled icon metadata changes", async () => {
+  const project = { ...projects[0]!, project_icon: null, favicon_path: null };
+  useWorkspace.setState({ projects: { data: [project], error: null, loading: false } });
+  const invalidateProjectImages = vi.spyOn(projectImages, "invalidateProjectImages");
+  useWorkspace.getState().putProject({ ...project, name: "Renamed", metadata_revision: "1" });
+  expect(invalidateProjectImages).not.toHaveBeenCalled();
+  const icon = { kind: "emoji" as const, emoji: "🚀" };
+  useWorkspace.getState().putProject({ ...project, project_icon: icon, metadata_revision: "2" });
+  expect(invalidateProjectImages).toHaveBeenCalledExactlyOnceWith(project.id);
+  vi.mocked(invalidateProjectImages).mockClear();
+  const spy = vi.spyOn(api, "projects").mockResolvedValue([{ ...project, metadata_revision: "3" }]);
+  try {
+    await useWorkspace.getState().refreshProjects();
+    expect(invalidateProjectImages).toHaveBeenCalledExactlyOnceWith(project.id);
+    vi.mocked(invalidateProjectImages).mockClear();
+    await useWorkspace.getState().refreshProjects();
+    expect(invalidateProjectImages).not.toHaveBeenCalled();
+  } finally { spy.mockRestore(); invalidateProjectImages.mockRestore(); }
 });

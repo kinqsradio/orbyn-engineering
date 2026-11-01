@@ -1,5 +1,5 @@
 import { Info, Trash2, TriangleAlert } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiFailure, api, request } from "../../api/client";
 import type { LibraryStatus, Thread } from "../../api/types";
 import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
@@ -16,6 +16,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button, Pill } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Loading } from "../../ui/states";
+import { ProjectIconSetting } from "./ProjectIconSetting";
 
 const short = (revision: string | null) => revision?.slice(0, 8) ?? "Unknown";
 
@@ -148,13 +149,14 @@ type NameRead = {
 type NameForm = { read: NameRead; draft: string; dirty: boolean; rebase: boolean };
 
 /** A name draft belongs to the physical members and read that supplied it. */
-function ProjectName({ query, catalog, group, members, disabled, reload }: {
+function ProjectName({ query, catalog, group, members, disabled, reload, children }: {
   query: ProjectScopesQuery;
   catalog: ProjectScopeCatalog;
   group: ProjectScopeGroup;
   members: ProjectScopeCheckout[];
   disabled: boolean;
   reload(): void;
+  children?: ReactNode;
 }) {
   const current = useMemo<NameRead>(() => ({ catalog, label: group.label,
     expectedNames: Object.fromEntries(members.map((member) => [member.project_id, member.name])),
@@ -225,7 +227,7 @@ function ProjectName({ query, catalog, group, members, disabled, reload }: {
         onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && !event.repeat) {
           event.preventDefault(); event.currentTarget.blur();
         } }} />
-    </SettingRow></div>
+    </SettingRow>{children}</div>
   </section>;
 }
 
@@ -387,7 +389,9 @@ function ProjectSelection() {
         : "This project is no longer available."}</p> : !group ?
       <p className="setting-line-desc">Choose a project to manage its name, icon, checkouts and actions.</p> : <>
         <p className="banner"><Info size={16} aria-hidden />Can't find a setting? Keep this project picked above and hop to any other settings page.</p>
-        <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload} />
+        <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload}>
+          <ProjectIconSetting query={scope.query} catalog={catalog} members={members} projectName={group.label} disabled={blocked} loading={scope.loading} reload={scope.reload} />
+        </ProjectName>
         <fieldset className="preference-control" disabled={blocked}>
           <PreferenceGroups groups={[{ title: "New threads", rows: [{ key: "default_thread_env_mode", title: "Workspace", inheritance: true,
             description: "Where new threads in this project start.", render: (value, save, control) =>

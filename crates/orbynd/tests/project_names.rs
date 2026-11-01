@@ -83,6 +83,15 @@ async fn group_name_changes_only_selected_names_and_preserves_paths_trust_and_fi
         let after = rows.iter().find(|p| p["id"] == before["id"]).unwrap();
         let mut expected = before.clone();
         expected["name"] = json!("界🌿".repeat(150));
+        expected["metadata_revision"] = json!(
+            (before["metadata_revision"]
+                .as_str()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap()
+                + 1)
+            .to_string()
+        );
         assert_eq!(after, &expected);
         assert!(Path::new(after["path"].as_str().unwrap()).is_dir());
     }

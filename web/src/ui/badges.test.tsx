@@ -62,3 +62,22 @@ it("hides an old image when the registered identity becomes the library", () => 
   expect(rendered.container.querySelector("img")).toBeNull();
   expect(rendered.container.querySelector(".project-monogram")).not.toBeNull();
 });
+
+
+it("structured identities take priority without subscribing to passive images", () => {
+  ready(); images.read.mockReturnValue("data:image/png;base64,aGVsbG8=");
+  const rendered = render(<><ProjectBadge name={normal.name} project={{ ...normal, project_icon: { kind: "emoji", emoji: "🚀✨" } }} />
+    <ProjectBadge name={normal.name} project={{ ...normal, project_icon: { kind: "monogram", text: "aé", color: "teal" } }} /></>);
+  expect(images.subscribe).not.toHaveBeenCalled();
+  expect(rendered.container.querySelector("img")).toBeNull();
+  expect(rendered.container.textContent).toBe("🚀✨aé");
+});
+
+it("resetting a structured override resumes the registered image observation", () => {
+  ready(); images.read.mockReturnValue("data:image/png;base64,aGVsbG8=");
+  const rendered = render(<ProjectBadge name={normal.name} project={{ ...normal, project_icon: { kind: "emoji", emoji: "🚀" } }} />);
+  expect(images.subscribe).not.toHaveBeenCalled();
+  rendered.rerender(<ProjectBadge name={normal.name} project={{ ...normal, project_icon: null }} />);
+  expect(images.subscribe).toHaveBeenCalledTimes(1);
+  expect(rendered.container.querySelector("img")).not.toBeNull();
+});

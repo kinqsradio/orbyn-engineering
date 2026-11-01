@@ -19,6 +19,10 @@ export interface Loadable<T> {
   loading: boolean;
 }
 
+const projectImageChanged = (previous: Project, next: Project) =>
+  JSON.stringify(previous.project_icon ?? null) !== JSON.stringify(next.project_icon ?? null)
+  || (previous.favicon_path ?? null) !== (next.favicon_path ?? null);
+
 const idle = <T>(): Loadable<T> => ({ data: null, error: null, loading: false });
 
 interface WorkspaceState {
@@ -238,7 +242,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (current()) {
         const previous = get().projects;
         for (const project of previous.data ?? []) {
-          if (!data.some((next) => next.id === project.id && next.path === project.path)) invalidateProjectImages(project.id);
+          const next = data.find((entry) => entry.id === project.id);
+          if (!next || next.path !== project.path || projectImageChanged(project, next)) invalidateProjectImages(project.id);
         }
         set({ projects: { data, error: null, loading: false } });
         if (previous.error) invalidateProjectImages();
@@ -358,6 +363,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   putProject(project) {
+    const previous = get().projects.data?.find((entry) => entry.id === project.id);
+    if (previous && projectImageChanged(previous, project)) invalidateProjectImages(project.id);
     set((state) => {
       const list = state.projects.data ?? [];
       const known = list.some((p) => p.id === project.id);

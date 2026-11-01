@@ -2,13 +2,15 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useWorkspace } from "../state/workspace";
 import type { Project } from "../api/types";
 import { projectImageKey, readProjectImage, rejectProjectImage, subscribeProjectImage } from "../lib/projectImages";
+import { ProjectIconVisual } from "../features/settings/ProjectIconVisual";
 import { deriveProjectIdentity } from "../lib/projectIdentity";
 
 export function ProjectBadge({ name, project }: { name: string; project?: Project }) {
   // Registration may arrive before workspace metadata identifies the protected
   // library. Keep automatic identity until its canonical path is known.
   const libraryPath = useWorkspace((state) => state.managed.data?.library?.path);
-  const eligible = libraryPath && project && !project.scratch && project.path !== libraryPath ? project : undefined;
+  const icon = project?.project_icon;
+  const eligible = libraryPath && project && !icon && !project.scratch && project.path !== libraryPath ? project : undefined;
   const id = eligible?.id;
   const path = eligible?.path;
   const key = eligible ? projectImageKey(eligible) : null;
@@ -17,6 +19,7 @@ export function ProjectBadge({ name, project }: { name: string; project?: Projec
   const snapshot = useCallback(() => key ? readProjectImage(key) : null, [key]);
   const image = useSyncExternalStore(subscribe, snapshot, () => null);
   const identity = useMemo(() => deriveProjectIdentity(name), [name]);
+  if (icon) return <ProjectIconVisual icon={icon} />;
   if (image && key) return <span className="badge badge-image" aria-hidden>
     <img src={image} alt="" onError={() => rejectProjectImage(key, image)} />
   </span>;
