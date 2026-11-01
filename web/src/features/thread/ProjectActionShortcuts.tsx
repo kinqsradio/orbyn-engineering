@@ -16,12 +16,15 @@ function useActionRunner(threadId: string) {
     window.addEventListener("hashchange", cancel);
     return () => { cancel(); window.removeEventListener("hashchange", cancel); };
   }, [threadId]);
-  return (id: string) => {
+  const activeThread = () => {
+    const route = parseRoute(window.location.hash);
+    return route.name === "thread" && route.id === threadId && !document.querySelector("dialog[open]");
+  };
+  const run = (id: string) => {
     const observed = epoch.current;
     const requestKey = `${observed}:${id}`;
     const active = () => {
-      const route = parseRoute(window.location.hash);
-      return epoch.current === observed && route.name === "thread" && route.id === threadId && !document.querySelector("dialog[open]");
+      return epoch.current === observed && activeThread();
     };
     if (!active()) return false;
     if (pending.current.has(requestKey)) return true;
@@ -33,10 +36,11 @@ function useActionRunner(threadId: string) {
       .finally(() => { pending.current.delete(requestKey); });
     return true;
   };
+  return { run, activeThread };
 }
 
-function ActionShortcut({ id, run }: { id: string; run(id: string): boolean }) {
-  useCommand(actionCommand(id), () => run(id));
+function ActionShortcut({ id, run, activeThread }: { id: string; run(id: string): boolean; activeThread(): boolean }) {
+  useCommand(actionCommand(id), () => run(id), activeThread);
   return null;
 }
 
@@ -45,16 +49,17 @@ export function ProjectActionShortcuts({ threadId }: { threadId: string }) {
   const scripts = useAsync(`action-shortcuts:${threadId}`, (signal) =>
     request<ProjectFileView>("GET", `/api/threads/${encodeURIComponent(threadId)}/scripts`, undefined, signal));
   const reload = scripts.reload;
-  const run = useActionRunner(threadId);
+  const { run, activeThread } = useActionRunner(threadId);
   useCommand("projectActions.pending", (command) => {
     if (scripts.status === "ready" && !scripts.refreshing) return false;
     const id = command && actionIdFromCommand(command);
     return id ? run(id) : false;
-  });
+  }, (command) => activeThread() && (scripts.status !== "ready" || scripts.refreshing)
+    && Boolean(command && actionIdFromCommand(command)));
   useCommand("projectActions.reload", reload);
   useEffect(() => {
     window.addEventListener("focus", reload);
     return () => window.removeEventListener("focus", reload);
   }, [reload]);
-  return scripts.data?.scripts.map((script) => script.id ? <ActionShortcut key={script.id} id={script.id} run={run} /> : null);
+  return scripts.data?.scripts.map((script) => script.id ? <ActionShortcut key={script.id} id={script.id} run={run} activeThread={activeThread} /> : null);
 }

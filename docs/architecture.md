@@ -406,8 +406,10 @@ does not delete its environment-wide binding, which other projects can share.
 Only this thread's available action commands register handlers. While its catalog
 is still loading, a pressed action shortcut resolves that ID through a fresh Core
 read. A route epoch cancels delayed work on navigation or unmount; modal dialogs
-and repeated keydown events cannot launch actions. Plain action keys do not take
-text input's keystrokes. Menus and shortcuts share execution, select the resulting
+and repeated keydown events cannot launch actions. Terminal key reservation uses
+the dispatcher's live focus and `when` context plus the active thread's handler
+eligibility, including its pending catalog reader. Plain action keys remain terminal
+and text input keystrokes. Menus and shortcuts share execution, select the resulting
 terminal and then apply preview options. Terminal selection is transient viewer
 state and never an authority to run a command. Complete action parity still needs
 preparation retry and final integrated native/Windows qualification.

@@ -27,7 +27,7 @@ import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
-import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { actionShortcutAllowed, FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { actionIdFromCommand } from "../lib/actionCommand";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
@@ -227,6 +227,7 @@ function keyContext(route: Route): WhenContext {
     previewFocus: active?.closest("[data-preview]") != null,
     composerFocus: active?.closest(".composer") != null,
     editableFocus: editing(active),
+    dialogOpen: document.querySelector("dialog[open]") !== null,
     rightPanelOpen: ui.panelOpen === true,
     usagePageOpen: route.name === "usage",
     turnRunning: openThread(route)?.active_run != null,
@@ -344,7 +345,10 @@ function useGlobalKeys(route: Route) {
   const reload = keymap.reload;
   useCommand("keybindings.reload", reload);
   const rules = keymap.data?.rules ?? FALLBACK_RULES;
-  useEffect(() => setTerminalRules(rules), [rules]);
+  useEffect(() => {
+    setTerminalRules(rules, () => keyContext(parseRoute(window.location.hash)));
+    return () => setTerminalRules([]);
+  }, [rules]);
   const pushToast = useUi((state) => state.pushToast);
   const seenFile = useRef<string | null>(null);
   useEffect(() => {
@@ -361,8 +365,7 @@ function useGlobalKeys(route: Route) {
   }, [reload]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const actionAllowed = () => !event.repeat && !event.isComposing && !document.querySelector("dialog[open]")
-        && (event.metaKey || event.ctrlKey || event.altKey || !editing(document.activeElement));
+      const actionAllowed = () => actionShortcutAllowed(event, keyContext(route));
       if (event.key === "Escape" && !event.defaultPrevented) {
         if (actionAllowed()) {
           for (const rule of [...rules].reverse()) {

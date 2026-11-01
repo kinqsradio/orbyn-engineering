@@ -3,23 +3,27 @@ import type { KeybindingRule } from "../api/types";
 import { actionIdFromCommand } from "../lib/actionCommand";
 
 /** Handlers live with what they act on, and register while mounted. */
-const handlers = new Map<string, Set<(argument?: string) => boolean | void>>();
+type CommandHandler = { run(argument?: string): boolean | void; available(argument?: string): boolean };
+const handlers = new Map<string, Set<CommandHandler>>();
+
+const hasHandler = (command: string, argument?: string) =>
+  [...(handlers.get(command) ?? [])].some((handler) => handler.available(argument));
 
 export function runHandlers(command: string, argument?: string): boolean {
   let handled = false;
   for (const handler of handlers.get(command) ?? []) {
-    if (handler(argument) !== false) handled = true;
+    if (handler.available(argument) && handler.run(argument) !== false) handled = true;
   }
   return handled;
 }
 
-export function useCommand(command: string, handler: (argument?: string) => boolean | void) {
-  const latest = useRef(handler);
+export function useCommand(command: string, handler: (argument?: string) => boolean | void, available: (argument?: string) => boolean = () => true) {
+  const latest = useRef({ handler, available });
   useEffect(() => {
-    latest.current = handler;
+    latest.current = { handler, available };
   });
   useEffect(() => {
-    const call = (argument?: string) => latest.current(argument);
+    const call: CommandHandler = { run: (argument) => latest.current.handler(argument), available: (argument) => latest.current.available(argument) };
     const set = handlers.get(command) ?? new Set();
     handlers.set(command, set);
     set.add(call);
@@ -75,16 +79,29 @@ export function matchesKey(rule: string, event: KeyboardEvent): boolean {
 export type WhenContext = Record<string, boolean>;
 
 let terminalRules: KeybindingRule[] = [];
+let terminalContext: () => WhenContext = () => ({ terminalFocus: true, editableFocus: true });
+
+/** Reservation and dispatch must agree before a terminal yields a key to the app. */
+export function actionShortcutAllowed(event: KeyboardEvent, context: WhenContext): boolean {
+  return !event.repeat && !event.isComposing && !context.dialogOpen
+    && Boolean(event.metaKey || event.ctrlKey || event.altKey || !context.editableFocus);
+}
 
 /** Keeps the rules that act inside a terminal, which reads the keyboard itself. */
-export function setTerminalRules(rules: KeybindingRule[]) {
+export function setTerminalRules(rules: KeybindingRule[], context: () => WhenContext = () => ({ terminalFocus: true, editableFocus: true })) {
+  terminalContext = context;
   terminalRules = rules.filter((rule) => !rule.remove && (/(^|[^!])terminalFocus/.test(rule.when ?? "")
-    || (actionIdFromCommand(rule.command) !== null && whenHolds(rule.when, { terminalFocus: true }))));
+    || actionIdFromCommand(rule.command) !== null));
 }
 
 /** True for a key the app owns while a terminal has focus, so xterm leaves it alone. */
-export const isTerminalShortcut = (event: KeyboardEvent) => terminalRules.some((rule) => matchesKey(rule.key, event)
-  && (actionIdFromCommand(rule.command) === null || Boolean(handlers.get(rule.command)?.size)));
+export const isTerminalShortcut = (event: KeyboardEvent) => {
+  const context = terminalContext();
+  return terminalRules.some((rule) => matchesKey(rule.key, event)
+    && (actionIdFromCommand(rule.command) === null || (actionShortcutAllowed(event, context)
+      && whenHolds(rule.when, context)
+      && (hasHandler(rule.command) || hasHandler("projectActions.pending", rule.command)))));
+};
 
 /** `a && !b`, with `||` between alternatives. An unknown name is false. */
 export function whenHolds(when: string | null, context: WhenContext): boolean {

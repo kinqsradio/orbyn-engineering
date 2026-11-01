@@ -115,3 +115,60 @@ test("a shortcut-file failure retains the saved action and retries without creat
     expect(bindings.rules.filter((rule) => rule.command === `script.${saved[0]!.id}.run`)).toHaveLength(1);
   } finally { await service.stop(); }
 });
+
+test("terminal input and pending action shortcuts share keyboard ownership", async ({ page }) => {
+  const { service, projectId } = await startProject();
+  const heldReads: (() => void)[] = [];
+  try {
+    await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_project_scripts: [
+      { id: "bare-action", name: "Bare action", command: "echo bare-action-ran" },
+      { id: "pending-action", name: "Pending action", command: "echo pending-action-ran" },
+    ] } });
+    await service.api("POST", "/api/keybindings", { key: "k", command: "script.bare-action.run" });
+    await service.api("POST", "/api/keybindings", { key: "ctrl+alt+k", command: "script.pending-action.run", when: "terminalFocus && !turnRunning" });
+    const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Terminal shortcut ownership" });
+    const base = `/api/threads/${thread.id}`;
+    const catalogRoute = `**${base}/scripts`;
+    let holdCatalog = true;
+    let pendingReads = 0;
+    await page.route(catalogRoute, async (route) => {
+      pendingReads += 1;
+      try {
+        if (route.request().method() === "GET" && holdCatalog) await new Promise<void>((resolve) => heldReads.push(resolve));
+        if (!route.request().failure()) await route.continue();
+      } finally { pendingReads -= 1; }
+    });
+    await page.goto(`${service.page}#/threads/${thread.id}`);
+    await expect(page.getByRole("heading", { name: "Terminal shortcut ownership", exact: true })).toBeVisible();
+    await expect.poll(() => heldReads.length).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Terminal", exact: true }).click();
+    const input = page.locator(".terminal-drawer-body .xterm-helper-textarea").first();
+    const terminals = () => service.api<{ id: string; script: string | null }[]>("GET", `${base}/terminals`);
+    const mainOutput = async () => {
+      const main = (await terminals()).find((terminal) => terminal.id === "main");
+      return main ? (await service.api<{ text: string }>("GET", `${base}/terminals/${main.id}/scrollback`)).text : "";
+    };
+    // Wait for shell input to work before testing ownership of its modified key.
+    await expect(async () => {
+      await input.focus();
+      await page.keyboard.type("echo shell-ready\n");
+      await expect.poll(mainOutput, { timeout: 2000 }).toContain("shell-ready");
+    }).toPass();
+    holdCatalog = false;
+    await input.focus();
+    await page.keyboard.press("Control+Alt+k");
+    await expect.poll(async () => (await terminals()).some((terminal) => terminal.script === "Pending action")).toBe(true);
+    for (const release of heldReads.splice(0)) release();
+    await expect.poll(() => pendingReads).toBe(0);
+    await page.unroute(catalogRoute);
+    await expect(page.getByRole("tab", { name: "Pending action", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+    await input.focus();
+    await page.keyboard.type("echo shortcut-input-kept\n");
+    await expect.poll(mainOutput).toContain("shortcut-input-kept");
+    expect((await terminals()).some((terminal) => terminal.script === "Bare action")).toBe(false);
+  } finally {
+    for (const release of heldReads.splice(0)) release();
+    await service.stop();
+  }
+});
