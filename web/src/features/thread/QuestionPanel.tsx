@@ -3,6 +3,7 @@ import { request } from "../../api/client";
 import type { Question, QuestionRequest } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button } from "../../ui/controls";
+import { Markdown } from "./Markdown";
 
 const POLL_MS = 1500;
 
@@ -29,8 +30,8 @@ function QuestionRow({
 }) {
   return (
     <fieldset className="question">
-      <legend>{question.header || question.question}</legend>
-      {question.header ? <p>{question.question}</p> : null}
+      <legend className={question.header ? undefined : "sr-only"}>{question.header || question.question}</legend>
+      <Markdown text={question.question} />
       <div className="question-options">
         {question.options.map((option) => {
           const on = picked.includes(option.label);

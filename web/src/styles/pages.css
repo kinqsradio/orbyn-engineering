@@ -163,6 +163,77 @@
   font-size: var(--text-body);
   font-weight: 500;
 }
+.setting-line-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.setting-inheritance-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.setting-inheritance-actions .icon-btn {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  color: var(--color-muted);
+}
+.setting-inheritance-actions .icon-btn[data-overridden] {
+  color: var(--color-accentText);
+}
+.preference-control {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.setting-inheritance-popup {
+  position: fixed;
+  z-index: 100;
+  width: min(288px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-raised);
+  color: var(--color-text);
+  box-shadow: 0 8px 24px var(--color-shadow);
+  font-size: var(--text-body);
+}
+.setting-inheritance-popup ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.setting-inheritance-popup li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+}
+.setting-inheritance-popup li[aria-current="true"] {
+  color: var(--color-text);
+  background: var(--color-hover);
+  font-weight: 500;
+}
+.setting-inheritance-value {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+  max-width: 160px;
+  overflow-wrap: anywhere;
+}
+.setting-inheritance-value svg {
+  flex: none;
+  color: var(--color-accentText);
+}
 .setting-line-desc {
   color: var(--color-muted);
   font-size: var(--text-meta);
