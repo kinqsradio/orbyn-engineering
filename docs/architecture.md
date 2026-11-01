@@ -1070,6 +1070,56 @@ private like any secret file and goes when the service stops; one left by a cras
 as nothing running. Exit codes are 0, 1 when a request was refused or a waited-on run
 did not complete, and 2 when no service is running. `--json` prints the API's answer.
 
+`orbyn`, `orbyn <folder>` and `orbyn start` reuse a service that answers or start one that
+outlives the command, with its output in `service.log`, then open it in the browser with
+the token in the address, which the page moves out of history. A folder is registered
+first, untrusted, and reused if it is already a project, including when a child folder
+resolves to its Git root. A packaged CLI serves the UI and library snapshot beside the
+Windows sidecars or in the macOS bundle's Resources folder, just as the shell does.
+Explicit `serve` flags override those bundled paths. A bare name counts only if the
+folder exists, and nothing is started otherwise. The token is never printed. `orbyn app`
+goes through the `orbyn://` link, so it starts the desktop app by the system's own route and
+adds no way in. `ORBYN_OPENER` names another program, or `-` to print what would open.
+
+`orbyn browser setup` needs no service: on macOS and Windows it reports that
+nothing needs setting up, without creating a data directory or changing the host.
+Linux browser setup is outside the supported product scope and is not performed.
+
+A detached Windows `orbyn start` clears the inheritance flag on the launcher's
+original standard-stream handles before spawning `orbynd`. The launcher's streams
+remain usable for its result, while the daemon gets only its explicit null input/
+output and service log as standard streams. Redirecting the daemon's streams alone
+does not prevent Windows from inheriting an original pipe handle.
+
+`orbyn service` runs the service from this user's login through the OS's own manager:
+launchd on macOS or systemd on Linux, with no administrator rights. Background setup
+reports unsupported on Windows before invoking a manager or changing files, matching
+T3; Windows desktop startup and direct `service run` remain available. Each change is a plan of
+one file and some commands, and `--dry-run` shows it and does nothing. Installing again
+repairs it, uninstalling leaves all data, and neither reads a credential. What the manager
+starts is `orbyn service run`, which adds `service.env` from the data folder to `orbynd`'s
+environment. It accepts dotenv assignments, optional `export`, quoted multiline values
+and comments without shell evaluation or variable expansion. Malformed assignments stop
+startup with a line number. The launcher keeps its inherited `PATH` and chosen
+`ORBYN_DATA_DIR`, including case variants on Windows. A missing file is ignored; other
+read failures stop startup. That file is the person's and stays out of Orbyn's rules and store. It
+shares the data folder's single lock, so a desktop app on the same folder cannot start
+while the service runs.
+
+`orbyn trace summary` reads this data folder's `logs/server.trace.ndjson` and ten
+rotated files without connecting to a running service. Core owns payload-free timing
+records: registered operation name, elapsed milliseconds, end time and outcome.
+HTTP instrumentation supplies method and registered route template, never request
+IDs, query strings, headers, prompts or error text. An unfinished operation records
+an interruption. Each file rotates at 10 MiB; recording failures do not fail the
+operation. The reader snapshots each file length and bounds scanned bytes, record
+length, distinct names and retained samples. Malformed lines are counted, not
+interpreted as spans. Summaries sort busiest names first and report count, rate,
+nearest-rank p50/p90, maximum, interruptions and failures. `--since` filters by end
+time and `--limit` controls displayed names. Missing files produce an empty report
+without creating the data folder. This is local timing evidence, not an OTLP exporter
+or a completed diagnostics UI.
+
 The GitHub-star notice counts acknowledged composer submissions in two separate
 viewer-storage entries: sent threshold and dismissal. It checks this app's fixed
 public repository after the sixth prompt and appears once per page session until
@@ -1078,17 +1128,20 @@ saved dismissal. Storage failures suppress the notice, and a dismissal from anot
 tab wins over an in-flight check. Core uses a bounded, noninteractive `gh api` GET
 for the fixed repository; it captures no output, reads no credential file and never
 stars anything. Missing tools or an unavailable check do not interrupt a send.
-The web reload flow is qualified. Desktop restart persistence is not yet qualified:
-the current shell navigates to a per-launch loopback origin while viewer preferences
-use browser storage. This transport/storage boundary must be resolved before the
-packaged walkthrough can qualify these preferences across restarts.
+The web reload flow is qualified. Native viewer storage now has a stable bundled
+origin, with Light persistence qualified across isolated macOS quit/relaunch and
+service recovery. Star-notice dismissal across native quit/relaunch itself remains
+unverified; the shared storage correction is not a substitute for that walkthrough.
+
 
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`,
 `--workspace-url`, `--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
-`{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
+`{url, token}` on stdout once it can serve, after registering stop handlers and writing
+the CLI's service handle. A stop immediately after that line still cleans up the handle.
+`--skills-dir` is accepted and ignored
 for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBYN_LIBRARY_BUNDLE`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,

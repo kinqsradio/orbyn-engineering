@@ -613,7 +613,11 @@ fn read_parent(core: Arc<Core>, closed: oneshot::Sender<()>) {
     });
 }
 
-async fn wait_for_stop(parent: Option<oneshot::Receiver<()>>, stop: CancellationToken) {
+async fn wait_for_stop(
+    parent: Option<oneshot::Receiver<()>>,
+    stop: CancellationToken,
+    termination: impl std::future::Future<Output = ()> + Send,
+) {
     let parent = async {
         match parent {
             Some(closed) => {
@@ -624,30 +628,33 @@ async fn wait_for_stop(parent: Option<oneshot::Receiver<()>>, stop: Cancellation
     };
     tokio::select! {
         () = parent => {}
-        () = termination() => {}
+        () = termination => {}
     }
     stop.cancel();
 }
 
 #[cfg(unix)]
-async fn termination() {
+fn termination() -> Result<impl std::future::Future<Output = ()> + Send, String> {
     use tokio::signal::unix::{SignalKind, signal};
-    match signal(SignalKind::terminate()) {
-        Ok(mut terminate) => {
-            tokio::select! {
-                _ = terminate.recv() => {}
-                _ = tokio::signal::ctrl_c() => {}
-            }
+    let mut terminate = signal(SignalKind::terminate())
+        .map_err(|error| format!("Could not listen for termination: {error}"))?;
+    let mut interrupt = signal(SignalKind::interrupt())
+        .map_err(|error| format!("Could not listen for interrupts: {error}"))?;
+    Ok(async move {
+        tokio::select! {
+            _ = terminate.recv() => {}
+            _ = interrupt.recv() => {}
         }
-        Err(_) => {
-            let _ = tokio::signal::ctrl_c().await;
-        }
-    }
+    })
 }
 
 #[cfg(windows)]
-async fn termination() {
-    let _ = tokio::signal::ctrl_c().await;
+fn termination() -> Result<impl std::future::Future<Output = ()> + Send, String> {
+    let mut interrupt = tokio::signal::windows::ctrl_c()
+        .map_err(|error| format!("Could not listen for interrupts: {error}"))?;
+    Ok(async move {
+        let _ = interrupt.recv().await;
+    })
 }
 
 async fn serve(args: ServeArgs) -> Result<(), String> {
@@ -677,13 +684,15 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     orbyn_core::diagnostics::start_sampling();
     // Parent EOF and termination own startup too: provisioning may be waiting
     // on a helper before any ready line or service handle exists.
+    // Install handlers synchronously before any cancellable provisioning work.
+    let termination = termination()?;
     let stop = CancellationToken::new();
     let parent = args.parent_stdin.then(|| {
         let (closed, wait) = oneshot::channel();
         read_parent(core.clone(), closed);
         wait
     });
-    tokio::spawn(wait_for_stop(parent, stop.clone()));
+    tokio::spawn(wait_for_stop(parent, stop.clone(), termination));
     // Before the service answers anything. If the disk refuses, the background
     // attempt tries again, and the service still serves what needs no library.
     let library = tokio::select! {

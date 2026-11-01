@@ -100,6 +100,7 @@ impl CoreConfig {
 
 pub struct Core {
     pub config: CoreConfig,
+    pub timings: Arc<crate::local_trace::LocalTrace>,
     pub store: Arc<Store>,
     pub gate: Arc<ApprovalGate>,
     pub questions: Arc<QuestionDesk>,
@@ -138,6 +139,7 @@ impl Core {
     pub fn open_with(config: CoreConfig, backend: Arc<dyn ComputerBackend>) -> Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
         let lock = take_owner_lock(&config.data_dir)?;
+        let timings = crate::local_trace::LocalTrace::open(&config.data_dir)?;
         // A preview outlives no process, so any profile here is a leftover.
         let _ = std::fs::remove_dir_all(config.data_dir.join("preview-profiles"));
         // A new epoch per process start fences anything the last process left.
@@ -198,6 +200,7 @@ impl Core {
         ));
         let core = Self {
             config,
+            timings,
             store,
             gate,
             questions,
