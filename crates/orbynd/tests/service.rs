@@ -91,6 +91,98 @@ async fn hostile_host_and_origin_are_rejected_everywhere() {
 }
 
 #[tokio::test]
+async fn desktop_assets_can_call_only_the_owned_local_service_with_its_token() {
+    let dir = TempDir::new();
+    let service = Service::start(
+        &dir.path().join("desktop"),
+        Options {
+            args: vec!["--parent-stdin".into()],
+            ..Options::default()
+        },
+    );
+    for origin in ["tauri://localhost", "http://tauri.localhost"] {
+        let preflight = service
+            .client
+            .request(
+                reqwest::Method::OPTIONS,
+                format!("{}/api/settings", service.url),
+            )
+            .header("Origin", origin)
+            .header("Access-Control-Request-Method", "PUT")
+            .header(
+                "Access-Control-Request-Headers",
+                "authorization,content-type",
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), 204);
+        assert_eq!(preflight.headers()["access-control-allow-origin"], origin);
+        let response = service
+            .get("/api/info")
+            .header("Origin", origin)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers()["access-control-allow-origin"], origin);
+        let unauthenticated = service
+            .client
+            .get(format!("{}/api/info", service.url))
+            .header("Origin", origin)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(unauthenticated.status(), 401);
+    }
+    for origin in [
+        "null",
+        "http://tauri.localhost:9999",
+        "https://tauri.localhost",
+        "tauri://evil",
+        "http://evil.test",
+    ] {
+        assert_eq!(
+            service
+                .get("/api/info")
+                .header("Origin", origin)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            403
+        );
+    }
+    let plain = Service::start(&dir.path().join("web"), Options::default());
+    assert_eq!(
+        plain
+            .get("/api/info")
+            .header("Origin", "tauri://localhost")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    let wrong_header = service
+        .client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{}/api/settings", service.url),
+        )
+        .header("Origin", "tauri://localhost")
+        .header("Access-Control-Request-Method", "PUT")
+        .header(
+            "Access-Control-Request-Headers",
+            "authorization,x-private-capability",
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong_header.status(), 403);
+}
+
+#[tokio::test]
 async fn allowed_host_flag_extends_the_list() {
     let dir = TempDir::new();
     let service = Service::start(

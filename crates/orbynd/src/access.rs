@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, Method, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
 use orbyn_core::util::{random_token, secrets_match, sha256_hex};
@@ -22,6 +22,7 @@ pub struct Access {
     token_sha256: String,
     allowed_hosts: Vec<String>,
     remote: Option<Remote>,
+    desktop: bool,
 }
 
 struct Remote {
@@ -33,6 +34,7 @@ impl Access {
     pub fn new(token: &str, allowed_hosts: Vec<String>, remote_key_sha256: Option<String>) -> Self {
         Self {
             token_sha256: sha256_hex(token.as_bytes()),
+            desktop: false,
             allowed_hosts: allowed_hosts
                 .into_iter()
                 .map(|host| host.to_ascii_lowercase())
@@ -42,6 +44,12 @@ impl Access {
                 sessions: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// Only a shell-owned process accepts the two exact native asset origins.
+    pub fn with_desktop(mut self, desktop: bool) -> Self {
+        self.desktop = desktop;
+        self
     }
 
     fn host_allowed(&self, host: &str) -> bool {
@@ -145,18 +153,90 @@ pub async fn guard_origin(
             "This host is not allowed.",
         ));
     };
-    if let Some(origin) = request.headers().get(header::ORIGIN) {
-        let allowed = origin
+    let origin = request.headers().get(header::ORIGIN).cloned();
+    let native = access.desktop
+        && matches!(host_name(host), "127.0.0.1" | "localhost" | "[::1]")
+        && origin
+            .as_ref()
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| matches!(value, "tauri://localhost" | "http://tauri.localhost"));
+    if let Some(origin) = &origin
+        && !native
+        && !origin
             .to_str()
-            .is_ok_and(|origin| origin_matches(origin, host));
-        if !allowed {
+            .is_ok_and(|origin| origin_matches(origin, host))
+    {
+        return Err(ApiFailure::forbidden(
+            "origin_not_allowed",
+            "This origin is not allowed.",
+        ));
+    }
+    if native && request.method() == Method::OPTIONS {
+        if !native_preflight(&request) {
             return Err(ApiFailure::forbidden(
                 "origin_not_allowed",
-                "This origin is not allowed.",
+                "This request is not allowed.",
             ));
         }
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        native_headers(response.headers_mut(), origin.expect("native origin"));
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("GET, HEAD, POST, PUT, PATCH, DELETE"),
+        );
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static(NATIVE_HEADERS),
+        );
+        return Ok(response);
     }
-    Ok(next.run(request).await)
+    let mut response = next.run(request).await;
+    if native {
+        native_headers(response.headers_mut(), origin.expect("native origin"));
+    }
+    Ok(response)
+}
+
+const NATIVE_HEADERS: &str =
+    "authorization, content-type, accept, last-event-id, range, if-range, if-none-match";
+
+fn native_preflight(request: &Request<Body>) -> bool {
+    let path = request.uri().path();
+    if !(path.starts_with("/api/") || path.starts_with("/ws/")) {
+        return false;
+    }
+    let method = request
+        .headers()
+        .get(header::ACCESS_CONTROL_REQUEST_METHOD)
+        .and_then(|value| value.to_str().ok());
+    if !matches!(
+        method,
+        Some("GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE")
+    ) {
+        return false;
+    }
+    request
+        .headers()
+        .get(header::ACCESS_CONTROL_REQUEST_HEADERS)
+        .is_none_or(|value| {
+            value.to_str().is_ok_and(|text| {
+                text.split(',').all(|name| {
+                    NATIVE_HEADERS
+                        .split(',')
+                        .any(|allowed| allowed.trim().eq_ignore_ascii_case(name.trim()))
+                })
+            })
+        })
+}
+
+fn native_headers(headers: &mut HeaderMap, origin: HeaderValue) {
+    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    headers.append(header::VARY, HeaderValue::from_static("Origin"));
+    headers.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("content-range, accept-ranges, etag, content-disposition"),
+    );
 }
 
 /// Applies to `/api`, `/agui` and `/ws`.

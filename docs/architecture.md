@@ -14,7 +14,7 @@ credentials.
 | Service | `crates/orbynd` | HTTP/SSE/WebSocket transport, static UI, access control, CLI entry point |
 | Workspace | `crates/orbyn-core` `workspace`, `projects` | Library checkout, target boundaries, library updates, project intake |
 | UI | `web` | Task flows only; it holds no authority and no lifecycle rules |
-| Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads its loopback URL, tray, app updates and what only the OS can do |
+| Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads stable bundled UI assets, tray, app updates and what only the OS can do |
 
 Dependency direction: `orbynd -> orbyn-core -> orbyn-contracts`. The UI depends
 only on generated types and the HTTP API. Nothing in `web` may import Tauri APIs.
@@ -729,18 +729,38 @@ what to do.
 
 ## Desktop shell
 
-The UI holds no native access. `desktop/src-tauri/build.rs` lists the shell's commands,
-so a capability decides who may call them, and the only capability is the local loader
-page's. The product UI, served by `orbynd`, has none. It asks the service, the service
-asks the shell over the same stdin and stdout as app updates, and what the shell sees
-goes back the same way to `GET /api/shell/events`. `ShellBridge` in core owns this side.
-Events wait, eight at most, for the first window to connect, and `GET /api/shell` counts
-the windows following them, which is how a startup check knows the UI ran. A line that
-isn't the bridge's goes on to `UpdateCenter`.
+The native product UI loads from the stable bundled asset origin (`tauri://localhost`
+on macOS, `http://tauri.localhost` on Windows). Viewer-local storage therefore survives
+service restarts and changing loopback ports. The shell supplies the owned service's
+origin and launch token in the initial URL. The UI accepts that origin only on these
+exact native origins, only as an explicit-port `http://127.0.0.1` origin, and keeps it
+when stripping the token into session storage. HTTP, SSE, media and WebSocket callers
+use that transport owner. Ordinary local web pages keep same-origin requests and
+ignore this native launch parameter. No viewer preferences move into Core storage. This establishes a new stable origin;
+it does not inspect, rewrite or merge older development packages' per-port WebKit
+or WebView2 stores. Those stores remain untouched.
 
-The window stays on the loader and the running service. Anything else is refused, and
-`http`, `https` and `mailto` go to the system browser instead. No other scheme is
-handed over, so a page cannot start whatever program claims one.
+The product UI has no accepted native commands or Tauri imports. A separate static
+`orbyn-startup` origin shows startup/failure and Try again. Its only capability is
+`restart_core`, whose handler also rejects callers while the top-level window is not
+on that exact startup origin and path; the product asset origin cannot invoke it.
+There are no default core/plugin command permissions. The startup document is embedded,
+has no frames or external resources, and displays errors as text. Product actions ask
+the service, which asks the shell over stdin/stdout; results return through
+`GET /api/shell/events`. `ShellBridge` owns this Core channel. Events wait, eight at
+most, for the first window; `GET /api/shell` counts attached windows. Lines belonging
+to app updates continue to `UpdateCenter`.
+
+Only a service started with `--parent-stdin` accepts cross-origin native API traffic,
+from the two exact product asset origins to a loopback host. Preflight permits only
+its explicit methods and request headers. Actual requests still require the per-launch
+token, including streams/media; no cookie grant, wildcard origin or `null` origin is
+added. Native CSP limits service connections/media to loopback. The service's Host
+checks and ordinary local-web Origin checks remain in force.
+
+The window stays on bundled product/startup documents and the running service.
+Other `http`, `https` and `mailto` links go to the system browser. Other schemes are
+refused, so pages cannot start arbitrary registered programs.
 
 `orbyn://` links come from outside the app, so they only move a window, and only to a
 place spelled as a route: `thread/<id>`, `new[/<project>]`, `settings[/<section>]`,

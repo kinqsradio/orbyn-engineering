@@ -2,6 +2,7 @@
 
 mod activity;
 mod core_process;
+mod desktop_origin;
 mod links;
 mod menu;
 mod shell_state;
@@ -43,17 +44,11 @@ fn show_failure(app: &AppHandle, message: &str) {
     let Some(window) = main_window(app) else {
         return;
     };
-    let mut url = match cfg!(debug_assertions) {
-        true => url::Url::parse("tauri://localhost/index.html"),
-        false if cfg!(windows) => url::Url::parse("http://tauri.localhost/index.html"),
-        false => url::Url::parse("tauri://localhost/index.html"),
-    }
-    .expect("static loader URL");
-    url.query_pairs_mut().append_pair("error", message);
+    let url = desktop_origin::startup(Some(message));
     let _ = window.navigate(url);
 }
 
-/// Replaces any running core, then points the window at the new origin.
+/// Replaces any running core, then supplies its address to the stable asset page.
 fn launch_core(app: &AppHandle) {
     let state = app.state::<Core>();
     let mut slot = state.0.lock().expect("core slot");
@@ -79,7 +74,7 @@ fn launch_core(app: &AppHandle) {
             *slot = Some(core);
             drop(slot);
             if let Some(window) = main_window(app) {
-                let _ = window.navigate(target);
+                let _ = window.navigate(desktop_origin::application(&target));
             }
             let waiting =
                 std::mem::take(&mut *app.state::<WaitingLinks>().0.lock().expect("link queue"));
@@ -96,8 +91,13 @@ fn launch_core(app: &AppHandle) {
 }
 
 #[tauri::command]
-fn restart_core(app: AppHandle) {
+fn restart_core(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+    let current = window.url().map_err(|error| error.to_string())?;
+    if !desktop_origin::is_startup(&current) {
+        return Err("Only the startup document can restart the service.".into());
+    }
     std::thread::spawn(move || launch_core(&app));
+    Ok(())
 }
 
 pub(crate) fn tell_core(app: &AppHandle, message: serde_json::Value) {
@@ -123,13 +123,14 @@ fn open_link(app: &AppHandle, url: String) {
 
 /// Builds the window here rather than from the config, for its navigation rules.
 fn open_window(app: &AppHandle) -> tauri::Result<()> {
-    let config = app
+    let mut config = app
         .config()
         .app
         .windows
         .first()
         .ok_or(tauri::Error::WindowNotFound)?
         .clone();
+    config.url = tauri::WebviewUrl::External(desktop_origin::startup(None));
     let navigating = app.clone();
     let opening = app.clone();
     let window = WebviewWindowBuilder::from_config(app, &config)?
@@ -248,6 +249,16 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
 
 fn main() {
     let app = tauri::Builder::default()
+        .register_uri_scheme_protocol("orbyn-startup", |_context, request| {
+            let valid = request.uri().path() == "/index.html";
+            tauri::http::Response::builder()
+                .status(if valid { 200 } else { 404 })
+                .header("Content-Type", "text/html; charset=utf-8")
+                .header("Cache-Control", "no-store")
+                .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost; base-uri 'none'; frame-ancestors 'none'")
+                .body(if valid { include_bytes!("../../loader/index.html").to_vec() } else { Vec::new() })
+                .expect("static startup response")
+        })
         // First, so a second launch hands over before it starts anything.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _| {
             reveal(app);

@@ -1,3 +1,4 @@
+import { serviceUrl } from "./origin";
 import { ApiFailure, authHeaders } from "./client";
 import type { WireThreadEvent } from "./types";
 
@@ -60,7 +61,7 @@ export function followThread(threadId: string, handlers: StreamHandlers): () => 
   const connect = async () => {
     const seq = handlers.lastSeq();
     try {
-      const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/events`, {
+      const response = await fetch(serviceUrl(`/api/threads/${encodeURIComponent(threadId)}/events`), {
         signal: controller.signal,
         credentials: "same-origin",
         headers: {
