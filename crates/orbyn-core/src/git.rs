@@ -138,10 +138,8 @@ pub struct WorktreeOptions {
     pub prefix: String,
     pub base: Option<String>,
     pub from_origin: bool,
-    /// `recursive`, `top_level` or `skip`.
+    /// `recursive`, `top-level` or `none`; legacy spellings remain readable.
     pub submodules: String,
-    /// An absolute folder for new worktrees, instead of beside the repository.
-    pub directory: Option<PathBuf>,
 }
 
 impl Default for WorktreeOptions {
@@ -150,8 +148,7 @@ impl Default for WorktreeOptions {
             prefix: "feat".to_owned(),
             base: None,
             from_origin: false,
-            submodules: "skip".to_owned(),
-            directory: None,
+            submodules: "none".to_owned(),
         }
     }
 }
@@ -169,24 +166,11 @@ pub async fn create_worktree(
             "Use lowercase letters, digits and hyphens for the worktree name.".into(),
         ));
     }
-    let path = match &options.directory {
-        Some(directory) if !directory.is_absolute() => {
-            return Err(CoreError::Invalid(
-                "The worktree location must be an absolute path.".into(),
-            ));
-        }
-        Some(directory) => {
-            let name = repo
-                .file_name()
-                .ok_or_else(|| CoreError::Git("This repository has no folder name.".into()))?;
-            directory.join(name).join(purpose)
-        }
-        None => worktree_path(repo, purpose)?,
-    };
+    let path = worktree_path(repo, purpose)?;
     let path_text = path.to_string_lossy().into_owned();
     let head = text(&git(repo, &["rev-parse", "HEAD"]).await?);
     for registered in linked_worktrees(repo).await? {
-        // One made before the location changed is still this purpose's worktree.
+        // Keep already registered worktrees in place, including earlier layouts.
         if registered.path.exists()
             && registered.path.file_name() == Some(std::ffi::OsStr::new(purpose))
         {
@@ -230,8 +214,8 @@ pub async fn create_worktree(
     )
     .await?;
     let submodules: &[&str] = match options.submodules.as_str() {
-        "skip" => &[],
-        "top_level" => &["submodule", "update", "--init"],
+        "none" | "skip" => &[],
+        "top-level" | "top_level" => &["submodule", "update", "--init"],
         _ => &["submodule", "update", "--init", "--recursive"],
     };
     // A submodule that cannot be fetched leaves the worktree usable.
@@ -657,31 +641,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_worktree_location_is_used_and_earlier_worktrees_stay_found() {
+    async fn an_existing_worktree_elsewhere_is_reused_without_moving_it() {
         let dir = TempDir::new();
         let repo = repo(dir.path()).await;
-        let earlier = create_worktree(&repo, "before", &WorktreeOptions::default())
+        let earlier = dir.path().join("elsewhere/before");
+        std::fs::create_dir_all(earlier.parent().unwrap()).unwrap();
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "earlier",
+                earlier.to_str().unwrap(),
+            ],
+        )
+        .await
+        .unwrap();
+        std::fs::write(earlier.join("kept.txt"), "Uncommitted work\n").unwrap();
+        let made = create_worktree(&repo, "fresh", &WorktreeOptions::default())
             .await
             .unwrap();
-        let elsewhere = WorktreeOptions {
-            directory: Some(dir.path().join("elsewhere")),
-            ..WorktreeOptions::default()
-        };
-        let made = create_worktree(&repo, "fresh", &elsewhere).await.unwrap();
-        assert_eq!(
-            Path::new(&made.path),
-            dir.path().join("elsewhere/project/fresh")
-        );
-        let kept = create_worktree(&repo, "before", &elsewhere).await.unwrap();
+        assert_eq!(Path::new(&made.path), dir.path().join("project-wt/fresh"));
+        let kept = create_worktree(&repo, "before", &WorktreeOptions::default())
+            .await
+            .unwrap();
         assert_eq!(
             crate::util::canonicalize(Path::new(&kept.path)).unwrap(),
-            crate::util::canonicalize(Path::new(&earlier.path)).unwrap()
+            crate::util::canonicalize(&earlier).unwrap()
         );
-        let relative = WorktreeOptions {
-            directory: Some(PathBuf::from("not/absolute")),
-            ..WorktreeOptions::default()
-        };
-        assert!(create_worktree(&repo, "other", &relative).await.is_err());
+        assert_eq!(
+            std::fs::read_to_string(earlier.join("kept.txt")).unwrap(),
+            "Uncommitted work\n"
+        );
     }
 
     #[tokio::test]

@@ -1,3 +1,4 @@
+import { settingsLabel } from "./settingsSearch";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import type { ForgeStatus, Thread } from "../../api/types";
@@ -65,7 +66,7 @@ export function GeneralSection() {
       <DesktopApp />
       <SettingGroup title="Notifications">
         <SettingRow
-          title="Thread notifications"
+          title={settingsLabel("general-thread-notifications")}
           description="When a thread finishes, fails, or needs input or approval."
         >
           <select
@@ -85,25 +86,25 @@ export function GeneralSection() {
           </select>
         </SettingRow>
         <Toggle
-          title="In-app notifications"
+          title={settingsLabel("general-in-app-notifications")}
           description="Show a toast when another thread finishes, fails, or needs input or approval."
           on={inApp}
           set={(on) => setPrefs({ inAppNotifications: on })}
         />
       </SettingGroup>
       <SettingGroup title="Thread details">
-        <SettingRow title="Rows" description="Choose what the details card shows. You can also right-click the card.">
+        <SettingRow title={settingsLabel("general-rows")} description="Choose what the details card shows. You can also right-click the card.">
           <DetailRowsButton />
         </SettingRow>
       </SettingGroup>
       <SettingGroup title="Sidebar">
         <Toggle
-          title="Working section"
+          title={settingsLabel("general-working-section")}
           description="Threads at work, or waiting on delegated work or a watched pull request, fold into a shelf."
           on={working}
           set={(on) => setPrefs({ workingSection: on })}
         />
-        <SettingRow title="Project order">
+        <SettingRow title={settingsLabel("general-project-order")}>
           <select
             aria-label="Project order"
             value={projectSort}
@@ -113,7 +114,7 @@ export function GeneralSection() {
             <option value="created_at">Created</option>
           </select>
         </SettingRow>
-        <SettingRow title="Thread order">
+        <SettingRow title={settingsLabel("general-thread-order")}>
           <select
             aria-label="Thread order"
             value={threadSort}
@@ -131,18 +132,18 @@ export function GeneralSection() {
             rows: [
               {
                 key: "background_activity_profile",
-                title: "Activity profile",
+                title: settingsLabel("general-activity-profile"),
                 options: [
                   { value: "balanced", label: "Balanced" },
                   { value: "saver", label: "Saver" },
                   { value: "performance", label: "Performance" },
                 ],
               },
-              { key: "automatic_git_fetch_minutes", title: "Git fetch interval (minutes)" },
-              { key: "provider_health_refresh_minutes", title: "Provider health interval (minutes)" },
+              { key: "automatic_git_fetch_minutes", title: settingsLabel("general-git-fetch-interval-minutes") },
+              { key: "provider_health_refresh_minutes", title: settingsLabel("general-provider-health-interval-minutes") },
               {
                 key: "keep_awake_during_runs",
-                title: "Keep the computer awake during runs",
+                title: settingsLabel("general-keep-the-computer-awake-during-runs"),
                 description: "In the desktop app. The screen can still sleep.",
               },
             ],
@@ -150,19 +151,19 @@ export function GeneralSection() {
           {
             title: "Providers",
             rows: [
-              { key: "enable_provider_update_checks", title: "Check providers for updates" },
+              { key: "enable_provider_update_checks", title: settingsLabel("general-check-providers-for-updates") },
             ],
           },
           {
             title: "New projects",
-            rows: [{ key: "add_project_base_directory", title: "Base directory" }],
+            rows: [{ key: "add_project_base_directory", title: settingsLabel("general-base-directory") }],
           },
         ]}
       />
       <SettingGroup title="Confirmations">
-        <Toggle title="Unpin confirmation" on={confirmUnpin} set={(on) => setPrefs({ confirmUnpin: on })} />
-        <Toggle title="Archive confirmation" on={confirmArchive} set={(on) => setPrefs({ confirmArchive: on })} />
-        <Toggle title="Delete confirmation" on={confirmDelete} set={(on) => setPrefs({ confirmDelete: on })} />
+        <Toggle title={settingsLabel("general-unpin-confirmation")} on={confirmUnpin} set={(on) => setPrefs({ confirmUnpin: on })} />
+        <Toggle title={settingsLabel("general-archive-confirmation")} on={confirmArchive} set={(on) => setPrefs({ confirmArchive: on })} />
+        <Toggle title={settingsLabel("general-delete-confirmation")} on={confirmDelete} set={(on) => setPrefs({ confirmDelete: on })} />
       </SettingGroup>
     </>
   );
@@ -186,26 +187,26 @@ export function ChatSection() {
     <>
       {heading("Chat")}
       <SettingGroup title="Display">
-        <SettingRow title="Chat width">
+        <SettingRow title={settingsLabel("chat-chat-width")}>
           <select aria-label="Chat width" value={chatWidth} onChange={(event) => setPrefs({ chatWidth: event.target.value as "comfortable" | "wide" | "full" })}>
             <option value="comfortable">Comfortable</option>
             <option value="wide">Wide</option>
             <option value="full">Full</option>
           </select>
         </SettingRow>
-        <SettingRow title="Timestamp format">
+        <SettingRow title={settingsLabel("chat-timestamp-format")}>
           <select aria-label="Timestamp format" value={timestampFormat} onChange={(event) => setPrefs({ timestampFormat: event.target.value as "locale" | "12-hour" | "24-hour" })}>
             <option value="locale">System default</option>
             <option value="12-hour">12-hour</option>
             <option value="24-hour">24-hour</option>
           </select>
         </SettingRow>
-        <Toggle title="Word wrap" on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
-        <Toggle title="Math rendering" on={math} set={(on) => setPrefs({ mathRendering: on })} />
-        <Toggle title="Open Changes after large turns" on={proactive} set={(on) => setPrefs({ proactivePanels: on })} />
+        <Toggle title={settingsLabel("chat-word-wrap")} on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
+        <Toggle title={settingsLabel("chat-math-rendering")} on={math} set={(on) => setPrefs({ mathRendering: on })} />
+        <Toggle title={settingsLabel("chat-open-changes-after-large-turns")} on={proactive} set={(on) => setPrefs({ proactivePanels: on })} />
       </SettingGroup>
       <SettingGroup title="Browser">
-        <SettingRow title="Search engine">
+        <SettingRow title={settingsLabel("chat-search-engine")}>
           <select aria-label="Search engine" value={searchEngine} onChange={(event) => setPrefs({ previewSearchEngine: event.target.value })}>
             <option value="duckduckgo">DuckDuckGo</option>
             <option value="google">Google</option>
@@ -215,30 +216,30 @@ export function ChatSection() {
             <option value="startpage">Startpage</option>
           </select>
         </SettingRow>
-        <SettingRow title="Open links in" description="For links in a thread.">
+        <SettingRow title={settingsLabel("chat-open-links-in")} description="For links in a thread.">
           <select aria-label="Open links in" value={linkTarget} onChange={(event) => setPrefs({ linkTarget: event.target.value as "system" | "in-app" })}>
             <option value="system">System browser</option>
             <option value="in-app">Browser panel</option>
           </select>
         </SettingRow>
         <Toggle
-          title="Float pages agents open"
+          title={settingsLabel("chat-float-pages-agents-open")}
           description="Shows the page over the chat when the Browser panel isn't open."
           on={autoFloat}
           set={(on) => setPrefs({ autoFloatPreview: on })}
         />
       </SettingGroup>
       <SettingGroup title="Composer">
-        <Toggle title="Keep checkout and branch visible" on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />
-        <Toggle title="Show skills in the slash menu" on={skillsInSlash} set={(on) => setPrefs({ skillsInSlashMenu: on })} />
-        <SettingRow title="Send shortcut">
+        <Toggle title={settingsLabel("chat-keep-checkout-and-branch-visible")} on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />
+        <Toggle title={settingsLabel("chat-show-skills-in-the-slash-menu")} on={skillsInSlash} set={(on) => setPrefs({ skillsInSlashMenu: on })} />
+        <SettingRow title={settingsLabel("chat-send-shortcut")}>
           <select aria-label="Send shortcut" value={sendShortcut} onChange={(event) => setPrefs({ sendShortcut: event.target.value as "enter" | "mod-enter-multiline" | "mod-enter" })}>
             <option value="enter">Enter</option>
             <option value="mod-enter-multiline">Mod+Enter when multiline</option>
             <option value="mod-enter">Mod+Enter</option>
           </select>
         </SettingRow>
-        <SettingRow title="Follow-up behavior">
+        <SettingRow title={settingsLabel("chat-follow-up-behavior")}>
           <select aria-label="Follow-up behavior" value={followUpBehavior} onChange={(event) => setPrefs({ followUpBehavior: event.target.value as "queue" | "steer" })}>
             <option value="queue">Queue</option>
             <option value="steer">Steer</option>
@@ -252,7 +253,7 @@ export function ChatSection() {
             rows: [
               {
                 key: "default_permission_mode",
-                title: "Default permissions",
+                title: settingsLabel("chat-default-permissions"),
                 options: [
                   { value: "supervised", label: "Supervised" },
                   { value: "auto_edits", label: "Auto-accept edits" },
@@ -262,7 +263,7 @@ export function ChatSection() {
               },
               {
                 key: "response_streaming_mode",
-                title: "Response streaming",
+                title: settingsLabel("chat-response-streaming"),
                 options: [
                   { value: "paragraph", label: "By paragraph" },
                   { value: "turn", label: "When the turn ends" },
@@ -273,18 +274,18 @@ export function ChatSection() {
           {
             title: "Idle threads",
             rows: [
-              { key: "compact_idle_threads", title: "Compact idle threads" },
+              { key: "compact_idle_threads", title: settingsLabel("chat-compact-idle-threads") },
               {
                 key: "idle_compaction",
-                title: "Idle compaction",
+                title: settingsLabel("chat-idle-compaction"),
                 options: [
                   { value: "on_return", label: "On return" },
                   { value: "before_cache_expiry", label: "Before cache expiry" },
                   { value: "never", label: "Never" },
                 ],
               },
-              { key: "snooze_limited_threads", title: "Snooze until limits reset" },
-              { key: "auto_resume_limited_threads", title: "Resume after usage limits" },
+              { key: "snooze_limited_threads", title: settingsLabel("chat-snooze-until-limits-reset") },
+              { key: "auto_resume_limited_threads", title: settingsLabel("chat-resume-after-usage-limits") },
             ],
           },
         ]}
@@ -301,7 +302,7 @@ export function DiffsSection() {
       {heading("Diffs & pull requests")}
       <SettingGroup title="Links">
         <Toggle
-          title="Open pull request links here"
+          title={settingsLabel("diffs-open-pull-request-links-here")}
           description="Off opens them on the host."
           on={inApp}
           set={(on) => setPrefs({ pullLinksInApp: on })}
@@ -314,7 +315,7 @@ export function DiffsSection() {
             rows: [
               {
                 key: "pull_request_merge_method",
-                title: "Merge method",
+                title: settingsLabel("diffs-merge-method"),
                 options: [
                   { value: "", label: "Ask" },
                   { value: "merge", label: "Merge" },
@@ -322,7 +323,7 @@ export function DiffsSection() {
                   { value: "rebase", label: "Rebase" },
                 ],
               },
-              { key: "remove_agent_credits_on_merge", title: "Remove agent credits on merge" },
+              { key: "remove_agent_credits_on_merge", title: settingsLabel("diffs-remove-agent-credits-on-merge") },
             ],
           },
         ]}
@@ -342,25 +343,20 @@ export function WorktreesSection() {
             rows: [
               {
                 key: "default_thread_env_mode",
-                title: "Default checkout",
+                title: settingsLabel("worktrees-default-checkout"),
                 options: [
                   { value: "local", label: "Current checkout" },
                   { value: "worktree", label: "New worktree" },
                 ],
               },
-              { key: "new_worktrees_start_from_origin", title: "Start from origin" },
-              {
-                key: "worktree_location",
-                title: "Worktree location",
-                description: "An absolute folder. Empty keeps them beside the repository. Existing worktrees stay where they are.",
-              },
+              { key: "new_worktrees_start_from_origin", title: settingsLabel("worktrees-start-from-origin") },
               {
                 key: "worktree_submodules",
-                title: "Submodules",
+                title: settingsLabel("worktrees-submodules"),
                 options: [
                   { value: "recursive", label: "Recursive" },
-                  { value: "top_level", label: "Top level" },
-                  { value: "skip", label: "Skip" },
+                  { value: "top-level", label: "Top level only" },
+                  { value: "none", label: "Skip" },
                 ],
               },
             ],
@@ -375,14 +371,14 @@ export function WorktreesSection() {
               rows: [
                 {
                   key: "branch_naming_mode",
-                  title: "Naming",
+                  title: settingsLabel("worktrees-naming"),
                   options: [
                     { value: "static", label: "Static" },
                     { value: "semantic", label: "Semantic" },
                     { value: "custom", label: "Custom" },
                   ],
                 },
-                { key: "branch_name_prefix", title: "Branch prefix" },
+                { key: "branch_name_prefix", title: settingsLabel("worktrees-branch-prefix") },
               ],
             },
           ]}
@@ -403,7 +399,7 @@ export function SourceControlSection() {
         <ErrorState title="Couldn't check source control" failure={forges.error} onRetry={forges.reload} />
       ) : (
         <SettingGroup title="Hosts">
-          <SettingRow title="Check again" description="Finds a command line tool or sign-in that has changed.">
+          <SettingRow title={settingsLabel("source-control-check-again")} description="Finds a command line tool or sign-in that has changed.">
             <Button small onClick={forges.reload}>
               Rescan
             </Button>
@@ -436,13 +432,13 @@ export function LabsSection() {
       {heading("Labs")}
       <SettingGroup title="Sidebar">
         <Toggle
-          title="Project folders"
+          title={settingsLabel("labs-project-folders")}
           description="Group active threads by project."
           on={folders}
           set={(on) => setPrefs({ projectFolders: on })}
         />
         <Toggle
-          title="Multiline rows"
+          title={settingsLabel("labs-multiline-rows")}
           description="Let thread titles in folders wrap."
           on={multiline}
           set={(on) => setPrefs({ multilineRows: on })}
@@ -450,13 +446,13 @@ export function LabsSection() {
       </SettingGroup>
       <SettingGroup title="Legacy">
         <Toggle
-          title="Plan mode"
+          title={settingsLabel("labs-plan-mode")}
           description="Keeps the Plan button, /plan, /default and Shift+Tab. Off uses Build."
           on={plan}
           set={(on) => setPrefs({ planControls: on })}
         />
         <Toggle
-          title="Context window indicator"
+          title={settingsLabel("labs-context-window-indicator")}
           description="Shows how full the context is, as a circle in the composer."
           on={meter}
           set={(on) => setPrefs({ contextMeter: on })}

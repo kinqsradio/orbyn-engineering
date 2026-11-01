@@ -377,6 +377,19 @@ fn router(state: AppState) -> Router {
             "/api/settings",
             get(api::get_settings).put(api::put_settings),
         )
+        .route("/api/settings/project-scopes", post(api::project_scopes))
+        .route(
+            "/api/source-control/repository-star",
+            get(api::repository_star_status),
+        )
+        .route(
+            "/api/settings/preferences/query",
+            post(api::scoped_preferences),
+        )
+        .route(
+            "/api/settings/preferences",
+            axum::routing::put(api::change_scoped_preferences),
+        )
         .route(
             "/api/preferences",
             get(api::preferences).put(api::set_preferences),

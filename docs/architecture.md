@@ -346,20 +346,143 @@ with `no-query-term` so it does not wait on terminal replies.
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
-Windows. The command comes from the file, never the request, and it needs a trusted
-folder. `run_on_worktree_create` and `run_on_settle` scripts run only in a worktree;
-one that cannot start is logged and does not undo the change that triggered it, and
-Orbyn does not hold a run for a setup script to finish.
+Windows. The command comes from the effective saved script list, never the request,
+and it needs a trusted folder. Scripts resolve Project → Environment → actual
+thread-checkout file → Default. An explicit empty list suppresses inherited scripts;
+Inherit removes that override. Both script menus, explicit execution and worktree
+hooks use this same resolver. The scripts response keeps the actual file content in
+`file` and exposes the effective list separately in `scripts`; settings never rewrite
+the file. Opening a script terminal preserves its selected tab while the terminal
+list refreshes. Malformed files block execution, and script lists require unique nonempty
+names and nonempty commands. The action editor preserves a named script's
+role and options when editing its command. Both manual script menus open a new
+Browser tab after successful command launch when `auto_open_preview` is enabled
+and `preview_url` is set. The existing preview API validates the URL and owns its
+browser process. The new tab is selected without replacing another page; preview
+failure is reported separately from the already-started command. A late preview
+response does not switch surfaces after the user navigates to another thread.
+The version-fenced settings API also accepts targeted action add, update and
+remove operations. Each selected checkout starts from its own effective list;
+adding to Mixed actions preserves every member's other commands. Duplicate names,
+missing edit targets or invalid commands reject the whole group. The same membership
+and row revisions fence these edits; project files and unselected project overrides are
+not rewritten. An update preserves unknown fields on the selected action.
+The settings action form edits names, commands, icons, setup/wait/settle flags and
+preview options through these operations. Environment defaults, logical groups and
+physical project dialogs use the same version-fenced writer. A Mixed group offers
+Add action without treating one checkout's list as the group's list. A failed save
+keeps the draft and reports the error; closing the form does not imply a successful
+write. The Name field receives focus after the native modal enters the top layer.
+After closing the form, focus returns to its opener once the refreshed controls
+are enabled; renaming or deleting the opener's action returns focus to Add action.
+Deletion requires confirmation. An action's optional `id` is independent of its
+editable name and command. Readers derive a deterministic SHA-256 identity from
+the exact legacy name when it is absent, without writing project files or stored
+lists. New targeted saves materialize the ID; an edit preserves the observed ID
+across renames and rejects a request to change it. The same named legacy action
+has the same derived identity across checkouts, while names that collapse to one
+display slug remain distinct. Explicit IDs must be unique within a list and
+contain 1–128 ASCII letters, digits, hyphens or underscores.
+Manual terminals use the validated ID rather than a simplified display name, so
+running similarly named actions cannot replace each other's terminal or process.
+This is an additive reader/writer expansion with no database backfill or schema
+change. Existing writers may still replace a whole list, and legacy data remains
+readable; targeted editing is the identity-preserving operation. The data-directory
+lock continues to admit only one Core writer. Environment-wide action shortcuts
+remain unfinished; identity support does not establish complete action parity.
+The first `run_on_worktree_create` or
+`run_on_settle` action runs in its worktree; later matching actions are not run.
+Setup has its own terminal, distinct from manual execution, and each settle gets
+a fresh terminal. A setup's `async` defaults to true. The first admitted turn waits
+until its captured setup is started; `async: false` also waits for exit code zero.
+Engine title generation follows that same gate. Startup failure or unsuccessful
+synchronous setup fails the first turn; an async exit does not block it,
+and a later explicit user message does not implicitly execute project code again.
+Failed preparation keeps queued messages held, including messages added after the
+failure. A later user turn does not release that hold, and queue resume or automatic
+restart/limit continuation cannot bypass it. Retrying preparation itself remains a
+separate unfinished surface; an ordinary prompt is not a preparation retry.
+Cancellation and setup process creation share one owner lock; cancelling first
+prevents a later spawn, and cancelling a blocked turn kills its setup process.
+
+Schema 18 adds `thread_setup` with a cascading thread foreign key. Its preparation
+marker and thread commit in one transaction, before clients can admit a turn.
+Registration failure and early returns close that marker. Process handles stay in
+Core, with no detached setup waiters. A normal shutdown preserves known completion
+and records unfinished work as failed; an already-started async action remains
+nonblocking. Restart fences old pending writers before admission.
+Existing threads receive no marker and never execute setup retroactively. Older
+cores reject the newer schema before changing persistent data; rolling back requires
+a database backup from the older schema, not an older writer against schema 18.
+Moving or deleting a thread clears its setup and closes its old terminals/previews.
 
 ## Settings and maintenance
 
 `ServerSettings` holds lifecycle and pricing. Everything else is in a fixed catalog of
 preferences, each with a default and a shape: an unknown key or a wrong shape is
 `400`, and a change applies all of its values or none. A preference resolves project,
-then global, then default, and only those marked `project_scoped` can be set per
+then environment, then the actual project file where supported, then default, and only those marked `project_scoped` can be set per
 project. The catalog holds no secret: provider environments and tokens stay out under
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
+
+`POST /api/settings/project-scopes` is a full-app read of registered local checkout
+groups and a typed selection. It accepts the client's `repository`, `repository_path`
+or `separate` grouping recipe and per-physical-project overrides. Repository identity
+uses a recognized origin before an upstream, so a fork remains its own project;
+HTTPS, SSH and SCP locators drop userinfo, query and fragment before opaque hashing.
+Path case and explicit ports stay distinct. Local/file or unrecognized remotes fall
+back to the physical project, never its display name. Git reads have capture and time
+budgets, cannot use transport or credential helpers, and never return or store a raw
+remote URL. Effective local and worktree configuration uses Git’s first fetch URL;
+include directives and URL rewrites remain explicitly unobserved, without opening
+include files. Global/system configuration is excluded. They share the library reader guard until their children finish.
+
+The harness library is excluded from selectable targets and recipe overrides; missing
+workspace state fails instead of broadening scope. The catalog reports actual registered paths and repository-relative paths. Current
+registration normalizes Git subfolders to the Git root, so their relative path is
+empty; this read does not invent subfolder projects. A missing checkout remains
+unavailable. Failed or unobserved metadata is explicit and prevents resolving a logical
+repository group whose membership may be incomplete; completed physical fallbacks do
+not. An explicit checkout target is shown with that checkout’s project name. Its parent
+logical group is not marked selected in the picker; switching to the group requires
+choosing it explicitly. Unknown or stale selections never widen to All projects. An absent selection or
+explicit All projects means environment defaults, not a project-override fan-out.
+`POST /api/settings/preferences/query` resolves environment, logical-project or
+physical-checkout rows from one SQLite read snapshot. Effective values that differ
+are Mixed; equal explicit overrides keep their source and remain resettable. All
+projects edits environment defaults and lists explicit overrides without copying a
+value to every project. Project-group edits target only its registered members.
+
+`PUT /api/settings/preferences` requires the observed membership version and one
+revision per edited key. Set, Inherit and Reset overrides are distinct operations;
+Set null means Never for nullable lifecycle settings, while Inherit deletes the
+selected override. Object Set values are top-level field patches merged independently
+with each target's transaction-current effective object; unmentioned fields survive. Reset overrides carries explicit physical IDs and preserves the
+environment value. All affected global, lifecycle and project writes commit in one
+immediate SQLite transaction or none, preserving unrelated and unknown settings.
+Missing or changed scopes and stale revisions return typed 409 errors, never a
+broader write. These full-app routes do not add engine tool capabilities.
+
+Git and project-file observations precede SQLite. The immediate transaction fences
+registered IDs and paths, the observed catalog membership version, and each key's
+effective value and override presence. External Git/file changes after observation
+cannot share SQLite's atomic lock; no claim is made that those external files are
+transactional. Metadata uncertainty never broadens the selected member IDs. Query
+keys, values and response size are bounded. Runtime streaming, restart recovery,
+title generation, merge settling and idle settling use the same project resolver.
+`/api/info` supplies
+the local host display name for the fixed local environment label; it performs no
+remote lookup and adds no selectable remote environment.
+The local UI preserves project/checkout IDs across settings sections and exact-row
+search. Device-only sections intentionally edit this computer's defaults. Preference
+rows and thread lifecycle/title controls use scoped reads and revision-fenced edits;
+Mixed controls do not save an untouched empty value. Provenance displays actual
+project, environment, file and default layers. Reset all deletes only the explicit
+listed project overrides. Each write stays attached to the scope that supplied its
+revision, including when navigation changes before it finishes. Custom provider,
+storage and observability forms are not yet migrated to this context; their parity
+claims remain partial until those bindings and native walkthroughs are verified.
 
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An
@@ -376,7 +499,18 @@ an engine update refuses while any run is active, and no run starts during an up
 
 A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
 `new_worktrees_start_from_origin` is on, falling back to HEAD, and
-`worktree_submodules`, where the project file's choice wins. `auto_pull` fast-forwards
+`worktree_submodules` through the shared preference resolver. Checkout mode and
+submodule behavior resolve Project override → Environment override → the actual
+`orbyn.json` (or fallback `t3.json`) → built-in default. Explicit equal-valued
+overrides remain overrides; resetting removes them without changing project files.
+Invalid file settings reject the whole file rather than partially applying it.
+Submodule values are `recursive`, `top-level` and `none`. They initialize nested
+modules, direct modules only, or no modules, respectively. Earlier `top_level` and
+`skip` spellings remain accepted and normalize on read without rewriting stored
+settings or project files; UI edits use the canonical values.
+A new draft waits for the selected checkout's effective mode; explicit checkout
+choices and reused worktrees win, and late responses cannot change another project.
+A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards
 a clean checkout on the remote's default branch every 30 minutes.
 
 `keybindings.json` lives in app data and holds only the person's changes over built-in
@@ -658,7 +792,10 @@ is dirty, unpushed, ignored or in a worktree.
 
 Worktrees sit beside the primary clone at `<repo>-wt/<purpose>/`, wherever that repo
 lives, on a neutral `feat/<purpose>` branch, and a registered worktree for a purpose
-is reused. A custom worktree location is not offered.
+is reused. A custom worktree location is not offered or accepted by either settings
+API. Earlier stored location preferences are left intact but ignored; they cannot
+redirect new worktrees. Existing Git-registered worktrees remain at their current
+paths, including earlier layouts, with no file migration or removal.
 
 A thread with no project gets a dated folder, `<data>/scratch/<date>-<id>`, behind a
 hidden project, so it passes through the same trust, write scope and launch as any
@@ -1006,6 +1143,20 @@ time and `--limit` controls displayed names. Missing files produce an empty repo
 without creating the data folder. This is local timing evidence, not an OTLP exporter
 or a completed diagnostics UI.
 
+The GitHub-star notice counts acknowledged composer submissions in two separate
+viewer-storage entries: sent threshold and dismissal. It checks this app's fixed
+public repository after the sixth prompt and appears once per page session until
+closed. Button, link, close-icon and bottom-right swipe dismissal share the same
+saved dismissal. Storage failures suppress the notice, and a dismissal from another
+tab wins over an in-flight check. Core uses a bounded, noninteractive `gh api` GET
+for the fixed repository; it captures no output, reads no credential file and never
+stars anything. Missing tools or an unavailable check do not interrupt a send.
+The web reload flow is qualified. Native viewer storage now has a stable bundled
+origin, with Light persistence qualified across isolated macOS quit/relaunch and
+service recovery. Star-notice dismissal across native quit/relaunch itself remains
+unverified; the shared storage correction is not a substitute for that walkthrough.
+
+
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`,
@@ -1037,6 +1188,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
+| `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
 | `PATCH /api/projects/:id` | `RenameProject`: the name shown; the folder stays |
 | `DELETE /api/projects/:id?delete_files=&confirm=` | `ProjectRemoval`: unregisters; `delete_files` is `400` unless Orbyn made the folder, and can be `409 project_has_work` |
@@ -1050,6 +1202,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
 | `POST /api/threads/:id/title` | Regenerate the title from the conversation. Spends engine usage |
 | `GET, PUT /api/settings` | `ServerSettings` |
+| `GET /api/source-control/repository-star` | Fixed product repository star status; full-app read, no star mutation |
 | `GET, POST /api/tasks` | `ScheduledTask[]`; `UpsertTask` creates or changes |
 | `PUT /api/tasks/:id` | The whole `UpsertTask`; `404` if unknown, `400` for another task's `id` or another project |
 | `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |

@@ -8,6 +8,9 @@ import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { TerminalPanel } from "./TerminalPanel";
+import type { ProjectScript } from "../../generated/ProjectScript";
+import { openActionPreview } from "../thread/actionPreview";
+import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 const MAIN = "main";
 const q = encodeURIComponent;
@@ -41,8 +44,8 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
   );
 
   useEffect(() => {
-    if (active !== MAIN && terminals.status === "ready" && !shown) setActive(MAIN);
-  }, [active, shown, terminals.status]);
+    if (active !== MAIN && terminals.status === "ready" && !terminals.refreshing && !shown) setActive(MAIN);
+  }, [active, shown, terminals.status, terminals.refreshing]);
 
   const open = async (body: Record<string, string>) => {
     try {
@@ -61,11 +64,12 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
       fail(failure);
     }
   };
-  const run = async (name: string) => {
+  const run = async (script: ProjectScript) => {
     try {
-      const made = await request<TerminalInfo>("POST", `${base}/scripts`, { name });
+      const made = await request<TerminalInfo>("POST", `${base}/scripts`, { name: script.name });
       setActive(made.group);
       reload();
+      await openActionPreview(threadId, script);
     } catch (failure) {
       fail(failure);
     }
@@ -79,7 +83,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
     if (first && first.id !== MAIN) void close(first);
     else onClose();
   });
-  const scriptList = (scripts.data?.file as { scripts?: { name: string }[] } | null | undefined)?.scripts ?? [];
+  const scriptList = scripts.data?.scripts ?? [];
   return (
     <div className="terminal-drawer-body">
       <div className="terminal-tabs" role="tablist" aria-label="Terminals">
@@ -158,7 +162,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
           {...menu}
           label="Scripts"
           onClose={() => setMenu(null)}
-          items={scriptList.map((script) => ({ label: script.name, onSelect: () => void run(script.name) }))}
+          items={scriptList.map((script) => ({ label: script.name, icon: <ProjectActionIcon icon={script.icon} />, onSelect: () => void run(script) }))}
         />
       ) : null}
     </div>

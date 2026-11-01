@@ -4,6 +4,8 @@ import { ApiFailure, api } from "../../api/client";
 import type { LibraryStatus, TargetStatus } from "../../api/types";
 import { useWorkspace } from "../../state/workspace";
 import { PreferenceGroups } from "./PreferenceRows";
+import { ProjectActions } from "./ProjectActions";
+import { SettingRowIds } from "../../ui/SettingRow";
 import { Button, Pill } from "../../ui/controls";
 import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { Empty, ErrorState, Loading } from "../../ui/states";
@@ -221,33 +223,12 @@ function EngineToggles({ value, save }: { value: unknown; save(next: string[]): 
   );
 }
 
-/** One command per line, saved as the scripts new threads in this project offer. */
-function ScriptLines({ value, save }: { value: unknown; save(next: { name: string; command: string }[]): void }) {
-  const scripts = Array.isArray(value) ? (value as { name: string; command: string }[]) : [];
-  return (
-    <textarea
-      aria-label="Project scripts"
-      rows={3}
-      placeholder="Name: command"
-      key={JSON.stringify(scripts)}
-      defaultValue={scripts.map((script) => `${script.name}: ${script.command}`).join("\n")}
-      onBlur={(event) =>
-        save(
-          event.target.value
-            .split("\n")
-            .map((line) => /^([^:]+):\s*(.+)$/.exec(line.trim()))
-            .flatMap((match) => (match ? [{ name: match[1] ?? "", command: match[2] ?? "" }] : [])),
-        )
-      }
-    />
-  );
-}
 
 /** What this project sets for itself. Anything left alone follows the global setting. */
 function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string; name: string; onClose(): void }) {
   return (
     <Dialog title={`${name} settings`} onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
-      <PreferenceGroups
+      <SettingRowIds.Provider value={() => undefined}><PreferenceGroups
         projectId={projectId}
         groups={[
           {
@@ -263,6 +244,7 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               },
               {
                 key: "default_thread_env_mode",
+                inheritance: true,
                 title: "Default checkout",
                 options: [
                   { value: "local", label: "Current checkout" },
@@ -276,8 +258,8 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               },
               {
                 key: "default_project_scripts",
-                title: "Scripts",
-                render: (value, save) => <ScriptLines value={value} save={save} />,
+                title: "Actions",
+                render: (value, _save, control) => <ProjectActions value={value} control={control} />,
               },
             ],
           },
@@ -287,17 +269,18 @@ function ProjectSettingsDialog({ projectId, name, onClose }: { projectId: string
               { key: "auto_pull", title: "Pull the default branch automatically", inheritance: true },
               {
                 key: "worktree_submodules",
+                inheritance: true,
                 title: "Submodules",
                 options: [
                   { value: "recursive", label: "Recursive" },
-                  { value: "top_level", label: "Top level" },
-                  { value: "skip", label: "Skip" },
+                  { value: "top-level", label: "Top level only" },
+                  { value: "none", label: "Skip" },
                 ],
               },
             ],
           },
         ]}
-      />
+      /></SettingRowIds.Provider>
     </Dialog>
   );
 }
@@ -395,6 +378,8 @@ export function ProjectsSection() {
           Projects
         </h1>
       </div>
+      <PreferenceGroups groups={[{ title: "Actions", rows: [{ key: "default_project_scripts", title: "Actions", inheritance: true,
+        render: (value, _save, control) => <ProjectActions value={value} control={control} /> }] }]} />
       {unsupported ? (
         <Empty title="No projects yet" />
       ) : managed.error && !managed.data ? (

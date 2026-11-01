@@ -32,6 +32,7 @@ export function Collapsible({
   const open = controlled ?? internal;
   const panelId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const first = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -59,8 +60,15 @@ export function Collapsible({
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  useEffect(() => {
+    const element = root.current;
+    const reveal = () => { setInternal(true); onOpenChange?.(true); };
+    element?.addEventListener("reveal-setting", reveal);
+    return () => element?.removeEventListener("reveal-setting", reveal);
+  }, [onOpenChange]);
+
   return (
-    <div className={className} {...rest}>
+    <div ref={root} className={className} {...rest}>
       <button
         type="button"
         className={summaryClassName}

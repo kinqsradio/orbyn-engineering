@@ -24,6 +24,47 @@ use crate::util::tail;
 
 const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
 const LIST_LIMIT: &str = "100";
+
+impl crate::app::Core {
+    /// A fixed, read-only product-repository check through the person's own CLI.
+    /// Missing sign-in and unavailable tools are not a reason to interrupt a send.
+    pub async fn repository_star_status(&self) -> orbyn_contracts::RepositoryStarStatus {
+        let starred = async {
+            let resolved = resolve("gh")?;
+            let mut command = Command::new(resolved.program);
+            command
+                .args(resolved.prefix)
+                .args([
+                    "api",
+                    "--method",
+                    "GET",
+                    "--hostname",
+                    "github.com",
+                    "user/starred/kinqsradio/orbyn-engineering",
+                    "--silent",
+                ])
+                .current_dir(&self.config.data_dir)
+                .env("GH_PROMPT_DISABLED", "1")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(true);
+            crate::child_env::for_tool(command.as_std_mut());
+            let mut child = crate::process::ManagedChild::spawn(command).ok()?;
+            match tokio::time::timeout(Duration::from_secs(3), child.wait()).await {
+                Ok(Ok(status)) => Some(status.success()),
+                _ => {
+                    child.terminate();
+                    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                    None
+                }
+            }
+        }
+        .await
+        .unwrap_or(false);
+        orbyn_contracts::RepositoryStarStatus { starred }
+    }
+}
 const GH_LIST_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
 updatedAt,labels,reviewDecision,statusCheckRollup";
 const GH_VIEW_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\

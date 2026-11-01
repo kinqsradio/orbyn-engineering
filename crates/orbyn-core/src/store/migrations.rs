@@ -19,7 +19,26 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (15, RUN_FILE_CHANGES),
     (16, LIMIT_STOPS),
     (17, VISITS_AND_RESUMES),
+    (18, PROJECT_SETUP),
 ];
+
+// Thread creation and its first-turn setup fence commit together. Older cores
+// reject this schema before opening a writer, rather than ignoring that fence.
+const PROJECT_SETUP: &str = r#"
+CREATE TABLE thread_setup (
+    thread_id TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+    owner_epoch TEXT NOT NULL,
+    name TEXT NOT NULL CHECK(length(name) > 0),
+    wait_for_exit INTEGER NOT NULL CHECK(wait_for_exit IN (0, 1)),
+    status TEXT NOT NULL CHECK(status IN ('preparing', 'running', 'finished', 'failed')),
+    terminal_id TEXT,
+    exit_code INTEGER,
+    CHECK((status = 'preparing' AND terminal_id IS NULL AND exit_code IS NULL)
+       OR (status = 'running' AND terminal_id IS NOT NULL AND exit_code IS NULL)
+       OR (status = 'finished' AND terminal_id IS NOT NULL AND exit_code IS NOT NULL)
+       OR (status = 'failed' AND exit_code IS NULL))
+);
+"#;
 
 // `resume_tries` counts automatic continuations since your last message.
 const VISITS_AND_RESUMES: &str = r#"

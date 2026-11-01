@@ -16,12 +16,13 @@ use crate::error::{CoreError, Result};
 use crate::git;
 use crate::mcp::McpService;
 use crate::preview::PreviewManager;
+use crate::project_setup::SetupManager;
 use crate::projects::ClonePool;
 use crate::questions::QuestionDesk;
 use crate::runs::{RunManager, RunServices};
 use crate::shell::ShellBridge;
 use crate::skills::SkillService;
-use crate::store::{NewThread, Recovery, Store};
+use crate::store::{NewSetup, NewThread, Recovery, Store};
 use crate::terminal::TerminalManager;
 use crate::updates::UpdateCenter;
 use crate::usage::UsageCenter;
@@ -110,6 +111,7 @@ pub struct Core {
     pub mcp: Arc<McpService>,
     pub runs: Arc<RunManager>,
     pub terminals: Arc<TerminalManager>,
+    pub(crate) setups: Arc<SetupManager>,
     pub updates: Arc<UpdateCenter>,
     pub shell: ShellBridge,
     pub usage: Arc<UsageCenter>,
@@ -150,6 +152,7 @@ impl Core {
         let gate = Arc::new(ApprovalGate::new(store.clone(), config.approval_timeout));
         let questions = Arc::new(QuestionDesk::new(store.clone(), config.approval_timeout));
         let terminals = Arc::new(TerminalManager::default());
+        let setups = Arc::new(SetupManager::new(store.clone())?);
         let http = reqwest::Client::builder()
             .user_agent(concat!("orbyn/", env!("CARGO_PKG_VERSION")))
             .build()
@@ -184,6 +187,7 @@ impl Core {
             mcp: mcp.clone(),
             base_url: config.base_url.clone(),
             runs_dir: config.data_dir.join("runs"),
+            setups: setups.clone(),
         }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
         let usage = Arc::new(UsageCenter::new(&config.data_dir)?);
@@ -207,6 +211,7 @@ impl Core {
             mcp,
             runs,
             terminals,
+            setups,
             updates,
             shell: ShellBridge::default(),
             usage,
@@ -248,7 +253,7 @@ impl Core {
                         "Worktrees need a Git repository.".into(),
                     ));
                 }
-                let options = self.worktree_options(&project.id, &project.path, &request)?;
+                let options = self.worktree_options(&project.id, &request)?;
                 Some(git::create_worktree(Path::new(&project.path), purpose, &options).await?)
             }
             None => None,
@@ -274,20 +279,38 @@ impl Core {
         } else {
             request.options.clone()
         };
-        let thread = self.store.create_thread(NewThread {
-            project_id: project.id,
-            title: request
-                .title
-                .unwrap_or_else(|| crate::titles::NEW_THREAD_TITLE.to_owned()),
-            engine: request.engine,
-            model,
-            cwd,
-            worktree,
-            skill_profile: request.skill_profile,
-            parent_thread_id: None,
-            relation: None,
-            scratch: project.scratch,
-        })?;
+        let setup_script = if worktree.is_some() {
+            self.project_file_at(&project_id, Path::new(&cwd))?
+                .scripts
+                .into_iter()
+                .find(|script| script.run_on_worktree_create)
+        } else {
+            None
+        };
+        let setup = setup_script.as_ref().map(|script| NewSetup {
+            name: script.name.clone(),
+            wait_for_exit: !script.asynchronous,
+        });
+        let thread_id = new_id();
+        let registration = setup.as_ref().map(|_| self.setups.registration(&thread_id));
+        let thread = self.store.create_registered_thread(
+            &thread_id,
+            NewThread {
+                project_id: project.id,
+                title: request
+                    .title
+                    .unwrap_or_else(|| crate::titles::NEW_THREAD_TITLE.to_owned()),
+                engine: request.engine,
+                model,
+                cwd,
+                worktree,
+                skill_profile: request.skill_profile,
+                parent_thread_id: None,
+                relation: None,
+                scratch: project.scratch,
+            },
+            setup.as_ref(),
+        )?;
         let mode = self.preference("default_permission_mode", Some(&project_id))?;
         let mode: PermissionMode = serde_json::from_value(mode)?;
         let patch = UpdateThread {
@@ -301,16 +324,19 @@ impl Core {
         } else {
             self.store.update_thread(&thread.id, &patch, "system")?
         };
-        self.run_hook_scripts(&thread.id, |script| script.run_on_worktree_create);
+        if let Some((script, registration)) = setup_script.zip(registration) {
+            match self.start_setup_script(&thread, &script) {
+                Ok(()) => registration.complete(),
+                Err(error) => tracing::warn!(%error, "could not start project setup"),
+            }
+        }
         Ok(thread)
     }
 
-    /// The settings for a new worktree. The project file's submodule choice wins,
-    /// since it travels with the branch being checked out.
+    /// The settings for a new worktree use the shared preference resolver.
     fn worktree_options(
         &self,
         project_id: &str,
-        path: &str,
         request: &orbyn_contracts::CreateThread,
     ) -> Result<git::WorktreeOptions> {
         let text = |key: &str| -> Result<String> {
@@ -320,19 +346,12 @@ impl Core {
                 .unwrap_or_default()
                 .to_owned())
         };
-        let file = crate::project_file::read_project_file(Path::new(path)).file;
         Ok(git::WorktreeOptions {
             prefix: text("branch_name_prefix")?,
             base: request.base_branch.clone(),
             from_origin: self.preference("new_worktrees_start_from_origin", Some(project_id))?
                 == serde_json::json!(true),
-            submodules: match file.and_then(|file| file.worktree_submodules) {
-                Some(choice) => choice,
-                None => text("worktree_submodules")?,
-            },
-            directory: Some(text("worktree_location")?)
-                .filter(|location| !location.trim().is_empty())
-                .map(std::path::PathBuf::from),
+            submodules: text("worktree_submodules")?,
         })
     }
 
@@ -355,6 +374,7 @@ impl Core {
     /// Stops every engine, terminal and browser this process owns.
     pub async fn shutdown(&self) {
         self.runs.shutdown().await;
+        self.setups.shutdown();
         self.terminals.close_all();
         self.previews.close_all();
         self.computer.shutdown().await;
@@ -459,5 +479,155 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             std::process::id().to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod preference_consumer_tests {
+    use super::*;
+    use crate::{CoreConfig, store::NewProject, testing::TempDir};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn retired_location_preferences_cannot_redirect_new_worktrees() {
+        let dir = TempDir::new();
+        let root = dir.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "Initial",
+            ],
+        ] {
+            git::git(&root, &args).await.unwrap();
+        }
+        let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
+        config.engines.lookup_latest = false;
+        let core = Core::open(config).unwrap();
+        let project = core
+            .store
+            .add_project(NewProject {
+                path: root.to_str().unwrap(),
+                name: "Project",
+                is_git: true,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
+        let old_value = json!(dir.path().join("elsewhere").to_str().unwrap()).to_string();
+        core.store
+            .change_settings(|_| {
+                Ok((
+                    (),
+                    vec![
+                        crate::store::scoped_settings::SettingWrite::Global {
+                            key: "pref:worktree_location".into(),
+                            value: Some(old_value.clone()),
+                        },
+                        crate::store::scoped_settings::SettingWrite::Project {
+                            project_id: project.id.clone(),
+                            key: "worktree_location".into(),
+                            value: Some(old_value.clone()),
+                        },
+                    ],
+                ))
+            })
+            .unwrap();
+        assert!(
+            core.preferences(Some(&project.id))
+                .unwrap()
+                .iter()
+                .all(|row| row.key != "worktree_location")
+        );
+        assert!(
+            core.set_preferences(
+                None,
+                &[("worktree_location".into(), json!("elsewhere"))].into()
+            )
+            .is_err()
+        );
+        let request =
+            serde_json::from_value(json!({"project_id":project.id,"engine":"codex"})).unwrap();
+        let options = core.worktree_options(&project.id, &request).unwrap();
+        let worktree = git::create_worktree(&root, "fixed-location", &options)
+            .await
+            .unwrap();
+        assert_eq!(
+            Path::new(&worktree.path),
+            dir.path().join("project-wt/fixed-location")
+        );
+        assert!(!dir.path().join("elsewhere").exists());
+        assert_eq!(
+            core.store.setting("pref:worktree_location").unwrap(),
+            Some(old_value.clone())
+        );
+        assert!(
+            core.store
+                .project_preferences(&project.id)
+                .unwrap()
+                .contains(&("worktree_location".into(), old_value))
+        );
+        core.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn worktree_creation_uses_the_same_submodule_precedence_as_preference_views() {
+        let dir = TempDir::new();
+        let root = dir.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("orbyn.json"), r#"{"worktreeSubmodules":"skip"}"#).unwrap();
+        let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
+        config.engines.lookup_latest = false;
+        let core = Core::open(config).unwrap();
+        let project = core
+            .store
+            .add_project(NewProject {
+                path: root.to_str().unwrap(),
+                name: "Project",
+                is_git: true,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
+        let request: orbyn_contracts::CreateThread =
+            serde_json::from_value(json!({ "project_id":project.id,"engine":"codex" })).unwrap();
+        let current = || {
+            core.worktree_options(&project.id, &request)
+                .unwrap()
+                .submodules
+        };
+        assert_eq!(current(), "none");
+        core.set_preferences(
+            None,
+            &[("worktree_submodules".into(), json!("recursive"))].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "recursive");
+        core.set_preferences(
+            Some(&project.id),
+            &[("worktree_submodules".into(), json!("top_level"))].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "top-level");
+        core.set_preferences(
+            Some(&project.id),
+            &[("worktree_submodules".into(), serde_json::Value::Null)].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "recursive");
+        core.set_preferences(
+            None,
+            &[("worktree_submodules".into(), serde_json::Value::Null)].into(),
+        )
+        .unwrap();
+        assert_eq!(current(), "none");
+        core.shutdown().await;
     }
 }

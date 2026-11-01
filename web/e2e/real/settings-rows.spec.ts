@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
@@ -58,17 +58,17 @@ test("Labs turns Plan off, and Shift+Tab flips it while it is on", async ({ page
   await settings(page).getByRole("switch", { name: "Plan mode" }).click();
 });
 
-test("the worktree location decides where a new worktree goes", async ({ page }) => {
-  const location = join(service.dataDir, "elsewhere");
+test("new worktrees use the fixed sibling location without a custom-location setting", async ({ page }) => {
   await page.goto(`${service.page}#/settings/worktrees`);
-  const field = settings(page).getByLabel("Worktree location");
-  await field.fill(location);
-  await field.blur();
-  await expect.poll(async () => JSON.stringify(await service.api("GET", "/api/preferences"))).toContain("elsewhere");
+  await expect(settings(page).getByLabel("Worktree location")).toHaveCount(0);
+  await page.getByRole("searchbox", { name: "Search settings" }).fill("Worktree location");
+  await expect(page.getByRole("link", { name: "Worktree location · Worktrees", exact: true })).toHaveCount(0);
+  const preferences = await service.api<{ key: string }[]>("GET", "/api/preferences");
+  expect(preferences.some((row) => row.key === "worktree_location")).toBe(false);
+  await expect(service.api("PUT", "/api/preferences", { values: { worktree_location: join(service.dataDir, "elsewhere") } })).rejects.toThrow(/400/);
   const engines = await service.api<{ id: string }[]>("GET", "/api/engines");
   const made = await service.api<{ cwd: string }>("POST", "/api/threads", { project_id: projectId, engine: engines[0]?.id, model: null, title: "Placed", worktree: "placed", skill_profile: null });
-  expect(made.cwd.startsWith(location)).toBe(true);
-  await service.api("PUT", "/api/preferences", { values: { worktree_location: "" } });
+  expect(made.cwd).toBe(join(realpathSync(service.repo) + "-wt", "placed"));
 });
 
 test("theme keys cycle the appearance and open the theme settings", async ({ page }) => {

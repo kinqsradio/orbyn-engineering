@@ -92,7 +92,8 @@ function apiCall() {
     return undefined;
   };
   const method = flag("-X") ?? "GET";
-  const path = args.find((arg, at) => at > 0 && /^(repos|graphql)/.test(arg)) ?? "";
+  const path = args.find((arg, at) => at > 0 && /^(repos|graphql|user\/starred\/)/.test(arg)) ?? "";
+  if (path === "user/starred/kinqsradio/orbyn-engineering") process.exit(state.starred ? 0 : 1);
   if (path === "graphql") {
     const query = field("query") ?? "";
     if (query.includes("reviewThreads")) return out(threads(field("number")));

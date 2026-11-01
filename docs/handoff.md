@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `2769161`. Trust the repository over this document where they differ,
+`main` at `56d914d`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,16 +49,17 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `2769161`
+## Reconciled status at `56d914d`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
-At this revision there are 709 rows and 376 source checkboxes are ticked. The
-explicit scope metadata reports 535 included rows: 346 declared checked, 35
-partial, 152 open and 2 not doable as written. There are also 174 excluded and
-zero unresolved-scope rows. These source decisions do not qualify runtime behavior.
-These are checklist declarations, not a fresh verification count. The former
-365/573 calculation missed mobile-only rows and whole-row exclusions discarded
-local parts of mixed features; it is not a valid completion percentage.
+Main has 709 rows and 383 source checkboxes ticked. Its scope metadata reports
+533 included rows: 349 declared checked, 39 partial, 143 open and 2 not doable.
+There are 176 excluded and zero unresolved-scope rows. The settings branch after
+integration has 534 included: 344 declared checked, 47 partial, 141 open and 2 not
+doable, with 175 excluded and 384 source ticks. These are checklist declarations,
+not a fresh runtime verification count. Scope reconciliation and explicit partial
+rows mean the branch counts are not directly comparable as delivered features.
+The former 365/573 calculation is not a valid completion percentage.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
@@ -72,7 +73,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #61 | Merged at `9fafa3a` after all required checks passed. |
 | #62 | Merged at `f97abb8` after all required checks passed. |
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
-| #60 | Latest local integration `35b5a31` includes main `2769161`. Original CLI/resource/service controls have historical passing evidence. Its new bounded inherited-pipe fixture is intermittent under parallel execution and is being corrected; current-head verification and CI are not complete. Older Windows Rust runs remain unresolved observations. Never merge without every required current-head check green. |
+| #60 | Merged as `56d914d` after exact head `4425a71` passed all six required jobs in `41290079315`, plus GitGuardian. Post-merge main `41291556483` also passed all six required jobs, including Windows packaged startup. The captured-pipe regression is fixed; this does not identify the older historical process holder. |
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
@@ -83,7 +84,9 @@ in run `41260222681` and merged as `58d2bed`. Integrated main run
 `51a95eb` run `41262630943` failed its Windows installed-app startup smoke;
 Main `800293b` run `41263153043` passed all six required jobs. Later integrated
 main `0a48073` and `ed845d9` also
-passed. Current main `2769161` run `41265985286` is running.
+passed. Main `04eb893` run `41269745565` passed all six required jobs. PR81 head
+`2317c6e` passed all six required jobs in `41282261011`, plus GitGuardian, before
+merging as `193f406`. Its post-merge main run `41283340854` passed all six required jobs.
 The historical Windows process holder is still unproven.
 
 ### Current continuation work
@@ -119,22 +122,67 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   All current-head checks passed before merge. An unrelated multi-model case
   failed once with pending run requests and passed in isolation; order/load
   sensitivity remains unproven rather than dismissed as a toast-only issue.
-- #60 current local integration `35b5a31` includes repaired main `2769161` and
-  bounded CLI capture diagnostics. Its older Windows Rust heads remain pending
-  observations. The new inherited-pipe regression has intermittent fixture
-  startup failures under the parallel suite and is being corrected. No current
-  clean verification or merge is claimed. Original CLI controls, bundled-resource
-  regression and prior local checks remain historical evidence.
-- #79 `fix/file-setting-inheritance` corrects real Core consumers to Project →
-  Environment → actual project file → Default. Real `orbynd` API and browser proof
-  covers file provenance/reset and actual current-checkout/new-worktree threads.
-  Integrated web254 tests, contract238+3 tests and targeted Rust checks passed
-  before the latest startup merge; current local head `54bb8e7` is being rechecked
-  against that merge. K1/K2 remain incomplete. Required current-head CI must pass.
-- Local `feat/project-settings-scope` adds safe Core-owned identities, grouping and
-  a read-only typed scope query. Null/invalid/missing selections must never broaden
-  to All projects. Contract exports and focused tests are in progress; logical
-  project fan-out writes, Mixed, Reset all and complete row integration remain.
+- #60 merged as `56d914d` after exact head `4425a71` passed all six required
+  checks and GitGuardian. Main CI `41291556483` passed all six required jobs.
+  Windows `2018a5f` had reached readiness but retained capture pipes after launcher
+  exit; clearing inheritance on the launcher's original standard-stream handles
+  fixes that observed regression. `0809cf3` first exposed a Windows-only test-helper
+  visibility error, corrected in `4425a71`. The older startup holder is unidentified.
+- Service discovery now publishes a complete private file atomically before
+  readiness. A concurrent-reader regression observed an empty file before the fix;
+  the correction and immediate-read CLI checks pass. CLI commit `a7a99ed` is also
+  integrated into settings as `ba4c0c7`, with readiness ordering in `62af2bc`.
+- #79 closed unmerged; its source is consolidated into `feat/settings-parity`,
+  in the `file-setting-inheritance` worktree. Local integration `7e32280` includes main
+  `56d914d`. The version-fenced settings API supports atomic logical-project edits,
+  physical checkouts, Mixed, nullable Never, Inherit and targeted Reset all.
+  Real-service browser and isolated packaged macOS runs verify common rows,
+  preserved defaults/overrides, search and accurate physical-checkout labels.
+  Subfolder registration and custom forms remain incomplete under K1/K2.
+- Settings-section commits `8b3d88e`, `53a5ff4` and `7276351` fix checkout labels,
+  remove the out-of-scope custom worktree-location control and connect script
+  defaults to the menu/runtime. Current source passed 914 Rust tests (8 ignored),
+  Clippy, formatting, 277 web tests, web check/build and real-service browser cases.
+  Packaged macOS script execution also exposed a terminal-tab refresh race; its
+  regression failed before and passes after, including visible native output.
+  Evidence is under `target/settings-native` in that worktree. This is an isolated
+  fixture identity, private profile, release shell and debug Core with symbols
+  disabled, not final-release or Windows GUI qualification. A subsequent direct
+  coordinate audit opened both Active and Settled thread titles successfully,
+  without changing Active placement. Earlier AX-target activation observations
+  remain retained; no product bug was established by them.
+- Settings commit `fb08731` implements synchronous setup admission, async overlap,
+  cancellation/drop cleanup, restart fencing and held queues after failed setup.
+  The first-run identity is stable across later admissions. Current source passed
+  924 Rust tests (8 ignored), Clippy/fmt, 277 web tests/check/build and six real-Core
+  browser cases. Setup is an actual process; engines in these cases are protocol
+  doubles. Fresh private-profile restart proof is retained under
+  `target/setup-gate-restart-fb08731`. Full action editing, preparation retry and
+  preview consumers remain incomplete; K9 stays partial and this section is local.
+- Settings commit `2af0657` connects saved manual-action previews to both menus.
+  Web check/build, 277 unit tests and four real-Core/headless-browser cases pass;
+  the existing script-default regression also passes. An isolated packaged macOS
+  fixture opens the real local preview from native Details and terminal menus,
+  selects the second preview and script output tabs, then quits normally with its
+  service and all recorded child processes gone. Receipts are under
+  `target/settings-native/action-preview`. It has a release shell, re-signed debug
+  Core (all 14 file-backed Mach-O sections match the tested binary), frozen
+  `8abc5fc` CLI and a private profile; it does not qualify the CLI section, native
+  composer, final release package or Windows GUI. K9 remains partial for the
+  complete action editor and preparation retry.
+- Settings commit `789a2f5` adds version-fenced action add/update/remove operations.
+  A real-orbynd regression verifies checkout-specific Mixed lists, whole-group
+  rollback for duplicates or absent targets, stale revisions, environment defaults,
+  forward metadata and unchanged project files. Baseline rejected the new operation;
+  current source passes 925 Rust tests (8 ignored), Clippy/fmt, 259 contract tests
+  and 277 web tests/check. Generated `PreferenceEdit.ts` is committed. This is the
+  API foundation for the editor, not a completed editor or K9 completion.
+- #81 fixes desktop state loss caused by per-launch service origins. A real native
+  reproduction lost Light after quit/relaunch; the fixed package retained it across
+  service recovery and full restart and rendered real media and a terminal prompt.
+  Earlier development stores are untouched, with no migration. Its exact PR head
+  passed every required check before merge. Native evidence remains in
+  `desktop-client-state/target/native-storage-{baseline,fixed}`.
 
 The source-audited rows are recorded explicitly in parity metadata. Added
 visible features without a T3 counterpart are excluded as replica requirements,
@@ -146,6 +194,65 @@ credential-free engine routes. K38 has a concrete T3 counterpart and stays open.
 T3's Jujutsu discovery explicitly says unimplemented; it does not establish the
 proposed non-colocated status panel. The extra Orbyn tray requires a separate shell
 parity review even though its proposed popover is excluded.
+
+- Settings commit `0b575dc` binds the action editor to scoped add/update/remove.
+  It edits action names, commands, six icons, setup/wait/settle and preview options;
+  project dialogs now use the same version-fenced settings writer. Failed duplicate
+  and stale saves retain their drafts; adding to Mixed preserves distinct member
+  lists. Integrated source passed 951 Rust tests (9 ignored), Clippy, 277 web tests,
+  web check/build and 19 real-Core browser cases. A new Name-focus assertion then
+  failed; the corrected modal timing passes all three action-editor cases, including
+  Cancel focus restoration. An isolated packaged macOS fixture also verifies Name focus, six-icon
+  selection and native create/edit with flags checked through Core. Normal Quit
+  ends the two owned processes and removes service discovery. Receipt:
+  `target/settings-native/action-editor-0b575dc/native-observation.json`. It has a
+  release shell, debug Core/CLI, ad-hoc signing and a private profile; it does not
+  qualify a native engine turn, Windows hands-on or the final walkthrough. Successful
+  save focuses the parent dialog; opener restoration after refresh remains unqualified.
+  This is local source and fixture evidence, not section CI. Stable action IDs, shortcuts and preparation retry remain unfinished;
+  K9 is partial. Evidence: `target/settings-native/action-editor-*.log`.
+
+- Follow-up `f39a12a` fixes the successful-save focus issue observed in the
+  native fixture. The real-Core assertion failed before and passes after, with
+  focus returned after create, rename and delete; all three editor cases, 277 web
+  tests and check/build pass. This follow-up is source/browser qualified; the
+  earlier packaged receipt remains pinned to `0b575dc`.
+
+- Settings batch published as PR82, head `4ef7d9d`, with 36 separate commits;
+  required CI run `41293365985` started. GitGuardian finding `39375233` flags the
+  synthetic Basic Auth parser fixture at historical `8f7cb87`, not an engine or
+  account credential. The fixture never contacts that host and uses a placeholder
+  password. A follow-up constructs clearly synthetic userinfo with the URL API,
+  retaining all stripping/equivalence assertions. The historical finding still needs
+  a fresh check result; no ignore, check weakening, history rewrite or merge is claimed.
+
+- Settings `876c1a6` adds stable action identity without a database backfill.
+  Legacy readers derive IDs without rewriting files; targeted saves materialize
+  them and retain them across renames. IDs are bounded and unique, and identity
+  changes during editing are rejected. A real-PTY regression exposed that
+  `Build one` and `Build-one` both used `script-build-one`; manual terminals now
+  use the validated ID and preserve both commands' separate output. Both identity
+  regressions failed before and pass after. Final local evidence: 953 Rust tests
+  passed (9 ignored), 259 contract tests/export, Clippy/fmt, 277 web tests/check/build
+  and 14 real-Core browser cases. Generated `ProjectScript.ts` is committed. K9
+  remains partial for shortcuts, preparation retry and final platform qualification.
+- With the owner's explicit direction to use Chrome, GitGuardian incident
+  `39375233` was reviewed in the authenticated dashboard and classified
+  `Not a secret (false positive)`: the historical URL uses a literal placeholder in
+  a no-network parser test. This is one incident classification, not a detector,
+  repository exclusion or required-check change. Dashboard receipt:
+  `target/settings-native/gitguardian-39375233-false-positive.png`. GitHub's exact
+  current-head checks must still all be green before merge.
+
+- PR82 head `88f057a` CI `41293554098` failed two E2E assertions (196 passed):
+  the retired section-keyword search expectation and failure injection on the old
+  project-preferences route. Both failures reproduced locally. Acceptance now
+  checks the exact setting result and focused row, and injects reset failure on
+  the actual version-fenced route while asserting its checkout, membership and
+  revision. All 13 cases across reconcile, inheritance and search pass locally.
+  No test is skipped or check weakened. The Windows Rust job remained live at
+  `workspace.rs` in the last visible log; do not treat its observation as a failure
+  or restart it. A new head must pass every required job before merge.
 
 ### Verified in this pickup
 
@@ -230,10 +337,9 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Verify integrated main `2769161` run `41265985286`. Finish #60 fixture diagnosis
-   and current-head verification, then merge only when every required
-   check is green. Reconcile the pending PR queue from current heads; older failed
-   or green heads do not qualify newer integrations.
+1. Integrated main `56d914d` run `41291556483` passed all six required jobs.
+   PR60 is merged. Keep subsequent section delivery fenced to all required green
+   current-head checks; historical passing heads do not qualify new integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
    visible deviations are removed, including extra tray behavior; route-held sidebar placement was removed by #76. Do not turn a missing reference into an invented control or an
    exclusion that silently lowers the goal.
@@ -241,8 +347,10 @@ not commit it. Move it to a real secret store before any release.
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
    F source control, D viewers, then the rest. The next settings slices are
-   logical-project scope, inheritance, Mixed and
-   Reset all; K1 remains open and K2 is partial. I33 ACP sessions
+   the remaining custom-form bindings, repository-subfolder registration and
+   project actions; K1/K2/K5/K9 remain partial. The direct-coordinate sidebar audit
+   passed; no product defect was established by earlier AX-target observations.
+   I33 ACP sessions
    and M3 remain next backend slices.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
    package-service smoke now fails instead of warning, and the prior holder is unknown. A prior #60 Windows

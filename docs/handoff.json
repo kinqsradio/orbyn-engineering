@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "27691610a6c8240d2737e398e095cf6e2be2335c",
+    "revision": "56d914d4d8f907f6cd72a8e0334966080ffe6d59",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -80,6 +80,21 @@
         "PR73 CI41264387275 all six jobs passed",
         "service-child-cleanup/target/packaged-8abc5fc/fixture-identity/receipt.json"
       ]
+    },
+    {
+      "result": "Delivery policy PR80 and desktop persistence repair PR81 merged only after every required exact-head check passed",
+      "evidence": [
+        "PR80 merged 04eb893; main CI41269745565 passed",
+        "PR81 head2317c6e: CI41282261011 all six required jobs and GitGuardian passed; merged193f406",
+        "desktop-client-state/target/native-storage-fixed/persistence-observation.json"
+      ]
+    },
+    {
+      "result": "CLI section PR60 merged after all required exact-head checks; integrated main is green",
+      "evidence": [
+        "PR60 head4425a71 CI41290079315 all six required jobs and GitGuardian passed; merged56d914d",
+        "Main56d914d CI41291556483 all six required jobs passed, including Windows installed-app startup"
+      ]
     }
   ],
   "verification": [
@@ -108,12 +123,12 @@
       ]
     },
     {
-      "check": "PR60 latest local35b5a31 integration and final CI",
+      "check": "PR60 CLI-section integration and final CI",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "Current35b5a31 includes main2769161; inherited-pipe fixture still intermittent; no clean current-head gate or merge claimed",
-        "Historical WindowsRust runs41257920148 and41261589371 remained pending at last observation"
+        "Head4425a71 CI41290079315 all six required jobs and GitGuardian passed; merged56d914d",
+        "Post-merge main CI41291556483 all six required jobs passed; historical startup holder remains unidentified"
       ]
     },
     {
@@ -169,9 +184,9 @@
     {
       "check": "Integrated main2769161",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
-        "GitHub Actions41265985286 running"
+        "GitHub Actions41265985286 completed successfully"
       ]
     },
     {
@@ -181,16 +196,98 @@
       "evidence": [
         "service-child-cleanup/target/packaged-8abc5fc/fixture-identity/receipt.json; shell/plist/signature differ, sidecars/resources identical; original-identity failure retained"
       ]
+    },
+    {
+      "check": "Integrated main04eb893",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "GitHub Actions41269745565 completed successfully"
+      ]
+    },
+    {
+      "check": "Desktop persistence repair PR81",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "Head2317c6e: GitHub Actions41282261011 all six required jobs passed, plus GitGuardian; merged193f406"
+      ]
+    },
+    {
+      "check": "Integrated main193f406",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "GitHub Actions41283340854 completed successfully; all six required jobs passed"
+      ]
+    },
+    {
+      "check": "Settings section localfb08731",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "Local source:924 Rust passed,8 ignored; Clippy/fmt and277 web tests/check/build passed; six real-orbynd setup browser cases passed with real setup processes and protocol-double engines",
+        "file-setting-inheritance/target/setup-gate-restart-fb08731; completed setup restart, interrupted setup failure and schema17 writer rejection; not native composer or Windows qualification",
+        "Earlier common-settings/menu native fixtures retained; K1/K2/K5/K9 and other settings rows remain partial; section not pushed"
+      ]
+    },
+    {
+      "check": "Settings manual action previews local2af0657",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "277 web tests, check/build, four real-orbynd/headless-browser cases and existing script-default case passed",
+        "file-setting-inheritance/target/settings-native/action-preview/native-observation.json: both native menus opened a real local page, second preview and script tabs selected, normal shutdown reaped recorded children",
+        "Fixture identity, private profile, release shell and re-signed debug Core with14 matching file-backed Mach-O sections; frozen8abc5fc CLI. Full action editor, preparation retry, final native composer and Windows remain incomplete"
+      ]
+    },
+    {
+      "check": "Scoped project action operations local789a2f5",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "925 Rust tests passed,8 ignored;259 contracts tests/export and277 web tests/check passed; Clippy/fmt passed",
+        "Real-orbynd scoped-preference regression failed before and passes after: distinct Mixed lists, duplicate/missing-target rollback, revision fencing, environment isolation, metadata preservation and unchanged files",
+        "Generated PreferenceEdit.ts committed. Editor binding, full action editor and preparation retry remain incomplete; no section CI or merge claimed."
+      ]
+    },
+    {
+      "check": "Scoped action editor local0b575dc",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "Integrated951 Rust tests passed,9 ignored; Clippy passed;277 web tests/check/build passed",
+        "19 real-Core browser cases passed; new focus assertion failed then all3 editor cases passed after timing correction",
+        "Packaged macOS fixture0b575dc: native Name focus, icon selection, create/edit and Core values passed; normal quit ended both owned processes and removed service handle. Release shell/debug Core+CLI, private profile, ad-hoc fixture identity. No section CI, Windows hands-on or final walkthrough; IDs/shortcuts/retry incomplete.",
+        "Follow-upf39a12a restores successful-save focus: regression failed before and passes after create/rename/delete.3 real-Core cases,277 web tests,check/build pass; packaged receipt remains0b575dc."
+      ]
+    },
+    {
+      "check": "Stable action identity local876c1a6",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "953 Rust tests passed,9 ignored;259 contract tests/export;Clippy/fmt;277 web tests/check/build;14 real-Core browser cases passed",
+        "Real-service rename identity and real-PTY terminal-collision regressions failed before and pass after; project files remain read-only",
+        "Generated ProjectScript.ts committed; no current-head section CI or native identity qualification claimed"
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Verify main2769161 CI; finish PR60 deterministic fixture diagnosis/current-head gates, PR79 inheritance and full local K1/K2; continue every remaining in-scope parity row through real orbynd.",
+  "next_action": "Publish the checked identity and acceptance fixes to PR82; verify the fresh GitGuardian result after the owner-authorized false-positive classification, and every required current-head CI job. Merge only all-green without squash, then continue action shortcuts, preparation retry and all remaining in-scope rows through real orbynd.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete"
+      "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
+      "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
+      "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet.",
+      "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed.",
+      "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete.",
+      "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed.",
+      "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge.",
+      "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted."
     ]
   }
 }

@@ -1,5 +1,13 @@
+import { SettingsScopeProvider } from "./SettingsScopeContext";
+import { ScopeSentence } from "./ScopeSentence";
+import { SettingRowIds } from "../../ui/SettingRow";
+import { searchSettings, settingSearchId } from "./settingsSearch";
+import { api } from "../../api/client";
+import { onShellChange } from "../../api/shell";
+import { useAsync } from "../../lib/useAsync";
+import { navigate, useRoute } from "../../state/route";
 import { Search, X } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { routeHref, type SettingsSection } from "../../state/route";
 import { IconButton } from "../../ui/controls";
 import { AppearanceSection } from "./Appearance";
@@ -46,24 +54,6 @@ const groups: { label: string | null; sections: SettingsSection[] }[] = [
   { label: null, sections: ["maintenance", "labs", "about", "archive"] },
 ];
 
-/** Words a person might search for, beyond the section names. */
-const KEYWORDS: Partial<Record<SettingsSection, string>> = {
-  general: "notifications sidebar confirmation sound project order thread order working details",
-  appearance: "theme dark light contrast font typography size animation effort color",
-  chat: "width timestamp word wrap math send shortcut follow-up steer queue streaming permissions",
-  diffs: "pull request merge whitespace",
-  keybindings: "shortcut key binding",
-  providers: "engine codex claude model sign in install",
-  threads: "auto-settle snooze title",
-  tasks: "schedule automation webhook",
-  projects: "library folder scripts",
-  worktrees: "branch naming submodule base directory",
-  maintenance: "update diagnostics storage",
-};
-
-const matchesSection = (entry: SettingsSection, needle: string) =>
-  `${labels[entry]} ${KEYWORDS[entry] ?? ""}`.toLowerCase().includes(needle);
-
 const views: Record<SettingsSection, () => React.JSX.Element | null> = {
   general: GeneralSection,
   appearance: AppearanceSection,
@@ -84,8 +74,16 @@ const views: Record<SettingsSection, () => React.JSX.Element | null> = {
 
 /** Settings float over the workspace, which stays as it was underneath. */
 export function SettingsPage({ section, onClose }: { section: SettingsSection | null; onClose(): void }) {
+  return <SettingsScopeProvider section={section ?? "general"}><SettingsPageContent section={section} onClose={onClose} /></SettingsScopeProvider>;
+}
+
+function SettingsPageContent({ section, onClose }: { section: SettingsSection | null; onClose(): void }) {
+  const route = useRoute();
+  const sectionRoute = (next: SettingsSection) => ({ name: "settings" as const, section: next, selection: route.name === "settings" ? route.selection : undefined, machine: route.name === "settings" ? route.machine : undefined });
   const ref = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
+  const [target, setTarget] = useState<{ id: string } | null>(null);
+  const shell = useAsync("settings-search-shell", (signal) => api.shell(signal));
   const current = section ?? "general";
   const View = views[current];
 
@@ -97,15 +95,43 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
     };
   }, []);
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return groups
-      .map((group) => ({
-        ...group,
-        sections: group.sections.filter((entry) => matchesSection(entry, needle)),
-      }))
-      .filter((group) => group.sections.length > 0);
-  }, [query]);
+  const sectionResults = groups.flatMap((group) => group.sections).filter((entry) => labels[entry].toLowerCase().includes(query.trim().toLowerCase()));
+  const reloadShell = shell.reload;
+  useEffect(() => onShellChange(reloadShell), [reloadShell]);
+  const results = useMemo(() => {
+    const available = new Set<"cli" | "accessibility" | "screen_recording">();
+    if (shell.data?.facts?.cli) available.add("cli");
+    for (const permission of shell.data?.facts?.permissions ?? []) {
+      if (permission.id === "accessibility" || permission.id === "screen_recording") available.add(permission.id);
+    }
+    return searchSettings(query, shell.data?.attached === true, available);
+  }, [query, shell.data]);
+
+  useEffect(() => {
+    if (!target) return;
+    const dialog = ref.current;
+    if (!dialog) return;
+    let frame = 0;
+    let finished = false;
+    const reveal = () => {
+      if (finished) return;
+      const row = dialog.querySelector<HTMLElement>(`[id="${target.id}"]`);
+      if (!row) return;
+      row.dispatchEvent(new Event("reveal-setting", { bubbles: true }));
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (row.closest("[hidden]")) return;
+        row.scrollIntoView?.({ block: "center" });
+        row.focus({ preventScroll: true });
+        finished = true;
+        observer.disconnect();
+      });
+    };
+    const observer = new MutationObserver(reveal);
+    observer.observe(dialog, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+    reveal();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [target, current]);
 
   return (
     <dialog
@@ -130,14 +156,26 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <nav className="settings-nav" aria-label="Settings sections">
-          {visible.map((group) => (
+        <nav className="settings-nav" aria-label="Settings sections" data-searching={Boolean(query.trim())}>
+          {query.trim() ? (
+            <div className="settings-group">
+              {results.length || sectionResults.length ? <>
+              {sectionResults.map((section) => <a key={section} onClick={() => setTarget(null)} href={routeHref(sectionRoute(section))}>{labels[section]}</a>)}
+              {results.map((item) => (
+                <a className="settings-search-result" key={item.id} aria-label={`${item.title} · ${labels[item.section]}`} href={routeHref(sectionRoute(item.section))}
+                  onClick={(event) => { event.preventDefault(); setTarget({ id: item.id }); navigate({ name: "settings", section: item.section }); }}>
+                  <span>{item.title}</span><small>{labels[item.section]}</small>
+                </a>
+              ))}</> : <p role="status">No settings found</p>}
+            </div>
+          ) : groups.map((group) => (
             <div key={group.label ?? group.sections[0]}>
               {group.label ? <p className="settings-group">{group.label}</p> : null}
               {group.sections.map((entry) => (
                 <a
                   key={entry}
-                  href={routeHref({ name: "settings", section: entry })}
+                  onClick={() => setTarget(null)}
+                  href={routeHref(sectionRoute(entry))}
                   aria-current={entry === current ? "page" : undefined}
                 >
                   {labels[entry]}
@@ -160,7 +198,10 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
         </header>
         <div className="settings-scroll">
           <div className="settings-body">
-            <View key={current} />
+            <ScopeSentence />
+            <SettingRowIds.Provider value={(title) => settingSearchId(current, title)}>
+              <View key={current} />
+            </SettingRowIds.Provider>
           </div>
         </div>
       </div>

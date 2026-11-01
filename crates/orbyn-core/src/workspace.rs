@@ -346,6 +346,12 @@ impl Workspace {
             .clone()
     }
 
+    /// Metadata readers of registered checkouts under repo/ also keep a library
+    /// replacement from moving their working directories while Git is alive.
+    pub(crate) async fn library_reader(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
+        self.library_access.read().await
+    }
+
     fn save(&self, state: WorkspaceState) -> Result<()> {
         self.store
             .set_setting(STATE_KEY, &serde_json::to_string(&state)?)?;

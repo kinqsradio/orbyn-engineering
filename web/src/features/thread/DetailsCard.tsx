@@ -6,7 +6,6 @@ import {
   GitPullRequest,
   MessagesSquare,
   Monitor,
-  Play,
   Server,
   SquareTerminal,
   EllipsisVertical,
@@ -33,6 +32,9 @@ import { ConfirmDialog } from "../../ui/Dialog";
 import { BranchRow } from "./GitControl";
 import { OpenInEditor } from "./OpenInEditor";
 import { runningTools } from "./timeline";
+import type { ProjectScript } from "../../generated/ProjectScript";
+import { openActionPreview } from "./actionPreview";
+import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 function ThreadMenu({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false);
@@ -178,19 +180,20 @@ function ScriptRows({ threadId }: { threadId: string }) {
     request<ProjectFileView>("GET", `${base}/scripts`, undefined, signal),
   );
   const pushToast = useUi((state) => state.pushToast);
-  const list = (scripts.data?.file as { scripts?: { name: string }[] } | null | undefined)?.scripts ?? [];
-  const run = (name: string) => {
-    request("POST", `${base}/scripts`, { name }).then(
+  const list = scripts.data?.scripts ?? [];
+  const run = (script: ProjectScript) => {
+    request("POST", `${base}/scripts`, { name: script.name }).then(
       () => {
         const ui = useUi.getState();
         if (!ui.terminalOpen) ui.togglePanel("terminal");
+        void openActionPreview(threadId, script);
       },
-      (failure: unknown) => pushToast(`Couldn't run ${name}. ${toFailure(failure).message}`),
+      (failure: unknown) => pushToast(`Couldn't run ${script.name}. ${toFailure(failure).message}`),
     );
   };
   return list.map((script) => (
-    <button key={script.name} type="button" className="detail-row" onClick={() => run(script.name)}>
-      <Play size={16} aria-hidden />
+    <button key={script.name} type="button" className="detail-row" onClick={() => run(script)}>
+      <ProjectActionIcon icon={script.icon} />
       <span>{script.name}</span>
     </button>
   ));

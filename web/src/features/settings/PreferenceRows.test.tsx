@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiFailure, request } from "../../api/client";
 import type { PreferenceView } from "../../api/types";
 import { PreferenceGroups } from "./PreferenceRows";
+import type { ScopedPreferencesChange } from "../../generated/ScopedPreferencesChange";
+import type { ScopedPreferencesQuery } from "../../generated/ScopedPreferencesQuery";
+import { preferenceCatalog, scopedFixture } from "./scopedPreferenceFixture.test-support";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 const groups = [{ title: "Source control", rows: [{ key: "auto_pull", title: "Auto pull", inheritance: true }] }];
@@ -23,19 +26,24 @@ beforeEach(() => {
   globalValue = true; overrides = { a: false, b: true }; failRead = false; failWrite = false; holdWrite = undefined; writes = [];
   requestMock.mockReset();
   requestMock.mockImplementation(async (method, path, body) => {
-    const url = new URL(path, "http://local");
-    if (method === "GET") {
-      if (failRead && !url.searchParams.has("project_id")) throw new ApiFailure("unavailable", "Read failed.", 503);
-      return views(url.searchParams.get("project_id") ?? undefined) as never;
+    if (path === "/api/settings/project-scopes") return preferenceCatalog(["a", "b"]) as never;
+    if (method === "POST" && path === "/api/settings/preferences/query") {
+      if (failRead) throw new ApiFailure("unavailable", "Read failed.", 503);
+      const selection = (body as ScopedPreferencesQuery).scope.selection;
+      const project = selection?.kind === "checkout" ? selection.project_id : undefined;
+      return scopedFixture(views(project), views(), project) as never;
     }
-    const project = decodeURIComponent(/^\/api\/projects\/([^/]+)\/preferences$/.exec(path)?.[1] ?? "");
-    const values = (body as { values: Record<string, unknown> }).values;
+    const change = body as ScopedPreferencesChange;
+    const selection = change.scope.selection;
+    const project = selection?.kind === "checkout" ? selection.project_id : "";
+    const edit = change.edits.auto_pull;
+    const values = { auto_pull: edit?.op === "set" ? edit.value : null };
     writes.push({ project, values });
     if (holdWrite) await holdWrite;
     if (failWrite) throw new ApiFailure("unavailable", "Save failed.", 503);
     if (values.auto_pull === null) delete overrides[project];
     else overrides[project] = values.auto_pull === true;
-    return views(project) as never;
+    return scopedFixture(views(project), views(), project) as never;
   });
 });
 

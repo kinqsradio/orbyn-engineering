@@ -464,6 +464,11 @@ pub(super) fn admit_in(
     if archived {
         return Err(CoreError::ThreadArchived);
     }
+    if actor.starts_with("system:") && super::setup::failed(tx, thread_id)? {
+        return Err(CoreError::Invalid(
+            "Project setup did not finish successfully.".into(),
+        ));
+    }
     // Your own message wakes the thread and restores it to active work.
     tx.execute(
         "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0, woke_at = NULL

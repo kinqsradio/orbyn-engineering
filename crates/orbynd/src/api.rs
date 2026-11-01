@@ -142,7 +142,12 @@ pub async fn note_activity(
         .core
         .timings
         .span(&format!("{} {route}", request.method()));
-    if request.method() != axum::http::Method::GET {
+    if request.method() != axum::http::Method::GET
+        && !matches!(
+            request.uri().path(),
+            "/api/settings/project-scopes" | "/api/settings/preferences/query"
+        )
+    {
         state.core.updates.note_activity();
     }
     let response = next.run(request).await;
@@ -155,11 +160,23 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
         version: env!("CARGO_PKG_VERSION").to_owned(),
         remote: state.remote,
         platform: std::env::consts::OS.to_owned(),
+        environment_label: state.core.environment_label(),
     })
+}
+
+pub async fn repository_star_status(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.core.repository_star_status().await)
 }
 
 pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.store.list_projects()?))
+}
+
+pub async fn project_scopes(
+    State(state): State<AppState>,
+    ApiJson(query): ApiJson<orbyn_contracts::ProjectScopesQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.project_scope_catalog(&query).await?))
 }
 
 pub async fn clone_project(
@@ -848,6 +865,27 @@ pub async fn batch_threads(
     ApiJson(body): ApiJson<BatchThreads>,
 ) -> impl IntoResponse {
     Json(state.core.batch_threads(body.threads).await)
+}
+
+pub async fn scoped_preferences(
+    State(state): State<AppState>,
+    ApiJson(query): ApiJson<orbyn_contracts::ScopedPreferencesQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.scoped_preferences(&query).await?))
+}
+
+pub async fn change_scoped_preferences(
+    State(state): State<AppState>,
+    ApiJson(change): ApiJson<orbyn_contracts::ScopedPreferencesChange>,
+) -> ApiResult<impl IntoResponse> {
+    let result = state.core.change_scoped_preferences(&change).await?;
+    if change
+        .edits
+        .contains_key(orbyn_core::engines::instances::PREFERENCE)
+    {
+        state.core.engines.instances_changed().await;
+    }
+    Ok(Json(result))
 }
 
 pub async fn preferences(

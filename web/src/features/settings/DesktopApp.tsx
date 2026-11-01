@@ -1,3 +1,4 @@
+import { settingsLabel } from "./settingsSearch";
 import { useEffect } from "react";
 import { api } from "../../api/client";
 import { onShellChange } from "../../api/shell";
@@ -9,12 +10,12 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 const PERMISSIONS: Record<string, { title: string; description: string; open: ShellAction }> = {
   accessibility: {
-    title: "Accessibility",
+    title: settingsLabel("general-accessibility"),
     description: "Lets agents use your computer, when you allow it.",
     open: "open_accessibility_settings",
   },
   screen_recording: {
-    title: "Screen Recording",
+    title: settingsLabel("general-screen-recording"),
     description: "Lets agents see your screen, when you allow it.",
     open: "open_screen_recording_settings",
   },
@@ -35,7 +36,7 @@ export function DesktopApp() {
     <SettingGroup title="Desktop app">
       {cli ? (
         <SettingRow
-          title="Command line tool"
+          title={settingsLabel("general-command-line-tool")}
           description={cli.installed ? `Installed at ${cli.path}.` : `Installs orbyn at ${cli.path}. That folder needs to be on your PATH.`}
         >
           <Button small onClick={() => act(cli.installed ? "remove_cli" : "install_cli")}>

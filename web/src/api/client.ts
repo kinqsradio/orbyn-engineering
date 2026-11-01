@@ -143,6 +143,7 @@ export async function request<T>(
 const q = encodeURIComponent;
 
 export const api = {
+  repositoryStar: (signal?: AbortSignal) => request<import("../generated/RepositoryStarStatus").RepositoryStarStatus>("GET", "/api/source-control/repository-star", undefined, signal),
   queue: (threadId: string, signal?: AbortSignal) =>
     request<QueuedMessage[]>("GET", `/api/threads/${q(threadId)}/queue`, undefined, signal),
   enqueue: (threadId: string, prompt: string, attachmentIds: string[]) =>

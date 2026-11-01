@@ -837,6 +837,30 @@ input[type="radio"] {
     translate 200ms var(--ease-drawer),
     opacity 200ms;
 }
+.star-prompt {
+  align-items: flex-start;
+  max-width: 360px;
+  padding: 14px;
+}
+.star-prompt-icon {
+  flex: none;
+  color: var(--color-warn);
+}
+.star-prompt-body {
+  min-width: 0;
+  flex: 1;
+}
+.star-prompt-body p {
+  margin: 6px 0 12px;
+  color: var(--color-muted);
+}
+.star-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .clone-jobs {
   position: fixed;
   z-index: 70;

@@ -204,7 +204,7 @@ fn skills_line(context: &RunContext<'_>) -> String {
 }
 
 /// What the run manager is built from.
-pub struct RunServices {
+pub(crate) struct RunServices {
     pub store: Arc<Store>,
     pub gate: Arc<ApprovalGate>,
     pub questions: Arc<QuestionDesk>,
@@ -214,6 +214,7 @@ pub struct RunServices {
     pub mcp: Arc<McpService>,
     pub base_url: String,
     pub runs_dir: PathBuf,
+    pub setups: Arc<crate::project_setup::SetupManager>,
 }
 
 pub struct RunManager {
@@ -226,6 +227,7 @@ pub struct RunManager {
     mcp: Arc<McpService>,
     base_url: String,
     runs_dir: PathBuf,
+    setups: Arc<crate::project_setup::SetupManager>,
     active: Mutex<HashMap<String, ActiveRun>>,
     /// Runs stopped because their parent was. Reporting back would start the parent
     /// again, undoing the Stop.
@@ -256,7 +258,7 @@ async fn sleep_until_due(due: Option<tokio::time::Instant>) {
 }
 
 impl RunManager {
-    pub fn new(services: RunServices) -> Self {
+    pub(crate) fn new(services: RunServices) -> Self {
         let RunServices {
             store,
             gate,
@@ -267,6 +269,7 @@ impl RunManager {
             mcp,
             base_url,
             runs_dir,
+            setups,
         } = services;
         Self {
             store,
@@ -278,6 +281,7 @@ impl RunManager {
             mcp,
             base_url,
             runs_dir,
+            setups,
             active: Mutex::new(HashMap::new()),
             stopped_with_parent: Mutex::new(HashSet::new()),
             limit_signals: Mutex::new(HashMap::new()),
@@ -378,7 +382,6 @@ impl RunManager {
             },
         );
         self.remember_selection(&thread);
-        self.title_new_thread(&thread, &prompt);
         let manager = self.clone();
         let thread_id = thread.id.clone();
         let task = tokio::spawn({
@@ -782,14 +785,27 @@ impl RunManager {
         let run_dir = self.runs_dir.join(&run_id);
         let mut token = None;
         let outcome = {
-            let drive = self.drive(
-                &thread,
-                &scope,
-                (prompt, files),
-                &run_dir,
-                &mut token,
-                &stops,
-            );
+            let drive = async {
+                match self
+                    .setups
+                    .before_first_turn(&thread.id, &run_id, &stops.cancel)
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => return EngineOutcome::Cancelled,
+                    Err(error) => return EngineOutcome::Failed(error.public_message()),
+                }
+                self.title_new_thread(&thread, &prompt);
+                self.drive(
+                    &thread,
+                    &scope,
+                    (prompt, files),
+                    &run_dir,
+                    &mut token,
+                    &stops,
+                )
+                .await
+            };
             // The stream below answers a forced stop itself. This is for a stage
             // around it that hangs, such as a snapshot on a stuck disk.
             let forced = async {
@@ -1173,9 +1189,12 @@ impl RunManager {
     ) -> EngineOutcome {
         let cancel = &stops.cancel;
         let mut cancelling = false;
-        let whole =
-            crate::preferences::stored_preference(&self.store, "response_streaming_mode", None)
-                .is_ok_and(|mode| mode == "turn");
+        let whole = crate::preferences::stored_preference(
+            &self.store,
+            "response_streaming_mode",
+            Some(&thread.project_id),
+        )
+        .is_ok_and(|mode| mode == "turn");
         let mut shaper = EventShaper::new(whole);
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
         tokio::pin!(stop_deadline);

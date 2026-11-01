@@ -44,6 +44,124 @@ pub struct Project {
 }
 }
 
+wire_enum! {
+#[derive(Default)]
+pub enum ProjectGroupingMode {
+    #[default]
+    Repository,
+    RepositoryPath,
+    Separate,
+}
+}
+
+wire! {
+#[serde(deny_unknown_fields)]
+pub struct ProjectGroupingOverride {
+    pub project_id: String,
+    pub mode: ProjectGroupingMode,
+}
+}
+
+wire! {
+#[derive(Default)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectGroupingRecipe {
+    #[serde(default)]
+    #[ts(optional, as = "Option<ProjectGroupingMode>")]
+    pub mode: ProjectGroupingMode,
+    #[serde(default)]
+    #[ts(optional, as = "Option<Vec<ProjectGroupingOverride>>")]
+    pub overrides: Vec<ProjectGroupingOverride>,
+}
+}
+
+wire! {
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProjectSettingsSelection {
+    AllProjects {},
+    ProjectGroup { group_key: String },
+    Checkout { group_key: String, project_id: String },
+}
+}
+
+fn present_project_selection<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<ProjectSettingsSelection>, D::Error> {
+    ProjectSettingsSelection::deserialize(deserializer).map(Some)
+}
+
+wire! {
+#[derive(Default)]
+#[serde(deny_unknown_fields)]
+/// `selection`: Only an absent selection defaults to All projects; null or malformed selections are rejected.
+pub struct ProjectScopesQuery {
+    #[serde(default)]
+    #[ts(optional, as = "Option<ProjectGroupingRecipe>")]
+    pub recipe: ProjectGroupingRecipe,
+    #[serde(default, deserialize_with = "present_project_selection")]
+    #[ts(optional)]
+    pub selection: Option<ProjectSettingsSelection>,
+}
+}
+
+wire_enum! {
+pub enum ProjectScopeUnavailableReason {
+    ProjectMissing,
+    CheckoutMissing,
+    CheckoutChanged,
+    InvalidPath,
+    MetadataUnavailable,
+}
+}
+
+wire! {
+/// `physical_key`: Opaque identity of the registered local physical path, never a project name.
+/// `repository_key`: Opaque, sanitized repository identity. Local/file remotes do not establish one.
+/// `repository_relative_path`: Actual path relative to the Git root; empty for a registered Git root.
+/// `metadata_complete`: False only when local metadata could not be observed, not for a known physical fallback.
+pub struct ProjectScopeCheckout {
+    pub project_id: String,
+    pub physical_key: String,
+    pub name: String,
+    pub path: Option<String>,
+    pub repository_key: Option<String>,
+    pub repository_label: Option<String>,
+    pub repository_relative_path: Option<String>,
+    pub grouping_mode: ProjectGroupingMode,
+    pub metadata_complete: bool,
+    pub unavailable: Option<ProjectScopeUnavailableReason>,
+}
+}
+
+wire! {
+pub struct ProjectScopeGroup {
+    pub key: String,
+    pub label: String,
+    pub members: Vec<ProjectScopeCheckout>,
+}
+}
+
+wire! {
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ResolvedProjectSettingsScope {
+    /// Environment defaults, not a fan-out to project overrides.
+    AllProjects,
+    ProjectGroup { group_key: String, project_ids: Vec<String> },
+    Checkout { group_key: String, project_id: String },
+    Unavailable { reason: ProjectScopeUnavailableReason },
+}
+}
+
+wire! {
+/// `version`: Membership/recipe digest for a later mutation to fence; this read changes nothing.
+pub struct ProjectScopeCatalog {
+    pub version: String,
+    pub groups: Vec<ProjectScopeGroup>,
+    pub metadata_complete: bool,
+    pub selection: ResolvedProjectSettingsScope,
+}
+}
+
 wire! {
 pub struct Thread {
     pub id: String,
@@ -1553,12 +1671,18 @@ pub struct TerminalScrollback {
 wire! {
 /// A team script from the project file.
 pub struct ProjectScript {
+    // Stable action identity; absent in legacy project files and saved lists.
+    #[serde(default)]
+    pub id: Option<String>,
     pub name: String,
     pub command: String,
     #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
     pub run_on_worktree_create: bool,
+    #[serde(default = "script_is_async", rename = "async")]
+    #[ts(rename = "async")]
+    pub asynchronous: bool,
     #[serde(default)]
     pub run_on_settle: bool,
     #[serde(default)]
@@ -1566,6 +1690,10 @@ pub struct ProjectScript {
     #[serde(default)]
     pub auto_open_preview: bool,
 }
+}
+
+fn script_is_async() -> bool {
+    true
 }
 
 wire! {
@@ -1576,7 +1704,7 @@ pub struct ProjectFile {
     /// `local` or `worktree`.
     #[serde(default)]
     pub default_thread_env_mode: Option<String>,
-    /// `recursive`, `top_level` or `skip`.
+    /// `recursive`, `top-level` or `none`. Older spellings are normalized on read.
     #[serde(default)]
     pub worktree_submodules: Option<String>,
     #[serde(default)]
@@ -1585,12 +1713,15 @@ pub struct ProjectFile {
 }
 
 wire! {
+/// Actual project-file contents plus the effective `scripts` list after settings
+/// overrides. Resolving scripts never rewrites `file`.
 pub struct ProjectFileView {
     /// The file that was read, relative to the checkout.
     pub path: Option<String>,
     pub file: Option<ProjectFile>,
     /// Why a file that exists could not be used.
     pub problem: Option<String>,
+    pub scripts: Vec<ProjectScript>,
 }
 }
 
@@ -1601,15 +1732,25 @@ pub struct RunScript {
 }
 
 wire! {
+/// Effective preference value, built-in default and winning source (`default`,
+/// `file`, `global` or `project`). The optional project_file is the actual
+/// read-only file layer; project_scoped says whether project overrides are allowed.
 pub struct PreferenceView {
     pub key: String,
-    /// What applies here.
     pub value: Value,
     pub default: Value,
-    /// `default`, `global` or `project`.
     pub source: String,
-    /// A project may set its own value.
     pub project_scoped: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_file: Option<PreferenceFileValue>,
+}
+}
+
+wire! {
+pub struct PreferenceFileValue {
+    pub path: String,
+    pub value: Value,
 }
 }
 
@@ -2782,6 +2923,13 @@ pub struct ServerInfo {
     pub version: String,
     pub remote: bool,
     pub platform: String,
+    pub environment_label: String,
+}
+}
+
+wire! {
+pub struct RepositoryStarStatus {
+    pub starred: bool,
 }
 }
 
@@ -2942,4 +3090,67 @@ mod tests {
         assert!(RunState::Interrupted.is_terminal());
         assert!(!RunState::AwaitingApproval.is_terminal());
     }
+}
+
+wire! {
+#[serde(deny_unknown_fields)]
+pub struct ScopedPreferencesQuery {
+    pub scope: ProjectScopesQuery,
+    #[serde(default)]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub keys: Vec<String>,
+}
+}
+wire! {
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PreferenceEdit {
+    Set { value: serde_json::Value },
+    Inherit {},
+    ResetOverrides { project_ids: Vec<String> },
+    AddProjectScript { script: ProjectScript },
+    UpdateProjectScript { name: String, script: ProjectScript },
+    RemoveProjectScript { name: String },
+}
+}
+wire! {
+#[serde(deny_unknown_fields)]
+pub struct ScopedPreferencesChange {
+    pub scope: ProjectScopesQuery,
+    pub membership_version: String,
+    pub if_match: std::collections::BTreeMap<String, String>,
+    pub edits: std::collections::BTreeMap<String, PreferenceEdit>,
+}
+}
+wire! {
+pub struct ScopedPreferenceMember {
+    pub project_id: Option<String>,
+    pub name: Option<String>,
+    pub view: PreferenceView,
+}
+}
+wire! {
+pub struct ScopedPreferenceOverride {
+    pub project_id: String,
+    pub name: String,
+    pub value: serde_json::Value,
+}
+}
+wire! {
+pub struct ScopedPreferenceRow {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub mixed: bool,
+    pub default: serde_json::Value,
+    pub project_scoped: bool,
+    pub revision: String,
+    pub environment: PreferenceView,
+    pub members: Vec<ScopedPreferenceMember>,
+    pub overrides: Vec<ScopedPreferenceOverride>,
+}
+}
+wire! {
+pub struct ScopedPreferencesResult {
+    pub catalog: ProjectScopeCatalog,
+    pub rows: Vec<ScopedPreferenceRow>,
+}
 }

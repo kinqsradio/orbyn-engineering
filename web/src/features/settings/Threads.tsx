@@ -1,3 +1,4 @@
+import { settingsLabel } from "./settingsSearch";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
@@ -8,6 +9,7 @@ import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { PreferenceGroups } from "./PreferenceRows";
+import { useSettingsScope } from "./SettingsScopeContext";
 
 const AFTER_DAYS: { value: number | null; label: string }[] = [
   { value: null, label: "Never" },
@@ -34,7 +36,7 @@ function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: 
           </IconButton>
         </SettingRow>
       ))}
-      <SettingRow title="Add a preset" description={`Up to ${MAX_PRESETS}, each up to 30 days.`}>
+      <SettingRow title={settingsLabel("threads-add-a-preset")} description={`Up to ${MAX_PRESETS}, each up to 30 days.`}>
         <input aria-label="Preset name" placeholder="Name" value={label} onChange={(event) => setLabel(event.target.value)} />
         <input aria-label="Preset minutes" type="number" min="1" placeholder="Minutes" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
         <Button
@@ -56,7 +58,8 @@ function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: 
 export function ThreadsSection() {
   const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [error, setError] = useState<string | null>(null);
-  const [titles, setTitles] = useState<string | null>(null);
+  const scope = useSettingsScope();
+  const projectScoped = scope?.active && scope.query.selection && scope.query.selection.kind !== "all_projects";
 
   const save = (next: ServerSettings) => {
     setError(null);
@@ -75,53 +78,20 @@ export function ThreadsSection() {
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Threads
       </h1>
-      <SettingGroup title="Auto-settle">
-        <SettingRow title="Settle idle threads" description="Move finished threads into Settled after a quiet period.">
-          <select
-            aria-label="Settle idle threads"
-            value={data.auto_settle.after_days ?? ""}
-            onChange={(event) =>
-              save({
-                ...data,
-                auto_settle: {
-                  ...data.auto_settle,
-                  after_days: event.target.value === "" ? null : Number(event.target.value),
-                },
-              })
-            }
-          >
-            {AFTER_DAYS.map((option) => (
-              <option key={option.label} value={option.value ?? ""}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </SettingRow>
-        <SettingRow title="Settle on merge" description="Settle a thread when its pull request merges.">
-          <input
-            type="checkbox"
-            aria-label="Settle on merge"
-            checked={data.auto_settle.on_merge}
-            onChange={(event) =>
-              save({ ...data, auto_settle: { ...data.auto_settle, on_merge: event.target.checked } })
-            }
-          />
-        </SettingRow>
-      </SettingGroup>
-      <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
-      <SettingGroup title="Titles">
-        <SettingRow title="Title instructions" description="Guidance used when a thread title is generated.">
-          <textarea
-            aria-label="Title instructions"
-            rows={2}
-            value={titles ?? data.title_instructions ?? ""}
-            onChange={(event) => setTitles(event.target.value)}
-            onBlur={() => {
-              if (titles !== null) save({ ...data, title_instructions: titles.trim() || null });
-            }}
-          />
-        </SettingRow>
-      </SettingGroup>
+      <PreferenceGroups groups={[{ title: "Auto-settle", rows: [
+        { key: "auto_settle_after_days", title: settingsLabel("threads-settle-idle-threads"),
+          description: "Move finished threads into Settled after a quiet period.",
+          options: AFTER_DAYS.map((entry) => ({ value: entry.value === null ? "" : String(entry.value), label: entry.label })),
+          parse: (value) => value === "" ? null : Number(value) },
+        { key: "auto_settle_on_merge", title: settingsLabel("threads-settle-on-merge"),
+          description: "Settle a thread when its pull request merges." },
+      ] }, { title: "Titles", rows: [
+        { key: "project_title_instructions", title: settingsLabel("threads-title-instructions"),
+          description: "Guidance used when a thread title is generated.", multiline: true },
+      ] }]} />
+      <fieldset className="preference-control" disabled={Boolean(projectScoped)}>
+        <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
+      </fieldset>
       <PreferenceGroups
         groups={[
           {
@@ -129,12 +99,12 @@ export function ThreadsSection() {
             rows: [
               {
                 key: "auto_thread_titles",
-                title: "Name new threads",
+                title: settingsLabel("threads-name-new-threads"),
                 description: "Title a thread from its first message. Each title spends a little engine usage.",
               },
               {
                 key: "text_generation_model",
-                title: "Title model",
+                title: settingsLabel("threads-title-model"),
                 description: "A model ID. Empty uses the engine's small model.",
               },
             ],
