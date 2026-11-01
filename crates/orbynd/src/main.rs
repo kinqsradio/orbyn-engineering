@@ -714,10 +714,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         wait
     });
     tokio::spawn(wait_for_stop(parent, stop.clone()));
-    {
+    let library_upgrades = {
         let (core, stop) = (core.clone(), stop.clone());
-        tokio::spawn(async move { core.run_library_upgrades(stop).await });
-    }
+        tokio::spawn(async move { core.run_library_upgrades(stop).await })
+    };
     let checks = {
         let (updates, stop) = (core.updates.clone(), stop.clone());
         tokio::spawn(async move { updates.run_checks(stop).await })
@@ -740,6 +740,8 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     tracing::info!("stopping");
     let _ = lifecycle.await;
     checks.abort();
+    let _ = checks.await;
+    let _ = library_upgrades.await;
     core.shutdown().await;
     let _ = std::fs::remove_file(handle);
     // Open streams never finish on their own; they end with the process.

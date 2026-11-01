@@ -587,6 +587,12 @@ aside, the clone moves in, `repo/` moves across and the old folder goes.
 Library status and update readers hold an async read guard until their Git children
 finish. The final swap takes the matching write guard before checking for local edits
 and taking the admission lock, and releases it before waiting for active runs.
+The shared Git command runner owns a process group or Windows job, so cancellation stops
+its descendants; once the leader exits, remaining descendants are stopped before output
+collection ends.
+Service shutdown joins the library-upgrade task and settles cancelled update checks before
+shutting down the core. Package smoke requests shutdown by parent-stdin EOF, awaits exit
+and treats a profile that cannot be removed as a failure.
 A library with local edits, or anything ignored beside `repo/`, is left as it is and
 shown as dirty.
 Startup finishes or undoes a swap a crash interrupted, by what it finds: an old folder with
