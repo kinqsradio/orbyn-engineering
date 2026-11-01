@@ -312,6 +312,23 @@ parity review even though its proposed popover is excluded.
   wait call was aborted before dispatch and was not retried through another wait
   mechanism. K9 remains partial for remaining auditing and native/Windows evidence.
 
+- Local settings `6560e74` retains selected repository subfolders as independent
+  project/trust/configuration roots, separates repository diff coordinates from
+  cwd-bounded file access, and anchors new worktrees beside the primary clone.
+  Real-service subfolder, explicit-child CLI, subtree checkpoint and browser cases
+  pass. Combined Rust workspace qualification passed 987 tests (9 ignored); web
+  passed 287 tests and type/lint checks. Invalid attempts to hide Git with an empty
+  PATH are retained as unqualified fixture evidence. No Windows/native or live
+  provider qualification is claimed for this slice.
+- Local `46e1219` binds telemetry editing to the environment with revision-fenced
+  touched-field writes and conflict/draft handling. Local `d29fd61` preserves
+  concurrent custom models and unknown entries while keeping configuration on its
+  actual environment target. Their focused real-service browser regressions pass;
+  two custom-model regressions failed before the correction. Runtime telemetry
+  exports, remaining provider controls and final native qualification remain open.
+  These changes are committed locally, not pushed or merged. Environment cleanup
+  and project worktree-policy bindings are the next in-progress settings slices.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
@@ -407,7 +424,7 @@ not commit it. Move it to a real secret store before any release.
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
    F source control, D viewers, then the rest. The next settings slices are
-   the remaining custom-form bindings, repository-subfolder registration and
+   the remaining custom-form bindings, project worktree policies and
    project actions; K1/K2/K5/K9 remain partial. The direct-coordinate sidebar audit
    passed; no product defect was established by earlier AX-target observations.
    Keep custom forms faithful to their actual targets: the pinned T3 telemetry
