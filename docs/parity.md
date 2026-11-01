@@ -721,7 +721,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M | scope: mixed | local: local ACP bridge, service launcher and credential-free history helpers | excludes: SSH helper
 - [x] O25 Start in directory: `t3 <path>` starts there, bare names only if the folder exists, existing server reported, `--base-dir` isolates a second server | docs/user/install.md | c | S | server done, as `orbyn <path>`; `--data-dir` isolates a second service
 - [ ] O26 Try without install: `npx t3@latest`; `t3 help` full reference | docs/user/install.md | c | S
-- [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3
+- [ ] O27 Render benchmark: replay a seeded 50 KB reply in fixed deltas into this UI and the reference UI in fresh browsers, record main-thread time, heap and mutations | bench/t3-compare/README.md | c | M | beyond T3 | scope: excluded | reason: an internal comparative benchmark rather than a T3 product surface; optional engineering evidence remains useful
 
 ## P. Desktop shell
 - [x] P1 Bundled backend: pool of managed local servers | apps/desktop/src/backend/DesktopBackendPool.ts | d | L | one managed `orbynd`; a pool serves remote hosts, which are out of scope | scope: mixed | local: one bundled local backend | excludes: a pool of remote hosts
