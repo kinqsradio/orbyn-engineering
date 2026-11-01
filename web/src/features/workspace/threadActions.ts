@@ -28,7 +28,7 @@ function moveOff(ids: ReadonlySet<string>) {
   const open = openThreadId();
   if (!open || !ids.has(open)) return;
   const all = Object.values(useWorkspace.getState().threads);
-  const rows = threadsFlat(arrangeThreads(all, Date.now(), open));
+  const rows = threadsFlat(arrangeThreads(all, Date.now()));
   const from = rows.findIndex((thread) => thread.id === open);
   const after = [...rows.slice(from + 1), ...rows.slice(0, Math.max(from, 0))];
   const next = after.find(

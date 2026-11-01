@@ -47,18 +47,17 @@ const running = { active_run: { id: "r", state: "running" } as Thread["active_ru
 
 describe("sidebar sections", () => {
   it("places each lifecycle", () => {
-    expect(sectionOf(thread("a", { pinned_at: "x" }), now, null)).toBe("pinned");
-    expect(sectionOf(thread("a", { settled_at: "x" }), now, null)).toBe("settled");
-    expect(sectionOf(thread("a", { archived_at: "x" }), now, null)).toBeNull();
-    expect(sectionOf(thread("a", { snoozed_until: "2026-11-01T00:00:00Z" }), now, null)).toBe("snoozed");
-    expect(sectionOf(thread("a", { snoozed_until: "2026-10-01T00:00:00Z" }), now, null)).toBe("active");
+    expect(sectionOf(thread("a", { pinned_at: "x" }), now)).toBe("pinned");
+    expect(sectionOf(thread("a", { settled_at: "x" }), now)).toBe("settled");
+    expect(sectionOf(thread("a", { archived_at: "x" }), now)).toBeNull();
+    expect(sectionOf(thread("a", { snoozed_until: "2026-11-01T00:00:00Z" }), now)).toBe("snoozed");
+    expect(sectionOf(thread("a", { snoozed_until: "2026-10-01T00:00:00Z" }), now)).toBe("active");
   });
 
-  it("keeps the open thread in the list while it runs, and others on the shelf", () => {
-    expect(sectionOf(thread("a", {}, running), now, "a")).toBe("active");
-    expect(sectionOf(thread("a", {}, running), now, "b")).toBe("working");
+  it("puts running threads on the working shelf regardless of the open route", () => {
+    expect(sectionOf(thread("a", {}, running), now)).toBe("working");
     const waiting = { active_run: { id: "r", state: "awaiting_approval" } as Thread["active_run"] };
-    expect(sectionOf(thread("a", {}, waiting), now, "b")).toBe("active");
+    expect(sectionOf(thread("a", {}, waiting), now)).toBe("active");
   });
 
   it("orders by the saved position, not by activity", () => {
@@ -68,7 +67,6 @@ describe("sidebar sections", () => {
         thread("first", { position: -1 }),
       ],
       now,
-      null,
     );
     expect(sections.active.map((t) => t.id)).toEqual(["first", "later"]);
   });
@@ -96,7 +94,7 @@ describe("drops", () => {
   });
 
   it("projects a move across sections", () => {
-    const sections = arrangeThreads([thread("a"), thread("b", { position: 1 }), thread("p", { pinned_at: "x" })], now, null);
+    const sections = arrangeThreads([thread("a"), thread("b", { position: 1 }), thread("p", { pinned_at: "x" })], now);
     const moved = projectDrop(sections, "b", { section: "pinned", index: 0 });
     expect(moved.pinned.map((t) => t.id)).toEqual(["b", "p"]);
     expect(moved.active.map((t) => t.id)).toEqual(["a"]);
@@ -114,7 +112,6 @@ describe("press-drag", () => {
           thread("s", { settled_at: "x" }),
         ],
         now,
-        null,
       ),
     );
     const active = (t: Thread) => !t.lifecycle?.settled_at;
@@ -141,11 +138,18 @@ describe("folders", () => {
   });
 });
 
-describe("the open thread's section", () => {
-  it("stays active when it settles on its own, until you leave", () => {
+describe("lifecycle changes", () => {
+  it("moves to settled as soon as the lifecycle changes", () => {
+    const active = thread("a");
     const settled = thread("a", { settled_at: "2026-10-31T11:00:00Z" });
-    expect(sectionOf(settled, now, "a", "active")).toBe("active");
-    expect(sectionOf(settled, now, null, "active")).toBe("settled");
-    expect(sectionOf(settled, now, "a", "settled")).toBe("settled");
+    expect(sectionOf(active, now)).toBe("active");
+    expect(sectionOf(settled, now)).toBe("settled");
+    expect(settled.lifecycle?.settled_at).toBe("2026-10-31T11:00:00Z");
+  });
+
+  it("keeps running and watched threads active when the working shelf is off", () => {
+    const rows = [thread("running", {}, running), thread("watched", { watching: true })];
+    expect(arrangeThreads(rows, now, false).active.map((item) => item.id)).toEqual(["running", "watched"]);
+    expect(arrangeThreads(rows, now).working.map((item) => item.id)).toEqual(["running", "watched"]);
   });
 });
