@@ -348,6 +348,16 @@ an action preserves the tab's stable ID but replaces its process; the viewer
 reattaches even when that tab stays selected. Ordinary metadata refreshes preserve
 the existing connection.
 
+Child exit does not close a terminal's output socket. The PTY reader records
+natural output completion only after its last scrollback and broadcast append;
+the socket drains queued chunks before closing. Late observers replay the retained
+scrollback and close when that stream has ended. Broadcast overflow retains the
+bounded latest chunks and emits an internal diagnostic, not a complete-history
+guarantee. Explicit terminal close or thread cleanup ends observation promptly
+even if an inherited PTY descriptor delays EOF. Process termination retains its
+existing process-group/job ownership; detached descendants are not newly claimed
+by this output fence.
+
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on

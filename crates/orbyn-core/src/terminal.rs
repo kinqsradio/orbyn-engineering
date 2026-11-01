@@ -55,12 +55,20 @@ pub struct PtySpec {
     pub rows: u16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PtyOutputState {
+    Reading,
+    Ended,
+    Closed,
+}
+
 pub struct PtySession {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     output: broadcast::Sender<Vec<u8>>,
     scrollback: Mutex<Scrollback>,
     exit: watch::Sender<Option<i32>>,
+    output_state: watch::Sender<PtyOutputState>,
     tree: ProcessTree,
 }
 
@@ -107,6 +115,12 @@ impl PtySession {
         self.exit.subscribe()
     }
 
+    /// Child exit and PTY output completion are independent. An explicit owner
+    /// close may stop observation without waiting for inherited descriptors.
+    pub fn output_state(&self) -> watch::Receiver<PtyOutputState> {
+        self.output_state.subscribe()
+    }
+
     pub fn attached_clients(&self) -> usize {
         self.output.receiver_count()
     }
@@ -116,6 +130,7 @@ impl PtySession {
     }
 
     pub fn kill(&self) {
+        self.output_state.send_replace(PtyOutputState::Closed);
         self.tree.kill();
     }
 }
@@ -361,12 +376,14 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
     let writer = pty.master.take_writer().map_err(failed)?;
     let (output, _) = broadcast::channel(256);
     let (exit, _) = watch::channel(None);
+    let (output_state, _) = watch::channel(PtyOutputState::Reading);
     let session = Arc::new(PtySession {
         writer: Mutex::new(writer),
         master: Mutex::new(pty.master),
         output,
         scrollback: Mutex::new(Scrollback::default()),
         exit,
+        output_state,
         tree: tree_for(pid),
     });
     // PTY reads block, and a blocking thread must not hold a strong reference
@@ -390,6 +407,15 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
             let mut scrollback = lock(&session.scrollback);
             scrollback.push(&chunk, SCROLLBACK_BYTES, SCROLLBACK_LINES);
             let _ = session.output.send(chunk);
+        }
+        if let Some(session) = reading.upgrade() {
+            session.output_state.send_if_modified(|state| {
+                if *state != PtyOutputState::Reading {
+                    return false;
+                }
+                *state = PtyOutputState::Ended;
+                true
+            });
         }
     });
     let waiting = Arc::downgrade(&session);

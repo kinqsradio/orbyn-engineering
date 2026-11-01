@@ -17,11 +17,13 @@ use futures_util::{SinkExt, StreamExt};
 use orbyn_contracts::{OpenTerminal, RenameTerminal, RunScript, TerminalScrollback};
 use orbyn_core::CoreError;
 use orbyn_core::store::AuditRecord;
-use orbyn_core::terminal::{MAIN_TERMINAL, PtySession, PtySpec, TerminalLabel, default_shell};
+use orbyn_core::terminal::{
+    MAIN_TERMINAL, PtyOutputState, PtySession, PtySpec, TerminalLabel, default_shell,
+};
 use orbyn_core::util::new_id;
 use serde::Deserialize;
 use serde_json::json;
-use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 
 use crate::api::{ApiFailure, ApiJson, ApiResult, AppState, LOCAL_USER};
 
@@ -241,7 +243,7 @@ async fn serve(
 ) {
     let (mut sender, mut receiver) = socket.split();
     let (scrollback, mut output) = session.attach();
-    let mut exited = session.exited();
+    let mut output_state = session.output_state();
     if !scrollback.is_empty()
         && sender
             .send(Message::Binary(scrollback.into()))
@@ -252,21 +254,20 @@ async fn serve(
     }
     loop {
         tokio::select! {
-            chunk = output.recv() => match chunk {
-                Ok(bytes) => {
+            chunk = next_output(&mut output, &mut output_state) => match chunk {
+                Ok(Some(bytes)) => {
                     if sender.send(Message::Binary(bytes.into())).await.is_err() {
                         break;
                     }
                 }
-                Err(RecvError::Lagged(_)) => {}
-                Err(RecvError::Closed) => break,
-            },
-            changed = exited.changed() => {
-                if changed.is_err() || exited.borrow().is_some() {
+                Err(RecvError::Lagged(count)) => {
+                    tracing::warn!(count, thread_id, terminal, "terminal viewer lagged behind PTY output");
+                }
+                Ok(None) | Err(RecvError::Closed) => {
                     let _ = sender.send(Message::Close(None)).await;
                     break;
                 }
-            }
+            },
             message = receiver.next() => match message {
                 Some(Ok(Message::Binary(_) | Message::Text(_))) if observe => {}
                 Some(Ok(Message::Binary(bytes))) => {
@@ -305,5 +306,96 @@ async fn reap_if_idle(state: AppState, thread_id: String, session: Arc<PtySessio
         .is_ok_and(|thread| thread.active_run.is_some());
     if attached == 0 && !running {
         let _ = state.core.terminals.close_one(&thread_id, MAIN_TERMINAL);
+    }
+}
+
+async fn next_output(
+    output: &mut tokio::sync::broadcast::Receiver<Vec<u8>>,
+    state: &mut tokio::sync::watch::Receiver<PtyOutputState>,
+) -> std::result::Result<Option<Vec<u8>>, RecvError> {
+    loop {
+        let current = *state.borrow();
+        match current {
+            PtyOutputState::Closed => return Ok(None),
+            PtyOutputState::Ended => return queued_output(output),
+            PtyOutputState::Reading => {}
+        }
+        tokio::select! {
+            chunk = output.recv() => return chunk.map(Some),
+            changed = state.changed() => {
+                if changed.is_err() { return queued_output(output); }
+            }
+        }
+    }
+}
+
+fn queued_output(
+    output: &mut tokio::sync::broadcast::Receiver<Vec<u8>>,
+) -> std::result::Result<Option<Vec<u8>>, RecvError> {
+    match output.try_recv() {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(TryRecvError::Lagged(count)) => Err(RecvError::Lagged(count)),
+        Err(TryRecvError::Empty | TryRecvError::Closed) => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_output;
+    use orbyn_core::terminal::PtyOutputState;
+
+    #[tokio::test]
+    async fn child_exit_does_not_discard_pending_pty_output() {
+        let (output, mut receiver) = tokio::sync::broadcast::channel(4);
+        let (child, _exited) = tokio::sync::watch::channel(None);
+        let (completion, mut state) = tokio::sync::watch::channel(PtyOutputState::Reading);
+        {
+            let next = next_output(&mut receiver, &mut state);
+            tokio::pin!(next);
+            assert!(futures_util::poll!(&mut next).is_pending());
+            child.send_replace(Some(0));
+            assert!(
+                futures_util::poll!(&mut next).is_pending(),
+                "child exit is not PTY output EOF"
+            );
+            output.send(b"final output".to_vec()).unwrap();
+            completion.send_replace(PtyOutputState::Ended);
+            assert_eq!(next.await.unwrap(), Some(b"final output".to_vec()));
+        }
+        assert_eq!(next_output(&mut receiver, &mut state).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn ended_output_drains_and_reports_overflow_before_closing() {
+        let (output, mut receiver) = tokio::sync::broadcast::channel(2);
+        let (_completion, mut state) = tokio::sync::watch::channel(PtyOutputState::Ended);
+        for byte in 0..4 {
+            output.send(vec![byte]).unwrap();
+        }
+        assert!(matches!(
+            next_output(&mut receiver, &mut state).await,
+            Err(super::RecvError::Lagged(2))
+        ));
+        assert_eq!(
+            next_output(&mut receiver, &mut state).await.unwrap(),
+            Some(vec![2])
+        );
+        assert_eq!(
+            next_output(&mut receiver, &mut state).await.unwrap(),
+            Some(vec![3])
+        );
+        assert_eq!(next_output(&mut receiver, &mut state).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn owner_close_does_not_wait_for_a_descendants_pty_eof() {
+        let (output, mut receiver) = tokio::sync::broadcast::channel(4);
+        let (completion, mut state) = tokio::sync::watch::channel(PtyOutputState::Reading);
+        let next = next_output(&mut receiver, &mut state);
+        tokio::pin!(next);
+        assert!(futures_util::poll!(&mut next).is_pending());
+        completion.send_replace(PtyOutputState::Closed);
+        assert_eq!(next.await.unwrap(), None);
+        output.send(b"final output".to_vec()).unwrap();
     }
 }
