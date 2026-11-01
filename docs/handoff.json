@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "56d914d4d8f907f6cd72a8e0334966080ffe6d59",
+    "revision": "12748ac89e9cac3ab2d2e7a1a43163d03bb1f356",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -94,6 +94,13 @@
       "evidence": [
         "PR60 head4425a71 CI41290079315 all six required jobs and GitGuardian passed; merged56d914d",
         "Main56d914d CI41291556483 all six required jobs passed, including Windows installed-app startup"
+      ]
+    },
+    {
+      "result": "Settings batch PR82 merged without squash after every required current-head check passed",
+      "evidence": [
+        "Head9ac3dfa CI41294951768 all six required jobs and GitGuardian passed; no review threads or submitted reviews",
+        "Merged12748ac; primary main and local settings branch fast-forwarded without losing the next shortcut slice"
       ]
     }
   ],
@@ -271,12 +278,30 @@
         "Real-service rename identity and real-PTY terminal-collision regressions failed before and pass after; project files remain read-only",
         "Generated ProjectScript.ts committed; no current-head section CI or native identity qualification claimed"
       ]
+    },
+    {
+      "check": "Post-merge main12748ac",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "CI41296294886 completed successfully; all six required jobs passed"
+      ]
+    },
+    {
+      "check": "Local action shortcut slice6b0682b",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "954 Rust tests passed,9 ignored;Clippy/fmt;277 web tests/check/build;16 real-service browser cases;final focused runs passed",
+        "Real ID execution and read-only legacy identity regressions failed before and pass after; malformed keymap retry and concurrent unrelated writes pass",
+        "Generated RunScript.ts committed; native/Windows shortcut and route round-trip qualification remain unverified; no new section PR or merge"
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Publish the checked identity and acceptance fixes to PR82; verify the fresh GitGuardian result after the owner-authorized false-positive classification, and every required current-head CI job. Merge only all-green without squash, then continue action shortcuts, preparation retry and all remaining in-scope rows through real orbynd.",
+  "next_action": "Recheck existing helpers and resume bounded delegation now that the local shortcut slice6b0682b is checked and committed. Complete preparation retry and investigate subfolder registration, preserving single-section delivery and all refusal boundaries. Main12748ac CI41296294886 is green; no shortcut-section CI is claimed.",
   "delivery": {
     "state": "merged",
     "evidence": [
@@ -287,7 +312,8 @@
       "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete.",
       "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed.",
       "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge.",
-      "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted."
+      "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted.",
+      "PR82 head9ac3dfa passed every required check and GitGuardian, merged without squash12748ac. Next action-shortcut work is local and not covered by that CI."
     ]
   }
 }

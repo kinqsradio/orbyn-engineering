@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `56d914d`. Trust the repository over this document where they differ,
+`main` at `12748ac`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,17 +49,15 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `56d914d`
+## Reconciled status at `12748ac`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
-Main has 709 rows and 383 source checkboxes ticked. Its scope metadata reports
-533 included rows: 349 declared checked, 39 partial, 143 open and 2 not doable.
-There are 176 excluded and zero unresolved-scope rows. The settings branch after
-integration has 534 included: 344 declared checked, 47 partial, 141 open and 2 not
-doable, with 175 excluded and 384 source ticks. These are checklist declarations,
+Main has 709 rows and 384 source checkboxes ticked. Scope metadata reports 534
+included rows: 344 declared checked, 47 partial, 141 open and 2 not doable. There
+are 175 excluded and zero unresolved-scope rows. These are checklist declarations,
 not a fresh runtime verification count. Scope reconciliation and explicit partial
-rows mean the branch counts are not directly comparable as delivered features.
-The former 365/573 calculation is not a valid completion percentage.
+rows mean older totals are not directly comparable as delivered features. The
+former 365/573 calculation is not a valid completion percentage.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
@@ -254,6 +252,29 @@ parity review even though its proposed popover is excluded.
   `workspace.rs` in the last visible log; do not treat its observation as a failure
   or restart it. A new head must pass every required job before merge.
 
+- PR82 head `9ac3dfa` passed all six required jobs in `41294951768`, plus
+  GitGuardian. No review threads or submitted reviews remained. It merged without
+  squashing as `12748ac`; both the primary main and the settings branch are updated.
+  The following action-shortcut slice remains local and must not inherit that CI
+  qualification. Post-merge main CI `41296294886` passed all six required jobs.
+
+- Local settings `6b0682b` implements the action Keybinding field and execution by
+  saved ID, retaining legacy-name execution. Scoped reads expose legacy IDs without
+  changing raw storage/revision layers. The editor captures, runs, renames and clears
+  a shortcut; terminal input focus also works. A held real catalog reproduces first-key
+  timing and the pending lookup handles it. A genuinely malformed fixture keymap
+  preserves the already-saved action and shortcut draft; retry edits it without a
+  duplicate. Twelve concurrent real-API keybinding writes preserve unrelated rules.
+  Final local checks: 954 Rust tests passed (9 ignored), Clippy/fmt, 277 web tests,
+  check/build and 16 real-service browser cases; the final focused editor/shortcut
+  reruns also pass. Generated `RunScript.ts` is committed. Source guards also fence
+  delayed work by route epoch; navigation round-trip, native shortcut and Windows
+  shortcut qualification remain unverified. No new section PR or merge is claimed.
+  K9 remains partial for preparation retry and final qualification.
+- The owner asked to resume helpers after finishing this slice. The earlier
+  collaboration request hit a thread-limit rejection and was not worked around.
+  Recheck existing helpers before delegating; stop that operation if refused.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
@@ -337,8 +358,10 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Integrated main `56d914d` run `41291556483` passed all six required jobs.
-   PR60 is merged. Keep subsequent section delivery fenced to all required green
+1. PR82 head `9ac3dfa` passed all six required checks in `41294951768`, plus
+   GitGuardian, and merged without squash as `12748ac`. Post-merge main run
+   `41296294886` passed all six required jobs.
+   PR60 and PR82 are merged. Keep subsequent section delivery fenced to all required green
    current-head checks; historical passing heads do not qualify new integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
    visible deviations are removed, including extra tray behavior; route-held sidebar placement was removed by #76. Do not turn a missing reference into an invented control or an
