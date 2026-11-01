@@ -608,7 +608,7 @@ branch with the unfinished settings slices before the section/about-20-row PR.
 
 ### Current structured project icon slice
 
-The current local K7 implementation adds Lucide, emoji and monogram choices,
+Local implementation `7e3d25f` adds Lucide, emoji and monogram choices,
 selected-member revision fences and explicit-null Reset. Schema 21 preserves
 existing projects while introducing nullable icon/image metadata and a shared
 revision advanced by selected Name, legacy rename and scratch promotion. Known
@@ -617,14 +617,39 @@ Conflicts retain drafts and require explicit Reload before another save. Direct
 API text remains case-preserving, while the picker applies the reference input
 normalization. Generated wire types include explicit nullable icon/image fields.
 
-Focused qualification passed six real-service browser cases and two additional
-screenshot captures covering all three picker modes. Web type/lint checks, 335
-unit tests and the production build pass. Final production workspace Clippy and
-formatting pass. The full workspace on final production code passed 1055 Rust
-tests, with 9 existing ignored; the additional populated-migration test was added
-after that compilation; all eight final metadata cases passed separately with
-the archived writer enabled, including populated migration. The default 240-case
-browser suite is still running. A real populated schema-20 fixture passed the
-live-old-writer fence, preservation through migration and a new schema-21 write. No native/Windows or hosted current-head qualification is inferred.
-K7 remains partial for image selection and final platform evidence. This slice
-is local and has not yet been pushed.
+Final production Rust passed 1055 workspace tests with 9 existing ignored,
+formatting and workspace all-target Clippy. The final metadata test file passed
+all eight cases with an actual archived schema-20 writer enabled. Those cases
+include preserving a populated project/thread through migration, refusing the
+new service while the old owner is live, refusing the old binary against schema
+21 without changing database/WAL/SHM, and a successful current-writer edit after
+reopening. Only the final test-only migration addition followed the full workspace
+compilation; production hashes stayed unchanged.
+
+Final review found a client race: an older project-list response could overwrite
+committed icon/name metadata or resurrect a removed registration. Three deferred
+unit regressions and a real-service browser case failed before the correction.
+The browser case commits Robot, observes it in the sidebar, then releases an
+unmodified older response with polling paused. The follow-up now advances the
+project-list observation generation and clears loading on committed edits/removal.
+All seven focused browser cases pass after the fix, including this race and the
+six icon scenarios. Screenshots cover Icons, Emoji and Monogram modes.
+
+The initial 240-case default browser run passed without skips or filters. Its
+shared Cargo-cache executable hashes changed early in the run while root Rust
+checks overlapped, so it does not qualify one unchanged executable. That receipt
+is retained. The next run uses copied executables under
+`target/project-icon-frozen-runtime/7e3d25fefa-1793557011882993000/`: daemon
+`b06fa349aa8a9d765799e2027890ac2b25a4ed285eb209a90f0b72109ba9f2be`
+and companion `5c25596824b2b32eb266d1dffc4249d1e3858ea209b6db04a0b6d303378121e4`.
+The seven focused cases already passed on these unchanged copies.
+
+The follow-up production build and type/lint checks pass. One concurrent unit
+run passed 337/338 but timed out in the existing App streaming case at its
+unchanged five-second limit. All 42 App tests passed separately, followed by
+338/338 in the default full unit rerun without concurrent browser/build work. No
+cause is claimed and the red receipt is retained. The final 241-case default
+browser gate is running on the copied runtime. This follow-up is local; push
+remains gated on that result. No current-head hosted CI,
+native/Windows or final reference walkthrough is inferred. K7 remains partial
+for saved-image selection and final platform evidence.

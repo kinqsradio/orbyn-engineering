@@ -690,6 +690,8 @@ The picker freezes membership, physical IDs and revisions when opened. Cancel
 has no write. A conflict retains the draft and requires explicit reload before
 another save; a late response cannot replace a different selection's dialog.
 Committed rows update the workspace separately from subsequent catalog-read errors.
+A committed project edit or removal supersedes older project-list reads and ends
+their loading state; a delayed poll cannot restore stale metadata or a removed row.
 The picker normalizes monogram input with NFKC and uppercasing; the renderer keeps
 received text unchanged. Package-owned Lucide loaders have a bounded component
 lifetime and unknown names use FolderCode. Saved image picking and native chooser

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import * as projectImages from "../lib/projectImages";
 import { projects } from "../../mock/fixtures";
-import type { Approval } from "../api/types";
+import type { Approval, Project } from "../api/types";
 import { useWorkspace } from "./workspace";
 
 const approval = (id: string) => ({ id }) as Approval;
@@ -14,6 +14,44 @@ function deferred<T>() {
 }
 
 describe("workspace store", () => {
+  it.each(["icon", "name"] as const)("keeps a committed %s edit when an older project refresh arrives", async (field) => {
+    const original: Project = { ...projects[0]!, name: "Before commit", metadata_revision: "4", project_icon: null };
+    const peer: Project = { ...original, id: "peer", path: "/peer", name: "Peer" };
+    const committed: Project = { ...original, metadata_revision: "5",
+      ...(field === "icon" ? { project_icon: { kind: "emoji", emoji: "🚀" } as const } : { name: "Committed name" }) };
+    useWorkspace.setState({ projects: { data: [original, peer], error: null, loading: false } });
+    const stale = deferred<Project[]>();
+    const spy = vi.spyOn(api, "projects").mockReturnValueOnce(stale.promise);
+    try {
+      const refresh = useWorkspace.getState().refreshProjects();
+      expect(useWorkspace.getState().projects.loading).toBe(true);
+      useWorkspace.getState().putProject(committed);
+      const loadingAtCommit = useWorkspace.getState().projects.loading;
+      stale.resolve([original, peer]);
+      await refresh;
+      expect(useWorkspace.getState().projects).toEqual({ data: [committed, peer], error: null, loading: false });
+      expect(loadingAtCommit).toBe(false);
+    } finally { spy.mockRestore(); }
+  });
+
+  it("keeps a committed deletion when an older project refresh arrives", async () => {
+    const removed: Project = { ...projects[0]!, metadata_revision: "4" };
+    const peer: Project = { ...removed, id: "peer", path: "/peer", name: "Peer" };
+    useWorkspace.setState({ projects: { data: [removed, peer], error: null, loading: false } });
+    const stale = deferred<Project[]>();
+    const spy = vi.spyOn(api, "projects").mockReturnValueOnce(stale.promise);
+    try {
+      const refresh = useWorkspace.getState().refreshProjects();
+      expect(useWorkspace.getState().projects.loading).toBe(true);
+      useWorkspace.getState().dropProject(removed.id);
+      const loadingAtCommit = useWorkspace.getState().projects.loading;
+      stale.resolve([removed, peer]);
+      await refresh;
+      expect(useWorkspace.getState().projects).toEqual({ data: [peer], error: null, loading: false });
+      expect(loadingAtCommit).toBe(false);
+    } finally { spy.mockRestore(); }
+  });
+
   it("ignores a stale response that arrives last", async () => {
     const first = deferred<Approval[]>();
     const second = deferred<Approval[]>();

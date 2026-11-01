@@ -363,6 +363,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   putProject(project) {
+    claim("projects");
     const previous = get().projects.data?.find((entry) => entry.id === project.id);
     if (previous && projectImageChanged(previous, project)) invalidateProjectImages(project.id);
     set((state) => {
@@ -372,12 +373,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         projects: {
           ...state.projects,
           data: known ? list.map((p) => (p.id === project.id ? project : p)) : [...list, project],
+          loading: false,
         },
       };
     });
   },
 
   dropProject(projectId) {
+    claim("projects");
     invalidateProjectImages(projectId);
     set((state) => {
       const { [projectId]: _gone, ...threadIds } = state.threadIds;
@@ -385,6 +388,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         projects: {
           ...state.projects,
           data: (state.projects.data ?? []).filter((p) => p.id !== projectId),
+          loading: false,
         },
         threadIds,
         threads: Object.fromEntries(
