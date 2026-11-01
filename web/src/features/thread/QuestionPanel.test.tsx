@@ -7,16 +7,18 @@ import { QuestionPanel } from "./QuestionPanel";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 const prose = "### Approach\n\nUse **small** steps and `checks`.\n\n- First\n- Next\n\n```ts\nconst safe = true;\n```\n\n<script>unsafe()</script>";
-const ask: QuestionRequest = { id: "request/1", thread_id: "t", run_id: "r", state: "pending", answers: null,
+const baseAsk: QuestionRequest = { id: "request/1", thread_id: "t", run_id: "r", state: "pending", answers: null,
   decided_by: null, decided_at: null, created_at: "", questions: [
     { id: "choice", header: "Choice", question: prose, options: [{ label: "A", description: "First" }, { label: "B", description: "Second" }],
       multi_select: false, allow_other: false, secret: false },
     { id: "followup", header: "", question: "Choose **follow-up**.", options: [], multi_select: false, allow_other: true, secret: false },
   ] };
+let ask: QuestionRequest;
 const mock = vi.mocked(request);
 let open: boolean;
 let fail: boolean;
 beforeEach(() => {
+  ask = structuredClone(baseAsk);
   open = true; fail = false; mock.mockReset();
   mock.mockImplementation(async (method) => {
     if (method === "GET") return (open ? [ask] : []) as never;
@@ -65,4 +67,67 @@ it("dismisses without submitting selected or custom answers", async () => {
   await user.click(await screen.findByRole("button", { name: "Dismiss" }));
   expect(mock).toHaveBeenCalledWith("POST", "/api/questions/request%2F1/dismiss", undefined);
   expect(mock.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
+});
+
+it("replaces a single choice with custom text and retains that answer after failure", async () => {
+  ask.questions[0]!.allow_other = true;
+  fail = true; const user = userEvent.setup();
+  render(<QuestionPanel threadId="t" waiting />);
+  const choice = await screen.findByRole("group", { name: "Choice" });
+  const option = within(choice).getByRole("button", { name: /A\s*First/ });
+  await user.click(option);
+  const custom = within(choice).getByRole("textbox");
+  await user.type(custom, "Different approach");
+  expect(option).toHaveAttribute("aria-pressed", "false");
+  expect(custom).toHaveFocus();
+  await user.type(screen.getByRole("textbox", { name: "Choose **follow-up**." }), "Keep this");
+  await user.click(screen.getByRole("button", { name: "Submit answers" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Answer could not be sent.");
+  expect(custom).toHaveValue("Different approach");
+  expect(option).toHaveAttribute("aria-pressed", "false");
+  fail = false;
+  await user.click(screen.getByRole("button", { name: "Submit answers" }));
+  expect(mock).toHaveBeenCalledWith("POST", "/api/questions/request%2F1/answer", {
+    answers: { choice: ["Different approach"], followup: ["Keep this"] },
+  });
+});
+
+it("selecting an offered answer by keyboard clears custom text", async () => {
+  ask.questions[0]!.allow_other = true;
+  const user = userEvent.setup(); render(<QuestionPanel threadId="t" waiting />);
+  const choice = await screen.findByRole("group", { name: "Choice" });
+  const custom = within(choice).getByRole("textbox");
+  await user.type(custom, "Different approach");
+  const option = within(choice).getByRole("button", { name: /B\s*Second/ });
+  option.focus(); await user.keyboard("{Enter}");
+  expect(custom).toHaveValue("");
+  expect(option).toHaveAttribute("aria-pressed", "true"); expect(option).toHaveFocus();
+  await user.type(custom, "  ");
+  expect(option).toHaveAttribute("aria-pressed", "true");
+  await user.clear(custom);
+  expect(option).toHaveAttribute("aria-pressed", "true");
+  await user.type(custom, "Replacement"); await user.clear(custom);
+  expect(option).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "Submit answers" })).toBeDisabled();
+});
+
+it("keeps multiple offered choices but switches exclusively between them and custom text", async () => {
+  ask.questions[0]!.multi_select = true; ask.questions[0]!.allow_other = true;
+  const user = userEvent.setup(); render(<QuestionPanel threadId="t" waiting />);
+  const choice = await screen.findByRole("group", { name: "Choice" });
+  const a = within(choice).getByRole("button", { name: /A\s*First/ });
+  const b = within(choice).getByRole("button", { name: /B\s*Second/ });
+  const custom = within(choice).getByRole("textbox");
+  await user.click(a); await user.click(b);
+  expect(a).toHaveAttribute("aria-pressed", "true"); expect(b).toHaveAttribute("aria-pressed", "true");
+  await user.type(custom, "  ");
+  expect(a).toHaveAttribute("aria-pressed", "true"); expect(b).toHaveAttribute("aria-pressed", "true");
+  await user.type(custom, "Different approach");
+  expect(a).toHaveAttribute("aria-pressed", "false"); expect(b).toHaveAttribute("aria-pressed", "false");
+  await user.click(a); expect(custom).toHaveValue(""); await user.click(b);
+  await user.type(screen.getByRole("textbox", { name: "Choose **follow-up**." }), "Keep this");
+  await user.click(screen.getByRole("button", { name: "Submit answers" }));
+  expect(mock).toHaveBeenCalledWith("POST", "/api/questions/request%2F1/answer", {
+    answers: { choice: ["A", "B"], followup: ["Keep this"] },
+  });
 });
