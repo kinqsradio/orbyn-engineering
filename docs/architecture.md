@@ -429,7 +429,7 @@ eligibility, including its pending catalog reader. Plain action keys remain term
 and text input keystrokes. Menus and shortcuts share execution, select the resulting
 terminal and then apply preview options. Terminal selection is transient viewer
 state and never an authority to run a command. Complete action parity still needs
-preparation retry and final integrated native/Windows qualification.
+final integrated native/Windows qualification.
 The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets
@@ -440,10 +440,45 @@ synchronous setup fails the first turn; an async exit does not block it,
 and a later explicit user message does not implicitly execute project code again.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic
-restart/limit continuation cannot bypass it. Retrying preparation itself remains a
-separate unfinished surface; an ordinary prompt is not a preparation retry.
+restart/limit continuation cannot bypass it. The failure's timeline Retry control
+uses its run identity to retry the captured preparation, original prompt and
+attachments, engine instance and model/effort/options selection. Core admits a
+fresh attempt without changing terminal run history;
+a normal prompt never retries project code. An active run, stale failure identity,
+untrusted project or missing legacy capture rejects retry before a process starts.
+The complete capture is compared again in the admission transaction. A fresh
+catalog must validate the saved selection before project code starts; a missing
+non-custom model or catalog error refuses retry. The captured provider is checked
+again under engine admission, with no current-provider or fallback-model substitution.
+Claude, Codex, ACP and terminal drivers check their effective local executable with
+the existing Windows-aware launch resolver before setup and under admission. This
+check starts no version, sign-in or project command; named instances check their
+resolved program override. Endpoint drivers have no local executable. This proves
+known launch availability only: runtime and endpoint failures can still occur.
+The current thread's selection and remembered engine choices are preserved. Runtime
+permission and plan policy come from the thread's current transaction snapshot,
+never from the old capture. A queued first turn captures its applied selection and
+attachments in the same transaction. Duplicate requests lose the same atomic
+admission fence. A retry's engine turn
+waits for its setup, including exit zero for synchronous actions. Only successful
+preparation releases queue holds owned by that attempt: process start for async
+actions, exit zero for synchronous actions. Pre-existing user holds,
+holds from a later run, repeated failure and cancellation remain held. Explicit
+queue resume/send-now clears preparation hold ownership; failure still gates
+admission. Every preparation attempt has a unique terminal identity, checked with
+the writer epoch before recording completion or releasing owned work.
+The admitted run records the captured provider. Session resume and session writes
+require exact provider ownership, including named instances of the same driver.
+A retry across providers starts a fresh session with a read-only shared-conversation
+snapshot from the committed log boundary, using the existing 16,000-character
+handoff collector. This snapshot belongs to the run; it neither consumes nor clears
+the current provider's pending handoff/session. Session-loss recovery cannot reset
+another provider's state. Successful completion clears only its own handoff context.
 Cancellation and setup process creation share one owner lock; cancelling first
-prevents a later spawn, and cancelling a blocked turn kills its setup process.
+prevents a later spawn, and cancelling a blocked synchronous turn kills its setup
+process. Each cancellation and dropped wait guard checks the bound run, so an older
+attempt cannot cancel a newer retry. After an async setup starts, stopping or force
+stopping its model turn leaves that setup running; thread/app cleanup still owns it.
 
 Schema 18 adds `thread_setup` with a cascading thread foreign key. Its preparation
 marker and thread commit in one transaction, before clients can admit a turn.
@@ -453,7 +488,21 @@ and records unfinished work as failed; an already-started async action remains
 nonblocking. Restart fences old pending writers before admission.
 Existing threads receive no marker and never execute setup retroactively. Older
 cores reject the newer schema before changing persistent data; rolling back requires
-a database backup from the older schema, not an older writer against schema 18.
+a database backup from the older schema, not an older writer against the newer database.
+Schema 19 adds the serialized captured setup, first prompt/attachment IDs, engine
+instance and model selection, bound preparation run, per-run retry/context metadata
+and per-message preparation hold owner. New thread creation captures
+the effective command; first admission captures input in its admission transaction.
+No command is reconstructed for schema 18 rows with a null capture. Their existing
+fence remains effective, while preparation retry is unavailable. Core's data-directory
+lock still permits one service writer, migrations run transactionally and old binaries
+refuse newer schema versions before opening a writer. A crash during synchronous
+preparation closes its bound run as a preparation failure without requeueing a
+second copy of its input; restart preserves the capture and requires explicit Retry.
+Epoch and terminal fences reject delayed completion from the previous process.
+Only disposable fixtures qualified this migration; owner databases were not opened
+or migrated. Recovery uses the current writer or an older-schema backup, never an
+older binary against schema 19.
 Moving or deleting a thread clears its setup and closes its old terminals/previews.
 
 ## Settings and maintenance

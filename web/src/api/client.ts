@@ -151,6 +151,8 @@ export const api = {
       prompt,
       attachment_ids: attachmentIds,
     }),
+  preparationRetry: (threadId: string, signal?: AbortSignal) => request<import("../generated/RetryPreparation").RetryPreparation | null>("GET", `/api/threads/${q(threadId)}/preparation`, undefined, signal),
+  retryPreparation: (threadId: string, runId: string) => request<Run>("POST", `/api/threads/${q(threadId)}/preparation/retry`, { run_id: runId } satisfies import("../generated/RetryPreparation").RetryPreparation),
   resumeQueue: (threadId: string) => request<void>("POST", `/api/threads/${q(threadId)}/queue/resume`),
   removeQueued: (id: string) => request<void>("DELETE", `/api/queue/${q(id)}`),
   sendQueuedNow: (id: string) => request<void>("POST", `/api/queue/${q(id)}/send-now`),

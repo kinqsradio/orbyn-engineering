@@ -292,6 +292,7 @@ impl Core {
         let setup = setup_script.as_ref().map(|script| NewSetup {
             name: script.name.clone(),
             wait_for_exit: !script.asynchronous,
+            script: Some(script.clone()),
         });
         let thread_id = new_id();
         let registration = setup.as_ref().map(|_| self.setups.registration(&thread_id));

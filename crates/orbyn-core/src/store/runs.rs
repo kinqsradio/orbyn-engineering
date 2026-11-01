@@ -132,8 +132,9 @@ impl Store {
         self.commit(|tx, _| {
             let guard = guard_active(tx, &self.epoch, run_id)?;
             tx.execute(
-                "UPDATE threads SET engine_session = ?2 WHERE id = ?1",
-                params![guard.thread_id, session],
+                "UPDATE threads SET engine_session = ?2 WHERE id = ?1
+                   AND engine = (SELECT engine FROM runs WHERE id = ?3)",
+                params![guard.thread_id, session, run_id],
             )?;
             Ok(())
         })
@@ -218,6 +219,36 @@ impl Store {
         Ok(text.and_then(|text| serde_json::from_str(&text).ok()))
     }
 
+    pub(crate) fn run_owns_engine(&self, run: &str) -> Result<bool> {
+        Ok(self.reader().query_row("SELECT t.engine = r.engine FROM runs r JOIN threads t ON t.id = r.thread_id WHERE r.id = ?1", [run], |row| row.get(0))?)
+    }
+
+    pub(crate) fn run_engine_session(&self, run: &str) -> Result<Option<String>> {
+        Ok(self.reader().query_row("SELECT t.engine_session FROM runs r JOIN threads t ON t.id = r.thread_id WHERE r.id = ?1 AND t.engine = r.engine", [run], |row| row.get(0)).optional()?.flatten())
+    }
+
+    pub(crate) fn run_handoff(&self, run: &str) -> Result<Option<String>> {
+        Ok(self.reader().query_row("SELECT CASE WHEN t.engine = r.engine THEN t.handoff ELSE r.preparation_handoff END FROM runs r JOIN threads t ON t.id = r.thread_id WHERE r.id = ?1", [run], |row| row.get(0)).optional()?.flatten())
+    }
+
+    pub(crate) fn clear_run_handoff(&self, run: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            let guard = guard_active(tx, &self.epoch, run)?;
+            tx.execute("UPDATE threads SET handoff = NULL WHERE id = ?1 AND engine = (SELECT engine FROM runs WHERE id = ?2)", params![guard.thread_id, run])?;
+            tx.execute("UPDATE runs SET preparation_handoff = NULL WHERE id = ?1", [run])?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn set_run_handoff(&self, run: &str, handoff: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            let guard = guard_active(tx, &self.epoch, run)?;
+            let changed = tx.execute("UPDATE threads SET handoff = ?2, engine_session = NULL WHERE id = ?1 AND engine = (SELECT engine FROM runs WHERE id = ?3)", params![guard.thread_id, handoff, run])?;
+            if changed != 1 { return Err(CoreError::StaleOwner); }
+            Ok(())
+        })
+    }
+
     pub fn engine_session(&self, thread_id: &str) -> Result<Option<String>> {
         Ok(self
             .reader()
@@ -284,7 +315,13 @@ impl Store {
             let mut recovery = Recovery::default();
             for (run_id, thread_id, state, stopped) in orphans {
                 close_open_tools(tx, appended, &run_id, &thread_id)?;
-                let unsent = !stopped && state == wire_name(RunState::Admitted)?;
+                let preparation: Option<String> = tx.query_row("SELECT name FROM thread_setup WHERE thread_id = ?1 AND run_id = ?2 AND (status = 'preparing' OR (status = 'running' AND wait_for_exit = 1))", params![thread_id, run_id], |row| row.get(0)).optional()?;
+                let preparation = preparation.filter(|_| !stopped);
+                if preparation.is_some() {
+                    tx.execute("UPDATE thread_setup SET owner_epoch = ?2, status = 'failed', exit_code = NULL WHERE thread_id = ?1", params![thread_id, self.epoch])?;
+                }
+                let unsent = !stopped && preparation.is_none() && state == wire_name(RunState::Admitted)?;
+                let preparation_message = preparation.map(|name| format!("Setup script {name} did not finish successfully."));
                 let (to, message) = match (stopped, unsent) {
                     (true, _) => (RunState::Cancelled, None),
                     (_, true) => (
@@ -296,6 +333,7 @@ impl Store {
                         Some("Orbyn stopped while this run was active."),
                     ),
                 };
+                let (to, message) = if let Some(message) = preparation_message.as_deref() { (RunState::Failed, Some(message)) } else { (to, message) };
                 let (_, expired) = close_run(
                     tx,
                     appended,
@@ -443,6 +481,18 @@ pub(super) fn admit_in(
     epoch: &str,
     admission: &Admission<'_>,
 ) -> Result<Run> {
+    admit_in_for_engine(tx, appended, epoch, admission, None)
+}
+
+/// The preparation retry owns an immutable provider choice; thread preferences
+/// remain the owner's current selection.
+pub(super) fn admit_in_for_engine(
+    tx: &Transaction<'_>,
+    appended: &mut Appended,
+    epoch: &str,
+    admission: &Admission<'_>,
+    captured_engine: Option<&str>,
+) -> Result<Run> {
     let &Admission {
         thread_id,
         prompt,
@@ -469,6 +519,7 @@ pub(super) fn admit_in(
             "Project setup did not finish successfully.".into(),
         ));
     }
+    let engine = captured_engine.unwrap_or(&engine).to_owned();
     // Your own message wakes the thread and restores it to active work.
     tx.execute(
         "UPDATE threads SET snoozed_until = NULL, settled_at = NULL, settle_hold = 0, woke_at = NULL
@@ -543,6 +594,7 @@ pub(super) fn admit_in(
     for event in &events {
         insert_event(tx, appended, thread_id, Some(&run.id), event)?;
     }
+    super::setup::capture_input(tx, &run, prompt, &[])?;
     Ok(run)
 }
 
@@ -560,9 +612,11 @@ fn close_run(
     // A stop, failure or crash keeps queued work from starting on its own, except
     // a message whose send-now caused the stop.
     if to != RunState::Completed {
+        let preparation =
+            to == RunState::Failed && super::setup::owns_failure(tx, thread_id, run_id)?;
         tx.execute(
-            "UPDATE queued_messages SET held = 1 WHERE thread_id = ?1 AND urgent = 0",
-            [thread_id],
+            "UPDATE queued_messages SET preparation_run_id = CASE WHEN ?2 AND held = 0 THEN ?3 WHEN ?2 THEN preparation_run_id ELSE NULL END, held = 1 WHERE thread_id = ?1 AND urgent = 0",
+            params![thread_id, preparation, run_id],
         )?;
     }
     // An answer or a failure ends a snooze early.
@@ -602,7 +656,10 @@ fn close_run(
         },
         _ => AgUiEvent::RunError {
             message: error.unwrap_or("The engine failed.").to_owned(),
-            code: Some("engine_failed".into()),
+            code: Some(if super::setup::owns_failure(tx, thread_id, run_id)? {
+                let captured: bool = tx.query_row("SELECT script IS NOT NULL AND run_id = ?2 FROM thread_setup WHERE thread_id = ?1", params![thread_id, run_id], |row| row.get(0))?;
+                if captured { "workspace_preparation_failed" } else { "workspace_preparation_unavailable" }
+            } else { "engine_failed" }.into()),
         },
     };
     insert_event(tx, appended, thread_id, Some(run_id), &event)?;

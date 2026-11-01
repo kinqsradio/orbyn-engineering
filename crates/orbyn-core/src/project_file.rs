@@ -241,7 +241,12 @@ impl Core {
     }
 
     pub(crate) fn start_setup_script(&self, thread: &Thread, script: &ProjectScript) -> Result<()> {
-        let id = format!("setup-{}", crate::util::sha256_hex(script.name.as_bytes()));
+        if !self.store.project(&thread.project_id)?.trusted {
+            return Err(CoreError::FolderUntrusted);
+        }
+        // Each attempt has its own terminal identity. An exit notification from
+        // an older process can never finish a newer preparation attempt.
+        let id = format!("setup-{}", crate::util::new_id());
         let result = self.setups.launch(&thread.id, || {
             let made = self.start_script(&thread.id, &thread.cwd, script, "system:script", &id)?;
             let session = self

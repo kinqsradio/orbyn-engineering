@@ -1,8 +1,8 @@
 import { CircleAlert, Clock, Gauge, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Thread, UpdateThread } from "../../api/types";
-import { toFailure } from "../../lib/useAsync";
+import { toFailure, useAsync } from "../../lib/useAsync";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
@@ -73,6 +73,7 @@ export function ThreadErrorBanner({ thread }: { thread: Thread }) {
   const failure = items.findLast((item) => item.kind === "notice" && item.tone === "error");
   if (!failure || failure.kind !== "notice" || dismissed.has(failure.key)) return null;
   const prompt = items.findLast((item) => item.kind === "message" && item.role === "user");
+  if (failure.code === "workspace_preparation_failed" || failure.code === "workspace_preparation_unavailable") return null;
   const retry = () => {
     if (prompt?.kind !== "message") return;
     api.startRun(thread.id, prompt.text).then(
@@ -100,4 +101,31 @@ export function ThreadErrorBanner({ thread }: { thread: Thread }) {
       </IconButton>
     </div>
   );
+}
+
+/** A preparation failure keeps its recovery action with the failed run. */
+export function PreparationRetryButton({ threadId, runId }: { threadId: string; runId: string }) {
+  const thread = useWorkspace((state) => state.threads[threadId]);
+  const refreshThread = useWorkspace((state) => state.refreshThread);
+  const pushToast = useUi((state) => state.pushToast);
+  const [retrying, setRetrying] = useState(false);
+  const pending = useRef(false);
+  const candidate = useAsync(
+    `preparation:${threadId}:${thread?.active_run?.id ?? "idle"}:${thread?.last_run_state}:${thread?.updated_at}`,
+    (signal) => api.preparationRetry(threadId, signal),
+  );
+  if (thread?.active_run || candidate.data?.run_id !== runId) return null;
+  const retry = () => {
+    if (pending.current) return;
+    pending.current = true;
+    setRetrying(true);
+    api.retryPreparation(threadId, runId).then(
+      () => refreshThread(threadId),
+      (error: unknown) => pushToast(`Couldn't retry. ${toFailure(error).message}`),
+    ).finally(() => {
+      pending.current = false;
+      setRetrying(false);
+    });
+  };
+  return <Button small tone="quiet" disabled={retrying} icon={<RotateCcw size={12} aria-hidden />} onClick={retry}>Retry</Button>;
 }

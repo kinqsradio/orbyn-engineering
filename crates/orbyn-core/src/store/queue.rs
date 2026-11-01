@@ -105,11 +105,14 @@ impl Store {
                 [thread_id],
                 |row| row.get(0),
             )?;
+            let preparation = super::setup::hold_owner(tx, thread_id)?;
+            let unrelated: bool = tx.query_row("SELECT EXISTS (SELECT 1 FROM queued_messages WHERE thread_id = ?1 AND held = 1 AND preparation_run_id IS NULL)", [thread_id], |row| row.get(0))?;
+            let preparation = preparation.filter(|_| !unrelated);
             let held = held || super::setup::failed(tx, thread_id)?;
             tx.execute(
                 "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held,
-                    created_at, model, effort, options)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    created_at, model, effort, options, preparation_run_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     id,
                     thread_id,
@@ -120,6 +123,7 @@ impl Store {
                     selection.model,
                     selection.effort,
                     options,
+                    preparation,
                 ],
             )?;
             Ok(())
@@ -175,7 +179,7 @@ impl Store {
     pub fn mark_urgent(&self, id: &str) -> Result<QueuedMessage> {
         self.commit(|tx, _| {
             let changed = tx.execute(
-                "UPDATE queued_messages SET urgent = 1, held = 0 WHERE id = ?1",
+                "UPDATE queued_messages SET urgent = 1, held = 0, preparation_run_id = NULL WHERE id = ?1",
                 [id],
             )?;
             if changed == 0 {
@@ -189,7 +193,7 @@ impl Store {
     pub fn release_queue(&self, thread_id: &str) -> Result<usize> {
         self.commit(|tx, _| {
             Ok(tx.execute(
-                "UPDATE queued_messages SET held = 0 WHERE thread_id = ?1",
+                "UPDATE queued_messages SET held = 0, preparation_run_id = NULL WHERE thread_id = ?1",
                 [thread_id],
             )?)
         })
@@ -210,8 +214,8 @@ impl Store {
             let Some(message) = next else { return Ok(None) };
             if super::setup::failed(tx, thread_id)? {
                 tx.execute(
-                    "UPDATE queued_messages SET held = 1 WHERE thread_id = ?1",
-                    [thread_id],
+                    "UPDATE queued_messages SET preparation_run_id = CASE WHEN held = 0 THEN ?2 ELSE preparation_run_id END, held = 1 WHERE thread_id = ?1",
+                    params![thread_id, super::setup::hold_owner(tx, thread_id)?],
                 )?;
                 return Ok(None);
             }
@@ -237,6 +241,7 @@ impl Store {
                 message.effort.as_deref(),
                 Some(&message.options),
             )?;
+            super::setup::capture_input(tx, &run, &message.prompt, &message.attachment_ids)?;
             Ok(Some((run, message)))
         });
         match outcome {

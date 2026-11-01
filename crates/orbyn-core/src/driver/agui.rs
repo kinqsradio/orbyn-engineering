@@ -58,6 +58,11 @@ impl EngineDriver for AguiDriver {
         }
     }
 
+    fn check_launch_available(&self) -> Result<()> {
+        // An HTTP endpoint has no local process; reachability is checked at run time.
+        Ok(())
+    }
+
     async fn probe(&self) -> EngineProbe {
         let reachable = self
             .client

@@ -84,6 +84,10 @@ impl EngineDriver for AcpDriver {
         }
     }
 
+    fn check_launch_available(&self) -> Result<()> {
+        resolve_engine(&self.engine.target).map(|_| ())
+    }
+
     async fn probe(&self) -> EngineProbe {
         EngineProbe {
             path: crate::process::resolve(&self.engine.target).map(|command| command.path),

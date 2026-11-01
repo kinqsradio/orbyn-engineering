@@ -1,3 +1,4 @@
+import { PreparationRetryButton } from "./ThreadBanners";
 import { MessageActions } from "./MessageActions";
 import {
   AppWindow,
@@ -322,6 +323,8 @@ function Activity({ item }: { item: ActivityItem }) {
 }
 
 function Notice({ item }: { item: NoticeItem }) {
+  const threadId = useThreadOfTimeline();
+  const preparation = item.code === "workspace_preparation_failed" || item.code === "workspace_preparation_unavailable";
   if (item.tone === "neutral") {
     return <p className="notice">{item.text}</p>;
   }
@@ -331,7 +334,9 @@ function Notice({ item }: { item: NoticeItem }) {
       <div>
         <strong>Run failed</strong>
         <p>{item.text}</p>
-        {item.code ? <Pill>{item.code}</Pill> : null}
+        {item.code && !preparation ? <Pill>{item.code}</Pill> : null}
+        {threadId && item.runId && item.code === "workspace_preparation_failed"
+          ? <PreparationRetryButton threadId={threadId} runId={item.runId} /> : null}
       </div>
     </div>
   );

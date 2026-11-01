@@ -1527,6 +1527,13 @@ impl RunState {
 }
 
 wire! {
+/// Retry the saved workspace preparation and input of one failed run.
+pub struct RetryPreparation {
+    pub run_id: String,
+}
+}
+
+wire! {
 pub struct Run {
     pub id: String,
     pub thread_id: String,

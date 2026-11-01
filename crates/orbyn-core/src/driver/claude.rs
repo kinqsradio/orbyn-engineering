@@ -205,6 +205,10 @@ impl EngineDriver for ClaudeDriver {
         Some("claude auth login")
     }
 
+    fn check_launch_available(&self) -> Result<()> {
+        resolve_engine(&self.program).map(|_| ())
+    }
+
     async fn probe(&self) -> EngineProbe {
         let mut probe = probe_cli(&self.program, &["--version"]).await;
         if probe.path.is_some() {
