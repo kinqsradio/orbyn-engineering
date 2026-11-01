@@ -1075,3 +1075,26 @@ input[type="radio"] {
 :root[data-smoothing="on"] {
   -webkit-font-smoothing: antialiased;
 }
+
+.badge-image { background: transparent; overflow: hidden; }
+.badge-image img { width: 100%; height: 100%; object-fit: contain; }
+
+.project-monogram { border-radius: 25%; background: color-mix(in srgb, currentColor 14%, transparent); font-size: var(--text-micro); user-select: none; }
+.project-color-gray { --tint: var(--project-color-gray); }
+.project-color-red { --tint: var(--project-color-red); }
+.project-color-orange { --tint: var(--project-color-orange); }
+.project-color-amber { --tint: var(--project-color-amber); }
+.project-color-yellow { --tint: var(--project-color-yellow); }
+.project-color-lime { --tint: var(--project-color-lime); }
+.project-color-green { --tint: var(--project-color-green); }
+.project-color-emerald { --tint: var(--project-color-emerald); }
+.project-color-teal { --tint: var(--project-color-teal); }
+.project-color-cyan { --tint: var(--project-color-cyan); }
+.project-color-sky { --tint: var(--project-color-sky); }
+.project-color-blue { --tint: var(--project-color-blue); }
+.project-color-indigo { --tint: var(--project-color-indigo); }
+.project-color-violet { --tint: var(--project-color-violet); }
+.project-color-purple { --tint: var(--project-color-purple); }
+.project-color-fuchsia { --tint: var(--project-color-fuchsia); }
+.project-color-pink { --tint: var(--project-color-pink); }
+.project-color-rose { --tint: var(--project-color-rose); }

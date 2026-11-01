@@ -1,9 +1,24 @@
-import { badgeTint, monogram } from "../lib/format";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import type { Project } from "../api/types";
+import { projectImageKey, readProjectImage, rejectProjectImage, subscribeProjectImage } from "../lib/projectImages";
+import { deriveProjectIdentity } from "../lib/projectIdentity";
 
-export function ProjectBadge({ name }: { name: string }) {
+export function ProjectBadge({ name, project }: { name: string; project?: Project }) {
+  const eligible = project && !project.scratch ? project : undefined;
+  const id = eligible?.id;
+  const path = eligible?.path;
+  const key = eligible ? projectImageKey(eligible) : null;
+  const subscribe = useCallback((listener: () => void) => key && id && path
+    ? subscribeProjectImage(key, { id, path }, listener) : () => {}, [key, id, path]);
+  const snapshot = useCallback(() => key ? readProjectImage(key) : null, [key]);
+  const image = useSyncExternalStore(subscribe, snapshot, () => null);
+  const identity = useMemo(() => deriveProjectIdentity(name), [name]);
+  if (image && key) return <span className="badge badge-image" aria-hidden>
+    <img src={image} alt="" onError={() => rejectProjectImage(key, image)} />
+  </span>;
   return (
-    <span className={`badge badge-${badgeTint(name)}`} aria-hidden>
-      {monogram(name)}
+    <span className={`badge project-monogram project-color-${identity.color}`} aria-hidden>
+      <span>{identity.monogram}</span>
     </span>
   );
 }

@@ -130,7 +130,7 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       key: `in:${project.id}`,
       group: "Projects",
       label: project.name,
-      icon: <ProjectBadge name={project.name} />,
+      icon: <ProjectBadge name={project.name} project={project} />,
       route: { name: "new", projectId: project.id },
     }));
     const all = newIn ? inProjects : [...actions, ...recent];

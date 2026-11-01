@@ -622,6 +622,39 @@ revision, including when navigation changes before it finishes. Remaining provid
 controls and storage forms still need their own bindings and qualification; their
 parity claims stay partial until those and native walkthroughs are verified.
 
+Project images are passive metadata, resolved by registered physical project ID
+through `GET /api/projects/:id/icon`. The route creates no thread, execution
+permission or ordinary file grant. An untrusted project may supply a local image;
+scratch and library roots are refused. A bounded authenticated JSON result carries
+optional base64 image bytes, a closed media type, source, relative path and a
+revision of the bytes plus MIME. The client constructs only a fixed image data
+URL, never injects SVG markup and never follows a caller-supplied asset URL.
+Project-file hints precede ordered automatic candidates and supported local source
+hints. No website is fetched or source executed. Saved icon overrides and image
+selection are separate unfinished metadata writers, not inferred from this read.
+
+Image input/output is bounded to 1 MiB; config/source text is bounded to 256 KiB
+per file and a 2 MiB aggregate source budget. Reads probe one extra byte to catch
+growth. Actual opened handles must stay inside the selected canonical root and
+outside Git/library paths before and after reading. Config/source metadata reads
+also require the exact fixed relative path, so a symlink cannot turn a known
+metadata filename into a read of another file. Image MIME comes from the checked
+handle's image filename; ICNS supports only bounded embedded PNG extraction.
+The shared badge cache keys service origin, physical ID and registered path,
+deduplicates in-flight reads and bounds entries/encoded bytes to 64/8 MiB.
+Successful images expire after ten minutes; misses, errors and decode failures
+retry after one minute. Optional image requests have a 30-second deadline; timeout
+replaces the observation so an eventual old reply cannot publish, even when its
+transport ignores abort. A single unmount cannot cancel another badge's read.
+Root changes/removal and reconnect invalidate matching observations; routine
+four-second project polling does not bypass the cache lifetime. No image bytes
+enter project lists, local storage or persisted UI state. Automatic fallback identity
+uses the normalized display name alone: Unicode letter/number words choose the
+first letter and a first-word digit, otherwise the last word's first letter or the
+first word's last letter; uppercasing keeps two code points. A normalized en-US
+lowercase polynomial selects the reference's 18 named colors. The shared project
+badge owns this behavior without changing unrelated monogram helpers.
+
 Project Name edits require an explicit group or checkout, its observed catalog
 version and the raw expected name of every selected physical member. Core matches
 JavaScript trim whitespace and rejects an empty result without a title-specific
@@ -1424,6 +1457,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
+| `GET /api/projects/:id/icon` | `ProjectIconImage`; bounded passive registered-root metadata, no path or URL argument |
 | `POST /api/settings/projects/rename` | `RenameSelectedProjects` → `Project[]`; selected names with membership and raw-name compare-and-set |
 | `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |

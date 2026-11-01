@@ -72,11 +72,11 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
         {scoped.length > 1 ? (
           <span className="filter-stack">
             {scoped.slice(0, 2).map((project) => (
-              <ProjectBadge key={project.id} name={project.name} />
+              <ProjectBadge key={project.id} name={project.name} project={project} />
             ))}
           </span>
         ) : scoped[0] ? (
-          <ProjectBadge name={scoped[0].name} />
+          <ProjectBadge name={scoped[0].name} project={scoped[0]} />
         ) : (
           <ListFilter size={16} aria-hidden />
         )}
@@ -133,7 +133,7 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
                     {selected ? (
                       <Check size={14} aria-hidden />
                     ) : project ? (
-                      <ProjectBadge name={project.name} />
+                      <ProjectBadge name={project.name} project={project} />
                     ) : (
                       <Folder size={16} aria-hidden />
                     )}

@@ -381,6 +381,7 @@ fn router(state: AppState) -> Router {
             "/api/settings",
             get(api::get_settings).put(api::put_settings),
         )
+        .route("/api/projects/{id}/icon", get(api::project_icon))
         .route("/api/settings/project-scopes", post(api::project_scopes))
         .route(
             "/api/settings/projects/rename",

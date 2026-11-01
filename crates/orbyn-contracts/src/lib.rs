@@ -116,6 +116,34 @@ pub struct RenameSelectedProjects {
 }
 
 wire_enum! {
+pub enum ProjectIconSource { ProjectFile, Automatic }
+}
+
+wire_enum! {
+pub enum ProjectIconMediaType { Png, Jpeg, Gif, Webp, Avif, Bmp, Ico, Svg, Heic, Heif, Tiff }
+}
+
+wire! {
+/// Authenticated, bounded local image bytes. The client maps the closed media type
+/// to an image data URL; no caller-supplied URL or absolute asset path is returned.
+pub struct ProjectIconImageData {
+    pub source: ProjectIconSource,
+    pub relative_path: String,
+    pub revision: String,
+    pub media_type: ProjectIconMediaType,
+    pub data_base64: String,
+}
+}
+
+wire! {
+pub struct ProjectIconImage {
+    pub project_id: String,
+    pub project_path: String,
+    pub image: Option<ProjectIconImageData>,
+}
+}
+
+wire_enum! {
 pub enum ProjectScopeUnavailableReason {
     ProjectMissing,
     CheckoutMissing,

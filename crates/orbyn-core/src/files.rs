@@ -22,6 +22,66 @@ use crate::process::resolve;
 use crate::store::AuditRecord;
 use crate::util::{new_id, sha256_hex};
 
+#[cfg(target_os = "macos")]
+pub(crate) fn opened_path(file: &std::fs::File) -> std::io::Result<PathBuf> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::OsStringExt;
+    let mut bytes = [0u8; libc::PATH_MAX as usize];
+    // SAFETY: this file owns a live fd and F_GETPATH writes at most PATH_MAX
+    // bytes into this initialized writable buffer. No descriptor is transferred.
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, bytes.as_mut_ptr()) } == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let name = std::ffi::CStr::from_bytes_until_nul(&bytes)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+    Ok(PathBuf::from(std::ffi::OsString::from_vec(
+        name.to_bytes().to_vec(),
+    )))
+}
+
+#[cfg(windows)]
+pub(crate) fn opened_path(file: &std::fs::File) -> std::io::Result<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_NAME_NORMALIZED, GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
+    };
+    let mut buffer = vec![0u16; 32768];
+    // SAFETY: the handle remains owned by file and the UTF-16 buffer has exactly
+    // the passed writable capacity. This API does not close or take the handle.
+    let length = unsafe {
+        GetFinalPathNameByHandleW(
+            file.as_raw_handle(),
+            buffer.as_mut_ptr(),
+            32768,
+            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS,
+        )
+    };
+    if length == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if length as usize >= buffer.len() {
+        return Err(std::io::ErrorKind::InvalidData.into());
+    }
+    let path = std::ffi::OsString::from_wide(&buffer[..length as usize]);
+    // Normalize only the prefix; never reopen a returned path to authorize bytes.
+    let path = path
+        .to_str()
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+    Ok(PathBuf::from(crate::util::strip_verbatim(path)))
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn opened_path(file: &std::fs::File) -> std::io::Result<PathBuf> {
+    use std::os::fd::AsRawFd;
+    std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+pub(crate) fn opened_path(_: &std::fs::File) -> std::io::Result<PathBuf> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}
+
 const MAX_READ_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_HITS: usize = 200;
 const MAX_LIST: usize = 5_000;
@@ -290,7 +350,7 @@ pub(crate) fn open_inside(
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
     #[cfg(windows)]
     {
@@ -726,6 +786,24 @@ fn parse_grep(output: &[u8]) -> Vec<SearchHit> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn read_open_rejects_a_fifo_without_waiting_for_a_writer() {
+        let dir = crate::testing::TempDir::new();
+        let root = crate::util::canonicalize(dir.path()).unwrap();
+        let fifo = root.join("image.png");
+        use std::os::unix::ffi::OsStrExt;
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        // SAFETY: name owns a NUL-terminated path for the duration of mkfifo.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let scope = WriteScope {
+            checkout: root.clone(),
+            engine_cwd: root,
+            excluded: Vec::new(),
+        };
+        assert!(open_inside(&scope, "image.png", &fifo).is_err());
+    }
 
     #[test]
     fn grep_fields_keep_colons_in_paths_and_text() {

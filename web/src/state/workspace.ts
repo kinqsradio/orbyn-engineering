@@ -1,3 +1,4 @@
+import { invalidateProjectImages } from "../lib/projectImages";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
@@ -234,7 +235,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((state) => ({ projects: { ...state.projects, loading: true } }));
     try {
       const data = await api.projects();
-      if (current()) set({ projects: { data, error: null, loading: false } });
+      if (current()) {
+        const previous = get().projects;
+        for (const project of previous.data ?? []) {
+          if (!data.some((next) => next.id === project.id && next.path === project.path)) invalidateProjectImages(project.id);
+        }
+        set({ projects: { data, error: null, loading: false } });
+        if (previous.error) invalidateProjectImages();
+      }
     } catch (error) {
       if (!current()) return;
       const failure = toFailure(error);
@@ -363,6 +371,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   dropProject(projectId) {
+    invalidateProjectImages(projectId);
     set((state) => {
       const { [projectId]: _gone, ...threadIds } = state.threadIds;
       return {

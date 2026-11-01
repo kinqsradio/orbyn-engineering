@@ -315,7 +315,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       <section className="draft-main thread-main" aria-label="New thread">
         <header className="topbar">
           <div className="crumbs">
-            {project ? <ProjectBadge name={project.name} /> : <SquareDashed size={14} aria-hidden />}
+            {project ? <ProjectBadge name={project.name} project={project} /> : <SquareDashed size={14} aria-hidden />}
             <span className="crumb-project">{project?.name ?? "No project"}</span>
             <span className="crumb-slash" aria-hidden>
               /

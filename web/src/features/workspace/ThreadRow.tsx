@@ -1,7 +1,7 @@
 import { AlarmClock, Check, CircleCheck, CircleDashed, Clock, Gauge, GitBranch, OctagonAlert, Pin, PinOff, Unplug, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Thread } from "../../api/types";
+import type { Project, Thread } from "../../api/types";
 import { compactAge, elapsed, runStateLabels } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
 import { routeHref } from "../../state/route";
@@ -90,12 +90,14 @@ function RowStatus({ thread }: { thread: Thread }) {
 function ThreadHoverCard({
   thread,
   projectName,
+  project,
   branch,
   engineName,
   anchor,
 }: {
   thread: Thread;
   projectName: string;
+  project?: Project;
   branch: string | null;
   engineName: string;
   anchor: DOMRect;
@@ -106,7 +108,7 @@ function ThreadHoverCard({
       <p className="hover-card-title">{thread.title}</p>
       <div className="hover-card-rows">
         <div>
-          <ProjectBadge name={projectName} />
+          <ProjectBadge name={projectName} project={thread.scratch ? undefined : project} />
           <span>{projectName}</span>
         </div>
         {branch ? (
@@ -403,7 +405,7 @@ export function ThreadRow({
       >
         {compact ? (
           <>
-            <ProjectBadge name={projectName} />
+            <ProjectBadge name={projectName} project={thread.scratch ? undefined : project} />
             {title}
             {wokeMark}
             {pinMark}
@@ -412,7 +414,7 @@ export function ThreadRow({
         ) : (
           <>
             <span className="thread-row-line">
-              <ProjectBadge name={projectName} />
+              <ProjectBadge name={projectName} project={thread.scratch ? undefined : project} />
               <span className="thread-row-project">{projectName}</span>
               {wokeMark}
               {pinMark}
@@ -438,6 +440,7 @@ export function ThreadRow({
         <ThreadHoverCard
           thread={thread}
           projectName={projectName}
+          project={project}
           branch={branch}
           engineName={engineName}
           anchor={hover}

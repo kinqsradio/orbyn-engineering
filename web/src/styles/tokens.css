@@ -209,3 +209,46 @@
   --tint-4: #a78bfa;
   --tint-5: #22d3ee;
 }
+
+/* Project palette: Tailwind 4.3.3, the frozen reference's dependency.
+   https://github.com/tailwindlabs/tailwindcss/blob/v4.3.3/packages/tailwindcss/theme.css */
+:root {
+  --project-color-gray: oklch(44.6% 0.03 256.802);
+  --project-color-red: oklch(57.7% 0.245 27.325);
+  --project-color-orange: oklch(64.6% 0.222 41.116);
+  --project-color-amber: oklch(66.6% 0.179 58.318);
+  --project-color-yellow: oklch(68.1% 0.162 75.834);
+  --project-color-lime: oklch(64.8% 0.2 131.684);
+  --project-color-green: oklch(62.7% 0.194 149.214);
+  --project-color-emerald: oklch(59.6% 0.145 163.225);
+  --project-color-teal: oklch(60% 0.118 184.704);
+  --project-color-cyan: oklch(60.9% 0.126 221.723);
+  --project-color-sky: oklch(58.8% 0.158 241.966);
+  --project-color-blue: oklch(54.6% 0.245 262.881);
+  --project-color-indigo: oklch(51.1% 0.262 276.966);
+  --project-color-violet: oklch(54.1% 0.281 293.009);
+  --project-color-purple: oklch(55.8% 0.288 302.321);
+  --project-color-fuchsia: oklch(59.1% 0.293 322.896);
+  --project-color-pink: oklch(59.2% 0.249 0.584);
+  --project-color-rose: oklch(58.6% 0.253 17.585);
+}
+:root[data-theme="dark"] {
+  --project-color-gray: oklch(70.7% 0.022 261.325);
+  --project-color-red: oklch(70.4% 0.191 22.216);
+  --project-color-orange: oklch(75% 0.183 55.934);
+  --project-color-amber: oklch(82.8% 0.189 84.429);
+  --project-color-yellow: oklch(85.2% 0.199 91.936);
+  --project-color-lime: oklch(84.1% 0.238 128.85);
+  --project-color-green: oklch(79.2% 0.209 151.711);
+  --project-color-emerald: oklch(76.5% 0.177 163.223);
+  --project-color-teal: oklch(77.7% 0.152 181.912);
+  --project-color-cyan: oklch(78.9% 0.154 211.53);
+  --project-color-sky: oklch(74.6% 0.16 232.661);
+  --project-color-blue: oklch(70.7% 0.165 254.624);
+  --project-color-indigo: oklch(67.3% 0.182 276.935);
+  --project-color-violet: oklch(70.2% 0.183 293.541);
+  --project-color-purple: oklch(71.4% 0.203 305.504);
+  --project-color-fuchsia: oklch(74% 0.238 322.16);
+  --project-color-pink: oklch(71.8% 0.202 349.761);
+  --project-color-rose: oklch(71.2% 0.194 13.428);
+}

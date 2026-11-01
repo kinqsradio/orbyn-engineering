@@ -12,7 +12,7 @@ use crate::error::{CoreError, Result};
 use crate::store::AuditRecord;
 use crate::terminal::{PtySpec, TerminalLabel, shell_command};
 
-const FILE_NAMES: [&str; 2] = ["orbyn.json", "t3.json"];
+pub(crate) const FILE_NAMES: [&str; 2] = ["orbyn.json", "t3.json"];
 const MAX_FILE_BYTES: u64 = 256 * 1024;
 const MAX_SCRIPTS: usize = 50;
 
@@ -118,8 +118,13 @@ fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
         return Err("This file is too large to read.".to_owned());
     }
     let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    parse_project_text(&text)
+}
+
+/// Decode text already read under the caller's path and byte-limit boundary.
+pub(crate) fn parse_project_text(text: &str) -> std::result::Result<ProjectFile, String> {
     let value: Value =
-        serde_json::from_str(&text).map_err(|error| format!("This file is not valid: {error}"))?;
+        serde_json::from_str(text).map_err(|error| format!("This file is not valid: {error}"))?;
     let mut file: ProjectFile = serde_json::from_value(snake_keys(value))
         .map_err(|error| format!("This file is not valid: {error}"))?;
     if let Some(mode) = file.worktree_submodules.as_mut() {

@@ -84,7 +84,7 @@ function EmptyProjectRow({ project }: { project: Project }) {
         aria-label={project.trusted ? `New thread in ${project.name}` : `Review trust for ${project.name}`}
       >
         <span className="thread-row-line">
-          <ProjectBadge name={project.name} />
+          <ProjectBadge name={project.name} project={project} />
           <span className="thread-row-project">{project.name}</span>
           {project.trusted ? null : (
             <span className="row-status tone-warn" title="Folder not trusted">
@@ -324,7 +324,7 @@ function FolderHeader({
           onMenu(event);
         }}
       >
-        <ProjectBadge name={project.name} />
+        <ProjectBadge name={project.name} project={project} />
         <span className="folder-name">{project.name}</span>
         {collapsed && count > 0 ? <span className="group-count">{count}</span> : null}
         <ChevronRight size={12} className="chev" aria-hidden />

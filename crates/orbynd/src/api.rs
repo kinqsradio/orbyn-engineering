@@ -173,6 +173,13 @@ pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl Into
     Ok(Json(state.core.store.list_projects()?))
 }
 
+pub async fn project_icon(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.project_icon(&id).await?))
+}
+
 pub async fn project_scopes(
     State(state): State<AppState>,
     ApiJson(query): ApiJson<orbyn_contracts::ProjectScopesQuery>,

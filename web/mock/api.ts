@@ -503,8 +503,14 @@ export function createMockApi(options: MockOptions = {}) {
           },
         };
       }
-      case "GET /api/projects":
+      case "GET /api/projects": {
+        if (seg[3] === "icon") {
+          const project = projects.find((entry) => entry.id === seg[2]);
+          return project ? { status: 200, body: { project_id: project.id, project_path: project.path, image: null } }
+            : err(404, "not_found", "Project not found.");
+        }
         return { status: 200, body: projects };
+      }
       case "POST /api/projects": {
         if (seg[2] === "clone") {
           const url = String(data.url ?? "");
