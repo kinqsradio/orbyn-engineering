@@ -379,7 +379,9 @@ registration normalizes Git subfolders to the Git root, so their relative path i
 empty; this read does not invent subfolder projects. A missing checkout remains
 unavailable. Failed or unobserved metadata is explicit and prevents resolving a logical
 repository group whose membership may be incomplete; completed physical fallbacks do
-not. Unknown or stale selections never widen to All projects. An absent selection or
+not. An explicit checkout target is shown with that checkout’s project name. Its parent
+logical group is not marked selected in the picker; switching to the group requires
+choosing it explicitly. Unknown or stale selections never widen to All projects. An absent selection or
 explicit All projects means environment defaults, not a project-override fan-out.
 `POST /api/settings/preferences/query` resolves environment, logical-project or
 physical-checkout rows from one SQLite read snapshot. Effective values that differ

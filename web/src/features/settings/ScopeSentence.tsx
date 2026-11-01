@@ -123,12 +123,18 @@ export function ScopeSentence() {
   const groupKey = selection?.kind === "project_group" || selection?.kind === "checkout" ? selection.group_key : undefined;
   const selected = groups.find((group) => group.key === groupKey);
   const unavailable = scope.catalog?.selection.kind === "unavailable";
-  const projectLabel = groupKey !== undefined && !selected ? "Unavailable project" : selected?.label ?? "All projects";
+  const checkoutSelection = selection?.kind === "checkout" ? selection : undefined;
+  const checkout = checkoutSelection ? selected?.members.find((member) => member.project_id === checkoutSelection.project_id) : undefined;
+  const missing = groupKey !== undefined && (!selected || (checkoutSelection && !checkout));
+  const projectLabel = unavailable || missing ? "Unavailable project" : checkout?.name ?? selected?.label ?? "All projects";
+  // A checkout reached through provenance is narrower than its parent group.
+  // Do not mark that group's menu option selected until it is explicitly chosen.
+  const pickerValue = checkoutSelection ? checkout?.physical_key ?? `unavailable:${checkoutSelection.project_id}` : groupKey;
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
         <span>Applying settings for</span>
-        <ScopePicker axis="Project" label={scope.loading ? "Loading projects…" : projectLabel} value={groupKey}
+        <ScopePicker axis="Project" label={scope.loading ? "Loading projects…" : projectLabel} value={pickerValue}
           disabled={scope.loading || !scope.catalog} allLabel="All projects"
           options={groups.map((group) => ({ key: group.key, label: group.label,
             path: groups.some((other) => other.key !== group.key && other.label === group.label) ? group.members[0]?.path ?? group.members[0]?.name : undefined }))}

@@ -131,3 +131,25 @@ it("keeps an unsupported machine unavailable until an explicit local selection",
   await waitFor(() => expect(screen.getByRole("button", { name: "Project scope: Project one" })).toBeEnabled());
   expect(window.location.hash).not.toContain("machine=");
 });
+
+it("names a physical checkout without marking its whole logical group selected", async () => {
+  respond(); window.location.hash = "#/settings/worktrees?project=g1&checkout=g1-1";
+  const user = userEvent.setup(); render(<Harness />);
+  const picker = await screen.findByRole("button", { name: "Project scope: Checkout 1" });
+  await user.click(picker);
+  expect(screen.getByRole("menuitemradio", { name: "Project one" })).toHaveAttribute("aria-checked", "false");
+  expect(screen.getByRole("menuitemradio", { name: "All projects" })).toHaveAttribute("aria-checked", "false");
+  expect(screen.getByTestId("query")).toHaveTextContent('"project_id":"g1-1"');
+  await user.click(screen.getByRole("menuitemradio", { name: "Project one" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Project scope: Project one" })).toBeEnabled());
+  expect(screen.getByTestId("query")).toHaveTextContent('"kind":"project_group"');
+  expect(window.location.hash).not.toContain("checkout=");
+});
+
+it("does not label a missing physical checkout as its logical group", async () => {
+  respond(); window.location.hash = "#/settings/worktrees?project=g1&checkout=removed";
+  render(<Harness />);
+  expect(await screen.findByRole("button", { name: "Project scope: Unavailable project" })).toBeEnabled();
+  expect(screen.getByTestId("query")).toHaveTextContent('"project_id":"removed"');
+  expect(window.location.hash).toContain("checkout=removed");
+});

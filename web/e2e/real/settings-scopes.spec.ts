@@ -54,6 +54,11 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     await prefix.fill("shared"); await prefix.press("Tab");
     await expect.poll(async () => (await pref(two.id, "branch_name_prefix"))?.value).toBe("shared");
     await page.goto(`${scopeUrl}&checkout=${encodeURIComponent(one.id)}`);
+    await expect(page.getByRole("button", { name: "Project scope: scope-one", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Project scope: scope-one", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: group!.label, exact: true })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("menuitemradio", { name: "All projects", exact: true })).toHaveAttribute("aria-checked", "false");
+    await page.keyboard.press("Escape");
     await page.getByRole("searchbox", { name: "Search settings" }).fill("Branch prefix");
     await page.getByRole("link", { name: "Branch prefix · Worktrees", exact: true }).click();
     await expect(prefix).toHaveValue("shared");
