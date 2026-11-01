@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde_json::json;
-use support::{Options, TempDir, setup};
+use support::{Options, Service, TempDir, setup};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 type Socket =
@@ -19,20 +19,47 @@ impl Drop for ReleaseOutput {
     }
 }
 
-async fn receive_to_close(socket: &mut Socket) -> String {
-    tokio::time::timeout(Duration::from_secs(45), async {
-        let mut received = String::new();
+async fn receive_to_close(
+    socket: &mut Socket,
+    service: &Service,
+    thread: &str,
+    id: &str,
+) -> String {
+    let mut received = String::new();
+    let closed = tokio::time::timeout(Duration::from_secs(45), async {
         while let Some(frame) = socket.next().await {
             match frame.unwrap() {
                 Message::Binary(bytes) => received.push_str(&String::from_utf8_lossy(&bytes)),
-                Message::Close(_) => return received,
+                Message::Close(_) => return,
                 _ => {}
             }
         }
         panic!("terminal ended without its WebSocket close frame");
     })
-    .await
-    .unwrap()
+    .await;
+    if closed.is_err() {
+        // Keep the close deadline unchanged. On failure distinguish a missing
+        // final read from a completed child whose observer never received EOF.
+        let state = tokio::time::timeout(Duration::from_secs(2), async {
+            let terminals = service
+                .json(&format!("/api/threads/{thread}/terminals"))
+                .await;
+            let terminal = terminals
+                .as_array()
+                .and_then(|rows| rows.iter().find(|row| row["id"] == id));
+            json!({
+                "alive": terminal.map(|row| &row["alive"]),
+                "exit_code": terminal.map(|row| &row["exit_code"]),
+            })
+        })
+        .await;
+        panic!(
+            "terminal observer did not close: received_bytes={}, final_marker={}, state={state:?}",
+            received.len(),
+            received.contains("final-output-finished"),
+        );
+    }
+    received
 }
 
 #[tokio::test]
@@ -91,7 +118,7 @@ setTimeout(() => process.exit(72), 30000).unref();
     .await
     .unwrap();
     std::fs::write(cwd.join("release-output"), "release").unwrap();
-    received.push_str(&receive_to_close(&mut socket).await);
+    received.push_str(&receive_to_close(&mut socket, &service, &thread, id).await);
     let back = service
         .json(&format!("/api/threads/{thread}/terminals/{id}/scrollback"))
         .await;
@@ -102,7 +129,7 @@ setTimeout(() => process.exit(72), 30000).unref();
     assert_eq!(received, back["text"].as_str().unwrap());
     let (mut late, _) = connect_async(&url).await.unwrap();
     assert_eq!(
-        receive_to_close(&mut late).await,
+        receive_to_close(&mut late, &service, &thread, id).await,
         received,
         "a completed terminal replays once and closes"
     );
@@ -180,7 +207,7 @@ setTimeout(() => process.exit(73), 30000).unref();
         .await
         .unwrap();
     assert!(response.status().is_success());
-    receive_to_close(&mut socket).await;
+    receive_to_close(&mut socket, &service, &thread, id).await;
     assert!(
         service
             .json(&format!("/api/threads/{thread}/terminals"))

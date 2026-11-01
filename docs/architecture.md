@@ -360,6 +360,19 @@ even if an inherited PTY descriptor delays EOF. Process termination retains its
 existing process-group/job ownership; detached descendants are not newly claimed
 by this output fence.
 
+On Windows, direct-child completion retires the retained ConPTY master on the
+child waiter thread. Retaining that handle would otherwise keep its output pipe
+alive while observers wait for EOF. The independent reader continues draining the
+final console frames and alone records natural output completion. Console teardown
+runs outside the master lock; it can block on drained output on older Windows.
+Closing this owned console may also terminate still-attached console descendants
+when the direct child exits. Unix keeps its existing inherited-PTY lifetime. This
+is the supported legacy ConPTY lifetime contract, not a claim of byte-identical
+native reference timing. Microsoft's [ClosePseudoConsole contract](https://learn.microsoft.com/en-us/windows/console/closepseudoconsole)
+requires output to keep draining during teardown. Its newer
+[ReleasePseudoConsole API](https://learn.microsoft.com/en-us/windows/console/releasepseudoconsole)
+requires Windows 11 24H2 or Server 2025 and is unavailable on Windows Server 2022.
+
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
