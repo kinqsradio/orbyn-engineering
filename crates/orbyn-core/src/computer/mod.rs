@@ -482,6 +482,7 @@ mod tests {
                 run_id: run.id,
                 thread_id: thread.id,
                 engine: "fake".into(),
+                family: "fake".into(),
                 write_scope: None,
                 mode: orbyn_contracts::PermissionMode::Supervised,
                 plan: false,

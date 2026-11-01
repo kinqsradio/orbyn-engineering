@@ -3,13 +3,14 @@
 
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
     ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, ModelInfo, ModelOption,
-    ModelOptionValue, PermissionMode, Question, QuestionOption, SkillDelivery, ThreadGoal,
-    ThreadUsage,
+    ModelOptionValue, PermissionMode, ProviderInstance, Question, QuestionOption, SkillDelivery,
+    ThreadGoal, ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -41,21 +42,31 @@ const METHOD_NOT_FOUND: i64 = -32601;
 pub struct CodexDriver {
     program: String,
     sandbox: String,
+    /// The id and name of an instance, when this is one.
+    named: Option<(String, String)>,
 }
 
 impl CodexDriver {
     /// `sandbox` is one of Codex's `SandboxMode` names.
     pub fn new(program: String, sandbox: String) -> Self {
-        Self { program, sandbox }
+        Self {
+            program,
+            sandbox,
+            named: None,
+        }
     }
 }
 
 #[async_trait]
 impl EngineDriver for CodexDriver {
     fn descriptor(&self) -> EngineDescriptor {
+        let (id, name) = self
+            .named
+            .clone()
+            .unwrap_or_else(|| ("codex".into(), "Codex".into()));
         EngineDescriptor {
-            id: "codex".into(),
-            name: "Codex".into(),
+            id,
+            name,
             tier: EngineTier::Native,
             capabilities: EngineCapabilities {
                 streaming: true,
@@ -71,6 +82,21 @@ impl EngineDriver for CodexDriver {
                 decline_feedback: false,
             },
         }
+    }
+
+    fn family(&self) -> String {
+        "codex".into()
+    }
+
+    fn instance(&self, instance: &ProviderInstance) -> Option<Arc<dyn EngineDriver>> {
+        Some(Arc::new(Self {
+            program: instance.program.clone().unwrap_or(self.program.clone()),
+            sandbox: self.sandbox.clone(),
+            named: Some((
+                instance.id.clone(),
+                instance.name.clone().unwrap_or(instance.id.clone()),
+            )),
+        }))
     }
 
     async fn probe(&self) -> EngineProbe {
