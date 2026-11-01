@@ -184,6 +184,11 @@ options are checked for it. `PATCH` does not check, because a model and its effo
 change in two steps. A run's start checks again, which is what catches a queued message
 that outlived a model; that run fails with the same message.
 
+`fallback_model` covers a model that went away. When the engine's own list, not a stand-in,
+no longer has the thread's model, the model is not a custom one and the list has the
+fallback, that turn runs on it with no effort or options and logs `engine.warning`. The
+thread keeps its choice, so the model is used again when it returns.
+
 `effort` reaches Claude as `--effort`, an ACP config option is applied once acknowledged
 in the order mode, model, options before the prompt, and a mode or option the session
 no longer lists fails the turn. Fast mode reaches Claude as `fastMode` through

@@ -464,7 +464,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] I40 Model catalog: refreshed discovery with manifest | apps/server/src/provider/ModelManifest.ts | s | M | [hosted]
 - [ ] I41 Status banners: provider health in composer | apps/web/src/components/chat/ProviderStatusBanner.tsx | w d m | S
 - [x] I42 Per-project provider toggle: enable or disable per project | packages/contracts/src/settings.ts | w d s | M | server done | web done
-- [ ] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S
+- [x] I43 Fallback model: alternate on unavailable default | packages/contracts/src/settings.ts | s | S | server done: for one turn, with a warning, when the engine's own list has dropped the model
 - [x] I44 Text generation model: titles and branch names | packages/contracts/src/settings.ts | w d s | S
 - [ ] I45 Permission-mode matrix per provider: fx Supervised and Auto; Muse Supervised and Full; Pi Supervised, Auto-accept edits, Full (stored Auto shows Supervised); OpenCode Auto equals Supervised; mode change restarts the provider session | docs/user/permission-modes.md | w d m s | M
 - [ ] I46 fx behavior: shared machine login, Default model from `fx status`, Medium effort start, `$` skill dedupe rules, steer stops the turn, mode saved as fx default, sub-agent threads with shortened replies that wait on permission, unsupported list (plan, full access, commit and PR text, titles) | docs/user/providers-fx.md | s w | M

@@ -1111,11 +1111,53 @@ impl RunManager {
             return Ok(chosen);
         }
         let catalog = self.engines.models(&thread.engine, false).await?;
+        let chosen = self.fall_back_if_gone(thread, chosen, &catalog)?;
         selection::check(&catalog, &chosen)?;
         Ok(if keeps {
             selection::with_defaults(&catalog, &chosen)
         } else {
             chosen
+        })
+    }
+
+    /// Runs on `fallback_model` when the engine's own list no longer has the thread's
+    /// model. A custom model is on no list, and a stand-in list proves nothing, so
+    /// neither counts. The thread keeps its choice for when the model comes back, and
+    /// effort and options belonged to the model that is gone.
+    fn fall_back_if_gone(
+        &self,
+        thread: &Thread,
+        chosen: ModelSelection,
+        catalog: &orbyn_contracts::EngineModels,
+    ) -> Result<ModelSelection> {
+        let Some(model) = chosen.model.clone() else {
+            return Ok(chosen);
+        };
+        let fallback = crate::preferences::stored_preference(&self.store, "fallback_model", None)?;
+        let fallback = fallback.as_str().unwrap_or_default();
+        let listed = |id: &str| catalog.models.iter().any(|known| known.id == id);
+        let trusted = !catalog.fallback && catalog.error.is_none();
+        if fallback.is_empty() || !trusted || listed(&model) || !listed(fallback) {
+            return Ok(chosen);
+        }
+        let customs = crate::preferences::stored_preference(&self.store, "custom_models", None)?;
+        let custom = customs.as_array().is_some_and(|list| {
+            list.iter().any(|item| {
+                item["engine"] == thread.engine.as_str() && item["id"] == model.as_str()
+            })
+        });
+        if custom {
+            return Ok(chosen);
+        }
+        self.store.note_thread_event(
+            &thread.id,
+            "engine.warning",
+            json!({ "message": format!("{model} is not available, so this turn runs on {fallback}.") }),
+        )?;
+        Ok(ModelSelection {
+            model: Some(fallback.to_owned()),
+            effort: None,
+            options: std::collections::BTreeMap::new(),
         })
     }
 

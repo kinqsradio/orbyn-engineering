@@ -88,6 +88,7 @@ export const FALLBACK_RULES: KeybindingRule[] = (
     ["mod+shift+b", "threadPanel.toggle", "!terminalFocus"],
     ["mod+d", "diff.toggle", "!terminalFocus"],
     ["mod+k", "commandPalette.toggle", "!terminalFocus"],
+    ["mod+p", "filePicker.toggle", "!terminalFocus"],
     ["mod+u", "usage.open", "!terminalFocus"],
     ["mod+f", "chat.find", "!terminalFocus && !previewFocus"],
     ["mod+shift+[", "thread.previous", null],

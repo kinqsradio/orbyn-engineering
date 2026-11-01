@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockApi } from "../../mock/api";
 import { installMockFetch } from "../test-support";
 import { App } from "./App";
@@ -441,6 +441,27 @@ describe("App against the mock API", () => {
     await user.type(within(palette).getByRole("combobox"), "tokio{Enter}");
     await waitFor(() => expect(window.location.hash).toBe("#/threads/t-failed"));
     expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  });
+
+  it("opens the file picker while saved keybindings are still loading", async () => {
+    const user = userEvent.setup();
+    const fetch = globalThis.fetch;
+    let releaseKeybindings = () => {};
+    const keybindingsReady = new Promise<void>((resolve) => { releaseKeybindings = resolve; });
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      if (input === "/api/keybindings") await keybindingsReady;
+      return fetch(input, init);
+    });
+    try {
+      go("#/threads/t-done");
+      render(<App />);
+      await screen.findByRole("textbox", { name: /^Message/ });
+      await user.keyboard("{Control>}p{/Control}");
+      const palette = await screen.findByRole("dialog", { name: "Command palette" });
+      expect(within(palette).getByRole("combobox", { name: "Search" })).toHaveAttribute("placeholder", "Go to file");
+    } finally {
+      await act(async () => { releaseKeybindings(); });
+    }
   });
 
   it("settles a thread from its menu", async () => {
