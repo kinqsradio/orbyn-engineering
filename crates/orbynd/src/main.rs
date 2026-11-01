@@ -731,7 +731,9 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     }
     let handle = core.config.data_dir.join(SERVICE_FILE);
     let found = json!({ "url": base_url, "token": token, "pid": std::process::id() });
-    if let Err(error) = orbyn_core::util::write_private(&handle, found.to_string().as_bytes()) {
+    if let Err(error) =
+        orbyn_core::util::write_private_atomic(&handle, found.to_string().as_bytes())
+    {
         tracing::warn!(%error, "the orbyn command will not find this service");
     }
     println!("{start}");

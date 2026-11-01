@@ -906,6 +906,13 @@ Secret files are created with mode `0600` on Unix. Windows has no mode bits: the
 inherit the ACL of the per-user `%LOCALAPPDATA%` directory, which excludes other
 non-administrator users. Orbyn does not set its own ACL.
 
+The CLI service handle is published through a private, exclusively created file
+beside `service.json`, then renamed over the destination. Concurrent readers see
+one complete record. Failed publication leaves the prior handle intact and removes
+only its owned staging file. On the normal startup path, publication precedes
+readiness, so an immediate CLI reader needs no retry. A publication error retains
+the existing warning that the CLI will not find this service.
+
 ## Child environment
 
 Everything Orbyn spawns goes through `child_env`. Started inside a Claude Code session,

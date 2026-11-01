@@ -104,6 +104,49 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Publishes a complete owner-only file by same-directory rename. Readers see
+/// the previous contents or the new contents, never a truncated intermediate.
+pub fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let temporary = parent.join(format!(".orbyn-private-{}.tmp", new_id()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    // This guard exists only after create_new proves the file is ours.
+    let mut staging = PrivateStaging(Some(temporary));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(bytes)?;
+    drop(file);
+    std::fs::rename(staging.0.as_ref().expect("owned staging file"), path)?;
+    staging.0 = None;
+    Ok(())
+}
+
+struct PrivateStaging(Option<std::path::PathBuf>);
+impl Drop for PrivateStaging {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            // Best-effort cleanup of our own incomplete publication only.
+            if let Err(error) = std::fs::remove_file(path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::warn!(%error, "could not remove private staging file");
+            }
+        }
+    }
+}
+
 /// Resolves a path for use with other programs. Windows canonical paths carry a
 /// `\\?\` prefix that many tools, Git and Node among them, cannot read.
 pub fn canonicalize(path: &Path) -> std::io::Result<std::path::PathBuf> {
@@ -163,6 +206,68 @@ pub fn tail(text: &str, max_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn published_private_files_are_never_partial() {
+        use std::sync::{
+            Arc, Barrier,
+            atomic::{AtomicBool, Ordering},
+        };
+        let dir = crate::testing::TempDir::new();
+        let path = dir.path().join("service.json");
+        let one = Arc::new(vec![b'a'; 512 * 1024]);
+        let two = Arc::new(vec![b'b'; 512 * 1024]);
+        write_private_atomic(&path, &one).unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let barrier = Arc::new(Barrier::new(2));
+        let writing = {
+            let (path, one, two, done, barrier) = (
+                path.clone(),
+                one.clone(),
+                two.clone(),
+                done.clone(),
+                barrier.clone(),
+            );
+            std::thread::spawn(move || {
+                barrier.wait();
+                let result: Result<()> = (|| {
+                    for index in 0..32 {
+                        write_private_atomic(&path, if index % 2 == 0 { &two } else { &one })?;
+                    }
+                    Ok(())
+                })();
+                done.store(true, Ordering::Release);
+                result
+            })
+        };
+        barrier.wait();
+        let mut partial = None;
+        while !done.load(Ordering::Acquire) {
+            match std::fs::read(&path) {
+                Ok(bytes) if bytes == *one || bytes == *two => {}
+                Ok(bytes) => {
+                    partial = Some(format!("Observed {} of {} bytes", bytes.len(), one.len()));
+                    break;
+                }
+                Err(error) => {
+                    partial = Some(error.to_string());
+                    break;
+                }
+            }
+        }
+        writing.join().unwrap().unwrap();
+        assert!(partial.is_none(), "{}", partial.unwrap_or_default());
+    }
+
+    #[test]
+    fn failed_private_publication_keeps_the_destination_and_cleans_its_staging_file() {
+        let dir = crate::testing::TempDir::new();
+        let destination = dir.path().join("directory");
+        std::fs::create_dir(&destination).unwrap();
+        assert!(write_private_atomic(&destination, b"not a directory").is_err());
+        assert!(destination.is_dir());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn the_verbatim_prefix_goes_only_when_the_path_means_the_same_without_it() {
