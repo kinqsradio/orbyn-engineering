@@ -96,6 +96,14 @@
       ]
     },
     {
+      "check": "Main93dd502 integrated CI",
+      "required": true,
+      "state": "failed",
+      "evidence": [
+        "GitHub Actions41258061209: Windows Rust workspace update expected409 but retained unbundled snapshot; PR70 currentheadf3cc52b repair CI running"
+      ]
+    },
+    {
       "check": "Final integrated package full walkthrough and native composer",
       "required": true,
       "state": "unverified",
@@ -115,11 +123,11 @@
     }
   ],
   "decisions": [],
-  "next_action": "Finish PR #60 current-head CI, merge only when all required checks pass, then follow Next actions in docs/handoff.md.",
+  "next_action": "Fix main Windows workspace setup failure with PR70 after its full required matrix passes; then finish PR60 and follow Next actions in docs/handoff.md.",
   "delivery": {
     "state": "merged",
     "evidence": [
-      "kinqsradio/orbyn-engineering main at 93dd502; #60 remains open"
+      "kinqsradio/orbyn-engineering main93dd502; PR60 remains open; PR70 repair and PR71/72 pending requiredCI"
     ]
   }
 }

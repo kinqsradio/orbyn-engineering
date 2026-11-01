@@ -53,9 +53,9 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
 At this revision there are 709 rows and 376 source checkboxes are ticked. The
-explicit scope metadata reports 527 included rows: 346 declared checked, 29
-partial, 150 open and 2 not doable as written. There are also 159 excluded and
-23 unresolved-scope rows. The unresolved rows must accompany the denominator.
+explicit scope metadata reports 532 included rows: 346 declared checked, 31
+partial, 153 open and 2 not doable as written. There are also 166 excluded and
+11 unresolved-scope rows. The unresolved rows must accompany the denominator.
 These are checklist declarations, not a fresh verification count. The former
 365/573 calculation missed mobile-only rows and whole-row exclusions discarded
 local parts of mixed features; it is not a valid completion percentage.
@@ -74,8 +74,36 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
 | #60 | Updated head `348b88b`; CI is running. The Windows path assertion, bundled CLI resources, child-folder project reuse and service readiness/stop race have local regressions. Never merge until every required check passes on its current head. |
 
-None has auto-merge on. Main CI after these latest integrations still needs
-terminal readback; earlier green heads do not qualify a later main tree.
+None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
+the workspace-update regression received an unbundled snapshot after ignoring the
+setup response. PR #70 is the priority repair; its current required CI must pass
+before merge. Main after #61 and #62 passed, but those heads do not qualify #63.
+
+### Current continuation work
+
+- #70 `fix/workspace-setup`, head `f3cc52b`: setup diagnostics plus library
+  reader/replacement coordination. A real held Git child regression failed without
+  the write guard. Local core workspace tests (31), daemon workspace tests (12),
+  core Clippy, formatting and diff checks pass. The historical Windows holder is
+  unproven; required CI is running.
+- #71 `feat/settings-inheritance`, head `6c733a6`: project-dialog provenance and
+  per-setting null reset for four non-file-backed preferences. All 233 web tests,
+  web check and one real-service browser test pass locally against product source
+  matching main `93dd502`. K1/K2 remain open for the rest of scope and inheritance.
+- #72 `fix/reference-surfaces`, head `bfa6d4b`: removes four unreferenced controls.
+  Web check, 233 tests and four real-service browser tests pass locally; required
+  CI is running. This does not finish the remaining sidebar placement deviation.
+- Local `fix/service-child-cleanup` is investigating graceful package-smoke teardown
+  and owned library-upgrade children. Its changes are not yet reviewed or landed.
+- Local `fix/question-markdown` is implementing the proven Markdown part of C40.
+  No completion claim applies until its actual behavior and remaining media limits
+  are checked.
+
+The twelve source-audited rows are recorded explicitly in parity metadata. Added
+visible features without a T3 counterpart are excluded as replica requirements,
+but removing existing deviations remains required before the final walkthrough.
+B65 sent context chips, C40 rich questions and D29 document previews are retained
+as real implementation gaps. Eleven scope questions remain.
 
 ### Verified in this pickup
 
@@ -106,6 +134,11 @@ stand-in forge races and the data-directory lock.
 ### Not verified
 
 - A full walkthrough and native-composer turn on the final integrated package.
+  A copied `2786f94` bundle reached the native empty composer in an isolated profile.
+  The next tool call, opening its model picker, timed out without an answer and was
+  not retried or substituted. No native turn occurred; the picker result is unknown,
+  not a confirmed product defect. Receipt: `target/builder-2-native-audit/` in the
+  primary clone. Its app/service processes ended.
 - A live Claude turn; the engine must use its own login on the test machine.
 - A hands-on real Windows run, including the no-symlink fallback, native menus,
   deep links, keep-awake and CLI installation beyond their existing CI/unit evidence.
@@ -144,9 +177,11 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Finish #60's current-head CI. Diagnose any failure, then merge only when every
-   required check is green. Confirm the final integrated main run is green.
-2. Keep row scope and partial evidence explicit. Resolve the 23 scope questions
+1. Repair current main's Windows workspace setup failure via #70, requiring the
+   full current-head matrix. Finish #60's current-head CI, diagnose any failure,
+   and merge only when every required check is green. Confirm final integrated
+   main is green before treating either repair as qualified.
+2. Keep row scope and partial evidence explicit. Resolve the 11 scope questions
    from local T3 behavior references before implementing any proposed surface.
    Do not turn a missing reference into an invented control or an exclusion that
    silently lowers the goal.
