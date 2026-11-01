@@ -177,6 +177,44 @@ fn orbyn_with(data: &std::path::Path, args: &[&str], env: &[(&str, &std::path::P
     command.output().unwrap()
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn ready_means_the_handle_exists_and_an_immediate_stop_is_graceful() {
+    for _ in 0..8 {
+        let dir = TempDir::new();
+        let data = dir.path().join("data");
+        let mut service = Service::start(&data, Options::default());
+        let file = data.join("service.json");
+        let found: Value = serde_json::from_slice(
+            &std::fs::read(&file).expect("ready includes the service handle"),
+        )
+        .unwrap();
+        assert_eq!(found["pid"], service.child.id());
+        assert!(
+            Command::new("kill")
+                .arg(service.child.id().to_string())
+                .status()
+                .unwrap()
+                .success()
+        );
+        let status = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if let Some(status) = service.child.try_wait().unwrap() {
+                    break status;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("an immediate stop finishes");
+        assert!(
+            status.success(),
+            "ready must include installed stop handlers: {status}"
+        );
+        assert!(!file.exists(), "a graceful stop removes its handle");
+    }
+}
+
 #[tokio::test]
 async fn start_finds_a_running_service_and_opens_the_folder_asked_for() {
     let dir = TempDir::new();

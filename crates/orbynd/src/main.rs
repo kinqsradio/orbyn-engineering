@@ -600,7 +600,11 @@ fn read_parent(core: Arc<Core>, closed: oneshot::Sender<()>) {
     });
 }
 
-async fn wait_for_stop(parent: Option<oneshot::Receiver<()>>, stop: CancellationToken) {
+async fn wait_for_stop(
+    parent: Option<oneshot::Receiver<()>>,
+    stop: CancellationToken,
+    termination: impl std::future::Future<Output = ()> + Send,
+) {
     let parent = async {
         match parent {
             Some(closed) => {
@@ -611,30 +615,33 @@ async fn wait_for_stop(parent: Option<oneshot::Receiver<()>>, stop: Cancellation
     };
     tokio::select! {
         () = parent => {}
-        () = termination() => {}
+        () = termination => {}
     }
     stop.cancel();
 }
 
 #[cfg(unix)]
-async fn termination() {
+fn termination() -> Result<impl std::future::Future<Output = ()> + Send, String> {
     use tokio::signal::unix::{SignalKind, signal};
-    match signal(SignalKind::terminate()) {
-        Ok(mut terminate) => {
-            tokio::select! {
-                _ = terminate.recv() => {}
-                _ = tokio::signal::ctrl_c() => {}
-            }
+    let mut terminate = signal(SignalKind::terminate())
+        .map_err(|error| format!("Could not listen for termination: {error}"))?;
+    let mut interrupt = signal(SignalKind::interrupt())
+        .map_err(|error| format!("Could not listen for interrupts: {error}"))?;
+    Ok(async move {
+        tokio::select! {
+            _ = terminate.recv() => {}
+            _ = interrupt.recv() => {}
         }
-        Err(_) => {
-            let _ = tokio::signal::ctrl_c().await;
-        }
-    }
+    })
 }
 
 #[cfg(windows)]
-async fn termination() {
-    let _ = tokio::signal::ctrl_c().await;
+fn termination() -> Result<impl std::future::Future<Output = ()> + Send, String> {
+    let mut interrupt = tokio::signal::windows::ctrl_c()
+        .map_err(|error| format!("Could not listen for interrupts: {error}"))?;
+    Ok(async move {
+        let _ = interrupt.recv().await;
+    })
 }
 
 async fn serve(args: ServeArgs) -> Result<(), String> {
@@ -686,16 +693,18 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         ui_dir: args.ui_dir.clone(),
     });
 
+    // Register synchronously: a stop just after ready must run cleanup too.
+    let termination = termination()?;
     let mut start = json!({ "url": base_url, "token": token });
     if let Some(key) = new_key {
         start["access_key"] = json!(key);
     }
-    println!("{start}");
     let handle = core.config.data_dir.join(SERVICE_FILE);
     let found = json!({ "url": base_url, "token": token, "pid": std::process::id() });
     if let Err(error) = orbyn_core::util::write_private(&handle, found.to_string().as_bytes()) {
         tracing::warn!(%error, "the orbyn command will not find this service");
     }
+    println!("{start}");
 
     let stop = CancellationToken::new();
     let parent = args.parent_stdin.then(|| {
@@ -713,7 +722,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         read_parent(core.clone(), closed);
         wait
     });
-    tokio::spawn(wait_for_stop(parent, stop.clone()));
+    tokio::spawn(wait_for_stop(parent, stop.clone(), termination));
     {
         let (core, stop) = (core.clone(), stop.clone());
         tokio::spawn(async move { core.run_library_upgrades(stop).await });

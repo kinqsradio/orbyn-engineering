@@ -906,7 +906,9 @@ while the service runs.
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`,
 `--workspace-url`, `--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
-`{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
+`{url, token}` on stdout once it can serve, after registering stop handlers and writing
+the CLI's service handle. A stop immediately after that line still cleans up the handle.
+`--skills-dir` is accepted and ignored
 for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBYN_LIBRARY_BUNDLE`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,
