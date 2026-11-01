@@ -12,12 +12,7 @@ use support::{Options, TempDir, setup};
 const ORBYN: &str = env!("CARGO_BIN_EXE_orbyn");
 
 fn orbyn(data: &std::path::Path, args: &[&str]) -> Output {
-    Command::new(ORBYN)
-        .arg("--data-dir")
-        .arg(data)
-        .args(args)
-        .output()
-        .unwrap()
+    orbyn_with(data, args, &[])
 }
 
 /// Runs off the test's own thread, since a command may wait for the service.
@@ -174,7 +169,8 @@ fn orbyn_with(data: &std::path::Path, args: &[&str], env: &[(&str, &std::path::P
     for (name, value) in env {
         command.env(name, value);
     }
-    command.output().unwrap()
+    cli_capture::capture(command, std::time::Duration::from_secs(30))
+        .unwrap_or_else(|error| panic!("CLI command capture: {error}"))
 }
 
 #[cfg(unix)]
@@ -347,13 +343,14 @@ async fn a_packaged_cli_serves_its_bundled_ui_on_a_fresh_start() {
         let data = dir.path().join("data");
         let data_arg = data.clone();
         let output = tokio::task::spawn_blocking(move || {
-            Command::new(cli)
+            let mut command = Command::new(cli);
+            command
                 .arg("--data-dir")
                 .arg(data_arg)
                 .args(["start", "--no-open", "--json"])
-                .env("ORBYN_OFFLINE", "1")
-                .output()
-                .unwrap()
+                .env("ORBYN_OFFLINE", "1");
+            cli_capture::capture(command, std::time::Duration::from_secs(30))
+                .unwrap_or_else(|error| panic!("packaged CLI capture ({binary_folder}): {error}"))
         })
         .await
         .unwrap();
@@ -431,4 +428,77 @@ fn a_service_env_that_cannot_be_read_stops_the_start_and_says_why() {
     assert_eq!(output.status.code(), Some(1));
     let text = String::from_utf8_lossy(&output.stderr);
     assert!(text.contains("service.env: Line 1"), "{text}");
+}
+
+#[path = "support/cli_capture.rs"]
+mod cli_capture;
+
+#[test]
+fn capture_deadline_cleans_a_descendant_that_inherited_output_pipes() {
+    use std::{io::Write, time::Duration};
+    let dir = TempDir::new();
+    let executable = dir
+        .path()
+        .join(format!("inherited-pipe{}", std::env::consts::EXE_SUFFIX));
+    assert!(
+        Command::new("rustc")
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/inherited_pipe.rs")
+            )
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let record = dir.path().join("helper");
+    let mut command = Command::new(executable);
+    command.env("ORBYN_PIPE_RECORD", &record);
+    let (send, receive) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        send.send(cli_capture::capture(command, Duration::from_secs(5)))
+            .unwrap();
+    });
+    let result = receive.recv_timeout(Duration::from_secs(10));
+    // Independent cleanup bounds the old, unbounded implementation as well.
+    if result.is_err()
+        && let Ok(text) = std::fs::read_to_string(&record)
+    {
+        let pid = text.split_whitespace().next().unwrap();
+        #[cfg(unix)]
+        let _ = Command::new("kill").args(["-KILL", pid]).status();
+        #[cfg(windows)]
+        let _ = Command::new("taskkill")
+            .args(["/PID", pid, "/T", "/F"])
+            .status();
+    }
+    let result = result.unwrap_or_else(|_| {
+        receive
+            .recv_timeout(Duration::from_secs(5))
+            .expect("fixture cleanup releases inherited pipes")
+    });
+    worker.join().unwrap();
+    let error = result.expect_err(
+        "inherited pipes must fail at capture deadline, not return success after external cleanup",
+    );
+    let mut evidence = std::fs::File::create(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/cli-capture-regression.txt"),
+    )
+    .unwrap();
+    writeln!(evidence, "{error}").unwrap();
+    assert!(error.contains("timed out"), "{error}");
+    assert!(
+        error.contains("leader_exited_before_deadline=true"),
+        "{error}"
+    );
+    assert!(error.contains("leader stdout"), "{error}");
+    assert!(error.contains("leader stderr"), "{error}");
+    let text = std::fs::read_to_string(&record).unwrap();
+    let address = text.split_whitespace().nth(1).unwrap().parse().unwrap();
+    assert!(
+        std::net::TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_err(),
+        "descendant exited"
+    );
 }
