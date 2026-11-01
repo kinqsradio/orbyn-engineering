@@ -36,6 +36,7 @@ impl Core {
     pub fn delete_thread(&self, id: &str, actor: &str) -> Result<()> {
         let files = self.store.family_attachment_paths(id)?;
         for deleted in self.store.delete_thread(id, actor)? {
+            self.setups.forget(&deleted);
             self.terminals.close(&deleted);
             self.previews.close_thread(&deleted);
         }

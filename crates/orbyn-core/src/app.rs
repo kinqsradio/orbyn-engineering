@@ -16,12 +16,13 @@ use crate::error::{CoreError, Result};
 use crate::git;
 use crate::mcp::McpService;
 use crate::preview::PreviewManager;
+use crate::project_setup::SetupManager;
 use crate::projects::ClonePool;
 use crate::questions::QuestionDesk;
 use crate::runs::{RunManager, RunServices};
 use crate::shell::ShellBridge;
 use crate::skills::SkillService;
-use crate::store::{NewThread, Recovery, Store};
+use crate::store::{NewSetup, NewThread, Recovery, Store};
 use crate::terminal::TerminalManager;
 use crate::updates::UpdateCenter;
 use crate::usage::UsageCenter;
@@ -109,6 +110,7 @@ pub struct Core {
     pub mcp: Arc<McpService>,
     pub runs: Arc<RunManager>,
     pub terminals: Arc<TerminalManager>,
+    pub(crate) setups: Arc<SetupManager>,
     pub updates: Arc<UpdateCenter>,
     pub shell: ShellBridge,
     pub usage: Arc<UsageCenter>,
@@ -148,6 +150,7 @@ impl Core {
         let gate = Arc::new(ApprovalGate::new(store.clone(), config.approval_timeout));
         let questions = Arc::new(QuestionDesk::new(store.clone(), config.approval_timeout));
         let terminals = Arc::new(TerminalManager::default());
+        let setups = Arc::new(SetupManager::new(store.clone())?);
         let http = reqwest::Client::builder()
             .user_agent(concat!("orbyn/", env!("CARGO_PKG_VERSION")))
             .build()
@@ -182,6 +185,7 @@ impl Core {
             mcp: mcp.clone(),
             base_url: config.base_url.clone(),
             runs_dir: config.data_dir.join("runs"),
+            setups: setups.clone(),
         }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
         let usage = Arc::new(UsageCenter::new(&config.data_dir)?);
@@ -204,6 +208,7 @@ impl Core {
             mcp,
             runs,
             terminals,
+            setups,
             updates,
             shell: ShellBridge::default(),
             usage,
@@ -271,20 +276,38 @@ impl Core {
         } else {
             request.options.clone()
         };
-        let thread = self.store.create_thread(NewThread {
-            project_id: project.id,
-            title: request
-                .title
-                .unwrap_or_else(|| crate::titles::NEW_THREAD_TITLE.to_owned()),
-            engine: request.engine,
-            model,
-            cwd,
-            worktree,
-            skill_profile: request.skill_profile,
-            parent_thread_id: None,
-            relation: None,
-            scratch: project.scratch,
-        })?;
+        let setup_script = if worktree.is_some() {
+            self.project_file_at(&project_id, Path::new(&cwd))?
+                .scripts
+                .into_iter()
+                .find(|script| script.run_on_worktree_create)
+        } else {
+            None
+        };
+        let setup = setup_script.as_ref().map(|script| NewSetup {
+            name: script.name.clone(),
+            wait_for_exit: !script.asynchronous,
+        });
+        let thread_id = new_id();
+        let registration = setup.as_ref().map(|_| self.setups.registration(&thread_id));
+        let thread = self.store.create_registered_thread(
+            &thread_id,
+            NewThread {
+                project_id: project.id,
+                title: request
+                    .title
+                    .unwrap_or_else(|| crate::titles::NEW_THREAD_TITLE.to_owned()),
+                engine: request.engine,
+                model,
+                cwd,
+                worktree,
+                skill_profile: request.skill_profile,
+                parent_thread_id: None,
+                relation: None,
+                scratch: project.scratch,
+            },
+            setup.as_ref(),
+        )?;
         let mode = self.preference("default_permission_mode", Some(&project_id))?;
         let mode: PermissionMode = serde_json::from_value(mode)?;
         let patch = UpdateThread {
@@ -298,7 +321,12 @@ impl Core {
         } else {
             self.store.update_thread(&thread.id, &patch, "system")?
         };
-        self.run_hook_scripts(&thread.id, |script| script.run_on_worktree_create);
+        if let Some((script, registration)) = setup_script.zip(registration) {
+            match self.start_setup_script(&thread, &script) {
+                Ok(()) => registration.complete(),
+                Err(error) => tracing::warn!(%error, "could not start project setup"),
+            }
+        }
         Ok(thread)
     }
 
@@ -343,6 +371,7 @@ impl Core {
     /// Stops every engine, terminal and browser this process owns.
     pub async fn shutdown(&self) {
         self.runs.shutdown().await;
+        self.setups.shutdown();
         self.terminals.close_all();
         self.previews.close_all();
         self.computer.shutdown().await;

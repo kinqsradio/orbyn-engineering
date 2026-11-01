@@ -1677,6 +1677,9 @@ pub struct ProjectScript {
     pub icon: Option<String>,
     #[serde(default)]
     pub run_on_worktree_create: bool,
+    #[serde(default = "script_is_async", rename = "async")]
+    #[ts(rename = "async")]
+    pub asynchronous: bool,
     #[serde(default)]
     pub run_on_settle: bool,
     #[serde(default)]
@@ -1684,6 +1687,10 @@ pub struct ProjectScript {
     #[serde(default)]
     pub auto_open_preview: bool,
 }
+}
+
+fn script_is_async() -> bool {
+    true
 }
 
 wire! {

@@ -423,6 +423,7 @@ impl Core {
         )?;
         for thread in threads {
             for deleted in self.store.delete_thread(&thread.id, "user")? {
+                self.setups.forget(&deleted);
                 self.terminals.close(&deleted);
             }
         }

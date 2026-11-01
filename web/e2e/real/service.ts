@@ -112,6 +112,8 @@ export interface Service {
 }
 
 export interface ServiceOptions {
+  /** Records only protocol-double launches, for controlled ordering assertions. */
+  engineLaunchLog?: string;
   starred?: boolean;
   fakeEngines?: boolean;
   scenes?: boolean;
@@ -153,6 +155,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
       ? { ORBYN_CLAUDE_BIN: fake, ORBYN_CODEX_BIN: fake }
       : // Never an installed engine, so a run reads the same on every machine.
         { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: join(dir, "no-codex") };
+  if (options.engineLaunchLog) Object.assign(engines, { ORBYN_FAKE_LAUNCH_FILE: options.engineLaunchLog });
   const forge = options.forge
     ? standInGh(dir, options.forge === true ? [{ number: 42, title: "Fix the login" }, { number: 77, title: "Tidy the docs" }] : options.forge, options.starred)
     : null;

@@ -354,9 +354,32 @@ hooks use this same resolver. The scripts response keeps the actual file content
 `file` and exposes the effective list separately in `scripts`; settings never rewrite
 the file. Opening a script terminal preserves its selected tab while the terminal
 list refreshes. Malformed files block execution, and script lists require unique nonempty
-names and nonempty commands. `run_on_worktree_create` and `run_on_settle` scripts run only in a worktree;
-one that cannot start is logged and does not undo the change that triggered it, and
-Orbyn does not hold a run for a setup script to finish.
+names and nonempty commands. The existing command editor preserves a named script's
+role and options when editing its command. The first `run_on_worktree_create` or
+`run_on_settle` action runs in its worktree; later matching actions are not run.
+Setup has its own terminal, distinct from manual execution, and each settle gets
+a fresh terminal. A setup's `async` defaults to true. The first admitted turn waits
+until its captured setup is started; `async: false` also waits for exit code zero.
+Engine title generation follows that same gate. Startup failure or unsuccessful
+synchronous setup fails the first turn; an async exit does not block it,
+and a later explicit user message does not implicitly execute project code again.
+Failed preparation keeps queued messages held, including messages added after the
+failure. A later user turn does not release that hold, and queue resume or automatic
+restart/limit continuation cannot bypass it. Retrying preparation itself remains a
+separate unfinished surface; an ordinary prompt is not a preparation retry.
+Cancellation and setup process creation share one owner lock; cancelling first
+prevents a later spawn, and cancelling a blocked turn kills its setup process.
+
+Schema 18 adds `thread_setup` with a cascading thread foreign key. Its preparation
+marker and thread commit in one transaction, before clients can admit a turn.
+Registration failure and early returns close that marker. Process handles stay in
+Core, with no detached setup waiters. A normal shutdown preserves known completion
+and records unfinished work as failed; an already-started async action remains
+nonblocking. Restart fences old pending writers before admission.
+Existing threads receive no marker and never execute setup retroactively. Older
+cores reject the newer schema before changing persistent data; rolling back requires
+a database backup from the older schema, not an older writer against schema 18.
+Moving or deleting a thread clears its setup and closes its old terminals/previews.
 
 ## Settings and maintenance
 

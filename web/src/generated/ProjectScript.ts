@@ -3,4 +3,4 @@
 /**
  * A team script from the project file.
  */
-export type ProjectScript = { name: string, command: string, icon: string | null, run_on_worktree_create: boolean, run_on_settle: boolean, preview_url: string | null, auto_open_preview: boolean, };
+export type ProjectScript = { name: string, command: string, icon: string | null, run_on_worktree_create: boolean, async: boolean, run_on_settle: boolean, preview_url: string | null, auto_open_preview: boolean, };

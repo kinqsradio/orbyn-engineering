@@ -35,7 +35,11 @@ impl Core {
             Some(project) => self.store.project(project)?,
             None => self.new_scratch()?,
         };
-        self.store.move_thread(id, &target)
+        let thread = self.store.move_thread(id, &target)?;
+        self.setups.forget(id);
+        self.terminals.close(id);
+        self.previews.close_thread(id);
+        Ok(thread)
     }
 
     /// Turns a scratch folder into a project where it is, with every thread in it.

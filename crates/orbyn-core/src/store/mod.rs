@@ -13,6 +13,7 @@ mod questions;
 mod queue;
 mod runs;
 pub(crate) mod scoped_settings;
+mod setup;
 #[cfg(test)]
 mod tests;
 mod threads;
@@ -37,6 +38,7 @@ pub use approvals::{NewApproval, RememberRule};
 pub use hub::EventHub;
 pub use queue::{WatchRow, WatchUpdate};
 pub use runs::{Admission, Recovery};
+pub(crate) use setup::{NewSetup, SetupState};
 use threads::thread_family;
 pub use threads::{LifecycleRules, LimitStop, TickReport, default_settings};
 
@@ -257,6 +259,15 @@ impl Store {
 
     pub fn create_thread(&self, new: NewThread) -> Result<Thread> {
         let id = new_id();
+        self.create_registered_thread(&id, new, None)
+    }
+
+    pub(crate) fn create_registered_thread(
+        &self,
+        id: &str,
+        new: NewThread,
+        setup: Option<&NewSetup>,
+    ) -> Result<Thread> {
         let stamp = now();
         let worktree = new.worktree.as_ref();
         self.commit(|tx, _| {
@@ -284,9 +295,12 @@ impl Store {
                     new.scratch,
                 ],
             )?;
+            if let Some(setup) = setup {
+                setup::insert(tx, id, &self.epoch, setup)?;
+            }
             Ok(())
         })?;
-        self.thread(&id)
+        self.thread(id)
     }
 
     /// Points a thread with no runs at another folder. A scratch project nobody
@@ -312,6 +326,7 @@ impl Store {
             if moved == 0 {
                 return Err(CoreError::NotFound("thread".into()));
             }
+            tx.execute("DELETE FROM thread_setup WHERE thread_id = ?1", [id])?;
             prune_scratch(tx)
         })?;
         self.thread(id)

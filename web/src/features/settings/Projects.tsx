@@ -2,6 +2,7 @@ import { Trash2, TriangleAlert, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { ApiFailure, api } from "../../api/client";
 import type { LibraryStatus, TargetStatus } from "../../api/types";
+import type { ProjectScript } from "../../generated/ProjectScript";
 import { useWorkspace } from "../../state/workspace";
 import { PreferenceGroups } from "./PreferenceRows";
 import { Button, Pill } from "../../ui/controls";
@@ -222,8 +223,9 @@ function EngineToggles({ value, save }: { value: unknown; save(next: string[]): 
 }
 
 /** One command per line, saved as the scripts new threads in this project offer. */
-function ScriptLines({ value, save }: { value: unknown; save(next: { name: string; command: string }[]): void }) {
-  const scripts = Array.isArray(value) ? (value as { name: string; command: string }[]) : [];
+type ScriptDraft = Partial<ProjectScript> & { name: string; command: string };
+function ScriptLines({ value, save }: { value: unknown; save(next: ScriptDraft[]): void }) {
+  const scripts = Array.isArray(value) ? (value as ScriptDraft[]) : [];
   return (
     <textarea
       aria-label="Project scripts"
@@ -236,7 +238,11 @@ function ScriptLines({ value, save }: { value: unknown; save(next: { name: strin
           event.target.value
             .split("\n")
             .map((line) => /^([^:]+):\s*(.+)$/.exec(line.trim()))
-            .flatMap((match) => (match ? [{ name: match[1] ?? "", command: match[2] ?? "" }] : [])),
+            .flatMap((match) => {
+              if (!match) return [];
+              const name = match[1] ?? "";
+              return [{ ...scripts.find((script) => script.name === name), name, command: match[2] ?? "" }];
+            }),
         )
       }
     />

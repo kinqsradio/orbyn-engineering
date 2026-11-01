@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use orbyn_contracts::{ProjectFile, ProjectFileView, ProjectScript, TerminalInfo};
+use orbyn_contracts::{ProjectFile, ProjectFileView, ProjectScript, TerminalInfo, Thread};
 use serde_json::{Value, json};
 
 use crate::app::Core;
@@ -136,11 +136,15 @@ fn script_terminal(name: &str) -> String {
 impl Core {
     pub fn project_file(&self, thread_id: &str) -> Result<ProjectFileView> {
         let thread = self.store.thread(thread_id)?;
-        let mut view = read_project_file(Path::new(&thread.cwd));
+        self.project_file_at(&thread.project_id, Path::new(&thread.cwd))
+    }
+
+    pub(crate) fn project_file_at(&self, project_id: &str, cwd: &Path) -> Result<ProjectFileView> {
+        let mut view = read_project_file(cwd);
         if view.problem.is_none() {
             let preferences = crate::preferences::stored_preferences_from_file(
                 &self.store,
-                Some(&thread.project_id),
+                Some(project_id),
                 Some(&view),
             )?;
             let value = &preferences
@@ -159,6 +163,7 @@ impl Core {
         cwd: &str,
         script: &ProjectScript,
         actor: &str,
+        terminal_id: &str,
     ) -> Result<TerminalInfo> {
         self.store.append_audit(&AuditRecord {
             actor: actor.to_owned(),
@@ -173,7 +178,7 @@ impl Core {
         let (program, args) = shell_command(&script.command);
         self.terminals.open_named(
             thread_id,
-            &script_terminal(&script.name),
+            terminal_id,
             TerminalLabel {
                 title: Some(script.name.clone()),
                 script: Some(script.name.clone()),
@@ -187,6 +192,25 @@ impl Core {
                 rows: 32,
             },
         )
+    }
+
+    pub(crate) fn start_setup_script(&self, thread: &Thread, script: &ProjectScript) -> Result<()> {
+        let id = format!("setup-{}", crate::util::sha256_hex(script.name.as_bytes()));
+        let result = self.setups.launch(&thread.id, || {
+            let made = self.start_script(&thread.id, &thread.cwd, script, "system:script", &id)?;
+            let session = self
+                .terminals
+                .named(&thread.id, &made.id)
+                .ok_or_else(|| CoreError::NotFound("setup terminal".into()))?;
+            Ok((made.id, session))
+        });
+        if let Err(error) = result {
+            if self.terminals.named(&thread.id, &id).is_some() {
+                let _ = self.terminals.close_one(&thread.id, &id);
+            }
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Runs an effective project script in its own terminal. The request names
@@ -205,7 +229,13 @@ impl Core {
             .into_iter()
             .find(|script| script.name == name)
             .ok_or_else(|| CoreError::NotFound("script".into()))?;
-        self.start_script(thread_id, &thread.cwd, &script, actor)
+        self.start_script(
+            thread_id,
+            &thread.cwd,
+            &script,
+            actor,
+            &script_terminal(&script.name),
+        )
     }
 
     /// Runs the scripts a moment asks for, in a worktree only. One that cannot
@@ -237,8 +267,11 @@ impl Core {
             return;
         }
         let scripts = view.scripts;
-        for script in scripts.iter().filter(|script| select(script)) {
-            if let Err(error) = self.start_script(thread_id, &thread.cwd, script, "system:script") {
+        if let Some(script) = scripts.iter().find(|script| select(script)) {
+            let id = format!("settle-{}", crate::util::new_id());
+            if let Err(error) =
+                self.start_script(thread_id, &thread.cwd, script, "system:script", &id)
+            {
                 tracing::warn!(%error, "could not run a project script");
             }
         }
@@ -264,6 +297,10 @@ mod tests {
         let view = read_project_file(&dir);
         assert_eq!(view.path.as_deref(), Some("t3.json"));
         let file = view.file.unwrap();
+        assert!(
+            file.scripts[0].asynchronous,
+            "Missing async keeps the reference default"
+        );
         assert_eq!(file.worktree_submodules.as_deref(), Some("none"));
         assert!(file.scripts[0].run_on_settle);
         std::fs::write(dir.join("orbyn.json"), "{ nope").unwrap();
@@ -293,6 +330,7 @@ mod tests {
             json!([{"name":"  ","command":"echo no"}]),
             json!([{"name":"Dev","command":"echo one"},{"name":"Dev","command":"echo two"}]),
             json!([{"name":"Dev","command":"echo no","run_on_settle":"yes"}]),
+            json!([{"name":"Dev","command":"echo no","async":"false"}]),
             json!([{"name":"Dev"}]),
         ] {
             assert!(validate_scripts(&value).is_err(), "{value}");

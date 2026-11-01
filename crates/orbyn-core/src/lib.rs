@@ -29,6 +29,7 @@ pub mod preview;
 pub mod process;
 pub mod project_file;
 pub mod project_scopes;
+mod project_setup;
 pub mod projects;
 pub mod questions;
 pub mod runs;

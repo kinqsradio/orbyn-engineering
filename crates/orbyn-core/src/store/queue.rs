@@ -105,6 +105,7 @@ impl Store {
                 [thread_id],
                 |row| row.get(0),
             )?;
+            let held = held || super::setup::failed(tx, thread_id)?;
             tx.execute(
                 "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held,
                     created_at, model, effort, options)
@@ -207,6 +208,13 @@ impl Store {
                 )
                 .optional()?;
             let Some(message) = next else { return Ok(None) };
+            if super::setup::failed(tx, thread_id)? {
+                tx.execute(
+                    "UPDATE queued_messages SET held = 1 WHERE thread_id = ?1",
+                    [thread_id],
+                )?;
+                return Ok(None);
+            }
             if message.held {
                 return Ok(None);
             }
