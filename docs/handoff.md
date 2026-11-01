@@ -333,6 +333,23 @@ parity review even though its proposed popover is excluded.
   These changes are committed locally, not pushed or merged. Environment cleanup
   and project worktree-policy bindings are the next in-progress settings slices.
 
+- Cleanup commits `f211a94`, `d3d9544`, `3b48d76` and `18020fc` separate
+  environment artifacts/log retention from project worktree policies. Off, Custom
+  and Inherit resolve per physical member; selecting Custom captures that member's
+  effective age, including legacy defaults. Three service regressions and one
+  browser regression failed before the transition correction. Final focused
+  qualification passed eight real-service cleanup cases and nine combined browser
+  cases, including concurrent edits, scope disposal and actual disposable deletion.
+  The schema19-to20 rehearsal preserved values, rejected a live second writer and
+  rejected an old writer without database mutation; current20 reopened successfully.
+  Receipt: `target/worktree-cleanup-evidence/schema-fence.json` in the settings tree.
+  Web check/build and 287 unit tests pass. One parallel-check App startup unit timed
+  out at its unchanged five-second limit; focused42 and the full287 rerun passed.
+  That intermittent result is retained, without a proven cause or timeout change.
+  F30 stays partial for other rules, keep-when choices, scheduling, concurrent
+  thread-creation admission and native/Windows qualification. No final packaged
+  walkthrough or live-engine qualification is supplied by these cleanup fixtures.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
