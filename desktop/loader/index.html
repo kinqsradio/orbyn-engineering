@@ -34,7 +34,9 @@
         retry.hidden = false;
         retry.addEventListener("click", () => {
           retry.disabled = true;
-          window.__TAURI_INTERNALS__.invoke("restart_core");
+          window.__TAURI_INTERNALS__.invoke("restart_core").catch(() => {
+            retry.disabled = false;
+          });
         });
       }
     </script>

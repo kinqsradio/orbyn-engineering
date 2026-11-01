@@ -1,3 +1,4 @@
+import { serviceUrl } from "../../api/origin";
 import { chooseDraftEngine } from "../onboarding/draftEngine";
 import { Pencil, Play, Plus, ScrollText, Trash2, Webhook, X } from "lucide-react";
 import { useState } from "react";
@@ -317,7 +318,7 @@ function WebhookDialog({ task, onClose }: { task: ScheduledTask; onClose(): void
       setError(toFailure(failure).message),
     );
   };
-  const url = endpoint ? `${window.location.origin}${endpoint.path}` : null;
+  const url = endpoint ? new URL(serviceUrl(endpoint.path), window.location.href).href : null;
   return (
     <Dialog title="Webhook address" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
       {url ? (

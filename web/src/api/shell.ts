@@ -1,3 +1,4 @@
+import { serviceUrl } from "./origin";
 import { api, authHeaders } from "./client";
 import { SseParser } from "./sse";
 import type { ShellAction, ShellEvent } from "./types";
@@ -46,7 +47,7 @@ export function followShell(onEvent: (event: ShellEvent) => void): () => void {
 
   const connect = async () => {
     try {
-      const response = await fetch("/api/shell/events", {
+      const response = await fetch(serviceUrl("/api/shell/events"), {
         signal: controller.signal,
         credentials: "same-origin",
         headers: { ...authHeaders(), Accept: "text/event-stream" },

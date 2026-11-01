@@ -1,13 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The local loader page only. The product UI loads from orbynd and holds no native access.",
+  "description": "The static startup document can retry its service. The command also checks its separate origin; the product asset origin cannot invoke it.",
   "windows": [
     "main"
   ],
   "local": true,
   "permissions": [
-    "core:default",
     "allow-restart-core"
   ]
 }
