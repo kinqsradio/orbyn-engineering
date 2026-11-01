@@ -684,7 +684,10 @@ refresh is a separate read. Single-member groups display the physical title;
 checkout-selected Name retains the original logical group label. Registered Checkouts are listed from catalog members, never the Git worktree
 inventory. Removal counts current and archived threads, freezes the confirmed
 physical IDs and deletes only entries through the existing file-preserving route.
-Cancel sends no delete. Partial failure retains the failed member and prior
+Cancel sends no delete. Core remembers the exact IDs returned by each successful
+thread-family deletion, skips those rows later in the project list and performs
+setup/terminal cleanup once per deleted ID. Busy and unexpected errors still
+propagate. Partial failure retains the failed member and prior
 successes; explicit retry skips successes. Whole-group selection clears only after
 a fresh catalog confirms its absence. A read failure after committed deletion is
 a separate refresh failure. All projects
