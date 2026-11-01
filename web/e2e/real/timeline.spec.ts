@@ -2,13 +2,12 @@ import { expect, test } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Rich turns the real service parsed from engine notifications. */
-const PORT = 5279;
 
 let service: Service;
 let projectId = "";
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 
@@ -218,4 +217,13 @@ test("a failed turn keeps its error in view and a command with no output says so
   await page.getByRole("button", { name: /^Worked for/ }).last().click();
   await page.getByRole("button", { name: /^true/ }).click();
   await expect(page.getByText("No output.")).toBeVisible();
+});
+
+test("a link to a commit here opens it in Diff", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:commitlink]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  await page.getByRole("link", { name: "this commit" }).click();
+  await expect(page.getByRole("radiogroup", { name: "Diff source" }).getByRole("radio", { name: "Commit" })).toBeChecked();
+  await expect(page.getByRole("combobox", { name: /commit/i })).toContainText("First");
 });

@@ -17,6 +17,7 @@ import {
   unsettleThreads,
 } from "../features/workspace/threadActions";
 import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../features/workspace/threadUndo";
+import { CloneJobs } from "../features/workspace/CloneJobs";
 import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
@@ -502,6 +503,7 @@ export function Shell() {
       <BackgroundAnnouncer />
       <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
       <Toasts />
+      <CloneJobs />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
       {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (
         <IconButton className="expand-nav" label="Expand sidebar" onClick={toggleSidebar}>

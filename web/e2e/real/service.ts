@@ -1,9 +1,11 @@
 import { expect, type Page } from "@playwright/test";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { once } from "node:events";
 
 const WEB = resolve(import.meta.dirname, "../..");
 const BIN = process.env.ORBYN_BIN ?? resolve(WEB, "../target/debug/orbynd");
@@ -100,7 +102,7 @@ export interface Service {
   /** A small Git repository outside the library. */
   repo: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
-  stop(): void;
+  stop(): Promise<void>;
   /** What the stand-in `gh` was asked, oldest first. */
   ghCalls(): string[][];
   /** What the stand-in holds for one pull request now. */
@@ -117,11 +119,30 @@ export interface ServiceOptions {
   registry?: string;
 }
 
+/** A port nothing holds, so two checkouts or specs can never answer for each other. */
+async function freePort(): Promise<number> {
+  const server = createServer().listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no port");
+  server.close();
+  await once(server, "close");
+  return address.port;
+}
+
+/** Resolves when this Vite says it listens, and fails if it exits first. */
+function viteReady(vite: ChildProcess, port: number): Promise<void> {
+  return new Promise((done, fail) => {
+    vite.once("exit", (code) => fail(new Error(`vite on ${port} exited with ${code}`)));
+    if (!vite.stdout) throw new Error("vite has no output");
+    createInterface({ input: vite.stdout }).on("line", (line) => {
+      if (line.includes(`:${port}/`)) done();
+    });
+  });
+}
+
 /** A real `orbynd` on a fresh data directory, with the dev UI proxied to it. */
-export async function startService(
-  port: number,
-  options: ServiceOptions = {},
-): Promise<Service> {
+export async function startService(options: ServiceOptions = {}): Promise<Service> {
   if (!existsSync(BIN)) throw new Error(`Build the service first: cargo build -p orbynd (${BIN})`);
   const dir = mkdtempSync(join(tmpdir(), "orbyn-e2e-"));
   const fake = resolve(BIN, "../orbyn-fake-engine");
@@ -143,17 +164,14 @@ export async function startService(
     service.once("exit", (code) => fail(new Error(`orbynd exited with ${code}`)));
     createInterface({ input: service.stdout }).once("line", (line) => done(JSON.parse(line) as never));
   });
+  const port = await freePort();
   // Node itself, so stopping it frees the port for a spec that restarts after a failure.
   const vite = spawn(process.execPath, [resolve(WEB, "node_modules/vite/bin/vite.js"), "--port", String(port), "--strictPort"], {
     cwd: WEB,
-    env: { ...process.env, ORBYN_API: ready.url },
-    stdio: "ignore",
+    env: { ...process.env, ORBYN_API: ready.url, NO_COLOR: "1" },
+    stdio: ["ignore", "pipe", "ignore"],
   });
-  await expect
-    .poll(() => fetch(`http://localhost:${port}/`).then((response) => response.ok, () => false), {
-      timeout: 15_000,
-    })
-    .toBe(true);
+  await viteReady(vite, port);
   const folder = join(dir, "my-folder");
   mkdirSync(folder);
   const repo = join(dir, "my-repo");
@@ -200,29 +218,50 @@ export async function startService(
       const text = await response.text();
       return (text ? JSON.parse(text) : undefined) as T;
     },
-    stop() {
+    async stop() {
+      const gone = [service, vite].filter((child) => child.exitCode === null).map((child) => once(child, "exit"));
       service.kill();
       vite.kill();
-      rmSync(dir, { recursive: true, force: true });
+      await Promise.all(gone);
+      // An engine or preview the service just stopped can still be closing its files.
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     },
   };
 }
 
-/** A signed-in workspace on one trusted repository, for specs that start from a thread. */
-export async function startProject(port: number, options: ServiceOptions = {}) {
-  const service = await startService(port, options);
-  await service.api("POST", "/api/workspace/setup", {});
+/** The service provisions its own library; this only covers one that hasn't. */
+export async function libraryReady(service: Service) {
+  // A service starts on an empty library here, with no bundle and offline.
+  const { library } = await service.api<{ library?: { snapshot?: boolean } }>("GET", "/api/workspace");
+  if (library?.snapshot) await service.api("POST", "/api/workspace/setup", {});
+}
+
+/** A running service with one trusted repository, for specs that start from a thread. */
+export async function startProject(options: ServiceOptions = {}) {
+  const service = await startService(options);
+  await libraryReady(service);
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });
   await service.api("POST", `/api/projects/${project.id}/trust`);
   const engines = await service.api<{ id: string; name: string }[]>("GET", "/api/engines");
   return { service, projectId: project.id, engines };
 }
 
-/** Sends from the composer and waits for the prompt to be taken. */
+/**
+ * Sends from the composer and waits for the service to take the prompt. Until then
+ * the thread still reads as idle, so `settled` would pass before the run began.
+ * A slash command stays in the client.
+ */
 export async function send(page: Page, text: string) {
   const box = page.getByRole("textbox", { name: /^Message/ });
   await box.fill(text);
+  const taken = text.startsWith("/")
+    ? null
+    : page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" && /\/api\/threads\/[^/]+\/(runs|queue|steer)$/.test(new URL(response.url()).pathname),
+      );
   await box.press("Enter");
+  await taken;
 }
 
 export const threadIdOf = (page: Page) => decodeURIComponent(page.url().split("/threads/")[1] ?? "");

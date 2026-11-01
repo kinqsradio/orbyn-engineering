@@ -555,10 +555,41 @@ Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
 ## Workspace
 
-There is one managed workspace: a clone of the skills library at `<data>/workspace`
-(`--workspace-url`, `ORBYN_WORKSPACE_URL`), cloned with `core.symlinks=true`, or an
-existing checkout the user adopts in place and which is never moved. Engines and
-projects wait for this step (`409 workspace_required`).
+The skills library is the product's built-in harness, so nobody sets it up. There is
+one managed workspace at `<data>/workspace`, or an existing checkout the user adopts in
+place, which is never moved. Startup puts the library there before the service answers
+anything, so no route waits on it and a run never does.
+
+The app ships a snapshot: `build/library/library.tar`, a `git archive` of the revision in
+`scripts/library.lock`, MIT, with its `LICENSE` inside and beside it, passed as
+`--library-bundle`. First launch unpacks it, needing no network and no Git, into a staging
+folder, makes one local commit so that it is a Git root like any other library, and
+renames the folder into place, so `<data>/workspace` is whole or absent. A link becomes the
+text file Git would leave where the OS refuses one, and status then reports the MCP route.
+An entry or link leading out refuses the bundle. With no bundle, as with a bare `orbynd`,
+the library starts empty and the clone brings the skills. With no Git it stays a plain
+folder, and reports the bundled revision.
+
+In the background, about five seconds after startup and then with gaps doubling up to six
+hours, a clone of the URL (`--workspace-url`, `ORBYN_WORKSPACE_URL`) with
+`core.symlinks=true` is made in a staging folder and checked. Failures are quiet and keep
+the snapshot. Finished, it waits for a moment with no run, then swaps by rename under the
+admission lock, so a run arriving then waits for those few renames: the old library moves
+aside, the clone moves in, `repo/` moves across and the old folder goes. A library with
+local edits, or anything ignored beside `repo/`, is left as it is and shown as dirty.
+Startup finishes or undoes a swap a crash interrupted, by what it finds: an old folder with
+no library goes back, one with a library hands over its `repo/`. Other staging folders are
+removed, and anything unusable found at `<data>/workspace` with no record of it is set
+aside as `.workspace-broken-<id>`, not deleted. This runs under
+`background_update_checks`, and `ORBYN_OFFLINE` stops it. Asking the update center to check
+tries at once, whatever the setting. Updates work only once it is a clone, through the
+update center as below.
+
+Adopting is an optional setting. `POST /api/workspace/setup` with `adopt_path` switches to
+an existing library at any time no run is active, and data folders that adopted one or
+cloned one before all this keep it. `url`, or an empty body, asks for the clone now and
+reports why it failed. The app opens on the draft flow, shows one calm line in the rare
+case `configured` is false, and keeps library choices in Settings.
 
 ```text
 <workspace>/                 library Git root; engines start here
@@ -868,11 +899,11 @@ did not complete, and 2 when no service is running. `--json` prints the API's an
 
 ## Service configuration
 
-`orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--workspace-url`,
-`--update-manifest`, `--remote`,
+`orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`,
+`--workspace-url`, `--update-manifest`, `--remote`,
 `--tls-terminated`, `--allowed-host` and `--parent-stdin`, and prints one JSON line
 `{url, token}` on stdout once it can serve. `--skills-dir` is accepted and ignored
-for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
+for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBYN_LIBRARY_BUNDLE`, `ORBYN_WORKSPACE_URL`, `ORBYN_UPDATE_MANIFEST`, `ORBYN_CLAUDE_BIN`, `ORBYN_CODEX_BIN`, `ORBYN_CODEX_SANDBOX` (default
 `workspace-write`), `ORBYN_APPROVAL_TIMEOUT_SECS` (default 1800),
 `ORBYN_AGENT_DESKTOP`, `ORBYN_BROWSER`, `ORBYN_BROWSER_HEADLESS`,
 `ORBYN_BROWSER_IN_PROCESS_GPU`, `ORBYN_OFFLINE`
@@ -888,9 +919,11 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | --- | --- |
 | `GET /api/info` | `ServerInfo` |
 | `GET /api/workspace` | `WorkspaceStatus` |
-| `POST /api/workspace/setup` | Clone or adopt the library (`WorkspaceSetup`) |
+| `POST /api/workspace/setup` | Optional. `WorkspaceSetup`: adopt a library, or ask for the clone now; `409 runs_active`, `409 library_dirty` |
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |
 | `POST /api/workspace/rollback` | Back to the revision before the last update |
+| `GET /api/projects/:id/pulls/:number/revisions`, `GET /api/projects/:id/commits/:sha/files` | A pull request's commits, oldest first, and what one commit changed |
+| `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |

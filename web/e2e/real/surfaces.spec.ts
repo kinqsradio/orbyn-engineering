@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { startProject, type Service } from "./service";
 
 /** Diff and file surfaces reading a real checkout through the real service. */
-const PORT = 5282;
 
 let service: Service;
 let projectId = "";
@@ -15,7 +14,7 @@ const git = (...args: string[]) => execFileSync("git", args, { cwd: service.repo
 const write = (name: string, text: string) => writeFileSync(join(service.repo, name), text);
 
 test.beforeAll(async () => {
-  const started = await startProject(PORT, { fakeEngines: true });
+  const started = await startProject({ fakeEngines: true });
   service = started.service;
   projectId = started.projectId;
   mkdirSync(join(service.repo, "tests"));

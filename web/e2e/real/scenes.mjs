@@ -102,6 +102,7 @@ export const scenes = {
 
 ${Array.from({ length: 30 }, (_, at) => `- Step ${at + 1}`).join("\n")}
 </proposed_plan>`),
+  commitlink: [{ headLink: (href) => message("c1", `Landed in [this commit](${href}).`) }],
   usage: [
     { method: "thread/tokenUsage/updated", params: { tokenUsage: { total: { totalTokens: 600 }, last: { totalTokens: 20 }, modelContextWindow: 1000 } } },
     ...message("us", "Counted."),

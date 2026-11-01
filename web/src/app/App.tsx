@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiFailure, api, setUnauthorizedHandler } from "../api/client";
 import { followShell, readShellStatus } from "../api/shell";
 import { SignIn } from "../features/onboarding/SignIn";
-import { WorkspaceGate } from "../features/onboarding/WorkspaceSetup";
 import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
@@ -46,7 +45,6 @@ export function App() {
     return start();
   }, [start]);
 
-  // Above the workspace gate: a first run still has a window for the shell to reach.
   const ready = boot.state === "ready";
   useEffect(() => {
     if (!ready) return;
@@ -70,10 +68,6 @@ export function App() {
         </main>
       );
     case "ready":
-      return (
-        <WorkspaceGate>
-          <Shell />
-        </WorkspaceGate>
-      );
+      return <Shell />;
   }
 }

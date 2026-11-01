@@ -10,6 +10,7 @@ import { navigate } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
+import { SkillsNotice } from "./SkillsNotice";
 import { NoProjects } from "./NoProjects";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { IconButton } from "../../ui/controls";
@@ -109,6 +110,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const putThread = useWorkspace((state) => state.putThread);
   const threads = useThreadList();
   const targets = useWorkspace((state) => state.managed.data?.targets);
+  const sendShortcut = useUi((state) => state.sendShortcut);
   const addPrompt = useThreadLogs((state) => state.addPrompt);
   const field = useRef<HTMLTextAreaElement>(null);
   const [chosenProject, setChosenProject] = useState(projectId);
@@ -369,6 +371,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                   </button>
                 )}
               </p>
+              <SkillsNotice />
             </div>
             <form
               className="composer"
@@ -410,9 +413,12 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-                      // With a modifier the shell's rules decide, which start in the background.
-                      if (event.metaKey || event.ctrlKey) return;
+                      const enterSends = sendShortcut === "enter" || (sendShortcut === "mod-enter-multiline" && !prompt.includes("\n"));
+                      const mod = event.metaKey || event.ctrlKey;
+                      // Where Enter sends, a modifier is the shell's rule to start in the background.
+                      if (enterSends ? mod : !mod) return;
                       event.preventDefault();
+                      event.stopPropagation();
                       void send();
                     }}
                   />

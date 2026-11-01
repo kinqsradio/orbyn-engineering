@@ -232,6 +232,9 @@ interface UiState extends Prefs {
   revealPull(number: number | null): void;
   /** A file the Diff surface should scroll to. */
   diffReveal: { path: string; nonce: number } | null;
+  /** A commit the Diff surface should show next. */
+  commitReveal: { sha: string; nonce: number } | null;
+  revealCommit(sha: string): void;
   revealDiff(path: string): void;
   togglePanel(tab: ContextTab): void;
   /** A page floating over the chat, if any. */
@@ -412,6 +415,16 @@ export const useUi = create<UiState>((set, get) => {
       });
     },
     diffReveal: null,
+    commitReveal: null,
+    revealCommit(sha) {
+      const { openSurfaces } = get();
+      set({
+        commitReveal: { sha, nonce: Date.now() },
+        panelOpen: true,
+        panelTab: "diff",
+        openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
+      });
+    },
     revealDiff(path) {
       const { openSurfaces } = get();
       set({

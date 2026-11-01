@@ -28,7 +28,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Sidebar | Working status | Live: spinner, blue "Working Ns" | Match | Spin 1000 ms |
 | Sidebar | Approval status | Live: warn "Approval" | Match, Real | Dot, not their icon |
 | Sidebar | Limited and Question | Source: request states on the row | Limited, Question, Real | Own label for a question |
-| Sidebar | Woke | Source: dismissible badge after an early wake | Match, Real | Badge text only, no icon |
+| Sidebar | Woke | Source: dismissible badge after an early wake | Match, Real | Own icon |
 | Sidebar | Draft row | Source: unsent marker, discard, undo with attachments | Match, Real | One draft at a time, not one per project |
 | Timeline | Limit stop | Source: Limited, Resume, Resume at reset, Snooze until reset | Banner above the composer, Real | Layout own |
 | Sidebar | Multi-line rows | Live: selected row, three lines | Built | Unread title weight unobserved |
@@ -54,7 +54,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Timeline | Command output | Live: highlighted command, italic No output; source: follows while near the end, 320 max | Match, Real, ANSI colour, exit code, failed mark | Earlier output not shown notice absent, no truncation signal |
 | Timeline | Item inspector | Source: inside the expanded row | Inspect item, dialog of the raw record, Real | Field layout own |
 | Timeline | Rich Markdown | Source: math opt-in, Mermaid, file, thread and external links, details, table copy | Match, Real | Thread links use orbyn://thread/id; images remote only, no local media route |
-| Timeline | Proposed plan | Source: Plan badge, clip over 900 chars or 20 lines, menu, Save to workspace, Plan ready banner | Match, Real via a proposed_plan tag | The driver has no plan item, so Claude plan mode is not carded |
+| Timeline | Proposed plan | Source: Plan badge, clip over 900 chars or 20 lines, menu, Save to workspace, Plan ready banner | Match, Real via a proposed_plan tag | Claude plan mode cards through ExitPlanMode |
 | Timeline | Minimap | Live and source: tick per prompt, 8 spacing, min(natural, 100vh - 18rem) | Match, Real | Wheel passthrough absent |
 | Timeline | Error banner | Source: end-of-thread failure, dismiss for the session | Match, Real, with Retry | Inline notice stays for history |
 | Timeline | Changed files | Source: per-turn tree with open diff | Flat list, Real, opens and scrolls to the file | Flat, not a tree |
@@ -105,7 +105,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Layout | Side chat | Source: /side, /btw, + menu, tab with own composer, Bring back, Delete, listed in details | Match, Real | Launcher instead of the + menu; one open at a time |
 | Layout | Motion | Live: panel duration setting, 0 by default | Match | Restoring a thread does not animate at 0 |
 | Pull requests | List page | Live: search, Sort, Filters, All, refresh, empty state wording | Match, Real on a stand-in gh: author, label, draft, review, checks, quick actions, bulk close | Filters are one menu, not groups |
-| Pull requests | Detail | Source: Summary, Timeline, Code | Real on a stand-in gh: title, description, base, reviewers, labels, checks, comments, threads, reactions, viewed marks, line review, merge, draft, branch actions, stack, checkout | Guide absent; no revision picker on Code |
+| Pull requests | Detail | Source: Summary, Timeline, Code | Real on a stand-in gh: title, description, base, reviewers, labels, checks, comments, threads, reactions, viewed marks, line review, merge, draft, branch actions, stack, checkout | Guide absent; Code picks a commit from a select |
 | Pull requests | Linked panel | Source: multiple, stacks, unlink | Link, unlink, watch, Real on a stand-in gh | Layout own |
 | Git | Actions | Source: split control with commit, push, pull request and their combinations, phases | Git menu in the header, dialog, phase list, Real against real Git and a stand-in gh | Menu, not a split button; no generated commit message |
 | Git | Branches | Source: picker, search, create | Dialog from the branch row, Real | Dialog, not a popover |
@@ -115,6 +115,10 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Files | Previews | Source: Markdown, delimited, Mermaid, notebook, sandboxed HTML | Match, Real; HTML frame has an empty sandbox | Virtualisation replaced by a 2000 row cap |
 | Palette | Go to file, Search in project | Source | Match, Real | Open from a thread only |
 | Palette | Messages | Source: all words, opens at the message | Messages group, Real, scrolls to the row or the fold that holds it | Word highlights not drawn |
+| Browser | Keys | Source: refresh, focus URL, zoom | Match, Real | 0 |
+| Terminal | Links | Source: addresses open in preview | Follows the Chat link setting, Real | Own address pattern |
+| Add project | Clone status | Source: toast with retry and cancel | Card with Cancel, Retry, Dismiss, Real | Lost on reload; no progress |
+| Maintenance | Diagnostics | Source: processes, signals, traces, resource history | Service tree with Stop, peak memory, recent warnings, Real | Line of text, not a chart; warnings, not spans |
 | Browser | Surface | Source: tabs, address, search engines, start page, control | Tabs, address, back, forward from the page's history, reload, control, record, start page, the page follows the panel's size, Real on headless shell | No zoom, devices or profiles |
 | Diff | Sources | Source: turn, thread, branch, commits | All five, Real | Picker is a select |
 | Diff | Restore a file | Source | Per-file in Turn, Real, reports a later edit instead of overwriting it | Latest turn only |
@@ -136,7 +140,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Settings | Projects | Live name | Library and projects, Real | Layout own |
 | Settings | Maintenance | Live name | Update checks, retention rules with preview and report, OTLP addresses with a test, Real | Contents unobserved; the 1 GiB notice ran on the real answer with one field raised |
 | Settings | Project settings | Source: per-project defaults | Dialog from each project, Real | Layout own; rows follow the service's project-scoped keys |
-| First run | Setup, create, trust, draft send | n/a, required by Orbyn | Passed, Real | Synthetic data |
+| First run | Opens on the draft flow, add project, trust, draft send | Source: no setup step | Passed, Real; a calm line if skills are unavailable, library choices in Maintenance | Synthetic data |
 | Removed | Audit section | Not in reference | Removed with its mock data | n/a |
 | Removed | Policy section | Not in reference | Removed with its mock data | n/a |
 | Removed | Computer section | Not in reference | Removed with its mock data | n/a |

@@ -5,7 +5,6 @@ import { join, resolve } from "node:path";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Smaller flows that cross the UI and the service: presets, servers, scripts, editors, stops. */
-const PORT = 5290;
 const FAKE = resolve(import.meta.dirname, "../../../target/debug/orbyn-fake-engine");
 
 let service: Service;
@@ -25,7 +24,7 @@ const thread = (title: string, extra: object = {}) =>
 const row = (page: Page, title: string) => page.locator("li[data-thread-item]").filter({ hasText: title });
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true, forge: true }));
+  ({ service, projectId } = await startProject({ fakeEngines: true, forge: true }));
   engine = (await service.api<{ id: string }[]>("GET", "/api/engines")).find((entry) => entry.id === "codex")?.id ?? "";
 });
 test.afterAll(() => service.stop());

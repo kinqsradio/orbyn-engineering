@@ -235,6 +235,12 @@ export function DiffPanel({ threadId }: { threadId: string }) {
     source === "commit" ? api.commits(threadId, signal) : Promise.resolve([]),
   );
   const [picked, setPicked] = useState<string | null>(null);
+  const commitReveal = useUi((state) => state.commitReveal);
+  useEffect(() => {
+    if (!commitReveal) return;
+    setSource("commit");
+    setPicked(commitReveal.sha);
+  }, [commitReveal]);
   const sha = picked ?? commits.data?.[0]?.sha ?? null;
   const base = useWorkspace((state) => state.threads[threadId]?.worktree?.base ?? "main");
   const scope =

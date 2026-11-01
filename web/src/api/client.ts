@@ -217,6 +217,8 @@ export const api = {
   addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
   clones: (signal?: AbortSignal) => request<CloneJob[]>("GET", "/api/clones", undefined, signal),
   startClone: (url: string) => request<CloneJob>("POST", "/api/clones", { url }),
+  cancelClone: (id: string) => request<void>("POST", `/api/clones/${q(id)}/cancel`),
+  retryClone: (id: string) => request<CloneJob>("POST", `/api/clones/${q(id)}/retry`),
   removeProject: (id: string, confirm: boolean) =>
     request<ProjectRemoval>("DELETE", `/api/projects/${q(id)}${confirm ? "?confirm=true" : ""}`),
 
