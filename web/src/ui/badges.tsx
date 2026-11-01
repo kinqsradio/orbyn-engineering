@@ -1,10 +1,14 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useWorkspace } from "../state/workspace";
 import type { Project } from "../api/types";
 import { projectImageKey, readProjectImage, rejectProjectImage, subscribeProjectImage } from "../lib/projectImages";
 import { deriveProjectIdentity } from "../lib/projectIdentity";
 
 export function ProjectBadge({ name, project }: { name: string; project?: Project }) {
-  const eligible = project && !project.scratch ? project : undefined;
+  // Registration may arrive before workspace metadata identifies the protected
+  // library. Keep automatic identity until its canonical path is known.
+  const libraryPath = useWorkspace((state) => state.managed.data?.library?.path);
+  const eligible = libraryPath && project && !project.scratch && project.path !== libraryPath ? project : undefined;
   const id = eligible?.id;
   const path = eligible?.path;
   const key = eligible ? projectImageKey(eligible) : null;

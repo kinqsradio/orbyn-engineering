@@ -89,24 +89,6 @@ export function elapsed(fromIso: string, toMs: number): string {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
-/** Up to two letters for a project or engine badge, from its words. */
-export function monogram(name: string): string {
-  const words = name.split(/[\s_-]+/).filter(Boolean);
-  const first = words[0] ?? name;
-  const letters =
-    words.length > 1 ? `${first[0] ?? ""}${words[1]?.[0] ?? ""}` : first.slice(0, 2);
-  return letters.toUpperCase();
-}
-
-const BADGE_TINTS = 6;
-
-/** A stable tint per name, so a project keeps its colour across sessions. */
-export function badgeTint(name: string): number {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0;
-  return hash % BADGE_TINTS;
-}
-
 export function clockTime(iso: string, format: "locale" | "12-hour" | "24-hour" = "locale"): string {
   const date = new Date(iso);
   const hour12 = format === "locale" ? undefined : format === "12-hour";

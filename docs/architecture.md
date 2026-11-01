@@ -652,7 +652,12 @@ outside Git/library paths before and after reading. Config/source metadata reads
 also require the exact fixed relative path, so a symlink cannot turn a known
 metadata filename into a read of another file. Image MIME comes from the checked
 handle's image filename; ICNS supports only bounded embedded PNG extraction.
-The shared badge cache keys service origin, physical ID and registered path,
+Badge image loading waits for the known workspace-library path and excludes that
+protected library and scratch identities. Initial project registration cannot race
+workspace discovery into an unauthorized library-image request. Retained workspace
+metadata remains usable during routine polling; a changed library identity hides
+its prior cached image immediately. The shared badge cache keys service origin,
+physical ID and registered path,
 deduplicates in-flight reads and bounds entries/encoded bytes to 64/8 MiB.
 Successful images expire after ten minutes; misses, errors and decode failures
 retry after one minute. Optional image requests have a 30-second deadline; timeout

@@ -317,24 +317,6 @@ input[type="radio"] {
   font-weight: 700;
   line-height: 1;
 }
-.badge-0 {
-  --tint: var(--tint-0);
-}
-.badge-1 {
-  --tint: var(--tint-1);
-}
-.badge-2 {
-  --tint: var(--tint-2);
-}
-.badge-3 {
-  --tint: var(--tint-3);
-}
-.badge-4 {
-  --tint: var(--tint-4);
-}
-.badge-5 {
-  --tint: var(--tint-5);
-}
 .engine-glyph {
   display: inline-grid;
   place-items: center;
