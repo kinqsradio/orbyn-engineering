@@ -653,6 +653,15 @@ defaults, so new defaults reach them. It allows comments and trailing commas, an
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
+The Worktrees Cleanup form edits the new policy through scoped membership and
+row revisions. Project and checkout selections expose Inherit, Off and Custom;
+Mixed modes require an explicit choice. Project rules display only for Custom;
+the settled-age rule accepts zero and uses an independent on/off switch. Environment edits keep
+project overrides. Numeric conflicts refresh saved policy while preserving the
+person's draft for explicit retry, and late responses stay with their original
+scope. Unsupported cleanup rules are not exposed; inactive, merged, deleted and
+unchanged-worktree cleanup and automatic scheduling remain unimplemented.
+
 The Maintenance artifacts/log retention controls and Delete now action are visible
 only for the local environment. Their scoped snapshot supplies the membership and
 preference revision for each single-field update: enabling a rule stores eight days,
