@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { ProjectSettingsSelection } from "../generated/ProjectSettingsSelection";
 
 export const SETTINGS_SECTIONS = [
   "general",
@@ -24,7 +25,7 @@ export type Route =
   | { name: "thread"; id: string }
   | { name: "new"; projectId: string | null }
   | { name: "trust"; projectId: string; threadId: string | null }
-  | { name: "settings"; section: SettingsSection | null }
+  | { name: "settings"; section: SettingsSection | null; selection?: ProjectSettingsSelection; machine?: string }
   | { name: "usage" }
   | { name: "pulls" };
 
@@ -44,13 +45,23 @@ export function routeHref(route: Route): string {
       return "#/usage";
     case "pulls":
       return "#/pulls";
-    case "settings":
-      return route.section ? `#/settings/${route.section}` : "#/settings";
+    case "settings": {
+      const path = route.section ? `#/settings/${route.section}` : "#/settings";
+      const params = new URLSearchParams();
+      if (route.machine !== undefined) params.set("machine", route.machine);
+      if (route.selection?.kind === "project_group" || route.selection?.kind === "checkout") params.set("project", route.selection.group_key);
+      if (route.selection?.kind === "checkout") params.set("checkout", route.selection.project_id);
+      return params.size ? `${path}?${params}` : path;
+    }
   }
 }
 
 export function parseRoute(hash: string): Route {
-  const parts = hash
+  const separator = hash.indexOf("?");
+  const path = separator < 0 ? hash : hash.slice(0, separator);
+  const search = separator < 0 ? "" : hash.slice(separator + 1);
+  const params = new URLSearchParams(search);
+  const parts = path
     .replace(/^#\/?/, "")
     .split("/")
     .filter(Boolean)
@@ -73,18 +84,28 @@ export function parseRoute(hash: string): Route {
       return { name: "usage" };
     case "pulls":
       return { name: "pulls" };
-    case "settings":
+    case "settings": {
+      // Presence matters: stale and empty IDs remain explicit instead of widening scope.
+      const selection: ProjectSettingsSelection | undefined = params.has("checkout")
+        ? { kind: "checkout", group_key: params.get("project") ?? "", project_id: params.get("checkout") ?? "" }
+        : params.has("project") ? { kind: "project_group", group_key: params.get("project") ?? "" } : undefined;
       return {
         name: "settings",
         section: SETTINGS_SECTIONS.find((section) => section === first) ?? null,
+        ...(selection ? { selection } : {}),
+        ...(params.has("machine") ? { machine: params.get("machine") ?? "" } : {}),
       };
+    }
     default:
       return { name: "home" };
   }
 }
 
 export function navigate(route: Route): void {
-  window.location.hash = routeHref(route).slice(1);
+  const current = parseRoute(window.location.hash);
+  const next = route.name === "settings" && !("selection" in route) && current.name === "settings"
+    ? { ...route, selection: current.selection, machine: current.machine } : route;
+  window.location.hash = routeHref(next).slice(1);
 }
 
 const subscribe = (notify: () => void) => {

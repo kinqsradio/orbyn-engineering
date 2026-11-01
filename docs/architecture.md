@@ -407,6 +407,15 @@ title generation, merge settling and idle settling use the same project resolver
 `/api/info` supplies
 the local host display name for the fixed local environment label; it performs no
 remote lookup and adds no selectable remote environment.
+The local UI preserves project/checkout IDs across settings sections and exact-row
+search. Device-only sections intentionally edit this computer's defaults. Preference
+rows and thread lifecycle/title controls use scoped reads and revision-fenced edits;
+Mixed controls do not save an untouched empty value. Provenance displays actual
+project, environment, file and default layers. Reset all deletes only the explicit
+listed project overrides. Each write stays attached to the scope that supplied its
+revision, including when navigation changes before it finishes. Custom provider,
+storage and observability forms are not yet migrated to this context; their parity
+claims remain partial until those bindings and native walkthroughs are verified.
 
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An

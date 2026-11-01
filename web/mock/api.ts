@@ -1,3 +1,8 @@
+import type { ProjectScopesQuery } from "../src/generated/ProjectScopesQuery.ts";
+import type { ProjectScopeCatalog } from "../src/generated/ProjectScopeCatalog.ts";
+import type { ScopedPreferencesResult } from "../src/generated/ScopedPreferencesResult.ts";
+import type { ScopedPreferencesChange } from "../src/generated/ScopedPreferencesChange.ts";
+import type { JsonValue } from "../src/api/types.ts";
 /**
  * createMockApi: an in-memory service with the architecture's HTTP contract.
  * The dev-server plugin and the tests both drive it through `handle`.
@@ -65,6 +70,9 @@ export function createMockApi(options: MockOptions = {}) {
   let clones: unknown[] = [];
   let delayMs = 0;
   let idCounter = 0;
+  let preferenceValues: Record<string, JsonValue> = {};
+  let preferenceOverrides: Record<string, Record<string, JsonValue>> = {};
+  const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat" };
   const subscribers = new Map<string, Set<Subscriber>>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
@@ -76,6 +84,8 @@ export function createMockApi(options: MockOptions = {}) {
     scenario = next;
     signedIn = false;
     idCounter = 0;
+    preferenceValues = {};
+    preferenceOverrides = {};
     failures = [];
     clones = [];
     delayMs = 0;
@@ -322,6 +332,44 @@ export function createMockApi(options: MockOptions = {}) {
     return project;
   }
 
+  function scopeCatalog(scope: ProjectScopesQuery): ProjectScopeCatalog {
+    const groups = projects.filter((project) => !project.scratch && project.path !== managed.library?.path).map((project) => ({
+      key: `mock:${project.id}`, label: project.name, members: [{
+        project_id: project.id, physical_key: `mock-physical:${project.id}`, name: project.name, path: project.path,
+        repository_key: null, repository_label: null, repository_relative_path: "", grouping_mode: "separate" as const,
+        metadata_complete: true, unavailable: null,
+      }],
+    }));
+    const selection = scope.selection;
+    const selected = selection && selection.kind !== "all_projects" ? groups.find((group) => group.key === selection.group_key) : undefined;
+    const resolved: ProjectScopeCatalog["selection"] = !selection || selection.kind === "all_projects" ? { kind: "all_projects" }
+      : !selected ? { kind: "unavailable", reason: "project_missing" }
+      : selection.kind === "checkout" ? selected.members.some((member) => member.project_id === selection.project_id)
+        ? selection : { kind: "unavailable", reason: "checkout_missing" }
+      : { kind: "project_group", group_key: selected.key, project_ids: selected.members.map((member) => member.project_id) };
+    return { version: JSON.stringify(groups), groups, metadata_complete: true, selection: resolved };
+  }
+
+  function scopedPreferences(scope: ProjectScopesQuery, keys: string[]): ScopedPreferencesResult {
+    const catalog = scopeCatalog(scope);
+    const selected = catalog.selection;
+    const ids = selected.kind === "project_group" ? selected.project_ids : selected.kind === "checkout" ? [selected.project_id] : [];
+    return { catalog, rows: keys.filter((key) => Object.hasOwn(preferenceDefaults, key)).map((key) => {
+      const fallback = preferenceDefaults[key] ?? null;
+      const environment = { key, value: preferenceValues[key] ?? fallback, default: fallback,
+        source: Object.hasOwn(preferenceValues, key) ? "global" : "default", project_scoped: true };
+      const members = ids.map((id) => ({ project_id: id, name: projects.find((project) => project.id === id)?.name ?? id,
+        view: { ...environment, value: preferenceOverrides[id]?.[key] ?? environment.value,
+          source: Object.hasOwn(preferenceOverrides[id] ?? {}, key) ? "project" : environment.source } }));
+      const value = members[0]?.view.value ?? environment.value;
+      return { key, value, mixed: members.some((member) => JSON.stringify(member.view.value) !== JSON.stringify(value)),
+        default: fallback, project_scoped: true, revision: JSON.stringify([environment, members]), environment, members,
+        overrides: projects.filter((project) => Object.hasOwn(preferenceOverrides[project.id] ?? {}, key)).map((project) => ({
+          project_id: project.id, name: project.name, value: preferenceOverrides[project.id]?.[key] ?? null,
+        })) };
+    }) };
+  }
+
   function route(method: string, path: string, query: URLSearchParams, body: unknown): MockResponse {
     const seg = path.split("/").filter(Boolean).map(decodeURIComponent);
     const key = `${method} /${seg.slice(0, 2).join("/")}`;
@@ -347,9 +395,40 @@ export function createMockApi(options: MockOptions = {}) {
         break;
       case "GET /api/preferences":
         return { status: 200, body: [{ key: "default_thread_env_mode", value: "local", default: "local", source: "default", project_scoped: true }] };
+      case "POST /api/settings":
+        if (seg[2] === "project-scopes") return { status: 200, body: scopeCatalog(data as ProjectScopesQuery) };
+        if (seg[2] === "preferences" && seg[3] === "query") {
+          if (!data.scope) return err(400, "invalid_input", "Choose a settings scope.");
+          const result = scopedPreferences(data.scope as ProjectScopesQuery, (data.keys ?? []) as string[]);
+          return result.catalog.selection.kind === "unavailable"
+            ? err(409, "settings_scope_unavailable", "Choose an available scope.")
+            : { status: 200, body: result };
+        }
+        break;
       case "GET /api/settings":
         return { status: 200, body: settings };
       case "PUT /api/settings":
+        if (seg[2] === "preferences") {
+          const change = data as unknown as ScopedPreferencesChange;
+          const before = scopedPreferences(change.scope, Object.keys(change.edits));
+          if (before.catalog.selection.kind === "unavailable") return err(409, "settings_scope_unavailable", "Choose an available scope.");
+          if (change.membership_version !== before.catalog.version || before.rows.some((row) => change.if_match[row.key] !== row.revision)) {
+            return err(409, "settings_conflict", "Settings changed. Reload before saving.");
+          }
+          for (const row of before.rows) {
+            const edit = change.edits[row.key];
+            if (!edit) continue;
+            const targets = before.catalog.selection.kind === "all_projects" ? [null] : row.members.map((member) => member.project_id);
+            if (edit.op === "reset_overrides") {
+              for (const id of edit.project_ids) delete preferenceOverrides[id]?.[row.key];
+            } else for (const id of targets) {
+              const values = id === null ? preferenceValues : (preferenceOverrides[id] ??= {});
+              if (edit.op === "set") values[row.key] = edit.value;
+              else delete values[row.key];
+            }
+          }
+          return { status: 200, body: scopedPreferences(change.scope, Object.keys(change.edits)) };
+        }
         settings = data as ServerSettings;
         return { status: 200, body: settings };
       case "GET /api/workspace":

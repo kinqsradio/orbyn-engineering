@@ -203,6 +203,23 @@
   padding: 0;
   min-width: 0;
 }
+.setting-overrides {
+  margin-top: 8px;
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+}
+.setting-overrides summary {
+  cursor: pointer;
+}
+.setting-overrides > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.setting-line-control:has(> .setting-overrides) {
+  display: block;
+}
 .setting-inheritance-popup {
   position: fixed;
   z-index: 100;

@@ -9,6 +9,7 @@ import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { PreferenceGroups } from "./PreferenceRows";
+import { useSettingsScope } from "./SettingsScopeContext";
 
 const AFTER_DAYS: { value: number | null; label: string }[] = [
   { value: null, label: "Never" },
@@ -57,7 +58,8 @@ function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: 
 export function ThreadsSection() {
   const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [error, setError] = useState<string | null>(null);
-  const [titles, setTitles] = useState<string | null>(null);
+  const scope = useSettingsScope();
+  const projectScoped = scope?.active && scope.query.selection && scope.query.selection.kind !== "all_projects";
 
   const save = (next: ServerSettings) => {
     setError(null);
@@ -76,53 +78,20 @@ export function ThreadsSection() {
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Threads
       </h1>
-      <SettingGroup title="Auto-settle">
-        <SettingRow title={settingsLabel("threads-settle-idle-threads")} description="Move finished threads into Settled after a quiet period.">
-          <select
-            aria-label="Settle idle threads"
-            value={data.auto_settle.after_days ?? ""}
-            onChange={(event) =>
-              save({
-                ...data,
-                auto_settle: {
-                  ...data.auto_settle,
-                  after_days: event.target.value === "" ? null : Number(event.target.value),
-                },
-              })
-            }
-          >
-            {AFTER_DAYS.map((option) => (
-              <option key={option.label} value={option.value ?? ""}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </SettingRow>
-        <SettingRow title={settingsLabel("threads-settle-on-merge")} description="Settle a thread when its pull request merges.">
-          <input
-            type="checkbox"
-            aria-label="Settle on merge"
-            checked={data.auto_settle.on_merge}
-            onChange={(event) =>
-              save({ ...data, auto_settle: { ...data.auto_settle, on_merge: event.target.checked } })
-            }
-          />
-        </SettingRow>
-      </SettingGroup>
-      <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
-      <SettingGroup title="Titles">
-        <SettingRow title={settingsLabel("threads-title-instructions")} description="Guidance used when a thread title is generated.">
-          <textarea
-            aria-label="Title instructions"
-            rows={2}
-            value={titles ?? data.title_instructions ?? ""}
-            onChange={(event) => setTitles(event.target.value)}
-            onBlur={() => {
-              if (titles !== null) save({ ...data, title_instructions: titles.trim() || null });
-            }}
-          />
-        </SettingRow>
-      </SettingGroup>
+      <PreferenceGroups groups={[{ title: "Auto-settle", rows: [
+        { key: "auto_settle_after_days", title: settingsLabel("threads-settle-idle-threads"),
+          description: "Move finished threads into Settled after a quiet period.",
+          options: AFTER_DAYS.map((entry) => ({ value: entry.value === null ? "" : String(entry.value), label: entry.label })),
+          parse: (value) => value === "" ? null : Number(value) },
+        { key: "auto_settle_on_merge", title: settingsLabel("threads-settle-on-merge"),
+          description: "Settle a thread when its pull request merges." },
+      ] }, { title: "Titles", rows: [
+        { key: "project_title_instructions", title: settingsLabel("threads-title-instructions"),
+          description: "Guidance used when a thread title is generated.", multiline: true },
+      ] }]} />
+      <fieldset className="preference-control" disabled={Boolean(projectScoped)}>
+        <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
+      </fieldset>
       <PreferenceGroups
         groups={[
           {

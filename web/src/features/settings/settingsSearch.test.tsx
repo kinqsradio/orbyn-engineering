@@ -23,7 +23,10 @@ it("navigates from an exact result to an asynchronously loaded row inside Advanc
   const user = userEvent.setup();
   vi.mocked(request).mockImplementation(async (_method, path) => {
     if (path === "/api/shell") return { attached: false };
-    if (path === "/api/preferences") return [{ key: "branch_name_prefix", value: "feat", default: "feat", source: "default", project_scoped: true }];
+    if (path === "/api/info") return { version: "1", remote: false, platform: "test", environment_label: "Test computer" };
+    const catalog = { version: "fixture", groups: [], metadata_complete: true, selection: { kind: "all_projects" } };
+    if (path === "/api/settings/project-scopes") return catalog;
+    if (path === "/api/settings/preferences/query") return { catalog, rows: [{ key: "branch_name_prefix", value: "feat", default: "feat", mixed: false, project_scoped: true, revision: "fixture", environment: { key: "branch_name_prefix", value: "feat", default: "feat", source: "default", project_scoped: true }, members: [], overrides: [] }] };
     return [];
   });
   window.location.hash = "#/settings/general";

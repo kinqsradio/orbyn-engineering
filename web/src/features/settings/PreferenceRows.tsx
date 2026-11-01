@@ -6,7 +6,11 @@ import { ErrorState, Loading } from "../../ui/states";
 import { Collapsible } from "../../ui/Collapsible";
 import { Check, ChevronRight, Layers, Undo2 } from "lucide-react";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { IconButton } from "../../ui/controls";
+import { Button, IconButton } from "../../ui/controls";
+import type { ScopedPreferenceMember } from "../../generated/ScopedPreferenceMember";
+import type { ScopedPreferenceOverride } from "../../generated/ScopedPreferenceOverride";
+import { useSettingsScope } from "./SettingsScopeContext";
+import { ScopedRows } from "./ScopedPreferenceRows";
 
 export interface PreferenceRow {
   key: string;
@@ -16,6 +20,8 @@ export interface PreferenceRow {
   inheritance?: boolean;
   /** Value and label, for a fixed choice. */
   options?: { value: string; label: string }[];
+  parse?(value: string): unknown;
+  multiline?: boolean;
   /** For a value none of the plain controls fit. */
   render?(value: unknown, save: (next: unknown) => void): React.ReactNode;
 }
@@ -48,6 +54,11 @@ export function PreferenceGroups({
   /** Reads and writes what this project sets over the global value. */
   projectId?: string;
 }) {
+  const scope = useSettingsScope();
+  if (scope && !projectId) {
+    const query = scope.active ? scope.query : {};
+    return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} />;
+  }
   // Reads, drafts and write callbacks belong to one project for their lifetime.
   return <ScopedPreferenceGroups key={projectId ?? "global"} groups={groups} projectId={projectId} />;
 }
@@ -125,7 +136,7 @@ function ScopedPreferenceGroups({ groups, projectId }: {
                   <select
                     aria-label={row.title}
                     value={String(value ?? "")}
-                    onChange={(event) => save(row.key, event.target.value)}
+                    onChange={(event) => save(row.key, row.parse ? row.parse(event.target.value) : event.target.value)}
                   >
                     {row.options.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -141,6 +152,9 @@ function ScopedPreferenceGroups({ groups, projectId }: {
                     checked={value === true}
                     onChange={(event) => save(row.key, event.target.checked)}
                   />
+                ) : row.multiline ? (
+                  <textarea aria-label={row.title} rows={2} key={String(value ?? "")} defaultValue={String(value ?? "")}
+                    onBlur={(event) => { if (event.target.value !== value) save(row.key, event.target.value); }} />
                 ) : (
                   <input
                     aria-label={row.title}
@@ -164,7 +178,7 @@ function ScopedPreferenceGroups({ groups, projectId }: {
 }
 
 function displayValue(row: PreferenceRow, value: unknown): string {
-  const choice = row.options?.find((option) => option.value === value);
+  const choice = row.options?.find((option) => Object.is(row.parse ? row.parse(option.value) : option.value, value));
   if (choice) return choice.label;
   if (typeof value === "boolean") return value ? "On" : "Off";
   if (value === null || value === undefined) return "Not set";
@@ -175,13 +189,19 @@ function displayValue(row: PreferenceRow, value: unknown): string {
 }
 
 /** A reference-style provenance popover, kept inside the owning modal's top layer. */
-function PreferenceInheritance({ row, view, global }: { row: PreferenceRow; view: PreferenceView; global: PreferenceView }) {
+export function PreferenceInheritance({ row, view, global, members, overrides, mixed, disabled, onResetOverrides, onOpenOverride }: {
+  row: PreferenceRow; view: PreferenceView; global: PreferenceView;
+  members?: ScopedPreferenceMember[]; overrides?: ScopedPreferenceOverride[];
+  mixed?: boolean; disabled?: boolean;
+  onResetOverrides?(ids: string[]): void;
+  onOpenOverride?(id: string): void;
+}) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const summary = view.source === "project" ? "Overridden for this project" : view.source === "file" ? `Inherited from ${view.project_file?.path ?? "project file"}` : "Inherited from environment";
+  const summary = mixed ? "Mixed" : view.source === "project" ? "Overridden for this project" : view.source === "file" ? `Inherited from ${view.project_file?.path ?? "project file"}` : "Inherited from environment";
   useLayoutEffect(() => {
     if (!open || !panel.current) return;
     const element = panel.current;
@@ -207,12 +227,13 @@ function PreferenceInheritance({ row, view, global }: { row: PreferenceRow; view
     document.addEventListener("mousedown", outside);
     return () => document.removeEventListener("mousedown", outside);
   }, [open]);
-  const layers = [
-    { label: "Project", value: view.source === "project" ? displayValue(row, view.value) : "Inherits", active: view.source === "project" },
+  const layersFor = (view: PreferenceView, environmentOnly: boolean) => [
+    ...(!environmentOnly ? [{ label: "Project", value: view.source === "project" ? displayValue(row, view.value) : "Inherits", active: view.source === "project" }] : []),
     { label: "Environment", value: global.source === "global" ? displayValue(row, global.value) : "Inherits", active: view.source === "global" },
     ...(view.project_file ? [{ label: view.project_file.path, value: displayValue(row, view.project_file.value), active: view.source === "file" }] : []),
     { label: "Default", value: displayValue(row, view.default), active: view.source === "default" },
   ];
+  const chains = members ? members.length ? members : [{ project_id: null, name: null, view: global }] : [{ project_id: "project", name: null, view }];
   return (
     <div ref={root} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
@@ -230,14 +251,28 @@ function PreferenceInheritance({ row, view, global }: { row: PreferenceRow; view
       </div>
       {open ? (
         <div ref={panel} id={id} className="setting-inheritance-popup" role="dialog" aria-label={row.title} tabIndex={-1}>
-          <ol>
-            {layers.map((layer) => (
-              <li key={layer.label} aria-current={layer.active || undefined}>
-                <span>{layer.label}</span>
-                <span className="setting-inheritance-value">{layer.value}{layer.active ? <Check size={12} aria-hidden /> : null}</span>
-              </li>
-            ))}
-          </ol>
+          {chains.map((chain) => <section key={chain.project_id ?? "environment"}>
+            {chains.length > 1 ? <p>{chain.name}</p> : null}
+            <ol>
+              {layersFor(chain.view, chain.project_id === null).map((layer) => (
+                <li key={layer.label} aria-current={layer.active || undefined}>
+                  <span>{layer.label}</span>
+                  <span className="setting-inheritance-value">{layer.value}{layer.active ? <Check size={12} aria-hidden /> : null}</span>
+                </li>
+              ))}
+            </ol>
+          </section>)}
+          {overrides?.length ? <div className="setting-overrides">
+            <div><span>Overridden by</span>
+              <Button small tone="quiet" disabled={disabled} onClick={() => onResetOverrides?.(overrides.map((entry) => entry.project_id))}>
+                Reset {overrides.length === 1 ? "it" : "all"}
+              </Button>
+            </div>
+            {overrides.map((override) => <div key={override.project_id}>
+              <Button small tone="quiet" onClick={() => { onOpenOverride?.(override.project_id); setOpen(false); }}>{override.name}</Button>
+              <span>{displayValue(row, override.value)}</span>
+            </div>)}
+          </div> : null}
         </div>
       ) : null}
     </div>

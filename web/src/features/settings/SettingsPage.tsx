@@ -1,9 +1,11 @@
+import { SettingsScopeProvider } from "./SettingsScopeContext";
+import { ScopeSentence } from "./ScopeSentence";
 import { SettingRowIds } from "../../ui/SettingRow";
 import { searchSettings, settingSearchId } from "./settingsSearch";
 import { api } from "../../api/client";
 import { onShellChange } from "../../api/shell";
 import { useAsync } from "../../lib/useAsync";
-import { navigate } from "../../state/route";
+import { navigate, useRoute } from "../../state/route";
 import { Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { routeHref, type SettingsSection } from "../../state/route";
@@ -72,6 +74,12 @@ const views: Record<SettingsSection, () => React.JSX.Element | null> = {
 
 /** Settings float over the workspace, which stays as it was underneath. */
 export function SettingsPage({ section, onClose }: { section: SettingsSection | null; onClose(): void }) {
+  return <SettingsScopeProvider section={section ?? "general"}><SettingsPageContent section={section} onClose={onClose} /></SettingsScopeProvider>;
+}
+
+function SettingsPageContent({ section, onClose }: { section: SettingsSection | null; onClose(): void }) {
+  const route = useRoute();
+  const sectionRoute = (next: SettingsSection) => ({ name: "settings" as const, section: next, selection: route.name === "settings" ? route.selection : undefined, machine: route.name === "settings" ? route.machine : undefined });
   const ref = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState<{ id: string } | null>(null);
@@ -152,9 +160,9 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
           {query.trim() ? (
             <div className="settings-group">
               {results.length || sectionResults.length ? <>
-              {sectionResults.map((section) => <a key={section} onClick={() => setTarget(null)} href={routeHref({ name: "settings", section })}>{labels[section]}</a>)}
+              {sectionResults.map((section) => <a key={section} onClick={() => setTarget(null)} href={routeHref(sectionRoute(section))}>{labels[section]}</a>)}
               {results.map((item) => (
-                <a className="settings-search-result" key={item.id} aria-label={`${item.title} · ${labels[item.section]}`} href={routeHref({ name: "settings", section: item.section })}
+                <a className="settings-search-result" key={item.id} aria-label={`${item.title} · ${labels[item.section]}`} href={routeHref(sectionRoute(item.section))}
                   onClick={(event) => { event.preventDefault(); setTarget({ id: item.id }); navigate({ name: "settings", section: item.section }); }}>
                   <span>{item.title}</span><small>{labels[item.section]}</small>
                 </a>
@@ -167,7 +175,7 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
                 <a
                   key={entry}
                   onClick={() => setTarget(null)}
-                  href={routeHref({ name: "settings", section: entry })}
+                  href={routeHref(sectionRoute(entry))}
                   aria-current={entry === current ? "page" : undefined}
                 >
                   {labels[entry]}
@@ -190,6 +198,7 @@ export function SettingsPage({ section, onClose }: { section: SettingsSection | 
         </header>
         <div className="settings-scroll">
           <div className="settings-body">
+            <ScopeSentence />
             <SettingRowIds.Provider value={(title) => settingSearchId(current, title)}>
               <View key={current} />
             </SettingRowIds.Provider>

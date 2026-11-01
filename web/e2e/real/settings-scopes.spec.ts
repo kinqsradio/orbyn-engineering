@@ -1,0 +1,76 @@
+import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { startService } from "./service";
+import type { ProjectScopeCatalog } from "../../src/generated/ProjectScopeCatalog";
+
+test("logical project settings resolve Mixed and reset explicit overrides through real orbynd", async ({ page }, info) => {
+  const service = await startService();
+  try {
+    await service.api("POST", "/api/workspace/setup", {});
+    const projects: { id: string; path: string }[] = [];
+    for (const name of ["scope-one", "scope-two"]) {
+      const project = await service.api<{ id: string; path: string }>("POST", "/api/projects/create", { name, readme: true });
+      execFileSync("git", ["-C", project.path, "config", "--local", "remote.origin.url", "https://fixture.invalid/Owner/Scoped.git"], { stdio: "ignore" });
+      projects.push(project);
+    }
+    const [one, two] = projects;
+    if (!one || !two) throw new Error("Both fixture projects are required");
+    writeFileSync(join(one.path, "orbyn.json"), '{"defaultThreadEnvMode":"worktree"}\n');
+    await service.api("PUT", `/api/projects/${one.id}/preferences`, { values: { default_thread_env_mode: "worktree", branch_name_prefix: "left" } });
+    await service.api("PUT", `/api/projects/${two.id}/preferences`, { values: { default_thread_env_mode: "local", branch_name_prefix: "right" } });
+    const catalog = await service.api<ProjectScopeCatalog>("POST", "/api/settings/project-scopes", {});
+    const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === one.id));
+    expect(group?.members).toHaveLength(2);
+    const scopeUrl = `${service.page}#/settings/worktrees?project=${encodeURIComponent(group!.key)}`;
+    await page.goto(scopeUrl);
+    const environment = await service.api<{ environment_label: string }>("GET", "/api/info");
+    expect(environment.environment_label.trim()).not.toBe("");
+    await expect(page.getByText(environment.environment_label, { exact: true })).toBeVisible();
+    const checkout = page.getByRole("combobox", { name: "Default checkout", exact: true });
+    await expect(checkout).toHaveValue("__mixed__");
+    await checkout.selectOption("worktree");
+    type Preference = { key: string; value: unknown; source: string };
+    const pref = async (id: string, key: string) => (await service.api<Preference[]>("GET", `/api/preferences?project_id=${id}`)).find((entry) => entry.key === key);
+    await expect.poll(async () => (await pref(two.id, "default_thread_env_mode"))?.value).toBe("worktree");
+    expect((await pref(one.id, "default_thread_env_mode"))?.source).toBe("project");
+    const env = await service.api<Preference[]>("GET", "/api/preferences");
+    expect(env.find((entry) => entry.key === "default_thread_env_mode")?.value).toBe("local");
+    await expect(page.getByRole("button", { name: "Reset Default checkout to default", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Reset Default checkout to default", exact: true }).click();
+    await expect.poll(async () => (await pref(one.id, "default_thread_env_mode"))?.source).toBe("file");
+    await expect(checkout).toHaveValue("__mixed__");
+    expect((await pref(two.id, "default_thread_env_mode"))?.source).toBe("default");
+    await page.getByRole("searchbox", { name: "Search settings" }).fill("Branch prefix");
+    await page.getByRole("link", { name: "Branch prefix · Worktrees", exact: true }).click();
+    expect(page.url()).toContain(`project=${encodeURIComponent(group!.key)}`);
+    const prefix = page.getByRole("textbox", { name: "Branch prefix", exact: true });
+    await expect(prefix).toHaveAttribute("placeholder", "Mixed");
+    await prefix.focus(); await prefix.press("Tab");
+    expect((await pref(one.id, "branch_name_prefix"))?.value).toBe("left");
+    expect((await pref(two.id, "branch_name_prefix"))?.value).toBe("right");
+    await page.screenshot({ path: info.outputPath("mixed-project-settings.png") });
+    await prefix.fill("shared"); await prefix.press("Tab");
+    await expect.poll(async () => (await pref(two.id, "branch_name_prefix"))?.value).toBe("shared");
+    await page.goto(`${scopeUrl}&checkout=${encodeURIComponent(one.id)}`);
+    await page.getByRole("searchbox", { name: "Search settings" }).fill("Branch prefix");
+    await page.getByRole("link", { name: "Branch prefix · Worktrees", exact: true }).click();
+    await expect(prefix).toHaveValue("shared");
+    await prefix.fill("one-only"); await prefix.press("Tab");
+    await expect.poll(async () => (await pref(one.id, "branch_name_prefix"))?.value).toBe("one-only");
+    expect((await pref(two.id, "branch_name_prefix"))?.value).toBe("shared");
+    await page.goto(`${service.page}#/settings/worktrees`);
+    await page.getByRole("button", { name: "Advanced", exact: true }).click();
+    const row = page.locator("#worktrees-branch-prefix");
+    await row.getByRole("button", { name: /Show where this value comes from/ }).click();
+    await expect(row.getByText("Overridden by", { exact: true })).toBeVisible();
+    await row.getByRole("button", { name: "Reset all", exact: true }).click();
+    await expect.poll(async () => (await pref(one.id, "branch_name_prefix"))?.source).toBe("default");
+    expect((await pref(two.id, "branch_name_prefix"))?.source).toBe("default");
+    await page.goto(`${service.page}#/settings/worktrees?project=removed-project`);
+    await expect(page.getByRole("button", { name: "Project scope: Unavailable project", exact: true })).toBeVisible();
+    await expect(checkout).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("unavailable-project-settings.png") });
+  } finally { await service.stop(); }
+});
