@@ -583,8 +583,12 @@ hours, a clone of the URL (`--workspace-url`, `ORBYN_WORKSPACE_URL`) with
 `core.symlinks=true` is made in a staging folder and checked. Failures are quiet and keep
 the snapshot. Finished, it waits for a moment with no run, then swaps by rename under the
 admission lock, so a run arriving then waits for those few renames: the old library moves
-aside, the clone moves in, `repo/` moves across and the old folder goes. A library with
-local edits, or anything ignored beside `repo/`, is left as it is and shown as dirty.
+aside, the clone moves in, `repo/` moves across and the old folder goes.
+Library status and update readers hold an async read guard until their Git children
+finish. The final swap takes the matching write guard before checking for local edits
+and taking the admission lock, and releases it before waiting for active runs.
+A library with local edits, or anything ignored beside `repo/`, is left as it is and
+shown as dirty.
 Startup finishes or undoes a swap a crash interrupted, by what it finds: an old folder with
 no library goes back, one with a library hands over its `repo/`. Other staging folders are
 removed, and anything unusable found at `<data>/workspace` with no record of it is set
