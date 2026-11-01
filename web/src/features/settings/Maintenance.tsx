@@ -1,11 +1,18 @@
 import { settingsLabel } from "./settingsSearch";
-import { useState } from "react";
+import { ChevronRight, Monitor } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { api, request } from "../../api/client";
-import type { CleanupReport, Diagnostics, OtlpResult, PreferenceView } from "../../api/types";
+import type { CleanupReport, Diagnostics, JsonValue, OtlpResult, PreferenceView } from "../../api/types";
 import type { ResourceSample } from "../../generated/ResourceSample";
 import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
+import { useUi } from "../../state/ui";
+import { ErrorState, Loading } from "../../ui/states";
+import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
+import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
+import type { ScopedPreferencesChange } from "../../generated/ScopedPreferencesChange";
+import { useSettingsScope } from "./SettingsScopeContext";
 import { Button } from "../../ui/controls";
 import { LibraryChoice } from "./LibraryChoice";
 import { FallbackNotice, Library } from "./Projects";
@@ -26,53 +33,142 @@ const memoryLine = (history: ResourceSample[]) => {
 const REPAIR_NOTICE_BYTES = 1024 ** 3;
 
 const SIGNALS = [
-  { key: "traces_url", title: settingsLabel("maintenance-traces") },
-  { key: "metrics_url", title: settingsLabel("maintenance-metrics") },
-  { key: "logs_url", title: settingsLabel("maintenance-logs") },
-];
+  { key: "traces_url", title: settingsLabel("maintenance-traces"), signal: "traces" },
+  { key: "metrics_url", title: settingsLabel("maintenance-metrics"), signal: "metrics" },
+  { key: "logs_url", title: settingsLabel("maintenance-logs"), signal: "logs" },
+] as const;
+type SignalKey = typeof SIGNALS[number]["key"];
+type EndpointCheck = { url: string; message: string; pending: boolean };
+const isHttpUrl = (url: string) => /^https?:\/\/./i.test(url);
+
+function TelemetryEnvironmentNotice() {
+  const scope = useSettingsScope();
+  const info = useAsync("telemetry-environment", (signal) => api.info(signal));
+  return <div className="setting-row">
+    <p className="setting-line-desc">Choose one environment to configure its telemetry exports.</p>
+    {info.error ? <ErrorState title="Couldn't load settings" failure={info.error} onRetry={info.reload} compact /> :
+      <Button small tone="quiet" style={{ justifyContent: "space-between" }} disabled={!scope || !info.data} onClick={() => scope?.select(undefined)}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Monitor size={14} aria-hidden />{info.data?.environment_label ?? "Loading…"}</span>
+        <ChevronRight size={14} aria-hidden />
+      </Button>}
+  </div>;
+}
 
 function TelemetryGroup() {
-  const preferences = useAsync("observability", (signal) =>
-    request<PreferenceView[]>("GET", "/api/preferences", undefined, signal),
-  );
-  const [results, setResults] = useState<Record<string, string>>({});
-  const saved = (preferences.data?.find((entry) => entry.key === "observability")?.value ?? {}) as Record<string, string>;
-  if (!preferences.data) return null;
-  const save = (key: string, url: string) => {
-    if ((saved[key] ?? "") === url) return;
-    const next = { ...saved, [key]: url };
-    request<PreferenceView[]>("PUT", "/api/preferences", { values: { observability: next } }).then(
-      preferences.setData,
-      (failure: unknown) => setResults({ ...results, [key]: toFailure(failure).message }),
+  const scope = useSettingsScope();
+  return <SettingGroup title="OpenTelemetry export">
+    {scope?.error ? <ErrorState title="Couldn't load settings" failure={scope.error} onRetry={scope.reload} compact /> :
+      !scope?.catalog && scope?.loading ? <Loading label="Loading settings" rows={3} /> :
+      scope?.catalog?.selection.kind === "all_projects" ?
+        <TelemetryForm key={JSON.stringify(scope.query)} query={scope.query} disabled={scope.loading} /> :
+        <TelemetryEnvironmentNotice />}
+  </SettingGroup>;
+}
+
+function endpointValue(value: JsonValue | undefined, key: SignalKey): string {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return "";
+  const url = value[key];
+  return typeof url === "string" ? url : "";
+}
+
+/** One local environment snapshot owns these drafts and every later response. */
+function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
+  const preferences = useAsync(JSON.stringify(["observability", query]), (signal) =>
+    request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: query, keys: ["observability"] }, signal));
+  const pushToast = useUi((state) => state.pushToast);
+  const [draft, setDraft] = useState<Partial<Record<SignalKey, string>>>({});
+  const [checks, setChecks] = useState<Partial<Record<SignalKey, EndpointCheck>>>({});
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  const checkRequests = useRef(new Map<SignalKey, number>());
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  if (preferences.status === "loading") return <Loading label="Loading settings" rows={3} />;
+  if (preferences.status === "error") return <ErrorState title="Couldn't load settings" failure={preferences.error} onRetry={preferences.reload} compact />;
+  const snapshot = preferences.data;
+  if (snapshot.catalog.selection.kind !== "all_projects") return <TelemetryEnvironmentNotice />;
+  const row = snapshot.rows.find((entry) => entry.key === "observability");
+  if (!row) return null;
+  const saved = (key: SignalKey) => endpointValue(row.value, key);
+  const value = (key: SignalKey) => draft[key] ?? saved(key);
+  const changed = SIGNALS.filter(({ key }) => draft[key] !== undefined && value(key).trim() !== saved(key));
+  const busy = disabled || saving || preferences.refreshing;
+  const save = async () => {
+    if (pending.current || busy || changed.length === 0) return;
+    pending.current = true;
+    setSaving(true);
+    setMessage(null);
+    const patch: Record<string, JsonValue> = {};
+    for (const { key } of changed) patch[key] = value(key).trim();
+    const mutation = {
+      scope: query, membership_version: snapshot.catalog.version,
+      if_match: { observability: row.revision }, edits: { observability: { op: "set", value: patch } },
+    } satisfies ScopedPreferencesChange;
+    try {
+      const next = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", mutation);
+      if (mounted.current) {
+        preferences.setData(next);
+        setDraft({});
+        setMessage("Saved. Restart the server to apply.");
+      }
+    } catch (error) {
+      if (mounted.current) {
+        const failure = toFailure(error);
+        pushToast(failure.message);
+        // Reconcile the read, not the write: the person's draft requires Save again.
+        if (failure.status === 409) preferences.reload();
+      }
+    } finally {
+      pending.current = false;
+      if (mounted.current) setSaving(false);
+    }
+  };
+  const test = (key: SignalKey) => {
+    const url = value(key).trim();
+    if (busy || !isHttpUrl(url)) return;
+    const id = (checkRequests.current.get(key) ?? 0) + 1;
+    checkRequests.current.set(key, id);
+    setChecks((previous) => ({ ...previous, [key]: { url, message: "Checking…", pending: true } }));
+    const finish = (text: string) => {
+      if (mounted.current && checkRequests.current.get(key) === id) {
+        setChecks((previous) => ({ ...previous, [key]: { url, message: text, pending: false } }));
+      }
+    };
+    request<OtlpResult>("POST", "/api/diagnostics/otlp", { url }).then(
+      (result) => finish(result.ok ? `Reached, ${result.status}` : (result.message ?? `The server answered ${result.status}`)),
+      (failure: unknown) => finish(toFailure(failure).message),
     );
   };
-  const test = (key: string) => {
-    request<OtlpResult>("POST", "/api/diagnostics/otlp", { url: saved[key] ?? "" }).then(
-      (result) =>
-        setResults({
-          ...results,
-          [key]: result.ok ? `Reached, ${result.status}` : (result.message ?? `The server answered ${result.status}`),
-        }),
-      (failure: unknown) => setResults({ ...results, [key]: toFailure(failure).message }),
-    );
-  };
-  return (
-    <SettingGroup title="OpenTelemetry export">
-      {SIGNALS.map((signal) => (
-        <SettingRow key={signal.key} title={signal.title} description={results[signal.key] ?? "An OTLP HTTP address."}>
-          <input
-            aria-label={`${signal.title} address`}
-            type="url"
-            defaultValue={saved[signal.key] ?? ""}
-            onBlur={(event) => save(signal.key, event.target.value.trim())}
-          />
-          <Button small disabled={!saved[signal.key]} onClick={() => test(signal.key)}>
-            Test
-          </Button>
-        </SettingRow>
-      ))}
-    </SettingGroup>
-  );
+  return <form aria-label="OpenTelemetry export" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <div className="setting-row"><p className="setting-line-desc">Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply. Environment variables override these settings.</p></div>
+    {SIGNALS.map((signal) => {
+      const url = value(signal.key);
+      const check = checks[signal.key]?.url === url.trim() ? checks[signal.key] : undefined;
+      return <SettingRow key={signal.key} title={signal.title} description={check?.message ?? "An OTLP HTTP address."}>
+        <input aria-label={`${signal.title} endpoint`} type="url" pattern="[Hh][Tt][Tt][Pp][Ss]?://.*"
+          title="Enter an HTTP or HTTPS endpoint, or leave empty to disable export."
+          placeholder={`http://localhost:4318/v1/${signal.signal}`} value={url} disabled={busy}
+          onChange={(event) => {
+            const text = event.target.value;
+            setDraft((previous) => {
+              const next = { ...previous, [signal.key]: text };
+              if (text.trim() === saved(signal.key)) delete next[signal.key];
+              return next;
+            });
+            setMessage(null);
+          }} />
+        <Button small type="button" disabled={busy || !isHttpUrl(url.trim()) || check?.pending === true} onClick={() => test(signal.key)}>Test</Button>
+      </SettingRow>;
+    })}
+    <div className="setting-line">
+      <p className="setting-line-desc" role="status">{message}</p>
+      <div className="form-actions">
+      <Button small type="button" disabled={busy || changed.length === 0} onClick={() => { setDraft({}); setMessage(null); }}>Discard</Button>
+      <Button small type="submit" disabled={busy || changed.length === 0}>{saving ? "Saving…" : "Save"}</Button>
+      </div>
+    </div>
+  </form>;
 }
 
 const RETENTION = [

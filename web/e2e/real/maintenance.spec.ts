@@ -72,20 +72,22 @@ test("a project sets its own defaults and turns a provider off", async ({ page }
 test("an OTLP address saves per signal and its test says what answered", async ({ page }) => {
   const { port } = collector.address() as AddressInfo;
   await page.goto(`${service.page}#/settings/maintenance`);
-  const traces = page.getByLabel("Traces address");
+  const traces = page.getByLabel("Traces endpoint");
   await traces.fill(`http://127.0.0.1:${port}/v1/traces`);
   await traces.blur();
   await expect(page.locator(".setting-line").filter({ hasText: "Traces" }).getByRole("button", { name: "Test" })).toBeEnabled();
   await page.locator(".setting-line").filter({ hasText: "Traces" }).getByRole("button", { name: "Test" }).click();
   await expect(page.getByText("Reached, 200")).toBeVisible();
-  const logs = page.getByLabel("Logs address");
+  const logs = page.getByLabel("Logs endpoint");
   await logs.fill(`http://127.0.0.1:${port}/refuses`);
   await logs.blur();
   await expect(page.locator(".setting-line").filter({ hasText: "Logs" }).getByRole("button", { name: "Test" })).toBeEnabled();
   await page.locator(".setting-line").filter({ hasText: "Logs" }).getByRole("button", { name: "Test" }).click();
   await expect(page.getByText("The server answered 403")).toBeVisible();
+  await page.getByRole("form", { name: "OpenTelemetry export" }).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved. Restart the server to apply.")).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Traces address")).toHaveValue(`http://127.0.0.1:${port}/v1/traces`);
+  await expect(page.getByLabel("Traces endpoint")).toHaveValue(`http://127.0.0.1:${port}/v1/traces`);
 });
 
 test("cleanup previews, removes by its rules and reports what happened", async ({ page }) => {

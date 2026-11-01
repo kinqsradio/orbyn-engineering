@@ -569,9 +569,22 @@ rows and thread lifecycle/title controls use scoped reads and revision-fenced ed
 Mixed controls do not save an untouched empty value. Provenance displays actual
 project, environment, file and default layers. Reset all deletes only the explicit
 listed project overrides. Each write stays attached to the scope that supplied its
-revision, including when navigation changes before it finishes. Custom provider,
-storage and observability forms are not yet migrated to this context; their parity
-claims remain partial until those bindings and native walkthroughs are verified.
+revision, including when navigation changes before it finishes. Custom provider and
+storage forms are not yet migrated to this context; their parity claims remain partial
+until those bindings and native walkthroughs are verified.
+
+OpenTelemetry export is an environment-only form. Project, checkout and unavailable
+selections show the reference's environment choice instead of editable global fields.
+The fixed local environment maps to All projects defaults; selecting it is explicit.
+The form reads an observability snapshot and saves only touched endpoint fields with
+the observed membership version and row revision. Save and Discard own controlled
+drafts; blur never writes. A conflict refreshes the read, keeps drafts and requires
+another explicit Save. Restoring a field removes its draft so a later save cannot
+resend an old value over another client's change. The Core object-patch writer
+preserves unmentioned and unknown telemetry fields. Scope changes dispose the form's
+response owner; a late save cannot clear a new draft or update a different scope.
+Endpoint test results stay attached to their requested URL and generation. These
+bindings qualify local settings behavior, not running export or native parity.
 
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An
