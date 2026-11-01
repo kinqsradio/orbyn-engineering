@@ -1,6 +1,9 @@
 //! Owns the `orbynd` child. Its stdin is the lifetime link: `--parent-stdin`
 //! makes the service exit when this process dies, even after a crash.
 
+mod child_owner;
+
+use child_owner::{StartupGuard, reap_after_grace};
 use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -131,18 +134,28 @@ impl CoreProcess {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             command.creation_flags(CREATE_NO_WINDOW);
         }
-        let mut child = command
+        let child = command
             .spawn()
             .map_err(|error| format!("Cannot start the local service: {error}."))?;
-        let stdin = child.stdin.take().ok_or("The service has no input pipe.")?;
+        let child = Arc::new(std::sync::Mutex::new(child));
+        let stopping = Arc::new(AtomicBool::new(false));
+        // Declared before stdin: every early return closes the parent pipe before
+        // the guard starts bounded cleanup, including timeout and malformed ready.
+        let mut startup = StartupGuard::new(child.clone(), stopping.clone());
+        let stdin = child
+            .lock()
+            .expect("core child")
+            .stdin
+            .take()
+            .ok_or("The service has no input pipe.")?;
         let stdout = child
+            .lock()
+            .expect("core child")
             .stdout
             .take()
             .ok_or("The service has no output pipe.")?;
 
         let (sender, receiver) = std::sync::mpsc::channel();
-        let child = Arc::new(std::sync::Mutex::new(child));
-        let stopping = Arc::new(AtomicBool::new(false));
         let watched = child.clone();
         let stop_flag = stopping.clone();
         let watched_log = log.clone();
@@ -178,6 +191,7 @@ impl CoreProcess {
         let mut app_url = url::Url::parse(&ready.url)
             .map_err(|_| "The local service sent an invalid address.".to_string())?;
         app_url.query_pairs_mut().append_pair("token", &ready.token);
+        startup.disarm();
         Ok(Self {
             stdin: std::sync::Mutex::new(stdin),
             child,
@@ -202,13 +216,7 @@ impl CoreProcess {
     pub fn stop(self) {
         self.stopping.store(true, Ordering::SeqCst);
         drop(self.stdin);
-        let child = self.child;
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(5));
-            if let Ok(mut child) = child.lock() {
-                let _ = child.kill();
-            }
-        });
+        reap_after_grace(self.child);
     }
 }
 

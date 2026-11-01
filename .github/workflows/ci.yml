@@ -120,7 +120,7 @@ jobs:
         working-directory: desktop
       - name: Release script tests
         shell: bash
-        run: node --test scripts/release-evidence.test.mjs
+        run: node --test scripts/release-evidence.test.mjs scripts/smoke-service.test.mjs
       - name: Load the packaged service
         shell: bash
         run: node scripts/smoke-package.mjs

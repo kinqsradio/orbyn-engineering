@@ -595,6 +595,15 @@ aside, the clone moves in, `repo/` moves across and the old folder goes.
 Library status and update readers hold an async read guard until their Git children
 finish. The final swap takes the matching write guard before checking for local edits
 and taking the admission lock, and releases it before waiting for active runs.
+The shared Git command runner owns a process group or Windows job, so cancellation stops
+its descendants; once the leader exits, remaining descendants are stopped before output
+collection ends.
+Parent-stdin EOF and termination handling are registered before initial provisioning.
+A cancelled startup drops its provisioning future, stops owned Git helpers and removes
+its staging directory without publishing readiness or a service handle.
+Service shutdown joins the library-upgrade task and settles cancelled update checks before
+shutting down the core. Package smoke requests shutdown by parent-stdin EOF, awaits exit
+and treats a profile that cannot be removed as a failure.
 A library with local edits, or anything ignored beside `repo/`, is left as it is and
 shown as dirty.
 Startup finishes or undoes a swap a crash interrupted, by what it finds: an old folder with
@@ -761,7 +770,10 @@ never touches `PATH`, and neither replaces nor removes a file the app didn't put
 The service's stderr goes to `orbynd.log` in the app's log folder, new each launch. It is a
 file and not a pipe so the service can still log its own shutdown after the shell dies: a
 write to a dead pipe stops it before it cleans up. When the service stops, the loader
-shows the log's last line with Try again, and threads and runs are kept.
+shows the log's last line with Try again, and threads and runs are kept. Every
+post-spawn startup failure closes the parent pipe and retains child ownership through
+a five-second graceful-exit period, then kills and reaps a service that has not exited.
+Successful readiness transfers that ownership to the running shell.
 
 The desktop job installs the built package and starts it with a private profile and no
 secrets: `scripts/smoke-app.mjs` waits for the UI to connect from the window, checks a
