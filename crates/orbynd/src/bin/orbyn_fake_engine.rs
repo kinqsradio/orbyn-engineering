@@ -64,10 +64,16 @@ fn record_launch(mode: &str, args: &[String]) {
         });
         let mut file = std::fs::OpenOptions::new()
             .create(true)
+            .read(true)
             .append(true)
             .open(path)
             .expect("launch file");
-        writeln!(file, "{entry}").expect("launch write");
+        // Native probes and a run can start together. Formatting into a File
+        // uses several writes, so each whole record needs a process-wide lock.
+        file.lock().expect("launch file lock");
+        let mut record = serde_json::to_vec(&entry).expect("launch JSON");
+        record.push(b'\n');
+        file.write_all(&record).expect("launch write");
     }
 }
 
