@@ -39,7 +39,8 @@
       "binaries/orbyn"
     ],
     "resources": {
-      "../../build/ui": "ui"
+      "../../build/ui": "ui",
+      "../../build/library": "library"
     },
     "icon": [
       "icons/32x32.png",

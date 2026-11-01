@@ -2,13 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** The composer's own behaviour against the real service. */
-const PORT = 5280;
 
 let service: Service;
 let projectId = "";
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true, forge: true }));
+  ({ service, projectId } = await startProject({ scenes: true, forge: true }));
 });
 test.afterAll(() => service.stop());
 
@@ -76,9 +75,11 @@ test("send shortcut modes follow the setting", async ({ page }) => {
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
   await expect(box(page)).toBeFocused();
+  // Settings opened directly close onto a draft, which has to follow the setting too.
+  await expect(page.locator("[data-model-trigger]")).toBeVisible();
   await box(page).fill("one");
   await box(page).press("Enter");
-  await expect(box(page)).not.toHaveValue("");
+  await expect(box(page)).toHaveValue("one\n");
   await box(page).press("ControlOrMeta+Enter");
   await expect(box(page)).toHaveValue("");
   await page.goto(`${service.page}#/settings/chat`);

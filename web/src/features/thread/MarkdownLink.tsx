@@ -1,4 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
+import { api } from "../../api/client";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { Menu } from "../../ui/Menu";
@@ -48,6 +49,18 @@ export const pullNumberOf = (href: string): number | null => {
   return match ? Number(match[1]) : null;
 };
 
+/** The hash in a commit's address on a host. */
+export const commitShaOf = (href: string): string | null =>
+  /^https:\/\/[^/]+\/[^/]+\/[^/]+\/(?:-\/)?commit\/([0-9a-f]{7,40})(?:[/?#].*)?$/i.exec(href)?.[1] ?? null;
+
+/** Shows a commit this checkout has in the Diff surface, and sends any other to the host. */
+async function openCommit(threadId: string, sha: string, href: string) {
+  const commits = await api.commits(threadId).catch(() => []);
+  const local = commits.find((commit) => commit.sha.startsWith(sha));
+  if (local) useUi.getState().revealCommit(local.sha);
+  else window.open(href, "_blank", "noopener,noreferrer");
+}
+
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const inApp = useUi((state) => state.pullLinksInApp);
@@ -60,6 +73,13 @@ export function ExternalLink({ href, children }: { href: string; children: React
     if (number !== null && inApp) {
       event.preventDefault();
       useUi.getState().revealPull(number);
+      return;
+    }
+    const commit = commitShaOf(href);
+    const thread = /^#\/threads\/([^/?]+)/.exec(window.location.hash)?.[1];
+    if (commit && thread) {
+      event.preventDefault();
+      void openCommit(decodeURIComponent(thread), commit, href);
       return;
     }
     const { linkTarget, showInBrowser } = useUi.getState();

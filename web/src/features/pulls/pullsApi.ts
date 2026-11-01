@@ -17,6 +17,7 @@ import type {
   ReviewLineComment,
   UpdatePull,
 } from "../../api/types";
+import type { PullRevision } from "../../generated/PullRevision";
 
 const q = encodeURIComponent;
 const base = (projectId: string, number: number) => `/api/projects/${q(projectId)}/pulls/${number}`;
@@ -33,6 +34,10 @@ export const pullsApi = {
     request<PullTimelineEvent[]>("GET", `${base(projectId, number)}/timeline`, undefined, signal),
   files: (projectId: string, number: number, signal?: AbortSignal) =>
     request<PullFile[]>("GET", `${base(projectId, number)}/files`, undefined, signal),
+  revisions: (projectId: string, number: number, signal?: AbortSignal) =>
+    request<PullRevision[]>("GET", `/api/projects/${q(projectId)}/pulls/${number}/revisions`, undefined, signal),
+  commitFiles: (projectId: string, sha: string, signal?: AbortSignal) =>
+    request<PullFile[]>("GET", `/api/projects/${q(projectId)}/commits/${q(sha)}/files`, undefined, signal),
   conversation: (projectId: string, number: number, signal?: AbortSignal) =>
     request<PullConversation>("GET", `${base(projectId, number)}/comments`, undefined, signal),
   comment: (projectId: string, number: number, body: string, replyTo?: string) =>

@@ -837,6 +837,22 @@ input[type="radio"] {
     translate 200ms var(--ease-drawer),
     opacity 200ms;
 }
+.clone-jobs {
+  position: fixed;
+  z-index: 70;
+  left: 16px;
+  bottom: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.clone-job {
+  max-width: 420px;
+}
+.clone-job-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 @starting-style {
   .toast {
     translate: 0 8px;

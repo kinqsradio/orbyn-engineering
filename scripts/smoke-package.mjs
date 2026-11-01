@@ -12,7 +12,15 @@ const binary = join(binaries, readdirSync(binaries).find((f) => f.startsWith("or
 const data = mkdtempSync(join(tmpdir(), "orbyn-smoke-"));
 const service = spawn(
   binary,
-  ["serve", "--data-dir", data, "--ui-dir", join(root, "build/ui")],
+  [
+    "serve",
+    "--data-dir",
+    data,
+    "--ui-dir",
+    join(root, "build/ui"),
+    "--library-bundle",
+    join(root, "build/library"),
+  ],
   { stdio: ["pipe", "pipe", "inherit"] },
 );
 
@@ -34,5 +42,11 @@ try {
   console.log("Package smoke passed:", await info.json());
 } finally {
   service.kill();
-  rmSync(data, { recursive: true, force: true, maxRetries: 3 });
+  // A git the service started can outlive it, and Windows then holds its folder. This
+  // is a temp folder, so a leftover there is no reason to fail a package that passed.
+  try {
+    rmSync(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  } catch (error) {
+    console.warn(`Left ${data} behind: ${error.code}`);
+  }
 }

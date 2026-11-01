@@ -62,6 +62,9 @@ impl Core {
                 reclaimable_bytes,
                 repair_suggested: reclaimable_bytes >= REPAIR_THRESHOLD,
             },
+            processes: crate::diagnostics::service_processes(),
+            history: crate::diagnostics::resource_history(),
+            events: crate::diagnostics::recent_events(),
         })
     }
 

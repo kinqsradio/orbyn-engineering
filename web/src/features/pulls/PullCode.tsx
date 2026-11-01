@@ -33,12 +33,15 @@ function FileRow({
   file,
   open,
   drafts,
+  readOnly = false,
   onViewed,
   onDraft,
 }: {
   file: PullFile;
   open: boolean;
   drafts: ReviewLineComment[];
+  /** A single commit: comments and viewed marks belong to the whole pull request. */
+  readOnly?: boolean;
   onViewed(viewed: boolean): void;
   onDraft(comment: ReviewLineComment | { path: string; line: number; body: null }): void;
 }) {
@@ -50,10 +53,12 @@ function FileRow({
         <span>{file.path}</span>
         <span className="diff-add">+{file.additions}</span>
         <span className="diff-del">-{file.deletions}</span>
-        <label className="pull-viewed" onClick={(event) => event.stopPropagation()}>
-          <input type="checkbox" aria-label={`Viewed ${file.path}`} checked={file.viewed} onChange={(event) => onViewed(event.target.checked)} />
-          Viewed
-        </label>
+        {readOnly ? null : (
+          <label className="pull-viewed" onClick={(event) => event.stopPropagation()}>
+            <input type="checkbox" aria-label={`Viewed ${file.path}`} checked={file.viewed} onChange={(event) => onViewed(event.target.checked)} />
+            Viewed
+          </label>
+        )}
       </summary>
       {file.patch ? (
         <div className="pull-patch" role="table" aria-label={`Changes in ${file.path}`}>
@@ -63,7 +68,7 @@ function FileRow({
             return (
               <div key={at}>
                 <div className="pull-patch-row" role="row" data-kind={kind || undefined}>
-                  {row.line !== null ? (
+                  {row.line !== null && !readOnly ? (
                     <IconButton label={`Comment on line ${row.line} of ${file.path}`} onClick={() => setWriting({ line: row.line ?? 0, text: "" })}>
                       <MessageSquarePlus size={12} aria-hidden />
                     </IconButton>
@@ -120,7 +125,11 @@ function FileRow({
 
 /** The changed files, marks of what's been read, and comments held for one review. */
 export function PullCode({ projectId, number, onReviewed }: { projectId: string; number: number; onReviewed(): void }) {
-  const files = useAsync(`pull-files:${projectId}:${number}`, (signal) => pullsApi.files(projectId, number, signal));
+  const [revision, setRevision] = useState("");
+  const revisions = useAsync(`pull-revisions:${projectId}:${number}`, (signal) => pullsApi.revisions(projectId, number, signal));
+  const files = useAsync(`pull-files:${projectId}:${number}:${revision}`, (signal) =>
+    revision ? pullsApi.commitFiles(projectId, revision, signal) : pullsApi.files(projectId, number, signal),
+  );
   const [drafts, setDrafts] = useState<ReviewLineComment[]>([]);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -151,15 +160,32 @@ export function PullCode({ projectId, number, onReviewed }: { projectId: string;
   };
   return (
     <div className="pull-files">
-      <p className="muted" role="status">
-        {viewed} of {files.data.length} files viewed
-      </p>
+      {revisions.data && revisions.data.length > 1 ? (
+        <select aria-label="Revision" value={revision} onChange={(event) => setRevision(event.target.value)}>
+          <option value="">All changes</option>
+          {revisions.data.map((commit, at) => (
+            <option key={commit.sha} value={commit.sha}>
+              {at + 1}. {commit.message} ({commit.sha.slice(0, 7)})
+            </option>
+          ))}
+        </select>
+      ) : null}
+      {revision ? (
+        <p className="muted" role="status">
+          {files.data.length === 1 ? "1 file in this commit" : `${files.data.length} files in this commit`}
+        </p>
+      ) : (
+        <p className="muted" role="status">
+          {viewed} of {files.data.length} files viewed
+        </p>
+      )}
       {files.data.map((file) => (
         <FileRow
           key={file.path}
           file={file}
           open={files.data.length <= 5}
           drafts={drafts.filter((draft) => draft.path === file.path)}
+          readOnly={revision !== ""}
           onViewed={(next) => mark(file, next)}
           onDraft={(comment) => {
             const rest = drafts.filter((draft) => !(draft.path === comment.path && draft.line === comment.line));

@@ -1,5 +1,7 @@
 # Orbyn Engineering app
 
+Picking this project up? Start with [docs/handoff.md](docs/handoff.md).
+
 Read [docs/architecture.md](docs/architecture.md) before changing behavior. Its
 hard product rules and lifecycles are the contract; change that document in the
 same commit as any change to them.

@@ -3,26 +3,25 @@ import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { startProject, type Service } from "./service";
+import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Per-project settings, telemetry addresses and storage cleanup on the real service. */
-const PORT = 5287;
 
 let service: Service;
 let projectId = "";
 let collector: Server;
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true }));
+  ({ service, projectId } = await startProject({ fakeEngines: true }));
   collector = createServer((request, response) => {
     response.statusCode = request.url === "/refuses" ? 403 : 200;
     response.end();
   });
   await new Promise<void>((done) => collector.listen(0, "127.0.0.1", done));
 });
-test.afterAll(() => {
+test.afterAll(async () => {
   collector.close();
-  service.stop();
+  await service.stop();
 });
 
 const project = (key: string) =>
@@ -121,4 +120,26 @@ test("the database notice appears only past 1 GiB reclaimable", async ({ page })
   });
   await page.reload();
   await expect(page.getByText(/can give back 2048\.0 MiB/)).toBeVisible();
+});
+
+test("Maintenance lists the service's processes and can stop one", async ({ page }) => {
+  const { service: own, projectId } = await startProject({ scenes: true });
+  try {
+    await page.goto(`${own.page}#/new/${projectId}`);
+    await send(page, "[hang]");
+    await expect(page).toHaveURL(/#\/threads\//);
+    const id = threadIdOf(page);
+    await expect.poll(async () => (await own.api<{ active_run: { state: string } | null }>("GET", `/api/threads/${id}`)).active_run?.state).toBe("running");
+    await page.goto(`${own.page}#/settings/maintenance`);
+    const processes = page.getByRole("list", { name: "Processes" });
+    await expect(processes.getByText("orbynd", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Recent problems").or(page.getByRole("list", { name: "Recent problems" })).first()).toBeVisible();
+    const engine = processes.getByRole("listitem").filter({ hasText: /node/ }).first();
+    await engine.getByRole("button", { name: "Stop" }).click();
+    await expect(page.getByText(/^Stopped /)).toBeVisible();
+    await settled(own, id);
+    await expect.poll(async () => JSON.stringify(await own.api("GET", "/api/diagnostics"))).not.toContain('"name":"node"');
+  } finally {
+    await own.stop();
+  }
 });

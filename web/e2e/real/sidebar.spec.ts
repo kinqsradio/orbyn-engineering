@@ -1,7 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { type Service, libraryReady, startService } from "./service";
 
-const PORT = 5277;
 
 interface Thread {
   id: string;
@@ -27,7 +26,7 @@ async function dragTo(page: Page, from: Locator, y: number) {
 }
 
 test.beforeAll(async () => {
-  service = await startService(PORT, { fakeEngines: true });
+  service = await startService({ fakeEngines: true });
   await libraryReady(service);
   const projects = await service.api<{ id: string }[]>("GET", "/api/projects");
   projectId = projects[0]?.id ?? "";
