@@ -292,14 +292,25 @@ parity review even though its proposed popover is excluded.
   dispatch eligibility: plain input, false `when` conditions, inactive routes and
   dialogs keep their keys; an eligible pending catalog can own its shortcut. Four
   regressions failed before and pass after; three real-service shortcut cases pass.
-  The later combined action/editor/preview/setup/defaults/rendering run passed all
-  19 cases against the schema 19 preparation candidate. Web check, 281 unit tests
-  and production build also pass. Preparation is still uncommitted: review found
-  that Retry must preserve its original provider/model after a later selection
-  change, and that ownership seam is being resolved before final qualification.
-  A separate terminal relay EOF investigation is in progress; neither this run nor
-  earlier main CI qualifies its pending changes. A collaboration wait call was
-  aborted before dispatch; it was not retried through another wait mechanism.
+  The combined action/editor/preview/setup/defaults/rendering run passed 20 cases;
+  the final availability correction also passed all seven setup browser cases.
+  Web check, 281 unit tests and production build pass. Preparation retry is now
+  committed locally as `f383e7f`, including generated `RetryPreparation.ts`.
+  It preserves captured provider/model/input and current permissions without
+  changing later thread preferences, sessions or handoffs. Ten real-service
+  preparation cases and 14 focused setup/lifecycle cases pass. Final integrated
+  Rust qualification passed 977 tests with nine ignored; Clippy/fmt pass. Engine
+  ordering/selection cases use protocol doubles, with real disposable setup
+  commands; live engines and native schema 19 are not qualified.
+- Local terminal corrections `e45ef28`, `68c00ca` and `fa8855e` reconnect a selected
+  action tab to a replacement process, drain PTY output through reader completion,
+  and revoke input/resize authority at child exit. Browser replacement output
+  failed before and passes after; four relay tests and seven real-service terminal
+  cases pass, including final output, late replay and explicit close. These are
+  independent defects; the frozen native blank-pane observation is not yet reduced
+  or requalified. No new section PR, push, CI or merge is claimed. The collaboration
+  wait call was aborted before dispatch and was not retried through another wait
+  mechanism. K9 remains partial for remaining auditing and native/Windows evidence.
 
 ### Verified in this pickup
 
