@@ -3,12 +3,14 @@
 
 use std::collections::HashSet;
 
-use orbyn_contracts::{Attachment, ModelSelection, PullRequest, PullWatch, QueuedMessage, Run};
-use rusqlite::{OptionalExtension, Row, params};
+use orbyn_contracts::{
+    AgUiEvent, Attachment, ModelSelection, PullRequest, PullWatch, QueuedMessage, Run, RunState,
+};
+use rusqlite::{OptionalExtension, Row, Transaction, params};
 
 use super::runs::admit_in;
 use super::threads::apply_selection;
-use super::{Admission, Store, parse_json};
+use super::{Admission, Store, insert_event, parse_json, parse_wire};
 use crate::error::{CoreError, Result};
 use crate::util::{new_id, now};
 
@@ -25,6 +27,48 @@ fn queued_row(row: &Row<'_>) -> rusqlite::Result<QueuedMessage> {
         effort: row.get("effort")?,
         options: parse_json(0, &row.get::<_, String>("options")?)?,
     })
+}
+
+fn enqueue_in(
+    tx: &Transaction<'_>,
+    thread_id: &str,
+    prompt: &str,
+    attachments: &[String],
+    selection: &ModelSelection,
+    force_hold: bool,
+) -> Result<String> {
+    let id = new_id();
+    let stamp = now();
+    let ids = serde_json::to_string(attachments)?;
+    let options = serde_json::to_string(&selection.options)?;
+    // A new message joins any held queue rather than jumping past it.
+    let held: bool = tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM queued_messages WHERE thread_id = ?1 AND held = 1)",
+        [thread_id],
+        |row| row.get(0),
+    )?;
+    let preparation = super::setup::hold_owner(tx, thread_id)?;
+    let unrelated: bool = tx.query_row("SELECT EXISTS (SELECT 1 FROM queued_messages WHERE thread_id = ?1 AND held = 1 AND preparation_run_id IS NULL)", [thread_id], |row| row.get(0))?;
+    let preparation = preparation.filter(|_| !unrelated && !force_hold);
+    let held = force_hold || held || super::setup::failed(tx, thread_id)?;
+    tx.execute(
+        "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held,
+            created_at, model, effort, options, preparation_run_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            id,
+            thread_id,
+            prompt,
+            ids,
+            held,
+            stamp,
+            selection.model,
+            selection.effort,
+            options,
+            preparation,
+        ],
+    )?;
+    Ok(id)
 }
 
 /// A stored watch, with what its last pass saw.
@@ -94,39 +138,51 @@ impl Store {
         attachments: &[String],
         selection: &ModelSelection,
     ) -> Result<QueuedMessage> {
-        let id = new_id();
-        let stamp = now();
-        let ids = serde_json::to_string(attachments)?;
-        let options = serde_json::to_string(&selection.options)?;
-        self.commit(|tx, _| {
-            // A new message joins any held queue rather than jumping past it.
-            let held: bool = tx.query_row(
-                "SELECT EXISTS (SELECT 1 FROM queued_messages WHERE thread_id = ?1 AND held = 1)",
-                [thread_id],
-                |row| row.get(0),
+        let id =
+            self.commit(|tx, _| enqueue_in(tx, thread_id, prompt, attachments, selection, false))?;
+        self.queued(&id)
+    }
+
+    /// Keep a rejected in-flight prompt with the run that received it. A late
+    /// callback cannot evade a completed stop's queue hold or a later retry fence.
+    pub(crate) fn requeue_failed_steer(
+        &self,
+        run: &str,
+        thread_id: &str,
+        prompt: &str,
+    ) -> Result<QueuedMessage> {
+        let id = self.commit(|tx, appended| {
+            let (owner_thread, state, epoch, stopped): (String, String, String, bool) = tx
+                .query_row(
+                    "SELECT thread_id, state, owner_epoch, stop_requested FROM runs WHERE id = ?1",
+                    [run],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()?
+                .ok_or_else(|| CoreError::NotFound("run".into()))?;
+            if epoch != self.epoch || owner_thread != thread_id {
+                return Err(CoreError::StaleOwner);
+            }
+            let state: RunState = parse_wire(1, state)?;
+            let id = enqueue_in(
+                tx,
+                thread_id,
+                prompt,
+                &[],
+                &ModelSelection::default(),
+                stopped || state.is_terminal(),
             )?;
-            let preparation = super::setup::hold_owner(tx, thread_id)?;
-            let unrelated: bool = tx.query_row("SELECT EXISTS (SELECT 1 FROM queued_messages WHERE thread_id = ?1 AND held = 1 AND preparation_run_id IS NULL)", [thread_id], |row| row.get(0))?;
-            let preparation = preparation.filter(|_| !unrelated);
-            let held = held || super::setup::failed(tx, thread_id)?;
-            tx.execute(
-                "INSERT INTO queued_messages (id, thread_id, prompt, attachment_ids, held,
-                    created_at, model, effort, options, preparation_run_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![
-                    id,
-                    thread_id,
-                    prompt,
-                    ids,
-                    held,
-                    stamp,
-                    selection.model,
-                    selection.effort,
-                    options,
-                    preparation,
-                ],
+            insert_event(
+                tx,
+                appended,
+                thread_id,
+                None,
+                &AgUiEvent::Custom {
+                    name: "steer.failed".into(),
+                    value: serde_json::json!({ "prompt": prompt }),
+                },
             )?;
-            Ok(())
+            Ok(id)
         })?;
         self.queued(&id)
     }

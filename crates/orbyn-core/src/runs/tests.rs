@@ -26,6 +26,7 @@ struct ScriptDriver {
     capabilities: EngineCapabilities,
     update_script: String,
     probes: std::sync::atomic::AtomicU64,
+    start_failure: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
 }
 
 fn capabilities() -> EngineCapabilities {
@@ -83,6 +84,13 @@ impl EngineDriver for ScriptDriver {
         spec: RunSpec,
         events: mpsc::Sender<EngineEvent>,
     ) -> Result<RunHandle> {
+        if let Some((entered, release)) = &self.start_failure {
+            entered.notify_one();
+            release.notified().await;
+            return Err(CoreError::Invalid(
+                "startup failed after the stop was accepted: authentication required; rate limit reached".into(),
+            ));
+        }
         let cancel = CancellationToken::new();
         let task = (self.script)(spec, events, cancel.clone());
         Ok(RunHandle {
@@ -104,6 +112,15 @@ async fn fixture(script: Script) -> Fixture {
 }
 
 async fn fixture_with(script: Script, update: &str, update_timeout: Duration) -> Fixture {
+    fixture_with_start_failure(script, update, update_timeout, None).await
+}
+
+async fn fixture_with_start_failure(
+    script: Script,
+    update: &str,
+    update_timeout: Duration,
+    start_failure: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
+) -> Fixture {
     let dir = TempDir::new();
     let root = crate::testing::library(&dir.path().join("library"));
     let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
@@ -115,6 +132,7 @@ async fn fixture_with(script: Script, update: &str, update_timeout: Duration) ->
         capabilities: capabilities(),
         update_script: update.to_owned(),
         probes: Default::default(),
+        start_failure,
     }));
     core.workspace
         .setup(orbyn_contracts::WorkspaceSetup {
@@ -274,6 +292,99 @@ async fn second_admission_is_thread_busy() {
     ));
     f.core.runs.cancel(&run.id).unwrap();
     assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Cancelled);
+}
+
+#[tokio::test]
+async fn accepted_cancel_before_driver_start_finishes_wins_over_its_failure() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let f = fixture_with_start_failure(
+        finished(),
+        "echo updated",
+        Duration::from_secs(30),
+        Some((entered.clone(), release.clone())),
+    )
+    .await;
+    f.core
+        .set_preferences(
+            None,
+            &std::collections::BTreeMap::from([
+                ("auto_resume_limited_threads".into(), json!(true)),
+                ("snooze_limited_threads".into(), json!(true)),
+            ]),
+        )
+        .unwrap();
+    let run = f.core.runs.admit(&f.thread, "go", "tester").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        .await
+        .unwrap();
+    assert_eq!(f.core.store.run(&run.id).unwrap().state, RunState::Starting);
+    f.core.runs.cancel(&run.id).unwrap();
+    release.notify_one();
+    assert_eq!(
+        until_terminal(&f.core, &run.id).await,
+        RunState::Cancelled,
+        "accepted stop lost to startup failure: {:?}",
+        f.core.store.run(&run.id).unwrap()
+    );
+    assert!(f.core.store.run(&run.id).unwrap().error.is_none());
+    for _ in 0..500 {
+        if f.core.runs.active_count() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert_eq!(f.core.runs.active_count(), 0);
+    assert!(
+        f.core
+            .store
+            .thread(&f.thread)
+            .unwrap()
+            .lifecycle
+            .unwrap()
+            .limit
+            .is_none()
+    );
+    assert!(f.core.store.due_resumes(i64::MAX).unwrap().is_empty());
+    let events = f.core.store.events_after(&f.thread, 0, 100).unwrap();
+    assert!(!events.iter().any(|event| matches!(&event.event, AgUiEvent::Custom { name, .. } if name == "engine.sign_in_required")));
+}
+
+#[tokio::test]
+async fn late_rejected_steer_after_cancel_remains_held_without_starting_work() {
+    let f = fixture(finished()).await;
+    let run = f.core.runs.admit(&f.thread, "original", "tester").unwrap();
+    f.core.store.request_stop(&run.id).unwrap();
+    f.core
+        .store
+        .finish_run(&run.id, RunState::Completed, None)
+        .unwrap();
+    let scope = RunScope {
+        run_id: run.id.clone(),
+        thread_id: f.thread.clone(),
+        engine: "script".into(),
+        family: "script".into(),
+        write_scope: None,
+        mode: PermissionMode::Supervised,
+        plan: false,
+    };
+    f.core.runs.requeue_steer(&scope, "keep rejected prompt");
+    let queued = f.core.store.list_queue(&f.thread).unwrap();
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].prompt, "keep rejected prompt");
+    assert!(
+        queued[0].held,
+        "a rejected steer after cancelled commit must not start a new run"
+    );
+    for _ in 0..500 {
+        if f.core.runs.active_count() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert_eq!(f.core.runs.active_count(), 0);
+    assert!(f.core.store.thread(&f.thread).unwrap().active_run.is_none());
+    assert_eq!(f.core.store.list_queue(&f.thread).unwrap().len(), 1);
 }
 
 #[tokio::test]

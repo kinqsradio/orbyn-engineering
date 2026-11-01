@@ -54,8 +54,18 @@ admitted -> starting -> running <-> awaiting_approval
   a second admission returns `409 thread_busy`.
 - `interrupted` is assigned only by startup recovery, for runs a dead process
   owned. Recovery also moves pending approvals to `expired`.
-- A stop is saved before anything is signalled, so a run stopped by a person ends
-  `cancelled` even if the process dies first. Recovery closes tools the dead process
+- A stop is saved before anything is signalled. Stop acceptance and terminal commit
+  share the immediate database writer: an accepted stop wins over a later startup
+  failure or engine completion and commits `cancelled` without a failure message.
+  Already-terminal or foreign-owner runs cannot acquire a phantom stop. Terminal
+  followups use the committed outcome: only completion clears matching-engine
+  handoff, and only failure records sign-in or usage-limit/auto-resume state.
+  Session-loss recovery also checks the saved stop inside its mutation transaction,
+  so it cannot replace a stopped run's provider session or handoff. Rejected steer
+  callbacks record their note and queued prompt atomically against the source run's
+  epoch and thread. A stopped or terminal source keeps that prompt held without a
+  preparation owner, so a later retry cannot release it or launch work implicitly.
+  Recovery closes tools the dead process
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.

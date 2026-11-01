@@ -366,7 +366,12 @@ impl RunManager {
             &root,
         ) {
             self.setups.fail_preparation(thread_id, &run.id);
-            self.close_run(&run.id, RunState::Failed, Some(&error.public_message()));
+            let _ = self.close_run(
+                &run.id,
+                RunState::Failed,
+                Some(&error.public_message()),
+                None,
+            );
             return Err(error);
         }
         if let Err(error) = spawn(&thread, &retry.script) {
@@ -456,10 +461,11 @@ impl RunManager {
                 };
                 // A panic in the run must not strand it as active.
                 if supervised.await.is_err() {
-                    manager.close_run(
+                    let _ = manager.close_run(
                         &run_id,
                         RunState::Failed,
                         Some("The run stopped unexpectedly."),
+                        None,
                     );
                 }
                 manager.lock().remove(&run_id);
@@ -648,15 +654,9 @@ impl RunManager {
 
     /// The engine refused a message it was handed mid-turn, so it goes in the queue.
     fn requeue_steer(&self, scope: &RunScope, prompt: &str) {
-        let note = self.store.note_thread_event(
-            &scope.thread_id,
-            "steer.failed",
-            json!({ "prompt": prompt }),
-        );
-        let queued = note.and_then(|()| {
-            self.store
-                .enqueue(&scope.thread_id, prompt, &[], &ModelSelection::default())
-        });
+        let queued = self
+            .store
+            .requeue_failed_steer(&scope.run_id, &scope.thread_id, prompt);
         if let Err(error) = queued {
             tracing::warn!(%error, "could not requeue a steered message");
         }
@@ -708,12 +708,6 @@ impl RunManager {
         if run.state.is_terminal() {
             return Err(CoreError::RunClosed);
         }
-        for child in self.store.child_threads(&run.thread_id)? {
-            if let Some(active) = self.store.thread(&child)?.active_run {
-                self.note_stopped_with_parent(&active.id);
-                let _ = self.cancel(&active.id);
-            }
-        }
         self.store.request_stop(run_id)?;
         let cancellation = self
             .lock()
@@ -722,8 +716,17 @@ impl RunManager {
         if let Some(cancel) = &cancellation {
             cancel.cancel();
         }
-        self.setups.cancel_run(&run.thread_id, run_id)?;
-        if cancellation.is_some() {
+        // Once accepted, parent cancellation cannot depend on child lookup or
+        // cleanup succeeding. Attempt setup cancellation before that traversal too.
+        let setup = self.setups.cancel_run(&run.thread_id, run_id);
+        for child in self.store.child_threads(&run.thread_id)? {
+            if let Some(active) = self.store.thread(&child)?.active_run {
+                self.note_stopped_with_parent(&active.id);
+                let _ = self.cancel(&active.id);
+            }
+        }
+        setup?;
+        if cancellation.is_some() || self.store.run(run_id)?.state == RunState::Cancelled {
             Ok(())
         } else {
             Err(CoreError::StaleOwner)
@@ -753,18 +756,28 @@ impl RunManager {
             run_id: Some(active.id.clone()),
             detail: Value::Null,
         })?;
-        self.store.request_stop(&active.id)?;
+        match self.store.request_stop(&active.id) {
+            Ok(()) => {}
+            Err(CoreError::RunClosed) => {
+                return Ok(ForcedStop {
+                    run_id: Some(active.id.clone()),
+                    state: Some(self.store.run(&active.id)?.state),
+                });
+            }
+            Err(error) => return Err(error),
+        }
+        if let Some(run) = self.lock().get(&active.id) {
+            run.stops.force.cancel();
+            run.stops.cancel.cancel();
+        }
+        let setup = self.setups.cancel_run(thread_id, &active.id);
         for child in self.store.child_threads(thread_id)? {
             if let Some(running) = self.store.thread(&child)?.active_run {
                 self.note_stopped_with_parent(&running.id);
                 Box::pin(self.force_stop(&child, actor)).await?;
             }
         }
-        if let Some(run) = self.lock().get(&active.id) {
-            run.stops.force.cancel();
-            run.stops.cancel.cancel();
-        }
-        self.setups.cancel_run(thread_id, &active.id)?;
+        setup?;
         let deadline = tokio::time::Instant::now() + FORCE_WAIT;
         while tokio::time::Instant::now() < deadline {
             if self.store.run(&active.id)?.state.is_terminal() {
@@ -774,7 +787,7 @@ impl RunManager {
         }
         if !self.store.run(&active.id)?.state.is_terminal() {
             tracing::warn!(run = %active.id, "closing a run that did not stop");
-            self.close_run(&active.id, RunState::Cancelled, None);
+            let _ = self.close_run(&active.id, RunState::Cancelled, None, None);
             self.mcp.revoke_run(&active.id);
             if let Err(error) = self
                 .questions
@@ -899,26 +912,15 @@ impl RunManager {
             tracing::warn!(%error, "could not remove a run directory");
         }
         let mut limit = None;
+        let mut sign_in_note = None;
         let (state, message) = match outcome {
-            EngineOutcome::Completed => {
-                if let Err(error) = self.store.clear_run_handoff(&scope.run_id) {
-                    tracing::warn!(%error, "could not clear a used handoff");
-                }
-                (RunState::Completed, None)
-            }
+            EngineOutcome::Completed => (RunState::Completed, None),
             EngineOutcome::Cancelled => (RunState::Cancelled, None),
             EngineOutcome::Failed(message) => {
                 let sign_in = self.engines.driver(&scope.engine).ok();
                 let sign_in = sign_in.as_ref().and_then(|driver| driver.sign_in_command());
                 if diagnostics::is_sign_in_failure(&message) {
-                    let note = json!({ "command": sign_in });
-                    if let Err(error) = self.store.note_thread_event(
-                        &scope.thread_id,
-                        "engine.sign_in_required",
-                        note,
-                    ) {
-                        tracing::debug!(%error, "could not note a sign-in failure");
-                    }
+                    sign_in_note = Some(json!({ "command": sign_in }));
                 }
                 if let Some(resets_at) = self.limit_of(&scope.run_id, &message) {
                     limit = Some((message.clone(), resets_at));
@@ -932,8 +934,10 @@ impl RunManager {
             ),
         };
         self.limit_signals().remove(&run_id);
-        self.close_run(&run_id, state, message.as_deref());
-        if let Some((message, resets_at)) = limit {
+        let closed = self.close_run(&run_id, state, message.as_deref(), sign_in_note.as_ref());
+        if closed.is_some_and(|run| run.state == RunState::Failed)
+            && let Some((message, resets_at)) = limit
+        {
             self.record_limit(&scope.thread_id, message, resets_at);
         }
     }
@@ -1000,11 +1004,26 @@ impl RunManager {
     }
 
     /// Writes the terminal state and hands expired approvals back to their waiters.
-    fn close_run(&self, run_id: &str, state: RunState, error: Option<&str>) {
-        match self.store.finish_run(run_id, state, error) {
-            Ok((_, expired)) => self.gate.settle(&expired),
-            Err(CoreError::RunClosed) => {}
-            Err(failure) => tracing::error!(%failure, %run_id, "could not close a run"),
+    fn close_run(
+        &self,
+        run_id: &str,
+        state: RunState,
+        error: Option<&str>,
+        sign_in_note: Option<&Value>,
+    ) -> Option<Run> {
+        match self
+            .store
+            .finish_run_with_sign_in(run_id, state, error, sign_in_note)
+        {
+            Ok((run, expired)) => {
+                self.gate.settle(&expired);
+                Some(run)
+            }
+            Err(CoreError::RunClosed) => None,
+            Err(failure) => {
+                tracing::error!(%failure, %run_id, "could not close a run");
+                None
+            }
         }
     }
 

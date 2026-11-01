@@ -365,6 +365,24 @@ parity review even though its proposed popover is excluded.
   CI on the new head. PR83 must not merge until every required job is green on
   that exact head; earlier green packaged startup does not qualify this new fix.
 
+- PR83 head `e4ff965` CI `41314262385` passed both packaged startup jobs,
+  macOS Rust, Web and full E2E. Its Windows native ConPTY EOF and large-output/
+  late-observer cases passed; Windows Rust instead failed preparation cancellation
+  (`failed` versus `cancelled`). The precise original trigger is unproven.
+  Deterministic local barriers subsequently reproduced accepted-stop/startup-failure
+  ordering, late recovery mutation and late rejected-steer queue bypass.
+- The cancellation follow-up makes the terminal transaction honor an accepted
+  stop, preserves provider handoff, atomically records failure guidance, and keeps
+  late rejected-steer prompts held. Parent signals occur before fallible child
+  traversal. Exact local qualification passed 1,009 Rust tests (9 ignored),
+  workspace Clippy and formatting; affected real-service checks passed without
+  changing their assertions or deadlines. Receipts: `target/pr83-cancel-qualified-workspace.log`,
+  `target/pr83-cancel-qualified-clippy.log` and
+  `target/preparation-cancel-review-*.log`.
+  An intermediate sign-in-note visibility regression was caught and corrected
+  transactionally; its failed log is retained. Current-head Windows qualification
+  and all six required green jobs are still required before PR83 can merge.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
@@ -425,6 +443,9 @@ stand-in forge races and the data-directory lock.
   fatal, and fixed proven process/startup ownership defects. Its Windows checks
   passed, but a later pass is not evidence identifying the earlier holder.
 - The browser recording test is flaky.
+- Follow-up to investigate: thread-only limit recording after a genuinely failed
+  run can race a newer admission. Latest-run/provider ownership for that write is
+  not qualified by the accepted-cancellation correction.
 - Settings opened by direct link closes onto a draft.
 - D25 lacks its menu shortcut. F34 on GitLab is parser-tested only.
 - `core.autocrlf=true` handling is pinned in tests; check real Windows behaviour.

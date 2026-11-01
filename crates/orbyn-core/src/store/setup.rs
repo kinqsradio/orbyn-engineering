@@ -808,7 +808,9 @@ mod tests {
             store.set_run_handoff(&retry.run.id, "wrong-provider-recovery"),
             Err(CoreError::StaleOwner)
         ));
-        store.clear_run_handoff(&retry.run.id).unwrap();
+        store
+            .finish_run(&retry.run.id, RunState::Completed, None)
+            .unwrap();
         assert_eq!(
             store.pending_handoff(&made.id).unwrap().as_deref(),
             Some("other-handoff")

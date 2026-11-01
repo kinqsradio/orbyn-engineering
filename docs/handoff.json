@@ -110,6 +110,14 @@
         "2a48734; affected8 browser cases passed and CI41312664253 E2E passed",
         "0898d26; target/pr83-conpty-workspace.log 999 passed9ignored, target/pr83-conpty-clippy.log passed"
       ]
+    },
+    {
+      "result": "Accepted-cancellation finalization, recovery and rejected-steer fences implemented and locally qualified; original Windows trigger remains unproven until new-head CI",
+      "evidence": [
+        "target/pr83-cancel-qualified-workspace.log:1009 passed9ignored; target/pr83-cancel-qualified-clippy.log passed; formatting passed",
+        "Three deterministic failures-before: target/preparation-cancel-before-qualified.log, preparation-cancel-recovery-before.log, preparation-cancel-steer-before.log",
+        "Existing sign-in visibility and parent-child assertions preserved; target/preparation-cancel-review-*.log"
+      ]
     }
   ],
   "verification": [
@@ -306,13 +314,21 @@
       ]
     },
     {
-      "check": "Windows console retirement on the final PR83 head",
+      "check": "Windows console retirement implementation at0898d26",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "PR83 e4ff965 CI41314262385 Windows native ConPTY unit and terminal_output final-output/late-observer tests passed",
+        "target/pr83-conpty-head-failures.log lines925,2086-2087; overall Windows job failed a different preparation-cancellation case"
+      ]
+    },
+    {
+      "check": "Accepted-cancellation correction on the final PR83 head",
       "required": true,
       "state": "unverified",
       "evidence": [
-        "crates/orbyn-core/src/terminal.rs Windows-only real ConPTY EOF regression",
-        "crates/orbynd/tests/terminal_output.rs final-output/late-observer test retains45second close deadline",
-        "New required Windows CI pending; no local Windows host"
+        "Existing Windows service case retained with HTTP status and durable run-state/error/stop-requested context",
+        "Local1009/9ignored passed; current-head Windows and allsixCI jobs still required beforemerge"
       ]
     }
   ],

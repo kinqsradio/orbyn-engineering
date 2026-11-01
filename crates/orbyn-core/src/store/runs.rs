@@ -79,6 +79,15 @@ pub(super) fn set_state(
     Ok(())
 }
 
+fn clear_handoff_for_run(tx: &Transaction<'_>, thread_id: &str, run: &str) -> Result<()> {
+    tx.execute("UPDATE threads SET handoff = NULL WHERE id = ?1 AND engine = (SELECT engine FROM runs WHERE id = ?2)", params![thread_id, run])?;
+    tx.execute(
+        "UPDATE runs SET preparation_handoff = NULL WHERE id = ?1",
+        [run],
+    )?;
+    Ok(())
+}
+
 impl Store {
     /// Makes the run durable before any process exists. The partial unique
     /// index, not a prior read, is what makes the second admission lose.
@@ -231,18 +240,11 @@ impl Store {
         Ok(self.reader().query_row("SELECT CASE WHEN t.engine = r.engine THEN t.handoff ELSE r.preparation_handoff END FROM runs r JOIN threads t ON t.id = r.thread_id WHERE r.id = ?1", [run], |row| row.get(0)).optional()?.flatten())
     }
 
-    pub(crate) fn clear_run_handoff(&self, run: &str) -> Result<()> {
-        self.commit(|tx, _| {
-            let guard = guard_active(tx, &self.epoch, run)?;
-            tx.execute("UPDATE threads SET handoff = NULL WHERE id = ?1 AND engine = (SELECT engine FROM runs WHERE id = ?2)", params![guard.thread_id, run])?;
-            tx.execute("UPDATE runs SET preparation_handoff = NULL WHERE id = ?1", [run])?;
-            Ok(())
-        })
-    }
-
     pub(crate) fn set_run_handoff(&self, run: &str, handoff: &str) -> Result<()> {
         self.commit(|tx, _| {
             let guard = guard_active(tx, &self.epoch, run)?;
+            let stopped: bool = tx.query_row("SELECT stop_requested FROM runs WHERE id = ?1", [run], |row| row.get(0))?;
+            if stopped { return Err(CoreError::RunClosed); }
             let changed = tx.execute("UPDATE threads SET handoff = ?2, engine_session = NULL WHERE id = ?1 AND engine = (SELECT engine FROM runs WHERE id = ?3)", params![guard.thread_id, handoff, run])?;
             if changed != 1 { return Err(CoreError::StaleOwner); }
             Ok(())
@@ -269,6 +271,18 @@ impl Store {
         to: RunState,
         error: Option<&str>,
     ) -> Result<(Run, Vec<Approval>)> {
+        self.finish_run_with_sign_in(run_id, to, error, None)
+    }
+
+    /// Failure guidance is committed with the terminal result, and omitted when
+    /// a saved stop makes that result cancellation instead.
+    pub(crate) fn finish_run_with_sign_in(
+        &self,
+        run_id: &str,
+        to: RunState,
+        error: Option<&str>,
+        sign_in_note: Option<&Value>,
+    ) -> Result<(Run, Vec<Approval>)> {
         if !matches!(
             to,
             RunState::Completed | RunState::Failed | RunState::Cancelled
@@ -280,6 +294,35 @@ impl Store {
         }
         self.commit(|tx, appended| {
             let guard = guard_active(tx, &self.epoch, run_id)?;
+            let stopped: bool = tx.query_row(
+                "SELECT stop_requested FROM runs WHERE id = ?1",
+                [run_id],
+                |row| row.get(0),
+            )?;
+            // The same writer orders stop acceptance and terminal commit. A
+            // startup error or completed engine cannot overwrite an accepted stop.
+            let (to, error) = if stopped {
+                (RunState::Cancelled, None)
+            } else {
+                (to, error)
+            };
+            if to == RunState::Completed {
+                clear_handoff_for_run(tx, &guard.thread_id, run_id)?;
+            }
+            if to == RunState::Failed
+                && let Some(note) = sign_in_note
+            {
+                insert_event(
+                    tx,
+                    appended,
+                    &guard.thread_id,
+                    None,
+                    &AgUiEvent::Custom {
+                        name: "engine.sign_in_required".into(),
+                        value: note.clone(),
+                    },
+                )?;
+            }
             close_run(
                 tx,
                 appended,
@@ -364,6 +407,7 @@ impl Store {
     /// still reads as a stop and not as a crash that interrupted the work.
     pub fn request_stop(&self, run_id: &str) -> Result<()> {
         self.commit(|tx, _| {
+            guard_active(tx, &self.epoch, run_id)?;
             tx.execute("UPDATE runs SET stop_requested = 1 WHERE id = ?1", [run_id])?;
             Ok(())
         })

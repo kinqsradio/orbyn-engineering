@@ -131,6 +131,17 @@ fn db(dir: &TempDir) -> rusqlite::Connection {
     rusqlite::Connection::open(dir.path().join("data/orbyn.sqlite3")).unwrap()
 }
 
+fn run_context(dir: &TempDir, run: &str) -> Value {
+    let (state, error, stop_requested): (String, Option<String>, bool) = db(dir)
+        .query_row(
+            "SELECT state, error, stop_requested FROM runs WHERE id = ?1",
+            [run],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    json!({ "run_id": run, "state": state, "error": error, "stop_requested": stop_requested })
+}
+
 #[tokio::test]
 async fn retry_uses_captured_command_input_and_rejects_duplicate_attempts() {
     let dir = TempDir::new();
@@ -268,10 +279,21 @@ async fn active_run_trust_and_cancel_fence_preparation_retry() {
     );
     let active = service.admit(&thread, "[hang]").await;
     assert_eq!(retry(&service, &thread, &run).await.0, 409);
-    service
+    let (cancel_status, cancel_body) = service
         .send(&format!("/api/runs/{active}/cancel"), json!({}))
         .await;
-    assert_eq!(service.finished(&thread).await, "cancelled");
+    assert_eq!(
+        cancel_status,
+        202,
+        "cancel response {cancel_body}; run {}",
+        run_context(&dir, &active)
+    );
+    assert_eq!(
+        service.finished(&thread).await,
+        "cancelled",
+        "run {}",
+        run_context(&dir, &active)
+    );
     let held = queue(&service, &thread, "later-stop-hold").await;
     let (status, next) = retry(&service, &thread, &run).await;
     assert_eq!(status, 202, "{next}");
