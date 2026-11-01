@@ -23,12 +23,10 @@ test.beforeAll(async () => {
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1400, height: 900 }));
 
-test("Maintenance lists what the service reaches on its own", async ({ page }) => {
-  const rows = await service.api<{ purpose: string; host: string }[]>("GET", "/api/network");
+test("Maintenance keeps diagnostics without a Network inventory", async ({ page }) => {
   await page.goto(`${service.page}#/settings/maintenance`);
-  const first = rows[0];
-  await expect(settings(page).getByText(first?.purpose ?? "")).toBeVisible();
-  await expect(settings(page).getByText(first?.host ?? "", { exact: false }).first()).toBeVisible();
+  await expect(settings(page).getByRole("heading", { name: "Diagnostics", exact: true })).toBeVisible();
+  await expect(settings(page).getByRole("heading", { name: "Network", exact: true })).toHaveCount(0);
 });
 
 test("About folds its open source list, and Worktrees folds branch names", async ({ page }) => {
