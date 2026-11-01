@@ -321,9 +321,6 @@ impl Core {
             from_origin: self.preference("new_worktrees_start_from_origin", Some(project_id))?
                 == serde_json::json!(true),
             submodules: text("worktree_submodules")?,
-            directory: Some(text("worktree_location")?)
-                .filter(|location| !location.trim().is_empty())
-                .map(std::path::PathBuf::from),
         })
     }
 
@@ -458,6 +455,95 @@ mod preference_consumer_tests {
     use super::*;
     use crate::{CoreConfig, store::NewProject, testing::TempDir};
     use serde_json::json;
+
+    #[tokio::test]
+    async fn retired_location_preferences_cannot_redirect_new_worktrees() {
+        let dir = TempDir::new();
+        let root = dir.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "Initial",
+            ],
+        ] {
+            git::git(&root, &args).await.unwrap();
+        }
+        let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
+        config.engines.lookup_latest = false;
+        let core = Core::open(config).unwrap();
+        let project = core
+            .store
+            .add_project(NewProject {
+                path: root.to_str().unwrap(),
+                name: "Project",
+                is_git: true,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
+        let old_value = json!(dir.path().join("elsewhere").to_str().unwrap()).to_string();
+        core.store
+            .change_settings(|_| {
+                Ok((
+                    (),
+                    vec![
+                        crate::store::scoped_settings::SettingWrite::Global {
+                            key: "pref:worktree_location".into(),
+                            value: Some(old_value.clone()),
+                        },
+                        crate::store::scoped_settings::SettingWrite::Project {
+                            project_id: project.id.clone(),
+                            key: "worktree_location".into(),
+                            value: Some(old_value.clone()),
+                        },
+                    ],
+                ))
+            })
+            .unwrap();
+        assert!(
+            core.preferences(Some(&project.id))
+                .unwrap()
+                .iter()
+                .all(|row| row.key != "worktree_location")
+        );
+        assert!(
+            core.set_preferences(
+                None,
+                &[("worktree_location".into(), json!("elsewhere"))].into()
+            )
+            .is_err()
+        );
+        let request =
+            serde_json::from_value(json!({"project_id":project.id,"engine":"codex"})).unwrap();
+        let options = core.worktree_options(&project.id, &request).unwrap();
+        let worktree = git::create_worktree(&root, "fixed-location", &options)
+            .await
+            .unwrap();
+        assert_eq!(
+            Path::new(&worktree.path),
+            dir.path().join("project-wt/fixed-location")
+        );
+        assert!(!dir.path().join("elsewhere").exists());
+        assert_eq!(
+            core.store.setting("pref:worktree_location").unwrap(),
+            Some(old_value.clone())
+        );
+        assert!(
+            core.store
+                .project_preferences(&project.id)
+                .unwrap()
+                .contains(&("worktree_location".into(), old_value))
+        );
+        core.shutdown().await;
+    }
 
     #[tokio::test]
     async fn worktree_creation_uses_the_same_submodule_precedence_as_preference_views() {

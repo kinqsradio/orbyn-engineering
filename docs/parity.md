@@ -333,7 +333,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [ ] F23 Worktree setup scripts: progress card, cancel | apps/web/src/components/chat/WorktreeSetupCard.tsx | w d s | M
 - [x] F24 Previous worktree: resume earlier worktree | apps/web/src/components/PreviousWorktreeItemContent.tsx | w d | S | web done
 - [x] F25 Branch naming: static, semantic or custom | apps/web/src/components/settings/BranchNamingSettings.tsx | w d m s | M | server: static prefix only; semantic and custom need text generation | status: partial | remaining: semantic and custom branch naming are missing
-- [x] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S | server done | web done | scope: excluded | reason: owner requires the fixed sibling worktree location, with no custom-location control
+- [x] F26 Worktree location: custom absolute directory | docs/user/project-settings.md | w d s | S | server done | web done | scope: excluded | reason: owner requires the fixed sibling worktree location, with no custom-location control | evidence: real orbynd browser regression verifies removed control/search result, rejected API edits and sibling worktree creation; Core regressions retain ignored legacy values and preserve existing registered worktrees in place; isolated packaged macOS screen and search confirm removal, Windows GUI unverified
 - [x] F27 Submodule policy: recursive, top level, skip | docs/user/project-settings.md | w d s | S | server done | web done
 - [x] F28 Start from origin: new worktrees use remote head | packages/contracts/src/settings.ts | s | S | server done
 - [x] F29 Automatic pull: fast-forward clean default branch | docs/user/project-settings.md | w d m s | M | server done | web done

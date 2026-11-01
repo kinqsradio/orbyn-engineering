@@ -16,6 +16,7 @@ it("finds a specific label regardless of word order and excludes desktop control
   expect(searchSettings("Accessibility", true, new Set(["cli"]))).toEqual([]);
   expect(searchSettings("Accessibility", true, new Set(["accessibility"]))).toHaveLength(1);
   expect(searchSettings("App updates", true, new Set())).toEqual([]);
+  expect(searchSettings("Worktree location", true)).toEqual([]);
   expect(new Set(SETTINGS.map((item) => item.id)).size).toBe(SETTINGS.length);
 });
 

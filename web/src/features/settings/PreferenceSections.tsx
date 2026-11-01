@@ -351,11 +351,6 @@ export function WorktreesSection() {
               },
               { key: "new_worktrees_start_from_origin", title: settingsLabel("worktrees-start-from-origin") },
               {
-                key: "worktree_location",
-                title: settingsLabel("worktrees-worktree-location"),
-                description: "An absolute folder. Empty keeps them beside the repository. Existing worktrees stay where they are.",
-              },
-              {
                 key: "worktree_submodules",
                 title: settingsLabel("worktrees-submodules"),
                 options: [

@@ -727,7 +727,10 @@ is dirty, unpushed, ignored or in a worktree.
 
 Worktrees sit beside the primary clone at `<repo>-wt/<purpose>/`, wherever that repo
 lives, on a neutral `feat/<purpose>` branch, and a registered worktree for a purpose
-is reused. A custom worktree location is not offered.
+is reused. A custom worktree location is not offered or accepted by either settings
+API. Earlier stored location preferences are left intact but ignored; they cannot
+redirect new worktrees. Existing Git-registered worktrees remain at their current
+paths, including earlier layouts, with no file migration or removal.
 
 A thread with no project gets a dated folder, `<data>/scratch/<date>-<id>`, behind a
 hidden project, so it passes through the same trust, write scope and launch as any

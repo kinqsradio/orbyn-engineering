@@ -49,7 +49,6 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "diffs-remove-agent-credits-on-merge", "title": "Remove agent credits on merge", "section": "diffs"},
   {"id": "worktrees-default-checkout", "title": "Default checkout", "section": "worktrees"},
   {"id": "worktrees-start-from-origin", "title": "Start from origin", "section": "worktrees"},
-  {"id": "worktrees-worktree-location", "title": "Worktree location", "section": "worktrees"},
   {"id": "worktrees-submodules", "title": "Submodules", "section": "worktrees"},
   {"id": "worktrees-naming", "title": "Naming", "section": "worktrees"},
   {"id": "worktrees-branch-prefix", "title": "Branch prefix", "section": "worktrees"},
