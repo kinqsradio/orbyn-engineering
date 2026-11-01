@@ -273,7 +273,21 @@ parity review even though its proposed popover is excluded.
   K9 remains partial for preparation retry and final qualification.
 - The owner asked to resume helpers after finishing this slice. The earlier
   collaboration request hit a thread-limit rejection and was not worked around.
-  Recheck existing helpers before delegating; stop that operation if refused.
+  A subsequent inventory showed capacity, and two helpers are now implementing
+  preparation retry and correcting shortcut eligibility after a bounded source review.
+- The frozen `6b0682b` macOS fixture captured and saved `mod+shift+9` through
+  native Settings. Pressing it in a thread and again from terminal focus ran the
+  actual command successfully (exit 0; Core scrollback `native-shortcut-ran`).
+  The action pane remained blank while Core retained output; the main shell prompt
+  rendered after focus. This is a failed native rendering observation, not full
+  shortcut/terminal qualification. Receipt and screenshot are under
+  `target/settings-native/action-shortcuts-6b0682b/`. Normal quit removed the service
+  handle and all three tracked process IDs. A diagnostic relaunch (app PID 5278,
+  Core 5309) remains running: the next native-control call was aborted before
+  dispatch, so UI verification stopped without an alternate-input or kill workaround.
+  No native model selection or composer turn was attempted. A new real-service
+  browser regression checks visible xterm text on initial action attach and tab
+  return; it passes against the frozen Core, so the native failure is not yet reduced.
 
 ### Verified in this pickup
 
