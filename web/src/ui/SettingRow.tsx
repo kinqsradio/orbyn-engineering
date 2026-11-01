@@ -1,19 +1,24 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
+
+export const SettingRowIds = createContext<(title: string) => string | undefined>(() => undefined);
 
 /** One row of a settings group: what it is on the left, its control on the right. */
 export function SettingRow({
   title,
+  settingId: explicitId,
   description,
   actions,
   children,
 }: {
   title: string;
+  settingId?: string;
   description?: string;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
+  const settingId = useContext(SettingRowIds)(title) ?? explicitId;
   return (
-    <div className="setting-line">
+    <div className="setting-line" id={settingId} tabIndex={settingId ? -1 : undefined}>
       <div className="setting-line-text">
         <div className="setting-line-heading">
           <span className="setting-line-title">{title}</span>

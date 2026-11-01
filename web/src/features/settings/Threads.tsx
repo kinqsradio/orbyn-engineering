@@ -1,3 +1,4 @@
+import { settingsLabel } from "./settingsSearch";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
@@ -34,7 +35,7 @@ function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: 
           </IconButton>
         </SettingRow>
       ))}
-      <SettingRow title="Add a preset" description={`Up to ${MAX_PRESETS}, each up to 30 days.`}>
+      <SettingRow title={settingsLabel("threads-add-a-preset")} description={`Up to ${MAX_PRESETS}, each up to 30 days.`}>
         <input aria-label="Preset name" placeholder="Name" value={label} onChange={(event) => setLabel(event.target.value)} />
         <input aria-label="Preset minutes" type="number" min="1" placeholder="Minutes" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
         <Button
@@ -76,7 +77,7 @@ export function ThreadsSection() {
         Threads
       </h1>
       <SettingGroup title="Auto-settle">
-        <SettingRow title="Settle idle threads" description="Move finished threads into Settled after a quiet period.">
+        <SettingRow title={settingsLabel("threads-settle-idle-threads")} description="Move finished threads into Settled after a quiet period.">
           <select
             aria-label="Settle idle threads"
             value={data.auto_settle.after_days ?? ""}
@@ -97,7 +98,7 @@ export function ThreadsSection() {
             ))}
           </select>
         </SettingRow>
-        <SettingRow title="Settle on merge" description="Settle a thread when its pull request merges.">
+        <SettingRow title={settingsLabel("threads-settle-on-merge")} description="Settle a thread when its pull request merges.">
           <input
             type="checkbox"
             aria-label="Settle on merge"
@@ -110,7 +111,7 @@ export function ThreadsSection() {
       </SettingGroup>
       <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
       <SettingGroup title="Titles">
-        <SettingRow title="Title instructions" description="Guidance used when a thread title is generated.">
+        <SettingRow title={settingsLabel("threads-title-instructions")} description="Guidance used when a thread title is generated.">
           <textarea
             aria-label="Title instructions"
             rows={2}
@@ -129,12 +130,12 @@ export function ThreadsSection() {
             rows: [
               {
                 key: "auto_thread_titles",
-                title: "Name new threads",
+                title: settingsLabel("threads-name-new-threads"),
                 description: "Title a thread from its first message. Each title spends a little engine usage.",
               },
               {
                 key: "text_generation_model",
-                title: "Title model",
+                title: settingsLabel("threads-title-model"),
                 description: "A model ID. Empty uses the engine's small model.",
               },
             ],

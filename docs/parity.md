@@ -539,7 +539,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 ## K. Settings, appearance and notifications
 - [ ] K1 Settings scope: choose project and environments, fan-out edit | apps/web/src/components/settings/SettingsScopeSentence.tsx | w d m | L | scope: mixed | local: edit local environment defaults or one logical project and its local checkout members; changing defaults preserves project overrides | excludes: fan-out to remote environments
 - [ ] K2 Inheritance display: chain, Mixed, Reset all | apps/web/src/components/settings/SettingInheritance.tsx | w d | L | status: partial | remaining: PR71 adds provenance and per-row reset for four project preferences; logical-project checkout scope, Mixed, full inheritance and Reset all remain open
-- [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M
+- [x] K3 Settings search: finds settings by query | apps/web/src/components/settings/settingsSearch.ts | w d | M | status: partial | evidence: exact row search reveals Advanced controls, focuses the row and persists edits through real orbynd; narrow local-web search verified | remaining: project-scope search integration and native desktop walkthrough
 - [x] K4 Advanced folds: collapsed sections | apps/web/src/components/settings/FoldedSettingsSection.tsx | w d | S | web done
 - [x] K5 Project defaults: model, mode, workspace, scripts | apps/web/src/components/settings/ProjectDefaultsSettings.tsx | w d m s | M | server done: model and mode apply to new threads; workspace and scripts are stored for clients | web done
 - [ ] K6 Project page: name, icon, actions, checkouts, removal | apps/web/src/components/settings/ProjectSettingsPanel.tsx | w d m s | M

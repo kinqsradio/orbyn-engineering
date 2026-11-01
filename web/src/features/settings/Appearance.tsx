@@ -1,3 +1,4 @@
+import { settingsLabel } from "./settingsSearch";
 import { useRef } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
 import { applyTheme, useUi, type ThemeChoice, type Typography } from "../../state/ui";
@@ -16,7 +17,7 @@ function PresetRow({ scheme }: { scheme: "light" | "dark" }) {
   const value = useUi((state) => state[key]);
   const theme = useUi((state) => state.theme);
   const setPrefs = useUi((state) => state.setPrefs);
-  const title = scheme === "dark" ? "Dark theme" : "Light theme";
+  const title = settingsLabel(scheme === "dark" ? "appearance-dark-theme" : "appearance-light-theme");
   return (
     <SettingRow title={title}>
       <select
@@ -75,7 +76,7 @@ function ThemeEditor() {
           />
         </SettingRow>
       ))}
-      <SettingRow title="Theme file">
+      <SettingRow title={settingsLabel("appearance-theme-file")}>
         <input ref={file} type="file" accept="application/json,.json" hidden aria-label="Import theme file" onChange={(event) => void importTheme(event.target.files?.[0])} />
         <Button small tone="quiet" onClick={() => file.current?.click()}>
           Import
@@ -92,10 +93,10 @@ function ThemeEditor() {
 }
 
 const SIZES: { key: keyof Typography; title: string; min: number; max: number }[] = [
-  { key: "uiSize", title: "Interface size", min: 12, max: 22 },
-  { key: "chatSize", title: "Chat size", min: 11, max: 22 },
-  { key: "codeSize", title: "Code size", min: 10, max: 22 },
-  { key: "terminalSize", title: "Terminal size", min: 8, max: 24 },
+  { key: "uiSize", title: settingsLabel("appearance-interface-size"), min: 12, max: 22 },
+  { key: "chatSize", title: settingsLabel("appearance-chat-size"), min: 11, max: 22 },
+  { key: "codeSize", title: settingsLabel("appearance-code-size"), min: 10, max: 22 },
+  { key: "terminalSize", title: settingsLabel("appearance-terminal-size"), min: 8, max: 24 },
 ];
 
 function TypographyGroup() {
@@ -108,10 +109,10 @@ function TypographyGroup() {
   };
   return (
     <SettingGroup title="Typography">
-      <SettingRow title="Interface font">
+      <SettingRow title={settingsLabel("appearance-interface-font")}>
         <input aria-label="Interface font" placeholder="System" defaultValue={typography.uiFont} onBlur={(event) => update({ uiFont: event.target.value.trim() })} />
       </SettingRow>
-      <SettingRow title="Code font">
+      <SettingRow title={settingsLabel("appearance-code-font")}>
         <input aria-label="Code font" placeholder="System" defaultValue={typography.codeFont} onBlur={(event) => update({ codeFont: event.target.value.trim() })} />
       </SettingRow>
       {SIZES.map(({ key, title, min, max }) => (
@@ -148,7 +149,7 @@ export function AppearanceSection() {
         Appearance
       </h1>
       <SettingGroup title="Theme">
-        <SettingRow title="Theme" description="How the app looks on this device.">
+        <SettingRow title={settingsLabel("appearance-theme")} description="How the app looks on this device.">
           <select aria-label="Theme" value={theme} onChange={(event) => setTheme(event.target.value as ThemeChoice)}>
             {choices.map((choice) => (
               <option key={choice.value} value={choice.value}>
@@ -161,7 +162,7 @@ export function AppearanceSection() {
       <SettingGroup title="Theme presets">
         <PresetRow scheme="dark" />
         <PresetRow scheme="light" />
-        <SettingRow title="Contrast">
+        <SettingRow title={settingsLabel("appearance-contrast")}>
           <select
             aria-label="Contrast"
             value={contrast}
@@ -174,7 +175,7 @@ export function AppearanceSection() {
             <option value="more">More</option>
           </select>
         </SettingRow>
-        <SettingRow title="Font smoothing">
+        <SettingRow title={settingsLabel("appearance-font-smoothing")}>
           <input
             type="checkbox"
             role="switch"
@@ -190,7 +191,7 @@ export function AppearanceSection() {
       <ThemeEditor />
       <TypographyGroup />
       <SettingGroup title="Composer">
-        <SettingRow title="Effort display" description="Show reasoning effort in the composer as its name, such as High, or as bars.">
+        <SettingRow title={settingsLabel("appearance-effort-display")} description="Show reasoning effort in the composer as its name, such as High, or as bars.">
           <select
             aria-label="Effort display"
             value={effortDisplay}
@@ -203,7 +204,8 @@ export function AppearanceSection() {
       </SettingGroup>
       <SettingGroup title="Motion">
         <SettingRow
-          title={`Panel animations: ${panelMs === 0 ? "Off" : `${panelMs} ms`}`}
+          settingId="appearance-panel-animations"
+          title={`${settingsLabel("appearance-panel-animations")}: ${panelMs === 0 ? "Off" : `${panelMs} ms`}`}
           description="Animates panels opening and the composer moving."
         >
           <input

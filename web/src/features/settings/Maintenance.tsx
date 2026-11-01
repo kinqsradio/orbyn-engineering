@@ -1,3 +1,4 @@
+import { settingsLabel } from "./settingsSearch";
 import { useState } from "react";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, OtlpResult, PreferenceView } from "../../api/types";
@@ -25,9 +26,9 @@ const memoryLine = (history: ResourceSample[]) => {
 const REPAIR_NOTICE_BYTES = 1024 ** 3;
 
 const SIGNALS = [
-  { key: "traces_url", title: "Traces" },
-  { key: "metrics_url", title: "Metrics" },
-  { key: "logs_url", title: "Logs" },
+  { key: "traces_url", title: settingsLabel("maintenance-traces") },
+  { key: "metrics_url", title: settingsLabel("maintenance-metrics") },
+  { key: "logs_url", title: settingsLabel("maintenance-logs") },
 ];
 
 function TelemetryGroup() {
@@ -75,9 +76,9 @@ function TelemetryGroup() {
 }
 
 const RETENTION = [
-  { key: "worktree_settled_after_days", title: "Worktrees, days after settling" },
-  { key: "browser_artifacts_after_days", title: "Browser artifacts, days" },
-  { key: "logs_after_days", title: "Logs, days" },
+  { key: "worktree_settled_after_days", title: settingsLabel("maintenance-worktrees-days-after-settling") },
+  { key: "browser_artifacts_after_days", title: settingsLabel("maintenance-browser-artifacts-days") },
+  { key: "logs_after_days", title: settingsLabel("maintenance-logs-days") },
 ];
 
 function CleanupGroup() {
@@ -122,7 +123,7 @@ function CleanupGroup() {
           />
         </SettingRow>
       ))}
-      <SettingRow title="Run the rules" description={shown ? reportLine(shown) : "Nothing is removed by a preview."}>
+      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={shown ? reportLine(shown) : "Nothing is removed by a preview."}>
         <Button small onClick={() => run(true)}>
           Preview
         </Button>
@@ -179,7 +180,7 @@ function DiagnosticsGroup() {
         description={`${info.data.active_runs} runs, ${info.data.terminals} terminals`}
       />
       <SettingRow
-        title="Database"
+        title={settingsLabel("maintenance-database")}
         description={`${mib(info.data.database.bytes)}, ${mib(info.data.database.reclaimable_bytes)} reclaimable`}
       >
         <Button small onClick={() => void run("/api/diagnostics/repair", "Database repaired")}>
@@ -264,12 +265,12 @@ export function MaintenanceSection() {
         {unsupported || updates?.app.unconfigured ? (
           <SettingRow title="App updates" description="Updates aren't set up for this build." />
         ) : null}
-        <SettingRow title="Check for updates" description={`Last checked: ${lastChecked}`}>
+        <SettingRow title={settingsLabel("maintenance-check-for-updates")} description={`Last checked: ${lastChecked}`}>
           <Button small busy={checking} onClick={() => void check()}>
             Check for updates
           </Button>
         </SettingRow>
-        <SettingRow title="Background checks" description="Checks only look. Nothing is applied without a click.">
+        <SettingRow title={settingsLabel("maintenance-background-checks")} description="Checks only look. Nothing is applied without a click.">
           <input
             type="checkbox"
             aria-label="Check in the background"
