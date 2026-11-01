@@ -90,7 +90,7 @@ test("an OTLP address saves per signal and its test says what answered", async (
   await expect(page.getByLabel("Traces endpoint")).toHaveValue(`http://127.0.0.1:${port}/v1/traces`);
 });
 
-test("cleanup previews, removes by its rules and reports what happened", async ({ page }) => {
+test("cleanup removes by its rules and reports what happened", async ({ page }) => {
   const folder = join(service.dataDir, "logs");
   mkdirSync(folder, { recursive: true });
   const old = join(folder, "old.log");
@@ -98,18 +98,22 @@ test("cleanup previews, removes by its rules and reports what happened", async (
   const longAgo = new Date(Date.now() - 10 * 86_400_000);
   utimesSync(old, longAgo, longAgo);
   await page.goto(`${service.page}#/settings/maintenance`);
-  await page.getByLabel("Logs, days").fill("5");
-  await page.getByLabel("Logs, days").blur();
+  await page.getByRole("switch", { name: "Delete old rotated logs", exact: true }).click();
+  await expect(page.getByLabel("Delete old rotated logs in days")).toBeEnabled();
+  await page.getByLabel("Delete old rotated logs in days").fill("5");
+  await page.getByLabel("Delete old rotated logs in days").blur();
   await expect
     .poll(async () => (await service.api<{ key: string; value: { logs_after_days?: number } }[]>("GET", "/api/preferences")).find((entry) => entry.key === "storage_cleanup")?.value.logs_after_days)
     .toBe(5);
-  await page.getByRole("button", { name: "Preview" }).click();
-  await expect(page.getByRole("list", { name: "Cleanup report" })).toContainText("Would remove");
+  const preview = await service.api<{ entries: { path: string; removed: boolean }[] }>("POST", "/api/storage/cleanup?dry_run=true");
+  expect(preview.entries).toContainEqual(expect.objectContaining({ path: old, removed: false }));
   expect(existsSync(old)).toBe(true);
-  await page.getByRole("button", { name: "Clean up" }).click();
+  await page.getByRole("button", { name: "Delete now", exact: true }).click();
+  await page.getByRole("button", { name: "Last run", exact: true }).click();
   await expect(page.getByRole("list", { name: "Cleanup report" })).toContainText("Removed");
   expect(existsSync(old)).toBe(false);
   await page.reload();
+  await page.getByRole("button", { name: "Last run", exact: true }).click();
   await expect(page.getByRole("list", { name: "Cleanup report" })).toContainText("old.log");
 });
 

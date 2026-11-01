@@ -653,6 +653,21 @@ defaults, so new defaults reach them. It allows comments and trailing commas, an
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
+The Maintenance artifacts/log retention controls and Delete now action are visible
+only for the local environment. Their scoped snapshot supplies the membership and
+preference revision for each single-field update: enabling a rule stores eight days,
+disabling stores null, and numeric drafts commit on blur or Enter. A conflicting
+write refreshes the snapshot while retaining the draft for an explicit retry; it
+never replays the edit. Scope disposal fences late writes and reports. Unmentioned
+fields, including legacy project cleanup objects, remain untouched. Maintenance has
+no worktree-age control or Preview action; the dry-run API remains available for
+verification. Delete now invokes the existing environment cleanup operation, and
+Last run reports its actual removed/kept entries. Action eligibility also reads the
+distinct worktree policy: explicit environment Off suppresses legacy defaults,
+empty environment policy retains a valid global age including zero, and project
+Custom ages can independently enable cleanup. Legacy project storage cleanup
+objects never enable it. The project policy and its runtime retain their own owner.
+
 Worktree retention uses the separate project-scoped `worktree_cleanup` preference.
 Its default `{}` inherits: an empty project object first uses the new environment
 policy, and an empty environment object falls back only to global
