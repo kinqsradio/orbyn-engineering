@@ -662,14 +662,32 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     );
     core.mcp.bind_host(&core);
     orbyn_core::diagnostics::start_sampling();
+    // Parent EOF and termination own startup too: provisioning may be waiting
+    // on a helper before any ready line or service handle exists.
+    let stop = CancellationToken::new();
+    let parent = args.parent_stdin.then(|| {
+        let (closed, wait) = oneshot::channel();
+        read_parent(core.clone(), closed);
+        wait
+    });
+    tokio::spawn(wait_for_stop(parent, stop.clone()));
     // Before the service answers anything. If the disk refuses, the background
     // attempt tries again, and the service still serves what needs no library.
-    let library = match core.workspace.provision().await {
-        Ok(()) => core.ensure_library_project(),
-        Err(error) => Err(error),
+    let library = tokio::select! {
+        biased;
+        () = stop.cancelled() => {
+            // Dropping provision first releases its staging and helper owners.
+            core.shutdown().await;
+            return Ok(());
+        }
+        result = core.workspace.provision() => result.and_then(|()| core.ensure_library_project()),
     };
     if let Err(error) = library {
         tracing::error!("the skills library is not in place: {error}");
+    }
+    if stop.is_cancelled() {
+        core.shutdown().await;
+        return Ok(());
     }
     let token = random_token().map_err(|error| error.to_string())?;
     let (key_digest, new_key) = if args.remote {
@@ -686,6 +704,16 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         ui_dir: args.ui_dir.clone(),
     });
 
+    // Attach before readiness so the early parent reader cannot drop a reply
+    // sent immediately after the shell receives the ready line. Forward later,
+    // keeping readiness first on stdout.
+    let shell_lines = args.parent_stdin.then(|| {
+        let lines = core.updates.attach_shell();
+        if let Some(sender) = core.updates.shell_lines() {
+            core.shell.attach(sender);
+        }
+        lines
+    });
     let mut start = json!({ "url": base_url, "token": token });
     if let Some(key) = new_key {
         start["access_key"] = json!(key);
@@ -697,27 +725,18 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         tracing::warn!(%error, "the orbyn command will not find this service");
     }
 
-    let stop = CancellationToken::new();
-    let parent = args.parent_stdin.then(|| {
-        let mut lines = core.updates.attach_shell();
-        if let Some(sender) = core.updates.shell_lines() {
-            core.shell.attach(sender);
-        }
+    if let Some(mut lines) = shell_lines {
         // Every line after the first ready line is for the shell.
         tokio::spawn(async move {
             while let Some(line) = lines.recv().await {
                 println!("{line}");
             }
         });
-        let (closed, wait) = oneshot::channel();
-        read_parent(core.clone(), closed);
-        wait
-    });
-    tokio::spawn(wait_for_stop(parent, stop.clone()));
-    {
-        let (core, stop) = (core.clone(), stop.clone());
-        tokio::spawn(async move { core.run_library_upgrades(stop).await });
     }
+    let library_upgrades = {
+        let (core, stop) = (core.clone(), stop.clone());
+        tokio::spawn(async move { core.run_library_upgrades(stop).await })
+    };
     let checks = {
         let (updates, stop) = (core.updates.clone(), stop.clone());
         tokio::spawn(async move { updates.run_checks(stop).await })
@@ -740,6 +759,8 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     tracing::info!("stopping");
     let _ = lifecycle.await;
     checks.abort();
+    let _ = checks.await;
+    let _ = library_upgrades.await;
     core.shutdown().await;
     let _ = std::fs::remove_file(handle);
     // Open streams never finish on their own; they end with the process.

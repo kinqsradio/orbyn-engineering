@@ -187,6 +187,10 @@ fn write_empty_library(into: &Path) -> Result<()> {
     Ok(())
 }
 
+fn trace_phase(phase: &'static str, stage: &'static str) {
+    tracing::debug!(phase, stage, "library provisioning");
+}
+
 /// One local commit, so the snapshot is the Git root everything else expects: boundary
 /// checks, ignored `repo/` and dirty state all come from Git. A machine with no Git
 /// keeps a plain folder, and clones nothing either.
@@ -215,12 +219,26 @@ async fn commit_snapshot(into: &Path, revision: &str) {
             revision,
         ],
     ];
-    for step in steps {
+    for (phase, step) in [
+        "snapshot.git.init",
+        "snapshot.git.add",
+        "snapshot.git.commit",
+    ]
+    .into_iter()
+    .zip(steps)
+    {
+        trace_phase(phase, "begin");
         if let Err(error) = git(into, step).await {
-            tracing::debug!("the library snapshot is not in Git: {error}");
+            tracing::debug!(
+                phase,
+                stage = "failed",
+                code = error.code(),
+                "library provisioning"
+            );
             let _ = std::fs::remove_dir_all(into.join(".git"));
             return;
         }
+        trace_phase(phase, "end");
     }
 }
 
@@ -323,22 +341,31 @@ impl Workspace {
 
     async fn install_snapshot(&self, data: &Path, root: &Path, url: String) -> Result<()> {
         let staging = Staging(data.join(format!("{STAGING}{}", new_id())));
+        trace_phase("snapshot.staging", "begin");
         std::fs::create_dir_all(&staging.0)?;
+        trace_phase("snapshot.staging", "end");
         let bundle = self.bundle.as_deref().and_then(read_bundle);
         let revision = match bundle {
             Some((archive, revision)) => {
+                trace_phase("snapshot.unpack", "begin");
                 unpack(&archive, &staging.0)?;
+                trace_phase("snapshot.unpack", "end");
                 revision
             }
             None => {
+                trace_phase("snapshot.empty", "begin");
                 write_empty_library(&staging.0)?;
+                trace_phase("snapshot.empty", "end");
                 UNBUNDLED.to_owned()
             }
         };
         commit_snapshot(&staging.0, &revision).await;
+        trace_phase("snapshot.repo", "begin");
         std::fs::create_dir_all(staging.0.join("repo"))?;
+        trace_phase("snapshot.repo", "end");
         // State first: a crash here reads as a library that went missing, and a
         // finished folder never exists with nothing saying what it is.
+        trace_phase("snapshot.state", "begin");
         self.save(WorkspaceState {
             root: root.to_path_buf(),
             adopted: false,
@@ -346,7 +373,10 @@ impl Workspace {
             rollback: None,
             snapshot: Some(revision),
         })?;
+        trace_phase("snapshot.state", "end");
+        trace_phase("snapshot.rename", "begin");
         std::fs::rename(&staging.0, root)?;
+        trace_phase("snapshot.rename", "end");
         Ok(())
     }
 
@@ -492,7 +522,12 @@ impl Core {
             };
             match attempt {
                 Ok(_) => return,
-                Err(error) => tracing::debug!("the library stays a snapshot for now: {error}"),
+                Err(error) => tracing::debug!(
+                    phase = "snapshot.upgrade",
+                    stage = "failed",
+                    code = error.code(),
+                    "library provisioning"
+                ),
             }
             gap = (gap * 2).min(LONGEST_GAP);
         }

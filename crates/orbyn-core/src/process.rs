@@ -207,7 +207,6 @@ pub fn engine_command(command: &ResolvedCommand, args: &[OsString], cwd: &Path) 
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     crate::child_env::for_engine(builder.as_std_mut());
-    isolate(&mut builder);
     builder
 }
 
@@ -230,6 +229,7 @@ pub struct ManagedChild {
 
 impl ManagedChild {
     pub fn spawn(mut command: Command) -> Result<Self> {
+        isolate(&mut command);
         let child = command.spawn()?;
         let pid = child
             .id()
@@ -250,6 +250,39 @@ impl ManagedChild {
 
     pub async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
         self.child.wait().await
+    }
+
+    /// Captures a helper's output without surrendering its process-tree owner.
+    /// Cancellation drops this owner and stops descendants as well as the leader.
+    pub async fn output(mut self) -> Result<std::process::Output> {
+        use tokio::io::AsyncReadExt;
+
+        async fn read(
+            stream: Option<impl tokio::io::AsyncRead + Unpin>,
+        ) -> std::io::Result<Vec<u8>> {
+            let mut bytes = Vec::new();
+            if let Some(mut stream) = stream {
+                stream.read_to_end(&mut bytes).await?;
+            }
+            Ok(bytes)
+        }
+
+        let stdout = self.child.stdout.take();
+        let stderr = self.child.stderr.take();
+        drop(self.child.stdin.take());
+        let wait = async {
+            let status = self.child.wait().await?;
+            // A descendant may retain an output pipe after the leader exits. End
+            // the owned tree now so collecting that pipe cannot wait on it forever.
+            self.tree.kill();
+            Ok::<_, std::io::Error>(status)
+        };
+        let (status, stdout, stderr) = tokio::try_join!(wait, read(stdout), read(stderr))?;
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
     }
 }
 
