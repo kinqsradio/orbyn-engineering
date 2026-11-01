@@ -72,7 +72,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #61 | Merged at `9fafa3a` after all required checks passed. |
 | #62 | Merged at `f97abb8` after all required checks passed. |
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
-| #60 | Updated head `348b88b`; CI is running. The Windows path assertion, bundled CLI resources, child-folder project reuse and service readiness/stop race have local regressions. Never merge until every required check passes on its current head. |
+| #60 | Updated head `dde3260` integrates repaired main; CI is running. The Windows path assertion, bundled CLI resources, child-folder project reuse and service readiness/stop race have local regressions. The integrated branch passed65 local CLI/engine/interaction/workspace tests and Clippy. The older348b88b Windows run was still running at last observation. Never merge until every required check passes on its current head. |
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the

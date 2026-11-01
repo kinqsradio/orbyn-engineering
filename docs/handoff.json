@@ -94,11 +94,12 @@
       ]
     },
     {
-      "check": "PR #60 current head 348b88b and final integrated main CI",
+      "check": "PR60 currentheaddde3260 and final integrated mainCI",
       "required": true,
       "state": "unverified",
       "evidence": [
-        "PR #60 CI run 41257920148 is running"
+        "Currentheaddde3260 integrates main58d2bed;65 localrealservice tests andClippy passed; currentheadCI pending",
+        "Older348b88b run41257920148 WindowsRust stillrunning atlastobservation"
       ]
     },
     {
