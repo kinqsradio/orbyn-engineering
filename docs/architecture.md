@@ -940,6 +940,10 @@ folder exists, and nothing is started otherwise. The token is never printed. `or
 goes through the `orbyn://` link, so it starts the desktop app by the system's own route and
 adds no way in. `ORBYN_OPENER` names another program, or `-` to print what would open.
 
+`orbyn browser setup` needs no service: on macOS and Windows it reports that
+nothing needs setting up, without creating a data directory or changing the host.
+Linux browser setup is outside the supported product scope and is not performed.
+
 `orbyn service` runs the service from this user's login through the OS's own manager:
 launchd, Task Scheduler or systemd, with no administrator rights. Each change is a plan of
 one file and some commands, and `--dry-run` shows it and does nothing. Installing again

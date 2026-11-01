@@ -57,6 +57,9 @@ enum Command {
     /// Run the service from this user's login, with no terminal.
     #[command(subcommand)]
     Service(ServiceCommand),
+    /// Manage Orbyn's headless browser on this host.
+    #[command(subcommand)]
+    Browser(BrowserCommand),
     /// Run the service in this terminal, with `orbynd serve`'s options.
     Serve {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -78,6 +81,12 @@ enum Command {
     Project(ProjectCommand),
     #[command(subcommand)]
     Theme(ThemeCommand),
+}
+
+#[derive(Subcommand)]
+enum BrowserCommand {
+    /// Set up this host for Orbyn's browser.
+    Setup,
 }
 
 #[derive(Subcommand)]
@@ -922,6 +931,15 @@ async fn run(cli: Cli) -> Outcome<()> {
         Command::Start { path, no_open } => return start(&cli, path.as_deref(), *no_open).await,
         Command::App { path } => return open_app(&cli, path.as_deref()).await,
         Command::Service(service) => return service_command(&cli, service),
+        Command::Browser(BrowserCommand::Setup) => {
+            if !cfg!(any(target_os = "macos", windows)) {
+                return Err(Failure::new(
+                    "Browser setup is not supported on this platform.",
+                ));
+            }
+            println!("Nothing to set up: Orbyn's browser runs as is on this system.");
+            return Ok(());
+        }
         Command::Serve { args } => return run_service(args, cli.data_dir.as_deref()),
         Command::Status => return status(&cli).await,
         Command::Doctor { fix, .. } => return doctor(&cli, *fix).await,

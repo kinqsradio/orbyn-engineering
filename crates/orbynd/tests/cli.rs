@@ -546,3 +546,37 @@ fn inherited_pipe_process_fixture() {
     eprintln!("leader stderr");
     std::io::stdout().flush().unwrap();
 }
+
+#[tokio::test]
+async fn browser_setup_leaves_the_supported_host_and_running_service_alone() {
+    let dir = TempDir::new();
+    let data = dir.path().join("data");
+    let output = run(&data, &["browser", "setup"]).await;
+    if !cfg!(any(target_os = "macos", windows)) {
+        assert_eq!(output.status.code(), Some(1));
+        assert!(!data.exists());
+        return;
+    }
+    assert_eq!(
+        stdout(&output).trim(),
+        "Nothing to set up: Orbyn's browser runs as is on this system."
+    );
+    assert!(!data.exists(), "setup needs no service or data directory");
+    let mut service = support::Service::start(
+        &data,
+        Options {
+            args: vec!["--parent-stdin".into()],
+            ..Options::default()
+        },
+    );
+    let handle = std::fs::read(data.join("service.json")).unwrap();
+    let info = service.json("/api/info").await;
+    assert_eq!(
+        stdout(&run(&data, &["browser", "setup"]).await).trim(),
+        "Nothing to set up: Orbyn's browser runs as is on this system."
+    );
+    assert_eq!(std::fs::read(data.join("service.json")).unwrap(), handle);
+    assert_eq!(service.json("/api/info").await, info);
+    drop(service.child.stdin.take());
+    service.stop().await;
+}
