@@ -35,21 +35,6 @@ pub fn duration(text: &str) -> Result<Duration, String> {
         .ok_or_else(|| "Choose a duration within range.".into())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn trace_windows_accept_the_documented_short_and_long_durations() {
-        assert_eq!(duration("30m").unwrap(), Duration::from_secs(1800));
-        assert_eq!(duration(" 15 minutes ").unwrap(), Duration::from_secs(900));
-        assert_eq!(duration("1W").unwrap(), Duration::from_secs(7 * 86400));
-        assert_eq!(duration("0s").unwrap(), Duration::ZERO);
-        for value in ["", "bad", "-1h", "18446744073709551615d"] {
-            assert!(duration(value).is_err());
-        }
-    }
-}
-
 pub fn summary(data: &Path, since: Option<Duration>, limit: u32, json: bool) -> Result<(), String> {
     let report =
         orbyn_core::local_trace::summarize(data, since).map_err(|error| error.to_string())?;
@@ -106,4 +91,19 @@ pub fn summary(data: &Path, since: Option<Duration>, limit: u32, json: bool) -> 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn trace_windows_accept_the_documented_short_and_long_durations() {
+        assert_eq!(duration("30m").unwrap(), Duration::from_secs(1800));
+        assert_eq!(duration(" 15 minutes ").unwrap(), Duration::from_secs(900));
+        assert_eq!(duration("1W").unwrap(), Duration::from_secs(7 * 86400));
+        assert_eq!(duration("0s").unwrap(), Duration::ZERO);
+        for value in ["", "bad", "-1h", "18446744073709551615d"] {
+            assert!(duration(value).is_err());
+        }
+    }
 }
