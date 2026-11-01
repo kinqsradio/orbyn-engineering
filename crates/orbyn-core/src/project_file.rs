@@ -2,6 +2,7 @@
 //! a repository already has one. Orbyn only ever reads it, and a script from it runs
 //! only in a trusted folder because a person or a trusted thread asked.
 
+use std::io::Read;
 use std::path::Path;
 
 use orbyn_contracts::{ProjectFile, ProjectFileView, ProjectScript, TerminalInfo, Thread};
@@ -86,7 +87,29 @@ pub(crate) fn scripts_with_ids(value: &Value) -> Result<Value> {
 
 /// Reads the first file present. A bad file is reported and never half-applied.
 pub fn read_project_file(checkout: &Path) -> ProjectFileView {
-    let Some(name) = FILE_NAMES.iter().find(|name| checkout.join(name).is_file()) else {
+    let root = match crate::util::canonicalize(checkout) {
+        Ok(root) => root,
+        Err(_) => {
+            return ProjectFileView {
+                path: None,
+                file: None,
+                problem: None,
+                scripts: Vec::new(),
+            };
+        }
+    };
+    if root != checkout {
+        return ProjectFileView {
+            path: None,
+            file: None,
+            problem: Some("This project checkout is no longer at its registered path.".into()),
+            scripts: Vec::new(),
+        };
+    }
+    let Some(name) = FILE_NAMES.iter().find(|name| {
+        // A directory is not a project file; aliases are present but invalid.
+        std::fs::symlink_metadata(root.join(name)).is_ok_and(|metadata| !metadata.is_dir())
+    }) else {
         return ProjectFileView {
             path: None,
             file: None,
@@ -94,7 +117,7 @@ pub fn read_project_file(checkout: &Path) -> ProjectFileView {
             scripts: Vec::new(),
         };
     };
-    let parsed = parse_file(&checkout.join(name));
+    let parsed = parse_file(&root.join(name));
     let (file, problem) = match parsed {
         Ok(file) => (Some(file), None),
         Err(problem) => (None, Some(problem)),
@@ -111,14 +134,59 @@ pub fn read_project_file(checkout: &Path) -> ProjectFileView {
 }
 
 fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
-    let size = std::fs::metadata(path)
-        .map_err(|error| error.to_string())?
-        .len();
-    if size > MAX_FILE_BYTES {
-        return Err("This file is too large to read.".to_owned());
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // NONBLOCK also prevents a file-to-FIFO race from blocking this reader.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
-    let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let mut file = options.open(path).map_err(|error| error.to_string())?;
+    let verify = |file: &std::fs::File| -> std::result::Result<(), String> {
+        let actual = crate::files::opened_path(file).map_err(|error| error.to_string())?;
+        if actual != path {
+            return Err("This project file must be a direct file in the checkout.".into());
+        }
+        let metadata = file.metadata().map_err(|error| error.to_string())?;
+        if !metadata.is_file() {
+            return Err("This project file must be a regular file.".into());
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 {
+                return Err("This project file must not be a reparse point.".into());
+            }
+        }
+        if metadata.len() > MAX_FILE_BYTES {
+            return Err("This file is too large to read.".into());
+        }
+        Ok(())
+    };
+    // Handle identity, not a prior path check, authorizes reading any bytes.
+    verify(&file)?;
+    let bytes = bounded_project_read(&mut file)?;
+    verify(&file)?;
+    let text = String::from_utf8(bytes).map_err(|error| error.to_string())?;
     parse_project_text(&text)
+}
+
+fn bounded_project_read(reader: &mut impl Read) -> std::result::Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err("This file is too large to read.".into());
+    }
+    Ok(bytes)
 }
 
 /// Decode text already read under the caller's path and byte-limit boundary.
@@ -359,9 +427,117 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fixed_file_precedence_bounds_and_directories_are_preserved() {
+        let dir = std::env::temp_dir().join(crate::util::new_id());
+        std::fs::create_dir_all(dir.join("orbyn.json")).unwrap();
+        let dir = crate::util::canonicalize(&dir).unwrap();
+        std::fs::write(
+            dir.join("t3.json"),
+            r#"{"defaultThreadEnvMode":"worktree","futureField":true}"#,
+        )
+        .unwrap();
+        let view = read_project_file(&dir);
+        assert_eq!(view.path.as_deref(), Some("t3.json"));
+        assert_eq!(
+            view.file.unwrap().default_thread_env_mode.as_deref(),
+            Some("worktree")
+        );
+        std::fs::remove_dir(dir.join("orbyn.json")).unwrap();
+        let mut exact = b"{}".to_vec();
+        exact.resize(MAX_FILE_BYTES as usize, b' ');
+        std::fs::write(dir.join("orbyn.json"), &exact).unwrap();
+        let view = read_project_file(&dir);
+        assert_eq!(view.path.as_deref(), Some("orbyn.json"));
+        assert!(view.problem.is_none(), "{:?}", view.problem);
+        exact.push(b' ');
+        std::fs::write(dir.join("orbyn.json"), exact).unwrap();
+        let view = read_project_file(&dir);
+        assert_eq!(
+            view.problem.as_deref(),
+            Some("This file is too large to read.")
+        );
+        assert!(view.file.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_growing_source_is_probed_only_one_byte_past_the_limit() {
+        struct Growing {
+            bytes: usize,
+        }
+        impl Read for Growing {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                buffer.fill(b' ');
+                self.bytes += buffer.len();
+                Ok(buffer.len())
+            }
+        }
+        let mut reader = Growing { bytes: 0 };
+        assert_eq!(
+            bounded_project_read(&mut reader).unwrap_err(),
+            "This file is too large to read."
+        );
+        assert_eq!(reader.bytes as u64, MAX_FILE_BYTES + 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn outside_and_in_checkout_project_file_aliases_are_rejected_without_fallback() {
+        let dir = std::env::temp_dir().join(crate::util::new_id());
+        let root = dir.join("checkout");
+        std::fs::create_dir_all(&root).unwrap();
+        let root = crate::util::canonicalize(&root).unwrap();
+        std::fs::write(root.join("t3.json"), "{}").unwrap();
+        for target in [dir.join("outside.json"), root.join("inside.json")] {
+            std::fs::write(&target, r#"{"defaultThreadEnvMode":"worktree"}"#).unwrap();
+            std::os::unix::fs::symlink(&target, root.join("orbyn.json")).unwrap();
+            let view = read_project_file(&root);
+            assert_eq!(view.path.as_deref(), Some("orbyn.json"));
+            assert!(
+                view.problem.is_some(),
+                "aliased bytes must not become defaults"
+            );
+            assert!(view.file.is_none());
+            assert!(view.scripts.is_empty());
+            std::fs::remove_file(root.join("orbyn.json")).unwrap();
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_parent_replaced_after_checkout_resolution_cannot_authorize_other_bytes() {
+        let dir = std::env::temp_dir().join(crate::util::new_id());
+        let root = dir.join("checkout");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(
+            outside.join("orbyn.json"),
+            r#"{"defaultThreadEnvMode":"worktree"}"#,
+        )
+        .unwrap();
+        let expected = crate::util::canonicalize(&root).unwrap().join("orbyn.json");
+        std::fs::remove_dir(&root).unwrap();
+        std::os::unix::fs::symlink(&outside, &root).unwrap();
+        let view = read_project_file(expected.parent().unwrap());
+        assert!(view.problem.is_some());
+        assert!(view.file.is_none());
+        assert!(view.scripts.is_empty());
+
+        assert_eq!(
+            parse_file(&expected).unwrap_err(),
+            "This project file must be a direct file in the checkout."
+        );
+        std::fs::remove_file(&root).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn the_file_is_read_leniently_and_a_bad_one_is_reported() {
         let dir = std::env::temp_dir().join(crate::util::new_id());
         std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::util::canonicalize(&dir).unwrap();
         assert_eq!(read_project_file(&dir).path, None);
         std::fs::write(
             dir.join("t3.json"),

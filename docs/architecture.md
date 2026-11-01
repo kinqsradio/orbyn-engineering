@@ -383,6 +383,18 @@ requires output to keep draining during teardown. Its newer
 [ReleasePseudoConsole API](https://learn.microsoft.com/en-us/windows/console/releasepseudoconsole)
 requires Windows 11 24H2 or Server 2025 and is unavailable on Windows Server 2022.
 
+Project configuration reads preserve the registered canonical checkout as authority;
+a checkout replaced by a symlink before the request cannot redirect that root.
+Only fixed root filenames are considered, with `orbyn.json` before `t3.json`.
+Directories are skipped; a present malformed, oversized or aliased first file
+reports a problem and cannot silently expose the next file. The read-only open
+rejects symlink/reparse aliases, verifies the actual handle's exact expected path
+and regular-file identity before bytes, probes at most 256 KiB plus one byte,
+then verifies that handle again before parsing. Unix read opens are nonblocking,
+so a regular-file-to-FIFO race cannot wait for a writer. These path checks do not
+claim arbitrary hardlink provenance or make concurrent filesystem contents atomic.
+The parser consumes already checked text and never writes project configuration.
+
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
