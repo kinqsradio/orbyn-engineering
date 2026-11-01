@@ -151,7 +151,6 @@ export function GeneralSection() {
             title: "Providers",
             rows: [
               { key: "enable_provider_update_checks", title: "Check providers for updates" },
-              { key: "prefer_saved_login", title: "Prefer saved login" },
             ],
           },
           {

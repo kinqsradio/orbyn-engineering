@@ -457,8 +457,12 @@ impl Core {
     }
 }
 
-/// Reads Codex's `rateLimits` block. Reset times arrive as Unix seconds.
+/// Claude's driver supplies sanitized windows; Codex supplies a `rateLimits`
+/// block with reset times as Unix seconds.
 fn limit_windows(report: &Value) -> Vec<LimitWindow> {
+    if let Some(windows) = report.get("windows") {
+        return serde_json::from_value(windows.clone()).unwrap_or_default();
+    }
     let Some(limits) = report.get("rateLimits") else {
         return Vec::new();
     };
@@ -502,9 +506,9 @@ fn pool_windows(engines: &[EngineLimits]) -> Vec<PooledWindow> {
     let mut pooled: Vec<PooledWindow> = Vec::new();
     for engine in engines {
         for window in &engine.windows {
-            let slot = pooled
-                .iter()
-                .position(|known| known.window_minutes == window.window_minutes);
+            let slot = pooled.iter().position(|known| {
+                window.window_minutes.is_some() && known.window_minutes == window.window_minutes
+            });
             let slot = slot.unwrap_or_else(|| {
                 pooled.push(PooledWindow {
                     label: window.label.clone(),
@@ -517,7 +521,9 @@ fn pool_windows(engines: &[EngineLimits]) -> Vec<PooledWindow> {
             });
             let entry = &mut pooled[slot];
             entry.used_percent = entry.used_percent.max(window.used_percent);
-            entry.engines.push(engine.engine.clone());
+            if !entry.engines.contains(&engine.engine) {
+                entry.engines.push(engine.engine.clone());
+            }
             entry.resets_at = match (entry.resets_at.take(), &window.resets_at) {
                 (Some(known), Some(new)) => Some(if parse_time(new) < parse_time(&known) {
                     new.clone()
@@ -574,6 +580,67 @@ mod tests {
             Some(1_900_000_000)
         );
         assert!(limit_windows(&json!({ "other": 1 })).is_empty());
+    }
+
+    #[test]
+    fn scoped_windows_keep_one_engine_in_a_shared_pool() {
+        let report = json!({ "windows": [
+            { "id": "seven_day", "label": "Weekly", "used_percent": 20.0, "window_minutes": 10080, "resets_at": null },
+            { "id": "model:Example", "label": "Weekly · Example", "used_percent": 70.0, "window_minutes": 10080, "resets_at": null }
+        ] });
+        let pooled = pool_windows(&[EngineLimits {
+            engine: "claude".into(),
+            checked_at: String::new(),
+            windows: limit_windows(&report),
+            plan: None,
+            limits: report,
+        }]);
+        assert_eq!(pooled.len(), 1);
+        assert_eq!(pooled[0].used_percent, 70.0);
+        assert_eq!(pooled[0].engines, ["claude"]);
+        assert!(pooled[0].resets_at.is_none());
+    }
+
+    #[test]
+    fn unknown_lengths_do_not_pool_unrelated_windows() {
+        let engine = |id: &str, labels: &[&str]| EngineLimits {
+            engine: id.into(),
+            checked_at: String::new(),
+            plan: None,
+            limits: Value::Null,
+            windows: labels
+                .iter()
+                .enumerate()
+                .map(|(index, label)| LimitWindow {
+                    id: index.to_string(),
+                    label: (*label).into(),
+                    used_percent: 20.0,
+                    window_minutes: None,
+                    resets_at: None,
+                })
+                .collect(),
+        };
+        let pooled = pool_windows(&[
+            engine("codex", &["Window"]),
+            engine("claude", &["Monthly spend"]),
+        ]);
+        assert_eq!(pooled.len(), 2);
+        assert_eq!(pooled[0].label, "Window");
+        assert_eq!(pooled[0].engines, ["codex"]);
+        assert_eq!(pooled[1].label, "Monthly spend");
+        assert_eq!(pooled[1].engines, ["claude"]);
+
+        let pooled = pool_windows(&[engine("claude", &["Window", "Window"])]);
+        assert_eq!(
+            pooled.len(),
+            2,
+            "a shared label does not establish a shared budget"
+        );
+        assert!(
+            pooled
+                .iter()
+                .all(|window| window.window_minutes.is_none() && window.engines == ["claude"])
+        );
     }
 
     #[test]
