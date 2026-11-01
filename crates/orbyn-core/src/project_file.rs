@@ -16,6 +16,30 @@ const FILE_NAMES: [&str; 2] = ["orbyn.json", "t3.json"];
 const MAX_FILE_BYTES: u64 = 256 * 1024;
 const MAX_SCRIPTS: usize = 50;
 
+/// The settings API and project files share the same executable script shape.
+pub(crate) fn validate_scripts(value: &Value) -> Result<Vec<ProjectScript>> {
+    let scripts: Vec<ProjectScript> = serde_json::from_value(value.clone())
+        .map_err(|error| CoreError::Invalid(format!("Invalid project scripts: {error}")))?;
+    check_scripts(&scripts).map_err(CoreError::Invalid)?;
+    Ok(scripts)
+}
+
+fn check_scripts(scripts: &[ProjectScript]) -> std::result::Result<(), String> {
+    if scripts.len() > MAX_SCRIPTS {
+        return Err(format!("A project can hold {MAX_SCRIPTS} scripts."));
+    }
+    let mut names = std::collections::BTreeSet::new();
+    for script in scripts {
+        if script.name.trim().is_empty() || script.command.trim().is_empty() {
+            return Err("Every script needs a name and a command.".into());
+        }
+        if !names.insert(script.name.as_str()) {
+            return Err("Each script needs a different name.".into());
+        }
+    }
+    Ok(())
+}
+
 /// Reads the first file present. A bad file is reported and never half-applied.
 pub fn read_project_file(checkout: &Path) -> ProjectFileView {
     let Some(name) = FILE_NAMES.iter().find(|name| checkout.join(name).is_file()) else {
@@ -23,6 +47,7 @@ pub fn read_project_file(checkout: &Path) -> ProjectFileView {
             path: None,
             file: None,
             problem: None,
+            scripts: Vec::new(),
         };
     };
     let parsed = parse_file(&checkout.join(name));
@@ -32,6 +57,10 @@ pub fn read_project_file(checkout: &Path) -> ProjectFileView {
     };
     ProjectFileView {
         path: Some((*name).to_owned()),
+        scripts: file
+            .as_ref()
+            .map(|file| file.scripts.clone())
+            .unwrap_or_default(),
         file,
         problem,
     }
@@ -66,16 +95,7 @@ fn parse_file(path: &Path) -> std::result::Result<ProjectFile, String> {
     {
         return Err("worktreeSubmodules must be recursive, top-level or none.".into());
     }
-    if file.scripts.len() > MAX_SCRIPTS {
-        return Err(format!("A project file can hold {MAX_SCRIPTS} scripts."));
-    }
-    if file
-        .scripts
-        .iter()
-        .any(|script| script.name.trim().is_empty() || script.command.trim().is_empty())
-    {
-        return Err("Every script needs a name and a command.".to_owned());
-    }
+    check_scripts(&file.scripts)?;
     Ok(file)
 }
 
@@ -116,7 +136,21 @@ fn script_terminal(name: &str) -> String {
 impl Core {
     pub fn project_file(&self, thread_id: &str) -> Result<ProjectFileView> {
         let thread = self.store.thread(thread_id)?;
-        Ok(read_project_file(Path::new(&thread.cwd)))
+        let mut view = read_project_file(Path::new(&thread.cwd));
+        if view.problem.is_none() {
+            let preferences = crate::preferences::stored_preferences_from_file(
+                &self.store,
+                Some(&thread.project_id),
+                Some(&view),
+            )?;
+            let value = &preferences
+                .iter()
+                .find(|row| row.key == "default_project_scripts")
+                .expect("fixed preference catalog includes project scripts")
+                .value;
+            view.scripts = validate_scripts(value)?;
+        }
+        Ok(view)
     }
 
     fn start_script(
@@ -155,21 +189,20 @@ impl Core {
         )
     }
 
-    /// Runs a script from the checkout's project file in its own terminal. The
-    /// command comes from the file, never from the request.
+    /// Runs an effective project script in its own terminal. The request names
+    /// a saved script; it never supplies a command.
     pub fn run_script(&self, thread_id: &str, name: &str, actor: &str) -> Result<TerminalInfo> {
         let thread = self.store.thread(thread_id)?;
         if !self.store.project(&thread.project_id)?.trusted {
             return Err(CoreError::FolderUntrusted);
         }
-        let view = read_project_file(Path::new(&thread.cwd));
+        let view = self.project_file(thread_id)?;
         if let Some(problem) = view.problem {
             return Err(CoreError::Invalid(problem));
         }
         let script = view
-            .file
+            .scripts
             .into_iter()
-            .flat_map(|file| file.scripts)
             .find(|script| script.name == name)
             .ok_or_else(|| CoreError::NotFound("script".into()))?;
         self.start_script(thread_id, &thread.cwd, &script, actor)
@@ -192,10 +225,18 @@ impl Core {
         if thread.worktree.is_none() || !trusted {
             return;
         }
-        let scripts = read_project_file(Path::new(&thread.cwd))
-            .file
-            .map(|file| file.scripts)
-            .unwrap_or_default();
+        let view = match self.project_file(thread_id) {
+            Ok(view) => view,
+            Err(error) => {
+                tracing::warn!(%error, "could not resolve project scripts");
+                return;
+            }
+        };
+        if let Some(problem) = view.problem {
+            tracing::warn!(%problem, "could not read project scripts");
+            return;
+        }
+        let scripts = view.scripts;
         for script in scripts.iter().filter(|script| select(script)) {
             if let Err(error) = self.start_script(thread_id, &thread.cwd, script, "system:script") {
                 tracing::warn!(%error, "could not run a project script");
@@ -240,5 +281,21 @@ mod tests {
     #[test]
     fn script_ids_stay_plain() {
         assert_eq!(script_terminal("Dev Server!"), "script-dev-server-");
+    }
+
+    #[test]
+    fn settings_scripts_require_executable_shapes_and_unique_names() {
+        assert!(validate_scripts(&json!([])).is_ok());
+        assert!(validate_scripts(&json!([{"name":"Dev","command":"echo ok"}])).is_ok());
+        for value in [
+            json!(["echo no"]),
+            json!([{"name":"Dev","command":"  "}]),
+            json!([{"name":"  ","command":"echo no"}]),
+            json!([{"name":"Dev","command":"echo one"},{"name":"Dev","command":"echo two"}]),
+            json!([{"name":"Dev","command":"echo no","run_on_settle":"yes"}]),
+            json!([{"name":"Dev"}]),
+        ] {
+            assert!(validate_scripts(&value).is_err(), "{value}");
+        }
     }
 }

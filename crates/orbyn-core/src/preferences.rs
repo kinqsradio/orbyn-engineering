@@ -1,7 +1,7 @@
 //! Settings beyond `ServerSettings`, each with a default, and project overrides for
 //! the ones a project may set for itself. A key not listed here cannot be stored,
 //! and a value of the wrong shape is refused. Reading resolves project, then global,
-//! then the project file for its two supported keys, then default. Provider
+//! then the project file for its supported keys, then default. Provider
 //! environments and tokens are left out under rule 1.
 
 use std::collections::BTreeMap;
@@ -140,6 +140,9 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
             value.is_null() || value.as_u64().is_some_and(|days| (1..=365).contains(&days))
         }
     };
+    if fits && definition.key == "default_project_scripts" {
+        crate::project_file::validate_scripts(value)?;
+    }
     if fits {
         Ok(())
     } else {
@@ -159,6 +162,16 @@ pub(crate) fn stored_preferences(
     store: &Store,
     project_id: Option<&str>,
 ) -> Result<Vec<PreferenceView>> {
+    stored_preferences_from_file(store, project_id, None)
+}
+
+/// Runtime consumers may resolve the file in a thread's actual worktree while
+/// keeping the same project/environment precedence as the settings UI.
+pub(crate) fn stored_preferences_from_file(
+    store: &Store,
+    project_id: Option<&str>,
+    file: Option<&orbyn_contracts::ProjectFileView>,
+) -> Result<Vec<PreferenceView>> {
     let snapshot = store.settings_snapshot()?;
     // A no-project thread has a hidden scratch row for run ownership. Its
     // settings are environment defaults; it is not a selectable project scope.
@@ -172,8 +185,12 @@ pub(crate) fn stored_preferences(
         }
         id => id,
     };
-    let files = scoped::observe_files(&snapshot, project_id)?;
-    scoped::resolved_views(&snapshot, &files, project_id)
+    let files = if file.is_some() {
+        BTreeMap::new()
+    } else {
+        scoped::observe_files(&snapshot, project_id)?
+    };
+    scoped::resolved_views_from_file(&snapshot, &files, project_id, file)
 }
 
 /// One setting's effective value.

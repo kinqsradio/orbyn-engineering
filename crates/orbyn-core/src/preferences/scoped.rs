@@ -78,6 +78,15 @@ pub(super) fn resolved_views(
     files: &Files,
     project_id: Option<&str>,
 ) -> Result<Vec<PreferenceView>> {
+    resolved_views_from_file(snapshot, files, project_id, None)
+}
+
+pub(super) fn resolved_views_from_file(
+    snapshot: &SettingsSnapshot,
+    files: &Files,
+    project_id: Option<&str>,
+    checkout_file: Option<&ProjectFileView>,
+) -> Result<Vec<PreferenceView>> {
     if let Some(id) = project_id
         && !snapshot.projects.iter().any(|project| project.id == id)
     {
@@ -92,18 +101,29 @@ pub(super) fn resolved_views(
                 .filter(|_| definition.project)
                 .and_then(|id| snapshot.overrides.get(id))
                 .and_then(|own| own.get(definition.key));
-            let project_file = project_id.and_then(|id| files.get(id)).and_then(|file| {
-                let contents = file.file.as_ref()?;
-                let value = match definition.key {
-                    "default_thread_env_mode" => contents.default_thread_env_mode.as_ref(),
-                    "worktree_submodules" => contents.worktree_submodules.as_ref(),
-                    _ => None,
-                }?;
-                Some(PreferenceFileValue {
-                    path: file.path.clone()?,
-                    value: json!(value),
-                })
-            });
+            let project_file = checkout_file
+                .or_else(|| project_id.and_then(|id| files.get(id)))
+                .and_then(|file| {
+                    let contents = file.file.as_ref()?;
+                    let value = match definition.key {
+                        "default_thread_env_mode" => contents
+                            .default_thread_env_mode
+                            .as_ref()
+                            .map(|value| json!(value)),
+                        "worktree_submodules" => contents
+                            .worktree_submodules
+                            .as_ref()
+                            .map(|value| json!(value)),
+                        "default_project_scripts" if !contents.scripts.is_empty() => {
+                            Some(json!(contents.scripts))
+                        }
+                        _ => None,
+                    }?;
+                    Some(PreferenceFileValue {
+                        path: file.path.clone()?,
+                        value,
+                    })
+                });
             let (value, source) = match (local, global, project_file.as_ref()) {
                 (Some(text), _, _) => (serde_json::from_str(text)?, "project"),
                 (None, Some(value), _) => (value, "global"),

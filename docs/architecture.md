@@ -346,8 +346,15 @@ with `no-query-term` so it does not wait on terminal replies.
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
-Windows. The command comes from the file, never the request, and it needs a trusted
-folder. `run_on_worktree_create` and `run_on_settle` scripts run only in a worktree;
+Windows. The command comes from the effective saved script list, never the request,
+and it needs a trusted folder. Scripts resolve Project → Environment → actual
+thread-checkout file → Default. An explicit empty list suppresses inherited scripts;
+Inherit removes that override. Both script menus, explicit execution and worktree
+hooks use this same resolver. The scripts response keeps the actual file content in
+`file` and exposes the effective list separately in `scripts`; settings never rewrite
+the file. Opening a script terminal preserves its selected tab while the terminal
+list refreshes. Malformed files block execution, and script lists require unique nonempty
+names and nonempty commands. `run_on_worktree_create` and `run_on_settle` scripts run only in a worktree;
 one that cannot start is logged and does not undo the change that triggered it, and
 Orbyn does not hold a run for a setup script to finish.
 

@@ -41,8 +41,8 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
   );
 
   useEffect(() => {
-    if (active !== MAIN && terminals.status === "ready" && !shown) setActive(MAIN);
-  }, [active, shown, terminals.status]);
+    if (active !== MAIN && terminals.status === "ready" && !terminals.refreshing && !shown) setActive(MAIN);
+  }, [active, shown, terminals.status, terminals.refreshing]);
 
   const open = async (body: Record<string, string>) => {
     try {
@@ -79,7 +79,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
     if (first && first.id !== MAIN) void close(first);
     else onClose();
   });
-  const scriptList = (scripts.data?.file as { scripts?: { name: string }[] } | null | undefined)?.scripts ?? [];
+  const scriptList = scripts.data?.scripts ?? [];
   return (
     <div className="terminal-drawer-body">
       <div className="terminal-tabs" role="tablist" aria-label="Terminals">

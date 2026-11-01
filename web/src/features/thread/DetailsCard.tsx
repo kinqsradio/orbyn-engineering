@@ -178,7 +178,7 @@ function ScriptRows({ threadId }: { threadId: string }) {
     request<ProjectFileView>("GET", `${base}/scripts`, undefined, signal),
   );
   const pushToast = useUi((state) => state.pushToast);
-  const list = (scripts.data?.file as { scripts?: { name: string }[] } | null | undefined)?.scripts ?? [];
+  const list = scripts.data?.scripts ?? [];
   const run = (name: string) => {
     request("POST", `${base}/scripts`, { name }).then(
       () => {

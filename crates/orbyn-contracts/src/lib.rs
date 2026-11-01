@@ -1703,12 +1703,15 @@ pub struct ProjectFile {
 }
 
 wire! {
+/// Actual project-file contents plus the effective `scripts` list after settings
+/// overrides. Resolving scripts never rewrites `file`.
 pub struct ProjectFileView {
     /// The file that was read, relative to the checkout.
     pub path: Option<String>,
     pub file: Option<ProjectFile>,
     /// Why a file that exists could not be used.
     pub problem: Option<String>,
+    pub scripts: Vec<ProjectScript>,
 }
 }
 
