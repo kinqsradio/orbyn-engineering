@@ -653,10 +653,38 @@ defaults, so new defaults reach them. It allows comments and trailing commas, an
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
+Worktree retention uses the separate project-scoped `worktree_cleanup` preference.
+Its default `{}` inherits: an empty project object first uses the new environment
+policy, and an empty environment object falls back only to global
+`storage_cleanup.worktree_settled_after_days`. Legacy project `storage_cleanup`
+rows remain stored and never activate worktree cleanup. `mode: "off"` disables it;
+`mode: "custom"` uses `rules.settled_after_days`, an integer from 0 through 3650 or
+null. Zero is immediate; absent/null custom age is Off, not an inherited age.
+Inherit deletes the new project override. Scoped rules patches merge per physical
+member, preserving unknown top-level and rule fields. Known invalid policy shapes
+are rejected, and corrupt stored policies stop the pass before any effects.
+
+A cleanup pass takes exclusive policy admission before resolving all projects and
+holds it through the pass. New-policy writes and global legacy retention writes
+try shared admission around their settings transaction; an admitted or queued
+cleanup returns the existing settings conflict instead of accepting a policy edit
+against that pass. Manual passes serialize. Membership and row revisions still
+fence scoped edits; they do not themselves fence filesystem effects. Before each
+worktree removal, the live-owner check scans all projects, including selected
+subfolders inside that worktree. Concurrent thread creation after this check remains
+an existing unfenced boundary; no concurrent thread-creation guarantee is claimed.
+
+Schema 20 is a semantic writer fence with no row conversion or deletion. The app's
+data-directory owner lock excludes another running service; once it releases,
+schema 19 refuses version 20 before WAL setup or migration rather than ignoring
+project Off. Current version 20 writers retain the existing scoped transaction and
+revision checks. Recovery uses the current writer or a pre-upgrade backup; never
+lower the schema marker or reopen this database with an older cleanup writer.
+
 Storage cleanup removes logs, browser artifacts and worktrees settled past their
 retention. A worktree goes only through `git worktree remove` with no force, so Git
-keeps uncommitted work, and never while another active thread uses it. `?dry_run=true`
-only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
+keeps uncommitted work. Candidates observed as owned by another live thread are
+kept. `?dry_run=true` only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
 ## Message search

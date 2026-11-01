@@ -121,6 +121,7 @@ pub struct Core {
     pub http: reqwest::Client,
     pub recovery: Recovery,
     pub(crate) keybinding_writer: Mutex<()>,
+    pub(crate) cleanup_policy_gate: tokio::sync::RwLock<()>,
     _lock: File,
 }
 
@@ -221,6 +222,7 @@ impl Core {
             http,
             recovery,
             keybinding_writer: Mutex::new(()),
+            cleanup_policy_gate: tokio::sync::RwLock::new(()),
             _lock: lock,
         };
         core.apply_login_preference()?;

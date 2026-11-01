@@ -21,7 +21,13 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (17, VISITS_AND_RESUMES),
     (18, PROJECT_SETUP),
     (19, PREPARATION_RETRY),
+    (20, WORKTREE_CLEANUP),
 ];
+
+// Semantic writer fence: older cleanup writers ignore project Off/Custom and
+// could remove a protected worktree. Preserve all existing values; schema 19
+// rejects this version before opening its writer. No backfill or table rewrite.
+const WORKTREE_CLEANUP: &str = "SELECT 1;";
 
 // Captured project code and input belong to preparation, never to a retry request.
 // Null captures from schema 18 remain unavailable rather than guessing a command.
