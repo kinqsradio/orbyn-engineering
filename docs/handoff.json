@@ -102,6 +102,14 @@
         "Head9ac3dfa CI41294951768 all six required jobs and GitGuardian passed; no review threads or submitted reviews",
         "Merged12748ac; primary main and local settings branch fast-forwarded without losing the next shortcut slice"
       ]
+    },
+    {
+      "result": "PR83 settings batch pushed; exact-head E2E disclosure correction and local Windows console ownership correction prepared without weakening checks",
+      "evidence": [
+        "PR83 initial head42fcd90; CI41311166845 WindowsRust/E2E failed while both packaged startup jobs passed",
+        "2a48734; affected8 browser cases passed and CI41312664253 E2E passed",
+        "0898d26; target/pr83-conpty-workspace.log 999 passed9ignored, target/pr83-conpty-clippy.log passed"
+      ]
     }
   ],
   "verification": [
@@ -296,12 +304,22 @@
         "Real ID execution and read-only legacy identity regressions failed before and pass after; malformed keymap retry and concurrent unrelated writes pass",
         "Generated RunScript.ts committed; native/Windows shortcut and route round-trip qualification remain unverified; no new section PR or merge"
       ]
+    },
+    {
+      "check": "Windows console retirement on the final PR83 head",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "crates/orbyn-core/src/terminal.rs Windows-only real ConPTY EOF regression",
+        "crates/orbynd/tests/terminal_output.rs final-output/late-observer test retains45second close deadline",
+        "New required Windows CI pending; no local Windows host"
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Recheck existing helpers and resume bounded delegation now that the local shortcut slice6b0682b is checked and committed. Complete preparation retry and investigate subfolder registration, preserving single-section delivery and all refusal boundaries. Main12748ac CI41296294886 is green; no shortcut-section CI is claimed.",
+  "next_action": "Finish PR83 exact-head CI, repair any failure without weakening checks, and merge without squash only when all six required jobs are green. Then continue K6 selected project details/name/checkouts/removal and K7 project icons, preserving the stopped native-control and other permission boundaries.",
   "delivery": {
     "state": "merged",
     "evidence": [

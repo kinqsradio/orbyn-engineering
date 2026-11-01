@@ -350,6 +350,21 @@ parity review even though its proposed popover is excluded.
   thread-creation admission and native/Windows qualification. No final packaged
   walkthrough or live-engine qualification is supplied by these cleanup fixtures.
 
+- PR83 was opened on `42fcd90` with the 20-commit settings batch. Initial
+  CI `41311166845` passed both installed-app startup jobs, macOS Rust and Web,
+  but failed Windows Rust's final-output observer close and one E2E Advanced
+  selector (220 other cases passed). `2a48734` scopes five acceptance specs to
+  their controlled rows; eight affected cases pass locally and its full E2E job
+  in `41312664253` passed. No check or timeout was weakened.
+- `0898d26` fixes Windows ConPTY ownership retirement on direct-child exit, with
+  the reader draining independently before natural output completion. Windows
+  console teardown can end attached console descendants; its exact native T3
+  timing is unqualified. The close test keeps its 45-second limit and now records
+  child/output state on failure. Local workspace qualification passed 999 tests
+  (9 ignored), Clippy and formatting. A Windows-only real ConPTY regression awaits
+  CI on the new head. PR83 must not merge until every required job is green on
+  that exact head; earlier green packaged startup does not qualify this new fix.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
