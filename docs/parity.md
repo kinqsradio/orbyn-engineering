@@ -697,7 +697,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 ## O. CLI
 - [x] O1 `t3` / `t3 start`: starts server and opens browser | apps/server/src/cli/server.ts | c | M | server done, as `orbyn` and `orbyn start` | status: partial | remaining: opening a browser is opener-contract tested; a real CLI-launched browser still needs proof
 - [x] O2 `t3 serve`: headless server with host, LAN, Tailscale options | apps/server/src/cli/server.ts | c | M | server done, as `orbyn serve`; remote options are out of scope | scope: mixed | local: headless local service | excludes: LAN, Tailscale and other remote options
-- [x] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S | server done, as `orbyn app`, through the `orbyn://` link
+- [x] O3 `t3 app`: opens project in desktop app | apps/server/src/cli/app.ts | c d | S | server done, as `orbyn app`, through the `orbyn://` link | status: partial | remaining: no-path invocation does not select the current directory and the deep link is not acknowledged by the desktop; packaged project-opening proof remains open
 - [ ] O4 `t3 up`: prompted or flag-driven access setup | apps/server/src/cli/up.ts | c | L | [hosted] | scope: excluded | reason: remote access setup
 - [x] O5 `t3 status`: current access settings, JSON | apps/server/src/cli/up.ts | c | S | server done, as `orbyn status`, for the running service
 - [ ] O6 `t3 connect` and subcommands: login, link, status, publish, unlink, logout | apps/server/src/cli/connect.ts | c | L | [hosted] | scope: excluded | reason: hosted connection and sign-in
