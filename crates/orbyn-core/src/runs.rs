@@ -320,6 +320,7 @@ impl RunManager {
     /// Pausing and resuming a goal is the engine's own feature, so an engine
     /// without it refuses here rather than reading the words as a prompt.
     fn check_goal_action(&self, thread: &Thread, prompt: &str) -> Result<()> {
+        self.engines.check_enabled(&thread.engine)?;
         let driver = self.engines.driver(&thread.engine)?;
         let kind = RunKind::parse(prompt);
         // These reach the engine bare, so earlier conversation has no way along.
@@ -768,6 +769,10 @@ impl RunManager {
             run_id: run_id.clone(),
             thread_id: thread.id.clone(),
             engine: thread.engine.clone(),
+            family: self
+                .engines
+                .driver(&thread.engine)
+                .map_or_else(|_| thread.engine.clone(), |driver| driver.family()),
             write_scope: Some(write_scope),
             mode: lifecycle
                 .as_ref()
@@ -1013,7 +1018,7 @@ impl RunManager {
         let mcp_url = if descriptor.capabilities.mcp {
             let issued = self.mcp.register(McpBinding {
                 scope: scope.clone(),
-                permission_prompt: descriptor.id == "claude",
+                permission_prompt: driver.family() == "claude",
                 skills: route.selection.clone(),
             })?;
             let url = format!("{}/mcp/{issued}", self.base_url);

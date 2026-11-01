@@ -275,6 +275,21 @@ pub trait EngineDriver: Send + Sync {
 
     async fn probe(&self) -> EngineProbe;
 
+    /// The engine this is, whatever it is called here: an instance of Claude is run,
+    /// gated and limited as Claude.
+    fn family(&self) -> String {
+        self.descriptor().id
+    }
+
+    /// This driver under an instance's id, name and program, for a native driver.
+    /// Every other engine is rebuilt from its launch instead.
+    fn instance(
+        &self,
+        _instance: &orbyn_contracts::ProviderInstance,
+    ) -> Option<std::sync::Arc<dyn EngineDriver>> {
+        None
+    }
+
     /// True when a relative path in this engine's tool calls means the checkout.
     /// Claude runs at the library, so its relative paths mean the library.
     fn resolves_from_checkout(&self) -> bool {
