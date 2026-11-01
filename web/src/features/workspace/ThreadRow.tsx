@@ -1,16 +1,4 @@
-import {
-  Check,
-  CircleCheck,
-  CircleDashed,
-  Clock,
-  Gauge,
-  GitBranch,
-  OctagonAlert,
-  Pin,
-  PinOff,
-  Unplug,
-  X,
-} from "lucide-react";
+import { AlarmClock, Check, CircleCheck, CircleDashed, Clock, Gauge, GitBranch, OctagonAlert, Pin, PinOff, Unplug, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Thread } from "../../api/types";
@@ -338,6 +326,7 @@ export function ThreadRow({
         actions.onDismissWoke(thread);
       }}
     >
+      <AlarmClock size={10} aria-hidden />
       Woke
       <X size={10} aria-hidden />
     </button>

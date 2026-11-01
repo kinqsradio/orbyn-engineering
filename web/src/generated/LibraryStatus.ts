@@ -4,7 +4,12 @@ export type LibraryStatus = { path: string,
 /**
  * True when the user chose an existing checkout, which is never moved.
  */
-adopted: boolean, revision: string, branch: string | null, dirty: boolean, dirty_files: Array<string>, upstream: string | null, ahead: number, behind: number, 
+adopted: boolean, 
+/**
+ * True while this is the snapshot the app shipped with, not yet a clone. Only a
+ * clone can receive updates.
+ */
+snapshot?: boolean, revision: string, branch: string | null, dirty: boolean, dirty_files: Array<string>, upstream: string | null, ahead: number, behind: number, 
 /**
  * The revision a rollback would return to.
  */

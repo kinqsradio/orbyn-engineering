@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Starting threads and the sidebar's way back to them, through the real service. */
-const PORT = 5292;
 
 interface Listed {
   id: string;
@@ -29,7 +28,7 @@ const newThread = (title: string, worktree: string | null = null) =>
 
 test.beforeAll(async () => {
   let engines;
-  ({ service, projectId, engines } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId, engines } = await startProject({ scenes: true }));
   engine = engines.find((entry) => /codex/i.test(entry.name))?.id ?? engines[0]?.id ?? "";
 });
 test.afterAll(() => service.stop());
@@ -168,12 +167,9 @@ test("the open thread stays where it was until you leave it", async ({ page }) =
 });
 
 test("the project folder menu and pen button start a thread", async ({ page }) => {
+  // Before the app starts, since it writes its own preferences back while it loads.
+  await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ projectFolders: true })));
   await page.goto(service.page);
-  await page.evaluate(() => {
-    const prefs = JSON.parse(localStorage.getItem("orbyn.prefs.v1") ?? "{}") as Record<string, unknown>;
-    localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ ...prefs, projectFolders: true }));
-  });
-  await page.reload();
   const folder = page.locator(".folder-head").first();
   await folder.locator(".folder-toggle").click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Copy path" })).toBeVisible();

@@ -5,6 +5,7 @@ mod api;
 mod preview_routes;
 mod pulls;
 mod raw_files;
+mod recent_events;
 mod stream;
 mod terminal_ws;
 mod ui;
@@ -28,7 +29,10 @@ use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 /// A little over the largest allowed file; core enforces the exact limits.
@@ -68,9 +72,12 @@ struct ServeArgs {
     /// Release manifest to compare against when no desktop shell is attached.
     #[arg(long, env = "ORBYN_UPDATE_MANIFEST")]
     update_manifest: Option<String>,
-    /// Where a first-run clone of the skills library comes from.
+    /// Where the clone that replaces the shipped snapshot comes from.
     #[arg(long, env = "ORBYN_WORKSPACE_URL")]
     workspace_url: Option<String>,
+    /// The folder holding the library snapshot that ships with the app.
+    #[arg(long, env = "ORBYN_LIBRARY_BUNDLE")]
+    library_bundle: Option<PathBuf>,
     /// Bind every interface. Requires `--tls-terminated`.
     #[arg(long)]
     remote: bool,
@@ -103,6 +110,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
     if let Some(url) = &args.workspace_url {
         config.workspace_url.clone_from(url);
     }
+    config.library_bundle.clone_from(&args.library_bundle);
     let defaults = EngineConfig::default();
     let sandbox = std::env::var("ORBYN_CODEX_SANDBOX").unwrap_or(defaults.codex_sandbox);
     if !SANDBOX_MODES.contains(&sandbox.as_str()) {
@@ -307,6 +315,14 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/projects/{id}/pulls/{number}/files", get(pulls::files))
         .route(
+            "/api/projects/{id}/pulls/{number}/revisions",
+            get(pulls::revisions),
+        )
+        .route(
+            "/api/projects/{id}/commits/{sha}/files",
+            get(pulls::revision_files),
+        )
+        .route(
             "/api/projects/{id}/pulls/{number}/viewed",
             post(pulls::set_viewed),
         )
@@ -376,6 +392,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/diagnostics", get(api::diagnostics))
         .route("/api/diagnostics/repair", post(api::repair_database))
+        .route(
+            "/api/diagnostics/processes/{pid}/stop",
+            post(api::stop_process),
+        )
         .route("/api/diagnostics/otlp", post(api::check_otlp))
         .route(
             "/api/storage/cleanup",
@@ -641,6 +661,16 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         Core::open(core_config(&args, base_url.clone())?).map_err(|error| error.to_string())?,
     );
     core.mcp.bind_host(&core);
+    orbyn_core::diagnostics::start_sampling();
+    // Before the service answers anything. If the disk refuses, the background
+    // attempt tries again, and the service still serves what needs no library.
+    let library = match core.workspace.provision().await {
+        Ok(()) => core.ensure_library_project(),
+        Err(error) => Err(error),
+    };
+    if let Err(error) = library {
+        tracing::error!("the skills library is not in place: {error}");
+    }
     let token = random_token().map_err(|error| error.to_string())?;
     let (key_digest, new_key) = if args.remote {
         let (digest, key) = remote_key(&core).map_err(|error| error.to_string())?;
@@ -684,6 +714,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         wait
     });
     tokio::spawn(wait_for_stop(parent, stop.clone()));
+    {
+        let (core, stop) = (core.clone(), stop.clone());
+        tokio::spawn(async move { core.run_library_upgrades(stop).await });
+    }
     let checks = {
         let (updates, stop) = (core.updates.clone(), stop.clone());
         tokio::spawn(async move { updates.run_checks(stop).await })
@@ -715,11 +749,15 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_env("ORBYN_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(
+                    EnvFilter::try_from_env("ORBYN_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+                ),
         )
-        .with_writer(std::io::stderr)
+        .with(recent_events::RecentEvents.with_filter(LevelFilter::WARN))
         .init();
     let cli = Cli::parse();
     let outcome = match cli.command {

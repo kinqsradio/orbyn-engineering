@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Commit, push, pull request and branches through the real service and real Git. */
-const PORT = 5284;
 
 let service: Service;
 let projectId = "";
@@ -21,7 +20,7 @@ const newThread = async (page: import("@playwright/test").Page) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true, forge: [] }));
+  ({ service, projectId } = await startProject({ scenes: true, forge: [] }));
   git(service.repo, "config", "user.name", "Test");
   git(service.repo, "config", "user.email", "test@example.com");
 });
