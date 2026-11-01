@@ -8,6 +8,8 @@ import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { TerminalPanel } from "./TerminalPanel";
+import type { ProjectScript } from "../../generated/ProjectScript";
+import { openActionPreview } from "../thread/actionPreview";
 
 const MAIN = "main";
 const q = encodeURIComponent;
@@ -61,11 +63,12 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
       fail(failure);
     }
   };
-  const run = async (name: string) => {
+  const run = async (script: ProjectScript) => {
     try {
-      const made = await request<TerminalInfo>("POST", `${base}/scripts`, { name });
+      const made = await request<TerminalInfo>("POST", `${base}/scripts`, { name: script.name });
       setActive(made.group);
       reload();
+      await openActionPreview(threadId, script);
     } catch (failure) {
       fail(failure);
     }
@@ -158,7 +161,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
           {...menu}
           label="Scripts"
           onClose={() => setMenu(null)}
-          items={scriptList.map((script) => ({ label: script.name, onSelect: () => void run(script.name) }))}
+          items={scriptList.map((script) => ({ label: script.name, onSelect: () => void run(script) }))}
         />
       ) : null}
     </div>

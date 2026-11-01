@@ -364,7 +364,11 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     if (waiting === null) return;
     useUi.getState().showInBrowser(null);
     // An empty request only brings the panel forward, for a tab already made.
-    if (waiting) openWaiting.current(waiting);
+    if (typeof waiting === "object") {
+      setActiveId(waiting.tabId);
+      setDraftTab(false);
+      reload();
+    } else if (waiting) openWaiting.current(waiting);
     else reload();
   }, [waiting, reload]);
   const onPicked = (picked: PickedElement) => {

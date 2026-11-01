@@ -355,7 +355,13 @@ hooks use this same resolver. The scripts response keeps the actual file content
 the file. Opening a script terminal preserves its selected tab while the terminal
 list refreshes. Malformed files block execution, and script lists require unique nonempty
 names and nonempty commands. The existing command editor preserves a named script's
-role and options when editing its command. The first `run_on_worktree_create` or
+role and options when editing its command. Both manual script menus open a new
+Browser tab after successful command launch when `auto_open_preview` is enabled
+and `preview_url` is set. The existing preview API validates the URL and owns its
+browser process. The new tab is selected without replacing another page; preview
+failure is reported separately from the already-started command. A late preview
+response does not switch surfaces after the user navigates to another thread.
+The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets
 a fresh terminal. A setup's `async` defaults to true. The first admitted turn waits

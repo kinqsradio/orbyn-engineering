@@ -239,10 +239,10 @@ interface UiState extends Prefs {
   togglePanel(tab: ContextTab): void;
   /** A page floating over the chat, if any. */
   previewFloat: { threadId: string; tabId: string } | null;
-  /** A URL waiting for the Browser panel to open it. */
-  previewRequest: string | null;
+  /** A URL to open, or an existing tab to reveal in the Browser panel. */
+  previewRequest: string | { tabId: string } | null;
   setPreviewFloat(float: { threadId: string; tabId: string } | null): void;
-  showInBrowser(url: string | null): void;
+  showInBrowser(url: string | { tabId: string } | null): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
   /** Back to the launcher, keeping open surfaces. */
