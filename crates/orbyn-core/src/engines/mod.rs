@@ -1,5 +1,5 @@
 //! Engine registry, status and updates. Updates run only through the installer
-//! that provably owns the binary, and never while that engine has a run.
+//! that provably owns the binary, and never while a run is active.
 
 pub mod instances;
 pub mod known;
@@ -260,10 +260,10 @@ impl EngineManager {
         Ok(drivers)
     }
 
-    /// Runs an admission while no update of `engine` can start.
+    /// Instances may share a binary, so no run starts during any engine update.
     pub fn admit_with<T>(&self, engine: &str, admit: impl FnOnce() -> Result<T>) -> Result<T> {
         let updating = lock(&self.updating);
-        if updating.contains(engine) {
+        if !updating.is_empty() {
             return Err(CoreError::EngineBusy(engine.to_owned()));
         }
         admit()
@@ -291,11 +291,21 @@ impl EngineManager {
         *self.statuses.lock().await = None;
     }
 
+    /// An instance id can now launch another driver, whose old models cannot apply.
+    pub async fn instances_changed(&self) {
+        self.invalidate().await;
+        // Keep the catalog lock until both caches are cleared: an in-flight read
+        // must not restore the old driver's validation after this returns.
+        let mut models = self.models.lock().await;
+        models.clear();
+        lock(&self.known_models).clear();
+    }
+
     /// What the engine says it offers. A failure is reported with the list empty,
     /// so custom models still work, and only a good answer is kept for long.
     pub async fn models(&self, id: &str, refresh: bool) -> Result<EngineModels> {
-        let driver = self.driver(id)?;
         let mut cache = self.models.lock().await;
+        let driver = self.driver(id)?;
         if !refresh
             && let Some(cached) = cache.get(id)
             && cached.key.is_some()
@@ -511,11 +521,11 @@ impl EngineManager {
         self.status(id).await
     }
 
-    /// Marks the engine as updating unless it has a run. Admission takes the same
-    /// lock, so a run admitted first blocks the update and vice versa.
+    /// Instances may share the installation being updated. Admission holds this
+    /// same lock through its durable write, so either the run or update wins.
     fn begin_update(&self, id: &str) -> Result<UpdateMarker<'_>> {
         let mut updating = lock(&self.updating);
-        if updating.contains(id) || self.store.active_runs_for_engine(id)? > 0 {
+        if updating.contains(id) || !self.store.active_runs()?.is_empty() {
             return Err(CoreError::EngineBusy(id.to_owned()));
         }
         updating.insert(id.to_owned());
@@ -608,4 +618,83 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::{Admission, NewProject, NewThread};
+    use crate::testing::TempDir;
+
+    fn manager(dir: &TempDir) -> EngineManager {
+        EngineManager::new(
+            Arc::new(Store::open(&dir.path().join("store.sqlite3"), "test").unwrap()),
+            Arc::new(TerminalManager::default()),
+            reqwest::Client::new(),
+            EngineConfig::default(),
+        )
+    }
+
+    #[tokio::test]
+    async fn an_instance_run_blocks_updates_of_the_shared_engine() {
+        let dir = TempDir::new();
+        let engines = manager(&dir);
+        let project = engines
+            .store
+            .add_project(NewProject {
+                path: "/project",
+                name: "project",
+                is_git: false,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
+        engines.store.trust_project(&project.id, "test").unwrap();
+        let thread = engines
+            .store
+            .create_thread(NewThread {
+                project_id: project.id,
+                title: "test".into(),
+                engine: "claude-beta".into(),
+                model: None,
+                cwd: "/project".into(),
+                worktree: None,
+                skill_profile: None,
+                parent_thread_id: None,
+                relation: None,
+                scratch: false,
+            })
+            .unwrap();
+        let run = engines
+            .admit_with("claude-beta", || {
+                engines.store.admit_run(Admission {
+                    thread_id: &thread.id,
+                    prompt: "test",
+                    actor: "test",
+                })
+            })
+            .unwrap();
+        assert!(matches!(
+            engines.begin_update("claude"),
+            Err(CoreError::EngineBusy(_))
+        ));
+        engines
+            .store
+            .finish_run(&run.id, orbyn_contracts::RunState::Completed, None)
+            .unwrap();
+        assert!(engines.begin_update("claude").is_ok());
+    }
+
+    #[tokio::test]
+    async fn an_engine_update_blocks_admission_through_an_instance() {
+        let dir = TempDir::new();
+        let engines = manager(&dir);
+        let marker = engines.begin_update("claude").unwrap();
+        assert!(matches!(
+            engines.admit_with("claude-beta", || Ok(())),
+            Err(CoreError::EngineBusy(_))
+        ));
+        drop(marker);
+        assert!(engines.admit_with("claude-beta", || Ok(())).is_ok());
+    }
 }

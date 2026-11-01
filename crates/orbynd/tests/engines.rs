@@ -230,3 +230,68 @@ async fn a_cli_on_this_machine_is_an_engine_with_its_own_launch() {
     let run = seen.iter().rfind(|entry| entry["mode"] == "acp").unwrap();
     assert_eq!(run["args"], json!(["acp"]));
 }
+
+#[tokio::test]
+async fn changing_an_instance_forgets_its_previous_catalog_and_validation() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let (code, body) = set_instances(&service, json!([{ "id": "work", "driver": "claude" }])).await;
+    assert_eq!(code, 200, "{body}");
+    let catalog = service.json("/api/engines/work/models").await;
+    assert_eq!(catalog["models"][1]["id"], "fable");
+    let (code, body) = set_instances(&service, json!([{ "id": "work", "driver": "codex" }])).await;
+    assert_eq!(code, 200, "{body}");
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let thread = service.thread(&project, "work").await;
+    // Claude's former catalog has no service tier. It cannot validate a Codex turn.
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "hello", "options": { "service_tier": "priority" } }),
+        )
+        .await;
+    assert_eq!(code, 202, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    let catalog = service.json("/api/engines/work/models").await;
+    assert_eq!(catalog["models"][0]["id"], "fake-big");
+}
+
+#[tokio::test]
+async fn computer_actions_on_an_instance_obey_its_native_family_deny() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let (code, body) = set_instances(&service, json!([{ "id": "work", "driver": "claude" }])).await;
+    assert_eq!(code, 200, "{body}");
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let thread = service.thread(&project, "work").await;
+    let (code, body) = service
+        .send(
+            "/api/policy/rules",
+            json!({
+                "effect": "deny", "kind": "computer", "pattern": "click *",
+                "engine": "claude", "note": null,
+            }),
+        )
+        .await;
+    assert_eq!(code, 201, "{body}");
+    service.admit(&thread, "[hang]").await;
+    // A family deny must answer immediately, without creating a request to override it.
+    let response = service
+        .post(&format!("/api/threads/{thread}/computer"))
+        .json(&json!({ "action": "desktop.click", "target": "@s1:e2", "args": null }))
+        .timeout(std::time::Duration::from_secs(3))
+        .send()
+        .await
+        .expect("a deny must not wait for approval");
+    assert_eq!(response.status(), 403);
+    let approvals = service
+        .json(&format!("/api/approvals?thread_id={thread}"))
+        .await;
+    assert!(approvals.as_array().unwrap().is_empty(), "{approvals}");
+}

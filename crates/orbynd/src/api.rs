@@ -857,7 +857,7 @@ pub async fn set_preferences(
         .values
         .contains_key(orbyn_core::engines::instances::PREFERENCE)
     {
-        state.core.engines.invalidate().await;
+        state.core.engines.instances_changed().await;
     }
     Ok(Json(state.core.preferences(None)?))
 }
@@ -1546,7 +1546,7 @@ pub async fn computer_action(
                 run_id: run.id.clone(),
                 thread_id: thread.id.clone(),
                 engine: thread.engine.clone(),
-                family: thread.engine.clone(),
+                family: state.core.engines.driver(&thread.engine)?.family(),
                 write_scope: None,
                 mode: orbyn_contracts::PermissionMode::Supervised,
                 plan: false,

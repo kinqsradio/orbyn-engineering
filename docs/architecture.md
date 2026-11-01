@@ -357,6 +357,9 @@ A turned-off instance is not listed and refuses new runs, and threads keep their
 An instance of Claude is still Claude to the permission prompt, rules, version checks and
 custom commands. Nothing here holds an account: no environment, no config folder, so a
 second login stays out under rule 1. The list is global, so no tool can reach it.
+Changing the list clears model catalogs and selection validation, so a changed setup
+cannot keep the former driver's offered options. Since instances can share a binary,
+an engine update refuses while any run is active, and no run starts during an update.
 
 A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
 `new_worktrees_start_from_origin` is on, falling back to HEAD, and
