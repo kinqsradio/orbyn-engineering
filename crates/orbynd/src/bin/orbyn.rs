@@ -5,6 +5,8 @@
 
 #[path = "../cli_service.rs"]
 mod cli_service;
+#[path = "../cli_trace.rs"]
+mod cli_trace;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, ExitCode, Stdio};
@@ -81,6 +83,22 @@ enum Command {
     Project(ProjectCommand),
     #[command(subcommand)]
     Theme(ThemeCommand),
+    /// Inspect the local server trace file.
+    #[command(subcommand)]
+    Trace(TraceCommand),
+}
+
+#[derive(Subcommand)]
+enum TraceCommand {
+    /// Summarize local operation counts, rates and latency.
+    Summary {
+        /// Count spans that ended in this window, such as 30m or 2h.
+        #[arg(long, value_parser = cli_trace::duration)]
+        since: Option<Duration>,
+        /// Number of span names, busiest first.
+        #[arg(long, default_value_t = 25, value_parser = clap::value_parser!(u32).range(1..))]
+        limit: u32,
+    },
 }
 
 #[derive(Subcommand)]
@@ -939,6 +957,10 @@ async fn run(cli: Cli) -> Outcome<()> {
         return start(&cli, path, false).await;
     };
     match command {
+        Command::Trace(TraceCommand::Summary { since, limit }) => {
+            return cli_trace::summary(&data_dir(&cli)?, *since, *limit, cli.json)
+                .map_err(Failure::new);
+        }
         Command::Start { path, no_open } => return start(&cli, path.as_deref(), *no_open).await,
         Command::App { path } => return open_app(&cli, path.as_deref()).await,
         Command::Service(service) => return service_command(&cli, service),

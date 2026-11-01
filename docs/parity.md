@@ -715,7 +715,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] O18 `t3 environment`: link, list, unlink | apps/server/src/cli/environment.ts | c | M | scope: excluded | reason: linked environments
 - [x] O19 `t3 theme`: set, clear, show | apps/server/src/cli/theme.ts | c | S | server done, as `orbyn theme`, through the `default_theme` preference
 - [x] O20 `t3 browser setup`: host sandbox and libraries | apps/server/src/cli/browser.ts | c | M | scope: mixed | local: `orbyn browser setup` matches the macOS/Windows no-op response without requiring a service or changing the host | excludes: Linux AppArmor, package and font installation | evidence: real CLI with and without a real service on macOS; Windows execution awaits CI
-- [ ] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S
+- [x] O21 `t3 trace summary`: trace reporting | apps/server/src/cli/trace.ts | c | S | evidence: real orbynd emits bounded operation timings and real CLI reads counts, latency percentiles, outcomes, since and limit online or offline; no request payloads in records | verification: macOS local checks; Windows execution awaits section CI
 - [ ] O22 `t3 triage`: starts Claude or Codex in terminal | apps/server/src/cli/triage.ts | c | S
 - [x] O23 Config inputs: flags, environment, home directory | apps/server/src/cli/config.ts | c | M | server done: `--data-dir` and `ORBYN_DATA_DIR`; `orbyn serve` takes `orbynd serve` options
 - [ ] O24 Hidden helpers: ACP MCP bridge and call, SSH helper, service launcher, Claude history | apps/server/src/cli/acpMcpBridge.ts | c | M | scope: mixed | local: local ACP bridge, service launcher and credential-free history helpers | excludes: SSH helper

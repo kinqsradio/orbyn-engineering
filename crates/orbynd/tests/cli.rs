@@ -772,3 +772,77 @@ async fn unreadable_service_environment_stops_before_the_daemon_starts() {
     assert!(!data.join("orbynd.lock").exists());
     assert!(!data.join("service.json").exists());
 }
+
+#[tokio::test]
+async fn trace_summary_reads_real_core_timings_without_payloads_or_a_running_service() {
+    let dir = TempDir::new();
+    let data = dir.path().join("data");
+    let service = support::Service::start(&data, Options::default());
+    for _ in 0..3 {
+        service.json("/api/info").await;
+    }
+    let secret_id = "private-fixture-id-not-a-span-name";
+    let missing = service
+        .client
+        .get(format!(
+            "{}/api/threads/{secret_id}?fixture=private-query",
+            service.url
+        ))
+        .bearer_auth(&service.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status().as_u16(), 404);
+    let report = parsed(&run(&data, &["trace", "summary", "--since", "1h", "--json"]).await);
+    assert!(report["span_count"].as_u64().unwrap() >= 4, "{report}");
+    let spans = report["spans"].as_array().unwrap();
+    let info = spans
+        .iter()
+        .find(|row| row["name"] == "GET /api/info")
+        .unwrap();
+    assert!(info["count"].as_u64().unwrap() >= 3);
+    assert!(info["p50_ms"].as_f64().unwrap() >= 0.0);
+    let missing = spans
+        .iter()
+        .find(|row| row["name"] == "GET /api/threads/{id}")
+        .unwrap();
+    assert_eq!(missing["failed"], 1);
+    let records = std::fs::read_to_string(orbyn_core::local_trace::trace_path(&data)).unwrap();
+    for private in [
+        secret_id,
+        "private-query",
+        &service.token,
+        data.to_str().unwrap(),
+    ] {
+        assert!(
+            !records.contains(private),
+            "operation labels contain no request payloads"
+        );
+    }
+    let text = stdout(&run(&data, &["trace", "summary", "--limit", "1"]).await);
+    assert!(text.contains("p50") && text.contains("p90") && text.contains("interrupted"));
+    assert!(text.contains("Use --limit"));
+    assert_eq!(
+        run(&data, &["trace", "summary", "--limit", "0"])
+            .await
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&data, &["trace", "summary", "--since", "bad"])
+            .await
+            .status
+            .code(),
+        Some(2)
+    );
+    service.stop().await;
+    let offline = parsed(&run(&data, &["trace", "summary", "--json"]).await);
+    assert_eq!(offline["span_count"], report["span_count"]);
+    let absent = dir.path().join("absent");
+    assert!(stdout(&run(&absent, &["trace", "summary"]).await).contains("No spans found"));
+    assert!(
+        !absent.exists(),
+        "an offline read creates no data directory"
+    );
+}

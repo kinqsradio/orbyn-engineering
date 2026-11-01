@@ -957,6 +957,20 @@ read failures stop startup. That file is the person's and stays out of Orbyn's r
 shares the data folder's single lock, so a desktop app on the same folder cannot start
 while the service runs.
 
+`orbyn trace summary` reads this data folder's `logs/server.trace.ndjson` and ten
+rotated files without connecting to a running service. Core owns payload-free timing
+records: registered operation name, elapsed milliseconds, end time and outcome.
+HTTP instrumentation supplies method and registered route template, never request
+IDs, query strings, headers, prompts or error text. An unfinished operation records
+an interruption. Each file rotates at 10 MiB; recording failures do not fail the
+operation. The reader snapshots each file length and bounds scanned bytes, record
+length, distinct names and retained samples. Malformed lines are counted, not
+interpreted as spans. Summaries sort busiest names first and report count, rate,
+nearest-rank p50/p90, maximum, interruptions and failures. `--since` filters by end
+time and `--limit` controls displayed names. Missing files produce an empty report
+without creating the data folder. This is local timing evidence, not an OTLP exporter
+or a completed diagnostics UI.
+
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`,
