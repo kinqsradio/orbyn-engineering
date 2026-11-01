@@ -79,6 +79,28 @@ test("spawn failure removes the disposable profile and rejects", async () => {
   });
 });
 
+test("failed diagnostics preserve startup and shutdown errors and still reap the service", async () => {
+  await fixture(async ({ data }) => {
+    const silent = `process.stdin.resume(); process.stdin.on('end', () => {}); setInterval(() => {}, 1000);`;
+    let diagnosed;
+    const messages = (error) => [error.message, ...(error.errors ?? []).flatMap(messages)];
+    await assert.rejects(smokeService(process.execPath, ["-e", silent], data, () => {
+      assert.fail("a silent service cannot be checked");
+    }, {
+      readyMs: 100, shutdownMs: 100,
+      diagnose: async (pid) => { diagnosed = pid; throw new Error("PRIVATE-DIAGNOSTIC-PAYLOAD"); },
+    }), (error) => {
+      const all = messages(error);
+      assert.ok(all.includes("Service did not report ready."));
+      assert.ok(all.includes("Service did not stop after parent EOF."));
+      assert.ok(all.every((message) => !message.includes("PRIVATE-DIAGNOSTIC-PAYLOAD")));
+      return true;
+    });
+    assert.ok(Number.isSafeInteger(diagnosed) && diagnosed > 0);
+    assert.equal(existsSync(data), false);
+  });
+});
+
 test("early unsuccessful exit fails smoke and still removes the profile", async () => {
   await fixture(async ({ data }) => {
     await assert.rejects(smokeService(process.execPath, ["-e", "process.exit(7)"], data, () => {

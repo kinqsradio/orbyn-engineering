@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { serviceProcesses } from "./smoke-processes.mjs";
 
 async function bounded(promise, ms, message) {
   let timer;
@@ -19,8 +20,10 @@ async function bounded(promise, ms, message) {
 export async function smokeService(binary, args, data, check, {
   readyMs = 20_000,
   shutdownMs = 5_000,
+  env = process.env,
+  diagnose = serviceProcesses,
 } = {}) {
-  const service = spawn(binary, args, { stdio: ["pipe", "pipe", "inherit"] });
+  const service = spawn(binary, args, { stdio: ["pipe", "pipe", "inherit"], env });
   let stopped = false;
   const exited = new Promise((resolve) => {
     service.once("error", (error) => { stopped = true; resolve({ error }); });
@@ -47,6 +50,12 @@ export async function smokeService(binary, args, data, check, {
       try {
         result = await bounded(exited, shutdownMs, "Service did not stop after parent EOF.");
       } catch (error) {
+        try {
+          const inventory = await diagnose(service.pid);
+          if (inventory) console.error("Service process inventory:", JSON.stringify(inventory));
+        } catch {
+          console.error("Service process inventory unavailable.");
+        }
         service.kill("SIGKILL");
         await bounded(exited, shutdownMs, "Service did not exit after forced termination.");
         throw error;
