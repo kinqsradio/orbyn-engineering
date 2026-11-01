@@ -171,7 +171,7 @@ test("stopping a parent stops the child it delegated to", async ({ page }) => {
   await expect(page.getByText("Runs on its own")).toBeVisible();
 });
 
-test("a local ACP command becomes a provider, and saved login is a choice", async ({ page }) => {
+test("a local ACP command becomes a provider", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
   await page.getByLabel("Name").fill("House agent");
   await page.getByLabel("Protocol").selectOption("acp");
@@ -180,10 +180,8 @@ test("a local ACP command becomes a provider, and saved login is a choice", asyn
   await page.getByRole("button", { name: /^(Add|Add provider|Add engine|Save)/ }).last().click();
   await expect(page.locator(".setting-list > li").filter({ hasText: "House agent" })).toBeVisible({ timeout: 15_000 });
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("switch", { name: "Prefer saved login" }).click();
-  await expect
-    .poll(async () => (await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences")).find((entry) => entry.key === "prefer_saved_login")?.value)
-    .toBe(true);
+  await expect(page.getByRole("switch", { name: "Check providers for updates" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Prefer saved login" })).toHaveCount(0);
 });
 
 test("a new project starts with a README and a first commit", async ({ page }) => {
