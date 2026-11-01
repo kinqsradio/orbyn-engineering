@@ -207,7 +207,7 @@ fn set_value(
         // each member's other fields instead of copying the first member's map.
         let patch = patch.as_object().expect("validated object patch");
         if key == "worktree_cleanup" {
-            super::worktree_cleanup::merge(&mut object, patch)?;
+            super::worktree_cleanup::scoped_merge(snapshot, project, &mut object, patch)?;
         } else {
             object.extend(patch.clone());
         }

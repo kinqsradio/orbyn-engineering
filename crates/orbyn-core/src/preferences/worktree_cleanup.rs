@@ -5,6 +5,7 @@ use serde_json::{Map, Value, json};
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
+use crate::store::scoped_settings::SettingsSnapshot;
 
 fn invalid() -> CoreError {
     CoreError::Invalid("That is not a valid value for worktree_cleanup.".into())
@@ -70,6 +71,61 @@ fn policy(value: &Value) -> Result<Policy> {
     })
 }
 
+/// The same snapshot-current precedence owns runtime cleanup and Custom capture.
+fn effective_age(snapshot: &SettingsSnapshot, project: Option<&str>) -> Result<Option<i64>> {
+    let environment: Value = snapshot
+        .globals
+        .get("pref:worktree_cleanup")
+        .map(|value| serde_json::from_str(value))
+        .transpose()?
+        .unwrap_or_else(|| json!({}));
+    let legacy: Value = snapshot
+        .globals
+        .get("pref:storage_cleanup")
+        .map(|value| serde_json::from_str(value))
+        .transpose()?
+        .unwrap_or_else(|| json!({}));
+    let inherited = match policy(&environment)? {
+        Policy::Explicit(days) => days,
+        Policy::Inherit => legacy
+            .get("worktree_settled_after_days")
+            .and_then(Value::as_i64)
+            .filter(|days| (0..=3650).contains(days)),
+    };
+    let local = project
+        .and_then(|id| snapshot.overrides.get(id))
+        .and_then(|values| values.get("worktree_cleanup"));
+    match local {
+        Some(value) => match policy(&serde_json::from_str(value)?)? {
+            Policy::Explicit(days) => Ok(days),
+            Policy::Inherit => Ok(inherited),
+        },
+        None => Ok(inherited),
+    }
+}
+
+pub(super) fn scoped_merge(
+    snapshot: &SettingsSnapshot,
+    project: Option<&str>,
+    current: &mut Map<String, Value>,
+    patch: &Map<String, Value>,
+) -> Result<()> {
+    let mut patch = patch.clone();
+    if patch.get("mode").and_then(Value::as_str) == Some("custom") {
+        let rules = patch.entry("rules").or_insert_with(|| json!({}));
+        let rules = rules.as_object_mut().ok_or_else(invalid)?;
+        // Selecting Custom captures this member's effective rule, not an inactive
+        // Off rule or another member's first displayed value. Explicit edits win.
+        if !rules.contains_key("settled_after_days") {
+            rules.insert(
+                "settled_after_days".into(),
+                json!(effective_age(snapshot, project)?),
+            );
+        }
+    }
+    merge(current, &patch)
+}
+
 impl Core {
     pub(super) fn cleanup_policy_write<'a>(
         &self,
@@ -93,41 +149,16 @@ impl Core {
     /// objects are deliberately not read, even when their JSON is corrupt.
     pub(crate) fn worktree_retention(&self) -> Result<BTreeMap<String, Option<i64>>> {
         let snapshot = self.store.settings_snapshot()?;
-        let environment: Value = snapshot
-            .globals
-            .get("pref:worktree_cleanup")
-            .map(|value| serde_json::from_str(value))
-            .transpose()?
-            .unwrap_or_else(|| json!({}));
-        let legacy: Value = snapshot
-            .globals
-            .get("pref:storage_cleanup")
-            .map(|value| serde_json::from_str(value))
-            .transpose()?
-            .unwrap_or_else(|| json!({}));
-        let inherited = match policy(&environment)? {
-            Policy::Explicit(days) => days,
-            Policy::Inherit => legacy
-                .get("worktree_settled_after_days")
-                .and_then(Value::as_i64)
-                .filter(|days| (0..=3650).contains(days)),
-        };
+        // Validate environment policy even before any project is registered.
+        effective_age(&snapshot, None)?;
         snapshot
             .projects
             .iter()
             .map(|project| {
-                let local = snapshot
-                    .overrides
-                    .get(&project.id)
-                    .and_then(|values| values.get("worktree_cleanup"));
-                let days = match local {
-                    Some(value) => match policy(&serde_json::from_str(value)?)? {
-                        Policy::Explicit(days) => days,
-                        Policy::Inherit => inherited,
-                    },
-                    None => inherited,
-                };
-                Ok((project.id.clone(), days))
+                Ok((
+                    project.id.clone(),
+                    effective_age(&snapshot, Some(&project.id))?,
+                ))
             })
             .collect()
     }

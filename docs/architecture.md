@@ -676,7 +676,12 @@ rows remain stored and never activate worktree cleanup. `mode: "off"` disables i
 `mode: "custom"` uses `rules.settled_after_days`, an integer from 0 through 3650 or
 null. Zero is immediate; absent/null custom age is Off, not an inherited age.
 Inherit deletes the new project override. Scoped rules patches merge per physical
-member, preserving unknown top-level and rule fields. Known invalid policy shapes
+member, preserving unknown top-level and rule fields. Selecting Custom without an
+explicit age captures each member's transaction-current effective age: inherited
+legacy/environment rules stay active, existing Custom stays unchanged, and Off
+captures null even if an inactive age remains stored. Mixed members never copy the
+first member's age. Runtime cleanup and this transition share the same resolver.
+Known invalid policy shapes
 are rejected, and corrupt stored policies stop the pass before any effects.
 
 A cleanup pass takes exclusive policy admission before resolving all projects and
