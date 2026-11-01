@@ -38,7 +38,7 @@ async function stop(child: ChildProcess) {
   } finally { clearTimeout(timer); clearTimeout(deadline); }
 }
 
-test("agent question prose renders Markdown and preserves the real answer flow", async ({ page }, info) => {
+test("custom question text replaces a selected option in the real answer flow", async ({ page }, info) => {
   test.setTimeout(60_000);
   const profile = mkdtempSync(join(tmpdir(), "orbyn-question-markdown-"));
   const children: ChildProcess[] = [];
@@ -58,7 +58,7 @@ createInterface({ input: child.stdout }).on("line", (line) => {
   let message;
   try { message = JSON.parse(line); } catch { process.stdout.write(line + "\\n"); return; }
   if (message.method === "item/tool/requestUserInput") {
-    Object.assign(message.params.questions[0], { header: "Review", question: ${JSON.stringify(prose)}, isSecret: false, isOther: false,
+    Object.assign(message.params.questions[0], { header: "Review", question: ${JSON.stringify(prose)}, isSecret: false, isOther: true,
       options: [{ label: "Small batch", description: "" }, { label: "All at once", description: "" }] });
     message.params.questions.push({ id: "q2", header: "Follow-up", question: "What should we **keep**?", isSecret: false, isOther: true, options: null });
   }
@@ -119,14 +119,17 @@ child.on("exit", (code) => process.exit(code ?? 1));
     await expect(panel).toContainText("<script>unsafe()</script>");
     await page.screenshot({ path: info.outputPath("question-markdown.png") });
     await panel.getByRole("button", { name: "Small batch", exact: true }).click();
-    const custom = panel.getByRole("textbox");
-    await custom.fill("Keep a rollback"); await expect(custom).toBeFocused();
+    const custom = panel.getByRole("group", { name: "Review", exact: true }).getByRole("textbox");
+    await custom.fill("Custom rollout"); await expect(custom).toBeFocused();
+    await panel.getByRole("group", { name: "Follow-up", exact: true }).getByRole("textbox").fill("Keep a rollback");
+    const submitted = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/answer"));
     await panel.getByRole("button", { name: "Submit answers", exact: true }).click();
+    expect((await submitted).status()).toBe(200);
     await expect(panel).toBeHidden();
     type Question = { state: string; answers: Record<string, string[]> };
     const questions = await api<Question[]>("GET", `/api/questions?thread_id=${thread.id}`);
     expect(questions[0]?.state).toBe("answered");
-    expect(questions[0]?.answers.q1).toEqual(["Small batch"]);
+    expect(questions[0]?.answers.q1).toEqual(["Custom rollout"]);
     expect(questions[0]?.answers.q2).toEqual(["Keep a rollback"]);
     await expect.poll(async () => (await api<{ active_run: unknown }>("GET", `/api/threads/${thread.id}`)).active_run).toBeNull();
   } catch (error) { failure = error; }

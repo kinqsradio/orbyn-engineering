@@ -120,8 +120,14 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
           question={question}
           picked={picked[question.id] ?? []}
           other={others[question.id] ?? ""}
-          onPick={(labels) => setPicked({ ...picked, [question.id]: labels })}
-          onOther={(text) => setOthers({ ...others, [question.id]: text })}
+          onPick={(labels) => {
+            setPicked((current) => ({ ...current, [question.id]: labels }));
+            setOthers((current) => ({ ...current, [question.id]: "" }));
+          }}
+          onOther={(text) => {
+            setOthers((current) => ({ ...current, [question.id]: text }));
+            if (text.trim()) setPicked((current) => ({ ...current, [question.id]: [] }));
+          }}
         />
       ))}
       {error ? (
