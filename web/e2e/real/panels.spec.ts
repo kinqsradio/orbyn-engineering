@@ -104,7 +104,7 @@ test("images, binaries and oversized text open from the raw route", async ({ pag
   await expect(page.getByText(/Showing 131,072 of/)).toBeVisible();
 });
 
-test("one file of a turn goes back to how the turn found it", async ({ page }) => {
+test("a historical turn shows file changes without per-file restore", async ({ page }) => {
   const notes = join(service.repo, "notes.txt");
   writeFileSync(notes, "as committed\n");
   execFileSync("git", ["add", "notes.txt"], { cwd: service.repo });
@@ -115,9 +115,9 @@ test("one file of a turn goes back to how the turn found it", async ({ page }) =
 
   await page.getByRole("button", { name: /^Changes/ }).click();
   await page.getByRole("radiogroup", { name: "Diff source" }).getByRole("radio", { name: "Turn" }).click();
-  await page.getByRole("button", { name: "Restore notes.txt to before this turn" }).click();
-  await expect(page.getByText("notes.txt is back as it was before this turn")).toBeVisible();
-  expect(readFileSync(notes, "utf8")).toBe("as committed\n");
+  await expect(page.getByRole("button", { name: "Copy path notes.txt" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restore notes.txt to before this turn" })).toHaveCount(0);
+  expect(readFileSync(notes, "utf8")).toBe("changed by the agent\n");
 });
 
 test("the details card and terminal keep the wheel to themselves", async ({ page }) => {
