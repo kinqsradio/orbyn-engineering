@@ -218,6 +218,14 @@ parity review even though its proposed popover is excluded.
   tests and check/build pass. This follow-up is source/browser qualified; the
   earlier packaged receipt remains pinned to `0b575dc`.
 
+- Settings batch published as PR82, head `4ef7d9d`, with 36 separate commits;
+  required CI run `41293365985` started. GitGuardian finding `39375233` flags the
+  synthetic Basic Auth parser fixture at historical `8f7cb87`, not an engine or
+  account credential. The fixture never contacts that host and uses a placeholder
+  password. A follow-up constructs clearly synthetic userinfo with the URL API,
+  retaining all stripping/equivalence assertions. The historical finding still needs
+  a fresh check result; no ignore, check weakening, history rewrite or merge is claimed.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68

@@ -266,7 +266,7 @@
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Publish the checked settings section batch and run every required exact-head CI check; merge without squash only when all are green. Continue stable action identity/shortcuts, preparation retry and remaining settings bindings, then every in-scope row through real orbynd.",
+  "next_action": "Verify the synthetic userinfo fixture correction, publish it to PR82 and inspect GitGuardian39375233 plus every required exact-head CI check. Do not merge any red or pending check. Continue stable action identity/shortcuts, preparation retry and remaining in-scope rows through real orbynd.",
   "delivery": {
     "state": "merged",
     "evidence": [
@@ -274,7 +274,8 @@
       "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
       "CLI section PR60 updated2018a5f with895 local Rust tests,9 ignored and Clippy/fmt passed; CI41287969189 running. Settingsfb08731 committed locally after924 Rust tests,8 ignored,277 web tests and6 real-orbynd browser cases; no section PR yet.",
       "PR60 advanced to4425a71 after Windows captured-pipe failure at2018a5f and fixture compilation failure at0809cf3; current CI41290079315 pending. Settings789a2f5 remains committed locally, not pushed.",
-      "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete."
+      "PR60 merged56d914d after all exact-head checks passed; main CI41291556483 all six required jobs green. Settings integrated main as7e32280; its section remains local and incomplete.",
+      "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed."
     ]
   }
 }

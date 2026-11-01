@@ -55,8 +55,16 @@ fn group<'a>(catalog: &'a ProjectScopeCatalog, id: &str) -> &'a ProjectScopeGrou
 
 #[test]
 fn remote_equivalence_is_limited_and_never_retains_userinfo() {
+    // Synthetic userinfo exercises stripping without embedding a credential literal.
+    // This parser never contacts the remote or invokes credential helpers.
+    let mut with_userinfo =
+        reqwest::Url::parse("https://GitHub.COM/Owner/Repo.git?token=fixture#fixture").unwrap();
+    with_userinfo.set_username("fixture-user").unwrap();
+    with_userinfo
+        .set_password(Some("fixture-password"))
+        .unwrap();
     let keys: Vec<_> = [
-        "https://alice:PRIVATE@GitHub.COM/Owner/Repo.git?token=PRIVATE#PRIVATE",
+        with_userinfo.as_str(),
         "ssh://git@github.com/Owner/Repo.git",
         "git@github.com:Owner/Repo.git",
     ]
