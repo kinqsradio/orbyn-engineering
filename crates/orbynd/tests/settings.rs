@@ -95,6 +95,120 @@ async fn project_values_win_over_global_ones_and_reset_to_them() {
 }
 
 #[tokio::test]
+async fn preference_maps_roll_back_global_writes_after_a_database_failure() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let (code, start) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "auto_pull": false, "default_model": "initial", "branch_name_prefix": "keep" } }),
+    )
+    .await;
+    assert_eq!(code, 200, "{start}");
+    let db = rusqlite::Connection::open(dir.path().join("data/orbyn.sqlite3")).unwrap();
+    db.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER fail_later_global_preference BEFORE INSERT ON settings
+         WHEN NEW.key = 'pref:default_model'
+         BEGIN SELECT RAISE(ABORT, 'fixture rejects the later preference'); END;",
+    )
+    .unwrap();
+    let change = json!({ "values": { "auto_pull": true, "default_model": "changed" } });
+    let (code, error) = put(&service, "/api/preferences", change.clone()).await;
+    assert_eq!(code, 500, "{error}");
+    let after = service.json("/api/preferences").await;
+    assert_eq!(
+        value(&after, "auto_pull"),
+        value(&start, "auto_pull"),
+        "the earlier write must roll back"
+    );
+    assert_eq!(
+        value(&after, "default_model"),
+        value(&start, "default_model")
+    );
+    assert_eq!(
+        value(&after, "branch_name_prefix"),
+        value(&start, "branch_name_prefix")
+    );
+    db.execute_batch("DROP TRIGGER fail_later_global_preference;")
+        .unwrap();
+    let (code, retried) = put(&service, "/api/preferences", change).await;
+    assert_eq!(code, 200, "{retried}");
+    assert_eq!(value(&retried, "auto_pull")["value"], true);
+    assert_eq!(value(&retried, "default_model")["value"], "changed");
+    let (code, reset) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "auto_pull": null, "default_model": null } }),
+    )
+    .await;
+    assert_eq!(code, 200, "{reset}");
+    assert_eq!(value(&reset, "auto_pull")["source"], "default");
+    assert_eq!(value(&reset, "default_model")["source"], "default");
+    assert_eq!(value(&reset, "branch_name_prefix")["value"], "keep");
+    drop(db);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn preference_maps_roll_back_project_resets_after_a_database_failure() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let project = body["project_id"].as_str().unwrap();
+    let path = format!("/api/projects/{project}/preferences");
+    let (code, global) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "auto_pull": false, "default_model": "global" } }),
+    )
+    .await;
+    assert_eq!(code, 200, "{global}");
+    let (code, start) = put(
+        &service,
+        &path,
+        json!({ "values": { "auto_pull": true, "default_model": "project", "branch_name_prefix": "keep" } }),
+    )
+    .await;
+    assert_eq!(code, 200, "{start}");
+    let db = rusqlite::Connection::open(dir.path().join("data/orbyn.sqlite3")).unwrap();
+    db.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER fail_later_project_reset BEFORE DELETE ON project_preferences
+         WHEN OLD.key = 'default_model'
+         BEGIN SELECT RAISE(ABORT, 'fixture rejects the later reset'); END;",
+    )
+    .unwrap();
+    let change = json!({ "values": { "auto_pull": null, "default_model": null } });
+    let (code, error) = put(&service, &path, change.clone()).await;
+    assert_eq!(code, 500, "{error}");
+    let read = format!("/api/preferences?project_id={project}");
+    let after = service.json(&read).await;
+    assert_eq!(
+        value(&after, "auto_pull"),
+        value(&start, "auto_pull"),
+        "the earlier reset must roll back"
+    );
+    assert_eq!(
+        value(&after, "default_model"),
+        value(&start, "default_model")
+    );
+    assert_eq!(service.json("/api/preferences").await, global);
+    db.execute_batch("DROP TRIGGER fail_later_project_reset;")
+        .unwrap();
+    let (code, retried) = put(&service, &path, change.clone()).await;
+    assert_eq!(code, 200, "{retried}");
+    assert_eq!(value(&retried, "auto_pull")["source"], "global");
+    assert_eq!(value(&retried, "default_model")["value"], "global");
+    assert_eq!(value(&retried, "branch_name_prefix")["value"], "keep");
+    let (code, repeated) = put(&service, &path, change).await;
+    assert_eq!(code, 200, "{repeated}");
+    assert_eq!(repeated, retried, "retrying a reset stays safe");
+    drop(db);
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn a_project_can_turn_an_engine_off_and_models_can_be_added_or_hidden() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, fake_engines(), "claude").await;
