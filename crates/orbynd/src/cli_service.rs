@@ -1,29 +1,29 @@
 //! What `orbyn service` asks the OS to do, as data, so it can be read before it
 //! happens and tested without touching the machine's real service manager. The user's
-//! own manager runs it: launchd on macOS, Task Scheduler on Windows, systemd on Linux.
+//! own manager runs it: launchd on macOS or systemd on Linux.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const LABEL: &str = "com.orbyn.engineering";
 const UNIT: &str = "orbyn-engineering.service";
-const TASK: &str = "OrbynEngineering";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Os {
     Mac,
-    Windows,
     Linux,
 }
 
 impl Os {
-    pub fn current() -> Self {
-        if cfg!(windows) {
-            Self::Windows
-        } else if cfg!(target_os = "macos") {
-            Self::Mac
-        } else {
-            Self::Linux
+    pub fn current() -> Result<Self, &'static str> {
+        Self::for_platform(std::env::consts::OS)
+    }
+
+    fn for_platform(platform: &str) -> Result<Self, &'static str> {
+        match platform {
+            "macos" => Ok(Self::Mac),
+            "linux" => Ok(Self::Linux),
+            _ => Err("Background setup supports Linux with systemd and macOS with launchd."),
         }
     }
 }
@@ -93,7 +93,6 @@ impl Install<'_> {
                 .join("Library/LaunchAgents")
                 .join(format!("{LABEL}.plist")),
             Os::Linux => self.home.join(".config/systemd/user").join(UNIT),
-            Os::Windows => PathBuf::new(),
         }
     }
 
@@ -146,15 +145,6 @@ impl Install<'_> {
         )
     }
 
-    /// `/TR` takes one string, so each part is quoted inside it.
-    fn task_command(&self) -> String {
-        self.arguments()
-            .iter()
-            .map(|arg| format!("\"{arg}\""))
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
     /// Doing this again repairs an install, so each one clears what is there first.
     pub fn install(&self) -> Plan {
         let file = self.manager_file();
@@ -176,26 +166,6 @@ impl Install<'_> {
                     step("systemctl", &["--user", "enable", "--now", UNIT]),
                 ],
             },
-            Os::Windows => Plan {
-                file: None,
-                remove: None,
-                steps: vec![
-                    step(
-                        "schtasks",
-                        &[
-                            "/Create",
-                            "/F",
-                            "/SC",
-                            "ONLOGON",
-                            "/TN",
-                            TASK,
-                            "/TR",
-                            &self.task_command(),
-                        ],
-                    ),
-                    step("schtasks", &["/Run", "/TN", TASK]),
-                ],
-            },
         }
     }
 
@@ -215,14 +185,6 @@ impl Install<'_> {
                     &["--user", "disable", "--now", UNIT],
                 ))],
             },
-            Os::Windows => Plan {
-                file: None,
-                remove: None,
-                steps: vec![
-                    clearing(step("schtasks", &["/End", "/TN", TASK])),
-                    clearing(step("schtasks", &["/Delete", "/F", "/TN", TASK])),
-                ],
-            },
         }
     }
 
@@ -230,10 +192,6 @@ impl Install<'_> {
         let steps = match self.os {
             Os::Mac => vec![step("launchctl", &["kickstart", "-k", &self.target()])],
             Os::Linux => vec![step("systemctl", &["--user", "restart", UNIT])],
-            Os::Windows => vec![
-                clearing(step("schtasks", &["/End", "/TN", TASK])),
-                step("schtasks", &["/Run", "/TN", TASK]),
-            ],
         };
         Plan {
             steps,
@@ -245,7 +203,6 @@ impl Install<'_> {
         match self.os {
             Os::Mac => step("launchctl", &["print", &self.target()]),
             Os::Linux => step("systemctl", &["--user", "status", "--no-pager", UNIT]),
-            Os::Windows => step("schtasks", &["/Query", "/TN", TASK]),
         }
     }
 }
@@ -387,23 +344,15 @@ mod tests {
     }
 
     #[test]
-    fn task_scheduler_gets_one_quoted_command_and_no_file() {
-        let plan = install(Os::Windows);
-        assert!(plan.file.is_none());
-        let create = &plan.steps[0];
-        assert!(create.args.contains(&"ONLOGON".to_owned()));
-        assert!(
-            create
-                .args
-                .last()
-                .unwrap()
-                .starts_with(r#""/bin/a & b/orbyn" "--data-dir""#)
-        );
+    fn windows_has_no_background_service_manager() {
+        assert_eq!(Os::for_platform("macos"), Ok(Os::Mac));
+        assert_eq!(Os::for_platform("linux"), Ok(Os::Linux));
+        assert!(Os::for_platform("windows").is_err());
     }
 
     #[test]
     fn uninstall_tolerates_a_service_already_gone() {
-        for os in [Os::Mac, Os::Linux, Os::Windows] {
+        for os in [Os::Mac, Os::Linux] {
             let plan = Install {
                 os,
                 home: Path::new("/h"),

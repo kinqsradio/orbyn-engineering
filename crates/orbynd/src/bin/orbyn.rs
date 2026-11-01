@@ -908,11 +908,12 @@ fn service_command(cli: &Cli, command: &ServiceCommand) -> Outcome<()> {
     if matches!(command, ServiceCommand::Run) {
         return run_as_service(&data);
     }
+    let os = cli_service::Os::current().map_err(Failure::new)?;
     let home = home_dir()?;
     let program = std::env::current_exe()
         .map_err(|error| Failure::new(format!("This program's path: {error}")))?;
     let install = cli_service::Install {
-        os: cli_service::Os::current(),
+        os,
         home: &home,
         program: &program,
         data: &data,

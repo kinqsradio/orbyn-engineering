@@ -394,6 +394,7 @@ fn app_goes_through_the_link_and_the_shell_keeps_the_rest() {
 }
 
 #[test]
+#[cfg(not(windows))]
 fn a_service_dry_run_says_what_it_would_do_and_does_nothing() {
     let dir = TempDir::new();
     let home = dir.path().join("home");
@@ -410,6 +411,30 @@ fn a_service_dry_run_says_what_it_would_do_and_does_nothing() {
     }
     let output = orbyn_with(&data, &["service", "uninstall", "--dry-run"], env);
     assert!(stdout(&output).contains("Would"));
+}
+
+#[test]
+#[cfg(windows)]
+fn windows_background_setup_is_unsupported_and_leaves_the_profile_untouched() {
+    let dir = TempDir::new();
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let data = dir.path().join("data");
+    for args in [
+        vec!["service", "install", "--dry-run"],
+        vec!["service", "uninstall", "--dry-run"],
+        vec!["service", "status"],
+        vec!["service", "restart"],
+    ] {
+        let output = orbyn_with(&data, &args, &[("HOME", &home), ("USERPROFILE", &home)]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("Background setup supports Linux with systemd and macOS with launchd.")
+        );
+        assert!(!data.exists());
+        assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    }
 }
 
 #[test]

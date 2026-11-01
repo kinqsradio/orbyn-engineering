@@ -972,7 +972,9 @@ nothing needs setting up, without creating a data directory or changing the host
 Linux browser setup is outside the supported product scope and is not performed.
 
 `orbyn service` runs the service from this user's login through the OS's own manager:
-launchd, Task Scheduler or systemd, with no administrator rights. Each change is a plan of
+launchd on macOS or systemd on Linux, with no administrator rights. Background setup
+reports unsupported on Windows before invoking a manager or changing files, matching
+T3; Windows desktop startup and direct `service run` remain available. Each change is a plan of
 one file and some commands, and `--dry-run` shows it and does nothing. Installing again
 repairs it, uninstalling leaves all data, and neither reads a credential. What the manager
 starts is `orbyn service run`, which adds `service.env` from the data folder to `orbynd`'s
