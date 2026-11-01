@@ -1,3 +1,4 @@
+import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
 import { chooseDraftEngine } from "./draftEngine";
 import { useDraftCheckout } from "./useDraftCheckout";
 import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
@@ -239,6 +240,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     try {
       const purpose = worktree === null ? null : worktree === reused ? worktree : slugify(worktree) || uniquePurpose(text, null);
       const thread = await launch({ engine: engine.id, model: pickedModel }, purpose, text, true);
+      recordUserPrompt();
       setPrefs({ lastModel: { engine: engine.id, model: pickedModel, effort: pickedEffort } });
       adoptLayout(thread.id);
       setPrompt("");
@@ -264,6 +266,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       setPrompt("");
       setFiles([]);
       useUi.getState().pushToast(`Started ${thread.title}`);
+      recordUserPrompt();
     } catch (failure) {
       setError(toFailure(failure).message);
     } finally {
@@ -289,6 +292,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     );
     setBusy(false);
     const failed = results.find((result) => result.status === "rejected");
+    if (results.some((result) => result.status === "fulfilled")) recordUserPrompt();
     if (failed) {
       setError(toFailure(failed.reason).message);
       return;

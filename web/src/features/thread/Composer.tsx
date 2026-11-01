@@ -1,4 +1,5 @@
 import { composerMarkup } from "./composerMarkup";
+import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
 import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, SlidersHorizontal, Square, X,
   RotateCcw,
 } from "lucide-react";
@@ -275,6 +276,7 @@ export function Composer({
         await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false, prompt.trim())));
         setDraft(thread.id, "");
         void refreshThread(thread.id);
+        recordUserPrompt();
         return true;
       }
       await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false)));
@@ -292,6 +294,7 @@ export function Composer({
       if (run) addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
       if (busy) reloadQueue();
       void refreshThread(thread.id);
+      recordUserPrompt();
       return true;
     } catch (failure) {
       onSendFailed?.();

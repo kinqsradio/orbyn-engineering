@@ -996,6 +996,19 @@ private like any secret file and goes when the service stops; one left by a cras
 as nothing running. Exit codes are 0, 1 when a request was refused or a waited-on run
 did not complete, and 2 when no service is running. `--json` prints the API's answer.
 
+The GitHub-star notice counts acknowledged composer submissions in two separate
+viewer-storage entries: sent threshold and dismissal. It checks this app's fixed
+public repository after the sixth prompt and appears once per page session until
+closed. Button, link, close-icon and bottom-right swipe dismissal share the same
+saved dismissal. Storage failures suppress the notice, and a dismissal from another
+tab wins over an in-flight check. Core uses a bounded, noninteractive `gh api` GET
+for the fixed repository; it captures no output, reads no credential file and never
+stars anything. Missing tools or an unavailable check do not interrupt a send.
+The web reload flow is qualified. Desktop restart persistence is not yet qualified:
+the current shell navigates to a per-launch loopback origin while viewer preferences
+use browser storage. This transport/storage boundary must be resolved before the
+packaged walkthrough can qualify these preferences across restarts.
+
 ## Service configuration
 
 `orbynd serve` takes `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`,
@@ -1039,6 +1052,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST /api/threads/order` | Save order; a stale id rejects the whole list |
 | `POST /api/threads/:id/title` | Regenerate the title from the conversation. Spends engine usage |
 | `GET, PUT /api/settings` | `ServerSettings` |
+| `GET /api/source-control/repository-star` | Fixed product repository star status; full-app read, no star mutation |
 | `GET, POST /api/tasks` | `ScheduledTask[]`; `UpsertTask` creates or changes |
 | `PUT /api/tasks/:id` | The whole `UpsertTask`; `404` if unknown, `400` for another task's `id` or another project |
 | `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |

@@ -18,6 +18,22 @@ fn main() {
     record_pid();
     let first = args.first().map(String::as_str).unwrap_or_default();
     match first {
+        "api" if std::env::var_os("ORBYN_FAKE_GH_STAR_STATE").is_some() => {
+            let state =
+                std::fs::read_to_string(std::env::var_os("ORBYN_FAKE_GH_STAR_STATE").unwrap())
+                    .unwrap();
+            if let Some(path) = std::env::var_os("ORBYN_FAKE_GH_ARGUMENTS") {
+                std::fs::write(
+                    path,
+                    serde_json::to_vec(&json!({"args":args,"pid":std::process::id()})).unwrap(),
+                )
+                .unwrap();
+            }
+            if state.trim() == "hang" {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+            std::process::exit(if state.trim() == "starred" { 0 } else { 1 });
+        }
         "--version" => println!(
             "{}",
             std::env::var("FAKE_VERSION").unwrap_or("0.166.0".into())

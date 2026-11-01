@@ -379,6 +379,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/settings/project-scopes", post(api::project_scopes))
         .route(
+            "/api/source-control/repository-star",
+            get(api::repository_star_status),
+        )
+        .route(
             "/api/settings/preferences/query",
             post(api::scoped_preferences),
         )

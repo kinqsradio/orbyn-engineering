@@ -2915,6 +2915,12 @@ pub struct ServerInfo {
 }
 
 wire! {
+pub struct RepositoryStarStatus {
+    pub starred: bool,
+}
+}
+
+wire! {
 pub struct CreateProject {
     pub path: String,
 }

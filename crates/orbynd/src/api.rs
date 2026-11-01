@@ -154,6 +154,10 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
     })
 }
 
+pub async fn repository_star_status(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.core.repository_star_status().await)
+}
+
 pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.store.list_projects()?))
 }

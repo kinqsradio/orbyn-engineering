@@ -58,13 +58,13 @@ const pullRow = ({ number, ...rest }: PullFixture) => ({
 const STAND_IN_GH = resolve(WEB, "e2e/real/stand-in-gh.mjs");
 
 /** Puts the stand-in first on PATH as `gh`, with its pull requests in a file. */
-function standInGh(dir: string, pulls: PullFixture[]): { bin: string; state: string; log: string } {
+function standInGh(dir: string, pulls: PullFixture[], starred = false): { bin: string; state: string; log: string } {
   const bin = join(dir, "bin");
   mkdirSync(bin);
   const state = join(dir, "gh-state.json");
   const log = join(dir, "gh-calls.log");
   writeFileSync(log, "");
-  writeFileSync(state, JSON.stringify({ pulls: pulls.map(pullRow), repos: [], next: 100, people: ["ada", "grace"], labels: ["bug", "docs"], template: pullRow({ number: 0, title: "" }) }));
+  writeFileSync(state, JSON.stringify({ starred, pulls: pulls.map(pullRow), repos: [], next: 100, people: ["ada", "grace"], labels: ["bug", "docs"], template: pullRow({ number: 0, title: "" }) }));
   symlinkSync(STAND_IN_GH, join(bin, "gh"));
   return { bin, state, log };
 }
@@ -112,6 +112,7 @@ export interface Service {
 }
 
 export interface ServiceOptions {
+  starred?: boolean;
   fakeEngines?: boolean;
   scenes?: boolean;
   /** Runs `gh` through the stand-in, with these pull requests on the forge. */
@@ -153,7 +154,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
       : // Never an installed engine, so a run reads the same on every machine.
         { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: join(dir, "no-codex") };
   const forge = options.forge
-    ? standInGh(dir, options.forge === true ? [{ number: 42, title: "Fix the login" }, { number: 77, title: "Tidy the docs" }] : options.forge)
+    ? standInGh(dir, options.forge === true ? [{ number: 42, title: "Fix the login" }, { number: 77, title: "Tidy the docs" }] : options.forge, options.starred)
     : null;
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.

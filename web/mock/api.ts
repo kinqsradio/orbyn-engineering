@@ -380,6 +380,9 @@ export function createMockApi(options: MockOptions = {}) {
     }
 
     switch (key) {
+      case "GET /api/source-control":
+        if (seg[2] === "repository-star") return { status: 200, body: { starred: true } };
+        break;
       case "GET /api/updates":
         return { status: 200, body: updatesBody() };
       case "POST /api/updates":
