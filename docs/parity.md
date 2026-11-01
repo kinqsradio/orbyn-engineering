@@ -566,7 +566,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
 - [x] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S | web done
 - [x] K29 Diagnostics: processes, signals, traces, resource history | apps/web/src/components/settings/DiagnosticsSettings.tsx | w d m s | L | server done | web done: warnings and errors stand in for traces, and Stop ends a process, so no other signals | status: partial | remaining: actual trace history and identity-fenced cross-platform signals beyond Stop are not implemented; native resource-history proof remains open
-- [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done | web done
+- [x] K30 OpenTelemetry export: per-signal OTLP URL with test | apps/web/src/components/settings/TelemetryExportSettings.tsx | w d s | M | server done | web done | status: partial | remaining: URLs are saved and an endpoint check runs, but no runtime signal exporter consumes observability settings
 - [ ] K31 Product telemetry: hashed usage events, env opt-out | docs/user/telemetry.md | s d | M | [hosted] | scope: excluded | reason: hosted product telemetry
 - [x] K32 Database storage notice: suggests repair at 1 GiB reclaimable | apps/web/src/components/settings/DatabaseStorageNotice.tsx | w d m s | S | server done | web done
 - [ ] K33 Secrets: secret providers, references, 1Password driver | apps/web/src/components/settings/SecretsSettings.tsx | w d s | L | [auth-risk] | scope: excluded | reason: secret-provider brokering
