@@ -598,7 +598,9 @@ with each target's transaction-current effective object; unmentioned fields surv
 environment value. All affected global, lifecycle and project writes commit in one
 immediate SQLite transaction or none, preserving unrelated and unknown settings.
 Missing or changed scopes and stale revisions return typed 409 errors, never a
-broader write. These full-app routes do not add engine tool capabilities.
+broader write. Group and checkout edits share the same selected-member metadata
+rule: incomplete repository metadata disables either selection unless its physical
+member is explicitly grouped Separately. These full-app routes do not add engine tool capabilities.
 
 Git and project-file observations precede SQLite. The immediate transaction fences
 registered IDs and paths, the observed catalog membership version, and each key's
@@ -619,6 +621,25 @@ listed project overrides. Each write stays attached to the scope that supplied i
 revision, including when navigation changes before it finishes. Remaining provider
 controls and storage forms still need their own bindings and qualification; their
 parity claims stay partial until those and native walkthroughs are verified.
+
+Project Name edits require an explicit group or checkout, its observed catalog
+version and the raw expected name of every selected physical member. Core matches
+JavaScript trim whitespace and rejects an empty result without a title-specific
+length limit. Aggregate rename fan-out/serialized response is bounded to 4 MiB,
+independently of the 512-target and transport-body limits. A dedicated immediate transaction rechecks all registered physical
+IDs/paths and every expected name before updating names only. Any conflict rejects
+the entire group. Trust, folders, project files and other metadata are unchanged.
+The response contains committed rows from that transaction; subsequent catalog
+refresh is a separate read. Single-member groups display the physical title;
+checkout-selected Name retains the original logical group label. Registered Checkouts are listed from catalog members, never the Git worktree
+inventory. Removal counts current and archived threads, freezes the confirmed
+physical IDs and deletes only entries through the existing file-preserving route.
+Cancel sends no delete. Partial failure retains the failed member and prior
+successes; explicit retry skips successes. Whole-group selection clears only after
+a fresh catalog confirms its absence. A read failure after committed deletion is
+a separate refresh failure. All projects
+shows the reference's choose-project notice. Unavailable selections cannot rename
+another target; a stale save retains its draft without automatic replay.
 
 Custom models belong to the local environment even while a valid project or checkout
 is selected. Their editor queries that explicit environment target and saves the raw
@@ -1403,6 +1424,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
+| `POST /api/settings/projects/rename` | `RenameSelectedProjects` → `Project[]`; selected names with membership and raw-name compare-and-set |
 | `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
 | `PATCH /api/projects/:id` | `RenameProject`: the name shown; the folder stays |

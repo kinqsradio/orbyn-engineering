@@ -1,6 +1,7 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { RenameSelectedProjects } from "../generated/RenameSelectedProjects";
 import type { ResolveThreadPath } from "../generated/ResolveThreadPath";
 import type { ResolvedThreadPath } from "../generated/ResolvedThreadPath";
 import type {
@@ -221,6 +222,7 @@ export const api = {
   rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
   createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: true }),
   addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
+  renameSelectedProjects: (change: RenameSelectedProjects) => request<Project[]>("POST", "/api/settings/projects/rename", change),
   clones: (signal?: AbortSignal) => request<CloneJob[]>("GET", "/api/clones", undefined, signal),
   startClone: (url: string) => request<CloneJob>("POST", "/api/clones", { url }),
   cancelClone: (id: string) => request<void>("POST", `/api/clones/${q(id)}/cancel`),

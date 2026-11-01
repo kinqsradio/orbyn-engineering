@@ -104,6 +104,17 @@ pub struct ProjectScopesQuery {
 }
 }
 
+wire! {
+#[serde(deny_unknown_fields)]
+/// Names are compared raw for every selected physical member before any update.
+pub struct RenameSelectedProjects {
+    pub scope: ProjectScopesQuery,
+    pub membership_version: String,
+    pub expected_names: BTreeMap<String, String>,
+    pub name: String,
+}
+}
+
 wire_enum! {
 pub enum ProjectScopeUnavailableReason {
     ProjectMissing,

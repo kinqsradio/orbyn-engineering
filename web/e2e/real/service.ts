@@ -276,3 +276,11 @@ export async function settled(service: Service, id: string) {
     .poll(async () => (await service.api<{ active_run: unknown }>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 })
     .toBeNull();
 }
+
+/** Open the reference's selected project detail rather than an all-projects card. */
+export async function projectSettingsUrl(service: Service, projectId: string, section = "projects"): Promise<string> {
+  const catalog = await service.api<import("../../src/generated/ProjectScopeCatalog").ProjectScopeCatalog>("POST", "/api/settings/project-scopes", {});
+  const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId));
+  if (!group) throw new Error("Fixture project is missing from its settings catalog");
+  return `${service.page}#/settings/${section}?project=${encodeURIComponent(group.key)}&checkout=${encodeURIComponent(projectId)}`;
+}

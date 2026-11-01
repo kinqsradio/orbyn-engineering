@@ -180,6 +180,13 @@ pub async fn project_scopes(
     Ok(Json(state.core.project_scope_catalog(&query).await?))
 }
 
+pub async fn rename_selected_projects(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::RenameSelectedProjects>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.rename_selected_projects(&body).await?))
+}
+
 pub async fn clone_project(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<CloneProject>,

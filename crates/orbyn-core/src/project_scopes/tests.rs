@@ -512,3 +512,124 @@ async fn worktree_origin_is_observed_without_overriding_first_common_fetch_url()
     assert!(!catalog.metadata_complete);
     assert!(group(&catalog, &a.id).members[0].repository_key.is_none());
 }
+
+#[tokio::test]
+async fn one_checkout_keeps_its_physical_title_instead_of_repository_fallback() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let path = dir.path().join("Repo");
+    repository(&path);
+    configure(&path, "origin", "https://fixture.invalid/Owner/Repo.git");
+    let project = core
+        .store
+        .add_project(crate::store::NewProject {
+            path: path.to_str().unwrap(),
+            name: "Repo",
+            is_git: true,
+            managed: false,
+            scratch: false,
+        })
+        .unwrap();
+    let catalog = core
+        .project_scope_catalog(&ProjectScopesQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(group(&catalog, &project.id).label, "Repo");
+    let names = BTreeMap::from([(project.id.clone(), project.name.clone())]);
+    core.store
+        .rename_project(&project.id, "Concurrent")
+        .unwrap();
+    assert!(matches!(
+        core.store.rename_selected_projects(
+            &catalog,
+            &core.workspace.root().unwrap(),
+            &names,
+            "Rejected"
+        ),
+        Err(CoreError::SettingsConflict)
+    ));
+    assert_eq!(core.store.project(&project.id).unwrap().name, "Concurrent");
+    let names = BTreeMap::from([(project.id.clone(), "Concurrent".into())]);
+    let other = dir.path().join("added");
+    std::fs::create_dir_all(&other).unwrap();
+    core.store
+        .add_project(crate::store::NewProject {
+            path: other.to_str().unwrap(),
+            name: "Added",
+            is_git: false,
+            managed: false,
+            scratch: false,
+        })
+        .unwrap();
+    assert!(matches!(
+        core.store.rename_selected_projects(
+            &catalog,
+            &core.workspace.root().unwrap(),
+            &names,
+            "Rejected"
+        ),
+        Err(CoreError::SettingsConflict)
+    ));
+    assert_eq!(core.store.project(&project.id).unwrap().name, "Concurrent");
+}
+
+#[tokio::test]
+async fn incomplete_repository_metadata_disables_checkout_and_group_writes_consistently() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let path = dir.path().join("checkout");
+    repository(&path);
+    configure(&path, "origin", "https://fixture.invalid/Owner/Repo.git");
+    let project = core
+        .store
+        .add_project(crate::store::NewProject {
+            path: path.to_str().unwrap(),
+            name: "Checkout",
+            is_git: true,
+            managed: false,
+            scratch: false,
+        })
+        .unwrap();
+    let mut catalog = core
+        .project_scope_catalog(&ProjectScopesQuery::default())
+        .await
+        .unwrap();
+    let index = catalog
+        .groups
+        .iter()
+        .position(|group| {
+            group
+                .members
+                .iter()
+                .any(|member| member.project_id == project.id)
+        })
+        .unwrap();
+    let key = catalog.groups[index].key.clone();
+    catalog.groups[index].members[0].metadata_complete = false;
+    catalog.selection = ResolvedProjectSettingsScope::Checkout {
+        group_key: key.clone(),
+        project_id: project.id.clone(),
+    };
+    assert!(matches!(
+        selected_members(&catalog),
+        Err(CoreError::SettingsScopeUnavailable)
+    ));
+    catalog.selection = ResolvedProjectSettingsScope::ProjectGroup {
+        group_key: key.clone(),
+        project_ids: vec![project.id.clone()],
+    };
+    assert!(matches!(
+        selected_members(&catalog),
+        Err(CoreError::SettingsScopeUnavailable)
+    ));
+    catalog.groups[index].members[0].grouping_mode = ProjectGroupingMode::Separate;
+    assert_eq!(
+        selected_members(&catalog).unwrap(),
+        vec![project.id.clone()]
+    );
+    catalog.selection = ResolvedProjectSettingsScope::Checkout {
+        group_key: key,
+        project_id: project.id.clone(),
+    };
+    assert_eq!(selected_members(&catalog).unwrap(), vec![project.id]);
+}

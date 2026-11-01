@@ -383,6 +383,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/settings/project-scopes", post(api::project_scopes))
         .route(
+            "/api/settings/projects/rename",
+            post(api::rename_selected_projects),
+        )
+        .route(
             "/api/source-control/repository-star",
             get(api::repository_star_status),
         )

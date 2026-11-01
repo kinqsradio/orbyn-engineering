@@ -461,13 +461,20 @@ export function createMockApi(options: MockOptions = {}) {
         }
         break;
       case "DELETE /api/projects": {
-        const row = workspaceBody().targets.find((t) => t.project_id === seg[2]);
-        if (row?.dirty && query.get("confirm") !== "true") {
+        const project = projects.find((entry) => entry.id === seg[2]);
+        if (!project) return err(404, "not_found", "Project not found.");
+        if (threads.some((thread) => thread.project_id === project.id && thread.active_run)) {
+          return err(409, "thread_busy", "One of this project's threads is running.");
+        }
+        const row = workspaceBody().targets.find((target) => target.project_id === project.id);
+        const deleteFiles = query.get("delete_files") === "true";
+        if (deleteFiles && !project.managed) return err(400, "invalid_input", "This folder can only be removed from the list.");
+        if (deleteFiles && row?.dirty && query.get("confirm") !== "true") {
           return err(409, "project_has_work", "This checkout has uncommitted changes.");
         }
-        projects = projects.filter((p) => p.id !== seg[2]);
-        threads = threads.filter((t) => t.project_id !== seg[2]);
-        return { status: 200, body: { files_removed: !row?.dirty, kept_path: row?.dirty ? row.path : null } };
+        projects = projects.filter((entry) => entry.id !== project.id);
+        threads = threads.filter((thread) => thread.project_id !== project.id);
+        return { status: 200, body: { files_removed: deleteFiles, kept_path: deleteFiles ? null : project.path } };
       }
       case "GET /api/info":
         return { status: 200, body: { ...fixtures.info, remote: scenario === "remote" } };
