@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "12748ac89e9cac3ab2d2e7a1a43163d03bb1f356",
+    "revision": "58d86e971de21254763504a2a0bf3d0cadf6274a",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -117,6 +117,13 @@
         "target/pr83-cancel-qualified-workspace.log:1009 passed9ignored; target/pr83-cancel-qualified-clippy.log passed; formatting passed",
         "Three deterministic failures-before: target/preparation-cancel-before-qualified.log, preparation-cancel-recovery-before.log, preparation-cancel-steer-before.log",
         "Existing sign-in visibility and parent-child assertions preserved; target/preparation-cancel-review-*.log"
+      ]
+    },
+    {
+      "result": "PR83 merged without squashing after every required exact-head check passed",
+      "evidence": [
+        "Head96ada2bd9549f19f028d8ec58c688b3d58f33815; CI41320346880 all six required jobs passed; GitGuardian passed; no reviews or review threads",
+        "Merged58d86e971de21254763504a2a0bf3d0cadf6274a; primary main fast-forwarded; next feature branch feat/project-settings starts at this merge"
       ]
     }
   ],
@@ -325,17 +332,26 @@
     {
       "check": "Accepted-cancellation correction on the final PR83 head",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
         "Existing Windows service case retained with HTTP status and durable run-state/error/stop-requested context",
-        "Local1009/9ignored passed; current-head Windows and allsixCI jobs still required beforemerge"
+        "Local1009/9ignored passed; current-head Windows and allsixCI jobs still required beforemerge",
+        "Final96ada CI41320346880 Windows Rust and all five other required jobs passed; original precise Windows trigger remains unproven"
+      ]
+    },
+    {
+      "check": "Post-merge main58d86e9",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "CI41322108228 in progress at reconciliation"
       ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Finish PR83 exact-head CI, repair any failure without weakening checks, and merge without squash only when all six required jobs are green. Then continue K6 selected project details/name/checkouts/removal and K7 project icons, preserving the stopped native-control and other permission boundaries.",
+  "next_action": "Verify post-merge main CI41322108228; continue K6 selected project details/name/checkouts/removal and K7 project icons on feat/project-settings, preserving all stopped native-control and permission boundaries. Run local gates before pushing; merge only all required exact-head checks green, without squash.",
   "delivery": {
     "state": "merged",
     "evidence": [
@@ -347,7 +363,8 @@
       "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed.",
       "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge.",
       "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted.",
-      "PR82 head9ac3dfa passed every required check and GitGuardian, merged without squash12748ac. Next action-shortcut work is local and not covered by that CI."
+      "PR82 head9ac3dfa passed every required check and GitGuardian, merged without squash12748ac. Next action-shortcut work is local and not covered by that CI.",
+      "PR83 final96ada passed CI41320346880 all six jobs plus GitGuardian and merged58d86e9 without squash; next section is local feat/project-settings."
     ]
   }
 }
