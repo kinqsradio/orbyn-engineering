@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `2769161`. Trust the repository over this document where they differ,
+`main` at `193f406`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,7 +49,7 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `2769161`
+## Reconciled status at `193f406`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
 At this revision there are 709 rows and 376 source checkboxes are ticked. The
@@ -72,7 +72,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 | #61 | Merged at `9fafa3a` after all required checks passed. |
 | #62 | Merged at `f97abb8` after all required checks passed. |
 | #63 | Merged at `93dd502` after all required checks passed. The E2E failure exposed a missing file-picker startup shortcut; delayed-keymap regressions passed after its correction. |
-| #60 | Latest local integration `35b5a31` includes main `2769161`. Original CLI/resource/service controls have historical passing evidence. Its new bounded inherited-pipe fixture is intermittent under parallel execution and is being corrected; current-head verification and CI are not complete. Older Windows Rust runs remain unresolved observations. Never merge without every required current-head check green. |
+| #60 | Still draft at remote head `dde3260`. CLI-section local integration `4b484da` includes main `193f406`; its current-head local gates are running. Local CLI additions and fixture repairs are not pushed. Older Windows failures remain historical observations. Never merge without every required current-head check green. |
 
 None has auto-merge on. Main run `41258061209` at `93dd502` failed Windows Rust:
 the workspace-update regression received an unbundled snapshot after ignoring the
@@ -83,7 +83,9 @@ in run `41260222681` and merged as `58d2bed`. Integrated main run
 `51a95eb` run `41262630943` failed its Windows installed-app startup smoke;
 Main `800293b` run `41263153043` passed all six required jobs. Later integrated
 main `0a48073` and `ed845d9` also
-passed. Current main `2769161` run `41265985286` is running.
+passed. Main `04eb893` run `41269745565` passed all six required jobs. PR81 head
+`2317c6e` passed all six required jobs in `41282261011`, plus GitGuardian, before
+merging as `193f406`. Its post-merge main run `41283340854` is running.
 The historical Windows process holder is still unproven.
 
 ### Current continuation work
@@ -119,22 +121,32 @@ landed as a row PR. Policy/handoff maintenance is a separate documentation chang
   All current-head checks passed before merge. An unrelated multi-model case
   failed once with pending run requests and passed in isolation; order/load
   sensitivity remains unproven rather than dismissed as a toast-only issue.
-- #60 current local integration `35b5a31` includes repaired main `2769161` and
-  bounded CLI capture diagnostics. Its older Windows Rust heads remain pending
-  observations. The new inherited-pipe regression has intermittent fixture
-  startup failures under the parallel suite and is being corrected. No current
-  clean verification or merge is claimed. Original CLI controls, bundled-resource
-  regression and prior local checks remain historical evidence.
-- #79 `fix/file-setting-inheritance` corrects real Core consumers to Project →
-  Environment → actual project file → Default. Real `orbynd` API and browser proof
-  covers file provenance/reset and actual current-checkout/new-worktree threads.
-  Integrated web254 tests, contract238+3 tests and targeted Rust checks passed
-  before the latest startup merge; current local head `54bb8e7` is being rechecked
-  against that merge. K1/K2 remain incomplete. Required current-head CI must pass.
-- Local `feat/project-settings-scope` adds safe Core-owned identities, grouping and
-  a read-only typed scope query. Null/invalid/missing selections must never broaden
-  to All projects. Contract exports and focused tests are in progress; logical
-  project fan-out writes, Mixed, Reset all and complete row integration remain.
+- #60 remains draft; local `feat/cli-start` at `4b484da` includes main `193f406`.
+  Bounded CLI capture, dotenv and trace work plus fixture repairs remain local.
+  Current integrated checks are running. No current-head CI or merge is claimed.
+- #79 closed unmerged; its source is consolidated into `feat/settings-parity`,
+  in the `file-setting-inheritance` worktree. Local `8d9e344` includes main
+  `193f406`. The version-fenced settings API supports atomic logical-project edits,
+  physical checkouts, Mixed, nullable Never, Inherit and targeted Reset all.
+  Real-service browser and isolated packaged macOS runs verify common rows,
+  preserved defaults/overrides, search and accurate physical-checkout labels.
+  Subfolder registration and custom forms remain incomplete under K1/K2.
+- Settings-section commits `8b3d88e`, `53a5ff4` and `7276351` fix checkout labels,
+  remove the out-of-scope custom worktree-location control and connect script
+  defaults to the menu/runtime. Current source passed 914 Rust tests (8 ignored),
+  Clippy, formatting, 277 web tests, web check/build and real-service browser cases.
+  Packaged macOS script execution also exposed a terminal-tab refresh race; its
+  regression failed before and passes after, including visible native output.
+  Evidence is under `target/settings-native` in that worktree. This is an isolated
+  fixture identity, private profile, release shell and debug Core with symbols
+  disabled, not final-release or Windows GUI qualification. Sidebar pointer
+  activation was unreliable during the walkthrough and remains to investigate.
+- #81 fixes desktop state loss caused by per-launch service origins. A real native
+  reproduction lost Light after quit/relaunch; the fixed package retained it across
+  service recovery and full restart and rendered real media and a terminal prompt.
+  Earlier development stores are untouched, with no migration. Its exact PR head
+  passed every required check before merge. Native evidence remains in
+  `desktop-client-state/target/native-storage-{baseline,fixed}`.
 
 The source-audited rows are recorded explicitly in parity metadata. Added
 visible features without a T3 counterpart are excluded as replica requirements,
@@ -230,8 +242,8 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Verify integrated main `2769161` run `41265985286`. Finish #60 fixture diagnosis
-   and current-head verification, then merge only when every required
+1. Verify integrated main `193f406` run `41283340854`. Finish #60's integrated local
+   checks and current-head CI, then merge only when every required
    check is green. Reconcile the pending PR queue from current heads; older failed
    or green heads do not qualify newer integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
@@ -241,8 +253,9 @@ not commit it. Move it to a real secret store before any release.
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
    F source control, D viewers, then the rest. The next settings slices are
-   logical-project scope, inheritance, Mixed and
-   Reset all; K1 remains open and K2 is partial. I33 ACP sessions
+   the remaining custom-form bindings, repository-subfolder registration and
+   project actions; K1/K2/K5 remain partial. Investigate the observed native
+   sidebar pointer activation. I33 ACP sessions
    and M3 remain next backend slices.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
    package-service smoke now fails instead of warning, and the prior holder is unknown. A prior #60 Windows
