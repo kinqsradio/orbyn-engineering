@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "goal": "Finish a working replica of T3 Code's desktop and local web experience on Orbyn's own Rust core and code, wrapped around orbyn-fullstack-skills.",
+  "excluded": [
+    "Login and accounts",
+    "Tailscale, tunnels, pairing and other remote access",
+    "Mobile",
+    "T3-hosted services",
+    "Reading engine credentials",
+    "Copying T3 Code or PandaCode source"
+  ],
+  "allowed_actions": [
+    "Edit this repository",
+    "Run local and CI checks",
+    "Open pull requests",
+    "Merge pull requests to main once every required check is green",
+    "Run minimal real Codex turns at the lowest effort in a disposable folder"
+  ],
+  "checkout": {
+    "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
+    "revision": "f74e4054a95234eff6e7998886ee1cef78b1a4b6",
+    "diff_sha256": null
+  },
+  "owner": "Next engineering agent",
+  "owned_files": [
+    "crates/",
+    "web/",
+    "desktop/",
+    "scripts/",
+    ".github/workflows/",
+    "docs/"
+  ],
+  "status": "in_progress",
+  "completed": [
+    {
+      "result": "365 of 573 in-scope parity rows done",
+      "evidence": [
+        "docs/parity.md"
+      ]
+    },
+    {
+      "result": "Automatic skills library with no setup step",
+      "evidence": [
+        "PR #56",
+        "PR #57"
+      ]
+    },
+    {
+      "result": "E2E stabilized and required on main",
+      "evidence": [
+        "PR #59",
+        "branch protection on main"
+      ]
+    },
+    {
+      "result": "Real Codex turn through the UI read a project file",
+      "evidence": [
+        "docs/handoff.md: Verified"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "check": "CI on main for #64, #66, #67 and #57",
+      "required": true,
+      "state": "unverified",
+      "evidence": []
+    },
+    {
+      "check": "Packaged first launch with automatic provisioning",
+      "required": true,
+      "state": "unverified",
+      "evidence": []
+    },
+    {
+      "check": "Live Claude turn",
+      "required": true,
+      "state": "unverified",
+      "evidence": []
+    },
+    {
+      "check": "Hands-on run on real Windows",
+      "required": true,
+      "state": "unverified",
+      "evidence": []
+    },
+    {
+      "check": "Installed-app smoke on macOS",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "CI desktop jobs"
+      ]
+    }
+  ],
+  "decisions": [],
+  "next_action": "Confirm the four in-progress main CI runs are green, then follow Next actions in docs/handoff.md.",
+  "delivery": {
+    "state": "merged",
+    "evidence": [
+      "kinqsradio/orbyn-engineering main at f74e405"
+    ]
+  }
+}
