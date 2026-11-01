@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { startProject, type Service } from "./service";
 
 /** The usage page over a synthetic history, and limits from the protocol double. */
-const PORT = 5289;
 
 let service: Service;
 let projectId = "";
@@ -16,7 +15,7 @@ const history = (model: string) =>
   })}\n`;
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { fakeEngines: true }));
+  ({ service, projectId } = await startProject({ fakeEngines: true }));
   const folder = join(service.dataDir, "../claude/projects/p");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "s.jsonl"), history("house-model") + history("other-model"));

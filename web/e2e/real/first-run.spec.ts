@@ -4,14 +4,13 @@ import { join } from "node:path";
 import { libraryReady, startService, type Service } from "./service";
 
 /** A fresh install against the real service, which the mock can't reach. */
-const PORT = 5276;
 /** The desktop window less its native title bar. */
 const WINDOW = { width: 1280, height: 792 };
 
 let service: Service;
 
 test.beforeAll(async () => {
-  service = await startService(PORT);
+  service = await startService();
 });
 
 test.afterAll(() => service.stop());

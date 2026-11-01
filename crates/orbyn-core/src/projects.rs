@@ -86,11 +86,41 @@ impl Core {
         &self,
         request: orbyn_contracts::WorkspaceSetup,
     ) -> Result<orbyn_contracts::WorkspaceStatus> {
+        let before = self.workspace.root().ok();
         self.workspace.setup(request).await?;
         let root = self.workspace.root()?;
-        self.register_project(&root, "Skills library", false)?;
+        if let Some(old) = before.filter(|old| *old != root) {
+            self.drop_unused_library_project(&old)?;
+        }
+        self.ensure_library_project()?;
         let projects = self.store.list_projects()?;
         self.workspace.status(&projects).await
+    }
+
+    /// The library is a project of its own, from startup on, and only once.
+    pub fn ensure_library_project(&self) -> Result<()> {
+        let root = self.workspace.root()?;
+        let path = root.to_string_lossy();
+        if self.store.list_projects()?.iter().any(|p| p.path == path) {
+            return Ok(());
+        }
+        self.register_project(&root, "Skills library", false)?;
+        Ok(())
+    }
+
+    /// A library left behind stays a project only if a thread still lives there.
+    fn drop_unused_library_project(&self, old: &Path) -> Result<()> {
+        let path = old.to_string_lossy();
+        let projects = self.store.list_projects()?;
+        let Some(project) = projects.iter().find(|p| p.path == path) else {
+            return Ok(());
+        };
+        let live = self.store.list_threads(Some(&project.id), false)?;
+        let archived = self.store.list_threads(Some(&project.id), true)?;
+        if live.is_empty() && archived.is_empty() {
+            self.store.delete_project(&project.id)?;
+        }
+        Ok(())
     }
 
     /// Where a new project goes: the folder asked for, which must not hold anything

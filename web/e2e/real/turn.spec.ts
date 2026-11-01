@@ -1,8 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
-import { type Service, libraryReady, startService } from "./service";
+import { expect, test } from "@playwright/test";
+import { libraryReady, send, startService, type Service } from "./service";
 
 /** Real runs through the real service, against the protocol double. */
-const PORT = 5278;
 
 interface Thread {
   id: string;
@@ -13,14 +12,8 @@ interface Thread {
 let service: Service;
 let projectId = "";
 
-const send = async (page: Page, text: string) => {
-  const box = page.getByRole("textbox", { name: /^Message/ });
-  await box.fill(text);
-  await box.press("Enter");
-};
-
 test.beforeAll(async () => {
-  service = await startService(PORT, { fakeEngines: true });
+  service = await startService({ fakeEngines: true });
   await libraryReady(service);
   const project = await service.api<{ id: string }>("POST", "/api/projects/add", { path: service.repo });
   projectId = project.id;

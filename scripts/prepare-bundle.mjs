@@ -1,6 +1,8 @@
-// Builds the UI and the release service, then stages them for the Tauri bundle.
+// Builds the UI and the release service, then stages them for the Tauri bundle,
+// along with a snapshot of the skills library so first launch needs no network.
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +32,22 @@ const build = join(root, "build");
 rmSync(build, { recursive: true, force: true });
 mkdirSync(join(root, "desktop/src-tauri/binaries"), { recursive: true });
 cpSync(join(root, "web/dist"), join(build, "ui"), { recursive: true });
+
+// `git archive` reads objects, so links stay links on any host, and no checkout of the
+// library is left to go stale. The license ships inside the archive and beside it.
+const library = join(build, "library");
+const [libraryUrl, revision] = readFileSync(join(root, "scripts/library.lock"), "utf8")
+  .trim()
+  .split(/\s+/);
+const fetched = mkdtempSync(join(tmpdir(), "orbyn-library-"));
+const git = (...args) => execFileSync("git", args, { cwd: fetched });
+git("init", "--quiet", "--bare");
+git("fetch", "--quiet", "--depth", "1", libraryUrl, revision);
+mkdirSync(library, { recursive: true });
+git("archive", "--format=tar", `--output=${join(library, "library.tar")}`, revision);
+writeFileSync(join(library, "LICENSE"), git("show", `${revision}:LICENSE`));
+writeFileSync(join(library, "REVISION"), `${revision}\n`);
+rmSync(fetched, { recursive: true, force: true });
 
 const suffix = target.includes("windows") ? ".exe" : "";
 for (const program of ["orbynd", "orbyn"]) {

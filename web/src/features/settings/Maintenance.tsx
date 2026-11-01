@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, OtlpResult, PreferenceView } from "../../api/types";
 import type { NetworkRequest } from "../../generated/NetworkRequest";
+import type { ResourceSample } from "../../generated/ResourceSample";
 import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
@@ -11,6 +12,15 @@ import { FallbackNotice, Library } from "./Projects";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 const mib = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MiB`;
+
+const duration = (seconds: number) =>
+  seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h`;
+
+const memoryLine = (history: ResourceSample[]) => {
+  const peak = Math.max(...history.map((sample) => sample.memory_bytes));
+  const now = history.at(-1)?.memory_bytes ?? 0;
+  return `${mib(now)} now, ${mib(peak)} at most over the last ${history.length === 1 ? "minute" : `${history.length} minutes`}`;
+};
 
 /** Past this, the space a repair gets back is worth a mention. */
 const REPAIR_NOTICE_BYTES = 1024 ** 3;
@@ -198,6 +208,37 @@ function DiagnosticsGroup() {
           Repair
         </Button>
       </SettingRow>
+      {info.data.history.length > 0 ? <SettingRow title="Memory" description={memoryLine(info.data.history)} /> : null}
+      <ul className="setting-list" aria-label="Processes">
+        {info.data.processes.map((process) => (
+          <li key={process.pid}>
+            <SettingRow
+              title={process.name}
+              description={`Process ${process.pid}, ${mib(process.memory_bytes)}, running ${duration(process.running_seconds)}`}
+            >
+              {process.pid === info.data?.pid ? null : (
+                <Button
+                  small
+                  onClick={() => void run(`/api/diagnostics/processes/${process.pid}/stop`, `Stopped ${process.name}`)}
+                >
+                  Stop
+                </Button>
+              )}
+            </SettingRow>
+          </li>
+        ))}
+      </ul>
+      {info.data.events.length > 0 ? (
+        <ul className="setting-list" aria-label="Recent problems">
+          {info.data.events.map((event, at) => (
+            <li key={at}>
+              <SettingRow title={event.message} description={`${fullTime(event.at)}, ${event.level.toLowerCase()} from ${event.target}`} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <SettingRow title="Recent problems" description="None since the service started." />
+      )}
       {note ? <SettingRow title="Last action" description={note} /> : null}
       {info.data.database.reclaimable_bytes >= REPAIR_NOTICE_BYTES ? (
         <p className="banner banner-warn" role="status">

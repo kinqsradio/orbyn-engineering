@@ -119,6 +119,8 @@ impl CoreProcess {
             .arg("--parent-stdin")
             .arg("--ui-dir")
             .arg(resources.join("ui"))
+            .arg("--library-bundle")
+            .arg(resources.join("library"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(stderr)

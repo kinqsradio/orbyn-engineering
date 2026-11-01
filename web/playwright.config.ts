@@ -7,12 +7,16 @@ process.env.PLAYWRIGHT_BROWSERS_PATH ??= "0";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  // Twice the shell's 4 s refresh, so a row that arrives by polling never races the wait.
+  expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
   use: {
     baseURL: "http://localhost:5274",
     ...devices["Desktop Chrome"],
     headless: true,
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
     launchOptions: { args: ["--in-process-gpu"] },
   },
   webServer: {

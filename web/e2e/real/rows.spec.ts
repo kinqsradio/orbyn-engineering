@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Composer rows through the real service: limits, uploads, the queue and commands. */
-const PORT = 5285;
 
 let service: Service;
 let projectId = "";
@@ -16,7 +15,7 @@ const started = async (page: Page, prompt: string) => {
 };
 
 test.beforeAll(async () => {
-  ({ service, projectId } = await startProject(PORT, { scenes: true }));
+  ({ service, projectId } = await startProject({ scenes: true }));
 });
 test.afterAll(() => service.stop());
 

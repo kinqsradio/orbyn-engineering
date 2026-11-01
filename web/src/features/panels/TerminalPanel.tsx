@@ -5,6 +5,7 @@ import { readingKey } from "./terminalKeys";
 import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
+import { linkProvider } from "./terminalLinks";
 
 type Connection = "connecting" | "open" | "closed";
 
@@ -72,6 +73,13 @@ export function TerminalPanel({
       const fit = new FitAddon();
       terminal.loadAddon(fit);
       terminal.open(element);
+      const links = terminal.registerLinkProvider(
+        linkProvider(terminal, (url) => {
+          const { linkTarget, showInBrowser } = useUi.getState();
+          if (linkTarget === "in-app") showInBrowser(url);
+          else window.open(url, "_blank", "noopener,noreferrer");
+        }),
+      );
       applyThemeRef.current = () => {
         terminal.options.theme = terminalTheme();
       };
@@ -116,6 +124,7 @@ export function TerminalPanel({
         cancelAnimationFrame(frame);
         observer.disconnect();
         input.dispose();
+        links.dispose();
         socket.onclose = null;
         socket.close();
         applyThemeRef.current = () => undefined;

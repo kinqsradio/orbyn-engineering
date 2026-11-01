@@ -881,6 +881,11 @@ pub async fn diagnostics(State(state): State<AppState>) -> ApiResult<impl IntoRe
     Ok(Json(state.core.diagnostics()?))
 }
 
+pub async fn stop_process(Path(pid): Path<u32>) -> ApiResult<StatusCode> {
+    orbyn_core::diagnostics::stop_process(pid)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn repair_database(State(state): State<AppState>) -> ApiResult<StatusCode> {
     state.core.repair_database()?;
     Ok(StatusCode::NO_CONTENT)
