@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use orbyn_contracts::Thread;
@@ -120,6 +120,8 @@ pub struct Core {
     /// For requests a person asked for, such as reading the ACP registry.
     pub http: reqwest::Client,
     pub recovery: Recovery,
+    pub(crate) keybinding_writer: Mutex<()>,
+    pub(crate) cleanup_policy_gate: tokio::sync::RwLock<()>,
     _lock: File,
 }
 
@@ -219,6 +221,8 @@ impl Core {
             previews: PreviewManager::default(),
             http,
             recovery,
+            keybinding_writer: Mutex::new(()),
+            cleanup_policy_gate: tokio::sync::RwLock::new(()),
             _lock: lock,
         };
         core.apply_login_preference()?;
@@ -290,6 +294,7 @@ impl Core {
         let setup = setup_script.as_ref().map(|script| NewSetup {
             name: script.name.clone(),
             wait_for_exit: !script.asynchronous,
+            script: Some(script.clone()),
         });
         let thread_id = new_id();
         let registration = setup.as_ref().map(|_| self.setups.registration(&thread_id));

@@ -1,12 +1,20 @@
 import { settingsLabel } from "./settingsSearch";
-import { useState } from "react";
+import { ChevronRight, Monitor } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { api, request } from "../../api/client";
-import type { CleanupReport, Diagnostics, OtlpResult, PreferenceView } from "../../api/types";
+import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";
 import type { ResourceSample } from "../../generated/ResourceSample";
 import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
+import { useUi } from "../../state/ui";
+import { ErrorState, Loading } from "../../ui/states";
+import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
+import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
+import type { ScopedPreferencesChange } from "../../generated/ScopedPreferencesChange";
+import { useSettingsScope } from "./SettingsScopeContext";
 import { Button } from "../../ui/controls";
+import { Collapsible } from "../../ui/Collapsible";
 import { LibraryChoice } from "./LibraryChoice";
 import { FallbackNotice, Library } from "./Projects";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
@@ -26,136 +34,299 @@ const memoryLine = (history: ResourceSample[]) => {
 const REPAIR_NOTICE_BYTES = 1024 ** 3;
 
 const SIGNALS = [
-  { key: "traces_url", title: settingsLabel("maintenance-traces") },
-  { key: "metrics_url", title: settingsLabel("maintenance-metrics") },
-  { key: "logs_url", title: settingsLabel("maintenance-logs") },
-];
+  { key: "traces_url", title: settingsLabel("maintenance-traces"), signal: "traces" },
+  { key: "metrics_url", title: settingsLabel("maintenance-metrics"), signal: "metrics" },
+  { key: "logs_url", title: settingsLabel("maintenance-logs"), signal: "logs" },
+] as const;
+type SignalKey = typeof SIGNALS[number]["key"];
+type EndpointCheck = { url: string; message: string; pending: boolean };
+const isHttpUrl = (url: string) => /^https?:\/\/./i.test(url);
+
+function TelemetryEnvironmentNotice() {
+  const scope = useSettingsScope();
+  const info = useAsync("telemetry-environment", (signal) => api.info(signal));
+  return <div className="setting-row">
+    <p className="setting-line-desc">Choose one environment to configure its telemetry exports.</p>
+    {info.error ? <ErrorState title="Couldn't load settings" failure={info.error} onRetry={info.reload} compact /> :
+      <Button small tone="quiet" style={{ justifyContent: "space-between" }} disabled={!scope || !info.data} onClick={() => scope?.select(undefined)}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Monitor size={14} aria-hidden />{info.data?.environment_label ?? "Loading…"}</span>
+        <ChevronRight size={14} aria-hidden />
+      </Button>}
+  </div>;
+}
 
 function TelemetryGroup() {
-  const preferences = useAsync("observability", (signal) =>
-    request<PreferenceView[]>("GET", "/api/preferences", undefined, signal),
-  );
-  const [results, setResults] = useState<Record<string, string>>({});
-  const saved = (preferences.data?.find((entry) => entry.key === "observability")?.value ?? {}) as Record<string, string>;
-  if (!preferences.data) return null;
-  const save = (key: string, url: string) => {
-    if ((saved[key] ?? "") === url) return;
-    const next = { ...saved, [key]: url };
-    request<PreferenceView[]>("PUT", "/api/preferences", { values: { observability: next } }).then(
-      preferences.setData,
-      (failure: unknown) => setResults({ ...results, [key]: toFailure(failure).message }),
+  const scope = useSettingsScope();
+  return <SettingGroup title="OpenTelemetry export">
+    {scope?.error ? <ErrorState title="Couldn't load settings" failure={scope.error} onRetry={scope.reload} compact /> :
+      !scope?.catalog && scope?.loading ? <Loading label="Loading settings" rows={3} /> :
+      scope?.catalog?.selection.kind === "all_projects" ?
+        <TelemetryForm key={JSON.stringify(scope.query)} query={scope.query} disabled={scope.loading} /> :
+        <TelemetryEnvironmentNotice />}
+  </SettingGroup>;
+}
+
+function endpointValue(value: JsonValue | undefined, key: SignalKey): string {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return "";
+  const url = value[key];
+  return typeof url === "string" ? url : "";
+}
+
+/** One local environment snapshot owns these drafts and every later response. */
+function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
+  const preferences = useAsync(JSON.stringify(["observability", query]), (signal) =>
+    request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: query, keys: ["observability"] }, signal));
+  const pushToast = useUi((state) => state.pushToast);
+  const [draft, setDraft] = useState<Partial<Record<SignalKey, string>>>({});
+  const [checks, setChecks] = useState<Partial<Record<SignalKey, EndpointCheck>>>({});
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  const checkRequests = useRef(new Map<SignalKey, number>());
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  if (preferences.status === "loading") return <Loading label="Loading settings" rows={3} />;
+  if (preferences.status === "error") return <ErrorState title="Couldn't load settings" failure={preferences.error} onRetry={preferences.reload} compact />;
+  const snapshot = preferences.data;
+  if (snapshot.catalog.selection.kind !== "all_projects") return <TelemetryEnvironmentNotice />;
+  const row = snapshot.rows.find((entry) => entry.key === "observability");
+  if (!row) return null;
+  const saved = (key: SignalKey) => endpointValue(row.value, key);
+  const value = (key: SignalKey) => draft[key] ?? saved(key);
+  const changed = SIGNALS.filter(({ key }) => draft[key] !== undefined && value(key).trim() !== saved(key));
+  const busy = disabled || saving || preferences.refreshing;
+  const save = async () => {
+    if (pending.current || busy || changed.length === 0) return;
+    pending.current = true;
+    setSaving(true);
+    setMessage(null);
+    const patch: Record<string, JsonValue> = {};
+    for (const { key } of changed) patch[key] = value(key).trim();
+    const mutation = {
+      scope: query, membership_version: snapshot.catalog.version,
+      if_match: { observability: row.revision }, edits: { observability: { op: "set", value: patch } },
+    } satisfies ScopedPreferencesChange;
+    try {
+      const next = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", mutation);
+      if (mounted.current) {
+        preferences.setData(next);
+        setDraft({});
+        setMessage("Saved. Restart the server to apply.");
+      }
+    } catch (error) {
+      if (mounted.current) {
+        const failure = toFailure(error);
+        pushToast(failure.message);
+        // Reconcile the read, not the write: the person's draft requires Save again.
+        if (failure.status === 409) preferences.reload();
+      }
+    } finally {
+      pending.current = false;
+      if (mounted.current) setSaving(false);
+    }
+  };
+  const test = (key: SignalKey) => {
+    const url = value(key).trim();
+    if (busy || !isHttpUrl(url)) return;
+    const id = (checkRequests.current.get(key) ?? 0) + 1;
+    checkRequests.current.set(key, id);
+    setChecks((previous) => ({ ...previous, [key]: { url, message: "Checking…", pending: true } }));
+    const finish = (text: string) => {
+      if (mounted.current && checkRequests.current.get(key) === id) {
+        setChecks((previous) => ({ ...previous, [key]: { url, message: text, pending: false } }));
+      }
+    };
+    request<OtlpResult>("POST", "/api/diagnostics/otlp", { url }).then(
+      (result) => finish(result.ok ? `Reached, ${result.status}` : (result.message ?? `The server answered ${result.status}`)),
+      (failure: unknown) => finish(toFailure(failure).message),
     );
   };
-  const test = (key: string) => {
-    request<OtlpResult>("POST", "/api/diagnostics/otlp", { url: saved[key] ?? "" }).then(
-      (result) =>
-        setResults({
-          ...results,
-          [key]: result.ok ? `Reached, ${result.status}` : (result.message ?? `The server answered ${result.status}`),
-        }),
-      (failure: unknown) => setResults({ ...results, [key]: toFailure(failure).message }),
-    );
-  };
-  return (
-    <SettingGroup title="OpenTelemetry export">
-      {SIGNALS.map((signal) => (
-        <SettingRow key={signal.key} title={signal.title} description={results[signal.key] ?? "An OTLP HTTP address."}>
-          <input
-            aria-label={`${signal.title} address`}
-            type="url"
-            defaultValue={saved[signal.key] ?? ""}
-            onBlur={(event) => save(signal.key, event.target.value.trim())}
-          />
-          <Button small disabled={!saved[signal.key]} onClick={() => test(signal.key)}>
-            Test
-          </Button>
-        </SettingRow>
-      ))}
-    </SettingGroup>
-  );
+  return <form aria-label="OpenTelemetry export" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <div className="setting-row"><p className="setting-line-desc">Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply. Environment variables override these settings.</p></div>
+    {SIGNALS.map((signal) => {
+      const url = value(signal.key);
+      const check = checks[signal.key]?.url === url.trim() ? checks[signal.key] : undefined;
+      return <SettingRow key={signal.key} title={signal.title} description={check?.message ?? "An OTLP HTTP address."}>
+        <input aria-label={`${signal.title} endpoint`} type="url" pattern="[Hh][Tt][Tt][Pp][Ss]?://.*"
+          title="Enter an HTTP or HTTPS endpoint, or leave empty to disable export."
+          placeholder={`http://localhost:4318/v1/${signal.signal}`} value={url} disabled={busy}
+          onChange={(event) => {
+            const text = event.target.value;
+            setDraft((previous) => {
+              const next = { ...previous, [signal.key]: text };
+              if (text.trim() === saved(signal.key)) delete next[signal.key];
+              return next;
+            });
+            setMessage(null);
+          }} />
+        <Button small type="button" disabled={busy || !isHttpUrl(url.trim()) || check?.pending === true} onClick={() => test(signal.key)}>Test</Button>
+      </SettingRow>;
+    })}
+    <div className="setting-line">
+      <p className="setting-line-desc" role="status">{message}</p>
+      <div className="form-actions">
+      <Button small type="button" disabled={busy || changed.length === 0} onClick={() => { setDraft({}); setMessage(null); }}>Discard</Button>
+      <Button small type="submit" disabled={busy || changed.length === 0}>{saving ? "Saving…" : "Save"}</Button>
+      </div>
+    </div>
+  </form>;
 }
 
 const RETENTION = [
-  { key: "worktree_settled_after_days", title: settingsLabel("maintenance-worktrees-days-after-settling") },
-  { key: "browser_artifacts_after_days", title: settingsLabel("maintenance-browser-artifacts-days") },
-  { key: "logs_after_days", title: settingsLabel("maintenance-logs-days") },
-];
+  { key: "browser_artifacts_after_days", title: settingsLabel("maintenance-browser-artifacts-days"),
+    description: "Delete saved browser captures after this many days. Older capture links will no longer open." },
+  { key: "logs_after_days", title: settingsLabel("maintenance-logs-days"),
+    description: "Delete inactive rotated log files after this many days. Current logs are kept." },
+] as const;
+type RetentionKey = typeof RETENTION[number]["key"];
 
 function CleanupGroup() {
-  const preferences = useAsync("storage-cleanup", (signal) =>
-    request<PreferenceView[]>("GET", "/api/preferences", undefined, signal),
-  );
+  const scope = useSettingsScope();
+  // Storage cleanup has no project/checkout form or fallback writer.
+  if (scope?.error || scope?.catalog?.selection.kind !== "all_projects") return null;
+  return <EnvironmentCleanup key={JSON.stringify(scope.query)} query={scope.query} disabled={scope.loading} />;
+}
+
+function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
+  const preferences = useAsync(JSON.stringify(["storage-cleanup", query]), (signal) =>
+    request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: query, keys: ["storage_cleanup", "worktree_cleanup"] }, signal));
   const last = useAsync("cleanup-report", (signal) =>
-    request<CleanupReport | null>("GET", "/api/storage/cleanup", undefined, signal),
-  );
+    request<CleanupReport | null>("GET", "/api/storage/cleanup", undefined, signal));
+  const [draft, setDraft] = useState<Partial<Record<RetentionKey, string>>>({});
   const [report, setReport] = useState<CleanupReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const rules = (preferences.data?.find((entry) => entry.key === "storage_cleanup")?.value ?? {}) as Record<string, number>;
-  if (!preferences.data) return null;
-  const save = (key: string, text: string) => {
-    const { [key]: _dropped, ...rest } = rules;
-    const next = text ? { ...rest, [key]: Number(text) } : rest;
-    request<PreferenceView[]>("PUT", "/api/preferences", { values: { storage_cleanup: next } }).then(
-      preferences.setData,
-      (failure: unknown) => setError(toFailure(failure).message),
-    );
-  };
-  const run = (dryRun: boolean) => {
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  if (preferences.status === "loading") return <Loading label="Loading settings" rows={2} />;
+  if (preferences.status === "error") return <ErrorState title="Couldn't load settings" failure={preferences.error} onRetry={preferences.reload} compact />;
+  const snapshot = preferences.data;
+  if (snapshot.catalog.selection.kind !== "all_projects") return null;
+  const row = snapshot.rows.find((entry) => entry.key === "storage_cleanup");
+  if (!row) return null;
+  const rules = row.value !== null && typeof row.value === "object" && !Array.isArray(row.value) ? row.value : {};
+  const saved = (key: RetentionKey) => typeof rules[key] === "number" ? rules[key] : null;
+  const busy = disabled || saving || deleting || preferences.refreshing;
+  const save = async (key: RetentionKey, value: number | null) => {
+    if (pending.current || busy || value === saved(key)) return;
+    pending.current = true;
+    setSaving(true);
     setError(null);
-    request<CleanupReport>("POST", `/api/storage/cleanup${dryRun ? "?dry_run=true" : ""}`).then(
-      setReport,
-      (failure: unknown) => setError(toFailure(failure).message),
-    );
+    const mutation = { scope: query, membership_version: snapshot.catalog.version,
+      if_match: { storage_cleanup: row.revision }, edits: { storage_cleanup: { op: "set", value: { [key]: value } } },
+    } satisfies ScopedPreferencesChange;
+    try {
+      const next = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", mutation);
+      if (mounted.current) {
+        preferences.setData({ ...snapshot, catalog: next.catalog,
+          rows: snapshot.rows.map((previous) => next.rows.find((entry) => entry.key === previous.key) ?? previous) });
+        setDraft((previous) => { const next = { ...previous }; delete next[key]; return next; });
+      }
+    } catch (failure) {
+      if (mounted.current) {
+        const problem = toFailure(failure);
+        setError(problem.message);
+        // Refresh the version without discarding or automatically replaying a draft.
+        if (problem.status === 409) preferences.reload();
+      }
+    } finally {
+      pending.current = false;
+      if (mounted.current) setSaving(false);
+    }
   };
+  const commitDays = (key: RetentionKey) => {
+    const text = draft[key];
+    if (busy || text === undefined) return;
+    if (text.trim() === "" || !Number.isFinite(Number(text))) {
+      setDraft((previous) => { const next = { ...previous }; delete next[key]; return next; });
+      return;
+    }
+    const days = Math.max(1, Math.min(3650, Math.round(Number(text))));
+    if (days === saved(key)) {
+      setDraft((previous) => { const next = { ...previous }; delete next[key]; return next; });
+      return;
+    }
+    setDraft((previous) => ({ ...previous, [key]: String(days) }));
+    void save(key, days);
+  };
+  const run = async () => {
+    if (pending.current || busy) return;
+    pending.current = true;
+    setDeleting(true);
+    setError(null);
+    try {
+      const result = await request<CleanupReport>("POST", "/api/storage/cleanup");
+      if (mounted.current) setReport(result);
+    } catch (failure) {
+      if (mounted.current) setError(toFailure(failure).message);
+    } finally {
+      pending.current = false;
+      if (mounted.current) setDeleting(false);
+    }
+  };
+  // The environment action also evaluates explicit project worktree policies.
+  // Legacy project storage_cleanup objects never participate in that policy.
+  const worktrees = snapshot.rows.find((entry) => entry.key === "worktree_cleanup");
+  const validAge = (value: JsonValue | undefined): number | null =>
+    typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 3650 ? value : null;
+  const worktreeAge = (value: JsonValue | undefined, inherited: number | null): number | null => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return inherited;
+    if (value.mode === "off") return null;
+    if (value.mode !== "custom") return inherited;
+    const own = value.rules;
+    return own !== null && typeof own === "object" && !Array.isArray(own) ? validAge(own.settled_after_days) : null;
+  };
+  const environmentAge = worktreeAge(worktrees?.environment.value, validAge(rules.worktree_settled_after_days));
+  const hasRules = RETENTION.some(({ key }) => saved(key) !== null) || environmentAge !== null ||
+    worktrees?.overrides.some((entry) => worktreeAge(entry.value, environmentAge) !== null) === true;
+  const hasDraft = RETENTION.some(({ key }) => draft[key] !== undefined && draft[key] !== String(saved(key)));
   const shown = report ?? last.data ?? null;
-  return (
-    <SettingGroup title="Storage cleanup">
-      {RETENTION.map((rule) => (
-        <SettingRow key={rule.key} title={rule.title} description="Empty keeps them.">
-          <input
-            aria-label={rule.title}
-            type="number"
-            min="1"
-            defaultValue={rules[rule.key] ?? ""}
-            onBlur={(event) => {
-              if (event.target.value !== String(rules[rule.key] ?? "")) save(rule.key, event.target.value);
+  return <>
+    <SettingGroup title="Artifacts and logs">
+      {RETENTION.map((rule) => <SettingRow key={rule.key} title={rule.title} description={rule.description}>
+        {saved(rule.key) !== null || draft[rule.key] !== undefined ? <>
+          <input aria-label={`${rule.title} in days`} type="number" min="1" max="3650" step="1" disabled={busy}
+            value={draft[rule.key] ?? String(saved(rule.key))}
+            onChange={(event) => {
+              const text = event.target.value;
+              setDraft((previous) => {
+                const next = { ...previous, [rule.key]: text };
+                if (text === String(saved(rule.key))) delete next[rule.key];
+                return next;
+              });
             }}
-          />
-        </SettingRow>
-      ))}
-      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={shown ? reportLine(shown) : "Nothing is removed by a preview."}>
-        <Button small onClick={() => run(true)}>
-          Preview
-        </Button>
-        <Button small onClick={() => run(false)}>
-          Clean up
-        </Button>
-      </SettingRow>
-      {shown && shown.entries.length > 0 ? (
-        <ul className="cleanup-report" aria-label="Cleanup report">
-          {shown.entries.map((entry) => (
-            <li key={`${entry.kind}:${entry.path}`}>
-              <code title={entry.path}>{entry.path.split(/[\\/]/).at(-1)}</code>
-              <span>
-                {entry.removed ? "Removed" : shown.dry_run ? "Would remove" : "Kept"}: {entry.reason}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+            onBlur={() => commitDays(rule.key)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
+          <span aria-hidden>days</span>
+        </> : <span>Off</span>}
+        <input type="checkbox" role="switch" aria-label={rule.title} disabled={busy} checked={saved(rule.key) !== null}
+          onChange={(event) => { void save(rule.key, event.target.checked ? 8 : null); }} />
+      </SettingRow>)}
     </SettingGroup>
-  );
+    <SettingGroup title="Cleanup">
+      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : shown ? undefined : "Cleanup hasn't run yet."}>
+        <Button small disabled={busy || !hasRules || hasDraft} onClick={() => void run()}>{deleting ? "Deleting…" : "Delete now"}</Button>
+      </SettingRow>
+      {shown ? <Collapsible summary="Last run">
+        <p className="setting-line-desc">{reportLine(shown)}</p>
+        {shown.entries.length > 0 ? <ul className="cleanup-report" aria-label="Cleanup report">
+          {shown.entries.map((entry) => <li key={`${entry.kind}:${entry.path}`}>
+            <code title={entry.path}>{entry.path.split(/[\\/]/).at(-1)}</code>
+            <span>{entry.removed ? "Removed" : "Kept"}: {entry.reason}</span>
+          </li>)}
+        </ul> : null}
+      </Collapsible> : null}
+      {last.error ? <ErrorState title="Couldn't load cleanup report" failure={last.error} onRetry={last.reload} compact /> : null}
+      {error ? <p className="field-error" role="alert">{error}</p> : null}
+    </SettingGroup>
+  </>;
 }
 
 const reportLine = (report: CleanupReport) => {
-  const count = report.entries.length;
-  const what = count === 0 ? "Nothing to remove" : `${count} ${count === 1 ? "item" : "items"}`;
-  return `${report.dry_run ? "Preview" : "Last run"} ${fullTime(report.ran_at)}: ${what}`;
+  const removed = report.entries.filter((entry) => entry.removed).length;
+  return `${fullTime(report.ran_at)}: ${removed} removed, ${report.entries.length - removed} kept`;
 };
 
 function DiagnosticsGroup() {

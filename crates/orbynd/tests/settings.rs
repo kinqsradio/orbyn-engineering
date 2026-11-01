@@ -443,3 +443,36 @@ async fn put_value(service: &Service, path: &str, body: Value) -> (u16, Value) {
     let status = response.status().as_u16();
     (status, response.json().await.unwrap_or(Value::Null))
 }
+
+#[tokio::test]
+async fn concurrent_keybinding_edits_preserve_each_unrelated_command() {
+    let dir = TempDir::new();
+    let service = Service::start(&dir.path().join("data"), Options::default());
+    let mut edits = tokio::task::JoinSet::new();
+    for index in 0..12 {
+        let client = service.client.clone();
+        let url = format!("{}/api/keybindings", service.url);
+        let token = service.token.clone();
+        edits.spawn(async move {
+            let response = client.post(url).bearer_auth(token).json(&json!({
+                "key":format!("ctrl+alt+f{}", index+1), "command":format!("script.fixture-{index}.run"), "when":null, "remove":false
+            })).send().await.unwrap();
+            assert_eq!(response.status(), 200);
+        });
+    }
+    while let Some(result) = edits.join_next().await {
+        result.unwrap();
+    }
+    let view = service.json("/api/keybindings").await;
+    for index in 0..12 {
+        assert!(
+            view["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|rule| rule["command"] == format!("script.fixture-{index}.run"))
+        );
+    }
+    assert!(view["issues"].as_array().unwrap().is_empty());
+    service.stop().await;
+}

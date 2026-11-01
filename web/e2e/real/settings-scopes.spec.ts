@@ -66,8 +66,9 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     await expect.poll(async () => (await pref(one.id, "branch_name_prefix"))?.value).toBe("one-only");
     expect((await pref(two.id, "branch_name_prefix"))?.value).toBe("shared");
     await page.goto(`${service.page}#/settings/worktrees`);
-    await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const row = page.locator("#worktrees-branch-prefix");
+    const branchDisclosure = page.locator(".collapsible-panel").filter({ has: row }).locator("..");
+    await branchDisclosure.getByRole("button", { name: "Advanced", exact: true }).click();
     await row.getByRole("button", { name: /Show where this value comes from/ }).click();
     await expect(row.getByText("Overridden by", { exact: true })).toBeVisible();
     await row.getByRole("button", { name: "Reset all", exact: true }).click();

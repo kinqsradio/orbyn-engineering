@@ -6,6 +6,9 @@ import { ACTION_ICONS, ProjectActionIcon } from "../../ui/ProjectActionIcon";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import type { PreferenceControl, PreferenceSaveResult } from "./PreferenceRows";
+import { useActionKeybinding } from "./actionKeybinding";
+import { toFailure } from "../../lib/useAsync";
+import { ApiFailure } from "../../api/client";
 
 function actionsFrom(value: unknown): ProjectScript[] {
   if (!Array.isArray(value)) return [];
@@ -62,6 +65,8 @@ function ActionDialog({ initial, original, disabled, commit, onClose }: {
 }) {
   const id = useId();
   const [draft, setDraft] = useState(initial);
+  const [storedName, setStoredName] = useState(original);
+  const binding = useActionKeybinding(initial.id);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,10 +80,27 @@ function ActionDialog({ initial, original, disabled, commit, onClose }: {
     if (pending.current || disabled) return;
     pending.current = true;
     setBusy(true); setError(null);
+    let actionSaved = false;
     try {
       const result = await commit(edit);
-      if (result.saved) onClose();
-      else if (result.error) { setError(result.error); throw new Error(result.error); }
+      if (!result.saved) {
+        if (result.error) { setError(result.error); throw new ApiFailure("action_save_failed", result.error, 0); }
+        return;
+      }
+      if (edit.op === "remove_project_script") { onClose(); return; }
+      if (edit.op !== "add_project_script" && edit.op !== "update_project_script") return;
+      actionSaved = true;
+      setStoredName(edit.script.name);
+      const value = result.row?.mixed ? result.row.members[0]?.view.value : result.row?.value;
+      const saved = actionsFrom(value).find((action) => action.name === edit.script.name);
+      if (!saved?.id) throw new Error("The saved action identity is unavailable.");
+      setDraft(saved);
+      await binding.save(saved.id);
+      onClose();
+    } catch (failure) {
+      // A shortcut-file failure must leave an already-created action in edit mode.
+      if (actionSaved) setError(`Action saved. ${toFailure(failure).message}`);
+      throw failure;
     } finally { pending.current = false; setBusy(false); }
   };
   const submit = (event: React.FormEvent) => {
@@ -87,17 +109,17 @@ function ActionDialog({ initial, original, disabled, commit, onClose }: {
       preview_url: draft.preview_url?.trim() || null,
       auto_open_preview: Boolean(draft.preview_url?.trim()) && draft.auto_open_preview,
       async: !draft.run_on_worktree_create || draft.async };
-    const edit: PreferenceEdit = original === null ? { op: "add_project_script", script }
-      : { op: "update_project_script", name: original, script };
+    const edit: PreferenceEdit = storedName === null ? { op: "add_project_script", script }
+      : { op: "update_project_script", name: storedName, script };
     // The form owns the visible save error; deletion has its confirmation owner.
     void write(edit).catch(() => undefined);
   };
   return <>
-    <Dialog title={original === null ? "Add Action" : "Edit Action"} busy={busy} onClose={onClose} footer={<>
-      {original !== null && <Button tone="danger" disabled={busy || disabled} onClick={() => setDeleting(true)}>Delete</Button>}
+    <Dialog title={storedName === null ? "Add Action" : "Edit Action"} busy={busy} onClose={onClose} footer={<>
+      {storedName !== null && <Button tone="danger" disabled={busy || disabled} onClick={() => setDeleting(true)}>Delete</Button>}
       <Button disabled={busy} onClick={onClose}>Cancel</Button>
-      <Button type="submit" form={id} tone="primary" busy={busy} disabled={disabled || !draft.name.trim() || !draft.command.trim()}>
-        {original === null ? "Save action" : "Save changes"}</Button>
+      <Button type="submit" form={id} tone="primary" busy={busy} disabled={disabled || (!binding.ready && !binding.error) || !draft.name.trim() || !draft.command.trim()}>
+        {storedName === null ? "Save action" : "Save changes"}</Button>
     </>}>
       <form id={id} onSubmit={submit}>
         <fieldset className="form" disabled={busy || disabled}>
@@ -115,6 +137,12 @@ function ActionDialog({ initial, original, disabled, commit, onClose }: {
               <input ref={nameInput} id={`${id}-name`} required value={draft.name} onChange={(event) => change("name", event.target.value)} />
             </div>
           </div>
+          <div className="field"><label htmlFor={`${id}-keybinding`}>Keybinding</label>
+            <input id={`${id}-keybinding`} readOnly placeholder="Press shortcut" disabled={!binding.ready || Boolean(binding.error)}
+              value={binding.value} onKeyDown={binding.capture} />
+            <p className="field-hint">Press a shortcut. Use <code>Backspace</code> to clear. Shortcuts are environment-wide. Projects using the same action share its shortcut.</p>
+            {binding.error && <p className="field-error" role="alert">{binding.error}</p>}
+          </div>
           <div className="field"><label htmlFor={`${id}-command`}>Command</label>
             <textarea id={`${id}-command`} required rows={3} value={draft.command} onChange={(event) => change("command", event.target.value)} /></div>
           <div className="field"><label htmlFor={`${id}-preview`}>Preview URL (optional)</label>
@@ -128,8 +156,8 @@ function ActionDialog({ initial, original, disabled, commit, onClose }: {
         </fieldset>
       </form>
     </Dialog>
-    {deleting && original !== null && <ConfirmDialog title={`Delete action "${original}"?`} confirmLabel="Delete action" tone="danger" keepOpen
-      onClose={() => setDeleting(false)} onConfirm={() => write({ op: "remove_project_script", name: original })}>
+    {deleting && storedName !== null && <ConfirmDialog title={`Delete action "${storedName}"?`} confirmLabel="Delete action" tone="danger" keepOpen
+      onClose={() => setDeleting(false)} onConfirm={() => write({ op: "remove_project_script", name: storedName })}>
       This action cannot be undone.
     </ConfirmDialog>}
   </>;

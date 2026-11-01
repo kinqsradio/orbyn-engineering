@@ -273,6 +273,12 @@ impl RunKind {
 pub trait EngineDriver: Send + Sync {
     fn descriptor(&self) -> EngineDescriptor;
 
+    /// Local-process drivers resolve their configured executable here without
+    /// starting it. Endpoint and synthetic drivers have no executable to check.
+    fn check_launch_available(&self) -> Result<()> {
+        Ok(())
+    }
+
     async fn probe(&self) -> EngineProbe;
 
     /// The engine this is, whatever it is called here: an instance of Claude is run,

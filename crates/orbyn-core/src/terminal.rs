@@ -55,12 +55,20 @@ pub struct PtySpec {
     pub rows: u16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PtyOutputState {
+    Reading,
+    Ended,
+    Closed,
+}
+
 pub struct PtySession {
     writer: Mutex<Box<dyn Write + Send>>,
-    master: Mutex<Box<dyn MasterPty + Send>>,
+    master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     output: broadcast::Sender<Vec<u8>>,
     scrollback: Mutex<Scrollback>,
     exit: watch::Sender<Option<i32>>,
+    output_state: watch::Sender<PtyOutputState>,
     tree: ProcessTree,
 }
 
@@ -74,6 +82,8 @@ impl PtySession {
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         lock(&self.master)
+            .as_ref()
+            .ok_or_else(|| CoreError::NotFound("terminal".into()))?
             .resize(PtySize {
                 rows,
                 cols,
@@ -107,6 +117,12 @@ impl PtySession {
         self.exit.subscribe()
     }
 
+    /// Child exit and PTY output completion are independent. An explicit owner
+    /// close may stop observation without waiting for inherited descriptors.
+    pub fn output_state(&self) -> watch::Receiver<PtyOutputState> {
+        self.output_state.subscribe()
+    }
+
     pub fn attached_clients(&self) -> usize {
         self.output.receiver_count()
     }
@@ -116,6 +132,7 @@ impl PtySession {
     }
 
     pub fn kill(&self) {
+        self.output_state.send_replace(PtyOutputState::Closed);
         self.tree.kill();
     }
 }
@@ -132,6 +149,14 @@ fn lock<T: ?Sized>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Take ownership under the lock, then run the potentially blocking control
+/// destructor after unlocking. The reader must keep draining during ConPTY close.
+#[cfg(any(windows, test))]
+fn retire_control<T>(slot: &Mutex<Option<T>>) {
+    let control = lock(slot).take();
+    drop(control);
 }
 
 struct Entry {
@@ -361,12 +386,14 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
     let writer = pty.master.take_writer().map_err(failed)?;
     let (output, _) = broadcast::channel(256);
     let (exit, _) = watch::channel(None);
+    let (output_state, _) = watch::channel(PtyOutputState::Reading);
     let session = Arc::new(PtySession {
         writer: Mutex::new(writer),
-        master: Mutex::new(pty.master),
+        master: Mutex::new(Some(pty.master)),
         output,
         scrollback: Mutex::new(Scrollback::default()),
         exit,
+        output_state,
         tree: tree_for(pid),
     });
     // PTY reads block, and a blocking thread must not hold a strong reference
@@ -391,6 +418,15 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
             scrollback.push(&chunk, SCROLLBACK_BYTES, SCROLLBACK_LINES);
             let _ = session.output.send(chunk);
         }
+        if let Some(session) = reading.upgrade() {
+            session.output_state.send_if_modified(|state| {
+                if *state != PtyOutputState::Reading {
+                    return false;
+                }
+                *state = PtyOutputState::Ended;
+                true
+            });
+        }
     });
     let waiting = Arc::downgrade(&session);
     std::thread::spawn(move || {
@@ -400,6 +436,12 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
             .map_or(-1, |status| status.exit_code() as i32);
         if let Some(session) = waiting.upgrade() {
             session.exit.send_replace(Some(code));
+            // On Windows the retained HPCON itself prevents pipe EOF. Close it
+            // on this waiter, never on the independent output reader: teardown
+            // can emit a final frame and block until that frame is drained.
+            // Exit is published first, so draining never extends input authority.
+            #[cfg(windows)]
+            retire_control(&session.master);
         }
     });
     Ok(session)
@@ -478,6 +520,70 @@ pub fn shell_command(command: &str) -> (PathBuf, Vec<std::ffi::OsString>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retiring_control_drops_once_without_holding_the_slot_lock() {
+        struct Probe {
+            slot: std::sync::Weak<Mutex<Option<Probe>>>,
+            drops: Arc<std::sync::atomic::AtomicUsize>,
+        }
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let slot = self.slot.upgrade().unwrap();
+                assert!(
+                    slot.try_lock().unwrap().is_none(),
+                    "teardown cannot retain the control lock"
+                );
+                self.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let slot = Arc::new(Mutex::new(None));
+        let drops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        *lock(&slot) = Some(Probe {
+            slot: Arc::downgrade(&slot),
+            drops: drops.clone(),
+        });
+        retire_control(&slot);
+        retire_control(&slot);
+        assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn conpty_child_exit_releases_control_and_drains_output_to_eof() {
+        let dir = crate::testing::TempDir::new();
+        let session = spawn(PtySpec {
+            program: std::env::var_os("ComSpec")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| "cmd.exe".into()),
+            args: ["/D", "/C", "echo conpty-final-output"]
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            cwd: dir.path().to_owned(),
+            cols: 80,
+            rows: 24,
+        })
+        .unwrap();
+        let mut exit = session.exited();
+        let mut output = session.output_state();
+        tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            while exit.borrow().is_none() {
+                exit.changed().await.unwrap();
+            }
+            while *output.borrow() == PtyOutputState::Reading {
+                output.changed().await.unwrap();
+            }
+        })
+        .await
+        .expect("direct-child exit must retire ConPTY while its reader drains to EOF");
+        assert_eq!(session.exit_code(), Some(0));
+        assert_eq!(*output.borrow(), PtyOutputState::Ended);
+        assert!(lock(&session.master).is_none());
+        let (replay, _) = session.attach();
+        assert!(String::from_utf8_lossy(&replay).contains("conpty-final-output"));
+        assert!(!session.is_alive());
+    }
 
     #[test]
     fn a_cursor_query_is_taken_once_and_the_rest_of_the_output_stays() {

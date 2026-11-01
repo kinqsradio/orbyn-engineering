@@ -1,7 +1,8 @@
 import { RefreshCw, Trash2, ArrowDown, ArrowUp } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, request } from "../../api/client";
-import type { EngineStatus, EngineTier, PreferenceView } from "../../api/types";
+import type { EngineStatus, EngineTier, JsonValue } from "../../api/types";
+import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
 import { authLabels, signInLabel, slugify, supportLabels, tierLabels } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -11,6 +12,7 @@ import { Button, CopyCommand, Field, Pill, type PillTone, IconButton } from "../
 import { ConfirmDialog } from "../../ui/Dialog";
 import { AcpRegistry } from "./AcpRegistry";
 import { Empty, ErrorState, Loading } from "../../ui/states";
+import { useSettingsScope } from "./SettingsScopeContext";
 
 const POLL_WHILE_UPDATING_MS = 1500;
 
@@ -65,52 +67,88 @@ interface CustomModel {
   label?: string;
 }
 
+function readCustomModel(value: JsonValue): CustomModel | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || typeof value.engine !== "string" || typeof value.id !== "string") return null;
+  return { engine: value.engine, id: value.id, ...(typeof value.label === "string" ? { label: value.label } : {}) };
+}
+
 /** Models the service doesn't list, kept as a setting and merged into its list. */
 function CustomModels({ engine }: { engine: EngineStatus }) {
+  const scope = useSettingsScope();
   const preferences = useAsync("custom-models", (signal) =>
-    request<PreferenceView[]>("GET", "/api/preferences", undefined, signal),
+    request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: {}, keys: ["custom_models"] }, signal),
   );
   const [id, setId] = useState("");
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const all = (preferences.data?.find((entry) => entry.key === "custom_models")?.value ?? []) as unknown as CustomModel[];
-  const mine = all.filter((model) => model.engine === engine.id);
-  const save = async (next: CustomModel[]) => {
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const row = preferences.data?.rows.find((entry) => entry.key === "custom_models");
+  const all = Array.isArray(row?.value) ? row.value : [];
+  const mine = all.flatMap((entry) => {
+    const model = readCustomModel(entry);
+    return model?.engine === engine.id ? [model] : [];
+  });
+  const unavailable = scope !== null && (scope.loading || scope.error !== null || !scope.catalog || scope.catalog.selection.kind === "unavailable");
+  const disabled = unavailable || busy || preferences.status !== "ready" || preferences.refreshing || !row || !Array.isArray(row.value);
+  const save = async (next: JsonValue[]): Promise<boolean> => {
+    if (disabled || pending.current || !row || !preferences.data) return false;
+    pending.current = true;
+    setBusy(true);
     setError(null);
     try {
-      preferences.setData(await request<PreferenceView[]>("PUT", "/api/preferences", { values: { custom_models: next } }));
-      await useModelStore.getState().reload(engine.id);
-      setId("");
-      setLabel("");
+      const changed = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
+        scope: {}, membership_version: preferences.data.catalog.version,
+        if_match: { [row.key]: row.revision }, edits: { [row.key]: { op: "set", value: next } },
+      });
+      preferences.setData(changed);
+      void useModelStore.getState().reload(engine.id);
+      return true;
     } catch (failure) {
-      setError(toFailure(failure).message);
+      const reason = toFailure(failure);
+      setError(reason.message);
+      if (reason.status === 409) { preferences.reload(); scope?.reload(); }
+      return false;
+    } finally {
+      pending.current = false;
+      setBusy(false);
     }
   };
   const add = (event: FormEvent) => {
     event.preventDefault();
-    void save([...all, { engine: engine.id, id: id.trim(), ...(label.trim() ? { label: label.trim() } : {}) }]);
+    if (!id.trim()) return;
+    void save([...all, { engine: engine.id, id: id.trim(), ...(label.trim() ? { label: label.trim() } : {}) }]).then((saved) => {
+      if (saved) { setId(""); setLabel(""); }
+    });
   };
+  const visibleError = error ?? preferences.error?.message;
   return (
-    <form className="custom-models" aria-label={`Custom models for ${engine.name}`} onSubmit={add}>
+    <form className="custom-models" aria-label={`Custom models for ${engine.name}`} aria-busy={busy || preferences.refreshing} onSubmit={add}>
       {mine.map((model) => (
         <div key={model.id} className="custom-model">
           <span>{model.label ?? model.id}</span>
           <IconButton
             label={`Remove ${model.label ?? model.id}`}
-            onClick={() => void save(all.filter((entry) => !(entry.engine === engine.id && entry.id === model.id)))}
+            disabled={disabled}
+            onClick={() => void save(all.filter((entry) => {
+              const known = readCustomModel(entry);
+              return !(known?.engine === engine.id && known.id === model.id);
+            }))}
           >
             <Trash2 size={14} aria-hidden />
           </IconButton>
         </div>
       ))}
-      <input aria-label="Model id" placeholder="Model id" value={id} onChange={(event) => setId(event.target.value)} />
-      <input aria-label="Display name" placeholder="Display name" value={label} onChange={(event) => setLabel(event.target.value)} />
-      <Button small type="submit" disabled={!id.trim()}>
+      <input aria-label="Model id" placeholder="Model id" disabled={disabled} value={id} onChange={(event) => setId(event.target.value)} />
+      <input aria-label="Display name" placeholder="Display name" disabled={disabled} value={label} onChange={(event) => setLabel(event.target.value)} />
+      <Button small type="submit" disabled={disabled || !id.trim()}>
         Add model
       </Button>
-      {error ? (
+      {visibleError ? (
         <p className="field-error" role="alert">
-          {error}
+          {visibleError}
+          {preferences.status === "error" ? <Button small onClick={preferences.reload}>Retry</Button> : null}
         </p>
       ) : null}
     </form>
@@ -173,7 +211,7 @@ function EngineModelList({ engine }: { engine: EngineStatus }) {
           })}
         </ul>
       ) : null}
-      {open ? <CustomModels engine={engine} /> : null}
+      {open ? <><p className="muted">Custom models are saved on the selected environment.</p><CustomModels engine={engine} /></> : null}
     </div>
   );
 }

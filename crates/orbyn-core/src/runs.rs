@@ -310,14 +310,74 @@ impl RunManager {
         let root = self.workspace.root()?;
         let run = self.workspace.admit_with(|| {
             self.engines.admit_with(&thread.engine, || {
-                self.store.admit_run(Admission {
-                    thread_id,
-                    prompt,
-                    actor,
-                })
+                self.store.admit_prepared_run(
+                    Admission {
+                        thread_id,
+                        prompt,
+                        actor,
+                    },
+                    attachments,
+                )
             })
         })?;
         self.launch(thread, run.clone(), prompt.to_owned(), attachments, &root)?;
+        Ok(run)
+    }
+
+    /// Retry only the immutable input and project action captured for this run.
+    pub(crate) fn retry_preparation(
+        self: &Arc<Self>,
+        thread_id: &str,
+        failed_run: &str,
+        actor: &str,
+        capture: &crate::project_setup::PreparationCapture,
+        spawn: impl FnOnce(&Thread, &orbyn_contracts::ProjectScript) -> Result<()>,
+    ) -> Result<Run> {
+        let mut thread = self.store.thread(thread_id)?;
+        thread.engine.clone_from(&capture.engine);
+        thread.model.clone_from(&capture.selection.model);
+        thread.effort.clone_from(&capture.selection.effort);
+        thread.options.clone_from(&capture.selection.options);
+        self.check_goal_action(&thread, &capture.prompt)?;
+        self.engines
+            .check_selection(&thread.engine, &selection::of_thread(&thread))?;
+        let root = self.workspace.root()?;
+        let retry = self.workspace.admit_with(|| {
+            self.engines.admit_with(&capture.engine, || {
+                self.engines.check_enabled(&capture.engine)?;
+                self.engines
+                    .driver(&capture.engine)?
+                    .check_launch_available()?;
+                self.engines
+                    .check_selection(&capture.engine, &capture.selection)?;
+                self.store
+                    .retry_preparation(thread_id, failed_run, actor, capture)
+            })
+        })?;
+        let run = retry.run;
+        let thread = retry.thread;
+        // Register cancellation before any project process can be created. The
+        // setup manager's launch/cancel lock fences a stop that wins this race.
+        if let Err(error) = self.launch(
+            thread.clone(),
+            run.clone(),
+            retry.prompt,
+            &retry.attachments,
+            &root,
+        ) {
+            self.setups.fail_preparation(thread_id, &run.id);
+            let _ = self.close_run(
+                &run.id,
+                RunState::Failed,
+                Some(&error.public_message()),
+                None,
+            );
+            return Err(error);
+        }
+        if let Err(error) = spawn(&thread, &retry.script) {
+            self.setups.fail_preparation(thread_id, &run.id);
+            tracing::warn!(%error, "could not retry project preparation");
+        }
         Ok(run)
     }
 
@@ -371,6 +431,7 @@ impl RunManager {
             .driver(&thread.engine)?
             .resolves_from_checkout();
         let scope = write_scope(root, Path::new(&thread.cwd), from_checkout);
+        let preparation_retry = self.store.is_preparation_retry(&run.id)?;
         let stops = Stops::default();
         // Registered before the task starts, so a cancel cannot miss it.
         self.lock().insert(
@@ -381,7 +442,9 @@ impl RunManager {
                 input: None,
             },
         );
-        self.remember_selection(&thread);
+        if !preparation_retry {
+            self.remember_selection(&thread);
+        }
         let manager = self.clone();
         let thread_id = thread.id.clone();
         let task = tokio::spawn({
@@ -398,10 +461,11 @@ impl RunManager {
                 };
                 // A panic in the run must not strand it as active.
                 if supervised.await.is_err() {
-                    manager.close_run(
+                    let _ = manager.close_run(
                         &run_id,
                         RunState::Failed,
                         Some("The run stopped unexpectedly."),
+                        None,
                     );
                 }
                 manager.lock().remove(&run_id);
@@ -590,15 +654,9 @@ impl RunManager {
 
     /// The engine refused a message it was handed mid-turn, so it goes in the queue.
     fn requeue_steer(&self, scope: &RunScope, prompt: &str) {
-        let note = self.store.note_thread_event(
-            &scope.thread_id,
-            "steer.failed",
-            json!({ "prompt": prompt }),
-        );
-        let queued = note.and_then(|()| {
-            self.store
-                .enqueue(&scope.thread_id, prompt, &[], &ModelSelection::default())
-        });
+        let queued = self
+            .store
+            .requeue_failed_steer(&scope.run_id, &scope.thread_id, prompt);
         if let Err(error) = queued {
             tracing::warn!(%error, "could not requeue a steered message");
         }
@@ -650,19 +708,28 @@ impl RunManager {
         if run.state.is_terminal() {
             return Err(CoreError::RunClosed);
         }
+        self.store.request_stop(run_id)?;
+        let cancellation = self
+            .lock()
+            .get(run_id)
+            .map(|active| active.stops.cancel.clone());
+        if let Some(cancel) = &cancellation {
+            cancel.cancel();
+        }
+        // Once accepted, parent cancellation cannot depend on child lookup or
+        // cleanup succeeding. Attempt setup cancellation before that traversal too.
+        let setup = self.setups.cancel_run(&run.thread_id, run_id);
         for child in self.store.child_threads(&run.thread_id)? {
             if let Some(active) = self.store.thread(&child)?.active_run {
                 self.note_stopped_with_parent(&active.id);
                 let _ = self.cancel(&active.id);
             }
         }
-        self.store.request_stop(run_id)?;
-        match self.lock().get(run_id) {
-            Some(active) => {
-                active.stops.cancel.cancel();
-                Ok(())
-            }
-            None => Err(CoreError::StaleOwner),
+        setup?;
+        if cancellation.is_some() || self.store.run(run_id)?.state == RunState::Cancelled {
+            Ok(())
+        } else {
+            Err(CoreError::StaleOwner)
         }
     }
 
@@ -689,17 +756,28 @@ impl RunManager {
             run_id: Some(active.id.clone()),
             detail: Value::Null,
         })?;
-        self.store.request_stop(&active.id)?;
+        match self.store.request_stop(&active.id) {
+            Ok(()) => {}
+            Err(CoreError::RunClosed) => {
+                return Ok(ForcedStop {
+                    run_id: Some(active.id.clone()),
+                    state: Some(self.store.run(&active.id)?.state),
+                });
+            }
+            Err(error) => return Err(error),
+        }
+        if let Some(run) = self.lock().get(&active.id) {
+            run.stops.force.cancel();
+            run.stops.cancel.cancel();
+        }
+        let setup = self.setups.cancel_run(thread_id, &active.id);
         for child in self.store.child_threads(thread_id)? {
             if let Some(running) = self.store.thread(&child)?.active_run {
                 self.note_stopped_with_parent(&running.id);
                 Box::pin(self.force_stop(&child, actor)).await?;
             }
         }
-        if let Some(run) = self.lock().get(&active.id) {
-            run.stops.force.cancel();
-            run.stops.cancel.cancel();
-        }
+        setup?;
         let deadline = tokio::time::Instant::now() + FORCE_WAIT;
         while tokio::time::Instant::now() < deadline {
             if self.store.run(&active.id)?.state.is_terminal() {
@@ -709,7 +787,7 @@ impl RunManager {
         }
         if !self.store.run(&active.id)?.state.is_terminal() {
             tracing::warn!(run = %active.id, "closing a run that did not stop");
-            self.close_run(&active.id, RunState::Cancelled, None);
+            let _ = self.close_run(&active.id, RunState::Cancelled, None, None);
             self.mcp.revoke_run(&active.id);
             if let Err(error) = self
                 .questions
@@ -788,7 +866,7 @@ impl RunManager {
             let drive = async {
                 match self
                     .setups
-                    .before_first_turn(&thread.id, &run_id, &stops.cancel)
+                    .before_prepared_turn(&thread.id, &run_id, &stops.cancel)
                     .await
                 {
                     Ok(true) => {}
@@ -834,26 +912,15 @@ impl RunManager {
             tracing::warn!(%error, "could not remove a run directory");
         }
         let mut limit = None;
+        let mut sign_in_note = None;
         let (state, message) = match outcome {
-            EngineOutcome::Completed => {
-                if let Err(error) = self.store.clear_handoff(&scope.thread_id) {
-                    tracing::warn!(%error, "could not clear a used handoff");
-                }
-                (RunState::Completed, None)
-            }
+            EngineOutcome::Completed => (RunState::Completed, None),
             EngineOutcome::Cancelled => (RunState::Cancelled, None),
             EngineOutcome::Failed(message) => {
                 let sign_in = self.engines.driver(&scope.engine).ok();
                 let sign_in = sign_in.as_ref().and_then(|driver| driver.sign_in_command());
                 if diagnostics::is_sign_in_failure(&message) {
-                    let note = json!({ "command": sign_in });
-                    if let Err(error) = self.store.note_thread_event(
-                        &scope.thread_id,
-                        "engine.sign_in_required",
-                        note,
-                    ) {
-                        tracing::debug!(%error, "could not note a sign-in failure");
-                    }
+                    sign_in_note = Some(json!({ "command": sign_in }));
                 }
                 if let Some(resets_at) = self.limit_of(&scope.run_id, &message) {
                     limit = Some((message.clone(), resets_at));
@@ -867,8 +934,10 @@ impl RunManager {
             ),
         };
         self.limit_signals().remove(&run_id);
-        self.close_run(&run_id, state, message.as_deref());
-        if let Some((message, resets_at)) = limit {
+        let closed = self.close_run(&run_id, state, message.as_deref(), sign_in_note.as_ref());
+        if closed.is_some_and(|run| run.state == RunState::Failed)
+            && let Some((message, resets_at)) = limit
+        {
             self.record_limit(&scope.thread_id, message, resets_at);
         }
     }
@@ -935,11 +1004,26 @@ impl RunManager {
     }
 
     /// Writes the terminal state and hands expired approvals back to their waiters.
-    fn close_run(&self, run_id: &str, state: RunState, error: Option<&str>) {
-        match self.store.finish_run(run_id, state, error) {
-            Ok((_, expired)) => self.gate.settle(&expired),
-            Err(CoreError::RunClosed) => {}
-            Err(failure) => tracing::error!(%failure, %run_id, "could not close a run"),
+    fn close_run(
+        &self,
+        run_id: &str,
+        state: RunState,
+        error: Option<&str>,
+        sign_in_note: Option<&Value>,
+    ) -> Option<Run> {
+        match self
+            .store
+            .finish_run_with_sign_in(run_id, state, error, sign_in_note)
+        {
+            Ok((run, expired)) => {
+                self.gate.settle(&expired);
+                Some(run)
+            }
+            Err(CoreError::RunClosed) => None,
+            Err(failure) => {
+                tracing::error!(%failure, %run_id, "could not close a run");
+                None
+            }
         }
     }
 
@@ -960,16 +1044,21 @@ impl RunManager {
         }
         // The engine's session is gone, so a fresh one gets the budgeted history
         // from the log instead, once.
-        if let Err(error) = self.recover_session(thread) {
+        match self.store.run_owns_engine(&scope.run_id) {
+            Ok(true) => {}
+            Ok(false) => return EngineOutcome::SessionLost,
+            Err(error) => return EngineOutcome::Failed(error.public_message()),
+        }
+        if let Err(error) = self.recover_session(thread, &scope.run_id) {
             return EngineOutcome::Failed(error.public_message());
         }
         self.attempt(thread, scope, message, run_dir, token, stops, true)
             .await
     }
 
-    fn recover_session(&self, thread: &Thread) -> Result<()> {
+    fn recover_session(&self, thread: &Thread, run: &str) -> Result<()> {
         let handoff = self.store.recovery_handoff(&thread.id)?;
-        self.store.set_handoff(&thread.id, &handoff)?;
+        self.store.set_run_handoff(run, &handoff)?;
         self.store
             .note_thread_event(&thread.id, "engine.session_lost", json!({}))
     }
@@ -1047,7 +1136,7 @@ impl RunManager {
             return Ok(None);
         }
         let (revision, dirty) = self.workspace.identity().await?;
-        let handoff = self.store.pending_handoff(&thread.id)?;
+        let handoff = self.store.run_handoff(&scope.run_id)?;
         let context = run_context(&RunContext {
             library: &root,
             revision: &revision,
@@ -1066,7 +1155,9 @@ impl RunManager {
         });
         let native = descriptor.tier == EngineTier::Native;
         let kind = RunKind::parse(&prompt);
-        let chosen = self.selection_for_run(thread, driver.as_ref()).await?;
+        let chosen = self
+            .selection_for_run(thread, driver.as_ref(), &scope.run_id)
+            .await?;
         match &kind {
             RunKind::Goal(GoalAction::Set(objective)) => self.store.set_goal(
                 &thread.id,
@@ -1094,7 +1185,7 @@ impl RunManager {
             model: chosen.model.clone(),
             effort: chosen.effort.clone(),
             options: chosen.options.clone(),
-            resume: self.store.engine_session(&thread.id)?,
+            resume: self.store.run_engine_session(&scope.run_id)?,
             mcp_url,
             run_dir: run_dir.to_path_buf(),
         };
@@ -1120,6 +1211,7 @@ impl RunManager {
         &self,
         thread: &Thread,
         driver: &dyn EngineDriver,
+        run: &str,
     ) -> Result<ModelSelection> {
         let chosen = selection::of_thread(thread);
         let keeps = driver.keeps_turn_overrides();
@@ -1127,7 +1219,17 @@ impl RunManager {
             return Ok(chosen);
         }
         let catalog = self.engines.models(&thread.engine, false).await?;
-        let chosen = self.fall_back_if_gone(thread, chosen, &catalog)?;
+        let chosen = if self.store.is_preparation_retry(run)? {
+            crate::project_setup::check_captured_selection(
+                &self.store,
+                &thread.engine,
+                &chosen,
+                &catalog,
+            )?;
+            chosen
+        } else {
+            self.fall_back_if_gone(thread, chosen, &catalog)?
+        };
         selection::check(&catalog, &chosen)?;
         Ok(if keeps {
             selection::with_defaults(&catalog, &chosen)

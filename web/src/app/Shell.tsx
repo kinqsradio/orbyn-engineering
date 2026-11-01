@@ -27,7 +27,8 @@ import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
-import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { actionShortcutAllowed, FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { actionIdFromCommand } from "../lib/actionCommand";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
@@ -226,6 +227,7 @@ function keyContext(route: Route): WhenContext {
     previewFocus: active?.closest("[data-preview]") != null,
     composerFocus: active?.closest(".composer") != null,
     editableFocus: editing(active),
+    dialogOpen: document.querySelector("dialog[open]") !== null,
     rightPanelOpen: ui.panelOpen === true,
     usagePageOpen: route.name === "usage",
     turnRunning: openThread(route)?.active_run != null,
@@ -343,7 +345,10 @@ function useGlobalKeys(route: Route) {
   const reload = keymap.reload;
   useCommand("keybindings.reload", reload);
   const rules = keymap.data?.rules ?? FALLBACK_RULES;
-  useEffect(() => setTerminalRules(rules), [rules]);
+  useEffect(() => {
+    setTerminalRules(rules, () => keyContext(parseRoute(window.location.hash)));
+    return () => setTerminalRules([]);
+  }, [rules]);
   const pushToast = useUi((state) => state.pushToast);
   const seenFile = useRef<string | null>(null);
   useEffect(() => {
@@ -360,7 +365,16 @@ function useGlobalKeys(route: Route) {
   }, [reload]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const actionAllowed = () => actionShortcutAllowed(event, keyContext(route));
       if (event.key === "Escape" && !event.defaultPrevented) {
+        if (actionAllowed()) {
+          for (const rule of [...rules].reverse()) {
+            if (!rule.remove && actionIdFromCommand(rule.command) !== null && matchesKey(rule.key, event)
+              && whenHolds(rule.when, keyContext(route)) && (runHandlers(rule.command) || runHandlers("projectActions.pending", rule.command))) {
+              event.preventDefault(); return;
+            }
+          }
+        }
         if (route.name === "thread" && !document.querySelector("dialog[open]")) {
           const { panelOpen, closePanel } = useUi.getState();
           if (panelOpen === true) closePanel();
@@ -376,12 +390,15 @@ function useGlobalKeys(route: Route) {
       }
       // A focused surface that took the key, like the model picker's number jumps, keeps it.
       if (event.defaultPrevented) return;
-      if (event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key)) {
+      const modified = event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key);
+      if (modified || actionAllowed()) {
         const context = keyContext(route);
         // The last rule wins, so the file overrides a default.
         for (const rule of [...rules].reverse()) {
+          const action = actionIdFromCommand(rule.command) !== null;
+          if ((!modified && !action) || (action && !actionAllowed())) continue;
           if (rule.remove || !matchesKey(rule.key, event) || !whenHolds(rule.when, context)) continue;
-          if (runHandlers(rule.command) || runShellCommand(rule.command, route)) {
+          if (runHandlers(rule.command) || (action && runHandlers("projectActions.pending", rule.command)) || runShellCommand(rule.command, route)) {
             event.preventDefault();
             return;
           }

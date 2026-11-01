@@ -273,7 +273,7 @@ async fn start_leaves_a_service_running_after_it_exits() {
 }
 
 #[tokio::test]
-async fn start_reuses_a_registered_repository_from_a_child_folder() {
+async fn start_retains_an_explicit_child_folder_and_reuses_that_exact_scope() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;
     let project = service.json(&format!("/api/threads/{thread}")).await["project_id"]
@@ -300,16 +300,45 @@ async fn start_reuses_a_registered_repository_from_a_child_folder() {
         )
         .await,
     );
-    assert_eq!(report["project"], project);
+    assert_ne!(report["project"], project);
+    let after = service.json("/api/projects").await;
     assert_eq!(
-        service
-            .json("/api/projects")
-            .await
+        after.as_array().unwrap().len(),
+        projects.as_array().unwrap().len() + 1
+    );
+    let selected = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == report["project"])
+        .unwrap();
+    assert_eq!(
+        selected["path"],
+        support::canonical(&child).to_string_lossy().as_ref()
+    );
+    assert_eq!(selected["trusted"], false);
+    assert_eq!(
+        after
             .as_array()
             .unwrap()
-            .len(),
-        projects.as_array().unwrap().len()
+            .iter()
+            .find(|row| row["id"] == project)
+            .unwrap(),
+        projects
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == project)
+            .unwrap()
     );
+    let again = parsed(
+        &run(
+            &dir.path().join("data"),
+            &["start", "--no-open", "--json", &child.to_string_lossy()],
+        )
+        .await,
+    );
+    assert_eq!(again["project"], report["project"]);
 }
 
 #[tokio::test]

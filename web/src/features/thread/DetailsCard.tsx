@@ -33,7 +33,7 @@ import { BranchRow } from "./GitControl";
 import { OpenInEditor } from "./OpenInEditor";
 import { runningTools } from "./timeline";
 import type { ProjectScript } from "../../generated/ProjectScript";
-import { openActionPreview } from "./actionPreview";
+import { runProjectAction } from "./runProjectAction";
 import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 function ThreadMenu({ thread }: { thread: Thread }) {
@@ -182,14 +182,7 @@ function ScriptRows({ threadId }: { threadId: string }) {
   const pushToast = useUi((state) => state.pushToast);
   const list = scripts.data?.scripts ?? [];
   const run = (script: ProjectScript) => {
-    request("POST", `${base}/scripts`, { name: script.name }).then(
-      () => {
-        const ui = useUi.getState();
-        if (!ui.terminalOpen) ui.togglePanel("terminal");
-        void openActionPreview(threadId, script);
-      },
-      (failure: unknown) => pushToast(`Couldn't run ${script.name}. ${toFailure(failure).message}`),
-    );
+    void runProjectAction(threadId, script).catch((failure: unknown) => pushToast(`Couldn't run ${script.name}. ${toFailure(failure).message}`));
   };
   return list.map((script) => (
     <button key={script.name} type="button" className="detail-row" onClick={() => run(script)}>

@@ -252,6 +252,236 @@ fn recovery_interrupts_dead_owners_runs_and_expires_their_approvals() {
 }
 
 #[test]
+fn accepted_stop_wins_terminal_commit_keeps_handoff_and_holds_queue() {
+    for outcome in [RunState::Completed, RunState::Failed] {
+        let f = fixture();
+        f.store
+            .set_handoff(&f.thread, "keep after cancellation")
+            .unwrap();
+        let run = running(&f.store, &f.thread);
+        let queued = f
+            .store
+            .enqueue(&f.thread, "held after stop", &[], &Default::default())
+            .unwrap();
+        f.store.request_stop(&run).unwrap();
+        let (closed, _) = f
+            .store
+            .finish_run_with_sign_in(
+                &run,
+                outcome,
+                Some("late startup failure"),
+                Some(&json!({ "command": "fixture-login" })),
+            )
+            .unwrap();
+        assert_eq!(closed.state, RunState::Cancelled);
+        assert!(closed.error.is_none());
+        assert!(f.store.queued(&queued.id).unwrap().held);
+        assert_eq!(
+            f.store.pending_handoff(&f.thread).unwrap().as_deref(),
+            Some("keep after cancellation")
+        );
+        let events = f.store.events_after(&f.thread, 0, 100).unwrap();
+        assert!(
+            matches!(&events.last().unwrap().event, AgUiEvent::RunFinished { outcome: Some(value), .. } if value["type"] == "cancelled")
+        );
+        assert!(!events.iter().any(|event| matches!(&event.event, AgUiEvent::Custom { name, .. } if name == "engine.sign_in_required")));
+        assert!(matches!(
+            f.store.finish_run(&run, RunState::Failed, Some("later")),
+            Err(CoreError::RunClosed)
+        ));
+    }
+}
+
+#[test]
+fn failed_result_and_sign_in_guidance_commit_together() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    let (closed, _) = f
+        .store
+        .finish_run_with_sign_in(
+            &run,
+            RunState::Failed,
+            Some("not signed in"),
+            Some(&json!({ "command": "fixture-login" })),
+        )
+        .unwrap();
+    assert_eq!(closed.state, RunState::Failed);
+    let events = f.store.events_after(&f.thread, 0, 100).unwrap();
+    assert!(
+        matches!(&events[events.len()-2].event, AgUiEvent::Custom { name, value } if name == "engine.sign_in_required" && value["command"] == "fixture-login")
+    );
+    assert!(matches!(
+        &events.last().unwrap().event,
+        AgUiEvent::RunError { .. }
+    ));
+}
+
+#[test]
+fn stop_cannot_mark_a_terminal_or_foreign_owner_run() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    let stale = Store::open(&f.path, "epoch-b").unwrap();
+    assert!(matches!(
+        stale.request_stop(&run),
+        Err(CoreError::StaleOwner)
+    ));
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    assert!(matches!(
+        f.store.request_stop(&run),
+        Err(CoreError::RunClosed)
+    ));
+    let stopped: bool = f
+        .store
+        .reader()
+        .query_row(
+            "SELECT stop_requested FROM runs WHERE id = ?1",
+            [&run],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(!stopped);
+    assert_eq!(f.store.run(&run).unwrap().state, RunState::Completed);
+}
+
+#[test]
+fn committed_completion_clears_only_its_own_engine_handoff() {
+    let f = fixture();
+    f.store.set_handoff(&f.thread, "completed context").unwrap();
+    let run = running(&f.store, &f.thread);
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    assert!(f.store.pending_handoff(&f.thread).unwrap().is_none());
+    f.store
+        .set_handoff(&f.thread, "other engine context")
+        .unwrap();
+    let run = running(&f.store, &f.thread);
+    f.store
+        .writer()
+        .execute(
+            "UPDATE threads SET engine = 'other-engine' WHERE id = ?1",
+            [&f.thread],
+        )
+        .unwrap();
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    assert_eq!(
+        f.store.pending_handoff(&f.thread).unwrap().as_deref(),
+        Some("other engine context")
+    );
+}
+
+#[test]
+fn an_accepted_stop_fences_late_session_recovery_mutation() {
+    let f = fixture();
+    f.store
+        .set_handoff(&f.thread, "keep original context")
+        .unwrap();
+    let run = running(&f.store, &f.thread);
+    f.store
+        .set_engine_session(&run, "keep original provider session")
+        .unwrap();
+    f.store.request_stop(&run).unwrap();
+    assert!(matches!(
+        f.store.set_run_handoff(&run, "late SessionLost recovery"),
+        Err(CoreError::RunClosed)
+    ));
+    assert_eq!(
+        f.store.engine_session(&f.thread).unwrap().as_deref(),
+        Some("keep original provider session")
+    );
+    assert_eq!(
+        f.store.pending_handoff(&f.thread).unwrap().as_deref(),
+        Some("keep original context")
+    );
+    let (closed, _) = f
+        .store
+        .finish_run(&run, RunState::Failed, Some("late SessionLost"))
+        .unwrap();
+    assert_eq!(closed.state, RunState::Cancelled);
+}
+
+#[test]
+fn rejected_steer_holds_stopped_source_but_preserves_normal_enqueue_policy() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    let ordinary = f
+        .store
+        .requeue_failed_steer(&run, &f.thread, "active rejected steer")
+        .unwrap();
+    assert!(!ordinary.held);
+    f.store.remove_queued(&ordinary.id).unwrap();
+    f.store.request_stop(&run).unwrap();
+    let stopped = f
+        .store
+        .requeue_failed_steer(&run, &f.thread, "stopped rejected steer")
+        .unwrap();
+    assert!(stopped.held);
+    let owner: Option<String> = f
+        .store
+        .reader()
+        .query_row(
+            "SELECT preparation_run_id FROM queued_messages WHERE id = ?1",
+            [&stopped.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(owner.is_none());
+    f.store.finish_run(&run, RunState::Completed, None).unwrap();
+    let late = f
+        .store
+        .requeue_failed_steer(&run, &f.thread, "late rejected steer")
+        .unwrap();
+    assert!(late.held);
+    f.store.remove_queued(&stopped.id).unwrap();
+    f.store.remove_queued(&late.id).unwrap();
+    let user = f
+        .store
+        .enqueue(
+            &f.thread,
+            "new explicit user message",
+            &[],
+            &Default::default(),
+        )
+        .unwrap();
+    assert!(
+        !user.held,
+        "a later user message keeps its existing admission policy"
+    );
+}
+
+#[test]
+fn rejected_steer_rejects_foreign_epoch_or_thread_without_a_note() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    let before = f.store.latest_seq(&f.thread).unwrap();
+    let stale = Store::open(&f.path, "epoch-b").unwrap();
+    assert!(matches!(
+        stale.requeue_failed_steer(&run, &f.thread, "stale"),
+        Err(CoreError::StaleOwner)
+    ));
+    assert!(matches!(
+        f.store
+            .requeue_failed_steer(&run, "other-thread", "wrong target"),
+        Err(CoreError::StaleOwner)
+    ));
+    assert_eq!(f.store.latest_seq(&f.thread).unwrap(), before);
+    assert!(f.store.list_queue(&f.thread).unwrap().is_empty());
+}
+
+#[test]
+fn rejected_steer_note_failure_rolls_back_its_queue_insertion() {
+    let f = fixture();
+    let run = running(&f.store, &f.thread);
+    let before = f.store.latest_seq(&f.thread).unwrap();
+    f.store.writer().execute_batch("CREATE TRIGGER fixture_reject_event BEFORE INSERT ON thread_events BEGIN SELECT RAISE(ABORT, 'fixture note failure'); END;").unwrap();
+    assert!(
+        f.store
+            .requeue_failed_steer(&run, &f.thread, "all or nothing")
+            .is_err()
+    );
+    assert!(f.store.list_queue(&f.thread).unwrap().is_empty());
+    assert_eq!(f.store.latest_seq(&f.thread).unwrap(), before);
+}
+
+#[test]
 fn a_stop_saved_before_a_crash_ends_cancelled_rather_than_interrupted() {
     let f = fixture();
     let run = running(&f.store, &f.thread);

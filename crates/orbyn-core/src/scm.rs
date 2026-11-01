@@ -858,7 +858,8 @@ impl Core {
         }
         let path = if request.worktree {
             let purpose = format!("pr-{number}");
-            let path = crate::git::worktree_path(&cwd, &purpose)?;
+            let path =
+                crate::git::worktree_path(&crate::git::primary_checkout(&cwd).await?, &purpose)?;
             if !path.exists() {
                 let target = path.to_string_lossy().into_owned();
                 git_user(

@@ -1,5 +1,5 @@
 import { AppWindow, ChevronRight, Download, ExternalLink, File, Folder, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import type { FileContent, FileEntry, SearchHit } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -10,6 +10,8 @@ import { FILE_MENTION_TYPE } from "../thread/skillMention";
 import { ErrorState, Loading } from "../../ui/states";
 import { FileBytes, FileMedia, mediaKind, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
+import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
+import { useWorkspace } from "../../state/workspace";
 
 const q = encodeURIComponent;
 
@@ -250,11 +252,30 @@ export function FilesPanel({ threadId }: { threadId: string }) {
   const [file, setFile] = useState<{ path: string; line: number | null } | null>(null);
   // A link in a message opens its file here, once per click.
   const reveal = useUi((state) => state.fileReveal);
-  const [seen, setSeen] = useState<number | null>(null);
-  if (reveal && reveal.nonce !== seen) {
-    setSeen(reveal.nonce);
-    setFile({ path: reveal.path, line: reveal.line });
-  }
+  const resolved = useResolvedThreadPath(threadId, reveal ? { ...reveal, basis: "thread" } : null);
+  const pushToast = useUi((state) => state.pushToast);
+  const consume = useUi((state) => state.consumeFileReveal);
+  const referenceKey = reveal ? JSON.stringify([reveal.path, reveal.line, reveal.nonce]) : null;
+  const [seen, setSeen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!reveal) return;
+    if (reveal.threadId !== threadId || useWorkspace.getState().threads[threadId]?.cwd !== reveal.cwd) consume(reveal.nonce);
+  }, [reveal, threadId, resolved.key, consume]);
+  useEffect(() => {
+    if (!reveal || referenceKey === seen || (!resolved.value && !resolved.error)) return;
+    if (useUi.getState().fileReveal?.nonce !== reveal.nonce || reveal.threadId !== threadId
+      || useWorkspace.getState().threads[threadId]?.cwd !== reveal.cwd) return;
+    setSeen(referenceKey);
+    if (resolved.value?.checkout_path) setFile({ path: resolved.value.checkout_path, line: reveal.line });
+    else pushToast(resolved.error?.message ?? "That path is outside this checkout.");
+    consume(reveal.nonce);
+  }, [reveal, referenceKey, resolved.value, resolved.error, seen, pushToast, consume, threadId]);
+  const chooseFile = (file: { path: string; line: number | null } | null) => {
+    setSeen(referenceKey);
+    const current = useUi.getState().fileReveal;
+    if (current) consume(current.nonce);
+    setFile(file);
+  };
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const hits = useAsync(`file-search:${threadId}:${query}`, (signal) =>
@@ -262,7 +283,7 @@ export function FilesPanel({ threadId }: { threadId: string }) {
       ? request<SearchHit[]>("GET", `/api/threads/${q(threadId)}/files/search?q=${q(query)}&content=true`, undefined, signal)
       : Promise.resolve([]),
   );
-  if (file) return <Viewer threadId={threadId} path={file.path} line={file.line} onBack={() => setFile(null)} />;
+  if (file) return <Viewer threadId={threadId} path={file.path} line={file.line} onBack={() => chooseFile(null)} />;
   return (
     <div className="files-panel">
       <label className="pulls-search files-search">
@@ -284,7 +305,7 @@ export function FilesPanel({ threadId }: { threadId: string }) {
         <ul className="file-tree">
           {(hits.data ?? []).map((hit) => (
             <li key={`${hit.path}:${hit.line}`}>
-              <button type="button" onClick={() => setFile({ path: hit.path, line: hit.line || null })}>
+              <button type="button" onClick={() => chooseFile({ path: hit.path, line: hit.line || null })}>
                 <File size={14} aria-hidden />
                 <span>
                   {hit.path}
@@ -296,7 +317,7 @@ export function FilesPanel({ threadId }: { threadId: string }) {
           {hits.status === "ready" && hits.data.length === 0 ? <li className="muted">No matches</li> : null}
         </ul>
       ) : (
-        <FolderList threadId={threadId} path="" depth={0} onFile={(path) => setFile({ path, line: null })} />
+        <FolderList threadId={threadId} path="" depth={0} onFile={(path) => chooseFile({ path, line: null })} />
       )}
     </div>
   );

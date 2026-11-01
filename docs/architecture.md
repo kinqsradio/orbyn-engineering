@@ -54,8 +54,18 @@ admitted -> starting -> running <-> awaiting_approval
   a second admission returns `409 thread_busy`.
 - `interrupted` is assigned only by startup recovery, for runs a dead process
   owned. Recovery also moves pending approvals to `expired`.
-- A stop is saved before anything is signalled, so a run stopped by a person ends
-  `cancelled` even if the process dies first. Recovery closes tools the dead process
+- A stop is saved before anything is signalled. Stop acceptance and terminal commit
+  share the immediate database writer: an accepted stop wins over a later startup
+  failure or engine completion and commits `cancelled` without a failure message.
+  Already-terminal or foreign-owner runs cannot acquire a phantom stop. Terminal
+  followups use the committed outcome: only completion clears matching-engine
+  handoff, and only failure records sign-in or usage-limit/auto-resume state.
+  Session-loss recovery also checks the saved stop inside its mutation transaction,
+  so it cannot replace a stopped run's provider session or handoff. Rejected steer
+  callbacks record their note and queued prompt atomically against the source run's
+  epoch and thread. A stopped or terminal source keeps that prompt held without a
+  preparation owner, so a later retry cannot release it or launch work implicitly.
+  Recovery closes tools the dead process
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.
@@ -343,6 +353,36 @@ after a minute. Named terminals stay until closed. Settling or archiving closes 
 all. `?observe=true` attaches read-only: input and resizes are dropped. Fish starts
 with `no-query-term` so it does not wait on terminal replies.
 
+A viewer attaches to a terminal ID and its process creation timestamp. Rerunning
+an action preserves the tab's stable ID but replaces its process; the viewer
+reattaches even when that tab stays selected. Ordinary metadata refreshes preserve
+the existing connection.
+
+Child exit does not close a terminal's output socket. The PTY reader records
+natural output completion only after its last scrollback and broadcast append;
+the socket drains queued chunks before closing. Late observers replay the retained
+scrollback and close when that stream has ended. Writes and resizes require a live
+direct child and an open output stream; draining retained output grants no input
+authority, and observers remain read-only. Broadcast overflow retains the
+bounded latest chunks and emits an internal diagnostic, not a complete-history
+guarantee. Explicit terminal close or thread cleanup ends observation promptly
+even if an inherited PTY descriptor delays EOF. Process termination retains its
+existing process-group/job ownership; detached descendants are not newly claimed
+by this output fence.
+
+On Windows, direct-child completion retires the retained ConPTY master on the
+child waiter thread. Retaining that handle would otherwise keep its output pipe
+alive while observers wait for EOF. The independent reader continues draining the
+final console frames and alone records natural output completion. Console teardown
+runs outside the master lock; it can block on drained output on older Windows.
+Closing this owned console may also terminate still-attached console descendants
+when the direct child exits. Unix keeps its existing inherited-PTY lifetime. This
+is the supported legacy ConPTY lifetime contract, not a claim of byte-identical
+native reference timing. Microsoft's [ClosePseudoConsole contract](https://learn.microsoft.com/en-us/windows/console/closepseudoconsole)
+requires output to keep draining during teardown. Its newer
+[ReleasePseudoConsole API](https://learn.microsoft.com/en-us/windows/console/releasepseudoconsole)
+requires Windows 11 24H2 or Server 2025 and is unavailable on Windows Server 2022.
+
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
@@ -388,8 +428,31 @@ running similarly named actions cannot replace each other's terminal or process.
 This is an additive reader/writer expansion with no database backfill or schema
 change. Existing writers may still replace a whole list, and legacy data remains
 readable; targeted editing is the identity-preserving operation. The data-directory
-lock continues to admit only one Core writer. Environment-wide action shortcuts
-remain unfinished; identity support does not establish complete action parity.
+lock continues to admit only one Core writer. Scoped settings expose derived IDs
+in the editable action value, while raw environment/member/override layers still
+form the revision digest; reading the editor does not backfill stored lists.
+The run endpoint accepts exactly one saved action ID or legacy name. Both paths
+resolve the current effective command in Core and check folder trust before spawning.
+
+The action editor's Keybinding field captures the environment-wide shortcut for
+`script.<id>.run`. The existing keybinding file remains its owner. Core serializes
+its read/modify/atomic-rename writers so unrelated concurrent edits survive;
+external manual file edits do not share that writer lock. Saving action metadata
+and saving the shortcut are separate effects. If the second fails, the action
+remains saved, the form becomes Edit Action and retains the shortcut draft. A retry
+updates that action rather than creating a duplicate. Removing one project's action
+does not delete its environment-wide binding, which other projects can share.
+
+Only this thread's available action commands register handlers. While its catalog
+is still loading, a pressed action shortcut resolves that ID through a fresh Core
+read. A route epoch cancels delayed work on navigation or unmount; modal dialogs
+and repeated keydown events cannot launch actions. Terminal key reservation uses
+the dispatcher's live focus and `when` context plus the active thread's handler
+eligibility, including its pending catalog reader. Plain action keys remain terminal
+and text input keystrokes. Menus and shortcuts share execution, select the resulting
+terminal and then apply preview options. Terminal selection is transient viewer
+state and never an authority to run a command. Complete action parity still needs
+final integrated native/Windows qualification.
 The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets
@@ -400,10 +463,45 @@ synchronous setup fails the first turn; an async exit does not block it,
 and a later explicit user message does not implicitly execute project code again.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic
-restart/limit continuation cannot bypass it. Retrying preparation itself remains a
-separate unfinished surface; an ordinary prompt is not a preparation retry.
+restart/limit continuation cannot bypass it. The failure's timeline Retry control
+uses its run identity to retry the captured preparation, original prompt and
+attachments, engine instance and model/effort/options selection. Core admits a
+fresh attempt without changing terminal run history;
+a normal prompt never retries project code. An active run, stale failure identity,
+untrusted project or missing legacy capture rejects retry before a process starts.
+The complete capture is compared again in the admission transaction. A fresh
+catalog must validate the saved selection before project code starts; a missing
+non-custom model or catalog error refuses retry. The captured provider is checked
+again under engine admission, with no current-provider or fallback-model substitution.
+Claude, Codex, ACP and terminal drivers check their effective local executable with
+the existing Windows-aware launch resolver before setup and under admission. This
+check starts no version, sign-in or project command; named instances check their
+resolved program override. Endpoint drivers have no local executable. This proves
+known launch availability only: runtime and endpoint failures can still occur.
+The current thread's selection and remembered engine choices are preserved. Runtime
+permission and plan policy come from the thread's current transaction snapshot,
+never from the old capture. A queued first turn captures its applied selection and
+attachments in the same transaction. Duplicate requests lose the same atomic
+admission fence. A retry's engine turn
+waits for its setup, including exit zero for synchronous actions. Only successful
+preparation releases queue holds owned by that attempt: process start for async
+actions, exit zero for synchronous actions. Pre-existing user holds,
+holds from a later run, repeated failure and cancellation remain held. Explicit
+queue resume/send-now clears preparation hold ownership; failure still gates
+admission. Every preparation attempt has a unique terminal identity, checked with
+the writer epoch before recording completion or releasing owned work.
+The admitted run records the captured provider. Session resume and session writes
+require exact provider ownership, including named instances of the same driver.
+A retry across providers starts a fresh session with a read-only shared-conversation
+snapshot from the committed log boundary, using the existing 16,000-character
+handoff collector. This snapshot belongs to the run; it neither consumes nor clears
+the current provider's pending handoff/session. Session-loss recovery cannot reset
+another provider's state. Successful completion clears only its own handoff context.
 Cancellation and setup process creation share one owner lock; cancelling first
-prevents a later spawn, and cancelling a blocked turn kills its setup process.
+prevents a later spawn, and cancelling a blocked synchronous turn kills its setup
+process. Each cancellation and dropped wait guard checks the bound run, so an older
+attempt cannot cancel a newer retry. After an async setup starts, stopping or force
+stopping its model turn leaves that setup running; thread/app cleanup still owns it.
 
 Schema 18 adds `thread_setup` with a cascading thread foreign key. Its preparation
 marker and thread commit in one transaction, before clients can admit a turn.
@@ -413,7 +511,21 @@ and records unfinished work as failed; an already-started async action remains
 nonblocking. Restart fences old pending writers before admission.
 Existing threads receive no marker and never execute setup retroactively. Older
 cores reject the newer schema before changing persistent data; rolling back requires
-a database backup from the older schema, not an older writer against schema 18.
+a database backup from the older schema, not an older writer against the newer database.
+Schema 19 adds the serialized captured setup, first prompt/attachment IDs, engine
+instance and model selection, bound preparation run, per-run retry/context metadata
+and per-message preparation hold owner. New thread creation captures
+the effective command; first admission captures input in its admission transaction.
+No command is reconstructed for schema 18 rows with a null capture. Their existing
+fence remains effective, while preparation retry is unavailable. Core's data-directory
+lock still permits one service writer, migrations run transactionally and old binaries
+refuse newer schema versions before opening a writer. A crash during synchronous
+preparation closes its bound run as a preparation failure without requeueing a
+second copy of its input; restart preserves the capture and requires explicit Retry.
+Epoch and terminal fences reject delayed completion from the previous process.
+Only disposable fixtures qualified this migration; owner databases were not opened
+or migrated. Recovery uses the current writer or an older-schema backup, never an
+older binary against schema 19.
 Moving or deleting a thread clears its setup and closes its old terminals/previews.
 
 ## Settings and maintenance
@@ -439,15 +551,39 @@ include directives and URL rewrites remain explicitly unobserved, without openin
 include files. Global/system configuration is excluded. They share the library reader guard until their children finish.
 
 The harness library is excluded from selectable targets and recipe overrides; missing
-workspace state fails instead of broadening scope. The catalog reports actual registered paths and repository-relative paths. Current
-registration normalizes Git subfolders to the Git root, so their relative path is
-empty; this read does not invent subfolder projects. A missing checkout remains
+workspace state fails instead of broadening scope. Registration retains the canonical
+selected physical folder, including a repository subfolder, as its identity and local
+cwd/configuration root. Duplicate Add requests are rejected for that exact folder;
+CLI activation reuses an exact registration. Trust is independent of a registered
+parent or sibling. Git identity and repository-relative
+paths are separate catalog observations. Existing root registrations keep their
+identity; registering a child does not rewrite them. A missing checkout remains
 unavailable. Failed or unobserved metadata is explicit and prevents resolving a logical
 repository group whose membership may be incomplete; completed physical fallbacks do
 not. An explicit checkout target is shown with that checkout’s project name. Its parent
 logical group is not marked selected in the picker; switching to the group requires
 choosing it explicitly. Unknown or stale selections never widen to All projects. An absent selection or
 explicit All projects means environment defaults, not a project-override fan-out.
+
+New worktrees use the primary clone’s fixed sibling `<repo>-wt/<purpose>` root,
+including requests from a selected child or another linked worktree. A local thread
+uses its selected folder; a worktree thread uses the whole new worktree root for
+files, configuration, scripts and engine cwd. Git status and review diffs use the
+whole repository and repository-relative paths. Checkpoint capture and restore stay
+within the selected subtree, including tracked files in an ignored selected folder;
+restoring a child leaves sibling changes and untracked files untouched.
+
+`POST /api/threads/:id/paths/resolve` maps a reference with an explicit thread or
+repository coordinate basis and expected cwd into optional checkout and repository
+paths. It returns no file content. Thread links prefer an existing safe file after
+stripping the longest repeated workspace suffix, then try the literal thread path.
+Only existing safe files inside cwd receive a checkout path; missing tracked files
+and sibling Git patches may retain repository coordinates for diff navigation.
+Ordinary file reads/writes and engine scope remain bounded to thread cwd. File and
+diff reveal intents are transient, capture thread/cwd before resolution, and consume
+only their own nonce. Route/cwd changes and newer navigation invalidate stale
+responses, including when an older request completes last.
+
 `POST /api/settings/preferences/query` resolves environment, logical-project or
 physical-checkout rows from one SQLite read snapshot. Effective values that differ
 are Mixed; equal explicit overrides keep their source and remain resettable. All
@@ -480,9 +616,31 @@ rows and thread lifecycle/title controls use scoped reads and revision-fenced ed
 Mixed controls do not save an untouched empty value. Provenance displays actual
 project, environment, file and default layers. Reset all deletes only the explicit
 listed project overrides. Each write stays attached to the scope that supplied its
-revision, including when navigation changes before it finishes. Custom provider,
-storage and observability forms are not yet migrated to this context; their parity
-claims remain partial until those bindings and native walkthroughs are verified.
+revision, including when navigation changes before it finishes. Remaining provider
+controls and storage forms still need their own bindings and qualification; their
+parity claims stay partial until those and native walkthroughs are verified.
+
+Custom models belong to the local environment even while a valid project or checkout
+is selected. Their editor queries that explicit environment target and saves the raw
+list with its observed membership version and row revision. A conflicting edit
+refreshes both reads without clearing the person's draft or replacing newer models.
+Other engines' entries, unknown records and forward fields are preserved. Loading,
+unavailable selections and unsupported list shapes cannot submit a mutation. Once
+the preference commits, refreshing model discovery is a separate read and cannot
+turn that saved model into an apparently failed Add.
+
+OpenTelemetry export is an environment-only form. Project, checkout and unavailable
+selections show the reference's environment choice instead of editable global fields.
+The fixed local environment maps to All projects defaults; selecting it is explicit.
+The form reads an observability snapshot and saves only touched endpoint fields with
+the observed membership version and row revision. Save and Discard own controlled
+drafts; blur never writes. A conflict refreshes the read, keeps drafts and requires
+another explicit Save. Restoring a field removes its draft so a later save cannot
+resend an old value over another client's change. The Core object-patch writer
+preserves unmentioned and unknown telemetry fields. Scope changes dispose the form's
+response owner; a late save cannot clear a new draft or update a different scope.
+Endpoint test results stay attached to their requested URL and generation. These
+bindings qualify local settings behavior, not running export or native parity.
 
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An
@@ -518,10 +676,67 @@ defaults, so new defaults reach them. It allows comments and trailing commas, an
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
+The Worktrees Cleanup form edits the new policy through scoped membership and
+row revisions. Project and checkout selections expose Inherit, Off and Custom;
+Mixed modes require an explicit choice. Project rules display only for Custom;
+the settled-age rule accepts zero and uses an independent on/off switch. Environment edits keep
+project overrides. Numeric conflicts refresh saved policy while preserving the
+person's draft for explicit retry, and late responses stay with their original
+scope. Unsupported cleanup rules are not exposed; inactive, merged, deleted and
+unchanged-worktree cleanup and automatic scheduling remain unimplemented.
+
+The Maintenance artifacts/log retention controls and Delete now action are visible
+only for the local environment. Their scoped snapshot supplies the membership and
+preference revision for each single-field update: enabling a rule stores eight days,
+disabling stores null, and numeric drafts commit on blur or Enter. A conflicting
+write refreshes the snapshot while retaining the draft for an explicit retry; it
+never replays the edit. Scope disposal fences late writes and reports. Unmentioned
+fields, including legacy project cleanup objects, remain untouched. Maintenance has
+no worktree-age control or Preview action; the dry-run API remains available for
+verification. Delete now invokes the existing environment cleanup operation, and
+Last run reports its actual removed/kept entries. Action eligibility also reads the
+distinct worktree policy: explicit environment Off suppresses legacy defaults,
+empty environment policy retains a valid global age including zero, and project
+Custom ages can independently enable cleanup. Legacy project storage cleanup
+objects never enable it. The project policy and its runtime retain their own owner.
+
+Worktree retention uses the separate project-scoped `worktree_cleanup` preference.
+Its default `{}` inherits: an empty project object first uses the new environment
+policy, and an empty environment object falls back only to global
+`storage_cleanup.worktree_settled_after_days`. Legacy project `storage_cleanup`
+rows remain stored and never activate worktree cleanup. `mode: "off"` disables it;
+`mode: "custom"` uses `rules.settled_after_days`, an integer from 0 through 3650 or
+null. Zero is immediate; absent/null custom age is Off, not an inherited age.
+Inherit deletes the new project override. Scoped rules patches merge per physical
+member, preserving unknown top-level and rule fields. Selecting Custom without an
+explicit age captures each member's transaction-current effective age: inherited
+legacy/environment rules stay active, existing Custom stays unchanged, and Off
+captures null even if an inactive age remains stored. Mixed members never copy the
+first member's age. Runtime cleanup and this transition share the same resolver.
+Known invalid policy shapes
+are rejected, and corrupt stored policies stop the pass before any effects.
+
+A cleanup pass takes exclusive policy admission before resolving all projects and
+holds it through the pass. New-policy writes and global legacy retention writes
+try shared admission around their settings transaction; an admitted or queued
+cleanup returns the existing settings conflict instead of accepting a policy edit
+against that pass. Manual passes serialize. Membership and row revisions still
+fence scoped edits; they do not themselves fence filesystem effects. Before each
+worktree removal, the live-owner check scans all projects, including selected
+subfolders inside that worktree. Concurrent thread creation after this check remains
+an existing unfenced boundary; no concurrent thread-creation guarantee is claimed.
+
+Schema 20 is a semantic writer fence with no row conversion or deletion. The app's
+data-directory owner lock excludes another running service; once it releases,
+schema 19 refuses version 20 before WAL setup or migration rather than ignoring
+project Off. Current version 20 writers retain the existing scoped transaction and
+revision checks. Recovery uses the current writer or a pre-upgrade backup; never
+lower the schema marker or reopen this database with an older cleanup writer.
+
 Storage cleanup removes logs, browser artifacts and worktrees settled past their
 retention. A worktree goes only through `git worktree remove` with no force, so Git
-keeps uncommitted work, and never while another active thread uses it. `?dry_run=true`
-only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
+keeps uncommitted work. Candidates observed as owned by another live thread are
+kept. `?dry_run=true` only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
 ## Message search

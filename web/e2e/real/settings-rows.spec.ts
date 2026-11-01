@@ -37,7 +37,9 @@ test("About folds its open source list, and Worktrees folds branch names", async
   await expect(settings(page).getByText("axum", { exact: true })).toBeVisible();
   await page.goto(`${service.page}#/settings/worktrees`);
   await expect(settings(page).getByLabel("Naming")).toBeHidden();
-  await settings(page).getByRole("button", { name: "Advanced" }).click();
+  const branchDisclosure = settings(page).locator(".collapsible-panel")
+    .filter({ has: page.locator("#worktrees-naming") }).locator("..");
+  await branchDisclosure.getByRole("button", { name: "Advanced", exact: true }).click();
   await expect(settings(page).getByLabel("Naming")).toBeVisible();
 });
 

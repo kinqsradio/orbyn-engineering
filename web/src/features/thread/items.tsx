@@ -1,3 +1,5 @@
+import { PreparationRetryButton } from "./ThreadBanners";
+import { useWorkspace } from "../../state/workspace";
 import { MessageActions } from "./MessageActions";
 import {
   AppWindow,
@@ -255,9 +257,13 @@ function Plan({ item, live }: { item: PlanItem; live: boolean }) {
 
 function ChangedFile({ file }: { file: DiffSummaryItem["files"][number] }) {
   const revealDiff = useUi((state) => state.revealDiff);
+  const threadId = useThreadOfTimeline();
   return (
     <li>
-      <button type="button" onClick={() => revealDiff(file.path)}>
+      <button type="button" onClick={() => {
+        const thread = threadId ? useWorkspace.getState().threads[threadId] : null;
+        if (thread) revealDiff(file.path, { threadId: thread.id, cwd: thread.cwd });
+      }}>
         <span title={file.path}>{file.path}</span>
         {file.additions !== null ? <span className="diff-add">+{file.additions}</span> : null}
         {file.deletions !== null ? <span className="diff-del">-{file.deletions}</span> : null}
@@ -322,6 +328,8 @@ function Activity({ item }: { item: ActivityItem }) {
 }
 
 function Notice({ item }: { item: NoticeItem }) {
+  const threadId = useThreadOfTimeline();
+  const preparation = item.code === "workspace_preparation_failed" || item.code === "workspace_preparation_unavailable";
   if (item.tone === "neutral") {
     return <p className="notice">{item.text}</p>;
   }
@@ -331,7 +339,9 @@ function Notice({ item }: { item: NoticeItem }) {
       <div>
         <strong>Run failed</strong>
         <p>{item.text}</p>
-        {item.code ? <Pill>{item.code}</Pill> : null}
+        {item.code && !preparation ? <Pill>{item.code}</Pill> : null}
+        {threadId && item.runId && item.code === "workspace_preparation_failed"
+          ? <PreparationRetryButton threadId={threadId} runId={item.runId} /> : null}
       </div>
     </div>
   );

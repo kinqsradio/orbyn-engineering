@@ -224,6 +224,10 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/usage", get(api::thread_usage))
         .route("/api/threads/{id}/files", get(api::file_tree))
         .route("/api/threads/{id}/files/ignored", get(api::ignored_files))
+        .route(
+            "/api/threads/{id}/paths/resolve",
+            post(api::resolve_thread_path),
+        )
         .route("/api/threads/{id}/files/search", get(api::search_files))
         .route(
             "/api/threads/{id}/files/content",
@@ -496,6 +500,11 @@ fn router(state: AppState) -> Router {
             post(preview_routes::stop_server),
         )
         .route("/api/threads/{id}/runs", post(api::start_run))
+        .route("/api/threads/{id}/preparation", get(api::preparation_retry))
+        .route(
+            "/api/threads/{id}/preparation/retry",
+            post(api::retry_preparation),
+        )
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/force-stop", post(api::force_stop))
         .route("/api/search/messages", get(api::search_messages))

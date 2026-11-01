@@ -16,9 +16,10 @@ use orbyn_contracts::{
     DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
     GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull,
     MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject,
-    ReorderThreads, RestoreChanges, RestoreWorkspace, RewindThread, ServerInfo, ServerSettings,
-    SetPreferences, SkillProfile, StartRun, SteerResult, SteerRun, SubmitReview, SwitchBranch,
-    SwitchEngine, TaskEnabled, UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
+    ReorderThreads, ResolveThreadPath, RestoreChanges, RestoreWorkspace, RetryPreparation,
+    RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerResult,
+    SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask,
+    WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -527,6 +528,14 @@ pub async fn file_tree(
     Ok(Json(state.core.list_files(&id, &query.path).await?))
 }
 
+pub async fn resolve_thread_path(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<ResolveThreadPath>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.resolve_thread_path(&id, &body).await?))
+}
+
 pub async fn ignored_files(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -982,6 +991,31 @@ pub async fn put_settings(
 ) -> ApiResult<impl IntoResponse> {
     state.core.store.save_settings(&settings, LOCAL_USER)?;
     Ok(Json(settings))
+}
+
+pub async fn preparation_retry(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state
+            .core
+            .store
+            .preparation_retry_run(&id)?
+            .map(|run_id| RetryPreparation { run_id }),
+    ))
+}
+
+pub async fn retry_preparation(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<RetryPreparation>,
+) -> ApiResult<impl IntoResponse> {
+    let run = state
+        .core
+        .retry_preparation(&id, &body.run_id, LOCAL_USER)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(run)))
 }
 
 pub async fn start_run(

@@ -386,6 +386,34 @@ pub struct FileContent {
 }
 }
 
+wire_enum! {
+pub enum ThreadPathBasis {
+    Thread,
+    Repository,
+}
+}
+
+wire! {
+/// Navigation metadata only; ordinary file reads still require a checkout path.
+#[serde(deny_unknown_fields)]
+pub struct ResolveThreadPath {
+    pub path: String,
+    pub basis: ThreadPathBasis,
+    // The caller's current thread cwd, fenced against moves during resolution.
+    pub cwd: String,
+}
+}
+
+wire! {
+pub struct ResolvedThreadPath {
+    pub cwd: String,
+    // An existing safe file inside the selected thread cwd, never a sibling.
+    pub checkout_path: Option<String>,
+    // Git-relative metadata can name missing/deleted files and checkout siblings.
+    pub repository_path: Option<String>,
+}
+}
+
 wire! {
 pub struct WriteFile {
     pub path: String,
@@ -1527,6 +1555,13 @@ impl RunState {
 }
 
 wire! {
+/// Retry the saved workspace preparation and input of one failed run.
+pub struct RetryPreparation {
+    pub run_id: String,
+}
+}
+
+wire! {
 pub struct Run {
     pub id: String,
     pub thread_id: String,
@@ -1727,7 +1762,10 @@ pub struct ProjectFileView {
 
 wire! {
 pub struct RunScript {
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub id: Option<String>,
 }
 }
 

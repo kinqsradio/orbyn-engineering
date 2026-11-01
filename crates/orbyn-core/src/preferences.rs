@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use orbyn_contracts::PreferenceView;
 
 mod scoped;
+mod worktree_cleanup;
 use serde_json::{Value, json};
 
 use crate::app::Core;
@@ -113,6 +114,7 @@ const DEFINITIONS: &[Definition] = defs![
     "environment_icon" Kind::Text, "", false;
     "observability" Kind::Object, {}, false;
     "storage_cleanup" Kind::Object, {}, true;
+    "worktree_cleanup" Kind::Object, {}, true;
     "favorite_models" Kind::List, [], false;
     "hidden_models" Kind::List, [], false;
     "model_order" Kind::List, [], false;
@@ -140,6 +142,9 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
             value.is_null() || value.as_u64().is_some_and(|days| (1..=365).contains(&days))
         }
     };
+    if fits && definition.key == "worktree_cleanup" {
+        worktree_cleanup::validate(value)?;
+    }
     if fits && definition.key == "default_project_scripts" {
         crate::project_file::validate_scripts(value)?;
     }
@@ -266,6 +271,8 @@ impl Core {
                 self.engines.check_instances(&list)?;
             }
         }
+        let _cleanup_policy =
+            self.cleanup_policy_write(values.keys().map(String::as_str), project_id.is_none())?;
         self.store.change_settings(|snapshot| {
             if let Some(id) = project_id
                 && !snapshot.projects.iter().any(|project| project.id == id)

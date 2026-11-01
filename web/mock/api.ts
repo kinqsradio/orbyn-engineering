@@ -13,6 +13,7 @@ import type {
   Approval,
   EngineStatus,
   Project,
+  ProjectFileView,
   QueuedMessage,
   ServerSettings,
   Thread,
@@ -556,7 +557,7 @@ export function createMockApi(options: MockOptions = {}) {
         if (seg[2]) {
           if (seg[3] === "terminals") return { status: 200, body: [] };
           if (seg[3] === "branches") return { status: 200, body: [{ name: "main", current: true, remote: false }] };
-          if (seg[3] === "scripts") return { status: 200, body: { path: null, file: null, problem: null } };
+          if (seg[3] === "scripts") return { status: 200, body: { path: null, file: null, problem: null, scripts: [] } satisfies ProjectFileView };
           if (seg[3] === "mentions") {
             const needle = (query.get("q") ?? "").toLowerCase();
             return {

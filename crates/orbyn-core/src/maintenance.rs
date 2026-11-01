@@ -161,6 +161,8 @@ impl Core {
 
     /// Applies the retention rules, or with `dry_run` only says what they would do.
     pub async fn storage_cleanup(&self, dry_run: bool) -> Result<CleanupReport> {
+        let _admission = self.cleanup_policy_gate.write().await;
+        let worktree_policies = self.worktree_retention()?;
         let rules = self.preference("storage_cleanup", None)?;
         let mut entries = Vec::new();
         if let Some(age) = days(&rules, "browser_artifacts_after_days") {
@@ -171,9 +173,8 @@ impl Core {
             let folder = self.config.data_dir.join("logs");
             sweep(&folder, "log", age, dry_run, &mut entries);
         }
-        if let Some(age) = days(&rules, "worktree_settled_after_days") {
-            self.sweep_worktrees(age, dry_run, &mut entries).await?;
-        }
+        self.sweep_worktrees(&worktree_policies, dry_run, &mut entries)
+            .await?;
         let report = CleanupReport {
             dry_run,
             ran_at: now(),
@@ -195,11 +196,14 @@ impl Core {
 
     async fn sweep_worktrees(
         &self,
-        age: i64,
+        policies: &std::collections::BTreeMap<String, Option<i64>>,
         dry_run: bool,
         entries: &mut Vec<CleanupEntry>,
     ) -> Result<()> {
         for project in self.store.list_projects()? {
+            let Some(age) = policies.get(&project.id).copied().flatten() else {
+                continue;
+            };
             for thread in self.store.list_all_threads(&project.id)? {
                 let Some(worktree) = &thread.worktree else {
                     continue;
@@ -214,18 +218,22 @@ impl Core {
                 {
                     continue;
                 }
-                let shared = self
-                    .store
-                    .list_all_threads(&project.id)?
-                    .iter()
-                    .any(|other| {
+                let root = crate::util::canonicalize(Path::new(&worktree.path))?;
+                let mut shared = thread.active_run.is_some();
+                // A selected subfolder can be a different project while its live
+                // thread still owns files in this same physical worktree.
+                for owner in self.store.list_projects()? {
+                    shared |= self.store.list_all_threads(&owner.id)?.iter().any(|other| {
                         other.id != thread.id
-                            && other.cwd == thread.cwd
-                            && other
-                                .lifecycle
-                                .as_ref()
-                                .is_none_or(|l| l.settled_at.is_none())
+                            && (other.active_run.is_some()
+                                || other
+                                    .lifecycle
+                                    .as_ref()
+                                    .is_none_or(|l| l.settled_at.is_none()))
+                            && crate::util::canonicalize(Path::new(&other.cwd))
+                                .is_ok_and(|cwd| cwd.starts_with(&root))
                     });
+                }
                 let mut entry = CleanupEntry {
                     kind: "worktree".to_owned(),
                     path: worktree.path.clone(),

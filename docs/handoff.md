@@ -1,7 +1,7 @@
 # Handoff
 
 Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `56d914d`. Trust the repository over this document where they differ,
+`main` at `12748ac`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,17 +49,19 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `56d914d`
+## Reconciled status at `12748ac`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
-Main has 709 rows and 383 source checkboxes ticked. Its scope metadata reports
-533 included rows: 349 declared checked, 39 partial, 143 open and 2 not doable.
-There are 176 excluded and zero unresolved-scope rows. The settings branch after
-integration has 534 included: 344 declared checked, 47 partial, 141 open and 2 not
-doable, with 175 excluded and 384 source ticks. These are checklist declarations,
+Main has 709 rows and 384 source checkboxes ticked. Scope metadata reports 534
+included rows: 344 declared checked, 47 partial, 141 open and 2 not doable. There
+are 175 excluded and zero unresolved-scope rows. These are checklist declarations,
 not a fresh runtime verification count. Scope reconciliation and explicit partial
-rows mean the branch counts are not directly comparable as delivered features.
-The former 365/573 calculation is not a valid completion percentage.
+rows mean older totals are not directly comparable as delivered features. The
+former 365/573 calculation is not a valid completion percentage.
+The local section now explicitly marks F30 partial after inspection established
+missing cleanup rules and scheduling. Its direct count is 343 declared checked,
+48 partial, 141 open and 2 not doable out of the same 534 included rows; the
+source-tick count stays 384. This corrects a claim, rather than removing behavior.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
@@ -254,6 +256,133 @@ parity review even though its proposed popover is excluded.
   `workspace.rs` in the last visible log; do not treat its observation as a failure
   or restart it. A new head must pass every required job before merge.
 
+- PR82 head `9ac3dfa` passed all six required jobs in `41294951768`, plus
+  GitGuardian. No review threads or submitted reviews remained. It merged without
+  squashing as `12748ac`; both the primary main and the settings branch are updated.
+  The following action-shortcut slice remains local and must not inherit that CI
+  qualification. Post-merge main CI `41296294886` passed all six required jobs.
+
+- Local settings `6b0682b` implements the action Keybinding field and execution by
+  saved ID, retaining legacy-name execution. Scoped reads expose legacy IDs without
+  changing raw storage/revision layers. The editor captures, runs, renames and clears
+  a shortcut; terminal input focus also works. A held real catalog reproduces first-key
+  timing and the pending lookup handles it. A genuinely malformed fixture keymap
+  preserves the already-saved action and shortcut draft; retry edits it without a
+  duplicate. Twelve concurrent real-API keybinding writes preserve unrelated rules.
+  Final local checks: 954 Rust tests passed (9 ignored), Clippy/fmt, 277 web tests,
+  check/build and 16 real-service browser cases; the final focused editor/shortcut
+  reruns also pass. Generated `RunScript.ts` is committed. Source guards also fence
+  delayed work by route epoch; navigation round-trip, native shortcut and Windows
+  shortcut qualification remain unverified. No new section PR or merge is claimed.
+  K9 remains partial for preparation retry and final qualification.
+- The owner asked to resume helpers after finishing this slice. The earlier
+  collaboration request hit a thread-limit rejection and was not worked around.
+  A subsequent inventory showed capacity, and two helpers are now implementing
+  preparation retry and correcting shortcut eligibility after a bounded source review.
+- The frozen `6b0682b` macOS fixture captured and saved `mod+shift+9` through
+  native Settings. Pressing it in a thread and again from terminal focus ran the
+  actual command successfully (exit 0; Core scrollback `native-shortcut-ran`).
+  The action pane remained blank while Core retained output; the main shell prompt
+  rendered after focus. This is a failed native rendering observation, not full
+  shortcut/terminal qualification. Receipt and screenshot are under
+  `target/settings-native/action-shortcuts-6b0682b/`. Normal quit removed the service
+  handle and all three tracked process IDs. A diagnostic relaunch (app PID 5278,
+  Core 5309) remains running: the next native-control call was aborted before
+  dispatch, so UI verification stopped without an alternate-input or kill workaround.
+  No native model selection or composer turn was attempted. A new real-service
+  browser regression checks visible xterm text on initial action attach and tab
+  return; it passes against the frozen Core, so the native failure is not yet reduced.
+- Shortcut ownership correction `21bbdd3` makes xterm reservation agree with live
+  dispatch eligibility: plain input, false `when` conditions, inactive routes and
+  dialogs keep their keys; an eligible pending catalog can own its shortcut. Four
+  regressions failed before and pass after; three real-service shortcut cases pass.
+  The combined action/editor/preview/setup/defaults/rendering run passed 20 cases;
+  the final availability correction also passed all seven setup browser cases.
+  Web check, 281 unit tests and production build pass. Preparation retry is now
+  committed locally as `f383e7f`, including generated `RetryPreparation.ts`.
+  It preserves captured provider/model/input and current permissions without
+  changing later thread preferences, sessions or handoffs. Ten real-service
+  preparation cases and 14 focused setup/lifecycle cases pass. Final integrated
+  Rust qualification passed 977 tests with nine ignored; Clippy/fmt pass. Engine
+  ordering/selection cases use protocol doubles, with real disposable setup
+  commands; live engines and native schema 19 are not qualified.
+- Local terminal corrections `e45ef28`, `68c00ca` and `fa8855e` reconnect a selected
+  action tab to a replacement process, drain PTY output through reader completion,
+  and revoke input/resize authority at child exit. Browser replacement output
+  failed before and passes after; four relay tests and seven real-service terminal
+  cases pass, including final output, late replay and explicit close. These are
+  independent defects; the frozen native blank-pane observation is not yet reduced
+  or requalified. No new section PR, push, CI or merge is claimed. The collaboration
+  wait call was aborted before dispatch and was not retried through another wait
+  mechanism. K9 remains partial for remaining auditing and native/Windows evidence.
+
+- Local settings `6560e74` retains selected repository subfolders as independent
+  project/trust/configuration roots, separates repository diff coordinates from
+  cwd-bounded file access, and anchors new worktrees beside the primary clone.
+  Real-service subfolder, explicit-child CLI, subtree checkpoint and browser cases
+  pass. Combined Rust workspace qualification passed 987 tests (9 ignored); web
+  passed 287 tests and type/lint checks. Invalid attempts to hide Git with an empty
+  PATH are retained as unqualified fixture evidence. No Windows/native or live
+  provider qualification is claimed for this slice.
+- Local `46e1219` binds telemetry editing to the environment with revision-fenced
+  touched-field writes and conflict/draft handling. Local `d29fd61` preserves
+  concurrent custom models and unknown entries while keeping configuration on its
+  actual environment target. Their focused real-service browser regressions pass;
+  two custom-model regressions failed before the correction. Runtime telemetry
+  exports, remaining provider controls and final native qualification remain open.
+  These changes are committed locally, not pushed or merged. Environment cleanup
+  and project worktree-policy bindings are the next in-progress settings slices.
+
+- Cleanup commits `f211a94`, `d3d9544`, `3b48d76` and `18020fc` separate
+  environment artifacts/log retention from project worktree policies. Off, Custom
+  and Inherit resolve per physical member; selecting Custom captures that member's
+  effective age, including legacy defaults. Three service regressions and one
+  browser regression failed before the transition correction. Final focused
+  qualification passed eight real-service cleanup cases and nine combined browser
+  cases, including concurrent edits, scope disposal and actual disposable deletion.
+  The schema19-to20 rehearsal preserved values, rejected a live second writer and
+  rejected an old writer without database mutation; current20 reopened successfully.
+  Receipt: `target/worktree-cleanup-evidence/schema-fence.json` in the settings tree.
+  Web check/build and 287 unit tests pass. One parallel-check App startup unit timed
+  out at its unchanged five-second limit; focused42 and the full287 rerun passed.
+  That intermittent result is retained, without a proven cause or timeout change.
+  F30 stays partial for other rules, keep-when choices, scheduling, concurrent
+  thread-creation admission and native/Windows qualification. No final packaged
+  walkthrough or live-engine qualification is supplied by these cleanup fixtures.
+
+- PR83 was opened on `42fcd90` with the 20-commit settings batch. Initial
+  CI `41311166845` passed both installed-app startup jobs, macOS Rust and Web,
+  but failed Windows Rust's final-output observer close and one E2E Advanced
+  selector (220 other cases passed). `2a48734` scopes five acceptance specs to
+  their controlled rows; eight affected cases pass locally and its full E2E job
+  in `41312664253` passed. No check or timeout was weakened.
+- `0898d26` fixes Windows ConPTY ownership retirement on direct-child exit, with
+  the reader draining independently before natural output completion. Windows
+  console teardown can end attached console descendants; its exact native T3
+  timing is unqualified. The close test keeps its 45-second limit and now records
+  child/output state on failure. Local workspace qualification passed 999 tests
+  (9 ignored), Clippy and formatting. A Windows-only real ConPTY regression awaits
+  CI on the new head. PR83 must not merge until every required job is green on
+  that exact head; earlier green packaged startup does not qualify this new fix.
+
+- PR83 head `e4ff965` CI `41314262385` passed both packaged startup jobs,
+  macOS Rust, Web and full E2E. Its Windows native ConPTY EOF and large-output/
+  late-observer cases passed; Windows Rust instead failed preparation cancellation
+  (`failed` versus `cancelled`). The precise original trigger is unproven.
+  Deterministic local barriers subsequently reproduced accepted-stop/startup-failure
+  ordering, late recovery mutation and late rejected-steer queue bypass.
+- The cancellation follow-up makes the terminal transaction honor an accepted
+  stop, preserves provider handoff, atomically records failure guidance, and keeps
+  late rejected-steer prompts held. Parent signals occur before fallible child
+  traversal. Exact local qualification passed 1,009 Rust tests (9 ignored),
+  workspace Clippy and formatting; affected real-service checks passed without
+  changing their assertions or deadlines. Receipts: `target/pr83-cancel-qualified-workspace.log`,
+  `target/pr83-cancel-qualified-clippy.log` and
+  `target/preparation-cancel-review-*.log`.
+  An intermediate sign-in-note visibility regression was caught and corrected
+  transactionally; its failed log is retained. Current-head Windows qualification
+  and all six required green jobs are still required before PR83 can merge.
+
 ### Verified in this pickup
 
 - Main runs for #64, #66, #67 and #57 all completed successfully. Main after #68
@@ -314,6 +443,9 @@ stand-in forge races and the data-directory lock.
   fatal, and fixed proven process/startup ownership defects. Its Windows checks
   passed, but a later pass is not evidence identifying the earlier holder.
 - The browser recording test is flaky.
+- Follow-up to investigate: thread-only limit recording after a genuinely failed
+  run can race a newer admission. Latest-run/provider ownership for that write is
+  not qualified by the accepted-cancellation correction.
 - Settings opened by direct link closes onto a draft.
 - D25 lacks its menu shortcut. F34 on GitLab is parser-tested only.
 - `core.autocrlf=true` handling is pinned in tests; check real Windows behaviour.
@@ -337,8 +469,10 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. Integrated main `56d914d` run `41291556483` passed all six required jobs.
-   PR60 is merged. Keep subsequent section delivery fenced to all required green
+1. PR82 head `9ac3dfa` passed all six required checks in `41294951768`, plus
+   GitGuardian, and merged without squash as `12748ac`. Post-merge main run
+   `41296294886` passed all six required jobs.
+   PR60 and PR82 are merged. Keep subsequent section delivery fenced to all required green
    current-head checks; historical passing heads do not qualify new integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
    visible deviations are removed, including extra tray behavior; route-held sidebar placement was removed by #76. Do not turn a missing reference into an invented control or an
@@ -347,9 +481,16 @@ not commit it. Move it to a real secret store before any release.
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
    F source control, D viewers, then the rest. The next settings slices are
-   the remaining custom-form bindings, repository-subfolder registration and
+   the remaining custom-form bindings, project worktree policies and
    project actions; K1/K2/K5/K9 remain partial. The direct-coordinate sidebar audit
    passed; no product defect was established by earlier AX-target observations.
+   Keep custom forms faithful to their actual targets: the pinned T3 telemetry
+   form requires one environment; its storage worktree rules support project and
+   checkout scope separately from environment cleanup; custom models belong to
+   provider-instance configuration. Do not fan out a whole global preference
+   object merely because these forms share the scope selector. Reference owners
+   are `TelemetryExportSettings.tsx`, `StorageSettings.tsx` and
+   `ProviderInstanceCard.tsx` under T3's settings components.
    I33 ACP sessions
    and M3 remain next backend slices.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the

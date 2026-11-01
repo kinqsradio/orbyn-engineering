@@ -15,6 +15,7 @@ import { Menu } from "../../ui/Menu";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
 import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
+import { WorktreeCleanup } from "./WorktreeCleanup";
 
 const heading = (title: string) => (
   <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -384,6 +385,7 @@ export function WorktreesSection() {
           ]}
         />
       </Advanced>
+      <WorktreeCleanup />
     </>
   );
 }

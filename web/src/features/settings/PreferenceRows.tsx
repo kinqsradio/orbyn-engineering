@@ -10,10 +10,11 @@ import { Check, ChevronRight, Layers } from "lucide-react";
 import { Button, IconButton } from "../../ui/controls";
 import type { ScopedPreferenceMember } from "../../generated/ScopedPreferenceMember";
 import type { ScopedPreferenceOverride } from "../../generated/ScopedPreferenceOverride";
+import type { ScopedPreferenceRow } from "../../generated/ScopedPreferenceRow";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ScopedRows } from "./ScopedPreferenceRows";
 
-export type PreferenceSaveResult = { saved: true } | { saved: false; error: string | null };
+export type PreferenceSaveResult = { saved: true; row: ScopedPreferenceRow | undefined } | { saved: false; error: string | null };
 export interface PreferenceControl {
   disabled: boolean;
   mixed: boolean;

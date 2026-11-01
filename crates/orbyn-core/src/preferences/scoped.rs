@@ -205,7 +205,12 @@ fn set_value(
             .ok_or_else(|| CoreError::Invalid("The current setting is not an object.".into()))?;
         // Compound controls edit top-level fields. A mixed group must preserve
         // each member's other fields instead of copying the first member's map.
-        object.extend(patch.as_object().expect("validated object patch").clone());
+        let patch = patch.as_object().expect("validated object patch");
+        if key == "worktree_cleanup" {
+            super::worktree_cleanup::scoped_merge(snapshot, project, &mut object, patch)?;
+        } else {
+            object.extend(patch.clone());
+        }
         Value::Object(object)
     } else {
         patch.clone()
@@ -438,7 +443,13 @@ fn rows(
                 serde_json::to_vec(&(key, &catalog.selection, &env, &members, &overrides))?;
             Ok(ScopedPreferenceRow {
                 key: key.clone(),
-                value: if mixed { Value::Null } else { value },
+                value: if mixed {
+                    Value::Null
+                } else if key == "default_project_scripts" {
+                    crate::project_file::scripts_with_ids(&value)?
+                } else {
+                    value
+                },
                 mixed,
                 default: env.default.clone(),
                 project_scoped: env.project_scoped,
@@ -508,13 +519,19 @@ impl Core {
                 if value.to_string().len() > MAX_VALUE_BYTES {
                     return Err(CoreError::Invalid("Setting value is too large.".into()));
                 }
-                check(definition, value)?;
+                if key == "worktree_cleanup" {
+                    super::worktree_cleanup::validate_patch(value)?;
+                } else {
+                    check(definition, value)?;
+                }
                 if key == crate::engines::instances::PREFERENCE {
                     self.engines
                         .check_instances(&crate::engines::instances::parse(value)?)?;
                 }
             }
         }
+        let _cleanup_policy =
+            self.cleanup_policy_write(change.edits.keys().map(String::as_str), ids.is_empty())?;
         self.store.change_settings(|snapshot| {
             fence(snapshot, &catalog, &root)?;
             for row in rows(snapshot, &files, &catalog, &requested)? {

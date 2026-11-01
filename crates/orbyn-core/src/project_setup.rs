@@ -10,6 +10,70 @@ use crate::error::{CoreError, Result};
 use crate::store::{SetupState, Store};
 use crate::terminal::PtySession;
 
+/// Immutable preparation input. Runtime authority and current thread preferences
+/// stay outside this capture.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PreparationCapture {
+    pub script: orbyn_contracts::ProjectScript,
+    pub prompt: String,
+    pub attachments: Vec<String>,
+    pub engine: String,
+    pub selection: orbyn_contracts::ModelSelection,
+}
+
+/// Retry cannot silently substitute a fallback for the saved model. Explicit
+/// custom models retain the existing catalog owner's declaration semantics.
+pub(crate) fn check_captured_selection(
+    store: &Store,
+    engine: &str,
+    chosen: &orbyn_contracts::ModelSelection,
+    catalog: &orbyn_contracts::EngineModels,
+) -> Result<()> {
+    if catalog.error.is_some() {
+        return Err(CoreError::EngineUnavailable(
+            "The saved engine could not verify its model selection.".into(),
+        ));
+    }
+    if catalog.source == "engine"
+        && !catalog.fallback
+        && let Some(model) = &chosen.model
+        && !catalog.models.iter().any(|known| &known.id == model)
+    {
+        let custom = crate::preferences::stored_preference(store, "custom_models", None)?;
+        let declared = custom.as_array().is_some_and(|list| {
+            list.iter()
+                .any(|item| item["engine"] == engine && item["id"] == model.as_str())
+        });
+        if !declared {
+            return Err(CoreError::UnsupportedOption(
+                "The saved model is no longer available on its engine.".into(),
+            ));
+        }
+    }
+    crate::selection::check(catalog, chosen)
+}
+
+impl crate::Core {
+    pub async fn retry_preparation(
+        &self,
+        thread: &str,
+        failed_run: &str,
+        actor: &str,
+    ) -> Result<orbyn_contracts::Run> {
+        let capture = self.store.preparation_capture(thread, failed_run)?;
+        self.engines.check_enabled(&capture.engine)?;
+        self.engines
+            .driver(&capture.engine)?
+            .check_launch_available()?;
+        let catalog = self.engines.models(&capture.engine, true).await?;
+        check_captured_selection(&self.store, &capture.engine, &capture.selection, &catalog)?;
+        self.runs
+            .retry_preparation(thread, failed_run, actor, &capture, |thread, script| {
+                self.start_setup_script(thread, script)
+            })
+    }
+}
+
 pub(crate) struct SetupManager {
     store: Arc<Store>,
     sessions: Mutex<HashMap<String, OwnedSetup>>,
@@ -85,50 +149,66 @@ impl SetupManager {
         Ok(())
     }
 
-    fn cancel(&self, thread: &str) -> Result<()> {
+    pub(crate) fn cancel_run(&self, thread: &str, run: &str) -> Result<()> {
         let mut sessions = self.lock();
-        self.store.fail_setup(thread)?;
-        if let Some(owned) = sessions.remove(thread) {
-            owned.session.kill();
+        if self.store.cancel_preparation_run(thread, run)? {
+            if let Some(owned) = sessions.remove(thread) {
+                owned.session.kill();
+            }
+            drop(sessions);
+            self.notify();
         }
-        drop(sessions);
-        self.notify();
         Ok(())
     }
 
-    /// Only the first admitted turn belongs to worktree creation. A later user
-    /// retry is a new turn, rather than an implicit rerun of project code.
-    pub(crate) async fn before_first_turn(
+    pub(crate) fn fail_preparation(&self, thread: &str, run: &str) {
+        if let Err(error) = self.cancel_run(thread, run) {
+            tracing::warn!(%error, "could not fail preparation");
+        }
+    }
+
+    /// The original turn and explicit preparation retries own this fence. An
+    /// ordinary later user turn never implicitly reruns project code.
+    pub(crate) async fn before_prepared_turn(
         &self,
         thread: &str,
         run: &str,
         cancel: &CancellationToken,
     ) -> Result<bool> {
-        if !self.store.is_first_run(thread, run)? {
+        if !self.store.owns_preparation(thread, run)? {
             return Ok(true);
         }
         let mut guard = Waiting {
             manager: self,
             thread,
+            run,
             armed: true,
         };
-        let result = self.wait_for_setup(thread, cancel).await;
+        let result = self.wait_for_setup(thread, run, cancel).await;
         if matches!(result, Ok(true)) {
             guard.armed = false;
         }
         result
     }
 
-    async fn wait_for_setup(&self, thread: &str, cancel: &CancellationToken) -> Result<bool> {
+    async fn wait_for_setup(
+        &self,
+        thread: &str,
+        run: &str,
+        cancel: &CancellationToken,
+    ) -> Result<bool> {
         let mut changes = self.changes.subscribe();
         loop {
             if cancel.is_cancelled() {
-                self.cancel(thread)?;
+                self.cancel_run(thread, run)?;
                 return Ok(false);
             }
             let Some(record) = self.store.setup(thread)? else {
                 return Ok(true);
             };
+            if record.run_id.as_deref().is_some_and(|owner| owner != run) {
+                return Err(CoreError::StaleOwner);
+            }
             let failed = || {
                 CoreError::Invalid(format!(
                     "Setup script {} did not finish successfully.",
@@ -170,13 +250,14 @@ impl SetupManager {
                         loop {
                             let code = *exited.borrow_and_update();
                             if let Some(code) = code {
-                                self.store.finish_setup(thread, code)?;
+                                self.store
+                                    .finish_owned_setup(thread, &owned.terminal_id, code)?;
                                 self.lock().remove(thread);
                                 return if code == 0 { Ok(true) } else { Err(failed()) };
                             }
                             tokio::select! {
                                 () = cancel.cancelled() => {
-                                    self.cancel(thread)?;
+                                    self.cancel_run(thread, run)?;
                                     return Ok(false);
                                 }
                                 changed = exited.changed() => {
@@ -191,7 +272,7 @@ impl SetupManager {
                 SetupState::Preparing => {}
             }
             tokio::select! {
-                () = cancel.cancelled() => { self.cancel(thread)?; return Ok(false); }
+                () = cancel.cancelled() => { self.cancel_run(thread, run)?; return Ok(false); }
                 changed = changes.changed() => { if changed.is_err() { return Err(failed()); } }
             }
         }
@@ -210,7 +291,8 @@ impl SetupManager {
         for (thread, owned) in self.lock().drain() {
             let session = owned.session;
             let result = if let Some(code) = session.exit_code() {
-                self.store.finish_setup(&thread, code)
+                self.store
+                    .finish_owned_setup(&thread, &owned.terminal_id, code)
             } else {
                 self.store.fail_setup(&thread)
             };
@@ -249,12 +331,13 @@ impl Drop for Registration<'_> {
 struct Waiting<'a> {
     manager: &'a SetupManager,
     thread: &'a str,
+    run: &'a str,
     armed: bool,
 }
 impl Drop for Waiting<'_> {
     fn drop(&mut self) {
         if self.armed
-            && let Err(error) = self.manager.cancel(self.thread)
+            && let Err(error) = self.manager.cancel_run(self.thread, self.run)
         {
             tracing::warn!(%error, "could not cancel project setup");
         }
@@ -301,6 +384,7 @@ mod tests {
                 Some(&NewSetup {
                     name: "Setup".into(),
                     wait_for_exit: true,
+                    script: Some(serde_json::from_value(serde_json::json!({"name":"Setup", "command":"echo setup", "async":false})).unwrap()),
                 }),
             )
             .unwrap();
@@ -321,7 +405,7 @@ mod tests {
         cancelled.cancel();
         assert!(
             !manager
-                .before_first_turn("thread", &run, &cancelled)
+                .before_prepared_turn("thread", &run, &cancelled)
                 .await
                 .unwrap()
         );
@@ -341,11 +425,59 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn stopping_an_admitted_preparation_fences_a_later_spawn() {
+        let (_dir, store, manager, run) = fixture();
+        manager.cancel_run("thread", &run).unwrap();
+        assert!(matches!(
+            store.setup("thread").unwrap().unwrap().state,
+            SetupState::Failed { started: false }
+        ));
+        let spawned = std::sync::atomic::AtomicBool::new(false);
+        assert!(matches!(
+            manager.launch("thread", || {
+                spawned.store(true, std::sync::atomic::Ordering::SeqCst);
+                unreachable!("a stopped preparation must not spawn")
+            }),
+            Err(CoreError::StaleOwner)
+        ));
+        assert!(!spawned.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn an_old_wait_guard_cannot_cancel_a_new_retry_attempt() {
+        let (_dir, store, manager, run) = fixture();
+        let cancellation = CancellationToken::new();
+        let next;
+        {
+            let waiting = manager.before_prepared_turn("thread", &run, &cancellation);
+            tokio::pin!(waiting);
+            assert!(futures_util::poll!(&mut waiting).is_pending());
+            store.fail_setup("thread").unwrap();
+            store
+                .finish_run(
+                    &run,
+                    orbyn_contracts::RunState::Failed,
+                    Some("preparation failed"),
+                )
+                .unwrap();
+            let capture = store.preparation_capture("thread", &run).unwrap();
+            next = store
+                .retry_preparation("thread", &run, "user", &capture)
+                .unwrap();
+        }
+        assert!(matches!(
+            store.setup("thread").unwrap().unwrap().state,
+            SetupState::Preparing
+        ));
+        assert!(store.owns_preparation("thread", &next.run.id).unwrap());
+    }
+
     #[tokio::test]
     async fn dropping_preparation_wakes_an_admitted_first_turn_with_failure() {
         let (_dir, _store, manager, run) = fixture();
         let cancel = CancellationToken::new();
-        let wait = manager.before_first_turn("thread", &run, &cancel);
+        let wait = manager.before_prepared_turn("thread", &run, &cancel);
         tokio::pin!(wait);
         assert!(futures_util::poll!(&mut wait).is_pending());
         drop(manager.registration("thread"));
@@ -356,7 +488,7 @@ mod tests {
         let (_dir, store, manager, run) = fixture();
         let cancel = CancellationToken::new();
         {
-            let wait = manager.before_first_turn("thread", &run, &cancel);
+            let wait = manager.before_prepared_turn("thread", &run, &cancel);
             tokio::pin!(wait);
             assert!(futures_util::poll!(&mut wait).is_pending());
         }
@@ -385,10 +517,10 @@ mod tests {
                 actor: "user",
             })
             .unwrap();
-        assert!(store.is_first_run("thread", &run).unwrap());
-        assert!(!store.is_first_run("thread", &next.id).unwrap());
+        assert!(store.owns_preparation("thread", &run).unwrap());
+        assert!(!store.owns_preparation("thread", &next.id).unwrap());
         let cancel = CancellationToken::new();
-        let wait = manager.before_first_turn("thread", &run, &cancel);
+        let wait = manager.before_prepared_turn("thread", &run, &cancel);
         tokio::pin!(wait);
         assert!(futures_util::poll!(&mut wait).is_pending());
         drop(manager.registration("thread"));

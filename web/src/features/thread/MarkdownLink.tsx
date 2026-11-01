@@ -1,7 +1,8 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { api } from "../../api/client";
-import { navigate } from "../../state/route";
+import { navigate, parseRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
+import { useWorkspace } from "../../state/workspace";
 import { Menu } from "../../ui/Menu";
 
 /** `orbyn://thread/<id>` opens a thread here. */
@@ -37,7 +38,11 @@ export function ThreadLink({ id, children }: { id: string; children: ReactNode }
 export function FileLink({ path, line, children }: { path: string; line: number | null; children: ReactNode }) {
   const revealFile = useUi((state) => state.revealFile);
   return (
-    <button type="button" className="md-file-link" title={line ? `${path}:${line}` : path} onClick={() => revealFile(path, line)}>
+    <button type="button" className="md-file-link" title={line ? `${path}:${line}` : path} onClick={() => {
+      const route = parseRoute(window.location.hash);
+      const thread = route.name === "thread" ? useWorkspace.getState().threads[route.id] : null;
+      if (thread) revealFile(path, line, { threadId: thread.id, cwd: thread.cwd });
+    }}>
       {children}
     </button>
   );

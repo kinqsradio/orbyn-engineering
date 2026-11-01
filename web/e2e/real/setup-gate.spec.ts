@@ -130,3 +130,37 @@ test("editing a saved setup command preserves its setup role and synchronous fla
     }).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Setup", command: "echo updated-setup", run_on_worktree_create: true, async: false })]));
   } finally { await service.stop(); }
 });
+
+test("the preparation failure Retry reruns setup before the captured first turn", async ({ page }, info) => {
+  const log = info.outputPath("launch.ndjson");
+  const { service, thread } = await fixture(log, false, 7);
+  try {
+    await service.api("POST", `/api/threads/${thread.id}/runs`, { prompt: "retry-preparation-proof" });
+    writeFileSync(join(thread.cwd, "setup-release"), "go");
+    await expect.poll(async () => (await current(service, thread.id)).active_run).toBeNull();
+    expect(turns(log)).toBe(0);
+    // The saved command still points at this disposable setup program. Recovery
+    // fixes that program; it does not select a different command in the UI.
+    writeFileSync(join(thread.cwd, "setup-fixture.cjs"), `
+const fs = require('node:fs');
+fs.writeFileSync('retry-started', 'ready');
+const timer = setInterval(() => { if (fs.existsSync('retry-release')) { clearInterval(timer); process.exit(0); } }, 20);
+setTimeout(() => process.exit(71), 30000).unref();
+`);
+    await service.api("POST", `/api/threads/${thread.id}/runs`, { prompt: "later-user-turn" });
+    await expect.poll(() => turns(log)).toBe(1);
+    await expect.poll(async () => (await current(service, thread.id)).active_run).toBeNull();
+    await page.goto(`${service.page}#/threads/${thread.id}`);
+    const error = page.getByRole("log", { name: "Thread messages" }).getByRole("alert").filter({ hasText: "Setup script Setup did not finish successfully." });
+    await expect(error.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+    await expect(error).not.toContainText("workspace_preparation_failed");
+    await page.screenshot({ path: info.outputPath("preparation-retry.png") });
+    await error.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect.poll(() => existsSync(join(thread.cwd, "retry-started"))).toBe(true);
+    expect(turns(log)).toBe(1);
+    writeFileSync(join(thread.cwd, "retry-release"), "go");
+    await expect.poll(() => turns(log)).toBe(2);
+    await expect.poll(async () => (await current(service, thread.id)).active_run).toBeNull();
+    await expect(error.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  } finally { await service.stop(); }
+});

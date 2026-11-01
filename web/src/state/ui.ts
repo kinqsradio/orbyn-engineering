@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings/themes";
 import { readJson, writeJson } from "../lib/storage";
+import { useWorkspace } from "./workspace";
 
 export type ThemeChoice = "system" | "light" | "dark";
 export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
 export type ContextTab = RightTab | "terminal";
+export interface ThreadNavigationOrigin { threadId: string; cwd: string }
 
 interface Prefs {
   theme: ThemeChoice;
@@ -211,6 +213,8 @@ const defaults: Prefs = {
 };
 
 interface UiState extends Prefs {
+  terminalReveal: { threadId: string; group: string; nonce: number } | null;
+  revealTerminal(threadId: string, group: string): void;
   drafts: Record<string, string>;
   palette: PaletteStart | null;
   setPalette(palette: PaletteStart | null): void;
@@ -221,8 +225,9 @@ interface UiState extends Prefs {
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   /** A file the Files surface should open next, with the line to reveal. */
-  fileReveal: { path: string; line: number | null; nonce: number } | null;
-  revealFile(path: string, line: number | null): void;
+  fileReveal: ThreadNavigationOrigin & { path: string; line: number | null; nonce: number } | null;
+  revealFile(path: string, line: number | null, origin: ThreadNavigationOrigin): void;
+  consumeFileReveal(nonce: number): void;
   /** A message to scroll to when its thread is showing. */
   messageReveal: { threadId: string; messageId: string } | null;
   revealMessage(threadId: string, messageId: string): void;
@@ -231,11 +236,12 @@ interface UiState extends Prefs {
   pullReveal: number | null;
   revealPull(number: number | null): void;
   /** A file the Diff surface should scroll to. */
-  diffReveal: { path: string; nonce: number } | null;
+  diffReveal: ThreadNavigationOrigin & { path: string; nonce: number } | null;
   /** A commit the Diff surface should show next. */
   commitReveal: { sha: string; nonce: number } | null;
   revealCommit(sha: string): void;
-  revealDiff(path: string): void;
+  revealDiff(path: string, origin: ThreadNavigationOrigin): void;
+  consumeDiffReveal(nonce: number): void;
   togglePanel(tab: ContextTab): void;
   /** A page floating over the chat, if any. */
   previewFloat: { threadId: string; tabId: string } | null;
@@ -372,6 +378,7 @@ function savedPrefs(): Partial<Prefs> {
 }
 
 export const useUi = create<UiState>((set, get) => {
+  let navigationNonce = 0;
   const savePrefs = () => {
     const state = get();
     const layouts = withLayout(state.layouts, state.layoutKey, currentLayout(state));
@@ -381,6 +388,10 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    terminalReveal: null,
+    revealTerminal(threadId, group) {
+      set((state) => ({ terminalOpen: true, terminalReveal: { threadId, group, nonce: (state.terminalReveal?.nonce ?? 0) + 1 } }));
+    },
     drafts: readJson<Record<string, string>>(DRAFTS_KEY) ?? {},
     palette: null,
     setPalette(palette) {
@@ -425,14 +436,18 @@ export const useUi = create<UiState>((set, get) => {
         openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
       });
     },
-    revealDiff(path) {
+    revealDiff(path, origin) {
       const { openSurfaces } = get();
       set({
-        diffReveal: { path, nonce: Date.now() },
+        diffReveal: { ...origin, path, nonce: ++navigationNonce },
+        fileReveal: null,
         panelOpen: true,
         panelTab: "diff",
         openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
       });
+    },
+    consumeDiffReveal(nonce) {
+      set((state) => state.diffReveal?.nonce === nonce ? { diffReveal: null } : state);
     },
     fileReveal: null,
     messageReveal: null,
@@ -442,14 +457,18 @@ export const useUi = create<UiState>((set, get) => {
     clearMessageReveal() {
       set({ messageReveal: null });
     },
-    revealFile(path, line) {
+    revealFile(path, line, origin) {
       const { openSurfaces } = get();
       set({
-        fileReveal: { path, line, nonce: Date.now() },
+        fileReveal: { ...origin, path, line, nonce: ++navigationNonce },
+        diffReveal: null,
         panelOpen: true,
         panelTab: "files",
         openSurfaces: openSurfaces.includes("files") ? openSurfaces : [...openSurfaces, "files"],
       });
+    },
+    consumeFileReveal(nonce) {
+      set((state) => state.fileReveal?.nonce === nonce ? { fileReveal: null } : state);
     },
     previewFloat: null,
     previewRequest: null,
@@ -567,6 +586,20 @@ export const useUi = create<UiState>((set, get) => {
       set({ lastThreadId: threadId });
     },
   };
+});
+
+// Navigation cancellation must outlive a closed/unmounted surface. These intents
+// are transient and are never written by savePrefs.
+const cancelPathNavigation = () => useUi.setState({ fileReveal: null, diffReveal: null });
+window.addEventListener("hashchange", cancelPathNavigation);
+const unsubscribePathNavigation = useWorkspace.subscribe((state) => {
+  const { fileReveal, diffReveal, consumeFileReveal, consumeDiffReveal } = useUi.getState();
+  if (fileReveal && state.threads[fileReveal.threadId]?.cwd !== fileReveal.cwd) consumeFileReveal(fileReveal.nonce);
+  if (diffReveal && state.threads[diffReveal.threadId]?.cwd !== diffReveal.cwd) consumeDiffReveal(diffReveal.nonce);
+});
+import.meta.hot?.dispose(() => {
+  window.removeEventListener("hashchange", cancelPathNavigation);
+  unsubscribePathNavigation();
 });
 
 export function resolveTheme(choice: ThemeChoice): "light" | "dark" {

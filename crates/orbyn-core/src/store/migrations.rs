@@ -20,7 +20,28 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (16, LIMIT_STOPS),
     (17, VISITS_AND_RESUMES),
     (18, PROJECT_SETUP),
+    (19, PREPARATION_RETRY),
+    (20, WORKTREE_CLEANUP),
 ];
+
+// Semantic writer fence: older cleanup writers ignore project Off/Custom and
+// could remove a protected worktree. Preserve all existing values; schema 19
+// rejects this version before opening its writer. No backfill or table rewrite.
+const WORKTREE_CLEANUP: &str = "SELECT 1;";
+
+// Captured project code and input belong to preparation, never to a retry request.
+// Null captures from schema 18 remain unavailable rather than guessing a command.
+const PREPARATION_RETRY: &str = r#"
+ALTER TABLE thread_setup ADD COLUMN script TEXT;
+ALTER TABLE thread_setup ADD COLUMN run_id TEXT;
+ALTER TABLE thread_setup ADD COLUMN prompt TEXT;
+ALTER TABLE thread_setup ADD COLUMN attachment_ids TEXT;
+ALTER TABLE thread_setup ADD COLUMN engine TEXT;
+ALTER TABLE thread_setup ADD COLUMN model_selection TEXT;
+ALTER TABLE runs ADD COLUMN preparation_retry_of TEXT;
+ALTER TABLE runs ADD COLUMN preparation_handoff TEXT;
+ALTER TABLE queued_messages ADD COLUMN preparation_run_id TEXT;
+"#;
 
 // Thread creation and its first-turn setup fence commit together. Older cores
 // reject this schema before opening a writer, rather than ignoring that fence.
