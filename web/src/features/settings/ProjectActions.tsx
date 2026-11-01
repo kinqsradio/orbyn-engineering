@@ -28,20 +28,30 @@ const empty = (): ProjectScript => ({ name: "", command: "", icon: "play", run_o
 /** The list stays with the scope that supplied its revision and mutation owner. */
 export function ProjectActions({ value, control }: { value: unknown; control: PreferenceControl }) {
   const [editing, setEditing] = useState<{ original: string | null; draft: ProjectScript } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!restoreFocus.current || editing || control.disabled) return;
+    restoreFocus.current = false;
+    // A rename replaces the edit button; Add action remains a useful return target.
+    const target = opener.current?.isConnected ? opener.current : root.current?.querySelector("button");
+    target?.focus();
+  }, [editing, control.disabled]);
   const actions = actionsFrom(value);
-  return <div className="project-actions">
+  return <div ref={root} className="project-actions">
     <Button small icon={<Plus size={14} aria-hidden />} disabled={control.disabled}
-      onClick={() => setEditing({ original: null, draft: empty() })}>Add action</Button>
+      onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: null, draft: empty() }); }}>Add action</Button>
     {!control.mixed && (actions.length === 0 ? <p className="field-hint">No actions configured.</p> :
       <ul className="project-action-list">{actions.map((action) => <li key={action.name}>
         <ProjectActionIcon icon={action.icon} />
         <div className="project-action-summary"><strong>{action.name}</strong><code>{action.command}</code>
           <span>{action.run_on_worktree_create ? "setup" : ""}{action.run_on_worktree_create && action.run_on_settle ? " · " : ""}{action.run_on_settle ? "on settle" : ""}</span></div>
         <IconButton label={`Edit ${action.name}`} disabled={control.disabled}
-          onClick={() => setEditing({ original: action.name, draft: { ...action } })}><Settings2 size={14} aria-hidden /></IconButton>
+          onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: action.name, draft: { ...action } }); }}><Settings2 size={14} aria-hidden /></IconButton>
       </li>)}</ul>)}
     {editing && <ActionDialog key={editing.original ?? "new"} initial={editing.draft} original={editing.original}
-      disabled={control.disabled} commit={control.commit} onClose={() => setEditing(null)} />}
+      disabled={control.disabled} commit={control.commit} onClose={() => { restoreFocus.current = true; setEditing(null); }} />}
   </div>;
 }
 

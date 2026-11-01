@@ -76,7 +76,8 @@ export function ScopedRows({ groups, query }: {
           </div>
         }>
           <fieldset className="preference-control" disabled={disabled || (!all && !value.project_scoped)} aria-busy={busy || undefined}>
-            <ValueControl key={value.revision} row={row} value={value} control={{ disabled: disabled || (!all && !value.project_scoped), mixed: value.mixed, commit: (edit) => commit(value, edit) }} save={(next) => save(value, { op: "set", value: next as JsonValue })} />
+            {/* Action dialogs own their drafts and return focus after the saved list refreshes. */}
+            <ValueControl key={row.key === "default_project_scripts" ? row.key : value.revision} row={row} value={value} control={{ disabled: disabled || (!all && !value.project_scoped), mixed: value.mixed, commit: (edit) => commit(value, edit) }} save={(next) => save(value, { op: "set", value: next as JsonValue })} />
           </fieldset>
 
         </SettingRow>;

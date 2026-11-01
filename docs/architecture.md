@@ -373,6 +373,8 @@ physical project dialogs use the same version-fenced writer. A Mixed group offer
 Add action without treating one checkout's list as the group's list. A failed save
 keeps the draft and reports the error; closing the form does not imply a successful
 write. The Name field receives focus after the native modal enters the top layer.
+After closing the form, focus returns to its opener once the refreshed controls
+are enabled; renaming or deleting the opener's action returns focus to Add action.
 Deletion requires confirmation. Stable action IDs and environment-wide action
 shortcuts remain unfinished; this editor does not establish complete action parity.
 The first `run_on_worktree_create` or

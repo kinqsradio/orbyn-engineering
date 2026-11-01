@@ -29,6 +29,7 @@ test("the project action form saves metadata, runs real setup and supports edit 
     await form.getByRole("switch", { name: "Open preview automatically when this action runs", exact: true }).check();
     await form.getByRole("button", { name: "Save action", exact: true }).click();
     await expect(form).toHaveCount(0);
+    await expect(settings.getByRole("button", { name: "Add action", exact: true })).toBeFocused();
     await expect.poll(() => scripts(service, projectId)).toEqual([expect.objectContaining({ name: "Setup", icon: "build", async: false, run_on_worktree_create: true, run_on_settle: true, preview_url: "http://localhost:5173", auto_open_preview: true })]);
     const thread = await service.api<{ cwd: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Editor setup", worktree: "action-editor" });
     await expect.poll(() => existsSync(join(thread.cwd, "editor-marker.txt"))).toBe(true);
@@ -39,12 +40,14 @@ test("the project action form saves metadata, runs real setup and supports edit 
     await edit.getByLabel("Command", { exact: true }).fill("echo updated-action");
     await edit.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect(edit).toHaveCount(0);
+    await expect(settings.getByRole("button", { name: "Add action", exact: true })).toBeFocused();
     await expect.poll(() => scripts(service, projectId)).toEqual([expect.objectContaining({ name: "Build", command: "echo updated-action", icon: "build", async: false, run_on_settle: true })]);
     await settings.getByRole("button", { name: "Edit Build", exact: true }).click();
     await edit.getByRole("button", { name: "Delete", exact: true }).click();
     await page.getByRole("dialog", { name: 'Delete action "Build"?', exact: true }).getByRole("button", { name: "Delete action", exact: true }).click();
     await expect(edit).toHaveCount(0);
     await expect.poll(() => scripts(service, projectId)).toEqual([]);
+    await expect(settings.getByRole("button", { name: "Add action", exact: true })).toBeFocused();
   } finally { await service.stop(); }
 });
 
