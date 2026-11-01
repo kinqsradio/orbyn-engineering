@@ -211,6 +211,8 @@ const defaults: Prefs = {
 };
 
 interface UiState extends Prefs {
+  terminalReveal: { threadId: string; group: string; nonce: number } | null;
+  revealTerminal(threadId: string, group: string): void;
   drafts: Record<string, string>;
   palette: PaletteStart | null;
   setPalette(palette: PaletteStart | null): void;
@@ -381,6 +383,10 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    terminalReveal: null,
+    revealTerminal(threadId, group) {
+      set((state) => ({ terminalOpen: true, terminalReveal: { threadId, group, nonce: (state.terminalReveal?.nonce ?? 0) + 1 } }));
+    },
     drafts: readJson<Record<string, string>>(DRAFTS_KEY) ?? {},
     palette: null,
     setPalette(palette) {

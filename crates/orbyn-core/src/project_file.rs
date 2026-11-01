@@ -69,6 +69,21 @@ fn assign_script_ids(scripts: &mut [ProjectScript]) {
     }
 }
 
+/// Render effective identities while retaining the raw layers for revision fencing.
+pub(crate) fn scripts_with_ids(value: &Value) -> Result<Value> {
+    let scripts = validate_scripts(value)?;
+    let mut display = value.clone();
+    for (entry, script) in display
+        .as_array_mut()
+        .expect("validated list")
+        .iter_mut()
+        .zip(scripts)
+    {
+        entry["id"] = serde_json::to_value(script.id)?;
+    }
+    Ok(display)
+}
+
 /// Reads the first file present. A bad file is reported and never half-applied.
 pub fn read_project_file(checkout: &Path) -> ProjectFileView {
     let Some(name) = FILE_NAMES.iter().find(|name| checkout.join(name).is_file()) else {
@@ -247,6 +262,20 @@ impl Core {
     /// Runs an effective project script in its own terminal. The request names
     /// a saved script; it never supplies a command.
     pub fn run_script(&self, thread_id: &str, name: &str, actor: &str) -> Result<TerminalInfo> {
+        self.run_selected_script(thread_id, name, false, actor)
+    }
+
+    pub fn run_script_by_id(&self, thread_id: &str, id: &str, actor: &str) -> Result<TerminalInfo> {
+        self.run_selected_script(thread_id, id, true, actor)
+    }
+
+    fn run_selected_script(
+        &self,
+        thread_id: &str,
+        selector: &str,
+        by_id: bool,
+        actor: &str,
+    ) -> Result<TerminalInfo> {
         let thread = self.store.thread(thread_id)?;
         if !self.store.project(&thread.project_id)?.trusted {
             return Err(CoreError::FolderUntrusted);
@@ -258,7 +287,13 @@ impl Core {
         let script = view
             .scripts
             .into_iter()
-            .find(|script| script.name == name)
+            .find(|script| {
+                if by_id {
+                    script.id.as_deref() == Some(selector)
+                } else {
+                    script.name == selector
+                }
+            })
             .ok_or_else(|| CoreError::NotFound("script".into()))?;
         self.start_script(
             thread_id,

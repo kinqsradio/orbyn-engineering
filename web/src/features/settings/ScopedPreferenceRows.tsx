@@ -11,6 +11,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
 import { PreferenceInheritance, type PreferenceRow, type PreferenceControl, type PreferenceSaveResult } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { runHandlers } from "../../app/shortcuts";
 
 /** Read and mutation identities stay attached to the scope that produced them. */
 export function ScopedRows({ groups, query }: {
@@ -37,12 +38,13 @@ export function ScopedRows({ groups, query }: {
     setBusy(true);
     setError(null);
     try {
-      await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
+      const changed = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
         scope: query, membership_version: result.catalog.version,
         if_match: { [row.key]: row.revision }, edits: { [row.key]: edit },
       });
       if (mounted.current) list.reload();
-      return { saved: true };
+      if (row.key === "default_project_scripts") runHandlers("projectActions.reload");
+      return { saved: true, row: changed.rows.find((value) => value.key === row.key) };
     } catch (failure) {
       const message = toFailure(failure).message;
       if (mounted.current) setError(message);

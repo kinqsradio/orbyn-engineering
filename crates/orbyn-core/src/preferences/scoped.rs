@@ -438,7 +438,13 @@ fn rows(
                 serde_json::to_vec(&(key, &catalog.selection, &env, &members, &overrides))?;
             Ok(ScopedPreferenceRow {
                 key: key.clone(),
-                value: if mixed { Value::Null } else { value },
+                value: if mixed {
+                    Value::Null
+                } else if key == "default_project_scripts" {
+                    crate::project_file::scripts_with_ids(&value)?
+                } else {
+                    value
+                },
                 mixed,
                 default: env.default.clone(),
                 project_scoped: env.project_scoped,

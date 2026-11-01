@@ -630,6 +630,23 @@ async fn action_edits_preserve_each_checkout_list_and_fence_the_whole_group() {
     assert_eq!(put(&service, &format!("/api/projects/{first}/preferences"), json!({"values":{KEY:[{"name":"Local 0","command":"echo before","forward_metadata":{"kept":true}}]}})).await.0, 200);
     let checkout = json!({"selection":{"kind":"checkout","group_key":still_local["catalog"]["selection"]["group_key"],"project_id":first}});
     let before = query(&service, checkout.clone(), &[KEY]).await;
+    assert!(
+        row(&before, KEY)["value"][0]["id"].is_string(),
+        "the editor can bind a legacy action before saving it"
+    );
+    let legacy_read = service
+        .json(&format!("/api/preferences?project_id={first}"))
+        .await;
+    let stored = legacy_read
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["key"] == KEY)
+        .unwrap();
+    assert!(
+        stored["value"][0].get("id").is_none(),
+        "reading identity does not backfill stored lists"
+    );
     let update = edit_body(
         &before,
         checkout,
@@ -680,15 +697,28 @@ async fn distinct_action_ids_keep_similar_names_in_separate_real_terminals() {
         .await;
     assert_eq!(status, 201, "{thread}");
     let base = format!("/api/threads/{}", thread["id"].as_str().unwrap());
+    for invalid in [json!({}), json!({"id":"first-action", "name":"Build one"})] {
+        assert_eq!(
+            service.send(&format!("{base}/scripts"), invalid).await.0,
+            400
+        );
+    }
+    assert_eq!(
+        service
+            .send(&format!("{base}/scripts"), json!({"id":"unknown-action"}))
+            .await
+            .0,
+        404
+    );
     let available = service.json(&format!("{base}/scripts")).await;
     assert_eq!(available["scripts"][0]["id"], "first-action");
     assert_eq!(available["scripts"][1]["id"], "second-action");
     let (status, first) = service
-        .send(&format!("{base}/scripts"), json!({"name":"Build one"}))
+        .send(&format!("{base}/scripts"), json!({"id":"first-action"}))
         .await;
     assert_eq!(status, 201, "{first}");
     let (status, second) = service
-        .send(&format!("{base}/scripts"), json!({"name":"Build-one"}))
+        .send(&format!("{base}/scripts"), json!({"id":"second-action"}))
         .await;
     assert_eq!(status, 201, "{second}");
     assert_ne!(

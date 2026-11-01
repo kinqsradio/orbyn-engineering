@@ -40,6 +40,7 @@ import { SubagentBar } from "./SubagentBar";
 import { LimitBanner, ThreadErrorBanner } from "./ThreadBanners";
 import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
+import { ProjectActionShortcuts } from "./ProjectActionShortcuts";
 
 function TopBar({
   thread,
@@ -405,6 +406,7 @@ export function ThreadView({ id }: { id: string }) {
 
   return (
     <div className="thread-layout">
+      <ProjectActionShortcuts threadId={id} />
       <section
         className="thread-main"
         hidden={swapped}

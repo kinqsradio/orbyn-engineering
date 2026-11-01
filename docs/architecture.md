@@ -388,8 +388,29 @@ running similarly named actions cannot replace each other's terminal or process.
 This is an additive reader/writer expansion with no database backfill or schema
 change. Existing writers may still replace a whole list, and legacy data remains
 readable; targeted editing is the identity-preserving operation. The data-directory
-lock continues to admit only one Core writer. Environment-wide action shortcuts
-remain unfinished; identity support does not establish complete action parity.
+lock continues to admit only one Core writer. Scoped settings expose derived IDs
+in the editable action value, while raw environment/member/override layers still
+form the revision digest; reading the editor does not backfill stored lists.
+The run endpoint accepts exactly one saved action ID or legacy name. Both paths
+resolve the current effective command in Core and check folder trust before spawning.
+
+The action editor's Keybinding field captures the environment-wide shortcut for
+`script.<id>.run`. The existing keybinding file remains its owner. Core serializes
+its read/modify/atomic-rename writers so unrelated concurrent edits survive;
+external manual file edits do not share that writer lock. Saving action metadata
+and saving the shortcut are separate effects. If the second fails, the action
+remains saved, the form becomes Edit Action and retains the shortcut draft. A retry
+updates that action rather than creating a duplicate. Removing one project's action
+does not delete its environment-wide binding, which other projects can share.
+
+Only this thread's available action commands register handlers. While its catalog
+is still loading, a pressed action shortcut resolves that ID through a fresh Core
+read. A route epoch cancels delayed work on navigation or unmount; modal dialogs
+and repeated keydown events cannot launch actions. Plain action keys do not take
+text input's keystrokes. Menus and shortcuts share execution, select the resulting
+terminal and then apply preview options. Terminal selection is transient viewer
+state and never an authority to run a command. Complete action parity still needs
+preparation retry and final integrated native/Windows qualification.
 The first `run_on_worktree_create` or
 `run_on_settle` action runs in its worktree; later matching actions are not run.
 Setup has its own terminal, distinct from manual execution, and each settle gets

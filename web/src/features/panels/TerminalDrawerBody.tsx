@@ -9,7 +9,7 @@ import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { TerminalPanel } from "./TerminalPanel";
 import type { ProjectScript } from "../../generated/ProjectScript";
-import { openActionPreview } from "../thread/actionPreview";
+import { runProjectAction } from "../thread/runProjectAction";
 import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 const MAIN = "main";
@@ -35,6 +35,11 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
   const [watching, setWatching] = useState(false);
   const pushToast = useUi((state) => state.pushToast);
   const { reload } = terminals;
+  const reveal = useUi((state) => state.terminalReveal);
+  useEffect(() => {
+    if (reveal?.threadId !== threadId) return;
+    setActive(reveal.group); reload();
+  }, [reveal, threadId, reload]);
   const groups = useMemo(() => groupTerminals(terminals.data ?? []), [terminals.data]);
   const shown = groups.find((group) => group[0]?.group === active);
   const tabs = groups.filter((group) => group[0]?.group !== MAIN);
@@ -66,10 +71,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
   };
   const run = async (script: ProjectScript) => {
     try {
-      const made = await request<TerminalInfo>("POST", `${base}/scripts`, { name: script.name });
-      setActive(made.group);
-      reload();
-      await openActionPreview(threadId, script);
+      await runProjectAction(threadId, script);
     } catch (failure) {
       fail(failure);
     }

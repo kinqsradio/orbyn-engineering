@@ -260,6 +260,10 @@ impl Core {
     /// Adds or changes a rule in the file, by rename so a crash cannot truncate it.
     /// A file that does not parse is left for the person to fix.
     pub fn save_keybinding(&self, rule: &KeybindingRule) -> Result<KeybindingsView> {
+        let _writer = self
+            .keybinding_writer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !valid(rule) {
             return Err(CoreError::Invalid(
                 "A rule needs a key and a command.".into(),

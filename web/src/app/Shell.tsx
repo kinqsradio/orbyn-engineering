@@ -28,6 +28,7 @@ import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
 import { FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { actionIdFromCommand } from "../lib/actionCommand";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
@@ -360,7 +361,17 @@ function useGlobalKeys(route: Route) {
   }, [reload]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const actionAllowed = () => !event.repeat && !event.isComposing && !document.querySelector("dialog[open]")
+        && (event.metaKey || event.ctrlKey || event.altKey || !editing(document.activeElement));
       if (event.key === "Escape" && !event.defaultPrevented) {
+        if (actionAllowed()) {
+          for (const rule of [...rules].reverse()) {
+            if (!rule.remove && actionIdFromCommand(rule.command) !== null && matchesKey(rule.key, event)
+              && whenHolds(rule.when, keyContext(route)) && (runHandlers(rule.command) || runHandlers("projectActions.pending", rule.command))) {
+              event.preventDefault(); return;
+            }
+          }
+        }
         if (route.name === "thread" && !document.querySelector("dialog[open]")) {
           const { panelOpen, closePanel } = useUi.getState();
           if (panelOpen === true) closePanel();
@@ -376,12 +387,15 @@ function useGlobalKeys(route: Route) {
       }
       // A focused surface that took the key, like the model picker's number jumps, keeps it.
       if (event.defaultPrevented) return;
-      if (event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key)) {
+      const modified = event.metaKey || event.ctrlKey || event.altKey || /^F\d+$/.test(event.key);
+      if (modified || actionAllowed()) {
         const context = keyContext(route);
         // The last rule wins, so the file overrides a default.
         for (const rule of [...rules].reverse()) {
+          const action = actionIdFromCommand(rule.command) !== null;
+          if ((!modified && !action) || (action && !actionAllowed())) continue;
           if (rule.remove || !matchesKey(rule.key, event) || !whenHolds(rule.when, context)) continue;
-          if (runHandlers(rule.command) || runShellCommand(rule.command, route)) {
+          if (runHandlers(rule.command) || (action && runHandlers("projectActions.pending", rule.command)) || runShellCommand(rule.command, route)) {
             event.preventDefault();
             return;
           }

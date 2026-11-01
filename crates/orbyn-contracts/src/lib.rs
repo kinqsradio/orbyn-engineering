@@ -1727,7 +1727,10 @@ pub struct ProjectFileView {
 
 wire! {
 pub struct RunScript {
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub id: Option<String>,
 }
 }
 

@@ -1,24 +1,25 @@
 import { useEffect, useRef } from "react";
 import type { KeybindingRule } from "../api/types";
+import { actionIdFromCommand } from "../lib/actionCommand";
 
 /** Handlers live with what they act on, and register while mounted. */
-const handlers = new Map<string, Set<() => boolean | void>>();
+const handlers = new Map<string, Set<(argument?: string) => boolean | void>>();
 
-export function runHandlers(command: string): boolean {
+export function runHandlers(command: string, argument?: string): boolean {
   let handled = false;
   for (const handler of handlers.get(command) ?? []) {
-    if (handler() !== false) handled = true;
+    if (handler(argument) !== false) handled = true;
   }
   return handled;
 }
 
-export function useCommand(command: string, handler: () => boolean | void) {
+export function useCommand(command: string, handler: (argument?: string) => boolean | void) {
   const latest = useRef(handler);
   useEffect(() => {
     latest.current = handler;
   });
   useEffect(() => {
-    const call = () => latest.current();
+    const call = (argument?: string) => latest.current(argument);
     const set = handlers.get(command) ?? new Set();
     handlers.set(command, set);
     set.add(call);
@@ -31,7 +32,11 @@ export function useCommand(command: string, handler: () => boolean | void) {
 const mac = () => /mac/i.test(navigator.platform);
 const SHIFTED_CODE = /^(Digit|Bracket)/;
 
-const eventKey = (event: KeyboardEvent): string => {
+type ShortcutEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
+
+const eventKey = (event: ShortcutEvent): string => {
+  if (event.key === " ") return "space";
+  if (event.key === "Escape") return "esc";
   // Shift changes the character, so the physical key names these.
   if (event.shiftKey && SHIFTED_CODE.test(event.code)) {
     if (event.code === "BracketLeft") return "[";
@@ -40,6 +45,17 @@ const eventKey = (event: KeyboardEvent): string => {
   }
   return event.key.toLowerCase();
 };
+
+export function shortcutForEvent(event: ShortcutEvent): string | null {
+  if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
+  return [
+    (mac() ? event.metaKey : event.ctrlKey) ? "mod" : null,
+    mac() && event.ctrlKey ? "ctrl" : null,
+    !mac() && event.metaKey ? "meta" : null,
+    event.altKey ? "alt" : null, event.shiftKey ? "shift" : null,
+    eventKey(event),
+  ].filter(Boolean).join("+");
+}
 
 export function matchesKey(rule: string, event: KeyboardEvent): boolean {
   const parts = rule.toLowerCase().split(/\+(?=.)/);
@@ -52,7 +68,7 @@ export function matchesKey(rule: string, event: KeyboardEvent): boolean {
     event.ctrlKey === wantsCtrl &&
     event.altKey === has("alt") &&
     event.shiftKey === has("shift") &&
-    key === eventKey(event)
+    (key === "escape" ? "esc" : key) === eventKey(event)
   );
 }
 
@@ -62,11 +78,13 @@ let terminalRules: KeybindingRule[] = [];
 
 /** Keeps the rules that act inside a terminal, which reads the keyboard itself. */
 export function setTerminalRules(rules: KeybindingRule[]) {
-  terminalRules = rules.filter((rule) => !rule.remove && /(^|[^!])terminalFocus/.test(rule.when ?? ""));
+  terminalRules = rules.filter((rule) => !rule.remove && (/(^|[^!])terminalFocus/.test(rule.when ?? "")
+    || (actionIdFromCommand(rule.command) !== null && whenHolds(rule.when, { terminalFocus: true }))));
 }
 
 /** True for a key the app owns while a terminal has focus, so xterm leaves it alone. */
-export const isTerminalShortcut = (event: KeyboardEvent) => terminalRules.some((rule) => matchesKey(rule.key, event));
+export const isTerminalShortcut = (event: KeyboardEvent) => terminalRules.some((rule) => matchesKey(rule.key, event)
+  && (actionIdFromCommand(rule.command) === null || Boolean(handlers.get(rule.command)?.size)));
 
 /** `a && !b`, with `||` between alternatives. An unknown name is false. */
 export function whenHolds(when: string | null, context: WhenContext): boolean {

@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use orbyn_contracts::Thread;
@@ -120,6 +120,7 @@ pub struct Core {
     /// For requests a person asked for, such as reading the ACP registry.
     pub http: reqwest::Client,
     pub recovery: Recovery,
+    pub(crate) keybinding_writer: Mutex<()>,
     _lock: File,
 }
 
@@ -219,6 +220,7 @@ impl Core {
             previews: PreviewManager::default(),
             http,
             recovery,
+            keybinding_writer: Mutex::new(()),
             _lock: lock,
         };
         core.apply_login_preference()?;

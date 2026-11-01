@@ -223,10 +223,12 @@ pub async fn run_script(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<RunScript>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok((
-        StatusCode::CREATED,
-        Json(state.core.run_script(&id, &body.name, LOCAL_USER)?),
-    ))
+    let terminal = match (body.name.as_deref(), body.id.as_deref()) {
+        (Some(name), None) => state.core.run_script(&id, name, LOCAL_USER)?,
+        (None, Some(action)) => state.core.run_script_by_id(&id, action, LOCAL_USER)?,
+        _ => return Err(CoreError::Invalid("Choose one saved action ID or name.".into()).into()),
+    };
+    Ok((StatusCode::CREATED, Json(terminal)))
 }
 
 async fn serve(
