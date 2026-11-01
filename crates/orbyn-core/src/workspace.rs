@@ -62,6 +62,10 @@ pub struct Workspace {
     bundle: Option<PathBuf>,
     /// One replacement at a time, whoever started it.
     upgrading: tokio::sync::Mutex<()>,
+    /// A replacement waits for library readers and their child processes to finish.
+    library_access: tokio::sync::RwLock<()>,
+    #[cfg(test)]
+    replacement_ready: tokio::sync::Notify,
     upgrade_wake: tokio::sync::Notify,
     idle_poll: std::time::Duration,
     state: RwLock<Option<WorkspaceState>>,
@@ -324,6 +328,9 @@ impl Workspace {
             default_url,
             bundle,
             upgrading: tokio::sync::Mutex::new(()),
+            library_access: tokio::sync::RwLock::new(()),
+            #[cfg(test)]
+            replacement_ready: tokio::sync::Notify::new(),
             upgrade_wake: tokio::sync::Notify::new(),
             idle_poll: provision::idle_poll(),
             state: RwLock::new(state),
@@ -474,6 +481,7 @@ impl Workspace {
 
     /// The upstream revision as last fetched.
     pub async fn upstream_revision(&self) -> Option<String> {
+        let _reader = self.library_access.read().await;
         let root = self.root().ok()?;
         upstream_of(&root).await?;
         git(&root, &["rev-parse", "@{upstream}"])
@@ -484,6 +492,7 @@ impl Workspace {
 
     /// Reads the library's identity for prompts and the skills view.
     pub async fn identity(&self) -> Result<(String, bool)> {
+        let _reader = self.library_access.read().await;
         let state = self.current().ok_or(CoreError::WorkspaceRequired)?;
         let in_git = state.root.join(".git").exists();
         let dirty = in_git && !dirty_files(&state.root).await?.is_empty();
@@ -540,6 +549,13 @@ impl Workspace {
 
     /// Fetches only: the merge is a separate, explicit step.
     pub async fn fetch(&self) -> Result<Vec<IncomingCommit>> {
+        let _reader = self.library_access.read().await;
+        self.fetch_unlocked().await
+    }
+
+    // The caller already holds library_access. Reacquiring a read lock could wait
+    // behind a queued writer while that writer waits for the caller's first lock.
+    async fn fetch_unlocked(&self) -> Result<Vec<IncomingCommit>> {
         let root = self.root()?;
         if upstream_of(&root).await.is_none() {
             self.wake_upgrade();
@@ -551,6 +567,7 @@ impl Workspace {
 
     /// The library's position against what was last fetched, without a fetch.
     pub async fn local_position(&self) -> Result<(u32, u32, Vec<IncomingCommit>)> {
+        let _reader = self.library_access.read().await;
         let root = self.root()?;
         if upstream_of(&root).await.is_none() {
             return Ok((0, 0, Vec::new()));
@@ -561,8 +578,9 @@ impl Workspace {
 
     /// Fetches, and with `apply` fast-forwards. Local edits are never touched.
     pub async fn update(&self, apply: bool) -> Result<LibraryUpdateResult> {
+        let _reader = self.library_access.read().await;
         let root = self.root()?;
-        let pending = self.fetch().await?;
+        let pending = self.fetch_unlocked().await?;
         let state = self.current().ok_or(CoreError::WorkspaceRequired)?;
         let revision = revision_of(&state).await?;
         if !apply || pending.is_empty() {
@@ -610,6 +628,7 @@ impl Workspace {
     /// Returns to the revision before the last update, only from exactly where
     /// that update left the library. `reset --keep` refuses to lose local work.
     pub async fn rollback(&self) -> Result<LibraryUpdateResult> {
+        let _reader = self.library_access.read().await;
         let root = self.root()?;
         let state = self.current().ok_or(CoreError::WorkspaceRequired)?;
         let rollback = state
@@ -641,6 +660,7 @@ impl Workspace {
     }
 
     pub async fn status(&self, projects: &[orbyn_contracts::Project]) -> Result<WorkspaceStatus> {
+        let _reader = self.library_access.read().await;
         let Some(state) = self.current() else {
             return Ok(WorkspaceStatus {
                 configured: false,
