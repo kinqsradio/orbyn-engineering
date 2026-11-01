@@ -58,6 +58,10 @@ are 175 excluded and zero unresolved-scope rows. These are checklist declaration
 not a fresh runtime verification count. Scope reconciliation and explicit partial
 rows mean older totals are not directly comparable as delivered features. The
 former 365/573 calculation is not a valid completion percentage.
+The local section now explicitly marks F30 partial after inspection established
+missing cleanup rules and scheduling. Its direct count is 343 declared checked,
+48 partial, 141 open and 2 not doable out of the same 534 included rows; the
+source-tick count stays 384. This corrects a claim, rather than removing behavior.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
