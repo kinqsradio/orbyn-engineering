@@ -26,3 +26,4 @@
 .native-session-text { flex: 1; min-width: 0; display: grid; }
 .native-session-text span, .native-session-text code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .native-session-text code { color: var(--color-text-muted, inherit); font-size: 0.85em; }
+.native-sessions { display: grid; gap: 8px; }
