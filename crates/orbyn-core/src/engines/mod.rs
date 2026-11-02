@@ -9,7 +9,7 @@ pub mod probe;
 
 use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
@@ -316,16 +316,27 @@ impl EngineManager {
         })
     }
 
-    /// Holds admission exclusion through the synchronous configuration commit.
-    pub fn change_provider_configuration<T>(
-        &self,
-        change: impl FnOnce() -> Result<T>,
-    ) -> Result<T> {
+    /// Holds admission exclusion while provider configuration is committed, so no
+    /// command is replaced under a native-session operation or an update. Keep the
+    /// gate only across the synchronous commit.
+    pub fn configuration_gate(&self) -> Result<ConfigurationGate<'_>> {
         let updating = lock(&self.updating);
         let operations = lock(&self.native_operations);
         if let Some(engine) = operations.iter().next().or_else(|| updating.iter().next()) {
             return Err(CoreError::EngineBusy(engine.clone()));
         }
+        Ok(ConfigurationGate {
+            _updating: updating,
+            _operations: operations,
+        })
+    }
+
+    /// Runs `change` under the configuration gate.
+    pub fn change_provider_configuration<T>(
+        &self,
+        change: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let _gate = self.configuration_gate()?;
         change()
     }
 
@@ -663,6 +674,12 @@ async fn read_all(source: Option<&mut (impl tokio::io::AsyncRead + Unpin)>, into
     if let Some(source) = source {
         let _ = source.read_to_end(into).await;
     }
+}
+
+/// Exclusion held for one configuration commit.
+pub struct ConfigurationGate<'a> {
+    _updating: MutexGuard<'a, HashSet<String>>,
+    _operations: MutexGuard<'a, HashSet<String>>,
 }
 
 /// Dropping the operation releases admission even on cancellation or failure.
