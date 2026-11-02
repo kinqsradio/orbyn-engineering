@@ -163,6 +163,65 @@ pub struct ChangeProjectIcon {
 }
 }
 
+wire! {
+#[serde(deny_unknown_fields)]
+pub struct SearchProjectImages {
+    pub scope: ProjectScopesQuery,
+    pub membership_version: String,
+    #[serde(default)]
+    pub query: String,
+}
+}
+
+wire! {
+pub struct ProjectImageCandidate {
+    pub path: String,
+    pub name: String,
+}
+}
+
+wire! {
+pub struct ProjectImageSearchResult {
+    pub project_id: String,
+    pub project_path: String,
+    pub membership_version: String,
+    pub entries: Vec<ProjectImageCandidate>,
+    pub truncated: bool,
+}
+}
+
+wire! {
+#[serde(deny_unknown_fields)]
+/// A workspace-relative image hint, applied to the observed selected members.
+pub struct ChangeProjectImage {
+    pub scope: ProjectScopesQuery,
+    pub membership_version: String,
+    pub expected_revisions: BTreeMap<String, String>,
+    pub path: String,
+}
+}
+
+wire! {
+pub struct ProjectIconResourceData {
+    pub source: ProjectIconSource,
+    pub relative_path: String,
+    pub revision: String,
+    pub media_type: ProjectIconMediaType,
+    #[ts(type = "number")]
+    pub size: u64,
+}
+}
+
+wire! {
+/// Passive image identity; streaming delivery does not place bytes in project rows.
+pub struct ProjectIconResource {
+    pub project_id: String,
+    pub project_path: String,
+    pub favicon_path: Option<String>,
+    pub image: Option<ProjectIconResourceData>,
+}
+}
+
 wire_enum! {
 pub enum ProjectIconSource { SavedImage, ProjectFile, Automatic }
 }

@@ -23,7 +23,20 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (19, PREPARATION_RETRY),
     (20, WORKTREE_CLEANUP),
     (21, PROJECT_ICONS),
+    (22, PROJECT_IMAGE_HISTORY),
 ];
+
+// Image selections are remembered atomically with metadata. This also fences
+// writers that do not advance the revision when project trust changes.
+const PROJECT_IMAGE_HISTORY: &str = r#"
+CREATE TABLE project_image_history (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    selection_count INTEGER NOT NULL CHECK(selection_count >= 1),
+    last_used INTEGER NOT NULL CHECK(last_used >= 0),
+    PRIMARY KEY(project_id, path)
+) WITHOUT ROWID;
+"#;
 
 // Older writers cannot honor icon metadata/revisions. Existing names and project
 // authority remain unchanged; old schemas refuse this version before writing.

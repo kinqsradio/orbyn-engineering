@@ -1,4 +1,4 @@
-import { invalidateProjectImages } from "../lib/projectImages";
+import { forgetProjectImages, invalidateProjectImages } from "../lib/projectImages";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
@@ -22,6 +22,13 @@ export interface Loadable<T> {
 const projectImageChanged = (previous: Project, next: Project) =>
   JSON.stringify(previous.project_icon ?? null) !== JSON.stringify(next.project_icon ?? null)
   || (previous.favicon_path ?? null) !== (next.favicon_path ?? null);
+
+function projectRevision(project: Project): bigint | null {
+  const value = project.metadata_revision;
+  if (typeof value !== "string" || value.length > 19 || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+  const revision = BigInt(value);
+  return revision <= 9223372036854775807n ? revision : null;
+}
 
 const idle = <T>(): Loadable<T> => ({ data: null, error: null, loading: false });
 
@@ -363,8 +370,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   putProject(project) {
-    claim("projects");
     const previous = get().projects.data?.find((entry) => entry.id === project.id);
+    const before = previous ? projectRevision(previous) : null;
+    const after = projectRevision(project);
+    if (before !== null && (after === null || after < before)) return;
+    claim("projects");
     if (previous && projectImageChanged(previous, project)) invalidateProjectImages(project.id);
     set((state) => {
       const list = state.projects.data ?? [];
@@ -381,7 +391,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   dropProject(projectId) {
     claim("projects");
-    invalidateProjectImages(projectId);
+    forgetProjectImages(projectId);
     set((state) => {
       const { [projectId]: _gone, ...threadIds } = state.threadIds;
       return {

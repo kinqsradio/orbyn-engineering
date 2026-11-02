@@ -125,6 +125,15 @@
         "Head96ada2bd9549f19f028d8ec58c688b3d58f33815; CI41320346880 all six required jobs passed; GitGuardian passed; no reviews or review threads",
         "Merged58d86e971de21254763504a2a0bf3d0cadf6274a; primary main fast-forwarded; next feature branch feat/project-settings starts at this merge"
       ]
+    },
+    {
+      "result": "Shared local image search/relative selections, larger image delivery, bounded persistent previews and stale metadata presentation locally qualified; K7 remains partial for native external chooser and final platform evidence",
+      "evidence": [
+        "docs/architecture.md",
+        "docs/parity.md: K7",
+        "target/project-image-final-workspace-inputs.json",
+        "target/project-image-final253-e2e-end.json"
+      ]
     }
   ],
   "verification": [
@@ -360,12 +369,24 @@
         "Finalfamilyfix+isolationRust1043passed9ignored andfmt/workspaceclippy; target/project-settings-isolated-final-rust-receipt.json records163unchanged inputs. Web332/check/buildgreen. RebuiltCore234browsergate in progress.",
         "Final sourcea17e748: full234E2Epassed0failed/no filters/skips; Rust1043passed9existingignored; fmt/workspaceclippy andwebcheck332unit/buildpassed. Daemon5426c8ff unchanged. Native/Windows/hosted continuation checks remain unverified."
       ]
+    },
+    {
+      "check": "Current K7 local image selection and persistent cache continuation",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "Schema22 Core465 passed2ignored; service30 passed incl populated migration and actual20/21 writer refusal; target/project-image-history-inputs.json",
+        "HTTP4passed with fmt/scopedClippy; target/project-image-http-inputs.json",
+        "Focused16picker/image cases passed; cache3 corrected observer passed; target/project-image-schema22-browser.log and target/project-image-cache-browser-qualified.log",
+        "Web355unit,check,build passed; target/project-image-final-web-{unit,check,build}.log",
+        "Final Rust workspace1080 passed9existingignored, fmt/alltargetClippy passed with441unchangedinputs. Final corrected web355unit/check/build passed. Full default253 browserpassed exit0,19.1min,772source/config/testinputs+bothcopiedbinariesunchanged; target/project-image-final253-e2e-{start,end}.json/log. Priorfull252251pass1fail retiredendpointobserver corrected, source/copiesunchanged; realstaleiconoverlayRED thenfocusedGREEN andfinal253GREEN. No native/Windows qualification or currentfeaturepush/PR/merge claim."
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Continue K7 structured icon/image controls and K5 full model defaults on pushed feat/project-settings. Current foundation is locally green:1043Rust9ignored,332webunit/check/build,234E2E. Open section/coherent-about20-row PR when ready; merge only every required exact-head check green without squash. Main58d86e9 CI41322108228 staysgreen; all native/tool stops and owner release blockers remain.",
+  "next_action": "Deliver locally qualified project-settings batch through PR with all required exact-head checks green and no squash. Then refresh bundledlibrarypin ed3f1d3 to reviewed57d9fe7 separately with realfixture, continue K7 nativeexternalchooser and K5 defaults/allremaininghandoffscope. Latestsharedguidance reviewedinplace; stoppednative/tool operations remainstopped.",
   "delivery": {
     "state": "pushed",
     "evidence": [

@@ -13,6 +13,7 @@ ed25519-dalek.workspace = true
 futures-util.workspace = true
 getrandom.workspace = true
 icu_properties = "=2.4.0"
+ignore = "=0.4.34"
 portable-pty.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true

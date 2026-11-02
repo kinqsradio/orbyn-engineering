@@ -108,3 +108,28 @@ it("invalidates passive image observations when committed or polled icon metadat
     expect(invalidateProjectImages).not.toHaveBeenCalled();
   } finally { spy.mockRestore(); invalidateProjectImages.mockRestore(); }
 });
+
+
+it("does not replace a newer committed project with an older mutation response", () => {
+  const older: Project = { ...projects[0]!, name: "Before rename", metadata_revision: "4", favicon_path: "brand/icon.svg" };
+  const newer: Project = { ...older, name: "After rename", metadata_revision: "5" };
+  useWorkspace.setState({ projects: { data: [older], error: null, loading: false } });
+  useWorkspace.getState().putProject(newer);
+  useWorkspace.getState().putProject(older);
+  expect(useWorkspace.getState().projects.data).toEqual([newer]);
+});
+
+
+it("orders committed project revisions exactly above JavaScript's integer range", () => {
+  const newer: Project = { ...projects[0]!, name: "Newer", metadata_revision: "9007199254740993" };
+  useWorkspace.setState({ projects: { data: [newer], error: null, loading: false } });
+  useWorkspace.getState().putProject({ ...newer, name: "Older", metadata_revision: "9007199254740992" });
+  expect(useWorkspace.getState().projects.data).toEqual([newer]);
+});
+
+it("does not replace observed versioned project metadata with an unversioned reply", () => {
+  const newer: Project = { ...projects[0]!, name: "Observed", metadata_revision: "0" };
+  useWorkspace.setState({ projects: { data: [newer], error: null, loading: false } });
+  useWorkspace.getState().putProject({ ...newer, name: "Unversioned", metadata_revision: undefined });
+  expect(useWorkspace.getState().projects.data).toEqual([newer]);
+});

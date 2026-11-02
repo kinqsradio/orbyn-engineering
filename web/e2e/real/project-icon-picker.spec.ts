@@ -64,7 +64,7 @@ test("icon drafts cancel without writes and group or checkout saves preserve reg
     await dialog(page).getByRole("button", { name: "Blue", exact: true }).click(); await save(page).click();
     await expect(dialog(page)).toHaveCount(0);
     await expect.poll(() => icons(service)).toMatchObject({ [one!.id]: { kind: "lucide", name: "rocket", color: "blue" }, [two!.id]: { kind: "lucide", name: "rocket", color: "blue" }, [otherId]: null });
-    expect(requests).toHaveLength(1); expect(requests[0]).toMatchObject({ scope: { selection: { kind: "project_group", group_key: group.key } }, expected_revisions: { [one!.id]: "0", [two!.id]: "0" } });
+    expect(requests).toHaveLength(1); expect(requests[0]).toMatchObject({ scope: { selection: { kind: "project_group", group_key: group.key } }, expected_revisions: Object.fromEntries(initial.filter((row) => [one!.id, two!.id].includes(row.id)).map((row) => [row.id, row.metadata_revision])) });
     await expect(iconRow(page).locator(".lucide-rocket")).toBeVisible();
     await page.screenshot({ path: info.outputPath("group-icon.png") });
     await page.goto(`${url}&checkout=${encodeURIComponent(one!.id)}`); await chooser(page).click();
@@ -77,7 +77,7 @@ test("icon drafts cancel without writes and group or checkout saves preserve reg
     await page.getByRole("button", { name: "Reset project icon", exact: true }).click();
     await expect.poll(() => icons(service)).toMatchObject({ [one!.id]: null });
     await expect(iconRow(page).locator("img")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Choose a project icon file", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Choose a project icon file", exact: true })).toBeEnabled();
     for (const before of initial) {
       const after = (await rows(service)).find((row) => row.id === before.id)!;
       expect({ path: after.path, trusted: after.trusted, name: after.name }).toEqual({ path: before.path, trusted: before.trusted, name: before.name });

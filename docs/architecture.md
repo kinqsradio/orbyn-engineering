@@ -634,46 +634,60 @@ revision, including when navigation changes before it finishes. Remaining provid
 controls and storage forms still need their own bindings and qualification; their
 parity claims stay partial until those and native walkthroughs are verified.
 
-Project images are passive metadata, resolved by registered physical project ID
-through `GET /api/projects/:id/icon`. The route creates no thread, execution
-permission or ordinary file grant. An untrusted project may supply a local image;
-scratch and library roots are refused. A bounded authenticated JSON result carries
-optional base64 image bytes, a closed media type, source, relative path and a
-revision of the bytes plus MIME. The client constructs only a fixed image data
-URL, never injects SVG markup and never follows a caller-supplied asset URL.
-Structured project icon overrides take display priority over passive images. For
-image resolution, a stored relative image path precedes project-file hints, ordered
-automatic candidates and supported local source hints; it passes the same checked
-registered-root reader. No website is fetched or source executed. Image selection
-remains unfinished; the structured icon writer does not grant external file access.
+Project images are passive metadata, resolved by registered physical project ID.
+`GET /api/projects/:id/icon/resource` returns the source, relative path, content
+revision, closed media type and size without embedding bytes. The fixed
+`icon/raw` and `images/raw?path=` routes stream the resolved image or a checked
+picker candidate. They create no thread, execution permission or ordinary file
+grant. Untrusted projects may supply local images; scratch and library roots are
+refused. Structured overrides take display priority. A stored relative image hint
+precedes project-file hints, ordered automatic candidates and supported local
+source hints. No website is fetched or source executed. SVG is used only as an
+image, never injected as markup.
 
-Image input/output is bounded to 1 MiB; config/source text is bounded to 256 KiB
-per file and a 2 MiB aggregate source budget. Reads probe one extra byte to catch
-growth. Actual opened handles must stay inside the selected canonical root and
-outside Git/library paths before and after reading. Config/source metadata reads
-also require the exact fixed relative path, so a symlink cannot turn a known
-metadata filename into a read of another file. Image MIME comes from the checked
-handle's image filename; ICNS supports only bounded embedded PNG extraction.
-Badge image loading waits for the known workspace-library path and excludes that
-protected library and scratch identities. Initial project registration cannot race
-workspace discovery into an unauthorized library-image request. Retained workspace
-metadata remains usable during routine polling; a changed library identity hides
-its prior cached image immediately. The shared badge cache keys service origin,
-physical ID and registered path,
-deduplicates in-flight reads and bounds entries/encoded bytes to 64/8 MiB.
-Successful images expire after ten minutes; misses, errors and decode failures
-retry after one minute. Optional image requests have a 30-second deadline; timeout
-replaces the observation so an eventual old reply cannot publish, even when its
-transport ignores abort. A single unmount cannot cancel another badge's read.
-Root changes/removal, structured icon or saved image changes, and reconnect
-invalidate matching observations; routine
-four-second project polling does not bypass the cache lifetime. No image bytes
-enter project lists, local storage or persisted UI state. Automatic fallback identity
-uses the normalized display name alone: Unicode letter/number words choose the
-first letter and a first-word digit, otherwise the last word's first letter or the
-first word's last letter; uppercasing keeps two code points. A normalized en-US
-lowercase polynomial selects the reference's 18 named colors. The shared project
-badge owns this behavior without changing unrelated monogram helpers.
+The legacy `GET /api/projects/:id/icon` JSON reader retains its 1 MiB image limit.
+Resource/raw reads use the existing 1 GiB raw-file envelope and hash selected bytes
+in bounded chunks, checking handle identity, size and modification time afterward.
+Config/source text stays bounded to 256 KiB per file and 2 MiB aggregate. Actual
+opened handles must stay inside the selected canonical root and outside Git/library
+paths before and after reading. Fixed metadata paths require an exact relative
+match. MIME follows the checked handle's image filename; ICNS exposes only a checked
+embedded PNG extent. Raw range offsets are relative to that extent, not the container.
+Raw images retain conditional/range handling, sandbox/nosniff and private cache
+headers. Query tokens authorize only GET/HEAD on exact image raw routes; metadata,
+search and writes still require ordinary authenticated requests. Native CORS remains
+limited to the existing exact native origins.
+
+Badge loading waits for the known workspace-library path and excludes scratch and
+library identities. Retained workspace metadata remains usable during polling;
+a changed library identity hides its previous image immediately. The shared memory
+cache keys service origin, physical ID, registered path and saved hint, deduplicates
+reads and bounds observations/encoded bytes to 128/8 MiB. Hits expire after ten
+minutes; misses, errors and decode failures retry after one minute. Optional reads
+have a 30-second deadline and observation fences prevent late publication despite
+ignored aborts. A single unmount cannot cancel another badge's read. Reconnect or
+metadata changes retry while retaining a previous preview; removal purges that
+project. Routine four-second project polling does not bypass cache lifetimes.
+
+An optional IndexedDB store retains at most 128 previews and 1 MiB of data URLs,
+each at most 32 KiB, keyed by stable client origin, physical ID, root and saved hint.
+It stores content revisions and no service URL, token or volatile service port.
+Matching revisions reuse previews; authoritative missing/refused resources and
+image decode failures remove them. Transient read failures retain the previous
+preview. Clear/delete/project-purge generations fence pending storage operations.
+Storage failure leaves raw image delivery available. Preview reads stop at 4 MiB,
+validate the content ETag and retain small data URLs; larger bitmaps try 96 then
+48 pixel WebP at 85 percent quality and release their decoded bitmap. Large SVGs
+are not rasterized. Uncacheable images use the fixed authenticated raw route with
+a content-version query. Badges retain the last decoded image while a replacement
+loads. Images never enter project lists or persisted UI state.
+
+Automatic fallback identity uses the normalized display name alone: Unicode
+letter/number words choose the first letter and a first-word digit, otherwise the
+last word's first letter or the first word's last letter; uppercasing keeps two
+code points. A normalized en-US lowercase polynomial selects the reference's 18
+named colors. The shared project badge owns this behavior without changing
+unrelated monogram helpers.
 
 Project Icon edits use the same selected physical-member fence as Name, with an
 observed membership version and exact decimal-string metadata revision per member.
@@ -692,19 +706,57 @@ another save; a late response cannot replace a different selection's dialog.
 Committed rows update the workspace separately from subsequent catalog-read errors.
 A committed project edit or removal supersedes older project-list reads and ends
 their loading state; a delayed poll cannot restore stale metadata or a removed row.
+Committed mutation replies also compare canonical decimal revisions as exact
+integers; a lower or absent revision cannot replace an observed versioned row.
+The comparison precedes claiming the project-list generation, so an old mutation
+cannot cancel a newer read. Project icon presentation also compares valid
+canonical i64 revisions across catalog, locally committed and workspace observations,
+using only the same physical ID and exact registered root. A stale committed overlay
+or failed catalog refresh cannot hide a newer known icon. This display comparison
+does not rebase a dialog's frozen membership/revisions or re-enable failed reads.
 The picker normalizes monogram input with NFKC and uppercasing; the renderer keeps
 received text unchanged. Package-owned Lucide loaders have a bounded component
-lifetime and unknown names use FolderCode. Saved image picking and native chooser
-qualification remain separate work.
+lifetime and unknown names use FolderCode.
+
+Choose file opens the same command-style local image search in web and desktop.
+An open freezes selection, representative physical root, membership and expected
+revisions. Search accepts empty queries, hides old entries immediately and fences
+query generations, including an A-to-B-to-A round trip. Only visible candidates
+load fixed-route thumbnails; failed decoding leaves the file glyph. Keyboard,
+IME, Escape and backdrop behavior do not write until a candidate is selected.
+Selection closes the picker before posting the relative POSIX hint to every
+selected physical member. Missing peer files or a source removed after selection
+do not prevent saving the hint; each member resolves its own bytes or fallback.
+The image writer clears the structured override and advances metadata revisions;
+structured writes and Reset clear the hint. A conflict refreshes the catalog for
+a later explicit open and never replays the write. No files are copied or changed.
+The optional native external chooser and its authority/qualification remain work.
+
+Core search runs no Git command or hook and reads no global ignore configuration.
+It parses checked in-root `.gitignore` and `.ignore` data, never descends symlink
+directories, validates candidate handles without hashing each image, and bounds
+visits/depth/enumeration time to 20,000/48/3 seconds with a separate cooperative
+3-second scoring budget. Bad ignore lines keep valid rules and mark truncation;
+unreadable or unsafe ignore sources omit their subtree. Results are capped at 200.
+Independent case-insensitive Unicode subsequence matching ranks basename, prefix,
+contiguous match, gaps, position and path length, then recent selection/count/path.
+Empty queries prioritize selection history. Exact native fff ranking weights are
+not established by this implementation.
 
 Schema 21 adds nullable `project_icon` JSON and `favicon_path`, and a nonnegative
 integer `metadata_revision` initially zero; wire revisions are decimal strings.
-Existing rows and unrelated columns remain intact. Selected Name, legacy Name and
-Icon writers advance this shared revision, using partial-column updates rather
-than replacing project rows. The existing exclusive data-directory service lock
-serializes old/new live writers. A schema-20 binary must refuse a schema-21 database
-before WAL setup or migration. Recovery requires the current writer or a complete
-pre-upgrade backup; never lower the schema marker or run the old writer on it.
+Existing rows and unrelated columns remain intact. Schema 22 adds per-project/path
+image-selection history with a cascading foreign key, saturating selection count,
+nonnegative last-use timestamp and 256-entry per-project bound. Image transactions
+record history only after all comparisons; Reset/structured changes retain it.
+Selected and legacy Name, icon/image, scratch adoption and false-to-true trust
+writers advance the shared revision using partial-column updates. Repeated trust
+leaves the row revision unchanged; audit and trust remain one transaction. The
+existing exclusive data-directory service lock serializes old/new live writers.
+Schema-20 and schema-21 binaries must refuse a schema-22 database before WAL setup
+or migration, and cannot bypass a live current owner. Recovery requires the current
+writer or a complete pre-upgrade backup; never lower the schema marker or run an
+old writer on it.
 
 Project Name edits require an explicit group or checkout, its observed catalog
 version and the raw expected name of every selected physical member. Core matches
@@ -1524,6 +1576,10 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
 | `GET /api/projects/:id/icon` | `ProjectIconImage`; bounded passive registered-root metadata, no path or URL argument |
+| `GET /api/projects/:id/icon/resource` | `ProjectIconResource`; checked image metadata and content revision without embedded bytes |
+| `GET, HEAD /api/projects/:id/icon/raw`, `/api/projects/:id/images/raw?path=` | Selected/candidate image bytes, checked registered roots, conditional and range handling |
+| `POST /api/settings/projects/image-search` | `SearchProjectImages` → `ProjectImageSearchResult`; selected representative, fenced membership and bounded local search |
+| `POST /api/settings/projects/image` | `ChangeProjectImage` → `Project[]`; same relative image hint with membership and metadata revision compare-and-set |
 | `POST /api/settings/projects/icon` | `ChangeProjectIcon` → `Project[]`; selected structured icon/reset with membership and metadata revision compare-and-set |
 | `POST /api/settings/projects/rename` | `RenameSelectedProjects` → `Project[]`; selected names with membership and raw-name compare-and-set |
 | `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |

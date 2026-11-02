@@ -71,7 +71,8 @@ registered Checkouts and removal, checked project images/automatic badges,
 bounded config reads, descendant-safe family removal, isolated provider discovery,
 and the structured project icon picker. Implementation `7e3d25f` and stale-read
 correction `d76dd71` are pushed; the remote section ref was verified at full head
-`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No section PR is open. Delivery remains
+`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No section PR was open at
+qualification; read GitHub for current delivery. Delivery remains
 section/about-20-row grouping with separate commits and green exact-head merge gates.
 
 Final production Rust passed 1055 workspace tests with 9 existing ignored,
@@ -92,10 +93,62 @@ second limit; focused 42 and full 338 reruns passed without limit changes. No ca
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
 Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
-doable out of 534 included. K6/K7 remain partial. Next are K7's reference Choose
-file search, saved paths, persistent image behavior and native chooser, followed
-by K5's full model defaults. Native/tool stops and missing release inputs below
-remain in force. No current-head hosted CI, native or Windows qualification is inferred.
+doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
+release inputs below remain in force. No current-head hosted CI, native or Windows
+qualification is inferred.
+
+The K7 image continuation is locally qualified on the section branch. Choose file
+opens the shared project-image search; selection saves the same relative hint for each selected
+member without copying or changing files. Core search is bounded and ignore-aware,
+with independent fuzzy matching and recent-selection history. Schema 22 stores
+that history and advances metadata revision on false-to-true trust; actual older
+schema-20 and schema-21 binaries are fenced. Resource/raw image delivery supports
+larger images and checked ICNS extents while preserving the legacy JSON limit.
+The client caches small previews in bounded IndexedDB storage, checks content
+revisions, keeps decoded images during replacement and fences late cache writes.
+
+Real-service qualification passes all nine image-picker cases, six
+structured-picker cases and both existing image cases. Three real-browser cache
+cases separately pass restore/revision replacement, count/byte limits and
+clear/delete/purge fences. The initial 19-case run had one cache-test failure: its
+observer opened an empty version-1 database before application initialization.
+The observer now inspects database existence first; the unchanged assertions pass
+without a production correction or timeout increase. Both red and green receipts
+are retained. A badge saved-hint regression and late image/name mutation regression
+also failed before their production corrections and pass after them.
+
+Web check, 355 unit tests and the production build pass. Four real HTTP tests
+cover exact image GET/HEAD query-token boundaries, conditions/ranges, ICNS offsets
+and desktop-service CORS; these are not packaged-webview evidence. Full Rust
+workspace checks pass: 1080 tests, 9 existing ignored, formatting and all-target
+Clippy, with 441 unchanged Rust/manifest/generated inputs. The initial full default
+browser run passed 251/252 on 772 unchanged source inputs and both unchanged copied
+executables. Its failure was the library-eligibility test observing only the retired
+JSON image endpoint. The observer now includes resource/raw and explicitly checks
+both, retaining zero requests before workspace identity and no library requests;
+the corrected case passes. A further real-service regression reproduced an older
+image reply overriding a newer known icon in settings after failed catalog refresh.
+The display correction passes its focused regression. The final full default
+browser gate passed 253/253 in 19.1 minutes, exit 0, with all 772 recorded source,
+configuration and test inputs and both copied executables unchanged. Receipts are
+`target/project-image-final253-e2e-{start,end}.json` and its full log. The corrected
+source also passes web check, 355 unit tests and the production build. No test was
+skipped, filtered or given a longer timeout in the full gate.
+The browser runtime is copied under
+`target/project-image-schema22-runtime/1793575463042012000/`: daemon SHA-256
+`4a2590971fcbe6274ded92cb82d1fdd76e0a3de340a47716843cf90d75c34abb`,
+companion `c90b38c786b00ad8cd9fcd6f8fffacc659ab6d73bb6c9aa4f9ee28f2ae90325d`.
+Focused source/runtime hashes matched before and after. Exact native search ranking
+weights, the native external chooser and final native/Windows qualification remain
+unverified or unimplemented. Deliver this qualified slice through the required
+exact-head green PR gates, then continue K7's native chooser and K5's full defaults.
+
+Shared engineering guidance was refreshed against library `57d9fe7` after the
+owner's update notice. Product illustration and animation additions apply to their
+own artifact types; real product work continues under the UI, architecture,
+language, migration and verification owners. The app's bundled library still pins
+`ed3f1d3`; refresh that snapshot as a separate maintenance change with a real bundled
+library fixture after delivering the current project-settings batch.
 
 ### Initial PR queue
 

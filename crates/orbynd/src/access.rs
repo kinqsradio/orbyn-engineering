@@ -268,8 +268,21 @@ fn authorized(access: &Access, request: &Request<Body>) -> bool {
     // element, so only those read routes take the token in the URL.
     let path = request.uri().path();
     let streaming = matches!(*request.method(), Method::GET | Method::HEAD)
-        && (path.starts_with("/ws/") || path.ends_with("/events") || path.ends_with("/files/raw"));
+        && (path.starts_with("/ws/")
+            || path.ends_with("/events")
+            || path.ends_with("/files/raw")
+            || project_image_read(path));
     streaming && query_token(request).is_some_and(|token| access.token_valid(token))
+}
+
+/// Image elements may address only these registered-project image capabilities.
+fn project_image_read(path: &str) -> bool {
+    let Some(tail) = path.strip_prefix("/api/projects/") else {
+        return false;
+    };
+    let mut parts = tail.split('/');
+    matches!((parts.next(), parts.next(), parts.next(), parts.next()),
+        (Some(id), Some("icon" | "images"), Some("raw"), None) if !id.is_empty())
 }
 
 fn query_token(request: &Request<Body>) -> Option<&str> {
@@ -312,6 +325,40 @@ mod tests {
             "proxy.test:9999",
         ] {
             assert!(!access.host_allowed(host), "{host}");
+        }
+    }
+
+    #[test]
+    fn project_image_query_tokens_are_only_for_exact_read_routes() {
+        let access = access();
+        for path in ["/api/projects/p/icon/raw", "/api/projects/p/images/raw"] {
+            for method in [Method::GET, Method::HEAD] {
+                let request = Request::builder()
+                    .method(method)
+                    .uri(format!("{path}?token=secret"))
+                    .body(Body::empty())
+                    .unwrap();
+                assert!(authorized(&access, &request), "{path}");
+            }
+            let request = Request::builder()
+                .method(Method::POST)
+                .uri(format!("{path}?token=secret"))
+                .body(Body::empty())
+                .unwrap();
+            assert!(!authorized(&access, &request), "{path}");
+        }
+        for path in [
+            "/api/projects/p/icon/resource",
+            "/api/settings/projects/image",
+            "/api/projects/p/nested/icon/raw",
+            "/api/projects//images/raw",
+            "/other/projects/p/icon/raw",
+        ] {
+            let request = Request::builder()
+                .uri(format!("{path}?token=secret"))
+                .body(Body::empty())
+                .unwrap();
+            assert!(!authorized(&access, &request), "{path}");
         }
     }
 

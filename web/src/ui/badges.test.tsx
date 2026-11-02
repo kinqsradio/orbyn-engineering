@@ -9,7 +9,7 @@ const images = vi.hoisted(() => ({
   read: vi.fn<() => string | null>(() => null),
 }));
 vi.mock("../lib/projectImages", () => ({
-  projectImageKey: (project: { id: string; path: string }) => JSON.stringify([project.id, project.path]),
+  projectImageKey: (project: { id: string; path: string; favicon_path?: string | null }) => JSON.stringify([project.id, project.path, project.favicon_path ?? null]),
   readProjectImage: images.read, subscribeProjectImage: images.subscribe,
   rejectProjectImage: vi.fn(), invalidateProjectImages: vi.fn(),
 }));
@@ -80,4 +80,13 @@ it("resetting a structured override resumes the registered image observation", (
   rendered.rerender(<ProjectBadge name={normal.name} project={{ ...normal, project_icon: null }} />);
   expect(images.subscribe).toHaveBeenCalledTimes(1);
   expect(rendered.container.querySelector("img")).not.toBeNull();
+});
+
+it("observes the saved relative image hint and resubscribes when it changes", () => {
+  ready();
+  const first = { ...normal, favicon_path: "assets/first.png" };
+  const rendered = render(<ProjectBadge name={first.name} project={first} />);
+  expect(images.subscribe.mock.calls.at(-1)?.[1]).toMatchObject({ favicon_path: "assets/first.png" });
+  rendered.rerender(<ProjectBadge name={first.name} project={{ ...first, favicon_path: "second.svg" }} />);
+  expect(images.subscribe.mock.calls.at(-1)?.[1]).toMatchObject({ favicon_path: "second.svg" });
 });

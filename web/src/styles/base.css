@@ -1059,6 +1059,8 @@ input[type="radio"] {
 }
 
 .badge-image { background: transparent; overflow: hidden; }
+.project-image-display { position: relative; display: inline-flex; flex-shrink: 0; width: 20px; height: 20px; }
+.project-image-pending { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .badge-image img { width: 100%; height: 100%; object-fit: contain; }
 
 .project-monogram { border-radius: 25%; background: color-mix(in srgb, currentColor 14%, transparent); font-size: var(--text-micro); user-select: none; }

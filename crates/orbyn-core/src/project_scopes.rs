@@ -469,6 +469,40 @@ fn trim_project_title(name: &str) -> &str {
 }
 
 impl Core {
+    pub async fn change_project_image(
+        &self,
+        request: &orbyn_contracts::ChangeProjectImage,
+    ) -> Result<Vec<Project>> {
+        crate::project_image_picker::validate_hint(&request.path)?;
+        if request.expected_revisions.is_empty() || request.expected_revisions.len() > MAX_PROJECTS
+        {
+            return Err(CoreError::Invalid(
+                "Choose the selected projects once.".into(),
+            ));
+        }
+        for revision in request.expected_revisions.values() {
+            crate::project_icon_override::revision(revision)?;
+        }
+        let catalog = self.project_scope_catalog(&request.scope).await?;
+        if request.membership_version != catalog.version {
+            return Err(CoreError::SettingsConflict);
+        }
+        let ids = selected_members(&catalog)?;
+        if ids.is_empty() {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+        if ids.iter().collect::<BTreeSet<_>>()
+            != request.expected_revisions.keys().collect::<BTreeSet<_>>()
+        {
+            return Err(CoreError::SettingsConflict);
+        }
+        self.store.change_selected_project_image(
+            &catalog,
+            &self.workspace.root()?,
+            &request.expected_revisions,
+            &request.path,
+        )
+    }
     pub async fn change_project_icon(
         &self,
         request: &orbyn_contracts::ChangeProjectIcon,

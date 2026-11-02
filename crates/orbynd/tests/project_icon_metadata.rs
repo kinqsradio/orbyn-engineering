@@ -190,7 +190,7 @@ async fn stale_name_membership_and_invalid_icon_inputs_never_overwrite_other_met
     );
 }
 #[tokio::test]
-async fn schema21_metadata_reopens_and_an_available_schema20_writer_is_refused() {
+async fn schema22_metadata_reopens_and_an_available_schema20_writer_is_refused() {
     let (dir, service, projects, scope) = fixture().await;
     let (code, rows) = service
         .send(
@@ -212,11 +212,14 @@ async fn schema21_metadata_reopens_and_an_available_schema20_writer_is_refused()
         conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r
             .get::<_, i64>(0))
             .unwrap(),
-        21
+        22
     );
     drop(conn);
     // The archived executable is a local qualification input, not a CI artifact.
-    if let Some(binary) = std::env::var_os("ORBYN_SCHEMA20_BIN") {
+    for (key, old_version) in [("ORBYN_SCHEMA20_BIN", "20"), ("ORBYN_SCHEMA21_BIN", "21")] {
+        let Some(binary) = std::env::var_os(key) else {
+            continue;
+        };
         let snapshot = || {
             ["", "-wal", "-shm"].map(|suffix| {
                 let path = format!("{}{suffix}", database.display());
@@ -253,7 +256,7 @@ async fn schema21_metadata_reopens_and_an_available_schema20_writer_is_refused()
         assert!(!output.status.success());
         let diagnostic = String::from_utf8_lossy(&output.stderr);
         assert!(
-            diagnostic.contains("21") && diagnostic.contains("20"),
+            diagnostic.contains("22") && diagnostic.contains(old_version),
             "{diagnostic}"
         );
         assert_eq!(
@@ -454,10 +457,20 @@ async fn scratch_promotion_advances_metadata_revision_without_changing_its_physi
 }
 
 #[tokio::test]
-async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_and_writes() {
-    let Some(binary) = std::env::var_os("ORBYN_SCHEMA20_BIN") else {
-        return;
-    };
+async fn populated_schema20_owner_fences_migration_then_schema22_preserves_rows_and_writes() {
+    if let Some(binary) = std::env::var_os("ORBYN_SCHEMA20_BIN") {
+        qualify_populated_migration(binary, 20).await;
+    }
+}
+
+#[tokio::test]
+async fn populated_schema21_owner_fences_migration_then_schema22_preserves_rows_and_writes() {
+    if let Some(binary) = std::env::var_os("ORBYN_SCHEMA21_BIN") {
+        qualify_populated_migration(binary, 21).await;
+    }
+}
+
+async fn qualify_populated_migration(binary: std::ffi::OsString, previous: i64) {
     use std::io::BufRead;
     let dir = TempDir::new();
     let data = dir.path().join("data");
@@ -525,15 +538,65 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
         stdout,
     };
     old.ensure_workspace(dir.path()).await;
-    let (status, original) = old
+    let (status, mut original) = old
         .send(
             "/api/projects/create",
             json!({"name":"Populated before migration"}),
         )
         .await;
     assert_eq!(status, 201, "{original}");
-    let id = original["id"].as_str().unwrap();
-    let thread_id = old.thread(id, "codex").await;
+    let id = original["id"].as_str().unwrap().to_owned();
+    let mut icon_peer = None;
+    if previous == 21 {
+        let catalog = old.send("/api/settings/project-scopes", json!({})).await.1;
+        let group = catalog["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| {
+                g["members"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|m| m["project_id"] == id)
+            })
+            .unwrap();
+        let scope =
+            json!({"selection":{"kind":"checkout","group_key":group["key"],"project_id":id}});
+        let body = change(&old, &scope, std::slice::from_ref(&original), Value::Null).await;
+        let (status, rows) = old.send("/api/settings/projects/image",json!({"scope":scope,"membership_version":body["membership_version"],"expected_revisions":body["expected_revisions"],"path":"missing-selected.svg"})).await;
+        assert_eq!(status, 200, "{rows}");
+        original = rows[0].clone();
+        let (status, peer) = old
+            .send("/api/projects/create", json!({"name":"Preserved icon"}))
+            .await;
+        assert_eq!(status, 201);
+        let catalog = old.send("/api/settings/project-scopes", json!({})).await.1;
+        let group = catalog["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| {
+                g["members"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|m| m["project_id"] == peer["id"])
+            })
+            .unwrap();
+        let scope = json!({"selection":{"kind":"checkout","group_key":group["key"],"project_id":peer["id"]}});
+        let body = change(
+            &old,
+            &scope,
+            &[peer],
+            json!({"kind":"emoji","emoji":"preserved"}),
+        )
+        .await;
+        let (status, rows) = old.send("/api/settings/projects/icon", body).await;
+        assert_eq!(status, 200, "{rows}");
+        icon_peer = Some(rows[0].clone());
+    }
+    let thread_id = old.thread(&id, "codex").await;
     let original_thread = old.json(&format!("/api/threads/{thread_id}")).await;
     let database = data.join("orbyn.sqlite3");
     let schema = || {
@@ -547,7 +610,7 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
         })
         .unwrap()
     };
-    assert_eq!(schema(), 20);
+    assert_eq!(schema(), previous);
     let lock_before = std::fs::read(data.join("orbynd.lock")).unwrap();
     assert_eq!(
         String::from_utf8_lossy(&lock_before),
@@ -556,7 +619,7 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
     let rejected = match Service::try_start(&data, private_options()) {
         Ok(second) => {
             drop(second);
-            panic!("schema21 must not start over a live schema20 owner");
+            panic!("schema22 must not start over a live schema{previous} owner");
         }
         Err(error) => error,
     };
@@ -564,7 +627,11 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
         rejected.contains("another orbynd owns this data directory"),
         "{rejected}"
     );
-    assert_eq!(schema(), 20, "the live-owner fence must precede migration");
+    assert_eq!(
+        schema(),
+        previous,
+        "the live-owner fence must precede migration"
+    );
     assert_eq!(
         std::fs::read(data.join("orbynd.lock")).unwrap(),
         lock_before
@@ -575,7 +642,7 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
     );
     old.stop().await;
     let new = Service::start(&data, private_options());
-    assert_eq!(schema(), 21);
+    assert_eq!(schema(), 22);
     let projects = new.json("/api/projects").await;
     let migrated = projects
         .as_array()
@@ -584,9 +651,14 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
         .find(|row| row["id"] == id)
         .unwrap();
     let mut expected = original.clone();
-    expected["project_icon"] = Value::Null;
-    expected["favicon_path"] = Value::Null;
-    expected["metadata_revision"] = json!("0");
+    if previous == 20 {
+        expected["project_icon"] = Value::Null;
+        expected["favicon_path"] = Value::Null;
+        expected["metadata_revision"] = json!("0");
+    }
+    if let Some(peer) = icon_peer {
+        assert!(projects.as_array().unwrap().contains(&peer));
+    }
     assert_eq!(*migrated, expected);
     assert_eq!(
         new.json(&format!("/api/threads/{thread_id}")).await,
@@ -619,9 +691,37 @@ async fn populated_schema20_owner_fences_migration_then_schema21_preserves_rows_
         )
         .await;
     assert_eq!(status, 200, "{updated}");
-    assert_eq!(updated[0]["metadata_revision"], "1");
+    assert_eq!(
+        updated[0]["metadata_revision"],
+        (original["metadata_revision"]
+            .as_str()
+            .unwrap_or("0")
+            .parse::<u64>()
+            .unwrap()
+            + 1)
+        .to_string()
+    );
     assert_eq!(
         updated[0]["project_icon"],
         json!({"kind":"emoji","emoji":"after migration"})
     );
+    let body = change(&new, &scope, updated.as_array().unwrap(), Value::Null).await;
+    let (status,saved)=new.send("/api/settings/projects/image",json!({"scope":scope,"membership_version":body["membership_version"],"expected_revisions":body["expected_revisions"],"path":"after-migration.svg"})).await;
+    assert_eq!(status, 200, "{saved}");
+    new.stop().await;
+    let reopened = Service::start(&data, private_options());
+    assert!(
+        reopened
+            .json("/api/projects")
+            .await
+            .as_array()
+            .unwrap()
+            .contains(&saved[0])
+    );
+    let conn = rusqlite::Connection::open_with_flags(
+        &database,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    assert_eq!(conn.query_row("SELECT selection_count FROM project_image_history WHERE project_id=?1 AND path='after-migration.svg'",[&id],|r|r.get::<_,i64>(0)).unwrap(),1);
 }

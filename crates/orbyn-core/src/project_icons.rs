@@ -64,23 +64,41 @@ enum ReadKind {
     Image,
 }
 
+struct OpenedImage {
+    file: std::fs::File,
+    metadata: std::fs::Metadata,
+    relative_path: String,
+    media_type: ProjectIconMediaType,
+    mime: &'static str,
+}
+struct ResolvedImage {
+    raw: crate::file_bytes::RawFile,
+    relative_path: String,
+    revision: String,
+    media_type: ProjectIconMediaType,
+    source: ProjectIconSource,
+}
+
 struct CheckedBytes {
     bytes: Vec<u8>,
     relative_path: String,
 }
 
-struct ImageScope {
+pub(crate) struct ImageScope {
     files: WriteScope,
     library: PathBuf,
     source_budget: usize,
 }
 
 impl ImageScope {
-    fn new(project: &Project, library: &Path) -> Result<Self> {
+    pub(crate) fn new(project: &Project, library: &Path) -> Result<Self> {
         if project.scratch {
             return Err(CoreError::NotFound("project".into()));
         }
         let stored = Path::new(&project.path);
+        if stored.components().any(|part| matches!(part, std::path::Component::Normal(name) if name.to_string_lossy().eq_ignore_ascii_case(".git"))) {
+            return Err(CoreError::Invalid("That path is outside this checkout.".into()));
+        }
         let root = canonicalize(stored)?;
         if root != stored || !root.is_dir() {
             return Err(CoreError::StaleOwner);
@@ -176,7 +194,7 @@ impl ImageScope {
         }))
     }
 
-    async fn text(&mut self, relative: &str) -> Result<Option<String>> {
+    pub(crate) async fn text(&mut self, relative: &str) -> Result<Option<String>> {
         if self.source_budget <= 1 {
             return Ok(None);
         }
@@ -232,9 +250,8 @@ impl ImageScope {
         }))
     }
 
-    async fn resolve(&mut self) -> Result<Option<ProjectIconImageData>> {
-        // The first present project file owns the hint, even if it is malformed,
-        // denied or too large. Never read it through the legacy path reader.
+    async fn hints(&mut self) -> Result<Vec<(String, ProjectIconSource)>> {
+        let mut hints = Vec::new();
         for name in FILE_NAMES {
             let Ok(metadata) = std::fs::symlink_metadata(self.files.checkout.join(name)) else {
                 continue;
@@ -245,17 +262,16 @@ impl ImageScope {
             if let Some(text) = self.text(name).await?
                 && let Ok(project_file) = parse_project_text(&text)
                 && let Some(path) = project_file.icon_path
-                && let Some(image) = self.image(&path, ProjectIconSource::ProjectFile).await?
             {
-                return Ok(Some(image));
+                hints.push((path, ProjectIconSource::ProjectFile));
             }
             break;
         }
-        for path in CANDIDATES {
-            if let Some(image) = self.image(path, ProjectIconSource::Automatic).await? {
-                return Ok(Some(image));
-            }
-        }
+        hints.extend(
+            CANDIDATES
+                .iter()
+                .map(|path| ((*path).to_owned(), ProjectIconSource::Automatic)),
+        );
         for source in SOURCES {
             let Some(text) = self.text(source).await? else {
                 continue;
@@ -269,9 +285,156 @@ impl ImageScope {
             }
             let local = href.strip_prefix('/').unwrap_or(href);
             for path in [format!("public/{local}"), local.to_owned()] {
-                if let Some(image) = self.image(&path, ProjectIconSource::Automatic).await? {
-                    return Ok(Some(image));
-                }
+                hints.push((path, ProjectIconSource::Automatic));
+            }
+        }
+        Ok(hints)
+    }
+
+    async fn resolve(&mut self) -> Result<Option<ProjectIconImageData>> {
+        for (path, source) in self.hints().await? {
+            if let Some(image) = self.image(&path, source).await? {
+                return Ok(Some(image));
+            }
+        }
+        Ok(None)
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.files.checkout
+    }
+
+    pub(crate) fn contains_directory(&self, path: &Path) -> bool {
+        canonicalize(self.root()).is_ok_and(|root| root == self.root())
+            && canonicalize(path).is_ok_and(|actual| {
+                actual == path
+                    && actual.starts_with(self.root())
+                    && guard_library(&self.library, &actual).is_ok()
+            })
+    }
+
+    pub(crate) fn candidate_path(&self, path: &str) -> Result<Option<String>> {
+        Ok(self.open_image(path)?.map(|opened| opened.relative_path))
+    }
+
+    fn open_image(&self, path: &str) -> Result<Option<OpenedImage>> {
+        if media_type(path).is_none() {
+            return Ok(None);
+        }
+        let Ok(full) = inside(&self.files, path) else {
+            return Ok(None);
+        };
+        let Some(real) = crate::approvals::resolve_existing(&full) else {
+            return Ok(None);
+        };
+        if !real.starts_with(self.root()) || guard_library(&self.library, &real).is_err() {
+            return Ok(None);
+        }
+        let Ok((file, metadata)) = open_inside(&self.files, path, &real) else {
+            return Ok(None);
+        };
+        let Some(relative_path) = self.opened_relative(&file, path, ReadKind::Image) else {
+            return Ok(None);
+        };
+        if metadata.len() > crate::file_bytes::MAX_RAW_BYTES {
+            return Err(CoreError::FileTooLarge {
+                size: metadata.len(),
+                limit: crate::file_bytes::MAX_RAW_BYTES,
+            });
+        }
+        let Some((media_type, mime)) = media_type(&relative_path) else {
+            return Ok(None);
+        };
+        Ok(Some(OpenedImage {
+            file,
+            metadata,
+            relative_path,
+            media_type,
+            mime,
+        }))
+    }
+
+    async fn raw_image(
+        &self,
+        path: &str,
+        source: ProjectIconSource,
+    ) -> Result<Option<ResolvedImage>> {
+        let Some(opened) = self.open_image(path)? else {
+            return Ok(None);
+        };
+        let mut reader = tokio::fs::File::from_std(opened.file.try_clone()?);
+        let (offset, size) = if Path::new(&opened.relative_path)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("icns"))
+        {
+            let Some(extent) = icns_extent(&mut reader, opened.metadata.len()).await? else {
+                return Ok(None);
+            };
+            extent
+        } else {
+            (0, opened.metadata.len())
+        };
+        use tokio::io::AsyncSeekExt;
+        reader.seek(std::io::SeekFrom::Start(offset)).await?;
+        let mut digest = Sha256::new();
+        digest.update(opened.mime.as_bytes());
+        digest.update([0]);
+        let mut remaining = size;
+        let mut buffer = [0u8; 64 * 1024];
+        while remaining > 0 {
+            let limit = remaining.min(buffer.len() as u64) as usize;
+            let count = reader.read(&mut buffer[..limit]).await?;
+            if count == 0 {
+                return Err(CoreError::StaleOwner);
+            }
+            digest.update(&buffer[..count]);
+            remaining -= count as u64;
+        }
+        let after = opened.file.metadata()?;
+        if after.len() != opened.metadata.len()
+            || after.modified().ok() != opened.metadata.modified().ok()
+            || self
+                .opened_relative(&opened.file, path, ReadKind::Image)
+                .as_deref()
+                != Some(opened.relative_path.as_str())
+        {
+            return Err(CoreError::StaleOwner);
+        }
+        let revision = format!("{:x}", digest.finalize());
+        let raw = crate::file_bytes::RawFile {
+            file: opened.file,
+            name: Path::new(&opened.relative_path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            offset,
+            size,
+            tag: format!("\"{revision}\""),
+            content_type: opened.mime,
+            inline: true,
+            sandbox: true,
+        };
+        Ok(Some(ResolvedImage {
+            raw,
+            relative_path: opened.relative_path,
+            revision,
+            media_type: opened.media_type,
+            source,
+        }))
+    }
+
+    async fn resolve_raw(&mut self, saved: Option<&str>) -> Result<Option<ResolvedImage>> {
+        let mut hints = Vec::new();
+        if let Some(path) = saved {
+            hints.push((path.to_owned(), ProjectIconSource::SavedImage));
+        }
+        hints.extend(self.hints().await?);
+        for (path, source) in hints {
+            match self.raw_image(&path, source).await {
+                Ok(Some(image)) => return Ok(Some(image)),
+                Ok(None) | Err(CoreError::FileTooLarge { .. }) => {}
+                Err(error) => return Err(error),
             }
         }
         Ok(None)
@@ -287,7 +450,7 @@ async fn bounded_read(reader: &mut (impl AsyncRead + Unpin), limit: usize) -> Re
     Ok(bytes)
 }
 
-fn media_type(path: &str) -> Option<(ProjectIconMediaType, &'static str)> {
+pub(crate) fn media_type(path: &str) -> Option<(ProjectIconMediaType, &'static str)> {
     use ProjectIconMediaType::*;
     Some(
         match Path::new(path)
@@ -460,3 +623,120 @@ impl Core {
 
 #[cfg(test)]
 mod tests;
+
+async fn icns_extent(reader: &mut tokio::fs::File, file_size: u64) -> Result<Option<(u64, u64)>> {
+    use tokio::io::AsyncSeekExt;
+    reader.seek(std::io::SeekFrom::Start(0)).await?;
+    let mut header = [0; 8];
+    if reader.read_exact(&mut header).await.is_err() || &header[..4] != b"icns" {
+        return Ok(None);
+    }
+    let end = u32::from_be_bytes(header[4..8].try_into().unwrap()) as u64;
+    if end < 8 || end > file_size {
+        return Ok(None);
+    }
+    let mut cursor = 8;
+    let mut selected: Option<(u32, u64, u64)> = None;
+    for _ in 0..4096 {
+        if cursor == end {
+            return Ok(selected.map(|(_, offset, size)| (offset, size)));
+        }
+        if cursor + 8 > end {
+            return Ok(None);
+        }
+        reader.seek(std::io::SeekFrom::Start(cursor)).await?;
+        reader.read_exact(&mut header).await?;
+        let length = u32::from_be_bytes(header[4..8].try_into().unwrap()) as u64;
+        if length < 8 || cursor + length > end {
+            return Ok(None);
+        }
+        if length >= 32 {
+            let mut png = [0; 24];
+            reader.read_exact(&mut png).await?;
+            if &png[..8] == b"\x89PNG\r\n\x1a\n" && &png[12..16] == b"IHDR" {
+                let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+                let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+                let rank = |w: u32| {
+                    if w >= ICNS_PREFERRED_WIDTH {
+                        (0, w)
+                    } else {
+                        (1, u32::MAX - w)
+                    }
+                };
+                if width > 0
+                    && height > 0
+                    && selected.is_none_or(|(previous, _, _)| rank(width) < rank(previous))
+                {
+                    selected = Some((width, cursor + 8, length - 8));
+                }
+            }
+        }
+        cursor += length;
+    }
+    Ok(None)
+}
+
+impl Core {
+    async fn selected_project_image(
+        &self,
+        id: &str,
+        candidate: Option<&str>,
+    ) -> Result<(Project, Option<ResolvedImage>)> {
+        let _reader = self.workspace.library_reader().await;
+        let project = self.store.project(id)?;
+        let mut scope = ImageScope::new(&project, &self.workspace.root()?)?;
+        let image = match candidate {
+            Some(path) => scope.raw_image(path, ProjectIconSource::SavedImage).await?,
+            None => scope.resolve_raw(project.favicon_path.as_deref()).await?,
+        };
+        let current = self.store.project(id)?;
+        if current.path != project.path
+            || current.scratch
+            || current.favicon_path != project.favicon_path
+            || canonicalize(Path::new(&project.path))? != scope.files.checkout
+        {
+            return Err(CoreError::StaleOwner);
+        }
+        Ok((project, image))
+    }
+
+    pub async fn project_icon_resource(
+        &self,
+        id: &str,
+    ) -> Result<orbyn_contracts::ProjectIconResource> {
+        let (project, image) = self.selected_project_image(id, None).await?;
+        Ok(orbyn_contracts::ProjectIconResource {
+            project_id: project.id,
+            project_path: project.path,
+            favicon_path: project.favicon_path,
+            image: image.map(|image| orbyn_contracts::ProjectIconResourceData {
+                source: image.source,
+                relative_path: image.relative_path,
+                revision: image.revision,
+                media_type: image.media_type,
+                size: image.raw.size,
+            }),
+        })
+    }
+
+    pub async fn open_project_icon(&self, id: &str) -> Result<crate::file_bytes::RawFile> {
+        self.selected_project_image(id, None)
+            .await?
+            .1
+            .map(|image| image.raw)
+            .ok_or_else(|| CoreError::NotFound("project image".into()))
+    }
+
+    pub async fn open_project_image_candidate(
+        &self,
+        id: &str,
+        path: &str,
+    ) -> Result<crate::file_bytes::RawFile> {
+        crate::project_image_picker::validate_hint(path)?;
+        self.selected_project_image(id, Some(path))
+            .await?
+            .1
+            .map(|image| image.raw)
+            .ok_or_else(|| CoreError::NotFound("project image".into()))
+    }
+}

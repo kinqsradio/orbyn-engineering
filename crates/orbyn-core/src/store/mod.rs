@@ -229,10 +229,8 @@ impl Store {
 
     pub fn trust_project(&self, id: &str, actor: &str) -> Result<Project> {
         self.commit(|tx, _| {
-            let path: String = tx
-                .query_row("SELECT path FROM projects WHERE id = ?1", [id], |row| {
-                    row.get(0)
-                })
+            let project = tx
+                .query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound("project".into()))?;
             insert_audit(
@@ -240,7 +238,7 @@ impl Store {
                 &AuditRecord {
                     actor: actor.to_owned(),
                     action: "project.trust".into(),
-                    target: path,
+                    target: project.path,
                     decision: None,
                     source: "user".into(),
                     thread_id: None,
@@ -248,7 +246,17 @@ impl Store {
                     detail: Value::Null,
                 },
             )?;
-            tx.execute("UPDATE projects SET trusted = 1 WHERE id = ?1", [id])?;
+            if !project.trusted {
+                let revision = crate::project_icon_override::revision(&project.metadata_revision)?
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        CoreError::Invalid("Project metadata revision is exhausted.".into())
+                    })?;
+                tx.execute(
+                    "UPDATE projects SET trusted=1, metadata_revision=?2 WHERE id=?1",
+                    params![id, revision],
+                )?;
+            }
             Ok(tx.query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)?)
         })
     }

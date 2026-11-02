@@ -394,6 +394,26 @@ fn router(state: AppState) -> Router {
             get(api::get_settings).put(api::put_settings),
         )
         .route("/api/projects/{id}/icon", get(api::project_icon))
+        .route(
+            "/api/projects/{id}/icon/resource",
+            get(api::project_icon_resource),
+        )
+        .route(
+            "/api/projects/{id}/icon/raw",
+            get(raw_files::serve_project_icon),
+        )
+        .route(
+            "/api/projects/{id}/images/raw",
+            get(raw_files::serve_project_candidate),
+        )
+        .route(
+            "/api/settings/projects/image-search",
+            post(api::search_project_images),
+        )
+        .route(
+            "/api/settings/projects/image",
+            post(api::change_project_image),
+        )
         .route("/api/settings/project-scopes", post(api::project_scopes))
         .route(
             "/api/settings/projects/icon",

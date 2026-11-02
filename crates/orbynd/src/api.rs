@@ -180,6 +180,27 @@ pub async fn project_icon(
     Ok(Json(state.core.project_icon(&id).await?))
 }
 
+pub async fn project_icon_resource(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.project_icon_resource(&id).await?))
+}
+
+pub async fn search_project_images(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::SearchProjectImages>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.search_project_images(&body).await?))
+}
+
+pub async fn change_project_image(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::ChangeProjectImage>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.change_project_image(&body).await?))
+}
+
 pub async fn project_scopes(
     State(state): State<AppState>,
     ApiJson(query): ApiJson<orbyn_contracts::ProjectScopesQuery>,

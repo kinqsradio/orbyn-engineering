@@ -14,9 +14,11 @@ test("project images wait for workspace identity and never request the library i
     await route.continue();
   };
   const imageRequests: string[] = [];
+  const imagePaths: string[] = [];
   const recordImage = (request: Request) => {
-    const match = new URL(request.url()).pathname.match(/^\/api\/projects\/([^/]+)\/icon$/);
-    if (match) imageRequests.push(decodeURIComponent(match[1]!));
+    const path = new URL(request.url()).pathname;
+    const match = path.match(/^\/api\/projects\/([^/]+)\/icon(?:\/(?:resource|raw))?$/);
+    if (match) { imageRequests.push(decodeURIComponent(match[1]!)); imagePaths.push(path); }
   };
   try {
     await libraryReady(service);
@@ -51,6 +53,7 @@ test("project images wait for workspace identity and never request the library i
     const image = projectRow.locator(".badge-image img");
     await expect(image).toBeVisible();
     await expect.poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(17);
+    expect(imagePaths).toEqual(expect.arrayContaining([`/api/projects/${project.id}/icon/resource`, `/api/projects/${project.id}/icon/raw`]));
     expect(imageRequests).toContain(project.id);
     expect(imageRequests).not.toContain(library!.id);
     expect(imageRequests.every((id) => id === project.id)).toBe(true);
