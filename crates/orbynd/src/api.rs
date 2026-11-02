@@ -9,7 +9,9 @@ use axum::Json;
 use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use orbyn_contracts::ModelSelection;
+use orbyn_contracts::{
+    AcpNativeSessionsQuery, DeleteAcpNativeSession, ImportAcpNativeSession, ModelSelection,
+};
 use orbyn_contracts::{
     AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, BatchThreads, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
@@ -1244,6 +1246,38 @@ pub async fn engine_models(
 ) -> ApiResult<impl IntoResponse> {
     let refresh = query.get("refresh").is_some_and(|value| value == "true");
     Ok(Json(state.core.engine_models(&id, refresh).await?))
+}
+
+pub async fn native_session_capabilities(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.native_session_capabilities(&id).await?))
+}
+
+pub async fn list_native_sessions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<AcpNativeSessionsQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.list_native_sessions(&id, &query).await?))
+}
+
+pub async fn import_native_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<ImportAcpNativeSession>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.import_native_session(&id, &body).await?))
+}
+
+pub async fn delete_native_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<DeleteAcpNativeSession>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.delete_native_session(&id, &body).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_questions(

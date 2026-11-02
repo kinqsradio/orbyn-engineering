@@ -387,6 +387,22 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/limits", get(api::thread_limits))
         .route("/api/engines/{id}/limits", get(api::engine_limits))
         .route("/api/engines/{id}/models", get(api::engine_models))
+        .route(
+            "/api/engines/{id}/native-sessions/capabilities",
+            get(api::native_session_capabilities),
+        )
+        .route(
+            "/api/engines/{id}/native-sessions",
+            get(api::list_native_sessions),
+        )
+        .route(
+            "/api/engines/{id}/native-sessions/import",
+            post(api::import_native_session),
+        )
+        .route(
+            "/api/engines/{id}/native-sessions/delete",
+            post(api::delete_native_session),
+        )
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(

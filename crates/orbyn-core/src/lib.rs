@@ -23,6 +23,7 @@ pub mod local_trace;
 pub mod maintenance;
 pub mod mcp;
 pub mod mcp_tools;
+pub mod native_sessions;
 pub mod network;
 pub mod policy;
 pub mod preferences;
