@@ -982,9 +982,22 @@ fn acp_lost_mode() -> bool {
     sibling_exists("lost-mode")
 }
 
+/// Where a test keeps the agent's own saved sessions, when it has any.
+fn native_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("ORBYN_FAKE_ACP_NATIVE").map(std::path::PathBuf::from)
+}
+
+fn native_sessions() -> Vec<Value> {
+    native_dir()
+        .and_then(|dir| std::fs::read_to_string(dir.join("sessions.json")).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
 fn acp() {
     let mut lines = stdin_lines();
-    let session = "acp-session-1";
+    let mut session = "acp-session-1".to_owned();
+    let session = &mut session;
     while let Some(message) = lines.next() {
         assert_eq!(message["jsonrpc"], "2.0", "ACP frames carry the header");
         let id = message.get("id").cloned().unwrap_or(Value::Null);
@@ -993,7 +1006,10 @@ fn acp() {
                 "protocolVersion": 1,
                 "agentCapabilities": {
                     "mcpCapabilities": { "http": true },
-                    "sessionCapabilities": if std::env::var_os("ORBYN_FAKE_ACP_SESSIONS").is_some() {
+                    "loadSession": native_dir().is_some(),
+                    "sessionCapabilities": if native_dir().is_some() {
+                        json!({ "list": {}, "delete": {} })
+                    } else if std::env::var_os("ORBYN_FAKE_ACP_SESSIONS").is_some() {
                         json!({ "delete": {} })
                     } else {
                         json!({})
@@ -1001,8 +1017,68 @@ fn acp() {
                 },
                 "authMethods": [],
             }})),
+            "session/list" if native_dir().is_some() => {
+                record_launch("acp-list", &[message["params"].to_string()]);
+                if let Some(ms) = std::env::var("ORBYN_FAKE_ACP_LIST_DELAY_MS")
+                    .ok()
+                    .and_then(|n| n.parse().ok())
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(ms));
+                }
+                let cwd = message["params"]["cwd"].as_str().unwrap_or_default();
+                let size: usize = std::env::var("ORBYN_FAKE_ACP_PAGE")
+                    .ok()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(2);
+                let start: usize = message["params"]["cursor"]
+                    .as_str()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0);
+                let all: Vec<Value> = native_sessions()
+                    .into_iter()
+                    .filter(|row| {
+                        std::env::var_os("ORBYN_FAKE_ACP_LIST_ALL").is_some()
+                            || row["cwd"].as_str() == Some(cwd)
+                    })
+                    .map(|mut row| {
+                        row.as_object_mut().map(|row| row.remove("history"));
+                        row
+                    })
+                    .collect();
+                let page: Vec<Value> = all.iter().skip(start).take(size).cloned().collect();
+                let next = (start + size < all.len()).then(|| (start + size).to_string());
+                acp_send(json!({ "id": id, "result": { "sessions": page, "nextCursor": next } }));
+            }
+            "session/load" if native_dir().is_some() => {
+                record_launch("acp-load", &[message["params"].to_string()]);
+                let wanted = message["params"]["sessionId"].as_str().unwrap_or_default();
+                match native_sessions()
+                    .into_iter()
+                    .find(|row| row["sessionId"] == wanted)
+                {
+                    Some(row) => {
+                        *session = wanted.to_owned();
+                        for update in row["history"].as_array().cloned().unwrap_or_default() {
+                            acp_update(wanted, update);
+                        }
+                        acp_send(json!({ "id": id, "result": {} }));
+                    }
+                    None => acp_send(
+                        json!({ "id": id, "error": { "code": -32002, "message": "no such session" } }),
+                    ),
+                }
+            }
             "session/delete" => {
                 record_launch("acp-delete", &[message["params"].to_string()]);
+                if let Some(dir) = native_dir() {
+                    let wanted = message["params"]["sessionId"].as_str().unwrap_or_default();
+                    let kept: Vec<Value> = native_sessions()
+                        .into_iter()
+                        .filter(|row| row["sessionId"] != wanted)
+                        .collect();
+                    std::fs::write(dir.join("sessions.json"), Value::Array(kept).to_string())
+                        .expect("sessions file");
+                }
                 acp_send(json!({ "id": id, "result": {} }));
             }
             "session/new" => acp_send(json!({ "id": id, "result": {

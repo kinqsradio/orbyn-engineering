@@ -144,6 +144,7 @@ test("Markdown styles as you type, keeps its markers and sends what was typed", 
 
 test("a custom model joins the picker and can go again", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
+  await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
   const row = page.locator(".setting-list > li").filter({ hasText: "Codex" });
   await row.getByRole("button", { name: /^Models \(/ }).click();
   await row.getByLabel("Model id").fill("house-model");

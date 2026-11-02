@@ -620,8 +620,7 @@ not commit it. Move it to a real secret store before any release.
    object merely because these forms share the scope selector. Reference owners
    are `TelemetryExportSettings.tsx`, `StorageSettings.tsx` and
    `ProviderInstanceCard.tsx` under T3's settings components.
-   I33 ACP sessions
-   and M3 remain next backend slices.
+   M3 remains a next backend slice; I33 ACP sessions landed with `feat/provider-sessions`.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
    package-service smoke now fails instead of warning, and the prior holder is unknown. A prior #60 Windows
    package-start timeout remains a failed observation even if a later run passes.
@@ -767,3 +766,20 @@ is a distinct explicit image authority and must not become an arbitrary path rea
 Reference persistent-cache and larger-image behavior remain qualification gaps;
 the current 1 MiB JSON-image reader is not proof of those behaviors. Continue this
 portion of K7 on the same section branch after verified delivery.
+
+## Provider sessions slice
+
+`feat/provider-sessions` delivers I33 and the settings half of I35. Native-session
+management is service-owned (`native_sessions.rs`, four routes under
+`/api/engines/{id}/native-sessions`); the driver half is `driver/acp_sessions.rs`.
+Real-`orbynd` tests (`crates/orbynd/tests/native_sessions.rs`) use the protocol double
+with a file-backed session store (`ORBYN_FAKE_ACP_NATIVE`) and cover list paging,
+import with replayed history, continuing the session, delete refusal while a thread
+holds it, sessions the project does not list, untrusted/disabled/unsupported engines,
+caller-chosen folders, and one-operation exclusion of runs and command edits.
+A review of the inherited work found the configuration gate defined but never taken by
+a settings write; both writers now take it. Settings no longer offers the old custom
+AG-UI/terminal "Add provider" form (T3's add dialog has no such surface); existing
+engines of those tiers still run. Playwright's headless shell was linked from the local
+cache for e2e, not downloaded. ACP v1/v2 negotiation (I31), Cursor, Grok and the other
+provider rows remain open. No Windows or packaged-app run is claimed for this slice.
