@@ -46,8 +46,50 @@ struct Staging(PathBuf);
 
 impl Drop for Staging {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if let Err(error) = cleanup_staging(&self.0, |path| std::fs::remove_dir_all(path)) {
+            tracing::warn!(path = %self.0.display(), kind = ?error.kind(), os_error = ?error.raw_os_error(), error = %error, "could not remove owned library staging directory");
+        }
     }
+}
+
+/// Kill requests can complete before Windows releases a helper's cwd or file
+/// handles. Only fresh directories owned by `Staging` reach this boundary;
+/// retries never change permissions or extend to another path.
+const STAGING_CLEANUP_BUDGET: Duration = Duration::from_secs(1);
+const STAGING_CLEANUP_INTERVAL: Duration = Duration::from_millis(20);
+
+fn cleanup_staging(
+    path: &Path,
+    mut remove: impl FnMut(&Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let deadline = std::time::Instant::now() + STAGING_CLEANUP_BUDGET;
+    loop {
+        match remove(path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if !transient_staging_error(&error) || remaining.is_zero() {
+                    return Err(error);
+                }
+                std::thread::sleep(STAGING_CLEANUP_INTERVAL.min(remaining));
+                if std::time::Instant::now() >= deadline {
+                    return Err(error);
+                }
+            }
+        }
+    }
+}
+
+fn transient_staging_error(error: &std::io::Error) -> bool {
+    if error.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+        return true;
+    }
+    // Access denied can describe a cwd still held by a terminating process.
+    // Sharing/lock violations may have a different ErrorKind on Windows. An
+    // enduring ACL/read-only error is returned after the same bounded grace;
+    // no permission repair is attempted.
+    cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33))
 }
 
 /// `<dir>/library.tar`, a `git archive` of the revision named in `<dir>/REVISION`.
@@ -570,6 +612,148 @@ mod tests {
     use super::*;
     use crate::store::Store;
     use crate::testing::{TempDir, library, run_git};
+
+    #[test]
+    fn staging_cleanup_retries_transient_release_errors() {
+        let dir = TempDir::new();
+        let staging = dir.path().join(".workspace-owned");
+        std::fs::create_dir(&staging).unwrap();
+        std::fs::write(staging.join("partial"), "owned staging bytes").unwrap();
+        let mut attempts = 0;
+        let result = cleanup_staging(&staging, |path| {
+            attempts += 1;
+            if attempts < 3 {
+                return Err(std::io::ErrorKind::DirectoryNotEmpty.into());
+            }
+            std::fs::remove_dir_all(path)
+        });
+        assert!(
+            result.is_ok(),
+            "temporary release error must not abandon staging: {result:?}"
+        );
+        assert_eq!(attempts, 3);
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn staging_cleanup_missing_is_success_and_permanent_failure_preserves_data() {
+        let dir = TempDir::new();
+        assert!(
+            cleanup_staging(&dir.path().join("missing"), |path| std::fs::remove_dir_all(
+                path
+            ))
+            .is_ok()
+        );
+        let file = dir.path().join("not-a-staging-directory");
+        std::fs::write(&file, "must survive").unwrap();
+        assert!(cleanup_staging(&file, |path| std::fs::remove_dir_all(path)).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "must survive");
+        let staging = dir.path().join(".workspace-owned");
+        std::fs::create_dir(&staging).unwrap();
+        let mut attempts = 0;
+        let error = cleanup_staging(&staging, |_| {
+            attempts += 1;
+            Err(std::io::ErrorKind::InvalidInput.into())
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(attempts, 1);
+        assert!(staging.is_dir());
+    }
+
+    #[test]
+    fn staging_cleanup_only_retries_release_error_classes() {
+        assert!(transient_staging_error(
+            &std::io::ErrorKind::DirectoryNotEmpty.into()
+        ));
+        assert!(!transient_staging_error(
+            &std::io::ErrorKind::InvalidInput.into()
+        ));
+        assert!(!transient_staging_error(
+            &std::io::ErrorKind::PermissionDenied.into()
+        ));
+        for code in [5, 32, 33] {
+            assert_eq!(
+                transient_staging_error(&std::io::Error::from_raw_os_error(code)),
+                cfg!(windows)
+            );
+        }
+    }
+
+    #[test]
+    fn staging_cleanup_expires_its_retry_budget_and_retains_the_os_error() {
+        let dir = TempDir::new();
+        let staging = dir.path().join(".workspace-owned");
+        std::fs::create_dir(&staging).unwrap();
+        std::fs::write(staging.join("partial"), "must survive the failed cleanup").unwrap();
+        let original = std::fs::remove_dir(&staging).unwrap_err();
+        assert_eq!(original.kind(), std::io::ErrorKind::DirectoryNotEmpty);
+        let started = std::time::Instant::now();
+        let mut attempts = 0;
+        let result = cleanup_staging(&staging, |path| {
+            attempts += 1;
+            // Keep a broken implementation from making the regression hang.
+            if attempts >= 100 {
+                return Ok(());
+            }
+            std::fs::remove_dir(path)
+        });
+        let elapsed = started.elapsed();
+        let error = result.expect_err("persistent release errors must exhaust the retry budget");
+        assert_eq!(error.kind(), original.kind());
+        assert_eq!(error.raw_os_error(), original.raw_os_error());
+        assert_eq!(error.to_string(), original.to_string());
+        assert!(attempts < 100);
+        assert!(elapsed >= STAGING_CLEANUP_BUDGET);
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "cleanup exceeded its bounded grace: {elapsed:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(staging.join("partial")).unwrap(),
+            "must survive the failed cleanup"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn staging_drop_waits_for_a_real_windows_delete_sharing_lock() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = TempDir::new();
+        let path = dir.path().join(".workspace-owned");
+        std::fs::create_dir(&path).unwrap();
+        let file = path.join("held");
+        std::fs::write(&file, "owned staging bytes").unwrap();
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&file)
+            .unwrap();
+        // Positive control: actual Windows IO refuses deletion before release.
+        let denied =
+            std::fs::remove_dir_all(&path).expect_err("the held handle must deny delete sharing");
+        assert!(
+            transient_staging_error(&denied),
+            "unexpected sharing error: {denied:?}"
+        );
+        assert_eq!(
+            held.metadata().unwrap().len(),
+            b"owned staging bytes".len() as u64
+        );
+        let (release, begin) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            begin.recv().unwrap();
+            std::thread::sleep(Duration::from_millis(60));
+            drop(held);
+        });
+        release.send(()).unwrap();
+        drop(Staging(path.clone()));
+        holder.join().unwrap();
+        assert!(
+            !path.exists(),
+            "owned staging must be removed after handle release"
+        );
+    }
 
     fn workspace(dir: &TempDir, url: &str, bundle: Option<PathBuf>) -> Workspace {
         let data = dir.path().join("data");
