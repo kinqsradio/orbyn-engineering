@@ -542,6 +542,12 @@ Moving or deleting a thread clears its setup and closes its old terminals/previe
 
 ## Settings and maintenance
 
+Animated disclosures clip their content without owning an internal scroll offset.
+The settings pane owns scrolling; focus and scroll-into-view during the 200 ms
+height transition must not move a control inside a hidden scroll container between
+pointer positioning and activation. Fixed provenance popovers retain their own
+viewport placement and scrolling.
+
 `ServerSettings` holds lifecycle and pricing. Everything else is in a fixed catalog of
 preferences, each with a default and a shape: an unknown key or a wrong shape is
 `400`, and a change applies all of its values or none. A preference resolves project,

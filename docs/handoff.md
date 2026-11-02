@@ -172,9 +172,20 @@ entry ownership after the await. Missing resources still clear previews without
 waiting, and late restore results cannot overwrite invalidated entries. All 16
 cache unit cases and the full 358-test web suite pass; type/lint checks and the
 production build pass. All three real-service browser cache cases pass at the
-unchanged default limits on copied service executables; the full default browser
-gate is running. This correction does not qualify the failed CI head or authorize
-merging it. Its new exact-head required CI must pass before delivery.
+unchanged default limits on copied service executables. The subsequent local full
+run was interrupted without a completion receipt; its partial failures remain
+unqualified evidence, not a successful gate.
+
+Head `a9604d9` passed both Rust jobs, Web and both desktop build/start jobs in
+`41372815532`. E2E passed the cache case but finished 252/253: the settings provenance
+click raced an opening Advanced disclosure. Its hidden-overflow panel scrolled from
+107 px to 92 px around the 20 px trigger during the existing 200 ms transition.
+The disclosure now clips without owning a scroll offset. A real-service browser
+regression fails before the CSS correction with 61 px of internal scroll and passes
+after it, including focus, fixed-popup pointer access and Escape focus return. The
+unchanged original settings-scopes case also passes. Type/lint checks, all 358 web
+unit tests and the production build pass. A new full default browser gate and all
+required checks on the corrected head are still required before merging.
 The original log is retained at `target/pr84-windows-rust-125027872753.log`.
 Do not merge this PR while any required current-head check is red.
 

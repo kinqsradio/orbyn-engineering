@@ -667,7 +667,7 @@ input[type="radio"] {
 }
 .collapsible-panel {
   height: var(--collapsible-panel-height, auto);
-  overflow: hidden;
+  overflow: clip;
   transition: height 200ms;
 }
 .collapsible-panel[data-collapsed] {
