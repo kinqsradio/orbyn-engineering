@@ -383,6 +383,7 @@ impl Core {
         self.terminals.close_all();
         self.previews.close_all();
         self.computer.shutdown().await;
+        crate::telemetry_export::finish().await;
     }
 }
 

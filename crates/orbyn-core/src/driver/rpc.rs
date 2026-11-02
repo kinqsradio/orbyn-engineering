@@ -19,7 +19,31 @@ use tokio::sync::{mpsc, oneshot};
 use super::pipes::lines;
 use crate::error::{CoreError, Result};
 
-type Pending = Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Value>>>>>;
+type RpcResult = std::result::Result<Value, RpcCallError>;
+type Pending = Arc<Mutex<HashMap<i64, oneshot::Sender<RpcResult>>>>;
+
+/// Protocol error identity is kept separate from its human-readable diagnostic.
+#[derive(Debug)]
+pub(crate) struct RpcCallError {
+    pub code: Option<i64>,
+    pub error: CoreError,
+}
+
+impl From<CoreError> for RpcCallError {
+    fn from(error: CoreError) -> Self {
+        Self { code: None, error }
+    }
+}
+
+struct PendingCall {
+    pending: Pending,
+    id: i64,
+}
+impl Drop for PendingCall {
+    fn drop(&mut self) {
+        lock(&self.pending).remove(&self.id);
+    }
+}
 
 #[derive(Debug)]
 pub enum Inbound {
@@ -91,24 +115,40 @@ impl RpcClient {
     }
 
     pub async fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value> {
+        self.call_detailed(method, params, timeout)
+            .await
+            .map_err(|error| error.error)
+    }
+
+    pub(crate) async fn call_detailed(
+        &self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> RpcResult {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
         lock(&self.pending).insert(id, sender);
+        let _pending = PendingCall {
+            pending: self.pending.clone(),
+            id,
+        };
         let mut message = json!({ "id": id, "method": method, "params": params });
         self.frame(&mut message);
-        self.send(message).await?;
-        match tokio::time::timeout(timeout, receiver).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(CoreError::EngineUnavailable(format!(
-                "The engine closed before answering {method}."
-            ))),
-            Err(_) => {
-                lock(&self.pending).remove(&id);
-                Err(CoreError::EngineUnavailable(format!(
-                    "The engine did not answer {method} in time."
+        tokio::time::timeout(timeout, async {
+            self.send(message).await.map_err(RpcCallError::from)?;
+            receiver.await.map_err(|_| {
+                RpcCallError::from(CoreError::EngineUnavailable(format!(
+                    "The engine closed before answering {method}."
                 )))
-            }
-        }
+            })?
+        })
+        .await
+        .map_err(|_| {
+            RpcCallError::from(CoreError::EngineUnavailable(format!(
+                "The engine did not answer {method} in time."
+            )))
+        })?
     }
 
     pub async fn notify(&self, method: &str, params: Option<Value>) -> Result<()> {
@@ -146,9 +186,7 @@ impl RpcClient {
     }
 }
 
-fn lock(
-    pending: &Pending,
-) -> std::sync::MutexGuard<'_, HashMap<i64, oneshot::Sender<Result<Value>>>> {
+fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<i64, oneshot::Sender<RpcResult>>> {
     pending
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -176,17 +214,71 @@ fn route(message: Value, pending: &Pending, inbound: &mpsc::UnboundedSender<Inbo
                 return;
             };
             let result = match message.get("error") {
-                Some(error) => Err(CoreError::EngineUnavailable(
-                    error
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("The engine returned an error.")
-                        .to_owned(),
-                )),
+                Some(error) => Err(RpcCallError {
+                    code: error.get("code").and_then(Value::as_i64),
+                    error: CoreError::EngineUnavailable(
+                        error
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("The engine returned an error.")
+                            .to_owned(),
+                    ),
+                }),
                 None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
             };
             let _ = sender.send(result);
         }
         (None, None) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn structured_errors_preserve_code_without_classifying_text() {
+        let pending: Pending = Arc::default();
+        let (tx, rx) = oneshot::channel();
+        lock(&pending).insert(1, tx);
+        let (inbound, _) = mpsc::unbounded_channel();
+        route(
+            json!({"id":1,"error":{"code":-32002,"message":"arbitrary diagnostic"}}),
+            &pending,
+            &inbound,
+        );
+        let error = rx.blocking_recv().unwrap().unwrap_err();
+        assert_eq!(error.code, Some(-32002));
+        assert!(matches!(error.error, CoreError::EngineUnavailable(_)));
+        assert!(lock(&pending).is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelled_and_timed_out_calls_remove_pending_registration() {
+        let (out, mut requests) = mpsc::channel(1);
+        let pending: Pending = Arc::default();
+        let rpc = RpcClient {
+            out,
+            pending: pending.clone(),
+            next_id: Arc::new(AtomicI64::new(1)),
+            header: true,
+        };
+        let caller = rpc.clone();
+        let task = tokio::spawn(async move {
+            caller
+                .call_detailed("session/load", json!({}), Duration::from_secs(60))
+                .await
+        });
+        requests.recv().await.unwrap();
+        assert_eq!(lock(&pending).len(), 1);
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(lock(&pending).is_empty());
+        assert!(
+            rpc.call("session/list", json!({}), Duration::from_millis(1))
+                .await
+                .is_err()
+        );
+        assert!(lock(&pending).is_empty());
     }
 }

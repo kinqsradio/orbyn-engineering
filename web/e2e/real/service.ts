@@ -122,6 +122,8 @@ export interface ServiceOptions {
   /** Runs `gh` through the stand-in, with these pull requests on the forge. */
   forge?: boolean | PullFixture[];
   registry?: string;
+  /** A folder holding the protocol double's saved ACP sessions (`sessions.json`). */
+  nativeSessions?: string;
 }
 
 /** A port nothing holds, so two checkouts or specs can never answer for each other. */
@@ -158,6 +160,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
       : // Never an installed engine, so a run reads the same on every machine.
         { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: join(dir, "no-codex") };
   if (options.engineLaunchLog) Object.assign(engines, { ORBYN_FAKE_LAUNCH_FILE: options.engineLaunchLog });
+  if (options.nativeSessions) Object.assign(engines, { ORBYN_FAKE_ACP_NATIVE: options.nativeSessions });
   const forge = options.forge
     ? standInGh(dir, options.forge === true ? [{ number: 42, title: "Fix the login" }, { number: 77, title: "Tidy the docs" }] : options.forge, options.starred)
     : null;

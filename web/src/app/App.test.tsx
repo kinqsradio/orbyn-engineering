@@ -409,8 +409,10 @@ describe("App against the mock API", () => {
   });
 
   it("never asks for an engine credential", async () => {
+    const user = userEvent.setup();
     go("#/settings/providers");
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Codex" }));
     await screen.findByRole("heading", { name: "Codex" });
     expect(screen.getByText(/Sign in through the Codex CLI/)).toBeInTheDocument();
     expect(document.querySelector('input[type="password"]')).toBeNull();

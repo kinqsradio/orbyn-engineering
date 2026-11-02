@@ -387,6 +387,22 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/limits", get(api::thread_limits))
         .route("/api/engines/{id}/limits", get(api::engine_limits))
         .route("/api/engines/{id}/models", get(api::engine_models))
+        .route(
+            "/api/engines/{id}/native-sessions/capabilities",
+            get(api::native_session_capabilities),
+        )
+        .route(
+            "/api/engines/{id}/native-sessions",
+            get(api::list_native_sessions),
+        )
+        .route(
+            "/api/engines/{id}/native-sessions/import",
+            post(api::import_native_session),
+        )
+        .route(
+            "/api/engines/{id}/native-sessions/delete",
+            post(api::delete_native_session),
+        )
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(
@@ -732,6 +748,8 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     );
     core.mcp.bind_host(&core);
     orbyn_core::diagnostics::start_sampling();
+    core.start_telemetry_export(telemetry_interval()?)
+        .map_err(|error| error.to_string())?;
     // Parent EOF and termination own startup too: provisioning may be waiting
     // on a helper before any ready line or service handle exists.
     // Install handlers synchronously before any cancellable provisioning work.
@@ -842,6 +860,16 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
     // Open streams never finish on their own; they end with the process.
     let _ = tokio::time::timeout(SHUTDOWN_GRACE, server).await;
     Ok(())
+}
+
+fn telemetry_interval() -> Result<std::time::Duration, String> {
+    match std::env::var("ORBYN_TELEMETRY_INTERVAL_MS") {
+        Ok(text) => match text.parse::<u64>() {
+            Ok(millis) if millis > 0 => Ok(std::time::Duration::from_millis(millis)),
+            _ => Err("ORBYN_TELEMETRY_INTERVAL_MS must be a positive number.".to_owned()),
+        },
+        Err(_) => Ok(orbyn_core::telemetry_export::DEFAULT_INTERVAL),
+    }
 }
 
 #[tokio::main]

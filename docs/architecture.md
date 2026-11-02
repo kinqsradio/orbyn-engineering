@@ -808,7 +808,18 @@ resend an old value over another client's change. The Core object-patch writer
 preserves unmentioned and unknown telemetry fields. Scope changes dispose the form's
 response owner; a late save cannot clear a new draft or update a different scope.
 Endpoint test results stay attached to their requested URL and generation. These
-bindings qualify local settings behavior, not running export or native parity.
+bindings qualify local settings behavior, not native parity.
+
+`orbynd` reads the saved `observability` endpoints once at startup, so an edit applies
+on the next start. With a logs URL the service sends warnings and errors as OTLP/HTTP
+JSON logs; with a metrics URL it sends each new memory and process sample as gauges.
+A URL that is not absolute http or https is ignored. Nothing is queued for an unset
+signal, the log queue holds 256 records and drops the oldest, a refused or unreachable
+batch is kept for the next pass within that limit, redirects are not followed, and a
+final bounded flush runs at shutdown. The exporter's own events never re-enter it.
+Traces have no producer because the service records no spans; that URL is only
+checked. `ORBYN_TELEMETRY_INTERVAL_MS` overrides the 15 second cadence for tests.
+The exporter is listed with the other automatic requests.
 
 Automatic known-provider discovery defaults to all installed known CLIs. The
 internal `EngineConfig.known_engine_ids` can restrict that enumeration; absent means
@@ -827,6 +838,10 @@ with its own models and sessions, so changing a thread's instance is an engine s
 instance has an id, a `driver`, and optionally a name, an accent, `enabled` and a `program`
 that replaces the driver's. ACP, AG-UI and terminal instances also take `args`, added after
 the driver's. Claude and Codex take a program only, because a flag can switch off the gate.
+The internal `_local_acp` driver kind takes a required executable and literal arguments
+directly in that one instance record, without creating or displaying a base custom engine.
+A pre-existing custom engine with that ID keeps its old launch behavior and prevents
+new command-only instance edits from silently reinterpreting it.
 A turned-off instance is not listed and refuses new runs, and threads keep their history.
 An instance of Claude is still Claude to the permission prompt, rules, version checks and
 custom commands. Nothing here holds an account: no environment, no config folder, so a
@@ -834,6 +849,21 @@ second login stays out under rule 1. The list is global, so no tool can reach it
 Changing the list clears model catalogs and selection validation, so a changed setup
 cannot keep the former driver's offered options. Since instances can share a binary,
 an engine update refuses while any run is active, and no run starts during an update.
+
+An ACP instance can manage the sessions its agent keeps. Capabilities come from the
+agent's `initialize` reply alone: `session/list`, `loadSession`, `session/resume` and
+`session/delete` are each offered or not, and nothing signs in or prompts. Every
+operation is one short process owned by its future, started in a throwaway directory, with
+a four-megabyte and 4096-message budget, a sixty-second deadline, and client requests
+denied. The service, not the caller, chooses the folder: listing, import and delete take a
+registered, trusted project, and only act on a session the agent lists for that project
+(up to twenty pages). Folders an agent reports are data, never access. Import replays the
+history without a run, then stores the thread, its events and the session id together; a
+second import returns the same thread. Delete refuses while any thread holds the session.
+One operation runs per instance: it excludes that instance's run admission, updates and
+edits to `provider_instances`. A later run resumes with `session/resume` when offered,
+else `session/load` with its replay discarded; an unknown session ends the run as a lost
+session. The session link is the thread's engine session, so no table or migration exists.
 
 A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
 `new_worktrees_start_from_origin` is on, falling back to HEAD, and
@@ -1538,8 +1568,8 @@ length, distinct names and retained samples. Malformed lines are counted, not
 interpreted as spans. Summaries sort busiest names first and report count, rate,
 nearest-rank p50/p90, maximum, interruptions and failures. `--since` filters by end
 time and `--limit` controls displayed names. Missing files produce an empty report
-without creating the data folder. This is local timing evidence, not an OTLP exporter
-or a completed diagnostics UI.
+without creating the data folder. This is local timing evidence for the CLI report and is
+separate from the OTLP exporter above.
 
 The GitHub-star notice counts acknowledged composer submissions in two separate
 viewer-storage entries: sent threshold and dismissal. It checks this app's fixed
