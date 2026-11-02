@@ -839,6 +839,21 @@ Changing the list clears model catalogs and selection validation, so a changed s
 cannot keep the former driver's offered options. Since instances can share a binary,
 an engine update refuses while any run is active, and no run starts during an update.
 
+An ACP instance can manage the sessions its agent keeps. Capabilities come from the
+agent's `initialize` reply alone: `session/list`, `loadSession`, `session/resume` and
+`session/delete` are each offered or not, and nothing signs in or prompts. Every
+operation is one short process owned by its future, started in a throwaway directory, with
+a four-megabyte and 4096-message budget, a sixty-second deadline, and client requests
+denied. The service, not the caller, chooses the folder: listing, import and delete take a
+registered, trusted project, and only act on a session the agent lists for that project
+(up to twenty pages). Folders an agent reports are data, never access. Import replays the
+history without a run, then stores the thread, its events and the session id together; a
+second import returns the same thread. Delete refuses while any thread holds the session.
+One operation runs per instance: it excludes that instance's run admission, updates and
+edits to `provider_instances`. A later run resumes with `session/resume` when offered,
+else `session/load` with its replay discarded; an unknown session ends the run as a lost
+session. The session link is the thread's engine session, so no table or migration exists.
+
 A new worktree uses `branch_name_prefix`, `base_branch` or the origin's head when
 `new_worktrees_start_from_origin` is on, falling back to HEAD, and
 `worktree_submodules` through the shared preference resolver. Checkout mode and
