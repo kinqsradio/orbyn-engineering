@@ -64,6 +64,7 @@ impl Fixture {
             checkout: self.cwd.clone(),
             prompt: "new prompt".into(),
             user_prompt: "new prompt".into(),
+            context: String::new(),
             kind: RunKind::Turn,
             mode: PermissionMode::Supervised,
             plan: false,

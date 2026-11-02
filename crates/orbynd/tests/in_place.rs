@@ -260,13 +260,20 @@ async fn codex_runs_its_turn_in_the_checkout_so_the_library_stays_read_only() {
     trust(&service, id).await;
     let thread = service.thread(id, "codex").await;
     service.admit(&thread, "hi").await;
+    assert!(!repo.starts_with(&library));
     assert_eq!(service.finished(&thread).await, "completed");
     let opened = &launches(&launch_file, "codex-thread")[0];
     let opened: Value = serde_json::from_str(opened["args"][0].as_str().unwrap()).unwrap();
-    assert_eq!(opened["cwd"], library.to_str().unwrap());
+    assert_eq!(opened["cwd"], repo.to_str().unwrap());
+    let context = opened["developerInstructions"].as_str().unwrap();
+    assert!(context.contains(repo.to_str().unwrap()), "{context}");
     let turn = &launches(&launch_file, "codex-turn")[0];
     let turn: Value = serde_json::from_str(turn["args"][0].as_str().unwrap()).unwrap();
     assert_eq!(turn["cwd"], repo.to_str().unwrap());
+    assert_eq!(
+        turn["input"][0]["text"], "hi",
+        "the message stays the user's own"
+    );
     assert_eq!(
         turn["sandboxPolicy"]["writableRoots"][0],
         repo.to_str().unwrap()

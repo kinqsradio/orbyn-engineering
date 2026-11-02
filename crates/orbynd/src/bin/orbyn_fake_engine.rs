@@ -495,6 +495,7 @@ struct CodexState {
     prompt: String,
     mcp_url: Option<String>,
     thread: String,
+    tools_ready: bool,
 }
 
 fn codex() {
@@ -503,6 +504,7 @@ fn codex() {
         prompt: String::new(),
         mcp_url: None,
         thread: "codex-thread-1".to_owned(),
+        tools_ready: true,
     };
     while let Some(message) = lines.next() {
         let method = message["method"].as_str().unwrap_or_default().to_owned();
@@ -544,9 +546,22 @@ fn codex() {
                     "modelProvider": "fake", "approvalPolicy": params["approvalPolicy"],
                     "approvalsReviewer": "user", "sandbox": { "type": "workspaceWrite" },
                 }}));
+                let slow = std::env::var_os("ORBYN_FAKE_SLOW_TOOLS").is_some();
+                state.tools_ready = !slow;
+            }
+            "mcpServerStatus/list" => {
+                if !state.tools_ready {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    state.tools_ready = true;
+                }
+                send(&json!({ "id": id, "result": { "data": [], "nextCursor": null } }));
             }
             "turn/start" => {
                 record_launch("codex-turn", &[message["params"].to_string()]);
+                if !state.tools_ready {
+                    eprintln!("a turn started while tools were still starting");
+                    std::process::exit(13);
+                }
                 state.prompt = message["params"]["input"][0]["text"]
                     .as_str()
                     .unwrap_or_default()

@@ -33,6 +33,11 @@ use crate::util::new_id;
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
+/// A turn started before tool startup finishes can reach the model with no usable
+/// tools, and it then answers that it cannot read the files. The startup status
+/// updates end too soon to show this; the status list blocks until it is over.
+/// A server that never settles must not hold the run.
+const TOOLS_LIMIT: Duration = Duration::from_secs(15);
 /// More pages than any real catalog, so a looping cursor still ends.
 const MODEL_PAGES: usize = 10;
 
@@ -559,12 +564,17 @@ async fn open_turn(
     let config = thread_config(spec);
     // Said on every resume too: a saved session keeps the policy it last had, so
     // leaving full access has to be stated to take effect.
+    // At the library, the model often answers that it has no file tools. Starting
+    // here loads the checkout's `.codex` config, which folder trust already gates.
     let mut params = json!({
-        "cwd": spec.cwd,
+        "cwd": spec.checkout,
         "approvalPolicy": approval_policy(spec.mode),
         "sandbox": if spec.plan { "read-only" } else { sandbox },
         "config": config,
     });
+    if !spec.context.is_empty() {
+        params["developerInstructions"] = json!(spec.context);
+    }
     if let Some(model) = &spec.model {
         params["model"] = json!(model);
     }
@@ -631,9 +641,15 @@ async fn open_turn(
         }
         RunKind::Turn => {}
     }
+    // Older versions lack this method; a run goes ahead either way.
+    let _ = rpc
+        .call("mcpServerStatus/list", json!({}), TOOLS_LIMIT)
+        .await;
     let text = match &spec.kind {
         RunKind::Goal(GoalAction::Resume) => "Continue working toward the goal.",
-        _ => spec.prompt.as_str(),
+        // In the user's message, the context often led the model to answer that it
+        // had no tools. It goes in the thread's instructions instead.
+        _ => spec.user_prompt.as_str(),
     };
     let policy = if spec.plan { "read-only" } else { sandbox };
     let mut params = json!({
@@ -656,9 +672,8 @@ async fn open_turn(
     Ok((session, turn_id))
 }
 
-/// Codex always lets a turn write to its own cwd. The thread therefore starts at
-/// the workspace root, for native discovery, and each turn moves its cwd and
-/// writable root to the selected checkout, keeping the library read-only.
+/// The thread and each turn run in the selected checkout, the only writable root,
+/// so the library stays read-only. Skills reach Codex through the run's MCP tools.
 ///
 /// Full access stops asking and opens the network, but the writable root stays:
 /// `dangerFullAccess` would make the library and other projects writable.
@@ -1694,6 +1709,7 @@ mod tests {
             checkout: "/workspace/repo/app".into(),
             prompt: "p".into(),
             user_prompt: "p".into(),
+            context: "<orbyn_context>c</orbyn_context>".into(),
             kind: RunKind::Turn,
             mode: PermissionMode::Supervised,
             plan: false,

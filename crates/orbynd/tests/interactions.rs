@@ -84,10 +84,11 @@ async fn restarting_the_session_starts_fresh_and_carries_the_conversation() {
     assert_eq!(code, 204, "{body}");
     service.admit(&thread, "next").await;
     service.finished(&thread).await;
-    let turns = launches(&log, "codex-turn");
+    // Each run restates the thread's instructions, which carry the handoff.
+    let threads = launches(&log, "codex-thread");
     assert!(
-        turns.last().unwrap().contains("remember the pier"),
-        "{turns:?}"
+        threads.last().unwrap().contains("remember the pier"),
+        "{threads:?}"
     );
 }
 
@@ -891,7 +892,7 @@ async fn recovers(claude: bool) {
     let mode = if claude {
         "claude-prompt"
     } else {
-        "codex-turn"
+        "codex-thread"
     };
     let prompts = launches(&launch_file, mode);
     assert!(prompts.last().unwrap().contains("heron"), "{prompts:?}");
