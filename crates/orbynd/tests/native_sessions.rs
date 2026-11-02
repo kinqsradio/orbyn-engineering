@@ -297,7 +297,7 @@ async fn the_request_cannot_choose_the_folder_or_exceed_the_contract() {
             json!({"project_id": w.project, "session_id": "s1", "cwd": "/"}),
         )
         .await;
-    assert!(code >= 400 && code < 500, "{code}");
+    assert!((400..500).contains(&code), "{code}");
     let response = w
         .service
         .get(&format!(
