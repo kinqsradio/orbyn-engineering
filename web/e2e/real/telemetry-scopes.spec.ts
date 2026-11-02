@@ -1,4 +1,4 @@
-//! Scope and draft ownership through the real service; no telemetry is exported.
+//! Scope and draft ownership through the real service; the section saves endpoints and does not export.
 import { expect, test, type Page } from "@playwright/test";
 import type { ProjectScopeCatalog } from "../../src/generated/ProjectScopeCatalog";
 import type { ScopedPreferencesResult } from "../../src/generated/ScopedPreferencesResult";
