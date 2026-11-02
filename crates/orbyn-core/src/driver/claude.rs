@@ -1174,6 +1174,7 @@ mod tests {
             checkout: PathBuf::from("/workspace/repo/app"),
             prompt: "hello".into(),
             user_prompt: "hello".into(),
+            context: String::new(),
             kind: RunKind::Turn,
             mode: orbyn_contracts::PermissionMode::Supervised,
             plan: false,

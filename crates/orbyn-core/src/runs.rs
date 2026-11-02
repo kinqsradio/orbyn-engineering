@@ -1178,6 +1178,7 @@ impl RunManager {
             cwd: if native { root } else { checkout.clone() },
             checkout,
             prompt: format!("{context}\n\n{prompt}"),
+            context,
             kind,
             mode: scope.mode,
             plan: scope.plan,
