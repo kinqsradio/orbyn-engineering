@@ -808,7 +808,18 @@ resend an old value over another client's change. The Core object-patch writer
 preserves unmentioned and unknown telemetry fields. Scope changes dispose the form's
 response owner; a late save cannot clear a new draft or update a different scope.
 Endpoint test results stay attached to their requested URL and generation. These
-bindings qualify local settings behavior, not running export or native parity.
+bindings qualify local settings behavior, not native parity.
+
+`orbynd` reads the saved `observability` endpoints once at startup, so an edit applies
+on the next start. With a logs URL the service sends warnings and errors as OTLP/HTTP
+JSON logs; with a metrics URL it sends each new memory and process sample as gauges.
+A URL that is not absolute http or https is ignored. Nothing is queued for an unset
+signal, the log queue holds 256 records and drops the oldest, a refused or unreachable
+batch is kept for the next pass within that limit, redirects are not followed, and a
+final bounded flush runs at shutdown. The exporter's own events never re-enter it.
+Traces have no producer because the service records no spans; that URL is only
+checked. `ORBYN_TELEMETRY_INTERVAL_MS` overrides the 15 second cadence for tests.
+The exporter is listed with the other automatic requests.
 
 Automatic known-provider discovery defaults to all installed known CLIs. The
 internal `EngineConfig.known_engine_ids` can restrict that enumeration; absent means
@@ -1539,8 +1550,8 @@ length, distinct names and retained samples. Malformed lines are counted, not
 interpreted as spans. Summaries sort busiest names first and report count, rate,
 nearest-rank p50/p90, maximum, interruptions and failures. `--since` filters by end
 time and `--limit` controls displayed names. Missing files produce an empty report
-without creating the data folder. This is local timing evidence, not an OTLP exporter
-or a completed diagnostics UI.
+without creating the data folder. This is local timing evidence for the CLI report and is
+separate from the OTLP exporter above.
 
 The GitHub-star notice counts acknowledged composer submissions in two separate
 viewer-storage entries: sent threshold and dismissal. It checks this app's fixed

@@ -10,6 +10,8 @@ const UPDATE_CHECKS: &str = "The background_update_checks setting, or ORBYN_OFFL
 const UPDATE_SETTING: &str = "background_update_checks";
 const PULLS_SETTING: &str = "poll_pull_requests";
 const AUTO_PULL_SETTING: &str = "auto_pull";
+const TELEMETRY_CONTROL: &str = "Clear the endpoint URLs under OpenTelemetry export";
+const TELEMETRY_SETTING: &str = "observability";
 const TITLES_SETTING: &str = crate::titles::AUTO_TITLES_SETTING;
 
 /// The list with no state filled in, which is what stays true of it.
@@ -66,6 +68,12 @@ fn listed() -> Vec<NetworkRequest> {
             "The auto_thread_titles preference",
         ),
         row(
+            "Warnings, errors and resource samples, as OpenTelemetry",
+            "The configured collector",
+            "Every 15 seconds while there is something new to send",
+            TELEMETRY_CONTROL,
+        ),
+        row(
             "OTLP connection check",
             "The configured collector",
             "Only when asked to test it",
@@ -82,6 +90,7 @@ impl Core {
         let on = |key: &str| -> Result<bool> { Ok(self.preference(key, None)? == true) };
         let (pulls, auto_pull) = (on(PULLS_SETTING)?, on(AUTO_PULL_SETTING)?);
         let titles = on(TITLES_SETTING)?;
+        let telemetry = self.telemetry_export_configured()?;
         Ok(listed()
             .into_iter()
             .map(|mut row| {
@@ -91,6 +100,8 @@ impl Core {
                     (Some(PULLS_SETTING), pulls)
                 } else if row.control.contains(AUTO_PULL_SETTING) {
                     (Some(AUTO_PULL_SETTING), auto_pull)
+                } else if row.control == TELEMETRY_CONTROL {
+                    (Some(TELEMETRY_SETTING), telemetry)
                 } else if row.control.contains(TITLES_SETTING) {
                     (Some(TITLES_SETTING), titles)
                 } else {
