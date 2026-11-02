@@ -1130,6 +1130,10 @@ collection ends.
 Parent-stdin EOF and termination handling are registered before initial provisioning.
 A cancelled startup drops its provisioning future, stops owned Git helpers and removes
 its staging directory without publishing readiness or a service handle.
+Owned staging removal retries transient directory-not-empty and Windows sharing,
+lock or access-denied errors within a one-second deadline after child termination;
+an individual filesystem call is not preempted by that deadline.
+It never changes permissions; an enduring failure is logged with its path and OS error.
 Service shutdown joins the library-upgrade task and settles cancelled update checks before
 shutting down the core. Package smoke requests shutdown by parent-stdin EOF, awaits exit
 and treats a profile that cannot be removed as a failure.
