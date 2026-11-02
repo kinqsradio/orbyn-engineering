@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { startProject, type Service } from "./service";
+import { projectSettingsUrl, startProject, type Service } from "./service";
 
 async function fixture(log: string, asynchronous: boolean, exitCode = 0) {
   mkdirSync(dirname(log), { recursive: true });
@@ -116,9 +116,8 @@ test("editing a saved setup command preserves its setup role and synchronous fla
   const { service, thread } = await fixture(info.outputPath("launch.ndjson"), false);
   try {
     const project = await service.api<{ project_id: string }>("GET", `/api/threads/${thread.id}`);
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "my-repo settings", exact: true });
+    await page.goto(await projectSettingsUrl(service, project.project_id));
+    const dialog = page.locator(".settings-body");
     await dialog.getByRole("button", { name: "Edit Setup", exact: true }).click();
     const action = page.getByRole("dialog", { name: "Edit Action", exact: true });
     await action.getByLabel("Command", { exact: true }).fill("echo updated-setup");

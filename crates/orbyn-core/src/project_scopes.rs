@@ -21,6 +21,7 @@ use crate::process::ManagedChild;
 use crate::util::{canonicalize, sha256_hex};
 
 const MAX_PROJECTS: usize = 512;
+pub(crate) const MAX_PROJECT_METADATA_BYTES: usize = 4 * 1024 * 1024;
 const MAX_PATH_BYTES: usize = 8 * 1024;
 const MAX_REMOTE_BYTES: usize = 8 * 1024;
 const MAX_CAPTURE: u64 = 64 * 1024;
@@ -242,6 +243,9 @@ async fn checkout(
         physical_key: opaque("checkout", &[&project.path]),
         project_id: project.id,
         name: project.name,
+        project_icon: project.project_icon,
+        favicon_path: project.favicon_path,
+        metadata_revision: project.metadata_revision,
         path: None,
         repository_key: None,
         repository_label: None,
@@ -394,7 +398,190 @@ pub fn resolve_project_settings_scope(
     }
 }
 
+/// Every scoped writer uses the same metadata boundary, including a checkout
+/// selected from a partially observed repository group.
+pub(crate) fn selected_members(catalog: &ProjectScopeCatalog) -> Result<Vec<String>> {
+    let (key, ids) = match &catalog.selection {
+        ResolvedProjectSettingsScope::AllProjects => return Ok(Vec::new()),
+        ResolvedProjectSettingsScope::Unavailable { .. } => {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+        ResolvedProjectSettingsScope::ProjectGroup {
+            group_key,
+            project_ids,
+        } => (group_key, project_ids.clone()),
+        ResolvedProjectSettingsScope::Checkout {
+            group_key,
+            project_id,
+        } => (group_key, vec![project_id.clone()]),
+    };
+    let group = catalog
+        .groups
+        .iter()
+        .find(|group| &group.key == key)
+        .ok_or(CoreError::SettingsScopeUnavailable)?;
+    for id in &ids {
+        let member = group
+            .members
+            .iter()
+            .find(|member| &member.project_id == id)
+            .ok_or(CoreError::SettingsScopeUnavailable)?;
+        if member.unavailable.is_some()
+            || (!member.metadata_complete && member.grouping_mode != ProjectGroupingMode::Separate)
+        {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+    }
+    Ok(ids)
+}
+
+pub(crate) fn visible_members(catalog: &ProjectScopeCatalog) -> BTreeMap<String, String> {
+    catalog
+        .groups
+        .iter()
+        .flat_map(|group| &group.members)
+        .filter_map(|member| Some((member.project_id.clone(), member.path.clone()?)))
+        .collect()
+}
+
+/// Fence physical registration in the same SQLite transaction as the write.
+/// Git/filesystem observations are bounded earlier and are not a filesystem lock.
+pub(crate) fn fence_members(
+    projects: &[Project],
+    catalog: &ProjectScopeCatalog,
+    library_root: &Path,
+) -> Result<()> {
+    let current: BTreeMap<_, _> = projects
+        .iter()
+        .filter(|project| !project.scratch && Path::new(&project.path) != library_root)
+        .map(|project| (project.id.clone(), project.path.clone()))
+        .collect();
+    if current != visible_members(catalog) {
+        return Err(CoreError::SettingsConflict);
+    }
+    Ok(())
+}
+
+// ECMAScript WhiteSpace and LineTerminator, matching the reference Name field.
+// Rust trim includes NEL and omits BOM, so its Unicode predicate is different.
+fn trim_project_title(name: &str) -> &str {
+    crate::project_icon_override::js_trim(name)
+}
+
 impl Core {
+    pub async fn change_project_image(
+        &self,
+        request: &orbyn_contracts::ChangeProjectImage,
+    ) -> Result<Vec<Project>> {
+        crate::project_image_picker::validate_hint(&request.path)?;
+        if request.expected_revisions.is_empty() || request.expected_revisions.len() > MAX_PROJECTS
+        {
+            return Err(CoreError::Invalid(
+                "Choose the selected projects once.".into(),
+            ));
+        }
+        for revision in request.expected_revisions.values() {
+            crate::project_icon_override::revision(revision)?;
+        }
+        let catalog = self.project_scope_catalog(&request.scope).await?;
+        if request.membership_version != catalog.version {
+            return Err(CoreError::SettingsConflict);
+        }
+        let ids = selected_members(&catalog)?;
+        if ids.is_empty() {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+        if ids.iter().collect::<BTreeSet<_>>()
+            != request.expected_revisions.keys().collect::<BTreeSet<_>>()
+        {
+            return Err(CoreError::SettingsConflict);
+        }
+        self.store.change_selected_project_image(
+            &catalog,
+            &self.workspace.root()?,
+            &request.expected_revisions,
+            &request.path,
+        )
+    }
+    pub async fn change_project_icon(
+        &self,
+        request: &orbyn_contracts::ChangeProjectIcon,
+    ) -> Result<Vec<Project>> {
+        if request.expected_revisions.is_empty() || request.expected_revisions.len() > MAX_PROJECTS
+        {
+            return Err(CoreError::Invalid(
+                "Choose the selected projects once.".into(),
+            ));
+        }
+        for revision in request.expected_revisions.values() {
+            crate::project_icon_override::revision(revision)?;
+        }
+        let icon = request
+            .icon
+            .as_ref()
+            .map(crate::project_icon_override::validate)
+            .transpose()?;
+        let catalog = self.project_scope_catalog(&request.scope).await?;
+        if request.membership_version != catalog.version {
+            return Err(CoreError::SettingsConflict);
+        }
+        let ids = selected_members(&catalog)?;
+        if ids.is_empty() {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+        if ids.iter().collect::<BTreeSet<_>>()
+            != request.expected_revisions.keys().collect::<BTreeSet<_>>()
+        {
+            return Err(CoreError::SettingsConflict);
+        }
+        self.store.change_selected_project_icon(
+            &catalog,
+            &self.workspace.root()?,
+            &request.expected_revisions,
+            &icon,
+        )
+    }
+    /// Rename only an explicitly selected, still-current set of physical projects.
+    pub async fn rename_selected_projects(
+        &self,
+        request: &orbyn_contracts::RenameSelectedProjects,
+    ) -> Result<Vec<Project>> {
+        let name = trim_project_title(&request.name);
+        if name.is_empty() {
+            return Err(CoreError::Invalid("Enter a project name.".into()));
+        }
+        if request.expected_names.is_empty() || request.expected_names.len() > MAX_PROJECTS {
+            return Err(CoreError::Invalid(
+                "Choose the selected projects once.".into(),
+            ));
+        }
+        // Bound aggregate fan-out/response work, not the title's character count.
+        if name.len().saturating_mul(request.expected_names.len()) > MAX_PROJECT_METADATA_BYTES {
+            return Err(CoreError::Invalid(
+                "This settings scope is too large.".into(),
+            ));
+        }
+        let catalog = self.project_scope_catalog(&request.scope).await?;
+        if request.membership_version != catalog.version {
+            return Err(CoreError::SettingsConflict);
+        }
+        let ids = selected_members(&catalog)?;
+        if ids.is_empty() {
+            return Err(CoreError::SettingsScopeUnavailable);
+        }
+        if ids.iter().collect::<BTreeSet<_>>()
+            != request.expected_names.keys().collect::<BTreeSet<_>>()
+        {
+            return Err(CoreError::SettingsConflict);
+        }
+        self.store.rename_selected_projects(
+            &catalog,
+            &self.workspace.root()?,
+            &request.expected_names,
+            name,
+        )
+    }
+
     /// Read-only full-app catalog. Client grouping recipes do not edit project
     /// registration, preferences, remotes or any project file.
     pub async fn project_scope_catalog(
@@ -465,7 +652,7 @@ impl Core {
                 && repository_label.is_none_or(|label| {
                     first.name != label && Some(first.name.as_str()) != label.rsplit('/').next()
                 });
-            let label = if shared_custom_name {
+            let label = if members.len() == 1 || shared_custom_name {
                 first.name.clone()
             } else {
                 first

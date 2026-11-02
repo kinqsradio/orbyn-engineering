@@ -1,7 +1,7 @@
 # Handoff
 
-Start here if you are picking this project up. Reconciled 1 November 2026 against
-`main` at `12748ac`. Trust the repository over this document where they differ,
+Start here if you are picking this project up. Reconciled 2 November 2026 against
+`main` at `58d86e9`. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,22 +49,145 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `12748ac`
+## Reconciled status at `58d86e9`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
 Main has 709 rows and 384 source checkboxes ticked. Scope metadata reports 534
-included rows: 344 declared checked, 47 partial, 141 open and 2 not doable. There
-are 175 excluded and zero unresolved-scope rows. These are checklist declarations,
-not a fresh runtime verification count. Scope reconciliation and explicit partial
-rows mean older totals are not directly comparable as delivered features. The
-former 365/573 calculation is not a valid completion percentage.
-The local section now explicitly marks F30 partial after inspection established
-missing cleanup rules and scheduling. Its direct count is 343 declared checked,
-48 partial, 141 open and 2 not doable out of the same 534 included rows; the
-source-tick count stays 384. This corrects a claim, rather than removing behavior.
+included rows: 343 declared checked, 48 partial, 141 open and 2 not doable.
+There are 175 excluded and zero unresolved-scope rows. These are checklist
+declarations, not a fresh runtime verification count. F30 remains partial for
+missing cleanup rules and scheduling. The former 365/573 calculation is not a
+valid completion percentage.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
 builds on both, and E2E. The repository is public and has no license yet.
+
+### Current local section
+
+The active section branch is `feat/project-settings` in the
+`file-setting-inheritance` worktree. Main remains `58d86e9`; its post-merge CI
+`41322108228` passed every required job. The section includes selected Name CAS,
+registered Checkouts and removal, checked project images/automatic badges,
+bounded config reads, descendant-safe family removal, isolated provider discovery,
+and the structured project icon picker. Implementation `7e3d25f` and stale-read
+correction `d76dd71` are pushed; the remote section ref was verified at full head
+`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No section PR was open at
+qualification; read GitHub for current delivery. Delivery remains
+section/about-20-row grouping with separate commits and green exact-head merge gates.
+
+Final production Rust passed 1055 workspace tests with 9 existing ignored,
+formatting and all-target Clippy. The final metadata test file separately passed
+all eight cases, including actual populated schema-20 migration and writer fences.
+Web type/lint checks, 338 unit tests and the production build passed. Full default
+E2E passed 241/241 with no skips or filters on copied, unchanged executables; all
+707 recorded source/configuration/test inputs matched before and after. Receipts
+are `target/project-icon-refresh-final241-{start,end}.json` and its full log.
+
+Earlier red runs are retained: the library-image startup race, incidental host
+provider discovery, and stale project-list replies after committed icon/name
+changes or removal. The stale reply failed in a real-service browser case before
+the correction and passes after it. An earlier 240-case run passed while shared
+Cargo-cache executables changed; it is not single-executable qualification. One
+concurrent unit run timed out in the App streaming case at its unchanged five-
+second limit; focused 42 and full 338 reruns passed without limit changes. No cause
+is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
+
+Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
+doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
+release inputs below remain in force. No current-head hosted CI, native or Windows
+qualification is inferred.
+
+The K7 image continuation is locally qualified on the section branch. Choose file
+opens the shared project-image search; selection saves the same relative hint for each selected
+member without copying or changing files. Core search is bounded and ignore-aware,
+with independent fuzzy matching and recent-selection history. Schema 22 stores
+that history and advances metadata revision on false-to-true trust; actual older
+schema-20 and schema-21 binaries are fenced. Resource/raw image delivery supports
+larger images and checked ICNS extents while preserving the legacy JSON limit.
+The client caches small previews in bounded IndexedDB storage, checks content
+revisions, keeps decoded images during replacement and fences late cache writes.
+
+Real-service qualification passes all nine image-picker cases, six
+structured-picker cases and both existing image cases. Three real-browser cache
+cases separately pass restore/revision replacement, count/byte limits and
+clear/delete/purge fences. The initial 19-case run had one cache-test failure: its
+observer opened an empty version-1 database before application initialization.
+The observer now inspects database existence first; the unchanged assertions pass
+without a production correction or timeout increase. Both red and green receipts
+are retained. A badge saved-hint regression and late image/name mutation regression
+also failed before their production corrections and pass after them.
+
+Web check, 355 unit tests and the production build pass. Four real HTTP tests
+cover exact image GET/HEAD query-token boundaries, conditions/ranges, ICNS offsets
+and desktop-service CORS; these are not packaged-webview evidence. Full Rust
+workspace checks pass: 1080 tests, 9 existing ignored, formatting and all-target
+Clippy, with 441 unchanged Rust/manifest/generated inputs. The initial full default
+browser run passed 251/252 on 772 unchanged source inputs and both unchanged copied
+executables. Its failure was the library-eligibility test observing only the retired
+JSON image endpoint. The observer now includes resource/raw and explicitly checks
+both, retaining zero requests before workspace identity and no library requests;
+the corrected case passes. A further real-service regression reproduced an older
+image reply overriding a newer known icon in settings after failed catalog refresh.
+The display correction passes its focused regression. The final full default
+browser gate passed 253/253 in 19.1 minutes, exit 0, with all 772 recorded source,
+configuration and test inputs and both copied executables unchanged. Receipts are
+`target/project-image-final253-e2e-{start,end}.json` and its full log. The corrected
+source also passes web check, 355 unit tests and the production build. No test was
+skipped, filtered or given a longer timeout in the full gate.
+The browser runtime is copied under
+`target/project-image-schema22-runtime/1793575463042012000/`: daemon SHA-256
+`4a2590971fcbe6274ded92cb82d1fdd76e0a3de340a47716843cf90d75c34abb`,
+companion `c90b38c786b00ad8cd9fcd6f8fffacc659ab6d73bb6c9aa4f9ee28f2ae90325d`.
+Focused source/runtime hashes matched before and after. Exact native search ranking
+weights, the native external chooser and final native/Windows qualification remain
+unverified or unimplemented. Deliver this qualified slice through the required
+exact-head green PR gates, then continue K7's native chooser and K5's full defaults.
+
+Shared engineering guidance was refreshed against library `57d9fe7` after the
+owner's update notice. Product illustration and animation additions apply to their
+own artifact types; real product work continues under the UI, architecture,
+language, migration and verification owners. The app's bundled library still pins
+`ed3f1d3`; refresh that snapshot as a separate maintenance change with a real bundled
+library fixture after delivering the current project-settings batch.
+
+PR84 was opened at `8da9aeb` with 13 separate section commits. CI `41366570888`
+passed macOS Rust, Web, E2E and both packaged build/startup jobs; GitGuardian also
+passed. Windows Rust failed in the image identity test's fixture setup, before
+its authorization assertions: moving a parent directory with an open child file
+returned Windows error 5. The test now moves the open file itself to the outside
+fixture directory, recreates the original safe path, and positively checks the
+held handle's actual path and original bytes. The outside/Git rejection and fresh
+inside acceptance assertions remain. Production code, permissions, timeouts and
+platform coverage are unchanged. The focused case and Core 465/2-ignored gates
+pass locally. The full corrected workspace also passes 1080 tests with 9 existing
+ignored, formatting and all-target Clippy; all 441 recorded Rust/manifest/generated
+inputs match before and after (`target/pr84-portable-full-workspace-receipt.json`).
+Corrected head `95d66e0` passed Windows Rust and both packaged build/startup jobs
+in CI `41369323464`, along with macOS Rust and Web. E2E passed 252/253: the
+persisted-image restore case observed one unnecessary raw read. The resource
+reply could arrive before IndexedDB restored matching bytes. A deterministic
+delayed-storage regression fails before the correction; the client now awaits
+that bounded restoration before deciding whether to fetch bytes and rechecks
+entry ownership after the await. Missing resources still clear previews without
+waiting, and late restore results cannot overwrite invalidated entries. All 16
+cache unit cases and the full 358-test web suite pass; type/lint checks and the
+production build pass. All three real-service browser cache cases pass at the
+unchanged default limits on copied service executables. The subsequent local full
+run was interrupted without a completion receipt; its partial failures remain
+unqualified evidence, not a successful gate.
+
+Head `a9604d9` passed both Rust jobs, Web and both desktop build/start jobs in
+`41372815532`. E2E passed the cache case but finished 252/253: the settings provenance
+click raced an opening Advanced disclosure. Its hidden-overflow panel scrolled from
+107 px to 92 px around the 20 px trigger during the existing 200 ms transition.
+The disclosure now clips without owning a scroll offset. A real-service browser
+regression fails before the CSS correction with 61 px of internal scroll and passes
+after it, including focus, fixed-popup pointer access and Escape focus return. The
+unchanged original settings-scopes case also passes. Type/lint checks, all 358 web
+unit tests and the production build pass. A new full default browser gate and all
+required checks on the corrected head are still required before merging.
+The original log is retained at `target/pr84-windows-rust-125027872753.log`.
+Do not merge this PR while any required current-head check is red.
 
 ### Initial PR queue
 
@@ -91,7 +214,7 @@ passed. Main `04eb893` run `41269745565` passed all six required jobs. PR81 head
 merging as `193f406`. Its post-merge main run `41283340854` passed all six required jobs.
 The historical Windows process holder is still unproven.
 
-### Current continuation work
+### Historical continuation evidence
 
 The owner changed delivery after these initial PRs: subsequent parity work uses
 one branch per section and a section/about-20-row PR, retaining per-row commits.
@@ -438,6 +561,10 @@ stand-in forge races and the data-directory lock.
 
 ### Known bugs
 
+- K8's legacy config-reader alias/size race is corrected locally on
+  `feat/project-settings`: fixed filename and registered-root handle checks,
+  bounded probe reads and nonblocking Unix opens pass Core and real-service
+  regressions. It is not on main yet; new-head Windows CI remains required.
 - The historical Windows startup/`workspace` holder remains unidentified. #73
   removed the packaged-service smoke warning, made shutdown/profile-cleanup failures
   fatal, and fixed proven process/startup ownership defects. Its Windows checks
@@ -469,11 +596,12 @@ not commit it. Move it to a real secret store before any release.
 
 ## Next actions, in order
 
-1. PR82 head `9ac3dfa` passed all six required checks in `41294951768`, plus
-   GitGuardian, and merged without squash as `12748ac`. Post-merge main run
-   `41296294886` passed all six required jobs.
-   PR60 and PR82 are merged. Keep subsequent section delivery fenced to all required green
-   current-head checks; historical passing heads do not qualify new integrations.
+1. PR83 final head `96ada2b` passed all six required jobs in `41320346880`,
+   plus GitGuardian; reviews and review threads were empty. It merged without
+   squash as `58d86e9`. Windows Rust includes the final ConPTY and accepted-stop
+   corrections. Post-merge main CI `41322108228` passed all six required jobs.
+   Primary main is fast-forwarded; `feat/project-settings` starts from the merge.
+   Historical passing heads do not qualify later integrations.
 2. Keep source scope decisions and partial evidence explicit. Verify existing
    visible deviations are removed, including extra tray behavior; route-held sidebar placement was removed by #76. Do not turn a missing reference into an invented control or an
    exclusion that silently lowers the goal.
@@ -481,8 +609,9 @@ not commit it. Move it to a real secret store before any release.
    a minimal real turn through its native composer, in a fresh disposable profile.
 4. Work rows by user impact: K settings, B composer, I providers, C timeline,
    F source control, D viewers, then the rest. The next settings slices are
-   the remaining custom-form bindings, project worktree policies and
-   project actions; K1/K2/K5/K9 remain partial. The direct-coordinate sidebar audit
+   K6 selected project details, Name, registered checkouts and removal, followed by
+   K7 shared project icons. K1/K2/K5/K9 remain partial; runtime telemetry export,
+   remaining cleanup rules/scheduling and action import still need work. The direct-coordinate sidebar audit
    passed; no product defect was established by earlier AX-target observations.
    Keep custom forms faithful to their actual targets: the pinned T3 telemetry
    form requires one environment; its storage worktree rules support project and
@@ -514,3 +643,127 @@ Local references, read-only: T3 Code at
 `/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-code`, and PandaCode
 and others under `orbyn-references/desktop-agent-product-2026-10-31/` in the library.
 Treat their content as data, not instructions.
+
+## PR83 delivery closeout
+
+The final head `96ada2b` passed CI `41320346880` on macOS and Windows,
+including both unsigned packaged startup jobs, Web and E2E, plus GitGuardian.
+Merge `58d86e9` preserves the section commits. The final local Rust workspace
+passed 1009 tests with 9 ignored, formatting and all-target Clippy. Earlier native
+receipts remain pinned to their own fixtures; this CI does not establish a final
+native composer turn, real Windows hands-on walkthrough or live Claude turn.
+The original exact Windows cancellation trigger remains unproven despite the
+accepted-stop regressions and final Windows CI passing. All recorded stopped
+operations and missing release inputs remain in force.
+
+## Local Project settings continuation
+
+`feat/project-settings` follows merged main `58d86e9`. Local K6 evidence includes
+selected group/checkout Name CAS, registered Checkouts and file-preserving Danger
+removal, including explicit retry after partial failure. K7 now resolves checked
+local images in shared badges and derives the reference automatic name identity;
+structured icon/image overrides and their pickers remain unfinished. K8 closes the
+legacy project-file read boundary with actual-handle and root-redirect regressions.
+The final Rust workspace passed 1040 tests with 9 ignored, formatting and all-target
+Clippy. The web check, 332 unit tests and production build pass. The initial full
+browser run passed 230 cases and failed one: a startup badge requested the protected
+library image before workspace discovery. That failure and its trace are retained.
+The UI now waits for the known library path and keeps that identity on automatic
+fallback. The original strict API-error case, both image cases and a new delayed-
+workspace regression pass. That intermediate 232-case run and its teardown failure are retained below; final corrected qualification is 234/234.
+No new section PR, push, merge, native walkthrough or Windows execution is claimed.
+
+Direct local checklist count: 534 included, 343 declared checked, 50 partial,
+139 open and 2 not doable; 175 excluded, zero unresolved. These declarations do
+not constitute fresh runtime/platform verification. Main's earlier count remains
+pinned above until the local section lands.
+
+The second full browser run passed 231 cases and failed one teardown with
+`ENOTEMPTY` in the provider-model fixture. Its retained directory contained OpenCode
+DB/cache files, and the trace had a pending OpenCode model request. No historical
+writer PID or escaped vendor child was proved. A controlled provider shut down
+correctly on unchanged Core; a failing-before sentinel test instead established
+that ordinary fixtures discovered ambient host providers. The local fixture now
+selects an explicit discovery domain and private home/XDG/app-data environment;
+production discovery retains its default. Six affected service-browser cases and
+both cross-platform-launcher lifecycle cases pass, without changing cleanup retries
+or ignoring API errors. Final whole Rust is 1043 passed, 9 ignored, fmt/Clippy green;
+web is 332 unit tests plus check/build green. The rebuilt daemon's full 234-case
+browser run passed 234/234. Main still equals `58d86e9`; no section PR or merge is claimed.
+
+Final local qualification is green on source through `a17e748`: 1043 Rust tests
+passed with 9 existing ignored, workspace formatting/Clippy passed, and web
+check/332 unit tests/build passed. Full E2E passed 234/234 without filters or skips.
+Receipts: `target/project-settings-isolated-final-rust-receipt.json` and
+`target/project-settings-isolated-final-e2e.log`. The daemon stayed at SHA-256
+`5426c8ff5a4b3f714d412f67f643d41a4c70b8f1b4cf0a6dfc3107c1454ec2ec`.
+This is local fixture qualification, not new Windows/native or hosted CI evidence.
+
+The section branch was pushed after local gates passed, with remote
+`refs/heads/feat/project-settings` verified at `fd36862580558b7c0daf0c57082f3e9eedc4e310`.
+This delivery receipt is documentation only; the tested runtime source is unchanged.
+No section PR or hosted current-head qualification is claimed. Continue the same
+branch with the unfinished settings slices before the section/about-20-row PR.
+
+
+### Current structured project icon slice
+
+Local implementation `7e3d25f` adds Lucide, emoji and monogram choices,
+selected-member revision fences and explicit-null Reset. Schema 21 preserves
+existing projects while introducing nullable icon/image metadata and a shared
+revision advanced by selected Name, legacy rename and scratch promotion. Known
+commits update shared badges; optional images are invalidated on metadata changes.
+Conflicts retain drafts and require explicit Reload before another save. Direct
+API text remains case-preserving, while the picker applies the reference input
+normalization. Generated wire types include explicit nullable icon/image fields.
+
+Final production Rust passed 1055 workspace tests with 9 existing ignored,
+formatting and workspace all-target Clippy. The final metadata test file passed
+all eight cases with an actual archived schema-20 writer enabled. Those cases
+include preserving a populated project/thread through migration, refusing the
+new service while the old owner is live, refusing the old binary against schema
+21 without changing database/WAL/SHM, and a successful current-writer edit after
+reopening. Only the final test-only migration addition followed the full workspace
+compilation; production hashes stayed unchanged.
+
+Final review found a client race: an older project-list response could overwrite
+committed icon/name metadata or resurrect a removed registration. Three deferred
+unit regressions and a real-service browser case failed before the correction.
+The browser case commits Robot, observes it in the sidebar, then releases an
+unmodified older response with polling paused. The follow-up now advances the
+project-list observation generation and clears loading on committed edits/removal.
+All seven focused browser cases pass after the fix, including this race and the
+six icon scenarios. Screenshots cover Icons, Emoji and Monogram modes.
+
+The initial 240-case default browser run passed without skips or filters. Its
+shared Cargo-cache executable hashes changed early in the run while root Rust
+checks overlapped, so it does not qualify one unchanged executable. That receipt
+is retained. The final run used copied executables under
+`target/project-icon-frozen-runtime/7e3d25fefa-1793557011882993000/`: daemon
+`b06fa349aa8a9d765799e2027890ac2b25a4ed285eb209a90f0b72109ba9f2be`
+and companion `5c25596824b2b32eb266d1dffc4249d1e3858ea209b6db04a0b6d303378121e4`.
+The seven focused cases already passed on these unchanged copies.
+
+The follow-up production build and type/lint checks pass. One concurrent unit
+run passed 337/338 but timed out in the existing App streaming case at its
+unchanged five-second limit. All 42 App tests passed separately, followed by
+338/338 in the default full unit rerun without concurrent browser/build work. No
+cause is claimed and the red receipt is retained. The final default browser gate
+passed 241/241 on the copied runtime, with all 707 input hashes and both executable
+hashes unchanged. Implementation `7e3d25f` and correction `d76dd71` were pushed after
+local gates passed; the remote full head was read back as
+`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No current-head hosted CI,
+native/Windows or final reference walkthrough is inferred. K7 remains partial
+for saved-image selection and final platform evidence.
+
+
+Read-only preparation for the remaining K7 image behavior is pinned to the same
+T3 reference: Choose file opens a project-image path search in both local web and
+desktop. The representative selected project supplies search/thumbnail roots; the
+same relative path is saved on every selected physical member, with each member's
+own fallback if its file is absent. This flow does not upload or copy images.
+Desktop optionally adds the native external-file footer; its absolute saved path
+is a distinct explicit image authority and must not become an arbitrary path read.
+Reference persistent-cache and larger-image behavior remain qualification gaps;
+the current 1 MiB JSON-image reader is not proof of those behaviors. Continue this
+portion of K7 on the same section branch after verified delivery.

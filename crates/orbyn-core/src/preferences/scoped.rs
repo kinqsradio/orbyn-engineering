@@ -5,8 +5,8 @@ use std::path::Path;
 
 use orbyn_contracts::{
     PreferenceEdit, PreferenceFileValue, PreferenceView, ProjectFileView, ProjectScopeCatalog,
-    ResolvedProjectSettingsScope, ScopedPreferenceMember, ScopedPreferenceOverride,
-    ScopedPreferenceRow, ScopedPreferencesChange, ScopedPreferencesQuery, ScopedPreferencesResult,
+    ScopedPreferenceMember, ScopedPreferenceOverride, ScopedPreferenceRow, ScopedPreferencesChange,
+    ScopedPreferencesQuery, ScopedPreferencesResult,
 };
 use serde_json::{Value, json};
 
@@ -311,65 +311,13 @@ fn keys(requested: &[String]) -> Result<Vec<String>> {
     Ok(result)
 }
 
-fn selected(catalog: &ProjectScopeCatalog) -> Result<Vec<String>> {
-    match &catalog.selection {
-        ResolvedProjectSettingsScope::AllProjects => Ok(Vec::new()),
-        ResolvedProjectSettingsScope::ProjectGroup {
-            group_key,
-            project_ids,
-        } => {
-            let group = catalog
-                .groups
-                .iter()
-                .find(|group| &group.key == group_key)
-                .ok_or(CoreError::SettingsScopeUnavailable)?;
-            if group.members.iter().any(|member| {
-                !member.metadata_complete
-                    && member.grouping_mode != orbyn_contracts::ProjectGroupingMode::Separate
-            }) {
-                return Err(CoreError::SettingsScopeUnavailable);
-            }
-            Ok(project_ids.clone())
-        }
-        ResolvedProjectSettingsScope::Checkout { project_id, .. } => Ok(vec![project_id.clone()]),
-        ResolvedProjectSettingsScope::Unavailable { .. } => {
-            Err(CoreError::SettingsScopeUnavailable)
-        }
-    }
-}
-
-fn visible_members(catalog: &ProjectScopeCatalog) -> BTreeMap<String, String> {
-    catalog
-        .groups
-        .iter()
-        .flat_map(|group| &group.members)
-        .filter_map(|member| Some((member.project_id.clone(), member.path.clone()?)))
-        .collect()
-}
-fn fence(
-    snapshot: &SettingsSnapshot,
-    catalog: &ProjectScopeCatalog,
-    library_root: &Path,
-) -> Result<()> {
-    let current: BTreeMap<_, _> = snapshot
-        .projects
-        .iter()
-        .filter(|project| Path::new(&project.path) != library_root)
-        .map(|project| (project.id.clone(), project.path.clone()))
-        .collect();
-    if current != visible_members(catalog) {
-        return Err(CoreError::SettingsConflict);
-    }
-    Ok(())
-}
-
 fn rows(
     snapshot: &SettingsSnapshot,
     files: &Files,
     catalog: &ProjectScopeCatalog,
     requested: &[String],
 ) -> Result<Vec<ScopedPreferenceRow>> {
-    let ids = selected(catalog)?;
+    let ids = crate::project_scopes::selected_members(catalog)?;
     // Bound repeated inherited values before cloning them across every member.
     let global_bytes: usize = snapshot.globals.values().map(String::len).sum();
     let override_bytes: usize = snapshot
@@ -390,7 +338,7 @@ fn rows(
         .into_iter()
         .map(|view| (view.key.clone(), view))
         .collect();
-    let visible = visible_members(catalog);
+    let visible = crate::project_scopes::visible_members(catalog);
     let mut member_views = BTreeMap::new();
     for id in &ids {
         member_views.insert(id.clone(), resolved_views(snapshot, files, Some(id))?);
@@ -469,10 +417,14 @@ impl Core {
     ) -> Result<ScopedPreferencesResult> {
         let requested = keys(&query.keys)?;
         let catalog = self.project_scope_catalog(&query.scope).await?;
-        selected(&catalog)?;
+        crate::project_scopes::selected_members(&catalog)?;
         let snapshot = self.store.settings_snapshot()?;
-        fence(&snapshot, &catalog, &self.workspace.root()?)?;
-        let ids = selected(&catalog)?;
+        crate::project_scopes::fence_members(
+            &snapshot.projects,
+            &catalog,
+            &self.workspace.root()?,
+        )?;
+        let ids = crate::project_scopes::selected_members(&catalog)?;
         let files = observe_files(&snapshot, ids.iter().map(String::as_str))?;
         let result = ScopedPreferencesResult {
             rows: rows(&snapshot, &files, &catalog, &requested)?,
@@ -502,7 +454,7 @@ impl Core {
             ));
         }
         let catalog = self.project_scope_catalog(&change.scope).await?;
-        let ids = selected(&catalog)?;
+        let ids = crate::project_scopes::selected_members(&catalog)?;
         if catalog.version != change.membership_version {
             return Err(CoreError::SettingsConflict);
         }
@@ -533,13 +485,13 @@ impl Core {
         let _cleanup_policy =
             self.cleanup_policy_write(change.edits.keys().map(String::as_str), ids.is_empty())?;
         self.store.change_settings(|snapshot| {
-            fence(snapshot, &catalog, &root)?;
+            crate::project_scopes::fence_members(&snapshot.projects, &catalog, &root)?;
             for row in rows(snapshot, &files, &catalog, &requested)? {
                 if change.if_match.get(&row.key) != Some(&row.revision) {
                     return Err(CoreError::SettingsConflict);
                 }
             }
-            let visible = visible_members(&catalog);
+            let visible = crate::project_scopes::visible_members(&catalog);
             let mut writes = Vec::new();
             for (key, edit) in &change.edits {
                 match edit {
@@ -674,6 +626,7 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orbyn_contracts::ResolvedProjectSettingsScope;
     #[test]
     fn unknown_repository_grouping_cannot_partially_fan_out() {
         let mut catalog: ProjectScopeCatalog = serde_json::from_value(json!({
@@ -686,20 +639,33 @@ mod tests {
         }))
         .unwrap();
         assert!(matches!(
-            selected(&catalog),
+            crate::project_scopes::selected_members(&catalog),
             Err(CoreError::SettingsScopeUnavailable)
         ));
         catalog.groups[0].members[0].metadata_complete = true;
-        assert_eq!(selected(&catalog).unwrap(), vec!["one"]);
+        assert_eq!(
+            crate::project_scopes::selected_members(&catalog).unwrap(),
+            vec!["one"]
+        );
         catalog.groups[0].members[0].metadata_complete = false;
         catalog.groups[0].members[0].grouping_mode = orbyn_contracts::ProjectGroupingMode::Separate;
-        assert_eq!(selected(&catalog).unwrap(), vec!["one"]);
+        assert_eq!(
+            crate::project_scopes::selected_members(&catalog).unwrap(),
+            vec!["one"]
+        );
         catalog.selection = ResolvedProjectSettingsScope::Checkout {
             group_key: "group".into(),
             project_id: "one".into(),
         };
-        assert_eq!(selected(&catalog).unwrap(), vec!["one"]);
+        assert_eq!(
+            crate::project_scopes::selected_members(&catalog).unwrap(),
+            vec!["one"]
+        );
         catalog.selection = ResolvedProjectSettingsScope::AllProjects;
-        assert!(selected(&catalog).unwrap().is_empty());
+        assert!(
+            crate::project_scopes::selected_members(&catalog)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

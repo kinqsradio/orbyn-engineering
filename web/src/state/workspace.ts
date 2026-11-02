@@ -1,3 +1,4 @@
+import { forgetProjectImages, invalidateProjectImages } from "../lib/projectImages";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { ApiFailure, api } from "../api/client";
@@ -16,6 +17,17 @@ export interface Loadable<T> {
   data: T | null;
   error: ApiFailure | null;
   loading: boolean;
+}
+
+const projectImageChanged = (previous: Project, next: Project) =>
+  JSON.stringify(previous.project_icon ?? null) !== JSON.stringify(next.project_icon ?? null)
+  || (previous.favicon_path ?? null) !== (next.favicon_path ?? null);
+
+function projectRevision(project: Project): bigint | null {
+  const value = project.metadata_revision;
+  if (typeof value !== "string" || value.length > 19 || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+  const revision = BigInt(value);
+  return revision <= 9223372036854775807n ? revision : null;
 }
 
 const idle = <T>(): Loadable<T> => ({ data: null, error: null, loading: false });
@@ -234,7 +246,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((state) => ({ projects: { ...state.projects, loading: true } }));
     try {
       const data = await api.projects();
-      if (current()) set({ projects: { data, error: null, loading: false } });
+      if (current()) {
+        const previous = get().projects;
+        for (const project of previous.data ?? []) {
+          const next = data.find((entry) => entry.id === project.id);
+          if (!next || next.path !== project.path || projectImageChanged(project, next)) invalidateProjectImages(project.id);
+        }
+        set({ projects: { data, error: null, loading: false } });
+        if (previous.error) invalidateProjectImages();
+      }
     } catch (error) {
       if (!current()) return;
       const failure = toFailure(error);
@@ -350,6 +370,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   putProject(project) {
+    const previous = get().projects.data?.find((entry) => entry.id === project.id);
+    const before = previous ? projectRevision(previous) : null;
+    const after = projectRevision(project);
+    if (before !== null && (after === null || after < before)) return;
+    claim("projects");
+    if (previous && projectImageChanged(previous, project)) invalidateProjectImages(project.id);
     set((state) => {
       const list = state.projects.data ?? [];
       const known = list.some((p) => p.id === project.id);
@@ -357,18 +383,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         projects: {
           ...state.projects,
           data: known ? list.map((p) => (p.id === project.id ? project : p)) : [...list, project],
+          loading: false,
         },
       };
     });
   },
 
   dropProject(projectId) {
+    claim("projects");
+    forgetProjectImages(projectId);
     set((state) => {
       const { [projectId]: _gone, ...threadIds } = state.threadIds;
       return {
         projects: {
           ...state.projects,
           data: (state.projects.data ?? []).filter((p) => p.id !== projectId),
+          loading: false,
         },
         threadIds,
         threads: Object.fromEntries(

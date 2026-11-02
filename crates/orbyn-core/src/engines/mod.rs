@@ -49,6 +49,8 @@ pub struct EngineConfig {
     pub codex_sandbox: String,
     pub lookup_latest: bool,
     pub update_timeout: Duration,
+    /// Automatic known-provider discovery; explicit registrations remain available.
+    pub known_engine_ids: Option<Vec<String>>,
 }
 
 impl Default for EngineConfig {
@@ -59,6 +61,7 @@ impl Default for EngineConfig {
             codex_sandbox: "workspace-write".into(),
             lookup_latest: true,
             update_timeout: UPDATE_TIMEOUT,
+            known_engine_ids: None,
         }
     }
 }
@@ -240,7 +243,14 @@ impl EngineManager {
         let mut drivers = lock(&self.drivers).clone();
         let custom = self.store.list_custom_engines()?;
         for engine in KNOWN_ENGINES {
-            if engine.is_installed() && !custom.iter().any(|own| own.id == engine.id) {
+            if self
+                .config
+                .known_engine_ids
+                .as_ref()
+                .is_none_or(|ids| ids.iter().any(|id| id == engine.id))
+                && engine.is_installed()
+                && !custom.iter().any(|own| own.id == engine.id)
+            {
                 drivers.push(self.custom_driver(engine.as_custom())?);
             }
         }

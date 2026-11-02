@@ -23,6 +23,8 @@ pub struct RawFile {
     pub file: std::fs::File,
     pub name: String,
     pub size: u64,
+    /// Start of the exposed extent, for an embedded image inside a container.
+    pub offset: u64,
     /// Changes when the file does; `If-Range` and `If-None-Match` compare it.
     pub tag: String,
     pub content_type: &'static str,
@@ -101,6 +103,7 @@ impl Core {
             file,
             name,
             size,
+            offset: 0,
             tag: tag_of(&opened),
             content_type: known.unwrap_or(OPAQUE),
             inline: known.is_some() && !download,

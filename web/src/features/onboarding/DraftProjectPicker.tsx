@@ -91,7 +91,7 @@ export function DraftProjectPicker({
             onClick={() => choose(index)}
           >
             <span className="filter-icon">
-              <ProjectBadge name={project.name} />
+              <ProjectBadge name={project.name} project={project} />
             </span>
             <span className="filter-name">{project.name}</span>
           </div>

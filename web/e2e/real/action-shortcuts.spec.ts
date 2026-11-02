@@ -1,14 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { startProject } from "./service";
+import { projectSettingsUrl, startProject } from "./service";
 import { writeFileSync } from "node:fs";
 
 test("an action shortcut survives rename and can be cleared", async ({ page }) => {
   const { service, projectId } = await startProject({ fakeEngines: true });
   const heldReads: (() => void)[] = [];
   try {
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
-    const settings = page.getByRole("dialog", { name: "my-repo settings", exact: true });
+    await page.goto(await projectSettingsUrl(service, projectId));
+    const settings = page.locator(".settings-body");
     await settings.getByRole("button", { name: "Add action", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add Action", exact: true });
     await form.getByLabel("Name", { exact: true }).fill("Shortcut action");
@@ -55,8 +54,7 @@ test("an action shortcut survives rename and can be cleared", async ({ page }) =
     await page.keyboard.press("Control+Alt+k");
     await expect.poll(createdAt).not.toBe(firstStart);
     await expect.poll(() => output("Shortcut action")).toContain("shortcut-action-output");
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
+    await page.goto(await projectSettingsUrl(service, projectId));
     await settings.getByRole("button", { name: "Edit Shortcut action", exact: true }).click();
     const edit = page.getByRole("dialog", { name: "Edit Action", exact: true });
     await expect(edit.getByLabel("Keybinding", { exact: true })).not.toHaveValue("");
@@ -68,8 +66,7 @@ test("an action shortcut survives rename and can be cleared", async ({ page }) =
     await page.keyboard.press("Control+Alt+k");
     await expect.poll(() => output("Renamed shortcut")).toContain("shortcut-action-output");
     await expect(page.getByRole("tab", { name: "Renamed shortcut", exact: true })).toHaveAttribute("aria-selected", "true");
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
+    await page.goto(await projectSettingsUrl(service, projectId));
     await settings.getByRole("button", { name: "Edit Renamed shortcut", exact: true }).click();
     await expect(edit.getByLabel("Keybinding", { exact: true })).toBeEnabled();
     await expect(edit.getByLabel("Keybinding", { exact: true })).not.toHaveValue("");
@@ -88,9 +85,8 @@ test("a shortcut-file failure retains the saved action and retries without creat
   try {
     const keymap = await service.api<{ path: string }>("GET", "/api/keybindings");
     expect(keymap.path.startsWith(service.dataDir)).toBe(true);
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
-    const settings = page.getByRole("dialog", { name: "my-repo settings", exact: true });
+    await page.goto(await projectSettingsUrl(service, projectId));
+    const settings = page.locator(".settings-body");
     await settings.getByRole("button", { name: "Add action", exact: true }).click();
     const add = page.getByRole("dialog", { name: "Add Action", exact: true });
     await add.getByLabel("Name", { exact: true }).fill("Retained action");

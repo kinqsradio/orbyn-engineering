@@ -173,11 +173,53 @@ pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl Into
     Ok(Json(state.core.store.list_projects()?))
 }
 
+pub async fn project_icon(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.project_icon(&id).await?))
+}
+
+pub async fn project_icon_resource(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.project_icon_resource(&id).await?))
+}
+
+pub async fn search_project_images(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::SearchProjectImages>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.search_project_images(&body).await?))
+}
+
+pub async fn change_project_image(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::ChangeProjectImage>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.change_project_image(&body).await?))
+}
+
 pub async fn project_scopes(
     State(state): State<AppState>,
     ApiJson(query): ApiJson<orbyn_contracts::ProjectScopesQuery>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.project_scope_catalog(&query).await?))
+}
+
+pub async fn change_project_icon(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::ChangeProjectIcon>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.change_project_icon(&body).await?))
+}
+
+pub async fn rename_selected_projects(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::RenameSelectedProjects>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.rename_selected_projects(&body).await?))
 }
 
 pub async fn clone_project(

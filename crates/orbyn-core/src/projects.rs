@@ -2,7 +2,7 @@
 //! Orbyn clones or creates, by default at `<workspace>/repo/<slug>`. Registering
 //! writes nothing into the folder, and only a folder Orbyn made can ever be deleted.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -433,10 +433,17 @@ impl Core {
             &project.path,
             json!({ "confirmed": confirm, "delete_files": delete_files }),
         )?;
+        // A deleted family's descendants may still appear later in this list.
+        let mut deleted_threads = HashSet::new();
         for thread in threads {
+            if deleted_threads.contains(&thread.id) {
+                continue;
+            }
             for deleted in self.store.delete_thread(&thread.id, "user")? {
-                self.setups.forget(&deleted);
-                self.terminals.close(&deleted);
+                if deleted_threads.insert(deleted.clone()) {
+                    self.setups.forget(&deleted);
+                    self.terminals.close(&deleted);
+                }
             }
         }
         self.store.delete_project(id)?;

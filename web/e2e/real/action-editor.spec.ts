@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, startService } from "./service";
+import { projectSettingsUrl, startProject, startService } from "./service";
 import type { ProjectScopeCatalog } from "../../src/generated/ProjectScopeCatalog";
 
 const scripts = async (service: Awaited<ReturnType<typeof startService>>, id: string) =>
@@ -12,9 +12,8 @@ test("the project action form saves metadata, runs real setup and supports edit 
   const { service, projectId } = await startProject({ fakeEngines: true });
   try {
     await page.setViewportSize({ width: 1500, height: 1000 });
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
-    const settings = page.getByRole("dialog", { name: "my-repo settings", exact: true });
+    await page.goto(await projectSettingsUrl(service, projectId));
+    const settings = page.locator(".settings-body");
     await settings.getByRole("button", { name: "Add action", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add Action", exact: true });
     await expect(form.getByLabel("Name", { exact: true })).toBeFocused();
@@ -55,9 +54,8 @@ test("failed action saves keep the draft and cannot overwrite an external edit",
   const { service, projectId } = await startProject({ fakeEngines: true });
   try {
     await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_project_scripts: [{ name: "Existing", command: "echo original" }] } });
-    await page.goto(`${service.page}#/settings/projects`);
-    await page.getByRole("button", { name: "Settings for my-repo", exact: true }).click();
-    const settings = page.getByRole("dialog", { name: "my-repo settings", exact: true });
+    await page.goto(await projectSettingsUrl(service, projectId));
+    const settings = page.locator(".settings-body");
     await settings.getByRole("button", { name: "Add action", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add Action", exact: true });
     await form.getByLabel("Name", { exact: true }).fill("Existing");

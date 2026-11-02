@@ -160,6 +160,39 @@ pub async fn serve(
     request: HeaderMap,
 ) -> ApiResult<Response> {
     let raw = state.core.open_raw_file(&id, &query.path, query.download)?;
+    respond(raw, request).await
+}
+
+pub async fn serve_project_icon(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    request: HeaderMap,
+) -> ApiResult<Response> {
+    respond(state.core.open_project_icon(&id).await?, request).await
+}
+
+#[derive(Deserialize)]
+pub struct ProjectImageQuery {
+    path: String,
+}
+
+pub async fn serve_project_candidate(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<ProjectImageQuery>,
+    request: HeaderMap,
+) -> ApiResult<Response> {
+    respond(
+        state
+            .core
+            .open_project_image_candidate(&id, &query.path)
+            .await?,
+        request,
+    )
+    .await
+}
+
+async fn respond(raw: RawFile, request: HeaderMap) -> ApiResult<Response> {
     let mut headers = common_headers(&raw)?;
     if header_text(&request, header::IF_NONE_MATCH).is_some_and(|list| tag_listed(list, &raw.tag)) {
         return Ok((StatusCode::NOT_MODIFIED, headers).into_response());
@@ -194,7 +227,11 @@ pub async fn serve(
     };
     headers.insert(header::CONTENT_LENGTH, HeaderValue::from(length));
     let mut file = tokio::fs::File::from_std(raw.file);
-    file.seek(std::io::SeekFrom::Start(start))
+    let offset = raw
+        .offset
+        .checked_add(start)
+        .ok_or_else(|| orbyn_core::CoreError::Internal("A bad file range.".into()))?;
+    file.seek(std::io::SeekFrom::Start(offset))
         .await
         .map_err(orbyn_core::CoreError::from)?;
     let body = Body::from_stream(ReaderStream::new(file.take(length)));

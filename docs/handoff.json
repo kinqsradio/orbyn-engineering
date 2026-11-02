@@ -18,7 +18,7 @@
   ],
   "checkout": {
     "path": "/Users/anhdang/Documents/Github/orbyn-engineering/repo/orbyn-engineering",
-    "revision": "12748ac89e9cac3ab2d2e7a1a43163d03bb1f356",
+    "revision": "58d86e971de21254763504a2a0bf3d0cadf6274a",
     "diff_sha256": null
   },
   "owner": "Orbyn Engineering",
@@ -117,6 +117,22 @@
         "target/pr83-cancel-qualified-workspace.log:1009 passed9ignored; target/pr83-cancel-qualified-clippy.log passed; formatting passed",
         "Three deterministic failures-before: target/preparation-cancel-before-qualified.log, preparation-cancel-recovery-before.log, preparation-cancel-steer-before.log",
         "Existing sign-in visibility and parent-child assertions preserved; target/preparation-cancel-review-*.log"
+      ]
+    },
+    {
+      "result": "PR83 merged without squashing after every required exact-head check passed",
+      "evidence": [
+        "Head96ada2bd9549f19f028d8ec58c688b3d58f33815; CI41320346880 all six required jobs passed; GitGuardian passed; no reviews or review threads",
+        "Merged58d86e971de21254763504a2a0bf3d0cadf6274a; primary main fast-forwarded; next feature branch feat/project-settings starts at this merge"
+      ]
+    },
+    {
+      "result": "Shared local image search/relative selections, larger image delivery, bounded persistent previews and stale metadata presentation locally qualified; K7 remains partial for native external chooser and final platform evidence",
+      "evidence": [
+        "docs/architecture.md",
+        "docs/parity.md: K7",
+        "target/project-image-final-workspace-inputs.json",
+        "target/project-image-final253-e2e-end.json"
       ]
     }
   ],
@@ -325,19 +341,64 @@
     {
       "check": "Accepted-cancellation correction on the final PR83 head",
       "required": true,
-      "state": "unverified",
+      "state": "passed",
       "evidence": [
         "Existing Windows service case retained with HTTP status and durable run-state/error/stop-requested context",
-        "Local1009/9ignored passed; current-head Windows and allsixCI jobs still required beforemerge"
+        "Local1009/9ignored passed; current-head Windows and allsixCI jobs still required beforemerge",
+        "Final96ada CI41320346880 Windows Rust and all five other required jobs passed; original precise Windows trigger remains unproven"
+      ]
+    },
+    {
+      "check": "Post-merge main58d86e9",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "CI41322108228 all six required jobs passed, including Windows Rust and both packaged startup jobs"
+      ]
+    },
+    {
+      "check": "Project settings continuation local K6 K7 K8",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "Name/Checkouts/Danger8 real-service browser cases; metadata3 real-service cases; final Core reader460passed2ignored and7 adjacent service cases; image2 browser cases; cache8 andidentity33 pure cases",
+        "Webcheck328unit/build passed; fullRust and231-case browser suites pending on frozen source. No Windows/native continuation qualification claimed",
+        "Final frozen Rust:1040 passed9ignored;workspacefmt/clippy passed; target/project-settings-final-rust-receipt.json records162unchanged inputs",
+        "Initial fullE2E230passed1failed library-image403, target/project-settings-final-e2e.log. Eligibility fix:4UI tests plus8cache/33identity tests; fullweb332/check/buildpassed; originalstrictsidebar+image2browsercasespassed; newdelayedworkspacecasepassed. Full232 rerun still required.",
+        "Second full browser231passed1failed ENOTEMPTY provider-model fixture. ActualwriterPIDunproven; ambientdiscovery failed-before and normalcontrolledcatalogshutdownpassed. Oldfixture/redreceipts retained.",
+        "Finalfamilyfix+isolationRust1043passed9ignored andfmt/workspaceclippy; target/project-settings-isolated-final-rust-receipt.json records163unchanged inputs. Web332/check/buildgreen. RebuiltCore234browsergate in progress.",
+        "Final sourcea17e748: full234E2Epassed0failed/no filters/skips; Rust1043passed9existingignored; fmt/workspaceclippy andwebcheck332unit/buildpassed. Daemon5426c8ff unchanged. Native/Windows/hosted continuation checks remain unverified."
+      ]
+    },
+    {
+      "check": "Current K7 local image selection and persistent cache continuation",
+      "required": true,
+      "state": "passed",
+      "evidence": [
+        "Schema22 Core465 passed2ignored; service30 passed incl populated migration and actual20/21 writer refusal; target/project-image-history-inputs.json",
+        "HTTP4passed with fmt/scopedClippy; target/project-image-http-inputs.json",
+        "Focused16picker/image cases passed; cache3 corrected observer passed; target/project-image-schema22-browser.log and target/project-image-cache-browser-qualified.log",
+        "Web355unit,check,build passed; target/project-image-final-web-{unit,check,build}.log",
+        "Final Rust workspace1080 passed9existingignored, fmt/alltargetClippy passed with441unchangedinputs. Final corrected web355unit/check/build passed. Full default253 browserpassed exit0,19.1min,772source/config/testinputs+bothcopiedbinariesunchanged; target/project-image-final253-e2e-{start,end}.json/log. Priorfull252251pass1fail retiredendpointobserver corrected, source/copiesunchanged; realstaleiconoverlayRED thenfocusedGREEN andfinal253GREEN. No native/Windows qualification or currentfeaturepush/PR/merge claim."
+      ]
+    },
+    {
+      "check": "PR84 Windows identity-fixture portability follow-up",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "Head8da9aeb CI41366570888: macRust/Web/E2E/bothdesktopstartup/GitGuardian passed; WindowsRust failed at project_icons/tests.rs384 parentrename beforeguardassertions",
+        "Portablefixture movesopenfile only andaddsactualpath/originalbytes controls; focused1/Core465passed2ignored/fmt/CoreClippy pass; productioncode/permissions/timeouts/platformcoverage unchanged",
+        "target/pr84-portable-handle-receipt.json; correctedfullworkspace1080passed9ignored/fmt/alltargetClippy pass,441inputsunchanged target/pr84-portable-full-workspace-receipt.json. CorrectedheadWindows/allrequiredCIpending; no merge"
       ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Finish PR83 exact-head CI, repair any failure without weakening checks, and merge without squash only when all six required jobs are green. Then continue K6 selected project details/name/checkouts/removal and K7 project icons, preserving the stopped native-control and other permission boundaries.",
+  "next_action": "Commit/push PR84 fixture-only portability correction after passedfullworkspace gates; rerun every required exact-head check andmergeonlyallgreen withoutsquash. Then separatebundledlibrary ed3->57 maintenance realfixture, K7nativechooser, K5 andallremaininghandoffscope. Stoppednative/tools remainstopped.",
   "delivery": {
-    "state": "merged",
+    "state": "pushed",
     "evidence": [
       "main2769161; PR70/71/72/74/75/77/78/69/76/73 merged green; PR60/79 and project settings scope work remain incomplete",
       "PR80/81 merged green; main193f406 CI passed all six required jobs. PR79 closed unmerged and consolidated into local settings section. CLI is published in PR60; the settings section remains local and incomplete.",
@@ -347,7 +408,13 @@
       "Settings batch PR82 opened at4ef7d9d with36 separate commits; CI41293365985 running. GitGuardian39375233 flags a synthetic parser-test Basic Auth placeholder in historical8f7cb87; correction prepared without weakening checks. No merge claimed.",
       "876c1a6 identity slice locally checked. Owner authorized using Chrome; GitGuardian39375233 reviewed and classified Not a secret (false positive). All required exact-head GitHub checks still gate merge.",
       "88f057a CI41293554098 E2E:196 passed,2 failed. Both stale acceptance contracts reproduced;13 real-Core reconcile/inheritance/search cases now pass with exact-row focus and version-fenced reset-request assertions. Windows Rust still running, not restarted.",
-      "PR82 head9ac3dfa passed every required check and GitGuardian, merged without squash12748ac. Next action-shortcut work is local and not covered by that CI."
+      "PR82 head9ac3dfa passed every required check and GitGuardian, merged without squash12748ac. Next action-shortcut work is local and not covered by that CI.",
+      "PR83 final96ada passed CI41320346880 all six jobs plus GitGuardian and merged58d86e9 without squash; next section is local feat/project-settings.",
+      "feat/project-settings local K6/K7/K8 continuation; web check328unit/build passed; final fullRust/browser qualification running, no new push/PR/merge",
+      "Local row commits b09df17 selectedProjectName/Checkouts/Danger; ff9329f passiveimages/automaticidentity;52d1c1e boundedlegacyreader; badgeeligibility follow-up local, no push",
+      "fb4d59e preserves project family cleanup once; internal discovery/privatefixture isolation follow-up locally qualified but full234 pending. No push/PR/merge for this section.",
+      "All current local source committed separately througha17e748 after affected gates. Exact source receipts match frozen qualification; section-branch push follows, no PR/merge claimed.",
+      "Featurebranch origin/feat/project-settings pushed and remoteSHAverified fd36862580558b7c0daf0c57082f3e9eedc4e310. Tested runtime source unchanged; this documentation receipt records actual delivery. No section PR or merge."
     ]
   }
 }

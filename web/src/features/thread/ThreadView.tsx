@@ -78,7 +78,7 @@ function TopBar({
       <div className="crumbs">
         {project ? (
           <>
-            <ProjectBadge name={project.name} />
+            <ProjectBadge name={project.name} project={project} />
             <span className="crumb-project" title={project.path}>
               {project.name}
             </span>

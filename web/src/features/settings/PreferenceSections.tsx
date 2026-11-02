@@ -395,6 +395,10 @@ export function SourceControlSection() {
   return (
     <>
       {heading("Source control")}
+      <PreferenceGroups groups={[{ title: "Repositories", rows: [{
+        key: "auto_pull", title: settingsLabel("source-control-automatic-pull"),
+        description: "Keeps the default branch current when the checkout has no local changes or commits.",
+      }] }]} />
       {forges.status === "loading" ? (
         <Loading label="Checking source control" rows={3} />
       ) : forges.status === "error" ? (

@@ -1,6 +1,12 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { RenameSelectedProjects } from "../generated/RenameSelectedProjects";
+import type { ChangeProjectIcon } from "../generated/ChangeProjectIcon";
+import type { ChangeProjectImage } from "../generated/ChangeProjectImage";
+import type { SearchProjectImages } from "../generated/SearchProjectImages";
+import type { ProjectImageSearchResult } from "../generated/ProjectImageSearchResult";
+import type { ProjectIconResource } from "../generated/ProjectIconResource";
 import type { ResolveThreadPath } from "../generated/ResolveThreadPath";
 import type { ResolvedThreadPath } from "../generated/ResolvedThreadPath";
 import type {
@@ -221,6 +227,11 @@ export const api = {
   rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
   createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: true }),
   addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
+  renameSelectedProjects: (change: RenameSelectedProjects) => request<Project[]>("POST", "/api/settings/projects/rename", change),
+  changeProjectIcon: (change: ChangeProjectIcon) => request<Project[]>("POST", "/api/settings/projects/icon", change),
+  changeProjectImage: (change: ChangeProjectImage) => request<Project[]>("POST", "/api/settings/projects/image", change),
+  searchProjectImages: (query: SearchProjectImages, signal?: AbortSignal) => request<ProjectImageSearchResult>("POST", "/api/settings/projects/image-search", query, signal),
+  projectIconResource: (id: string, signal?: AbortSignal) => request<ProjectIconResource>("GET", `/api/projects/${encodeURIComponent(id)}/icon/resource`, undefined, signal),
   clones: (signal?: AbortSignal) => request<CloneJob[]>("GET", "/api/clones", undefined, signal),
   startClone: (url: string) => request<CloneJob>("POST", "/api/clones", { url }),
   cancelClone: (id: string) => request<void>("POST", `/api/clones/${q(id)}/cancel`),

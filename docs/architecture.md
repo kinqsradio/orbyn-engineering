@@ -383,6 +383,18 @@ requires output to keep draining during teardown. Its newer
 [ReleasePseudoConsole API](https://learn.microsoft.com/en-us/windows/console/releasepseudoconsole)
 requires Windows 11 24H2 or Server 2025 and is unavailable on Windows Server 2022.
 
+Project configuration reads preserve the registered canonical checkout as authority;
+a checkout replaced by a symlink before the request cannot redirect that root.
+Only fixed root filenames are considered, with `orbyn.json` before `t3.json`.
+Directories are skipped; a present malformed, oversized or aliased first file
+reports a problem and cannot silently expose the next file. The read-only open
+rejects symlink/reparse aliases, verifies the actual handle's exact expected path
+and regular-file identity before bytes, probes at most 256 KiB plus one byte,
+then verifies that handle again before parsing. Unix read opens are nonblocking,
+so a regular-file-to-FIFO race cannot wait for a writer. These path checks do not
+claim arbitrary hardlink provenance or make concurrent filesystem contents atomic.
+The parser consumes already checked text and never writes project configuration.
+
 The project file is `orbyn.json`, or `t3.json` when a repository already has one, at
 the checkout's root. Orbyn only reads it, and a bad file is reported and never half
 applied. A script runs in its own terminal through the login shell, or `cmd /C` on
@@ -530,6 +542,12 @@ Moving or deleting a thread clears its setup and closes its old terminals/previe
 
 ## Settings and maintenance
 
+Animated disclosures clip their content without owning an internal scroll offset.
+The settings pane owns scrolling; focus and scroll-into-view during the 200 ms
+height transition must not move a control inside a hidden scroll container between
+pointer positioning and activation. Fixed provenance popovers retain their own
+viewport placement and scrolling.
+
 `ServerSettings` holds lifecycle and pricing. Everything else is in a fixed catalog of
 preferences, each with a default and a shape: an unknown key or a wrong shape is
 `400`, and a change applies all of its values or none. A preference resolves project,
@@ -598,7 +616,9 @@ with each target's transaction-current effective object; unmentioned fields surv
 environment value. All affected global, lifecycle and project writes commit in one
 immediate SQLite transaction or none, preserving unrelated and unknown settings.
 Missing or changed scopes and stale revisions return typed 409 errors, never a
-broader write. These full-app routes do not add engine tool capabilities.
+broader write. Group and checkout edits share the same selected-member metadata
+rule: incomplete repository metadata disables either selection unless its physical
+member is explicitly grouped Separately. These full-app routes do not add engine tool capabilities.
 
 Git and project-file observations precede SQLite. The immediate transaction fences
 registered IDs and paths, the observed catalog membership version, and each key's
@@ -619,6 +639,154 @@ listed project overrides. Each write stays attached to the scope that supplied i
 revision, including when navigation changes before it finishes. Remaining provider
 controls and storage forms still need their own bindings and qualification; their
 parity claims stay partial until those and native walkthroughs are verified.
+
+Project images are passive metadata, resolved by registered physical project ID.
+`GET /api/projects/:id/icon/resource` returns the source, relative path, content
+revision, closed media type and size without embedding bytes. The fixed
+`icon/raw` and `images/raw?path=` routes stream the resolved image or a checked
+picker candidate. They create no thread, execution permission or ordinary file
+grant. Untrusted projects may supply local images; scratch and library roots are
+refused. Structured overrides take display priority. A stored relative image hint
+precedes project-file hints, ordered automatic candidates and supported local
+source hints. No website is fetched or source executed. SVG is used only as an
+image, never injected as markup.
+
+The legacy `GET /api/projects/:id/icon` JSON reader retains its 1 MiB image limit.
+Resource/raw reads use the existing 1 GiB raw-file envelope and hash selected bytes
+in bounded chunks, checking handle identity, size and modification time afterward.
+Config/source text stays bounded to 256 KiB per file and 2 MiB aggregate. Actual
+opened handles must stay inside the selected canonical root and outside Git/library
+paths before and after reading. Fixed metadata paths require an exact relative
+match. MIME follows the checked handle's image filename; ICNS exposes only a checked
+embedded PNG extent. Raw range offsets are relative to that extent, not the container.
+Raw images retain conditional/range handling, sandbox/nosniff and private cache
+headers. Query tokens authorize only GET/HEAD on exact image raw routes; metadata,
+search and writes still require ordinary authenticated requests. Native CORS remains
+limited to the existing exact native origins.
+
+Badge loading waits for the known workspace-library path and excludes scratch and
+library identities. Retained workspace metadata remains usable during polling;
+a changed library identity hides its previous image immediately. The shared memory
+cache keys service origin, physical ID, registered path and saved hint, deduplicates
+reads and bounds observations/encoded bytes to 128/8 MiB. Hits expire after ten
+minutes; misses, errors and decode failures retry after one minute. Optional reads
+have a 30-second deadline and observation fences prevent late publication despite
+ignored aborts. A single unmount cannot cancel another badge's read. Reconnect or
+metadata changes retry while retaining a previous preview; removal purges that
+project. Routine four-second project polling does not bypass cache lifetimes.
+
+An optional IndexedDB store retains at most 128 previews and 1 MiB of data URLs,
+each at most 32 KiB, keyed by stable client origin, physical ID, root and saved hint.
+It stores content revisions and no service URL, token or volatile service port.
+Matching revisions reuse previews even when the resource reply arrives before
+the bounded persisted read; cancellation and observation identity are rechecked
+after restoration before fetching image bytes. Authoritative missing/refused resources and
+image decode failures remove them. Transient read failures retain the previous
+preview. Clear/delete/project-purge generations fence pending storage operations.
+Storage failure leaves raw image delivery available. Preview reads stop at 4 MiB,
+validate the content ETag and retain small data URLs; larger bitmaps try 96 then
+48 pixel WebP at 85 percent quality and release their decoded bitmap. Large SVGs
+are not rasterized. Uncacheable images use the fixed authenticated raw route with
+a content-version query. Badges retain the last decoded image while a replacement
+loads. Images never enter project lists or persisted UI state.
+
+Automatic fallback identity uses the normalized display name alone: Unicode
+letter/number words choose the first letter and a first-word digit, otherwise the
+last word's first letter or the first word's last letter; uppercasing keeps two
+code points. A normalized en-US lowercase polynomial selects the reference's 18
+named colors. The shared project badge owns this behavior without changing
+unrelated monogram helpers.
+
+Project Icon edits use the same selected physical-member fence as Name, with an
+observed membership version and exact decimal-string metadata revision per member.
+All comparisons precede writes in one immediate transaction; a stale member rejects
+the entire group. A set or explicit-null Reset changes only the structured icon,
+clears its saved image path and advances the revision. Missing `icon` is invalid.
+Known icon kinds are Lucide name plus one of 18 colors, emoji text, and monogram
+text plus color. Core applies JavaScript trim and UTF-16 limits, preserves direct
+API case/normalization, and limits command monograms to two extended graphemes
+with Unicode letter/number/mark/joiner rules. Unknown stored future kinds use the
+automatic display fallback; malformed known stored values fail explicitly.
+
+The picker freezes membership, physical IDs and revisions when opened. Cancel
+has no write. A conflict retains the draft and requires explicit reload before
+another save; a late response cannot replace a different selection's dialog.
+Committed rows update the workspace separately from subsequent catalog-read errors.
+A committed project edit or removal supersedes older project-list reads and ends
+their loading state; a delayed poll cannot restore stale metadata or a removed row.
+Committed mutation replies also compare canonical decimal revisions as exact
+integers; a lower or absent revision cannot replace an observed versioned row.
+The comparison precedes claiming the project-list generation, so an old mutation
+cannot cancel a newer read. Project icon presentation also compares valid
+canonical i64 revisions across catalog, locally committed and workspace observations,
+using only the same physical ID and exact registered root. A stale committed overlay
+or failed catalog refresh cannot hide a newer known icon. This display comparison
+does not rebase a dialog's frozen membership/revisions or re-enable failed reads.
+The picker normalizes monogram input with NFKC and uppercasing; the renderer keeps
+received text unchanged. Package-owned Lucide loaders have a bounded component
+lifetime and unknown names use FolderCode.
+
+Choose file opens the same command-style local image search in web and desktop.
+An open freezes selection, representative physical root, membership and expected
+revisions. Search accepts empty queries, hides old entries immediately and fences
+query generations, including an A-to-B-to-A round trip. Only visible candidates
+load fixed-route thumbnails; failed decoding leaves the file glyph. Keyboard,
+IME, Escape and backdrop behavior do not write until a candidate is selected.
+Selection closes the picker before posting the relative POSIX hint to every
+selected physical member. Missing peer files or a source removed after selection
+do not prevent saving the hint; each member resolves its own bytes or fallback.
+The image writer clears the structured override and advances metadata revisions;
+structured writes and Reset clear the hint. A conflict refreshes the catalog for
+a later explicit open and never replays the write. No files are copied or changed.
+The optional native external chooser and its authority/qualification remain work.
+
+Core search runs no Git command or hook and reads no global ignore configuration.
+It parses checked in-root `.gitignore` and `.ignore` data, never descends symlink
+directories, validates candidate handles without hashing each image, and bounds
+visits/depth/enumeration time to 20,000/48/3 seconds with a separate cooperative
+3-second scoring budget. Bad ignore lines keep valid rules and mark truncation;
+unreadable or unsafe ignore sources omit their subtree. Results are capped at 200.
+Independent case-insensitive Unicode subsequence matching ranks basename, prefix,
+contiguous match, gaps, position and path length, then recent selection/count/path.
+Empty queries prioritize selection history. Exact native fff ranking weights are
+not established by this implementation.
+
+Schema 21 adds nullable `project_icon` JSON and `favicon_path`, and a nonnegative
+integer `metadata_revision` initially zero; wire revisions are decimal strings.
+Existing rows and unrelated columns remain intact. Schema 22 adds per-project/path
+image-selection history with a cascading foreign key, saturating selection count,
+nonnegative last-use timestamp and 256-entry per-project bound. Image transactions
+record history only after all comparisons; Reset/structured changes retain it.
+Selected and legacy Name, icon/image, scratch adoption and false-to-true trust
+writers advance the shared revision using partial-column updates. Repeated trust
+leaves the row revision unchanged; audit and trust remain one transaction. The
+existing exclusive data-directory service lock serializes old/new live writers.
+Schema-20 and schema-21 binaries must refuse a schema-22 database before WAL setup
+or migration, and cannot bypass a live current owner. Recovery requires the current
+writer or a complete pre-upgrade backup; never lower the schema marker or run an
+old writer on it.
+
+Project Name edits require an explicit group or checkout, its observed catalog
+version and the raw expected name of every selected physical member. Core matches
+JavaScript trim whitespace and rejects an empty result without a title-specific
+length limit. Aggregate rename fan-out/serialized response is bounded to 4 MiB,
+independently of the 512-target and transport-body limits. A dedicated immediate transaction rechecks all registered physical
+IDs/paths and every expected name before updating the name and advancing the shared metadata revision. Any conflict rejects
+the entire group. Trust, folders, project files and other metadata are unchanged.
+The response contains committed rows from that transaction; subsequent catalog
+refresh is a separate read. Single-member groups display the physical title;
+checkout-selected Name retains the original logical group label. Registered Checkouts are listed from catalog members, never the Git worktree
+inventory. Removal counts current and archived threads, freezes the confirmed
+physical IDs and deletes only entries through the existing file-preserving route.
+Cancel sends no delete. Core remembers the exact IDs returned by each successful
+thread-family deletion, skips those rows later in the project list and performs
+setup/terminal cleanup once per deleted ID. Busy and unexpected errors still
+propagate. Partial failure retains the failed member and prior
+successes; explicit retry skips successes. Whole-group selection clears only after
+a fresh catalog confirms its absence. A read failure after committed deletion is
+a separate refresh failure. All projects
+shows the reference's choose-project notice. Unavailable selections cannot rename
+another target; a stale save retains its draft without automatic replay.
 
 Custom models belong to the local environment even while a valid project or checkout
 is selected. Their editor queries that explicit environment target and saves the raw
@@ -641,6 +809,18 @@ preserves unmentioned and unknown telemetry fields. Scope changes dispose the fo
 response owner; a late save cannot clear a new draft or update a different scope.
 Endpoint test results stay attached to their requested URL and generation. These
 bindings qualify local settings behavior, not running export or native parity.
+
+Automatic known-provider discovery defaults to all installed known CLIs. The
+internal `EngineConfig.known_engine_ids` can restrict that enumeration; absent means
+all, an explicit empty list means none. It leaves registered custom providers,
+explicit instances and direct known-provider lookup unchanged and is not an access
+rule. Service bootstrap accepts this optional list as UTF-8 JSON in
+`ORBYN_KNOWN_ENGINE_IDS`; malformed input fails startup without logging its value.
+Disposable browser fixtures choose an empty discovery domain and pass only selected
+runtime environment variables, with private home, XDG and Windows app-data paths.
+Controlled providers opt into production discovery to verify catalog shutdown;
+ordinary fixtures cannot accidentally probe providers installed on the host.
+Cleanup failures remain failures with the same retry budget.
 
 `provider_instances` holds named setups of an engine, each its own engine to threads,
 with its own models and sessions, so changing a thread's instance is an engine switch. An
@@ -1403,6 +1583,13 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `GET /api/diagnostics`, `POST /api/diagnostics/processes/:pid/stop` | `Diagnostics`, in memory only; a stop reaches only this service's own descendants |
 | `GET /api/projects`, `POST /api/projects/:id/trust` | Projects and folder trust |
 | `POST /api/projects/add` | `AddProject`: register a folder in place; `403 workspace_refused`, `409 project_exists` |
+| `GET /api/projects/:id/icon` | `ProjectIconImage`; bounded passive registered-root metadata, no path or URL argument |
+| `GET /api/projects/:id/icon/resource` | `ProjectIconResource`; checked image metadata and content revision without embedded bytes |
+| `GET, HEAD /api/projects/:id/icon/raw`, `/api/projects/:id/images/raw?path=` | Selected/candidate image bytes, checked registered roots, conditional and range handling |
+| `POST /api/settings/projects/image-search` | `SearchProjectImages` → `ProjectImageSearchResult`; selected representative, fenced membership and bounded local search |
+| `POST /api/settings/projects/image` | `ChangeProjectImage` → `Project[]`; same relative image hint with membership and metadata revision compare-and-set |
+| `POST /api/settings/projects/icon` | `ChangeProjectIcon` → `Project[]`; selected structured icon/reset with membership and metadata revision compare-and-set |
+| `POST /api/settings/projects/rename` | `RenameSelectedProjects` → `Project[]`; selected names with membership and raw-name compare-and-set |
 | `POST /api/settings/project-scopes` | `ProjectScopesQuery` → `ProjectScopeCatalog`; full-app read, stale selections remain unavailable |
 | `POST /api/projects/clone`, `/create` | Make a folder, by default under `repo/`, or at `path`; `create` takes `readme` for a first commit |
 | `PATCH /api/projects/:id` | `RenameProject`: the name shown; the folder stays |

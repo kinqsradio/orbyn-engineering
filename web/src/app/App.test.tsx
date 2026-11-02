@@ -287,21 +287,22 @@ describe("App against the mock API", () => {
     expect(screen.getByRole("button", { name: "Roll back" })).toBeDisabled();
   });
 
-  it("only unregisters a project unless the server reports a managed folder with work", async () => {
-    mock.fail("/api/projects/", 1, 409, "project_has_work", "This managed folder has unpushed work.");
+  it("keeps a failed unregister visible and retries without offering file deletion", async () => {
     const user = userEvent.setup();
-    go("#/settings/projects");
+    go("#/settings/projects?project=mock%3Ap-site");
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Remove marketing-site" }));
-    const dialog = await screen.findByRole("dialog", { name: "Remove marketing-site?" });
-    expect(within(dialog).getByText(/Files on disk are not touched/)).toBeInTheDocument();
-    const confirm = within(dialog).getByRole("button", { name: "Remove project" });
+    await user.click(await screen.findByRole("button", { name: "Remove project" }));
+    const dialog = await screen.findByRole("dialog", { name: /Remove.*marketing-site/ });
+    expect(within(dialog).getByText("This removes only the project entries, not the files on disk.")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    const confirm = within(dialog).getByRole("button", { name: "Confirm" });
+    mock.fail("/api/projects/p-site", 1, 409, "thread_busy", "One of this project's threads is running.");
     await user.click(confirm);
-    expect(await within(dialog).findByText(/managed folder has unpushed work/)).toBeInTheDocument();
-    expect(confirm).toBeDisabled();
-    await user.click(within(dialog).getByRole("checkbox"));
+    expect(await within(dialog).findByText(/threads is running/)).toBeInTheDocument();
+    for (const thread of mock.threads) if (thread.project_id === "p-site") thread.active_run = null;
     await user.click(confirm);
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "marketing-site" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Remove.*marketing-site/ })).toBeNull());
+    expect(await screen.findByText("Choose a project to manage its name, icon, checkouts and actions.")).toBeInTheDocument();
   });
 
   it("shows the selected branch in the thread", async () => {

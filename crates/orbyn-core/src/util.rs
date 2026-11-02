@@ -156,7 +156,7 @@ pub fn canonicalize(path: &Path) -> std::io::Result<std::path::PathBuf> {
 
 /// Drops the verbatim prefix unless that would change what the path names: without
 /// it Windows reads `CON` as a device, trims trailing dots and limits the length.
-fn strip_verbatim(path: &str) -> String {
+pub(crate) fn strip_verbatim(path: &str) -> String {
     let (plain, tail) = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
         (format!(r"\\{rest}"), rest)
     } else if let Some(rest) = path.strip_prefix(r"\\?\") {

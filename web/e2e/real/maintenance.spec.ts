@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { projectSettingsUrl, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Per-project settings, telemetry addresses and storage cleanup on the real service. */
 
@@ -29,23 +29,24 @@ const project = (key: string) =>
     .api<{ key: string; value: unknown }[]>("GET", `/api/preferences?project_id=${projectId}`)
     .then((list) => list.find((entry) => entry.key === key)?.value);
 
-test("a project sets its own defaults and turns a provider off", async ({ page }) => {
+test("scoped defaults and actions reach new threads while disabled provider admission stays enforced", async ({ page }) => {
   await page.setViewportSize({ width: 1300, height: 1000 });
-  await page.goto(`${service.page}#/settings/projects`);
-  await page.getByRole("button", { name: "Settings for my-repo" }).click();
-  const dialog = page.getByRole("dialog", { name: "my-repo settings" });
-  await dialog.getByLabel("Default permissions").selectOption("full_access");
-  await dialog.getByLabel("Submodules").selectOption("none");
-  await dialog.getByRole("switch", { name: "Pull the default branch automatically" }).click();
-  await dialog.getByLabel("Default model").fill("fable");
-  await dialog.getByLabel("Default model").blur();
+  // These saved Core defaults remain supported; the old raw model/provider
+  // checkbox project modal is absent from the reference's selected detail.
+  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_permission_mode: "full_access", default_model: "fable" } });
+  await page.goto(await projectSettingsUrl(service, projectId, "worktrees"));
+  await page.getByLabel("Submodules").selectOption("none");
+  await page.goto(await projectSettingsUrl(service, projectId, "source-control"));
+  await page.getByRole("switch", { name: "Automatically pull" }).click();
+  await page.goto(await projectSettingsUrl(service, projectId));
+  const dialog = page.locator(".settings-body");
   await dialog.getByRole("button", { name: "Add action", exact: true }).click();
   const action = page.getByRole("dialog", { name: "Add Action", exact: true });
   await action.getByLabel("Name", { exact: true }).fill("Test");
   await action.getByLabel("Command", { exact: true }).fill("npm test");
   await action.getByRole("button", { name: "Save action", exact: true }).click();
   await expect(action).toHaveCount(0);
-  await dialog.getByRole("checkbox", { name: "Codex" }).click();
+  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { disabled_engines: ["codex"] } });
   await expect.poll(() => project("disabled_engines")).toEqual(["codex"]);
   expect(await project("default_permission_mode")).toBe("full_access");
   expect(await project("worktree_submodules")).toBe("none");
@@ -65,7 +66,7 @@ test("a project sets its own defaults and turns a provider off", async ({ page }
   await expect(
     service.api("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Off", model: null, worktree: null, skill_profile: null }),
   ).rejects.toThrow(/turned off/);
-  await dialog.getByRole("checkbox", { name: "Codex" }).click();
+  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { disabled_engines: [] } });
   await expect.poll(() => project("disabled_engines")).toEqual([]);
 });
 
