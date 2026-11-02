@@ -3,6 +3,7 @@
 //! logic: the run manager owns all of that.
 
 pub mod acp;
+mod acp_sessions;
 pub mod agui;
 pub mod claude;
 pub mod codex;
@@ -100,6 +101,12 @@ pub struct RunSpec {
     pub mcp_url: Option<String>,
     /// Private scratch directory for this run, removed at run end.
     pub run_dir: PathBuf,
+}
+
+/// Historical replay captured without admitting a run or sending a prompt.
+#[derive(Debug)]
+pub struct NativeSessionReplay {
+    pub events: Vec<AgUiEvent>,
 }
 
 /// An action the engine needs answered. Dropping `reply` is a denial.
@@ -277,6 +284,38 @@ pub trait EngineDriver: Send + Sync {
     /// starting it. Endpoint and synthetic drivers have no executable to check.
     fn check_launch_available(&self) -> Result<()> {
         Ok(())
+    }
+
+    async fn native_session_capabilities(
+        &self,
+    ) -> Result<Option<orbyn_contracts::AcpSessionCapabilities>> {
+        Ok(None)
+    }
+
+    async fn list_native_sessions(
+        &self,
+        _cwd: &std::path::Path,
+        _cursor: Option<&str>,
+    ) -> Result<orbyn_contracts::AcpNativeSessionPage> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot list native sessions.".into(),
+        ))
+    }
+
+    async fn load_native_session(
+        &self,
+        _cwd: &std::path::Path,
+        _session_id: &str,
+    ) -> Result<NativeSessionReplay> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot load native sessions.".into(),
+        ))
+    }
+
+    async fn delete_native_session(&self, _cwd: &std::path::Path, _session_id: &str) -> Result<()> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot delete native sessions.".into(),
+        ))
     }
 
     async fn probe(&self) -> EngineProbe;

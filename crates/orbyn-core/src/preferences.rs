@@ -273,6 +273,10 @@ impl Core {
         }
         let _cleanup_policy =
             self.cleanup_policy_write(values.keys().map(String::as_str), project_id.is_none())?;
+        let gate = values
+            .contains_key(crate::engines::instances::PREFERENCE)
+            .then(|| self.engines.configuration_gate())
+            .transpose()?;
         self.store.change_settings(|snapshot| {
             if let Some(id) = project_id
                 && !snapshot.projects.iter().any(|project| project.id == id)
@@ -290,6 +294,7 @@ impl Core {
             }
             Ok(((), writes))
         })?;
+        drop(gate);
         self.apply_login_preference()
     }
 

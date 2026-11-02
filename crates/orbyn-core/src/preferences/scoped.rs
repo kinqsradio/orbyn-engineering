@@ -484,6 +484,11 @@ impl Core {
         }
         let _cleanup_policy =
             self.cleanup_policy_write(change.edits.keys().map(String::as_str), ids.is_empty())?;
+        let gate = change
+            .edits
+            .contains_key(crate::engines::instances::PREFERENCE)
+            .then(|| self.engines.configuration_gate())
+            .transpose()?;
         self.store.change_settings(|snapshot| {
             crate::project_scopes::fence_members(&snapshot.projects, &catalog, &root)?;
             for row in rows(snapshot, &files, &catalog, &requested)? {
@@ -612,6 +617,7 @@ impl Core {
             }
             Ok(((), writes))
         })?;
+        drop(gate);
         if change.edits.contains_key("prefer_saved_login") {
             self.apply_login_preference()?;
         }

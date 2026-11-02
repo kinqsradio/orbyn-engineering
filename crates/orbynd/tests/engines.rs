@@ -204,6 +204,81 @@ async fn an_acp_instance_adds_to_its_driver_launch() {
 }
 
 #[tokio::test]
+async fn a_local_acp_instance_runs_its_literal_command_without_a_base_engine() {
+    let dir = TempDir::new();
+    let launch = dir.path().join("launches");
+    let options = Options {
+        env: vec![(
+            "ORBYN_FAKE_LAUNCH_FILE".into(),
+            launch.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, _) = setup(&dir, options, "codex").await;
+    let fake = env!("CARGO_BIN_EXE_orbyn-fake-engine");
+    let (code, body) = set_instances(
+        &service,
+        json!([{
+            "id": "local-work", "driver": "_local_acp", "name": "Local work",
+            "accent": "#336699", "program": fake,
+            "args": ["acp", "--profile", "work with spaces", ""]
+        }]),
+    )
+    .await;
+    assert_eq!(code, 200, "{body}");
+    let engine = listed(&service, "local-work").await.unwrap();
+    assert_eq!(engine["name"], "Local work");
+    assert_eq!(engine["tier"], "acp");
+    assert_eq!(engine["instance_of"], "_local_acp");
+    assert_eq!(engine["accent"], "#336699");
+    assert!(listed(&service, "_local_acp").await.is_none());
+    let (code, _) = service
+        .send(
+            "/api/engines/custom",
+            json!({
+                "id": "_local_acp", "name": "Conflicting base", "tier": "acp",
+                "target": fake, "args": ["acp", "inherited"]
+            }),
+        )
+        .await;
+    assert_eq!(
+        code, 400,
+        "a new base must not reinterpret existing local instance arguments"
+    );
+    assert!(listed(&service, "_local_acp").await.is_none());
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let thread = service.thread(&project, "local-work").await;
+    service.admit(&thread, "hello").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let seen = launches(&launch);
+    let run = seen.iter().rfind(|entry| entry["mode"] == "acp").unwrap();
+    assert_eq!(
+        run["args"],
+        json!(["acp", "--profile", "work with spaces", ""])
+    );
+    let (code, body) = set_instances(
+        &service,
+        json!([{
+            "id": "local-work", "driver": "_local_acp", "program": fake, "enabled": false,
+            "args": ["acp"]
+        }]),
+    )
+    .await;
+    assert_eq!(code, 200, "{body}");
+    assert!(listed(&service, "local-work").await.is_none());
+    let (code, _) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({"prompt":"again"}),
+        )
+        .await;
+    assert_eq!(code, 400);
+}
+
+#[tokio::test]
 async fn a_list_that_could_not_launch_is_refused_whole() {
     let dir = TempDir::new();
     let (service, _) = setup(&dir, Options::default(), "codex").await;
