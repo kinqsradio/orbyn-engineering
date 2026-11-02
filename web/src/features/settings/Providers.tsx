@@ -1,18 +1,19 @@
 import { RefreshCw, Trash2, ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, request } from "../../api/client";
-import type { EngineStatus, EngineTier, JsonValue } from "../../api/types";
+import type { EngineStatus, JsonValue } from "../../api/types";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
-import { authLabels, signInLabel, slugify, supportLabels, tierLabels } from "../../lib/format";
+import { authLabels, signInLabel, supportLabels, tierLabels } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { arrangeModels, modelKey, useEngineModels, useModelStore } from "../thread/modelStore";
-import { Button, CopyCommand, Field, Pill, type PillTone, IconButton } from "../../ui/controls";
+import { Button, CopyCommand, Pill, type PillTone, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { AcpRegistry } from "./AcpRegistry";
-import { Empty, ErrorState, Loading } from "../../ui/states";
+import { ErrorState, Loading } from "../../ui/states";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { ProviderInstances } from "./ProviderInstances";
 
 const POLL_WHILE_UPDATING_MS = 1500;
 
@@ -289,103 +290,6 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
   );
 }
 
-const CUSTOM_TIERS: { tier: EngineTier; target: string; hint: string }[] = [
-  { tier: "acp", target: "Launch command", hint: "The command that starts an ACP agent over stdio." },
-  { tier: "agui", target: "Endpoint URL", hint: "The AG-UI endpoint Orbyn connects to." },
-  { tier: "terminal", target: "Launch command", hint: "Runs in a terminal only and is always unmanaged." },
-];
-
-function CustomEngineForm() {
-  const refreshEngines = useWorkspace((state) => state.refreshEngines);
-  const [name, setName] = useState("");
-  const [tier, setTier] = useState<EngineTier>("acp");
-  const [target, setTarget] = useState("");
-  const [args, setArgs] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const copy = CUSTOM_TIERS.find((entry) => entry.tier === tier) ?? CUSTOM_TIERS[0];
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.addCustomEngine({
-        id: slugify(name),
-        name: name.trim(),
-        tier,
-        target: target.trim(),
-        args: args.trim() ? args.trim().split(/\s+/) : [],
-      });
-      await refreshEngines();
-      setName("");
-      setTarget("");
-      setArgs("");
-    } catch (failure) {
-      setError(toFailure(failure).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form className="form setting-form" onSubmit={(event) => void submit(event)}>
-      <h3>Add provider</h3>
-      <div className="form-grid">
-        <Field label="Name">
-          {(props) => <input {...props} required value={name} onChange={(event) => setName(event.target.value)} />}
-        </Field>
-        <Field label="Protocol">
-          {(props) => (
-            <select {...props} value={tier} onChange={(event) => setTier(event.target.value as EngineTier)}>
-              {CUSTOM_TIERS.map((entry) => (
-                <option key={entry.tier} value={entry.tier}>
-                  {tierLabels[entry.tier]}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-      </div>
-      <Field label={copy?.target ?? "Target"} hint={copy?.hint}>
-        {(props) => (
-          <input
-            {...props}
-            required
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-            spellCheck={false}
-            autoCapitalize="off"
-          />
-        )}
-      </Field>
-      {tier === "agui" ? null : (
-        <Field label="Arguments (optional)">
-          {(props) => (
-            <input
-              {...props}
-              value={args}
-              onChange={(event) => setArgs(event.target.value)}
-              spellCheck={false}
-              autoCapitalize="off"
-            />
-          )}
-        </Field>
-      )}
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <div className="form-actions">
-        <Button type="submit" busy={busy} disabled={!name.trim() || !target.trim()}>
-          Add provider
-        </Button>
-      </div>
-    </form>
-  );
-}
-
 export function ProvidersSection() {
   const engines = useWorkspace((state) => state.engines);
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
@@ -431,17 +335,14 @@ export function ProvidersSection() {
         <ErrorState title="Couldn't load providers" failure={engines.error} onRetry={() => void refreshEngines()} />
       ) : !engines.data ? (
         <Loading label="Loading providers" />
-      ) : engines.data.length === 0 ? (
-        <Empty title="No providers found" />
       ) : (
-        <ul className="setting-list">
-          {engines.data.map((engine) => (
-            <EngineRow key={engine.id} engine={engine} />
-          ))}
-        </ul>
+        <ProviderInstances engines={engines.data} renderDriver={(engine) => <EngineRow engine={engine} />} renderStatus={(engine) => <>
+          {engine.installed ? <Pill tone={supportTone[engine.support]}>{supportLabels[engine.support]}</Pill> : <Pill tone="warn">Not installed</Pill>}
+          <dl className="facts"><div><dt>Version</dt><dd>{engine.version ?? "Unknown"}</dd></div><div><dt>Location</dt><dd><code>{engine.path ?? "Not found"}</code></dd></div></dl>
+          <UpdateAction engine={engine} />
+        </>} renderInstance={(engine) => engine.installed ? <EngineModelList engine={engine} /> : null} />
       )}
       <AcpRegistry />
-      <CustomEngineForm />
     </>
   );
 }

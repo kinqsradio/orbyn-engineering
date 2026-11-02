@@ -173,12 +173,16 @@ test("stopping a parent stops the child it delegated to", async ({ page }) => {
 
 test("a local ACP command becomes a provider", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
-  await page.getByLabel("Name").fill("House agent");
-  await page.getByLabel("Protocol").selectOption("acp");
-  await page.getByLabel("Launch command").fill(FAKE);
-  await page.getByLabel("Arguments (optional)").fill("acp");
-  await page.getByRole("button", { name: /^(Add|Add provider|Add engine|Save)/ }).last().click();
-  await expect(page.locator(".setting-list > li").filter({ hasText: "House agent" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Add provider" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add provider" });
+  await dialog.getByRole("button", { name: "Local ACP command" }).click();
+  await dialog.getByLabel("Executable").fill(FAKE);
+  await dialog.getByRole("button", { name: "Add argument" }).click();
+  await dialog.getByLabel("Argument 1").fill("acp");
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await dialog.getByLabel("Label").fill("House agent");
+  await dialog.getByRole("button", { name: "Add instance" }).click();
+  await expect(page.getByRole("button", { name: "Select House agent" })).toBeVisible({ timeout: 15_000 });
   await page.goto(`${service.page}#/settings/general`);
   await expect(page.getByRole("switch", { name: "Check providers for updates" })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Prefer saved login" })).toHaveCount(0);
