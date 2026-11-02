@@ -381,8 +381,22 @@ async fn actual_handle_identity_rejects_outside_or_git_bytes_despite_safe_curren
     write(&root, "folder/icon.svg", b"original");
     let opened = std::fs::File::open(root.join("folder/icon.svg")).unwrap();
     let outside = dir.path().join("moved-outside");
-    std::fs::rename(root.join("folder"), &outside).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    // Windows permits moving the shared-open file, but not its containing directory.
+    std::fs::rename(root.join("folder/icon.svg"), outside.join("icon.svg")).unwrap();
     write(&root, "folder/icon.svg", b"safe replacement path");
+    assert_eq!(
+        opened_path(&opened).unwrap(),
+        canonicalize(&outside.join("icon.svg")).unwrap(),
+        "the old handle must resolve successfully to the moved file"
+    );
+    let mut original = Vec::new();
+    std::io::Read::read_to_end(&mut opened.try_clone().unwrap(), &mut original).unwrap();
+    assert_eq!(original, b"original");
+    assert_eq!(
+        std::fs::read(root.join("folder/icon.svg")).unwrap(),
+        b"safe replacement path"
+    );
     assert!(
         scope
             .opened_relative(&opened, "folder/icon.svg", ReadKind::Image)

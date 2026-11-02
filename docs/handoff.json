@@ -381,12 +381,22 @@
         "Web355unit,check,build passed; target/project-image-final-web-{unit,check,build}.log",
         "Final Rust workspace1080 passed9existingignored, fmt/alltargetClippy passed with441unchangedinputs. Final corrected web355unit/check/build passed. Full default253 browserpassed exit0,19.1min,772source/config/testinputs+bothcopiedbinariesunchanged; target/project-image-final253-e2e-{start,end}.json/log. Priorfull252251pass1fail retiredendpointobserver corrected, source/copiesunchanged; realstaleiconoverlayRED thenfocusedGREEN andfinal253GREEN. No native/Windows qualification or currentfeaturepush/PR/merge claim."
       ]
+    },
+    {
+      "check": "PR84 Windows identity-fixture portability follow-up",
+      "required": true,
+      "state": "unverified",
+      "evidence": [
+        "Head8da9aeb CI41366570888: macRust/Web/E2E/bothdesktopstartup/GitGuardian passed; WindowsRust failed at project_icons/tests.rs384 parentrename beforeguardassertions",
+        "Portablefixture movesopenfile only andaddsactualpath/originalbytes controls; focused1/Core465passed2ignored/fmt/CoreClippy pass; productioncode/permissions/timeouts/platformcoverage unchanged",
+        "target/pr84-portable-handle-receipt.json; correctedfullworkspace1080passed9ignored/fmt/alltargetClippy pass,441inputsunchanged target/pr84-portable-full-workspace-receipt.json. CorrectedheadWindows/allrequiredCIpending; no merge"
+      ]
     }
   ],
   "decisions": [
     "One branch per section, one small commit per completed row, affected local checks before push; section or about20-row PR; green merge without squash; integrate main and deliver ready green batches at least daily"
   ],
-  "next_action": "Deliver locally qualified project-settings batch through PR with all required exact-head checks green and no squash. Then refresh bundledlibrarypin ed3f1d3 to reviewed57d9fe7 separately with realfixture, continue K7 nativeexternalchooser and K5 defaults/allremaininghandoffscope. Latestsharedguidance reviewedinplace; stoppednative/tool operations remainstopped.",
+  "next_action": "Commit/push PR84 fixture-only portability correction after passedfullworkspace gates; rerun every required exact-head check andmergeonlyallgreen withoutsquash. Then separatebundledlibrary ed3->57 maintenance realfixture, K7nativechooser, K5 andallremaininghandoffscope. Stoppednative/tools remainstopped.",
   "delivery": {
     "state": "pushed",
     "evidence": [

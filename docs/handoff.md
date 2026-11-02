@@ -150,6 +150,22 @@ language, migration and verification owners. The app's bundled library still pin
 `ed3f1d3`; refresh that snapshot as a separate maintenance change with a real bundled
 library fixture after delivering the current project-settings batch.
 
+PR84 was opened at `8da9aeb` with 13 separate section commits. CI `41366570888`
+passed macOS Rust, Web, E2E and both packaged build/startup jobs; GitGuardian also
+passed. Windows Rust failed in the image identity test's fixture setup, before
+its authorization assertions: moving a parent directory with an open child file
+returned Windows error 5. The test now moves the open file itself to the outside
+fixture directory, recreates the original safe path, and positively checks the
+held handle's actual path and original bytes. The outside/Git rejection and fresh
+inside acceptance assertions remain. Production code, permissions, timeouts and
+platform coverage are unchanged. The focused case and Core 465/2-ignored gates
+pass locally. The full corrected workspace also passes 1080 tests with 9 existing
+ignored, formatting and all-target Clippy; all 441 recorded Rust/manifest/generated
+inputs match before and after (`target/pr84-portable-full-workspace-receipt.json`).
+Corrected-head Windows CI remains pending.
+The original log is retained at `target/pr84-windows-rust-125027872753.log`.
+Do not merge this PR while any required current-head check is red.
+
 ### Initial PR queue
 
 | PR | State |
