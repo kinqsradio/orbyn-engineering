@@ -119,6 +119,38 @@ describe("shared local project images", () => {
     const entry = subscribe(); await flush(); expect(cache.readProjectImage(entry.key)).toBe(DATA_A);
     expect(mock.preview).not.toHaveBeenCalled();
   });
+  it("waits for a slower persisted read before fetching an unchanged image", async () => {
+    let restore!: (value: ReturnType<typeof stored>) => void;
+    mock.read.mockReturnValue(new Promise<ReturnType<typeof stored>>((done) => { restore = done; }));
+    mock.request.mockResolvedValue(payload());
+    const entry = subscribe(); await flush();
+    expect(mock.preview).not.toHaveBeenCalled();
+    restore(stored()); await flush();
+    expect(cache.readProjectImage(entry.key)).toBe(DATA_A);
+    expect(mock.preview).not.toHaveBeenCalled();
+  });
+  it("does not revive a delayed persisted preview after an authoritative miss", async () => {
+    let restore!: (value: ReturnType<typeof stored>) => void;
+    mock.read.mockReturnValue(new Promise<ReturnType<typeof stored>>((done) => { restore = done; }));
+    mock.request.mockResolvedValue({ ...payload(), image: null });
+    const entry = subscribe(); await flush();
+    expect(mock.remove).toHaveBeenCalled();
+    restore(stored()); await flush();
+    expect(cache.readProjectImage(entry.key)).toBeNull();
+    expect(mock.preview).not.toHaveBeenCalled();
+  });
+  it("fences a resource waiting for restoration when invalidated", async () => {
+    let restore!: (value: ReturnType<typeof stored>) => void;
+    mock.read.mockReturnValueOnce(new Promise<ReturnType<typeof stored>>((done) => { restore = done; }))
+      .mockResolvedValue(null);
+    mock.request.mockResolvedValueOnce(payload()).mockResolvedValue(payload(project.id, project.path, B));
+    const entry = subscribe(); await flush();
+    cache.invalidateProjectImages(project.id); await flush();
+    expect(cache.readProjectImage(entry.key)).toBe(DATA_B);
+    restore(stored()); await flush();
+    expect(cache.readProjectImage(entry.key)).toBe(DATA_B);
+    expect(mock.preview).toHaveBeenCalledTimes(1);
+  });
   it("keeps the previous preview while a replacement loads and through a transient error", async () => {
     mock.request.mockResolvedValue(payload()); const entry = subscribe(); await flush();
     let finish!: (value: string) => void;

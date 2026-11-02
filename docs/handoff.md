@@ -162,7 +162,19 @@ platform coverage are unchanged. The focused case and Core 465/2-ignored gates
 pass locally. The full corrected workspace also passes 1080 tests with 9 existing
 ignored, formatting and all-target Clippy; all 441 recorded Rust/manifest/generated
 inputs match before and after (`target/pr84-portable-full-workspace-receipt.json`).
-Corrected-head Windows CI remains pending.
+Corrected head `95d66e0` passed Windows Rust and both packaged build/startup jobs
+in CI `41369323464`, along with macOS Rust and Web. E2E passed 252/253: the
+persisted-image restore case observed one unnecessary raw read. The resource
+reply could arrive before IndexedDB restored matching bytes. A deterministic
+delayed-storage regression fails before the correction; the client now awaits
+that bounded restoration before deciding whether to fetch bytes and rechecks
+entry ownership after the await. Missing resources still clear previews without
+waiting, and late restore results cannot overwrite invalidated entries. All 16
+cache unit cases and the full 358-test web suite pass; type/lint checks and the
+production build pass. All three real-service browser cache cases pass at the
+unchanged default limits on copied service executables; the full default browser
+gate is running. This correction does not qualify the failed CI head or authorize
+merging it. Its new exact-head required CI must pass before delivery.
 The original log is retained at `target/pr84-windows-rust-125027872753.log`.
 Do not merge this PR while any required current-head check is red.
 

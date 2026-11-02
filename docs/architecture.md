@@ -672,7 +672,9 @@ project. Routine four-second project polling does not bypass cache lifetimes.
 An optional IndexedDB store retains at most 128 previews and 1 MiB of data URLs,
 each at most 32 KiB, keyed by stable client origin, physical ID, root and saved hint.
 It stores content revisions and no service URL, token or volatile service port.
-Matching revisions reuse previews; authoritative missing/refused resources and
+Matching revisions reuse previews even when the resource reply arrives before
+the bounded persisted read; cancellation and observation identity are rechecked
+after restoration before fetching image bytes. Authoritative missing/refused resources and
 image decode failures remove them. Transient read failures retain the previous
 preview. Clear/delete/project-purge generations fence pending storage operations.
 Storage failure leaves raw image delivery available. Preview reads stop at 4 MiB,

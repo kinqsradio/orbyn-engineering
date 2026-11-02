@@ -103,7 +103,7 @@ function ensure(key: string, project: Identity) {
     notify(key);
   }, REQUEST_DEADLINE);
   bound();
-  void readStoredProjectImage(entry.persistentKey, project.id).then((cached) => {
+  const restored = readStoredProjectImage(entry.persistentKey, project.id).then((cached) => {
     if (!cached || !current() || entry.final || entry.outcome === "missing") return;
     entry.cached = cached; entry.url = cached.data_url; bound(); notify(key);
   });
@@ -117,6 +117,10 @@ function ensure(key: string, project: Identity) {
         return;
       }
       entry.outcome = "hit"; entry.resourceRevision = image.revision;
+      // A fast service reply must not bypass a matching preview still being
+      // restored from disk. The optional store has its own bounded open.
+      await restored;
+      if (!current()) return;
       if (entry.cached?.revision === image.revision) { entry.url = entry.cached.data_url; entry.final = true; return; }
       const preview = await projectImagePreview(projectIconRawUrl(project.id, false, image.revision), image.media_type,
         image.size, image.revision, entry.controller.signal);
