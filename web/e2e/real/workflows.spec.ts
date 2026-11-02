@@ -178,7 +178,7 @@ test("a local ACP command becomes a provider", async ({ page }) => {
   await dialog.getByRole("button", { name: "Local ACP command" }).click();
   await dialog.getByLabel("Executable").fill(FAKE);
   await dialog.getByRole("button", { name: "Add argument" }).click();
-  await dialog.getByLabel("Argument 1").fill("acp");
+  await dialog.getByRole("textbox", { name: "Argument 1", exact: true }).fill("acp");
   await dialog.getByRole("button", { name: "Next" }).click();
   await dialog.getByLabel("Label").fill("House agent");
   await dialog.getByRole("button", { name: "Add instance" }).click();

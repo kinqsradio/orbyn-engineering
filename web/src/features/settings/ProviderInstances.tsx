@@ -28,7 +28,7 @@ export function ProviderArguments({ values, disabled, save }: { values: string[]
   </div></SettingRow>;
 }
 
-export function ProviderInstances({ engines, renderDriver, renderInstance, renderStatus }: { engines: EngineStatus[]; renderDriver(engine: EngineStatus): ReactNode; renderInstance?(engine: EngineStatus): ReactNode; renderStatus?(engine: EngineStatus): ReactNode }) {
+export function ProviderInstances({ engines, renderDriver, renderBase, renderInstance, renderStatus }: { engines: EngineStatus[]; renderDriver(engine: EngineStatus): ReactNode; renderBase?(engine: EngineStatus): ReactNode; renderInstance?(engine: EngineStatus): ReactNode; renderStatus?(engine: EngineStatus): ReactNode }) {
   const scope = useSettingsScope();
   const preferences = useAsync("provider-instances", (signal) => request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: {}, keys: ["provider_instances"] }, signal));
   const [selected, setSelected] = useState<string | null>(null), [adding, setAdding] = useState(false);
@@ -84,7 +84,7 @@ export function ProviderInstances({ engines, renderDriver, renderInstance, rende
       {driver || active.driver === "_local_acp" ? <SettingGroup title="Config"><DraftField label={active.driver === "_local_acp" || driver?.tier === "acp" ? "Executable" : "Binary path"} value={active.program ?? ""} normalize={(value) => value.trim()} disabled={disabled} save={(program) => update({ program: program.trim() || undefined })} />
         {driver?.tier === "native" ? null : <ProviderArguments values={active.args ?? []} disabled={disabled} save={(args) => update({ args })} />}</SettingGroup> : null}
       {engines.find((engine) => engine.id === active.id) && renderInstance ? renderInstance(engines.find((engine) => engine.id === active.id)!) : null}
-    </section> : base ? <ul className="setting-list">{renderDriver(base)}</ul> : null}</div></div>
+    </section> : base ? <><ul className="setting-list">{renderDriver(base)}</ul>{renderBase?.(base)}</> : null}</div></div>
     {adding ? <AddProvider engines={bases} existing={new Set([...engines.map((engine) => engine.id), ...instances.map((instance) => instance.id)])} disabled={disabled} save={async (instance) => {
       const view = currentView.current; const added = await save([...raw, instance as unknown as JsonValue]); if (added && mounted.current && currentView.current === view) { setAdding(false); setSelected(instance.id); } return added;
     }} onClose={() => setAdding(false)} /> : null}
