@@ -839,6 +839,11 @@ Changing the list clears model catalogs and selection validation, so a changed s
 cannot keep the former driver's offered options. Since instances can share a binary,
 an engine update refuses while any run is active, and no run starts during an update.
 
+An engine update runs only the installer that provably owns the binary, from its resolved
+path and that installer's own answer: Homebrew, npm, pnpm, Yarn, Bun, Volta (its package
+image must hold the engine), Vite+ and winget, or the engine's own updater. Anything else,
+including a mise install, stays manual instructions.
+
 An ACP instance can manage the sessions its agent keeps. Capabilities come from the
 agent's `initialize` reply alone: `session/list`, `loadSession`, `session/resume` and
 `session/delete` are each offered or not, and nothing signs in or prompts. Every

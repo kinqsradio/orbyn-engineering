@@ -49,6 +49,9 @@ pub struct InstallRoots {
     pub bun: Option<String>,
     pub brew: Option<String>,
     pub local_app_data: Option<String>,
+    /// Volta's home, set only when its package image for this engine exists, since
+    /// its bin links name the shim and not the package.
+    pub volta: Option<String>,
 }
 
 fn normalize(path: &str) -> String {
@@ -96,6 +99,21 @@ pub fn plan_from_paths(
             }),
         );
     }
+    if is_vite_plus_shim(&path) || is_vite_plus_shim(&normalize(&command.to_string_lossy())) {
+        return package_plan(
+            InstallerKind::VitePlus,
+            "vp",
+            &["i", "-g", spec.npm_package],
+        );
+    }
+    if roots.volta.is_some() {
+        let latest = format!("{}@latest", spec.npm_package);
+        return package_plan(InstallerKind::Volta, "volta", &["install", &latest]);
+    }
+    if is_yarn_global(&path) && path.contains(&package) {
+        let latest = format!("{}@latest", spec.npm_package);
+        return package_plan(InstallerKind::Yarn, "yarn", &["global", "add", &latest]);
+    }
     if path.contains(&package) {
         let latest = format!("{}@latest", spec.npm_package);
         if under(&path, roots.bun.as_deref()) {
@@ -138,6 +156,25 @@ pub fn plan_from_paths(
         );
     }
     (InstallerKind::Unknown, None)
+}
+
+/// Vite+ keeps its command shims in `<home>/bin`: `~/.vite-plus`, the XDG data
+/// directory, or the local app-data folder on Windows.
+fn is_vite_plus_shim(path: &str) -> bool {
+    let path = path.to_lowercase();
+    [
+        "/.vite-plus/bin/",
+        "/.local/share/vite-plus/bin/",
+        "/appdata/local/vite-plus/bin/",
+    ]
+    .iter()
+    .any(|marker| path.contains(marker))
+}
+
+/// Yarn classic installs globals under its `global` folder, beside or inside `data`.
+fn is_yarn_global(path: &str) -> bool {
+    let path = path.to_lowercase();
+    path.contains("/yarn/global/node_modules/") || path.contains("/yarn/data/global/node_modules/")
 }
 
 /// Compares in lowercase, as `normalize` leaves a path on Windows.
@@ -203,6 +240,20 @@ async fn install_roots(path: &str) -> InstallRoots {
     roots
 }
 
+/// Volta's home when the command is its shim and its package image holds the engine.
+fn volta_home(real: &Path, command: &Path, spec: &PackageSpec) -> Option<String> {
+    let name = real.file_stem()?.to_string_lossy().to_lowercase();
+    if name != "volta-shim" {
+        return None;
+    }
+    let home = command.parent()?.parent()?;
+    let image = spec.npm_package.split('/').fold(
+        home.join("tools").join("image").join("packages"),
+        |dir, part| dir.join(part),
+    );
+    image.is_dir().then(|| home.to_string_lossy().into_owned())
+}
+
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -221,7 +272,8 @@ pub async fn detect(
         return (InstallerKind::Unknown, None);
     };
     let real = real_path(command);
-    let roots = install_roots(&normalize(&real.to_string_lossy())).await;
+    let mut roots = install_roots(&normalize(&real.to_string_lossy())).await;
+    roots.volta = volta_home(&real, command, spec);
     plan_from_paths(&real, command, spec, &roots)
 }
 
@@ -358,5 +410,113 @@ mod tests {
             plan("/usr/bin/claude", &CLAUDE, &roots),
             (InstallerKind::Unknown, None)
         );
+    }
+
+    #[test]
+    fn yarn_vite_plus_and_volta_run_their_own_updates() {
+        let roots = InstallRoots::default();
+        assert_eq!(
+            plan(
+                "/home/a/.config/yarn/global/node_modules/@openai/codex/bin/codex.js",
+                &CODEX,
+                &roots
+            ),
+            (
+                InstallerKind::Yarn,
+                Some("yarn global add @openai/codex@latest".into())
+            )
+        );
+        assert_eq!(
+            plan(
+                "/home/a/.local/share/yarn/data/global/node_modules/@openai/codex/bin/codex.js",
+                &CODEX,
+                &roots
+            )
+            .0,
+            InstallerKind::Yarn
+        );
+        // A yarn folder that does not hold the engine proves nothing.
+        assert_eq!(
+            plan(
+                "/home/a/.config/yarn/global/node_modules/other/bin/codex.js",
+                &CODEX,
+                &roots
+            ),
+            (InstallerKind::Unknown, None)
+        );
+        for home in ["/home/a/.vite-plus", "/home/a/.local/share/vite-plus"] {
+            assert_eq!(
+                plan(&format!("{home}/bin/codex"), &CODEX, &roots),
+                (
+                    InstallerKind::VitePlus,
+                    Some("vp i -g @openai/codex".into())
+                )
+            );
+        }
+        // The shim is a link to the tool, so the command path alone proves it.
+        let (kind, _) = plan_from_paths(
+            Path::new("/home/a/.vite-plus/current/bin/vp"),
+            Path::new("/home/a/.vite-plus/bin/codex"),
+            &CODEX,
+            &roots,
+        );
+        assert_eq!(kind, InstallerKind::VitePlus);
+        let volta = InstallRoots {
+            volta: Some("/home/a/.volta".into()),
+            ..InstallRoots::default()
+        };
+        assert_eq!(
+            plan("/home/a/.volta/bin/volta-shim", &CODEX, &volta),
+            (
+                InstallerKind::Volta,
+                Some("volta install @openai/codex@latest".into())
+            )
+        );
+        // Without the package image a Volta shim stays manual.
+        assert_eq!(
+            plan("/home/a/.volta/bin/volta-shim", &CODEX, &roots),
+            (InstallerKind::Unknown, None)
+        );
+    }
+
+    #[test]
+    fn mise_installs_are_left_to_mise() {
+        let roots = InstallRoots::default();
+        for real in [
+            "/home/a/.local/share/mise/installs/node/22/lib/node_modules/@openai/codex/bin/codex.js",
+            "/home/a/.local/share/mise/shims/codex",
+        ] {
+            assert_eq!(
+                plan(real, &CODEX, &roots),
+                (InstallerKind::Unknown, None),
+                "{real}"
+            );
+        }
+    }
+
+    #[test]
+    fn volta_ownership_is_read_from_the_package_image() {
+        let dir = std::env::temp_dir().join(format!("orbyn-volta-{}", crate::util::new_id()));
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let shim = bin.join("volta-shim");
+        std::fs::write(&shim, b"").unwrap();
+        let command = bin.join("codex");
+        assert_eq!(
+            volta_home(&shim, &command, &CODEX),
+            None,
+            "no package image yet"
+        );
+        std::fs::create_dir_all(dir.join("tools/image/packages/@openai/codex")).unwrap();
+        assert_eq!(
+            volta_home(&shim, &command, &CODEX),
+            Some(dir.to_string_lossy().into_owned())
+        );
+        assert_eq!(
+            volta_home(&command, &command, &CODEX),
+            None,
+            "only the shim counts"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
