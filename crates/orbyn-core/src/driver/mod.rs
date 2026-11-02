@@ -86,6 +86,8 @@ pub struct RunSpec {
     pub prompt: String,
     /// The prompt alone, for engines that cannot take context.
     pub user_prompt: String,
+    /// The Orbyn context alone, for engines with a separate instructions channel.
+    pub context: String,
     pub kind: RunKind,
     pub mode: orbyn_contracts::PermissionMode,
     /// Plan mode: the engine may read and propose, not change anything.

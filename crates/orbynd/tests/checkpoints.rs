@@ -257,18 +257,18 @@ async fn rewind_drops_the_session_and_hands_the_earlier_conversation_on_once() {
     run(&service, &thread, "third thing").await;
     run(&service, &thread, "fourth thing").await;
     let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
-    let starts: Vec<&str> = log
-        .lines()
-        .filter(|l| l.contains(r#""mode":"codex-turn""#))
-        .collect();
-    let third = starts[2];
-    assert!(third.contains("remember the first thing"), "{third}");
-    assert!(!third.contains("second thing"), "{third}");
-    assert!(!starts[3].contains("remember the first thing"), "used once");
     let threads: Vec<&str> = log
         .lines()
         .filter(|l| l.contains(r#""mode":"codex-thread""#))
         .collect();
+    // The handoff travels in the thread's instructions, which each run restates.
+    let third = threads[2];
+    assert!(third.contains("remember the first thing"), "{third}");
+    assert!(!third.contains("second thing"), "{third}");
+    assert!(
+        !threads[3].contains("remember the first thing"),
+        "used once"
+    );
     assert!(threads[2].contains("\\\"cwd\\\""));
     assert!(
         !threads[2].contains("threadId"),
@@ -342,11 +342,16 @@ async fn a_handoff_survives_a_failed_run_and_goes_only_with_a_finished_one() {
     service.admit(&thread, "fifth").await;
     assert_eq!(service.finished(&thread).await, "completed");
     let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
-    let starts: Vec<&str> = log
-        .lines()
-        .filter(|l| l.contains(r#""mode":"codex-turn""#))
-        .collect();
-    let at = |prompt: &str| starts.iter().find(|turn| turn.contains(prompt)).unwrap();
+    let lines = |mode: &str| -> Vec<&str> {
+        log.lines()
+            .filter(|l| l.contains(&format!(r#""mode":"{mode}""#)))
+            .collect()
+    };
+    let (turns, threads) = (lines("codex-turn"), lines("codex-thread"));
+    let at = |prompt: &str| {
+        let run = turns.iter().position(|turn| turn.contains(prompt)).unwrap();
+        threads[run]
+    };
     assert!(at("third").contains("remember the first thing"));
     assert!(at("fourth").contains("remember the first thing"), "kept");
     assert!(!at("fifth").contains("remember the first thing"), "cleared");
@@ -384,11 +389,15 @@ async fn a_side_chat_stays_apart_until_brought_back_into_the_next_run() {
     run(&service, &thread, "after the bring back").await;
     run(&service, &thread, "and after that").await;
     let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
-    let turn = |prompt: &str| {
+    let lines = |mode: &str| -> Vec<&str> {
         log.lines()
-            .filter(|line| line.contains(r#""mode":"codex-turn""#))
-            .find(|line| line.contains(prompt))
-            .unwrap()
+            .filter(|l| l.contains(&format!(r#""mode":"{mode}""#)))
+            .collect()
+    };
+    let (turns, threads) = (lines("codex-turn"), lines("codex-thread"));
+    let turn = |prompt: &str| {
+        let run = turns.iter().position(|turn| turn.contains(prompt)).unwrap();
+        threads[run]
     };
     assert!(!turn("before the bring back").contains("From a side chat"));
     assert!(turn("after the bring back").contains("From a side chat"));
