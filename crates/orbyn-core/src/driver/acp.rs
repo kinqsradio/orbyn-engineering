@@ -26,7 +26,6 @@ use crate::error::{CoreError, Result};
 use crate::selection::MODE;
 use crate::util::new_id;
 
-const PROTOCOL_VERSION: u64 = 1;
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// How many models one probe tries, and how long it may take over them.
 const MAX_PROBED_MODELS: usize = 24;
@@ -73,7 +72,7 @@ impl EngineDriver for AcpDriver {
             capabilities: EngineCapabilities {
                 streaming: true,
                 approvals: self.asks,
-                resume: false,
+                resume: true,
                 mcp: true,
                 sandbox: false,
                 managed: self.asks,
@@ -86,6 +85,71 @@ impl EngineDriver for AcpDriver {
 
     fn check_launch_available(&self) -> Result<()> {
         resolve_engine(&self.engine.target).map(|_| ())
+    }
+
+    async fn native_session_capabilities(
+        &self,
+    ) -> Result<Option<orbyn_contracts::AcpSessionCapabilities>> {
+        match super::acp_sessions::perform(
+            &self.engine,
+            self.env,
+            super::acp_sessions::Operation::Capabilities,
+        )
+        .await?
+        {
+            super::acp_sessions::Output::Capabilities(caps) => Ok(Some(caps)),
+            _ => unreachable!("capability operation returns capabilities"),
+        }
+    }
+
+    async fn list_native_sessions(
+        &self,
+        cwd: &std::path::Path,
+        cursor: Option<&str>,
+    ) -> Result<orbyn_contracts::AcpNativeSessionPage> {
+        match super::acp_sessions::perform(
+            &self.engine,
+            self.env,
+            super::acp_sessions::Operation::List { cwd, cursor },
+        )
+        .await?
+        {
+            super::acp_sessions::Output::Page(page) => Ok(page),
+            _ => unreachable!("list operation returns a page"),
+        }
+    }
+
+    async fn load_native_session(
+        &self,
+        cwd: &std::path::Path,
+        session_id: &str,
+    ) -> Result<super::NativeSessionReplay> {
+        match super::acp_sessions::perform(
+            &self.engine,
+            self.env,
+            super::acp_sessions::Operation::Load {
+                cwd,
+                id: session_id,
+            },
+        )
+        .await?
+        {
+            super::acp_sessions::Output::Replay(replay) => Ok(replay),
+            _ => unreachable!("load operation returns replay"),
+        }
+    }
+
+    async fn delete_native_session(&self, _cwd: &std::path::Path, session_id: &str) -> Result<()> {
+        match super::acp_sessions::perform(
+            &self.engine,
+            self.env,
+            super::acp_sessions::Operation::Delete { id: session_id },
+        )
+        .await?
+        {
+            super::acp_sessions::Output::Deleted => Ok(()),
+            _ => unreachable!("delete operation returns acknowledgement"),
+        }
     }
 
     async fn probe(&self) -> EngineProbe {
@@ -146,13 +210,25 @@ async fn run_protocol(
     let opened = tokio::select! {
         biased;
         () = cancel.cancelled() => Err(CoreError::RunClosed),
-        result = open_session(&rpc, &spec) => result,
+        result = open_session(&rpc, &mut inbound, &spec) => result,
     };
     let session = match opened {
-        Ok(session) => session,
+        Ok((session, persistent)) => {
+            if persistent
+                && events
+                    .send(EngineEvent::Session(session.clone()))
+                    .await
+                    .is_err()
+            {
+                return;
+            }
+            session
+        }
         Err(error) => {
             let outcome = if cancel.is_cancelled() {
                 EngineOutcome::Cancelled
+            } else if matches!(error, CoreError::SessionLost) {
+                EngineOutcome::SessionLost
             } else {
                 EngineOutcome::Failed(error.to_string())
             };
@@ -233,8 +309,52 @@ async fn run_protocol(
     let _ = events.send(EngineEvent::Finished(outcome)).await;
 }
 
-async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
-    let (id, mut session, _) = open_raw(rpc, &spec.cwd, spec.mcp_url.as_deref()).await?;
+async fn open_session(
+    rpc: &RpcClient,
+    inbound: &mut mpsc::UnboundedReceiver<Inbound>,
+    spec: &RunSpec,
+) -> Result<(String, bool)> {
+    if spec
+        .resume
+        .as_deref()
+        .is_some_and(|id| id.is_empty() || id.chars().count() > 1024)
+    {
+        return Err(CoreError::Invalid("Invalid ACP session identity.".into()));
+    }
+    let init = initialize(rpc).await?;
+    let caps = super::acp_sessions::capabilities(&init);
+    let persistent = caps.can_load || caps.can_resume;
+    let (id, mut session) = if let Some(id) = &spec.resume {
+        let method = if caps.can_resume {
+            "session/resume"
+        } else if caps.can_load {
+            "session/load"
+        } else {
+            return Err(CoreError::Unsupported(
+                "This agent cannot resume its saved session.".into(),
+            ));
+        };
+        let params = json!({"sessionId":id,"cwd":spec.cwd,"additionalDirectories":[],"mcpServers":mcp_servers(&init,spec.mcp_url.as_deref())});
+        let session = resume_without_replay(rpc, inbound, method, params, id).await?;
+        (id.clone(), session)
+    } else {
+        let session = rpc
+            .call(
+                "session/new",
+                json!({"cwd":spec.cwd,"mcpServers":mcp_servers(&init,spec.mcp_url.as_deref())}),
+                CALL_TIMEOUT,
+            )
+            .await?;
+        let id = session
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty() && s.chars().count() <= 1024)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                CoreError::EngineUnavailable("The agent returned no session id.".into())
+            })?;
+        (id, session)
+    };
     // Mode first: an agent can change what it offers per mode and per model, so each
     // step reads the reply of the one before it, and the prompt waits for them all.
     if let Some(mode) = spec.options.get(MODE) {
@@ -258,7 +378,7 @@ async fn open_session(rpc: &RpcClient, spec: &RunSpec) -> Result<String> {
             session = reply;
         }
     }
-    Ok(id)
+    Ok((id, persistent))
 }
 
 /// A value the session no longer lists fails the turn. Running under something else
@@ -411,37 +531,8 @@ async fn open_raw(
     cwd: &std::path::Path,
     mcp_url: Option<&str>,
 ) -> Result<(String, Value, Value)> {
-    let init = rpc
-        .call(
-            "initialize",
-            json!({
-                "protocolVersion": PROTOCOL_VERSION,
-                "clientInfo": { "name": "orbyn", "version": env!("CARGO_PKG_VERSION") },
-                "clientCapabilities": {
-                    "fs": { "readTextFile": false, "writeTextFile": false },
-                    "terminal": false,
-                },
-            }),
-            CALL_TIMEOUT,
-        )
-        .await?;
-    let version = init.get("protocolVersion").and_then(Value::as_u64);
-    if version != Some(PROTOCOL_VERSION) {
-        return Err(CoreError::EngineUnavailable(format!(
-            "This agent speaks ACP {}, and Orbyn speaks version {PROTOCOL_VERSION}.",
-            version.map_or_else(|| "of an unknown version".to_owned(), |v| v.to_string())
-        )));
-    }
-    let http_mcp = init
-        .pointer("/agentCapabilities/mcpCapabilities/http")
-        .and_then(Value::as_bool)
-        == Some(true);
-    let servers = match mcp_url {
-        Some(url) if http_mcp => {
-            json!([{ "type": "http", "name": MCP_SERVER_NAME, "url": url, "headers": [] }])
-        }
-        _ => json!([]),
-    };
+    let init = initialize(rpc).await?;
+    let servers = mcp_servers(&init, mcp_url);
     let session = rpc
         .call(
             "session/new",
@@ -455,6 +546,191 @@ async fn open_raw(
         .map(str::to_owned)
         .ok_or_else(|| CoreError::EngineUnavailable("The agent returned no session id.".into()))?;
     Ok((id, session, init))
+}
+
+async fn initialize(rpc: &RpcClient) -> Result<Value> {
+    let init = rpc
+        .call(
+            "initialize",
+            super::acp_sessions::initialize_params(),
+            CALL_TIMEOUT,
+        )
+        .await?;
+    super::acp_sessions::check_version(&init)?;
+    Ok(init)
+}
+
+fn mcp_servers(init: &Value, url: Option<&str>) -> Value {
+    match url {
+        Some(url)
+            if init
+                .pointer("/agentCapabilities/mcpCapabilities/http")
+                .and_then(Value::as_bool)
+                == Some(true) =>
+        {
+            json!([{"type":"http","name":MCP_SERVER_NAME,"url":url,"headers":[]}])
+        }
+        _ => json!([]),
+    }
+}
+
+/// Loading replays history before its response. Consume it while the call is
+/// outstanding, then start a fresh mapper for the prompt; replay is not a turn.
+async fn resume_without_replay(
+    rpc: &RpcClient,
+    inbound: &mut mpsc::UnboundedReceiver<Inbound>,
+    method: &str,
+    params: Value,
+    session: &str,
+) -> Result<Value> {
+    tokio::time::timeout(CALL_TIMEOUT, async {
+        let resuming = method == "session/resume";
+        let call = rpc.call_detailed(method, params, CALL_TIMEOUT);
+        tokio::pin!(call);
+        let mut bytes = 0usize;
+        let mut count = 0usize;
+        loop {
+            tokio::select! {
+                biased;
+                message = inbound.recv() => {
+                    let Some(message) = message else {
+                        return finish_restore((&mut call).await.map_err(restore_error)?, bytes, count);
+                    };
+                    count += 1;
+                    bytes = bytes.checked_add(replay_message_size(&message)?).ok_or_else(replay_limit)?;
+                    if count > super::acp_sessions::MAX_MESSAGES || bytes > super::acp_sessions::MAX_BYTES {
+                        return Err(replay_limit());
+                    }
+                    discard_replay_message(rpc, message, session, resuming).await?;
+                }
+                result = &mut call => return finish_restore(result.map_err(restore_error)?, bytes, count),
+            }
+        }
+    })
+    .await
+    .map_err(|_| CoreError::EngineUnavailable("The ACP restore operation timed out.".into()))?
+}
+
+fn replay_limit() -> CoreError {
+    CoreError::EngineUnavailable("The ACP replay exceeded its limit.".into())
+}
+
+/// Count the full retained envelope without allocating a second potentially
+/// large JSON string. Legacy live RPC framing still admits one 64MiB line.
+fn replay_message_size(message: &Inbound) -> Result<usize> {
+    #[derive(serde::Serialize)]
+    struct Envelope<'a> {
+        jsonrpc: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<&'a Value>,
+        method: &'a str,
+        params: &'a Value,
+    }
+    let envelope = match message {
+        Inbound::Request { id, method, params } => Envelope {
+            jsonrpc: "2.0",
+            id: Some(id),
+            method,
+            params,
+        },
+        Inbound::Notification { method, params } => Envelope {
+            jsonrpc: "2.0",
+            id: None,
+            method,
+            params,
+        },
+    };
+    bounded_json_size(&envelope)
+}
+
+fn finish_restore(value: Value, bytes: usize, count: usize) -> Result<Value> {
+    if count >= super::acp_sessions::MAX_MESSAGES
+        || bytes
+            .checked_add(bounded_json_size(&value)?)
+            .is_none_or(|size| size > super::acp_sessions::MAX_BYTES)
+    {
+        return Err(replay_limit());
+    }
+    Ok(value)
+}
+
+fn bounded_json_size(value: &impl serde::Serialize) -> Result<usize> {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_add(bytes.len())
+                .filter(|size| *size <= super::acp_sessions::MAX_BYTES)
+                .ok_or_else(|| std::io::Error::other("ACP replay limit"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    serde_json::to_writer(&mut count, value).map_err(|_| replay_limit())?;
+    Ok(count.0)
+}
+
+async fn discard_replay_message(
+    rpc: &RpcClient,
+    message: Inbound,
+    session: &str,
+    resuming: bool,
+) -> Result<()> {
+    match message {
+        Inbound::Request { id, method, .. } => {
+            if method == "session/request_permission" {
+                rpc.respond(id, json!({"outcome":{"outcome":"cancelled"}}))
+                    .await?;
+            } else {
+                rpc.respond_error(
+                    id,
+                    METHOD_NOT_FOUND,
+                    "Client methods are unavailable while restoring history.",
+                )
+                .await?;
+            }
+        }
+        Inbound::Notification { method, params } if method == "session/update" => {
+            if params.get("sessionId").and_then(Value::as_str) != Some(session) {
+                return Err(CoreError::EngineUnavailable(
+                    "The agent replayed another session.".into(),
+                ));
+            }
+            if resuming && method_is_transcript(params.get("update").unwrap_or(&Value::Null)) {
+                return Err(CoreError::EngineUnavailable(
+                    "The agent replayed history while resuming.".into(),
+                ));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn restore_error(error: super::rpc::RpcCallError) -> CoreError {
+    if error.code == Some(-32002) {
+        CoreError::SessionLost
+    } else {
+        error.error
+    }
+}
+
+fn method_is_transcript(update: &Value) -> bool {
+    matches!(
+        update.get("sessionUpdate").and_then(Value::as_str),
+        Some(
+            "user_message_chunk"
+                | "agent_message_chunk"
+                | "agent_thought_chunk"
+                | "tool_call"
+                | "tool_call_update"
+                | "plan"
+        )
+    )
 }
 
 /// Some agents list what a model offers only once it is chosen, so a probe chooses each
@@ -661,26 +937,60 @@ fn classify(params: &Value) -> (ActionKind, String, String) {
 /// Maps `session/update` payloads. Chunks of one kind form one message, which
 /// closes when another kind of update arrives.
 #[derive(Default)]
-struct UpdateMapper {
+pub(super) struct UpdateMapper {
     text: Option<String>,
+    text_role: Option<String>,
+    historical_id: Option<u64>,
     reasoning: Option<String>,
     tools: HashSet<String>,
 }
 
 impl UpdateMapper {
-    fn on_update(&mut self, update: &Value) -> Vec<EngineEvent> {
+    pub(super) fn historical() -> Self {
+        Self {
+            historical_id: Some(0),
+            ..Self::default()
+        }
+    }
+    fn next_message_id(&mut self) -> String {
+        if let Some(next) = &mut self.historical_id {
+            *next += 1;
+            format!("acp-history-{next}")
+        } else {
+            new_id()
+        }
+    }
+    pub(super) fn on_update(&mut self, update: &Value) -> Vec<EngineEvent> {
         let mut events = Vec::new();
         match update.get("sessionUpdate").and_then(Value::as_str) {
-            Some("agent_message_chunk") => {
+            Some("agent_message_chunk" | "user_message_chunk") => {
+                let role = if update.get("sessionUpdate").and_then(Value::as_str)
+                    == Some("user_message_chunk")
+                {
+                    "user"
+                } else {
+                    "assistant"
+                };
+                if self.text_role.as_deref() != Some(role) {
+                    self.close_text(&mut events);
+                }
+                self.text_role = Some(role.to_owned());
                 self.close_reasoning(&mut events);
                 let delta = chunk_text(update);
-                let id = self.text.get_or_insert_with(new_id).clone();
+                let id = match &self.text {
+                    Some(id) => id.clone(),
+                    None => {
+                        let id = self.next_message_id();
+                        self.text = Some(id.clone());
+                        id
+                    }
+                };
                 if !self.tools.contains(&format!("open:{id}")) {
                     self.tools.insert(format!("open:{id}"));
                     events.push(
                         AgUiEvent::TextMessageStart {
                             message_id: id.clone(),
-                            role: "assistant".into(),
+                            role: role.into(),
                         }
                         .into(),
                     );
@@ -696,7 +1006,14 @@ impl UpdateMapper {
             Some("agent_thought_chunk") => {
                 self.close_text(&mut events);
                 let delta = chunk_text(update);
-                let id = self.reasoning.get_or_insert_with(new_id).clone();
+                let id = match &self.reasoning {
+                    Some(id) => id.clone(),
+                    None => {
+                        let id = self.next_message_id();
+                        self.reasoning = Some(id.clone());
+                        id
+                    }
+                };
                 if !self.tools.contains(&format!("open:{id}")) {
                     self.tools.insert(format!("open:{id}"));
                     events.push(
@@ -749,7 +1066,7 @@ impl UpdateMapper {
                     );
                     events.push(
                         AgUiEvent::ToolCallResult {
-                            message_id: new_id(),
+                            message_id: self.next_message_id(),
                             tool_call_id: id,
                             content: tool_output(update),
                             role: Some("tool".into()),
@@ -801,6 +1118,7 @@ impl UpdateMapper {
     }
 
     fn close_text(&mut self, events: &mut Vec<EngineEvent>) {
+        self.text_role = None;
         if let Some(id) = self.text.take() {
             self.tools.remove(&format!("open:{id}"));
             events.push(AgUiEvent::TextMessageEnd { message_id: id }.into());
@@ -814,7 +1132,7 @@ impl UpdateMapper {
         }
     }
 
-    fn close(&mut self) -> Vec<EngineEvent> {
+    pub(super) fn close(&mut self) -> Vec<EngineEvent> {
         let mut events = Vec::new();
         self.close_text(&mut events);
         self.close_reasoning(&mut events);
