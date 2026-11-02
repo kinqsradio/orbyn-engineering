@@ -21,4 +21,9 @@ program?: string,
 /**
  * Added after the driver's own arguments. ACP, terminal and AG-UI engines only.
  */
-args?: Array<string>, };
+args?: Array<string>, 
+/**
+ * Claude only: compact after this many tokens, 100000 to 1000000. Empty means
+ * Claude's own default.
+ */
+auto_compact_window?: string, };

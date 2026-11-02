@@ -84,6 +84,18 @@ pub fn check(
         {
             return Err(CoreError::Invalid(format!("{id} names an empty program.")));
         }
+        if let Some(window) = instance.auto_compact_window.as_deref() {
+            if instance.driver != "claude" {
+                return Err(CoreError::Invalid(format!(
+                    "{id} is not a Claude instance, so it has no auto-compact window."
+                )));
+            }
+            if !window.is_empty() && !valid_compact_window(window) {
+                return Err(CoreError::Invalid(format!(
+                    "{id} needs an auto-compact window from 100000 to 1000000 tokens."
+                )));
+            }
+        }
         if instance.args.len() > MAX_ARGS
             || instance
                 .args
@@ -96,6 +108,14 @@ pub fn check(
         }
     }
     Ok(())
+}
+
+/// Six digits from 100000, or exactly 1000000.
+fn valid_compact_window(window: &str) -> bool {
+    window == "1000000"
+        || (window.len() == 6
+            && window.bytes().all(|b| b.is_ascii_digit())
+            && !window.starts_with('0'))
 }
 
 #[cfg(test)]
@@ -169,5 +189,27 @@ mod tests {
         ] {
             assert!(check(&list(value.clone()), tier).is_err(), "{value}");
         }
+    }
+
+    #[test]
+    fn auto_compact_window_is_claude_only_and_bounded() {
+        let ok = |value: Value| check(&list(value), tier).is_ok();
+        for window in ["", "100000", "300000", "999999", "1000000"] {
+            assert!(
+                ok(json!([{ "id": "a", "driver": "claude", "auto_compact_window": window }])),
+                "{window:?}"
+            );
+        }
+        for window in [
+            "99999", "1000001", "12345a", "0123456", " 300000", "3e5", "-300000",
+        ] {
+            assert!(
+                !ok(json!([{ "id": "a", "driver": "claude", "auto_compact_window": window }])),
+                "{window:?}"
+            );
+        }
+        assert!(!ok(
+            json!([{ "id": "a", "driver": "kimi", "auto_compact_window": "300000" }])
+        ));
     }
 }

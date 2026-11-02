@@ -204,6 +204,75 @@ async fn an_acp_instance_adds_to_its_driver_launch() {
 }
 
 #[tokio::test]
+async fn a_claude_instance_passes_its_auto_compact_window_to_each_run() {
+    let dir = TempDir::new();
+    let launch = dir.path().join("launches");
+    let options = Options {
+        env: vec![
+            ("ORBYN_CLAUDE_BIN".into(), "/nowhere/claude".into()),
+            (
+                "ORBYN_FAKE_LAUNCH_FILE".into(),
+                launch.to_string_lossy().into_owned(),
+            ),
+        ],
+        ..Options::default()
+    };
+    let (service, _) = setup(&dir, options, "codex").await;
+    let fake = env!("CARGO_BIN_EXE_orbyn-fake-engine");
+    let (code, body) = set_instances(
+        &service,
+        json!([
+            { "id": "claude-wide", "driver": "claude", "program": fake, "auto_compact_window": "300000" },
+            { "id": "claude-plain", "driver": "claude", "program": fake },
+        ]),
+    )
+    .await;
+    assert_eq!(code, 200, "{body}");
+    let project = service.json("/api/projects").await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let settings = |entries: &[Value]| -> Vec<Value> {
+        entries
+            .iter()
+            .filter(|entry| entry["mode"] == "claude-settings")
+            .map(|entry| serde_json::from_str::<Value>(entry["args"][0].as_str().unwrap()).unwrap())
+            // The capability probe has its own settings, which a run never sends.
+            .filter(|settings| settings.get("disableAllHooks").is_none())
+            .collect()
+    };
+    let thread = service.thread(&project, "claude-wide").await;
+    service.admit(&thread, "hello").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert_eq!(
+        settings(&launches(&launch)),
+        [json!({ "autoCompactWindow": 300000 })]
+    );
+    let thread = service.thread(&project, "claude-plain").await;
+    service.admit(&thread, "hello").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert_eq!(
+        settings(&launches(&launch)).len(),
+        1,
+        "an instance without a window passes no settings"
+    );
+    // Out-of-range, malformed and non-Claude values never reach a launch.
+    for bad in [
+        json!({ "id": "bad", "driver": "claude", "auto_compact_window": "99999" }),
+        json!({ "id": "bad", "driver": "claude", "auto_compact_window": "1000001" }),
+        json!({ "id": "bad", "driver": "claude", "auto_compact_window": "30e4" }),
+        json!({ "id": "bad", "driver": "codex", "auto_compact_window": "300000" }),
+    ] {
+        let (code, _) = set_instances(&service, json!([bad.clone()])).await;
+        assert_eq!(code, 400, "{bad}");
+    }
+    assert!(
+        listed(&service, "claude-wide").await.is_some(),
+        "the refused lists changed nothing"
+    );
+}
+
+#[tokio::test]
 async fn a_local_acp_instance_runs_its_literal_command_without_a_base_engine() {
     let dir = TempDir::new();
     let launch = dir.path().join("launches");

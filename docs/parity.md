@@ -457,7 +457,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] I10 App access approvals: MCP elicitation handling | apps/server/src/provider/CodexMcpElicitation.ts | s | M
 - [ ] I11 Claude provider: uses Claude Code login and config | apps/server/src/provider/ClaudeProvider.ts | s | L | [auth-risk] | scope: mixed | local: run the installed Claude CLI with its own login and config | excludes: login UI, credential handling and account homes
 - [ ] I12 Claude config homes: multiple accounts by config directory | apps/server/src/provider/Drivers/ClaudeHome.ts | w d s | M | [auth-risk] | scope: excluded | reason: multiple engine accounts
-- [ ] I13 Claude auto-compact window: threshold from 100k to 1M | packages/contracts/src/settings.ts | w d s | S
+- [x] I13 Claude auto-compact window: threshold from 100k to 1M | packages/contracts/src/settings.ts | w d s | S | server done: a Claude instance's `auto_compact_window` reaches each run through `--settings` | web done
 - [x] I14 Idle compaction: on return, before cache expiry, never | packages/contracts/src/settings.ts | w d s | M
 - [ ] I15 Claude skills: config, project and plugin sources | apps/server/src/provider/Drivers/ClaudeSkills.ts | s | M
 - [ ] I16 Router presets: OpenRouter via instance env variables | docs/user/providers-claude.md | w d s | S | [auth-risk] | scope: excluded | reason: credential-bearing provider environment presets

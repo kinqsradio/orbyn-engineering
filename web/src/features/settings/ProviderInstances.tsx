@@ -9,7 +9,7 @@ import { Button, Field } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { accentColor, newInstanceId, patchInstance, readInstance, validInstanceId } from "./providerInstanceData";
+import { accentColor, newInstanceId, patchInstance, readInstance, validCompactWindow, validInstanceId } from "./providerInstanceData";
 import { ProviderInstanceColor } from "./ProviderInstanceColor";
 import "./ProviderInstances.css";
 
@@ -20,6 +20,16 @@ function DraftField({ label, value, disabled, save, normalize = (next) => next }
   return <Field label={label}>{(props) => <input {...props} value={draft} disabled={disabled} spellCheck={false}
     onChange={(event) => setDraft(event.target.value)} onBlur={commit}
     onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && !event.repeat) { event.preventDefault(); commit(); } }} />}</Field>;
+}
+function CompactWindow({ value, disabled, save }: { value: string; disabled: boolean; save(value: string): Promise<boolean> }) {
+  const [draft, setDraft] = useState(value), [seen, setSeen] = useState(value);
+  if (seen !== value) { setSeen(value); if (draft === seen) setDraft(value); }
+  const valid = validCompactWindow(draft.trim());
+  const commit = () => { const next = draft.trim(); if (!disabled && valid && next !== value) void save(next).then((saved) => { if (saved) setDraft((current) => current.trim() === next ? next : current); }); };
+  return <SettingRow title="Auto-compact after" description="Compact after 100,000 to 1,000,000 tokens. Leave empty to use Claude's default.">
+    <Field label="Auto-compact after" error={valid ? undefined : "Use 100000 to 1000000."}>{(props) => <input {...props} inputMode="numeric" placeholder="e.g. 300000" value={draft} disabled={disabled} spellCheck={false}
+      onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+      onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && !event.repeat) { event.preventDefault(); commit(); } }} />}</Field></SettingRow>;
 }
 export function ProviderArguments({ values, disabled, save }: { values: string[]; disabled: boolean; save(values: string[]): Promise<boolean> }) {
   return <SettingRow title="Arguments" description="One literal argument per row, in launch order."><div className="provider-arguments"><Button small disabled={disabled} onClick={() => void save([...values, ""])}>Add argument</Button>
@@ -82,6 +92,7 @@ export function ProviderInstances({ engines, renderDriver, renderBase, renderIns
         <SettingRow title="Display name"><ProviderInstanceColor value={active.accent ?? ""} name={active.name ?? active.id} disabled={disabled} save={(value) => void update({ accent: accentColor(value) ?? undefined })} />
           <DraftField label="Display name" normalize={(value) => value.trim()} value={active.name ?? ""} disabled={disabled} save={(name) => update({ name: name.trim() || undefined })} /></SettingRow></SettingGroup>
       {driver || active.driver === "_local_acp" ? <SettingGroup title="Config"><DraftField label={active.driver === "_local_acp" || driver?.tier === "acp" ? "Executable" : "Binary path"} value={active.program ?? ""} normalize={(value) => value.trim()} disabled={disabled} save={(program) => update({ program: program.trim() || undefined })} />
+        {driver?.id === "claude" ? <CompactWindow value={active.auto_compact_window ?? ""} disabled={disabled} save={(window) => update({ auto_compact_window: window || undefined })} /> : null}
         {driver?.tier === "native" ? null : <ProviderArguments values={active.args ?? []} disabled={disabled} save={(args) => update({ args })} />}</SettingGroup> : null}
       {engines.find((engine) => engine.id === active.id) && renderInstance ? renderInstance(engines.find((engine) => engine.id === active.id)!) : null}
     </section> : base ? <><ul className="setting-list">{renderDriver(base)}</ul>{renderBase?.(base)}</> : null}</div></div>

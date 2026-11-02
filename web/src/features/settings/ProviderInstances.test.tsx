@@ -42,6 +42,21 @@ describe("provider instance editor", () => {
     await user.click(screen.getByRole("switch", { name: "Enable Work renamed" }));
     await waitFor(() => expect(writes).toHaveLength(2)); expect((entries[0] as { enabled: boolean }).enabled).toBe(true);
   });
+  it("saves a Claude auto-compact window only inside its range", async () => {
+    const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("button", { name: "Select Work" }));
+    const field = screen.getByRole("textbox", { name: "Auto-compact after" });
+    await user.type(field, "99999"); await user.tab();
+    expect(await screen.findByText("Use 100000 to 1000000.")).toBeInTheDocument(); expect(writes).toHaveLength(0);
+    await user.clear(field); await user.type(field, "300000"); await user.tab();
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(entries[0]).toEqual({ id: "work", driver: "claude", name: "Work", enabled: false, forward: "mine", auto_compact_window: "300000" });
+    await user.clear(field); await user.tab();
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(entries[0]).not.toHaveProperty("auto_compact_window");
+    await user.click(screen.getByRole("button", { name: "Select other" }));
+    expect(screen.queryByRole("textbox", { name: "Auto-compact after" })).toBeNull();
+  });
   it("retains a conflicted draft until explicit reload without replaying or losing foreign edits", async () => {
     const user = userEvent.setup(); mount(); await user.click(await screen.findByRole("button", { name: "Select Work" }));
     const name = screen.getByRole("textbox", { name: "Display name" });
