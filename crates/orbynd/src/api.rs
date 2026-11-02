@@ -1513,6 +1513,12 @@ pub async fn add_custom_engine(
             CoreError::Invalid("Name the engine and give its command or URL.".into()).into(),
         );
     }
+    if engine.id == orbyn_core::engines::instances::LOCAL_ACP_DRIVER {
+        return Err(CoreError::Invalid(
+            "That engine id is reserved for local ACP instances.".into(),
+        )
+        .into());
+    }
     if matches!(engine.id.as_str(), "claude" | "codex") || engine.tier == EngineTier::Native {
         return Err(CoreError::Invalid("That engine is built in.".into()).into());
     }

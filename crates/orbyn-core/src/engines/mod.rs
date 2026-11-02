@@ -76,6 +76,9 @@ pub struct EngineManager {
     /// Engines being updated. This lock also serializes the admission check
     /// against the update check, so neither can slip past the other.
     updating: Mutex<HashSet<String>>,
+    /// Short native-session operations and run startup. Configuration and updates
+    /// cannot replace the command until the operation has settled.
+    native_operations: Arc<Mutex<HashSet<String>>>,
     installer_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     statuses: tokio::sync::Mutex<Option<Vec<EngineStatus>>>,
     models: tokio::sync::Mutex<HashMap<String, CachedModels>>,
@@ -111,6 +114,7 @@ impl EngineManager {
             manifest: TestedManifest::embedded(),
             drivers: Mutex::new(drivers),
             updating: Mutex::new(HashSet::new()),
+            native_operations: Arc::default(),
             installer_locks: Mutex::new(HashMap::new()),
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
@@ -180,9 +184,27 @@ impl EngineManager {
     }
 
     fn instance_driver(&self, instance: &ProviderInstance) -> Result<Arc<dyn EngineDriver>> {
-        let base = self
-            .base_driver(&instance.driver)?
-            .ok_or_else(|| CoreError::NotFound(format!("engine {}", instance.driver)))?;
+        let base = self.base_driver(&instance.driver)?;
+        if instance.driver == instances::LOCAL_ACP_DRIVER && base.is_none() {
+            let target = instance
+                .program
+                .clone()
+                .filter(|program| {
+                    !program.trim().is_empty() && !program.contains('\0') && program.len() <= 4096
+                })
+                .ok_or_else(|| {
+                    CoreError::Invalid("A local ACP instance needs a program.".into())
+                })?;
+            return Ok(Arc::new(AcpDriver::new(CustomEngine {
+                id: instance.id.clone(),
+                name: instance.name.clone().unwrap_or_else(|| instance.id.clone()),
+                tier: EngineTier::Acp,
+                target,
+                args: instance.args.clone(),
+            })));
+        }
+        let base =
+            base.ok_or_else(|| CoreError::NotFound(format!("engine {}", instance.driver)))?;
         if let Some(driver) = base.instance(instance) {
             return Ok(driver);
         }
@@ -273,10 +295,38 @@ impl EngineManager {
     /// Instances may share a binary, so no run starts during any engine update.
     pub fn admit_with<T>(&self, engine: &str, admit: impl FnOnce() -> Result<T>) -> Result<T> {
         let updating = lock(&self.updating);
-        if !updating.is_empty() {
+        let operations = lock(&self.native_operations);
+        if !updating.is_empty() || operations.contains(engine) {
             return Err(CoreError::EngineBusy(engine.to_owned()));
         }
         admit()
+    }
+
+    /// Begins one bounded operation for an effective instance. An active model
+    /// turn alone does not block management of other native session IDs.
+    pub fn begin_native_operation(&self, engine: &str) -> Result<NativeOperation> {
+        let updating = lock(&self.updating);
+        let mut operations = lock(&self.native_operations);
+        if !updating.is_empty() || !operations.insert(engine.to_owned()) {
+            return Err(CoreError::EngineBusy(engine.to_owned()));
+        }
+        Ok(NativeOperation {
+            set: self.native_operations.clone(),
+            id: engine.to_owned(),
+        })
+    }
+
+    /// Holds admission exclusion through the synchronous configuration commit.
+    pub fn change_provider_configuration<T>(
+        &self,
+        change: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let updating = lock(&self.updating);
+        let operations = lock(&self.native_operations);
+        if let Some(engine) = operations.iter().next().or_else(|| updating.iter().next()) {
+            return Err(CoreError::EngineBusy(engine.clone()));
+        }
+        change()
     }
 
     pub async fn statuses(&self, refresh: bool) -> Result<Vec<EngineStatus>> {
@@ -535,7 +585,9 @@ impl EngineManager {
     /// same lock through its durable write, so either the run or update wins.
     fn begin_update(&self, id: &str) -> Result<UpdateMarker<'_>> {
         let mut updating = lock(&self.updating);
-        if updating.contains(id) || !self.store.active_runs()?.is_empty() {
+        let operations = lock(&self.native_operations);
+        if updating.contains(id) || !operations.is_empty() || !self.store.active_runs()?.is_empty()
+        {
             return Err(CoreError::EngineBusy(id.to_owned()));
         }
         updating.insert(id.to_owned());
@@ -613,6 +665,18 @@ async fn read_all(source: Option<&mut (impl tokio::io::AsyncRead + Unpin)>, into
     }
 }
 
+/// Dropping the operation releases admission even on cancellation or failure.
+pub struct NativeOperation {
+    set: Arc<Mutex<HashSet<String>>>,
+    id: String,
+}
+
+impl Drop for NativeOperation {
+    fn drop(&mut self) {
+        lock(&self.set).remove(&self.id);
+    }
+}
+
 struct UpdateMarker<'a> {
     set: &'a Mutex<HashSet<String>>,
     id: String,
@@ -643,6 +707,51 @@ mod tests {
             reqwest::Client::new(),
             EngineConfig::default(),
         )
+    }
+
+    #[tokio::test]
+    async fn native_operations_exclude_command_changes_and_same_instance_admission() {
+        let dir = TempDir::new();
+        let engines = manager(&dir);
+        let operation = engines.begin_native_operation("work").unwrap();
+        assert!(matches!(
+            engines.begin_native_operation("work"),
+            Err(CoreError::EngineBusy(_))
+        ));
+        let mut changed = false;
+        assert!(matches!(
+            engines.change_provider_configuration(|| {
+                changed = true;
+                Ok(())
+            }),
+            Err(CoreError::EngineBusy(_))
+        ));
+        assert!(!changed);
+        assert!(matches!(
+            engines.admit_with("work", || Ok(())),
+            Err(CoreError::EngineBusy(_))
+        ));
+        assert!(engines.admit_with("other", || Ok(())).is_ok());
+        assert!(matches!(
+            engines.begin_update("claude"),
+            Err(CoreError::EngineBusy(_))
+        ));
+        drop(operation);
+        engines
+            .change_provider_configuration(|| {
+                changed = true;
+                Ok(())
+            })
+            .unwrap();
+        assert!(changed);
+        assert!(engines.admit_with("work", || Ok(())).is_ok());
+        let update = engines.begin_update("claude").unwrap();
+        assert!(matches!(
+            engines.begin_native_operation("work"),
+            Err(CoreError::EngineBusy(_))
+        ));
+        drop(update);
+        assert!(engines.begin_native_operation("work").is_ok());
     }
 
     #[tokio::test]

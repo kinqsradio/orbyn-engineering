@@ -827,6 +827,10 @@ with its own models and sessions, so changing a thread's instance is an engine s
 instance has an id, a `driver`, and optionally a name, an accent, `enabled` and a `program`
 that replaces the driver's. ACP, AG-UI and terminal instances also take `args`, added after
 the driver's. Claude and Codex take a program only, because a flag can switch off the gate.
+The internal `_local_acp` driver kind takes a required executable and literal arguments
+directly in that one instance record, without creating or displaying a base custom engine.
+A pre-existing custom engine with that ID keeps its old launch behavior and prevents
+new command-only instance edits from silently reinterpreting it.
 A turned-off instance is not listed and refuses new runs, and threads keep their history.
 An instance of Claude is still Claude to the permission prompt, rules, version checks and
 custom commands. Nothing here holds an account: no environment, no config folder, so a
