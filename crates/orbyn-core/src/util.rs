@@ -300,6 +300,14 @@ mod tests {
     }
 
     #[test]
+    fn sha256_hex_keeps_standard_digest_encoding() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
     fn secret_comparison_needs_the_exact_value() {
         let expected = sha256_hex(b"secret");
         assert!(secrets_match("secret", &expected));

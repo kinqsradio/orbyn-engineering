@@ -159,7 +159,10 @@ async fn selected_and_candidate_images_share_range_conditions_and_protect_image_
         .unwrap();
         assert_eq!(whole.status(), 200);
         let tag = header(&whole, "etag").to_owned();
-        assert!(tag.starts_with('"') && tag.ends_with('"'));
+        assert_eq!(
+            tag,
+            "\"88378c8271ec59da5eaffe5d1842ed2c1195deaae4f8170720523fcb80ce3b89\""
+        );
         assert_eq!(header(&whole, "accept-ranges"), "bytes");
         assert_eq!(header(&whole, "cache-control"), "private, no-cache");
         assert_eq!(header(&whole, "referrer-policy"), "no-referrer");
