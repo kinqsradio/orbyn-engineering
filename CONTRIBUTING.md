@@ -1,6 +1,7 @@
 # Contributing
 
-Thanks for helping. Read [AGENTS.md](AGENTS.md) and
+Thanks for helping. Everyone here follows the [code of conduct](CODE_OF_CONDUCT.md).
+Read [AGENTS.md](AGENTS.md) and
 [docs/architecture.md](docs/architecture.md) before you change behaviour. The
 architecture's product rules and lifecycles are the contract; change that document
 in the same commit as any change to them.
