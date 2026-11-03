@@ -13,6 +13,7 @@ test("custom model edits retain their environment target and a conflicting draft
     const catalog = await service.api<{ groups: { key: string; members: { project_id: string }[] }[] }>("POST", "/api/settings/project-scopes", {});
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId))!;
     await page.goto(`${service.page}#/settings/providers?project=${encodeURIComponent(group.key)}`);
+    await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
     const row = page.locator(".setting-list > li").filter({ has: page.getByRole("heading", { name: "Codex", exact: true }) });
     await row.getByRole("button", { name: /^Models \(/ }).click();
     const form = row.getByRole("form", { name: "Custom models for Codex", exact: true });
@@ -45,6 +46,7 @@ test("an unavailable project selection cannot submit a custom model edit", async
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId))!;
     await service.api("DELETE", `/api/projects/${projectId}`);
     await page.goto(`${service.page}#/settings/providers?project=${encodeURIComponent(group.key)}`);
+    await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
     const row = page.locator(".setting-list > li").filter({ has: page.getByRole("heading", { name: "Codex", exact: true }) });
     await row.getByRole("button", { name: /^Models \(/ }).click();
     const form = row.getByRole("form", { name: "Custom models for Codex", exact: true });

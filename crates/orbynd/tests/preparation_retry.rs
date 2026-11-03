@@ -520,7 +520,10 @@ async fn original_instance_is_revalidated_and_never_uses_or_overwrites_another_i
     let sent = protocol(&dir, "codex-turn");
     assert_eq!(sent.len(), 2);
     assert_eq!(sent[1]["model"], "fake-big");
-    let context = sent[1]["input"][0]["text"].as_str().unwrap();
+    let threads = protocol(&dir, "codex-thread");
+    let context = threads[threads.len() - 1]["developerInstructions"]
+        .as_str()
+        .unwrap();
     assert!(
         context.contains("later-provider-context"),
         "fresh run keeps shared conversation context"

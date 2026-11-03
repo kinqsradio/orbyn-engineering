@@ -46,6 +46,7 @@ pub mod shell;
 pub mod skills;
 pub mod sse;
 pub mod store;
+pub mod telemetry_export;
 pub mod terminal;
 pub mod threads;
 pub mod titles;

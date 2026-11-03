@@ -570,6 +570,11 @@ stand-in forge races and the data-directory lock.
   fatal, and fixed proven process/startup ownership defects. Its Windows checks
   passed, but a later pass is not evidence identifying the earlier holder.
 - The browser recording test is flaky.
+- Codex first turns through `orbynd` sometimes answer that they cannot read the files
+  without trying a tool: 4 of 6 real turns read the file after awaiting
+  `mcpServerStatus/list`, instead of 0 of 5, while plain `codex exec` read it 6 of 6.
+  Bare app-server probes read it 5 of 6 with the same wait. Untested remaining
+  differences: the per-run `mcp_servers` config and the wait in the service path.
 - Follow-up to investigate: thread-only limit recording after a genuinely failed
   run can race a newer admission. Latest-run/provider ownership for that write is
   not qualified by the accepted-cancellation correction.

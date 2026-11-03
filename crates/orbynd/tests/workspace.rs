@@ -130,7 +130,7 @@ async fn claude_starts_at_the_workspace_root_with_no_plugin_dir() {
 }
 
 #[tokio::test]
-async fn codex_thread_discovers_at_the_root_and_turns_write_in_the_checkout() {
+async fn codex_thread_and_turns_run_in_the_checkout() {
     let dir = TempDir::new();
     let (file, options) = launch_options(&dir);
     let (service, thread) = setup(&dir, options, "codex").await;
@@ -144,17 +144,18 @@ async fn codex_thread_discovers_at_the_root_and_turns_write_in_the_checkout() {
     let parse = |mode: &str| -> Value {
         serde_json::from_str(launches(&file, mode)[0]["args"][0].as_str().unwrap()).unwrap()
     };
-    assert_eq!(parse("codex-thread")["cwd"], root.to_str().unwrap());
+    let opened = parse("codex-thread");
+    assert_eq!(opened["cwd"], checkout.to_str().unwrap());
     let turn = parse("codex-turn");
     assert_eq!(turn["cwd"], checkout.to_str().unwrap());
     assert_eq!(turn["sandboxPolicy"]["type"], "workspaceWrite");
     assert_eq!(turn["sandboxPolicy"]["writableRoots"], json!([checkout]));
-    let text = turn["input"][0]["text"].as_str().unwrap();
+    let text = opened["developerInstructions"].as_str().unwrap();
     assert!(text.contains("Checkout: "), "{text}");
     assert!(text.contains("open its files directly"), "{text}");
     assert!(text.contains("skill_search"), "{text}");
-    assert!(text.len() < 1_000, "the first turn stays short: {text}");
-    assert!(text.ends_with("hi"));
+    assert!(text.len() < 1_000, "the context stays short: {text}");
+    assert_eq!(turn["input"][0]["text"], "hi");
 }
 
 #[tokio::test]

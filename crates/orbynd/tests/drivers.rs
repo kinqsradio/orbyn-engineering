@@ -78,6 +78,22 @@ async fn codex_turn_maps_to_events_and_ignores_subagents() {
 }
 
 #[tokio::test]
+async fn a_codex_turn_waits_for_its_tools_to_start() {
+    let dir = TempDir::new();
+    let options = Options {
+        env: vec![("ORBYN_FAKE_SLOW_TOOLS".into(), "1".into())],
+        ..Options::default()
+    };
+    let (service, thread) = setup(&dir, options, "codex").await;
+    service.admit(&thread, "say hi").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert_eq!(
+        text_of(&service.all_events(&thread).await),
+        "hello from codex"
+    );
+}
+
+#[tokio::test]
 async fn codex_approval_round_trips_and_second_run_resumes() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;

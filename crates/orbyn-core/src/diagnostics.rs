@@ -117,7 +117,7 @@ fn keep<T>(ring: &mut VecDeque<T>, entry: T, limit: usize) {
     ring.push_back(entry);
 }
 
-fn sample() {
+pub(crate) fn sample() {
     let processes = service_processes();
     let entry = ResourceSample {
         at: now(),
@@ -144,8 +144,10 @@ pub fn resource_history() -> Vec<ResourceSample> {
 
 /// Keeps a warning or error for the Maintenance page.
 pub fn note_event(level: &str, target: &str, message: String) {
+    let at = now();
+    crate::telemetry_export::offer_log(&at, level, target, &message);
     let entry = ServiceEvent {
-        at: now(),
+        at,
         level: level.to_owned(),
         target: target.to_owned(),
         message,

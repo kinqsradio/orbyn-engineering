@@ -808,7 +808,18 @@ resend an old value over another client's change. The Core object-patch writer
 preserves unmentioned and unknown telemetry fields. Scope changes dispose the form's
 response owner; a late save cannot clear a new draft or update a different scope.
 Endpoint test results stay attached to their requested URL and generation. These
-bindings qualify local settings behavior, not running export or native parity.
+bindings qualify local settings behavior, not native parity.
+
+`orbynd` reads the saved `observability` endpoints once at startup, so an edit applies
+on the next start. With a logs URL the service sends warnings and errors as OTLP/HTTP
+JSON logs; with a metrics URL it sends each new memory and process sample as gauges.
+A URL that is not absolute http or https is ignored. Nothing is queued for an unset
+signal, the log queue holds 256 records and drops the oldest, a refused or unreachable
+batch is kept for the next pass within that limit, redirects are not followed, and a
+final bounded flush runs at shutdown. The exporter's own events never re-enter it.
+Traces have no producer because the service records no spans; that URL is only
+checked. `ORBYN_TELEMETRY_INTERVAL_MS` overrides the 15 second cadence for tests.
+The exporter is listed with the other automatic requests.
 
 Automatic known-provider discovery defaults to all installed known CLIs. The
 internal `EngineConfig.known_engine_ids` can restrict that enumeration; absent means
@@ -1104,19 +1115,18 @@ Skills come from the workspace, in place. Nothing is copied, packed or signed.
   `--add-dir <checkout>`. Its working directory is the library, so a relative path
   means the library, and the bootstrap tells it to use absolute paths and run
   commands from the checkout.
-- Codex's process and `thread/start` use the workspace root, and each `turn/start`
-  sets `cwd` and `sandboxPolicy.writableRoots` to the selected checkout. The turn's
-  `cwd` must stay the checkout: a real 0.166.0 turn against a local stub provider, with
-  no model involved, wrote to the checkout and was denied the library, but with the
-  library as its `cwd` it wrote to the library and relative paths landed there.
-  `command/exec` is not the same: it also let the app-server's own cwd be written, and
-  engines do not use it. The same stub showed what a first turn sends: the environment
-  context, workspace root, permissions and `AGENTS.md` all come from the turn's `cwd`, so
-  nothing the model sees names the library, and neither its `AGENTS.md` nor its
-  `.agents/skills` reach it. Codex therefore takes skills from the MCP tools. The thread
-  stays at the library because moving it changes nothing the model sees and would load
-  the target's `.codex` config as the session's own. It has a per-thread
-  `mcp_servers.orbyn_engineering` config and app-server approval requests.
+- Codex's process starts at the workspace root. `thread/start` and each `turn/start`
+  use the selected checkout as `cwd`, with `sandboxPolicy.writableRoots` set to it,
+  so the library stays read-only. Before the first `turn/start`, the driver awaits
+  `mcpServerStatus/list`, bounded at 15 seconds: startup status updates end about a
+  second before tools are usable, and a turn sent in that gap reaches a model that
+  answers it cannot read the files. The Orbyn context goes in `developerInstructions`,
+  not the user's message, for the same reason. Real first turns on 0.166.0 through
+  `orbynd` read the file 4 of 6 times with all of this, against 0 of 5 before it and
+  1 of 5 with the thread at the library. It is improved, not solved; plain
+  `codex exec` read it 6 of 6. Starting at the checkout loads its `.codex`
+  config as the session's own, which folder trust gates. Skills reach Codex through
+  the MCP tools, because its `.agents/skills` discovery follows the turn's `cwd`.
 - Non-native engines start in the checkout and reach skills through the MCP server,
   or through the skill list in the bootstrap. That list is only there for an engine
   with neither: native discovery and the tools already know the selection, and a long
@@ -1565,8 +1575,8 @@ length, distinct names and retained samples. Malformed lines are counted, not
 interpreted as spans. Summaries sort busiest names first and report count, rate,
 nearest-rank p50/p90, maximum, interruptions and failures. `--since` filters by end
 time and `--limit` controls displayed names. Missing files produce an empty report
-without creating the data folder. This is local timing evidence, not an OTLP exporter
-or a completed diagnostics UI.
+without creating the data folder. This is local timing evidence for the CLI report and is
+separate from the OTLP exporter above.
 
 The GitHub-star notice counts acknowledged composer submissions in two separate
 viewer-storage entries: sent threshold and dismissal. It checks this app's fixed
