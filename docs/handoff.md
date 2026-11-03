@@ -146,9 +146,9 @@ exact-head green PR gates, then continue K7's native chooser and K5's full defau
 Shared engineering guidance was refreshed against library `57d9fe7` after the
 owner's update notice. Product illustration and animation additions apply to their
 own artifact types; real product work continues under the UI, architecture,
-language, migration and verification owners. The app's bundled library still pins
-`ed3f1d3`; refresh that snapshot as a separate maintenance change with a real bundled
-library fixture after delivering the current project-settings batch.
+language, migration and verification owners. The app's bundled library now pins
+`4745f5e`, the library's latest merged commit after the owner's skill update; the
+catalog schema and the paths the app reads are unchanged from `ed3f1d3`.
 
 PR84 was opened at `8da9aeb` with 13 separate section commits. CI `41366570888`
 passed macOS Rust, Web, E2E and both packaged build/startup jobs; GitGuardian also
