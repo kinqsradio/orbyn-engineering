@@ -338,13 +338,15 @@ async fn cancellation_drops_owned_process_and_io_without_prompt() {
             .load_native_session(&task_fixture.cwd, "native")
             .await
     });
-    tokio::time::timeout(Duration::from_secs(5), async {
+    // Only the agent's start is bounded here, not the cancellation under test. A
+    // loaded Windows runner has taken longer than 5 seconds to start it.
+    tokio::time::timeout(Duration::from_secs(30), async {
         while !f.methods().contains(&"session/load".into()) {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
     .await
-    .unwrap();
+    .expect("the agent must reach session/load");
     let pid = f.calls().iter().find_map(|v| v["pid"].as_u64()).unwrap() as u32;
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());

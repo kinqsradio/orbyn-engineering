@@ -101,6 +101,7 @@ listed there and in [.github/CODEOWNERS](.github/CODEOWNERS), who is asked for
 review automatically.
 
 Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
