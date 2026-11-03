@@ -1,0 +1,69 @@
+name: Feature request
+description: Propose a feature or a change to how the app behaves.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - needs triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Features come from the planned list in docs/parity.md. A surface that is not on
+        the list needs the maintainer's agreement before work starts.
+  - type: input
+    id: row
+    attributes:
+      label: Parity row
+      description: The row ID in docs/parity.md, such as I13. Write "none" if it is not on the list.
+      placeholder: I13
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: Proposed behaviour
+      description: What the user sees and does, step by step.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Core
+        - Contracts
+        - Service and CLI
+        - Web UI
+        - Desktop
+        - Skills library
+        - CI and release
+        - Documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: platforms
+    attributes:
+      label: Platforms
+      multiple: true
+      options:
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
+        - label: This works on both Windows and macOS, or I explained why not.
+          required: true

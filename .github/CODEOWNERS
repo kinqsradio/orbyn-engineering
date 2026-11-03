@@ -1,0 +1,39 @@
+# Maintainers by area. GitHub asks the matching owners for review on every pull
+# request. CONTRIBUTING.md has the same map with labels. The last matching rule
+# wins, so keep the catch-all first.
+
+*                               @kinqsradio
+
+# Documentation
+/docs/                          @kinqsradio
+*.md                            @kinqsradio
+
+# Core behaviour
+/crates/orbyn-core/             @kinqsradio
+
+# Local service and CLI
+/crates/orbynd/                 @kinqsradio
+
+# Web UI
+/web/                           @kinqsradio
+
+# Wire contracts and the generated types they produce. Kept after /web/ so this
+# rule wins for web/src/generated.
+/crates/orbyn-contracts/        @kinqsradio
+/web/src/generated/             @kinqsradio
+
+# Desktop shell, packaging and updates
+/desktop/                       @kinqsradio
+
+# CI, release and repository settings
+/.github/                       @kinqsradio
+/scripts/                       @kinqsradio
+
+# Bundled skills library
+/scripts/library.lock           @kinqsradio
+/scripts/prepare-bundle.mjs     @kinqsradio
+
+# Rules every change must follow
+/AGENTS.md                      @kinqsradio
+/docs/architecture.md           @kinqsradio
+/SECURITY.md                    @kinqsradio
