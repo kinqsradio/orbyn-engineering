@@ -6,7 +6,7 @@ use crate::error::{CoreError, Result};
 use sha2::{Digest, Sha256};
 
 pub fn new_id() -> String {
-    ulid::Ulid::new().to_string().to_lowercase()
+    ulid::Ulid::generate().to_string().to_lowercase()
 }
 
 pub fn now() -> String {

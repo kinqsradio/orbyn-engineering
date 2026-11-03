@@ -101,6 +101,55 @@ fn delta() -> AgUiEvent {
 }
 
 #[test]
+fn stored_and_new_thread_ids_keep_the_ulid_format() {
+    // A lowercase ULID in the format written by previous releases.
+    let previous_id = "01arz3ndektsv4rrffq69g5fav";
+    let f = fixture();
+    let project = f.store.thread(&f.thread).unwrap().project_id;
+    let stored = f
+        .store
+        .create_registered_thread(
+            previous_id,
+            NewThread {
+                project_id: project,
+                title: "previous".into(),
+                engine: "fake".into(),
+                model: None,
+                cwd: "/repo".into(),
+                worktree: None,
+                skill_profile: None,
+                parent_thread_id: None,
+                relation: None,
+                scratch: false,
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(stored.id, previous_id);
+
+    let new_id = f.thread.clone();
+    assert_eq!(new_id.len(), 26);
+    assert!(
+        new_id
+            .bytes()
+            .all(|byte| b"0123456789abcdefghjkmnpqrstvwxyz".contains(&byte))
+    );
+    assert_eq!(
+        new_id
+            .parse::<ulid::Ulid>()
+            .unwrap()
+            .to_string()
+            .to_lowercase(),
+        new_id
+    );
+
+    drop(f.store);
+    let reopened = Store::open(&f.path, "epoch-b").unwrap();
+    assert_eq!(reopened.thread(previous_id).unwrap().id, previous_id);
+    assert_eq!(reopened.thread(&new_id).unwrap().id, new_id);
+}
+
+#[test]
 fn second_admission_loses_while_a_run_is_active() {
     let f = fixture();
     let run = running(&f.store, &f.thread);
