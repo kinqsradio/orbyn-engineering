@@ -75,6 +75,22 @@ body:
       label: Expected and actual behaviour
     validations:
       required: true
+  - type: dropdown
+    id: ai-used
+    attributes:
+      label: AI usage
+      description: Whether AI helped you find, reproduce or write this.
+      options:
+        - Human only
+        - AI helped
+    validations:
+      required: true
+  - type: textarea
+    id: ai-details
+    attributes:
+      label: AI details
+      description: If AI helped, the harness and version, every model by exact ID and what it did, and the effort level. Leave empty for "Human only".
+      placeholder: Claude Code 2.1.150, claude-opus-5-5 (reproduced the bug), medium
   - type: textarea
     id: logs
     attributes:
