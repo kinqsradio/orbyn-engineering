@@ -192,15 +192,8 @@ async fn spawn(forge: Forge, cwd: &Path, args: &[&str], input: Option<&str>) -> 
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let run = async {
-        crate::child_env::for_tool(builder.as_std_mut());
-        let mut child = builder.spawn()?;
-        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
-            stdin.write_all(input.as_bytes()).await?;
-        }
-        child.wait_with_output().await
-    };
-    let output = tokio::time::timeout(FORGE_TIMEOUT, run)
+    crate::child_env::for_tool(builder.as_std_mut());
+    let output = tokio::time::timeout(FORGE_TIMEOUT, run_owned(builder, input))
         .await
         .map_err(|_| CoreError::Git(format!("{program} did not finish in time.")))?
         .map_err(|error| CoreError::Git(format!("Could not run {program}: {error}")))?;
@@ -209,6 +202,17 @@ async fn spawn(forge: Forge, cwd: &Path, args: &[&str], input: Option<&str>) -> 
         stdout: text(&output.stdout),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     })
+}
+
+/// Runs a forge CLI as the owner of its whole process tree. A CLI such as `az`
+/// leaves helpers running after it exits; they end with it, and they end when
+/// the service stops or the request is cancelled.
+async fn run_owned(builder: Command, input: Option<&str>) -> Result<std::process::Output> {
+    let mut child = crate::process::ManagedChild::spawn(builder)?;
+    if let (Some(input), Some(mut stdin)) = (input, child.child_mut().stdin.take()) {
+        stdin.write_all(input.as_bytes()).await?;
+    }
+    child.output().await
 }
 
 pub async fn call(forge: Forge, cwd: &Path, args: &[&str]) -> Result<String> {
@@ -1910,6 +1914,34 @@ fn auth_accounts(output: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_finished_forge_cli_does_not_leave_helpers_running() {
+        let dir = crate::testing::TempDir::new();
+        // Git runs ! aliases through its shell on both supported platforms, so it
+        // stands in for a CLI whose helper outlives it.
+        let mut builder = Command::new("git");
+        builder
+            .args([
+                "-c",
+                "alias.detach=!(sleep 1; echo escaped > escaped) &",
+                "detach",
+            ])
+            .current_dir(dir.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let output = tokio::time::timeout(Duration::from_secs(5), run_owned(builder, None))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(output.status.success());
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        assert!(
+            !dir.path().join("escaped").exists(),
+            "the CLI's helper outlived it"
+        );
+    }
 
     #[test]
     fn forge_comes_from_the_host_alone() {

@@ -325,8 +325,10 @@ be plain.
 A git action runs commit, push and pull request in order, logs each phase as `CUSTOM
 git.phase`, and stops at the first failure; earlier phases stand. These are the
 user's own commands, so unlike Orbyn's internal reads they run commit hooks. All of
-it needs a trusted folder, and writes wait for the thread's run to end. Every forge
-write is audited before it happens. A stack is the chain of open pull requests whose
+it needs a trusted folder, and writes wait for the thread's run to end. Like the Git
+runner, every forge CLI call owns a process group or Windows job: helpers the CLI leaves
+behind stop when it exits, when the call is cancelled and when
+the service stops. Every forge write is audited before it happens. A stack is the chain of open pull requests whose
 bases are each other's heads; a stack action works from the bottom and stops at the
 first failure. Bulk close carries on past a refusal and reports each number.
 
