@@ -40,9 +40,16 @@ branches named for the section or purpose.
 
 Commit `web/src/generated` in the same commit as every contract change.
 
-Commits and pull requests carry no agent or tool attribution. Do not add
-`Co-Authored-By` trailers for an assistant, generated-by lines, or a model or tool
-name to commit messages, pull request titles or bodies, or branch names.
+Every pull request fills in the template's AI usage section: whether AI was used
+or the change was written by hand; if AI was used, the harness (such as Claude Code
+or Codex) with its version, every model by exact ID and what each did, the effort
+level, what a person decided or changed, and every outside source. Write only what
+actually ran. The PR check fails while the section is empty.
+
+Commits and branch names carry no agent or tool attribution: no `Co-Authored-By`
+trailer for an assistant, no generated-by line, and no model or tool name in commit
+messages, pull request titles or branch names. The AI usage section is the one place
+for it.
 
 Windows and macOS are both supported targets. Never add a Unix-only path, shell
 or signal without its Windows branch and a test on the CI matrix.

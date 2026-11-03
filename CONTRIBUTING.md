@@ -68,9 +68,10 @@ node scripts/sync-labels.mjs
   such as `fix(codex): wait for tools before the first turn`.
 - Commit `web/src/generated` in the same commit as every contract change. Run
   `npm run generate` in `web` after editing `crates/orbyn-contracts`.
-- Commits and pull requests carry no agent or tool attribution: no
-  `Co-Authored-By` trailer for an assistant, no generated-by line, and no model or
-  tool name in messages, titles, bodies or branch names.
+- Commits and branch names carry no agent or tool attribution: no `Co-Authored-By`
+  trailer for an assistant, no generated-by line, and no model or tool name in
+  commit messages, pull request titles or branch names. Record AI use in the pull
+  request's AI usage section instead.
 - Keep active branches current by merging `main` into them at least daily.
 
 ## Checks
@@ -103,6 +104,22 @@ has hidden a crash on startup before.
 - Merge with a merge commit. Do not squash the per-row commits.
 - Never include secrets, engine credentials, personal data or files from your own
   machine. The repository is public.
+
+## AI usage
+
+Every pull request says how it was made, so a change can be traced. Fill in the AI
+usage section of the template from what actually ran:
+
+- **Written by hand:** tick that box. Nothing else is needed.
+- **With AI:** the harness, such as Claude Code, Codex or Cursor, with its version;
+  every model by exact ID, such as `claude-opus-5-5`, and what each did, whether one
+  model did everything or several shared it; the effort level, such as low, medium
+  or high; and what you decided, reviewed or changed yourself.
+- **Sources:** every outside project, document or page the change used, with its link,
+  or "none".
+
+The PR check fails while the section is empty. Dependabot's pull requests are exempt.
+Issue forms ask the same question, with "Human only" as an answer.
 
 ## Dependencies
 
