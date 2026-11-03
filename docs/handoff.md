@@ -29,7 +29,7 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 | Engine login | Engines keep their own login. Orbyn never reads or stores engine credentials. Run the unmodified CLI. |
 | Claude | CLI only, never the Agent SDK. Keep it on the MCP approval gate, because its native modes would bypass the write scope. Never use `--bare`, which ignores subscription login. |
 | Default mode | Supervised, where T3 defaults to Full access. All four modes are offered. |
-| Delivery | One active branch per section, one small commit per completed row, local checks before pushing. Open a PR for a section or about 20 coherent rows; merge only with every required check green, without squashing. Keep active branches current with main at least daily and deliver ready green batches daily. No agent attribution anywhere. |
+| Delivery | One active branch per section, one small commit per completed row, local checks before pushing. Open a PR for a section or about 20 coherent rows; merge only with every required check green, without squashing. Keep active branches current with main at least daily and deliver ready green batches daily. No agent attribution in commits or branch names; every PR fills in its AI usage section. |
 | Autonomy | The owner makes no routine decisions: decide from T3's behaviour. Never ask for browser access; use the local references. |
 
 ## Rules that were broken, so read twice
