@@ -16,7 +16,7 @@ ts-rs = { version = "11", features = ["serde-json-impl"] }
 async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
 clap = { version = "4", features = ["derive", "env"] }
-ed25519-dalek = "2"
+ed25519-dalek = "3"
 futures-util = "0.3"
 getrandom = "0.3"
 libc = "0.2"
