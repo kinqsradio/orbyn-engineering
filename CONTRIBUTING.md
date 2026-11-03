@@ -86,8 +86,9 @@ cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 cd web && npm run check && npm test
 ```
 
-Six CI checks are required on the current head before a merge: Rust on macOS and
-Windows, Web, E2E, and the unsigned desktop build on macOS and Windows. Never
+Seven checks are required on the current head before a merge: Rust on macOS and
+Windows, Web, E2E, the unsigned desktop build on macOS and Windows, and the AI
+usage section. Never
 weaken a check or merge red. Do not turn on auto-merge until E2E has passed on that
 exact commit.
 
@@ -104,6 +105,20 @@ has hidden a crash on startup before.
 - Merge with a merge commit. Do not squash the per-row commits.
 - Never include secrets, engine credentials, personal data or files from your own
   machine. The repository is public.
+
+## Protected main
+
+`main` accepts changes only through pull requests, for everyone, maintainers
+included. Force pushes and deleting the branch are blocked.
+
+- Seven checks must pass, reported by GitHub Actions: Rust and the unsigned desktop
+  build on macOS and Windows, Web, E2E and the AI usage section.
+- One approval from a code owner is required, and a new push dismisses it. Open
+  review conversations must be resolved.
+- Only merge commits are allowed.
+- The maintainer can merge their own pull request without a second approval, because
+  GitHub does not let authors approve their own. That bypass works only on a pull
+  request whose checks have passed.
 
 ## AI usage
 

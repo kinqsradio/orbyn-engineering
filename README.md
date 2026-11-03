@@ -92,7 +92,9 @@ cd web && npm run check && npm test
 ```
 
 CI also runs the end-to-end suite and unsigned desktop builds on macOS and
-Windows. All six are required before a merge.
+Windows, and checks each pull request's AI usage section. All seven are required
+before a merge, and `main` takes changes only through pull requests; see
+[CONTRIBUTING.md](CONTRIBUTING.md#protected-main).
 
 ## Contributing
 
