@@ -54,6 +54,8 @@ pub struct ClaudeDriver {
     program: String,
     /// The id and name of an instance, when this is one.
     named: Option<(String, String)>,
+    /// Tokens before Claude compacts, from the instance.
+    auto_compact_window: Option<u32>,
 }
 
 impl ClaudeDriver {
@@ -61,12 +63,13 @@ impl ClaudeDriver {
         Self {
             program,
             named: None,
+            auto_compact_window: None,
         }
     }
 }
 
 /// The exact command line for one run. Tests pin this.
-pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
+pub fn run_args(spec: &RunSpec, mcp_config: &Path, window: Option<u32>) -> Vec<OsString> {
     let mut args: Vec<OsString> = [
         "-p",
         "--output-format",
@@ -100,7 +103,7 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path) -> Vec<OsString> {
         args.push("--effort".into());
         args.push(effort.into());
     }
-    if spec.options.contains_key(FAST_MODE) {
+    if run_settings(spec, window).is_some() {
         args.push("--settings".into());
         args.push(run_settings_path(spec).into());
     }
@@ -118,9 +121,15 @@ fn run_settings_path(spec: &RunSpec) -> std::path::PathBuf {
 /// The settings a run passes with `--settings`, which is how the CLI takes fast mode
 /// in print mode. It reaches only a model that reports `supportsFastMode`, because
 /// admission refuses the option anywhere else.
-fn run_settings(spec: &RunSpec) -> Option<Value> {
-    let fast = spec.options.get(FAST_MODE)?;
-    Some(json!({ "fastMode": fast == "on" }))
+fn run_settings(spec: &RunSpec, window: Option<u32>) -> Option<Value> {
+    let mut settings = serde_json::Map::new();
+    if let Some(fast) = spec.options.get(FAST_MODE) {
+        settings.insert("fastMode".into(), json!(fast == "on"));
+    }
+    if let Some(window) = window {
+        settings.insert("autoCompactWindow".into(), json!(window));
+    }
+    (!settings.is_empty()).then_some(Value::Object(settings))
 }
 
 /// The command line for reading capabilities. These flags are what keep it inert:
@@ -194,6 +203,10 @@ impl EngineDriver for ClaudeDriver {
                 instance.id.clone(),
                 instance.name.clone().unwrap_or(instance.id.clone()),
             )),
+            auto_compact_window: instance
+                .auto_compact_window
+                .as_deref()
+                .and_then(|window| window.parse().ok()),
         }))
     }
 
@@ -277,10 +290,10 @@ impl EngineDriver for ClaudeDriver {
             "mcpServers": { (MCP_SERVER_NAME): { "type": "http", "url": spec.mcp_url } }
         });
         write_private(&mcp_config, config.to_string().as_bytes())?;
-        if let Some(settings) = run_settings(&spec) {
+        if let Some(settings) = run_settings(&spec, self.auto_compact_window) {
             write_private(&run_settings_path(&spec), settings.to_string().as_bytes())?;
         }
-        let args = run_args(&spec, &mcp_config);
+        let args = run_args(&spec, &mcp_config, self.auto_compact_window);
         let process = spawn_engine(&command, &args, &spec.cwd)?;
         let cancel = CancellationToken::new();
         let (input, steering) = mpsc::unbounded_channel();
@@ -1285,7 +1298,7 @@ mod tests {
 
     #[test]
     fn command_line_matches_the_contract_and_never_uses_bare() {
-        let args: Vec<String> = run_args(&spec(), Path::new("/run/mcp.json"))
+        let args: Vec<String> = run_args(&spec(), Path::new("/run/mcp.json"), None)
             .into_iter()
             .map(|arg| arg.into_string().unwrap())
             .collect();
@@ -1452,23 +1465,39 @@ mod tests {
     #[test]
     fn speed_goes_through_settings_and_only_when_chosen() {
         let plain = spec();
-        assert_eq!(run_settings(&plain), None);
+        assert_eq!(run_settings(&plain, None), None);
         assert!(
-            !run_args(&plain, Path::new("/m"))
+            !run_args(&plain, Path::new("/m"), None)
                 .iter()
                 .any(|a| a == "--settings")
         );
         let mut fast = spec();
         fast.options.insert(FAST_MODE.into(), "on".into());
-        assert_eq!(run_settings(&fast), Some(json!({ "fastMode": true })));
-        let args = run_args(&fast, Path::new("/m"));
+        assert_eq!(run_settings(&fast, None), Some(json!({ "fastMode": true })));
+        assert_eq!(
+            run_settings(&fast, Some(300_000)),
+            Some(json!({ "fastMode": true, "autoCompactWindow": 300_000 }))
+        );
+        assert_eq!(
+            run_settings(&plain, Some(300_000)),
+            Some(json!({ "autoCompactWindow": 300_000 }))
+        );
+        assert!(
+            run_args(&plain, Path::new("/m"), Some(300_000))
+                .iter()
+                .any(|arg| arg == "--settings")
+        );
+        let args = run_args(&fast, Path::new("/m"), None);
         let at = args.iter().position(|arg| arg == "--settings").unwrap();
         assert_eq!(
             args[at + 1],
             Path::new("/run").join("settings.json").as_os_str()
         );
         fast.options.insert(FAST_MODE.into(), "off".into());
-        assert_eq!(run_settings(&fast), Some(json!({ "fastMode": false })));
+        assert_eq!(
+            run_settings(&fast, None),
+            Some(json!({ "fastMode": false }))
+        );
     }
 
     #[test]
@@ -1476,12 +1505,12 @@ mod tests {
         let mut elsewhere = spec();
         elsewhere.cwd = "/library".into();
         elsewhere.checkout = "/work/app".into();
-        let args = run_args(&elsewhere, Path::new("/tmp/mcp.json"));
+        let args = run_args(&elsewhere, Path::new("/tmp/mcp.json"), None);
         let at = args.iter().position(|arg| arg == "--add-dir").unwrap();
         assert_eq!(args[at + 1], "/work/app");
         let mut same = spec();
         same.checkout = same.cwd.clone();
-        let args = run_args(&same, Path::new("/tmp/mcp.json"));
+        let args = run_args(&same, Path::new("/tmp/mcp.json"), None);
         assert!(!args.iter().any(|arg| arg == "--add-dir"));
     }
 

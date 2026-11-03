@@ -2755,6 +2755,9 @@ pub enum InstallerKind {
     Npm,
     Pnpm,
     Bun,
+    Yarn,
+    Volta,
+    VitePlus,
     Homebrew,
     Winget,
     SelfManaged,
@@ -2834,6 +2837,11 @@ pub struct ProviderInstance {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(optional, as = "Option<Vec<String>>")]
     pub args: Vec<String>,
+    /// Claude only: compact after this many tokens, 100000 to 1000000. Empty means
+    /// Claude's own default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub auto_compact_window: Option<String>,
 }
 }
 

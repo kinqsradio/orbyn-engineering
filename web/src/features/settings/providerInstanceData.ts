@@ -5,6 +5,7 @@ export function readInstance(value: JsonValue): ProviderInstance | null {
   return { id: value.id, driver: value.driver, enabled: value.enabled !== false,
     ...(typeof value.name === "string" ? { name: value.name } : {}), ...(typeof value.accent === "string" ? { accent: value.accent } : {}),
     ...(typeof value.program === "string" ? { program: value.program } : {}),
+    ...(typeof value.auto_compact_window === "string" ? { auto_compact_window: value.auto_compact_window } : {}),
     ...(Array.isArray(value.args) && value.args.every((item) => typeof item === "string") ? { args: value.args as string[] } : {}) };
 }
 /** Touch one existing record's fields, preserving peer and forward fields verbatim. */
@@ -26,3 +27,5 @@ export function newInstanceId(driver: string, label: string, ids: ReadonlySet<st
 }
 export const validInstanceId = (id: string) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id);
 export const accentColor = (value: string) => /^#[\da-f]{6}$/i.test(value) ? value.toLowerCase() : null;
+/** Six digits from 100000, or exactly 1000000; empty uses Claude's default. */
+export const validCompactWindow = (value: string) => value === "" || value === "1000000" || /^[1-9]\d{5}$/.test(value);

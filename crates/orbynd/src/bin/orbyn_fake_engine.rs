@@ -48,6 +48,11 @@ fn main() {
         "exec" => one_shot(),
         "-p" => {
             record_launch("claude", &args);
+            if let Some(at) = args.iter().position(|arg| arg == "--settings")
+                && let Ok(text) = std::fs::read_to_string(&args[at + 1])
+            {
+                record_launch("claude-settings", &[text]);
+            }
             claude(&args);
         }
         "acp" => {
