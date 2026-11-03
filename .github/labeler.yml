@@ -1,0 +1,52 @@
+# Area labels for pull requests, from the paths they change. Used by
+# .github/workflows/labeler.yml; the labels are defined in .github/labels.json.
+
+"area: core":
+  - changed-files:
+      - any-glob-to-any-file: crates/orbyn-core/**
+
+"area: contracts":
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/orbyn-contracts/**
+          - web/src/generated/**
+
+"area: service":
+  - changed-files:
+      - any-glob-to-any-file: crates/orbynd/**
+
+"area: web":
+  - changed-files:
+      - all-globs-to-any-file:
+          - web/**
+          - "!web/src/generated/**"
+
+"area: desktop":
+  - changed-files:
+      - any-glob-to-any-file: desktop/**
+
+"area: library":
+  - changed-files:
+      - any-glob-to-any-file:
+          - scripts/library.lock
+          - scripts/prepare-bundle.mjs
+
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - scripts/**
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - "*.md"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - Cargo.lock
+          - desktop/src-tauri/Cargo.lock
+          - web/package-lock.json
+          - desktop/package-lock.json

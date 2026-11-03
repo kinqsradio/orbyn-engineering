@@ -1,0 +1,83 @@
+name: Bug report
+description: Something in the app does not work as it should.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include tokens, engine credentials, private project files or personal data.
+        Report vulnerabilities privately, as SECURITY.md describes.
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+      description: The app version from Settings, or the commit you built.
+      placeholder: 45a952b
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      multiple: true
+      options:
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where it happens
+      multiple: true
+      options:
+        - Desktop app
+        - Browser
+        - Command line
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      multiple: true
+      options:
+        - Claude
+        - Codex
+        - ACP agent
+        - AG-UI agent
+        - Terminal
+        - Not engine related
+    validations:
+      required: true
+  - type: input
+    id: engine-version
+    attributes:
+      label: Engine version
+      description: For example the output of `claude --version` or `codex --version`.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use a throwaway project and synthetic data.
+      placeholder: |
+        1. Add a project
+        2. Start a thread with ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected and actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from the service log, with secrets removed.
+      render: text

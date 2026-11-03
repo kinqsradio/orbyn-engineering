@@ -1,0 +1,110 @@
+# Orbyn Engineering
+
+A desktop and local web app for working with coding agents. It runs the Claude
+and Codex command-line tools you already have, with their own login, inside the
+[orbyn-fullstack-skills](https://github.com/kinqsradio/orbyn-fullstack-skills)
+library as the harness. The core is Rust, the UI is React, and the desktop app is a
+thin Tauri 2 shell. It targets Windows and macOS.
+
+The code is our own. [UPSTREAM.md](UPSTREAM.md) lists the outside programs,
+protocols and packages it uses.
+
+> [!IMPORTANT]
+> The app is not finished. Run `python3 scripts/count-parity.py` for the current
+> count of [docs/parity.md](docs/parity.md). There are no releases yet.
+
+## What it does
+
+- **Threads with real engines.** Claude through its CLI, Codex through its app
+  server, any Agent Client Protocol agent, AG-UI agents and plain terminal tools.
+  Orbyn never reads or stores engine credentials.
+- **Built-in skills library.** The app ships a snapshot of the library and sets it
+  up by itself on first start, then updates it in the background. There is no
+  setup screen.
+- **Projects in place.** Add any folder. Nothing is cloned or moved. Worktrees go
+  in a `<repo>-wt/<purpose>/` sibling folder.
+- **Approvals and modes.** Supervised by default, with every write checked by the
+  approval gate. Full access and the other modes are offered too.
+- **Source control.** Diffs, checkpoints, commit, push, pull requests and branch
+  switching from a thread.
+- **Terminals, files, preview and search** in the side panels.
+- **Model, reasoning effort and speed** read live from each engine, so the choices
+  match your plan.
+- **Engine updates** from the app, through the installer that owns each binary.
+
+Out of scope for now: sign-in, remote access and tunnels, mobile, and anything
+that needs a hosted service.
+
+## Layout
+
+| Path | What it holds |
+| --- | --- |
+| `crates/orbyn-contracts` | Wire types. They generate `web/src/generated`. |
+| `crates/orbyn-core` | All product behaviour: runs, drivers, workspace, approvals, storage. |
+| `crates/orbynd` | The local service and CLI: transport only. |
+| `web` | The React UI, shared by the desktop app and the browser. |
+| `desktop/src-tauri` | The thin desktop shell. |
+| `scripts` | Bundling, release and parity tools. `library.lock` pins the bundled library. |
+| `docs` | Architecture, parity list and handoff. |
+
+[docs/architecture.md](docs/architecture.md) is the contract: its product rules
+and lifecycles govern every change.
+
+## Build and run
+
+You need Rust 1.90 or later, Node.js 22 or later and Git. To use an engine,
+install it and sign in with its own tool, for example `claude` or `codex`.
+
+Run the service with a UI build:
+
+```bash
+cd web && npm ci && npm run build
+```
+
+```bash
+cargo run -p orbynd --bin orbynd -- serve --ui-dir web/dist
+```
+
+It prints a local address and a session token. It binds to loopback only.
+
+Run the UI against its mock API while you work on it. Set `ORBYN_API` to a
+running service's address to use the real one instead:
+
+```bash
+cd web && npm run dev
+```
+
+Build the desktop app, after `npm ci` in `web`. This bundles the service, the UI
+and the skills library pinned in `scripts/library.lock`:
+
+```bash
+cd desktop && npm ci && npm run build
+```
+
+## Checks
+
+```bash
+cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+```
+
+```bash
+cd web && npm run check && npm test
+```
+
+CI also runs the end-to-end suite and unsigned desktop builds on macOS and
+Windows. All six are required before a merge.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Each area of the code has a maintainer,
+listed there and in [.github/CODEOWNERS](.github/CODEOWNERS), who is asked for
+review automatically.
+
+Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
+
+## License
+
+No license has been chosen yet. Until one is added, the code is all rights
+reserved by its owner, even though the repository is public. Third-party
+packages keep their own licenses; see [web/NOTICE](web/NOTICE) and
+[UPSTREAM.md](UPSTREAM.md).
