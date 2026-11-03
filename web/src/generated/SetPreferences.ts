@@ -4,4 +4,4 @@ import type { JsonValue } from "../../../crates/orbyn-contracts/bindings/serde_j
 /**
  * `null` for a key goes back to what it would inherit.
  */
-export type SetPreferences = { values: { [key in string]?: JsonValue }, };
+export type SetPreferences = { values: { [key in string]: JsonValue }, };

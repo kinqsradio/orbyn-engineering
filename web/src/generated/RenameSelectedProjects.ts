@@ -4,4 +4,4 @@ import type { ProjectScopesQuery } from "./ProjectScopesQuery";
 /**
  * Names are compared raw for every selected physical member before any update.
  */
-export type RenameSelectedProjects = { scope: ProjectScopesQuery, membership_version: string, expected_names: { [key in string]?: string }, name: string, };
+export type RenameSelectedProjects = { scope: ProjectScopesQuery, membership_version: string, expected_names: { [key in string]: string }, name: string, };

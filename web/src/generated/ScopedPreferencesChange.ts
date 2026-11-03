@@ -2,4 +2,4 @@
 import type { PreferenceEdit } from "./PreferenceEdit";
 import type { ProjectScopesQuery } from "./ProjectScopesQuery";
 
-export type ScopedPreferencesChange = { scope: ProjectScopesQuery, membership_version: string, if_match: { [key in string]?: string }, edits: { [key in string]?: PreferenceEdit }, };
+export type ScopedPreferencesChange = { scope: ProjectScopesQuery, membership_version: string, if_match: { [key in string]: string }, edits: { [key in string]: PreferenceEdit }, };

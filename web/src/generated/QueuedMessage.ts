@@ -8,4 +8,4 @@ held: boolean, created_at: string,
 /**
  * What this message sets on the thread when it starts.
  */
-model?: string, effort?: string, options?: { [key in string]?: string }, };
+model?: string, effort?: string, options?: { [key in string]: string }, };

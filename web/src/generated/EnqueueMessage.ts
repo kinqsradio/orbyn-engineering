@@ -4,4 +4,4 @@ export type EnqueueMessage = { prompt: string, attachment_ids: Array<string>,
 /**
  * Set on the thread when this message starts, and it stays for later turns.
  */
-model?: string, effort?: string, options?: { [key in string]?: string }, };
+model?: string, effort?: string, options?: { [key in string]: string }, };

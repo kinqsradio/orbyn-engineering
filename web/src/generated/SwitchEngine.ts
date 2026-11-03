@@ -4,4 +4,4 @@ export type SwitchEngine = { engine: string,
 /**
  * Absent uses what was last chosen on that engine.
  */
-model: string | null, effort?: string, options?: { [key in string]?: string }, };
+model: string | null, effort?: string, options?: { [key in string]: string }, };

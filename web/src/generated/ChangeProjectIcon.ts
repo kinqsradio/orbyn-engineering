@@ -5,4 +5,4 @@ import type { ProjectScopesQuery } from "./ProjectScopesQuery";
 /**
  * Explicit null resets both structured and saved-image overrides.
  */
-export type ChangeProjectIcon = { scope: ProjectScopesQuery, membership_version: string, expected_revisions: { [key in string]?: string }, icon: ProjectIconOverride | null, };
+export type ChangeProjectIcon = { scope: ProjectScopesQuery, membership_version: string, expected_revisions: { [key in string]: string }, icon: ProjectIconOverride | null, };

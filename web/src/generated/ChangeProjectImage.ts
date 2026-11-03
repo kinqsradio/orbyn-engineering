@@ -4,4 +4,4 @@ import type { ProjectScopesQuery } from "./ProjectScopesQuery";
 /**
  * A workspace-relative image hint, applied to the observed selected members.
  */
-export type ChangeProjectImage = { scope: ProjectScopesQuery, membership_version: string, expected_revisions: { [key in string]?: string }, path: string, };
+export type ChangeProjectImage = { scope: ProjectScopesQuery, membership_version: string, expected_revisions: { [key in string]: string }, path: string, };
