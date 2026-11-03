@@ -51,7 +51,7 @@ node scripts/sync-labels.mjs
 
 | Group | Labels |
 | --- | --- |
-| Kind | `bug`, `enhancement`, `documentation`, `question`, `security`, `dependencies` |
+| Kind | `bug`, `enhancement`, `documentation`, `question`, `accessibility`, `security`, `dependencies` |
 | Area | `area: core`, `area: contracts`, `area: service`, `area: web`, `area: desktop`, `area: library`, `area: ci`, `area: docs` |
 | Engine | `engine: claude`, `engine: codex`, `engine: acp` |
 | Platform | `platform: macos`, `platform: windows` |
