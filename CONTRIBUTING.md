@@ -123,6 +123,8 @@ Issue forms ask the same question, with "Human only" as an answer.
 
 ## Dependencies
 
-Dependabot opens weekly grouped updates for Cargo, npm and GitHub Actions. Review
-them like any other change: every required check must pass. Pin GitHub Actions to a
-full commit SHA with the version in a comment.
+Dependabot opens weekly grouped minor and patch updates for Cargo, npm and GitHub
+Actions. Review them like any other change: every required check must pass. It does
+not propose major versions of Cargo or npm packages: those change APIs, so they are
+planned work in an issue labelled `dependencies`, done in their own pull request.
+Pin GitHub Actions to a full commit SHA with the version in a comment.
