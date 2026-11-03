@@ -31,7 +31,7 @@ tokio-tungstenite = { version = "0.28", default-features = false, features = ["c
 tokio-util = { version = "0.7", features = ["codec", "io", "rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
-ulid = "1"
+ulid = "3"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects"] }
 
 # Pack verification hashes every file; keep debug builds and tests quick.
