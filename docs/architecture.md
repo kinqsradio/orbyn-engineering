@@ -1498,6 +1498,8 @@ removed from a tool, since those reach past it.
 `orbyn_project_list` therefore returns exactly the caller's one project, not the
 application's project catalog. A folder nested inside it still becomes a different
 project when registered; path containment does not grant cross-project authority.
+For issue #127 the owner explicitly retained this boundary: project add/remove
+remain unavailable to agents, and clone remains excluded by the add-in-place rule.
 Thread transfer is unavailable to tools for the same reason. The product move API
 also requires a thread that has never run, which excludes moving the caller's own
 running thread even before considering the destination project.
