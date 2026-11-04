@@ -16,13 +16,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi, type ContextTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
+import { Menu } from "../../ui/Menu";
 import { ActivityPanel } from "./ActivityPanel";
 import { BrowserPanel } from "./BrowserPanel";
 import { DiffPanel } from "./DiffPanel";
@@ -156,6 +157,15 @@ export function SurfacePane({
   const closeSurface = useUi((state) => state.closeSurface);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const width = useUi((state) => state.panelWidth);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeMenu = () => {
+    setMenu(null);
+    menuButton.current?.focus();
+  };
+  const openSurface = (surface: ContextTab) => {
+    if (surface === "terminal" ? !terminalOpen : tab !== surface) toggle(surface);
+  };
 
   return (
     <aside
@@ -172,9 +182,36 @@ export function SurfacePane({
             Back to thread
           </Button>
         ) : null}
-        <IconButton label="New surface" onClick={showLauncher} pressed={tab === null}>
+        <IconButton
+          label="New surface"
+          aria-haspopup="menu"
+          aria-expanded={menu !== null}
+          onClick={(event) => {
+            menuButton.current = event.currentTarget;
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: rect.left, y: rect.bottom });
+          }}
+        >
           <Plus size={16} aria-hidden />
         </IconButton>
+        {menu ? (
+          <Menu
+            {...menu}
+            label="New surface"
+            onClose={closeMenu}
+            items={[
+              { label: "Browser", onSelect: () => openSurface("browser") },
+              { label: "Terminal", onSelect: () => openSurface("terminal") },
+              { label: "Files", onSelect: () => openSurface("files") },
+              { label: "Diff", onSelect: () => openSurface("diff") },
+              { label: "Pull request", disabled: true },
+              { label: "Linked pull requests", onSelect: () => openSurface("pulls") },
+              { label: "Device", disabled: true },
+              { label: "Side chat", onSelect: () => void openSideChat(thread, null) },
+              { label: "Open a surface", separatorBefore: true, onSelect: showLauncher },
+            ]}
+          />
+        ) : null}
         <div className="tabs" role="tablist" aria-label="Context">
           {RIGHT_TABS.filter(({ id }) => surfaces.includes(id)).map(({ id, label }) => (
             <span key={id} className="surface-tab" data-selected={tab === id || undefined}>

@@ -232,6 +232,12 @@ thirty activities, preserving group keys and expanded state as calls arrive. Old
 groups are deferred in place, separated by messages and approvals; opening their
 fold reveals them. Finished turns retain their searchable mounted content.
 
+The surface add menu opens existing Browser, Files, Diff, linked pull requests and
+side-chat surfaces. Terminal opens the existing drawer. Individual Pull request
+and Device entries remain disabled because those surfaces are unavailable. Browser
+mute is not offered because the preview protocol has no mute capability. Existing
+close, resize, maximize and small-screen behavior remains owned by the pane.
+
 ## Questions
 
 An engine question holds its run in `awaiting_approval` until it is answered,
