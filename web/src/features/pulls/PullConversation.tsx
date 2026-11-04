@@ -70,7 +70,7 @@ function Comment({
         </span>
       </header>
       {draft === null ? (
-        <Markdown text={comment.body} />
+        <Markdown text={comment.body} projectId={projectId} />
       ) : (
         <>
           <textarea aria-label="Edit comment text" rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} />

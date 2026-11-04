@@ -1,9 +1,22 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { api } from "../../api/client";
 import { navigate, parseRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Menu } from "../../ui/Menu";
+import { PullLinkPreview } from "../pulls/PullLinkPreview";
+import { pullNumberOf } from "../pulls/pullLink";
+
+const HOVER_DELAY_MS = 350;
+
+/** The project whose pull request links this prose can preview. */
+export const MarkdownProjectContext = createContext<string | null>(null);
+
+/** The current thread's project, when a PR link is hovered outside a pull page. */
+export function previewProjectId(hash = window.location.hash): string | null {
+  const route = parseRoute(hash);
+  return route.name === "thread" ? (useWorkspace.getState().threads[route.id]?.project_id ?? null) : null;
+}
 
 /** `orbyn://thread/<id>` opens a thread here. */
 export const threadLinkId = (href: string): string | null =>
@@ -48,12 +61,6 @@ export function FileLink({ path, line, children }: { path: string; line: number 
   );
 }
 
-/** The number in a pull request's address on a host. */
-export const pullNumberOf = (href: string): number | null => {
-  const match = /^https:\/\/[^/]+\/[^/]+\/[^/]+\/pulls?\/(\d+)(?:[/?#].*)?$/.exec(href);
-  return match ? Number(match[1]) : null;
-};
-
 /** The hash in a commit's address on a host. */
 export const commitShaOf = (href: string): string | null =>
   /^https:\/\/[^/]+\/[^/]+\/[^/]+\/(?:-\/)?commit\/([0-9a-f]{7,40})(?:[/?#].*)?$/i.exec(href)?.[1] ?? null;
@@ -68,13 +75,23 @@ async function openCommit(threadId: string, sha: string, href: string) {
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [preview, setPreview] = useState<{ anchor: DOMRect; projectId: string } | null>(null);
   const inApp = useUi((state) => state.pullLinksInApp);
+  const contextProject = useContext(MarkdownProjectContext);
   const number = pullNumberOf(href);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const stopPreview = () => {
+    clearTimeout(timer.current);
+    setPreview(null);
+  };
   const onContext = (event: MouseEvent) => {
     event.preventDefault();
+    stopPreview();
     setMenu({ x: event.clientX, y: event.clientY });
   };
   const onClick = (event: MouseEvent) => {
+    stopPreview();
     if (number !== null && inApp) {
       event.preventDefault();
       useUi.getState().revealPull(number);
@@ -94,9 +111,26 @@ export function ExternalLink({ href, children }: { href: string; children: React
   };
   return (
     <>
-      <a href={href} target="_blank" rel="noreferrer noopener" onClick={onClick} onContextMenu={onContext}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        onClick={onClick}
+        onContextMenu={onContext}
+        onPointerEnter={(event) => {
+          if (number === null || event.pointerType !== "mouse") return;
+          const projectId = contextProject ?? previewProjectId();
+          if (!projectId) return;
+          const anchor = event.currentTarget.getBoundingClientRect();
+          timer.current = setTimeout(() => setPreview({ anchor, projectId }), HOVER_DELAY_MS);
+        }}
+        onPointerLeave={stopPreview}
+      >
         {children}
       </a>
+      {preview && number !== null ? (
+        <PullLinkPreview href={href} number={number} projectId={preview.projectId} anchor={preview.anchor} />
+      ) : null}
       {menu ? (
         <Menu
           x={menu.x}
