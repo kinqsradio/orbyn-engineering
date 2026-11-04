@@ -2,6 +2,8 @@ import { RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { isTerminalShortcut } from "../../app/shortcuts";
 import { readingKey } from "./terminalKeys";
+import { api } from "../../api/client";
+import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
@@ -74,10 +76,18 @@ export function TerminalPanel({
       terminal.loadAddon(fit);
       terminal.open(element);
       const links = terminal.registerLinkProvider(
-        linkProvider(terminal, (url) => {
-          const { linkTarget, showInBrowser } = useUi.getState();
-          if (linkTarget === "in-app") showInBrowser(url);
-          else window.open(url, "_blank", "noopener,noreferrer");
+        linkProvider(terminal, (link) => {
+          if (link.kind === "url") {
+            const { linkTarget, showInBrowser } = useUi.getState();
+            if (linkTarget === "in-app") showInBrowser(link.url);
+            else window.open(link.url, "_blank", "noopener,noreferrer");
+            return;
+          }
+          // A workspace file always opens in the in-app preview, wherever addresses go.
+          api.openPreviewFile(threadId, link.path).then(
+            () => useUi.getState().showInBrowser(""),
+            (failure: unknown) => useUi.getState().pushToast(`Couldn't open it. ${toFailure(failure).message}`),
+          );
         }),
       );
       applyThemeRef.current = () => {
