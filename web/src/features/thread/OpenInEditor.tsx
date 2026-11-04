@@ -1,26 +1,33 @@
 import { ChevronDown, SquareArrowOutUpRight } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
-import { useCommand } from "../../app/shortcuts";
+import { commandShortcut, formatShortcut, useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
-import { Menu } from "../../ui/Menu";
+import { Menu, type MenuItem } from "../../ui/Menu";
+import { launchableEditors, primaryEditor } from "./editorPreferences";
 
 /** Opens the thread's checkout, or a file at a line, in a detected editor. */
 export function OpenInEditor({ threadId }: { threadId: string }) {
   const editors = useAsync("editors", (signal) => api.editors(signal));
+  const keymap = useAsync("keybindings", (signal) => api.keybindings(signal));
   const preferred = useUi((state) => state.preferredEditor);
   const setPrefs = useUi((state) => state.setPrefs);
   const pushToast = useUi((state) => state.pushToast);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const list = editors.data ?? [];
-  const primary = list.find((editor) => editor.id === preferred) ?? list.find((editor) => !editor.file_manager) ?? list[0];
+  const launchable = launchableEditors(list);
+  const primary = primaryEditor(list, preferred);
+  const fileManager = list.find((editor) => editor.file_manager);
+  const key = commandShortcut(keymap.data?.rules, "editor.openFavorite");
+  const shortcut = key ? formatShortcut(key) : null;
 
   const open = async (id: string) => {
     try {
       await api.openInEditor(threadId, { path: ".", editor: id });
-      setPrefs({ preferredEditor: id });
+      // Revealing a path is not a choice of editor, so it does not become the favorite.
+      if (id !== fileManager?.id) setPrefs({ preferredEditor: id });
     } catch (failure) {
       pushToast(`Couldn't open it. ${toFailure(failure).message}`);
     }
@@ -32,13 +39,24 @@ export function OpenInEditor({ threadId }: { threadId: string }) {
   });
 
   if (!primary) return null;
+  const items: MenuItem[] = [
+    ...launchable.map((editor) => ({
+      label: editor.name,
+      selected: editor.id === primary.id,
+      ...(editor.id === primary.id && shortcut ? { shortcut } : {}),
+      onSelect: () => void open(editor.id),
+    })),
+    ...(fileManager
+      ? [{ label: `Reveal in ${fileManager.name}`, separatorBefore: true, onSelect: () => void open(fileManager.id) }]
+      : []),
+  ];
   return (
     <div className="detail-row detail-row-static" role="group" aria-label="Open in editor">
       <SquareArrowOutUpRight size={16} aria-hidden />
       <button type="button" className="detail-open" onClick={() => void open(primary.id)}>
         Open in {primary.name}
       </button>
-      {list.length > 1 ? (
+      {items.length > 1 ? (
         <IconButton
           label="Choose editor"
           onClick={(event) => {
@@ -54,11 +72,7 @@ export function OpenInEditor({ threadId }: { threadId: string }) {
           {...menu}
           label="Open in"
           onClose={() => setMenu(null)}
-          items={list.map((editor) => ({
-            label: editor.name,
-            selected: editor.id === primary.id,
-            onSelect: () => void open(editor.id),
-          }))}
+          items={items}
         />
       ) : null}
     </div>
