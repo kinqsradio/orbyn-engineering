@@ -1,4 +1,4 @@
-import { pullNumberOf } from "./MarkdownLink";
+import { pullNumberOf } from "../pulls/pullLink";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Markdown, safeHref } from "./Markdown";

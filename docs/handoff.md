@@ -64,19 +64,25 @@ builds on both, and E2E. The repository is public and has no license yet.
 
 ### Current local section
 
-The active section branch is `feat/thread-automations` in the
-`thread-automations` worktree, based on main `958c2ae`. It adds the thread details
-Automations panel for tasks bound to a thread: the schedule line and status dot,
-pause/resume, Run now for non-webhook tasks, an Edit deep link into Settings and a
-Manage link. The Settings task editor opens a linked task once and clears the
-`task` query when it closes. No contract or service change.
+The active section branch is `feat/pr-link-preview` in the `pr-link-preview`
+worktree, based on main `d6e2ec4`. It completes F60's hover preview: after a short
+hover, a pull request link in prose shows its title, `owner/repo#number` and state,
+author and age, and checks and review outcome. The card reads the link's project
+(the thread's, or the pull page's), stays quiet when the project answers with a
+different repository, and disappears on leave, click or right-click. The existing
+Copy link and Open on the host menu is unchanged. No contract or service change.
 
-Real `orbynd` browser qualification passes: a task bound to a thread lists in the
-details card, pauses and resumes through the enabled route, fires Run now, opens
-the editor from Edit, saves and clears the link, and the panel shows the new name
-before Manage opens the task list. Web checks and 398 unit tests pass; the details
-and tasks real-service specs and the mock workspace spec pass. Windows native is
-unverified.
+Real `orbynd` browser qualification passes: the pull-link scene shows the card for
+the stand-in forge's #42, then the link still opens the in-app panel and its
+context menu. Web checks and 410 unit tests pass; the details real-service spec
+passes 6/6 and the mock workspace spec passes 24/24. Windows native and a packaged
+macOS walkthrough are unverified.
+
+M3 landed in main through `d6e2ec4`: the thread details Automations panel lists
+tasks bound to the thread, pauses and resumes through the enabled route, fires Run
+now, opens the editor from Edit, saves and clears the link, and the panel shows the
+new name before Manage opens the task list. Its 398 unit tests and real-service
+details/tasks specs passed before the merge.
 
 The previous project-settings section evidence below remains historical at main
 `58d86e9`; read it as earlier evidence, not current-head qualification.
@@ -98,10 +104,10 @@ concurrent unit run timed out in the App streaming case at its unchanged five-
 second limit; focused 42 and full 338 reruns passed without limit changes. No cause
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
-Parity metadata at `58d86e9`: 343 declared checked, 48 partial, 141 open and 2 not
-doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
-release inputs below remain in force. No current-head hosted CI, native or Windows
-qualification is inferred.
+Parity metadata at `d6e2ec4` with F60 ticked: 348 declared checked, 49 partial, 135
+open and 2 not doable out of 534 included. K6/K7 remain partial. Native/tool stops
+and missing release inputs below remain in force. No current-head hosted CI,
+native or Windows qualification is inferred.
 
 The K7 image continuation is locally qualified on the section branch. Choose file
 opens the shared project-image search; selection saves the same relative hint for each selected

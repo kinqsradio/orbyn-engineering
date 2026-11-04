@@ -121,7 +121,15 @@ function People({
   );
 }
 
-function Description({ detail, onSave }: { detail: PullRequestDetail; onSave(body: string): Promise<void> }) {
+function Description({
+  detail,
+  projectId,
+  onSave,
+}: {
+  detail: PullRequestDetail;
+  projectId: string;
+  onSave(body: string): Promise<void>;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   if (draft !== null) {
     return (
@@ -140,7 +148,7 @@ function Description({ detail, onSave }: { detail: PullRequestDetail; onSave(bod
   }
   return (
     <>
-      {detail.body ? <Markdown text={detail.body} /> : <p className="muted">No description provided.</p>}
+      {detail.body ? <Markdown text={detail.body} projectId={projectId} /> : <p className="muted">No description provided.</p>}
       <IconButton label="Edit description" onClick={() => setDraft(detail.body)}>
         <Pencil size={14} aria-hidden />
       </IconButton>
@@ -497,7 +505,7 @@ export function PullDetail({
       <div className="pull-body">
         {tab === "summary" ? (
           <>
-            <Description detail={detail.data} onSave={(body) => update({ body }, "Description saved")} />
+            <Description detail={detail.data} projectId={projectId} onSave={(body) => update({ body }, "Description saved")} />
             <People
               title="Reviewers"
               chosen={detail.data.reviewers}
