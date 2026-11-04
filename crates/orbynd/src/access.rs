@@ -19,11 +19,19 @@ use crate::api::ApiFailure;
 const SESSION_COOKIE: &str = "orbyn_session";
 const SESSION_LIFETIME: Duration = Duration::from_secs(12 * 60 * 60);
 
+/// Answers whether one render was published with this frame token: the thread id,
+/// the render id and the token from the URL. Core owns the folders and the digest,
+/// so the middleware asks rather than reads.
+pub type FrameCheck = Arc<dyn Fn(&str, &str, &str) -> bool + Send + Sync>;
+
 pub struct Access {
     token_sha256: String,
     allowed_hosts: Vec<String>,
     remote: Option<Remote>,
     desktop: bool,
+    /// `None` until the service hands core's check in, and then no frame token opens
+    /// anything.
+    frames: Option<FrameCheck>,
 }
 
 struct Remote {
@@ -44,12 +52,20 @@ impl Access {
                 key_sha256,
                 sessions: Mutex::new(HashMap::new()),
             }),
+            frames: None,
         }
     }
 
     /// Only a shell-owned process accepts the two exact native asset origins.
     pub fn with_desktop(mut self, desktop: bool) -> Self {
         self.desktop = desktop;
+        self
+    }
+
+    /// Teaching this who may open a published page's frame. The service passes a check
+    /// over core's render folders; without it a frame token opens nothing.
+    pub fn with_frames(mut self, frames: FrameCheck) -> Self {
+        self.frames = Some(frames);
         self
     }
 
@@ -266,31 +282,54 @@ fn authorized(access: &Access, request: &Request<Body>) -> bool {
         return true;
     }
     // Browsers cannot set headers on EventSource, WebSocket, an iframe or an image
-    // or video element, so only those read routes take the token in the URL.
+    // or video element, so only those read routes take a credential in the URL.
     let path = request.uri().path();
+    let render = render_path(path);
     let streaming = matches!(*request.method(), Method::GET | Method::HEAD)
         && (path.starts_with("/ws/")
             || path.ends_with("/events")
             || path.ends_with("/files/raw")
-            || render_read(path)
+            || render.is_some()
             || project_image_read(path));
-    streaming && query_token(request).is_some_and(|token| access.token_valid(token))
-}
-
-/// A published page is loaded in an iframe, which cannot set a header, so its page
-/// route and its image route take `?token=` like the raw-file route. Publishing a
-/// render is a `POST` and never does.
-fn render_read(path: &str) -> bool {
-    let Some(tail) = path.strip_prefix("/api/threads/") else {
+    if !streaming {
+        return false;
+    }
+    if query_token(request).is_some_and(|token| access.token_valid(token)) {
+        return true;
+    }
+    // A published page runs in a frame, its scripts can read its own URL, and that URL
+    // must never carry the service token. `?render=` is a capability for exactly one
+    // render instead, and it opens nothing but that render's page and its images: any
+    // other path, another render or another thread is refused here, and core still has
+    // to find a folder whose stored digest matches.
+    let Some((thread, render_id)) = render else {
         return false;
     };
+    let Some(capability) = query_param(request, "render") else {
+        return false;
+    };
+    access
+        .frames
+        .as_ref()
+        .is_some_and(|frames| frames(thread, render_id, capability))
+}
+
+/// The thread and render a published page's read path names, or `None` for anything
+/// else. Only the page route and the image route with a name this service writes are
+/// reads of a render; publishing one is a `POST` on the folder and never is.
+fn render_path(path: &str) -> Option<(&str, &str)> {
+    let tail = path.strip_prefix("/api/threads/")?;
     let parts: Vec<&str> = tail.split('/').collect();
     match *parts.as_slice() {
-        [thread, "renders", render] => !thread.is_empty() && is_render_id(render),
-        [thread, "renders", render, file] => {
-            !thread.is_empty() && is_render_id(render) && is_image_name(file)
+        [thread, "renders", render] if !thread.is_empty() && is_render_id(render) => {
+            Some((thread, render))
         }
-        _ => false,
+        [thread, "renders", render, file]
+            if !thread.is_empty() && is_render_id(render) && is_image_name(file) =>
+        {
+            Some((thread, render))
+        }
+        _ => None,
     }
 }
 
@@ -305,11 +344,18 @@ fn project_image_read(path: &str) -> bool {
 }
 
 fn query_token(request: &Request<Body>) -> Option<&str> {
+    query_param(request, "token")
+}
+
+/// One value from the query string, exactly as written. A token is hex, so it needs
+/// no decoding, and an encoded spelling simply fails to match.
+fn query_param<'a>(request: &'a Request<Body>, name: &str) -> Option<&'a str> {
+    let prefix = format!("{name}=");
     request
         .uri()
         .query()?
         .split('&')
-        .find_map(|pair| pair.strip_prefix("token="))
+        .find_map(|pair| pair.strip_prefix(prefix.as_str()))
 }
 
 #[cfg(test)]
@@ -417,6 +463,124 @@ mod tests {
                 .unwrap();
             assert!(!authorized(&access, &request), "{path}");
         }
+    }
+
+    #[test]
+    fn a_frame_token_opens_its_own_render_and_nothing_else() {
+        const ID: &str = "01jc8xw9kq0000000000000000";
+        let other = "01jc8xw9kq0000000000000001";
+        // Stands in for core: only t1's ID was published with "frame".
+        let access = access().with_frames(Arc::new(|thread: &str, render: &str, token: &str| {
+            thread == "t1" && render == ID && token == "frame"
+        }));
+        let call = |method: Method, path: &str, credential: &str| {
+            let request = Request::builder()
+                .method(method)
+                .uri(format!("{path}?{credential}"))
+                .body(Body::empty())
+                .unwrap();
+            authorized(&access, &request)
+        };
+        for path in [
+            format!("/api/threads/t1/renders/{ID}"),
+            format!("/api/threads/t1/renders/{ID}/image-1.png"),
+        ] {
+            for method in [Method::GET, Method::HEAD] {
+                assert!(
+                    call(method.clone(), &path, "render=frame"),
+                    "{path} {method}"
+                );
+            }
+            // The service token still works where it always did.
+            assert!(call(Method::GET, &path, "token=secret"), "{path}");
+        }
+        for (method, path, credential) in [
+            // A wrong token, and no token at all.
+            (
+                Method::GET,
+                format!("/api/threads/t1/renders/{ID}"),
+                "render=wrong",
+            ),
+            (
+                Method::GET,
+                format!("/api/threads/t1/renders/{ID}"),
+                "render=",
+            ),
+            (Method::GET, format!("/api/threads/t1/renders/{ID}"), "x=1"),
+            // Another render of the same thread, and another thread's render id.
+            (
+                Method::GET,
+                format!("/api/threads/t1/renders/{other}"),
+                "render=frame",
+            ),
+            (
+                Method::GET,
+                format!("/api/threads/t2/renders/{ID}"),
+                "render=frame",
+            ),
+            // A write, a publish, and a file name this service does not write.
+            (
+                Method::POST,
+                format!("/api/threads/t1/renders/{ID}"),
+                "render=frame",
+            ),
+            (
+                Method::POST,
+                "/api/threads/t1/renders".to_owned(),
+                "render=frame",
+            ),
+            (
+                Method::GET,
+                format!("/api/threads/t1/renders/{ID}/index.html"),
+                "render=frame",
+            ),
+            (
+                Method::GET,
+                format!("/api/threads/t1/renders/{ID}/frame.sha256"),
+                "render=frame",
+            ),
+            // The same token anywhere else.
+            (Method::GET, "/api/settings".to_owned(), "render=frame"),
+            (
+                Method::GET,
+                "/api/threads/t1/files/raw".to_owned(),
+                "render=frame",
+            ),
+            (
+                Method::GET,
+                "/api/projects/p/icon/raw".to_owned(),
+                "render=frame",
+            ),
+            (Method::GET, "/ws/threads/t1".to_owned(), "render=frame"),
+            // The service token is not a frame token.
+            (
+                Method::GET,
+                format!("/api/threads/t1/renders/{ID}"),
+                "render=secret",
+            ),
+        ] {
+            assert!(
+                !call(method.clone(), &path, credential),
+                "{method} {path} {credential}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_token_opens_nothing_when_core_is_not_wired_in() {
+        const ID: &str = "01jc8xw9kq0000000000000000";
+        let access = access();
+        let request = Request::builder()
+            .uri(format!("/api/threads/t1/renders/{ID}?render=frame"))
+            .body(Body::empty())
+            .unwrap();
+        assert!(!authorized(&access, &request));
+        // The matching service token still opens the same route.
+        let request = Request::builder()
+            .uri(format!("/api/threads/t1/renders/{ID}?token=secret"))
+            .body(Body::empty())
+            .unwrap();
+        assert!(authorized(&access, &request));
     }
 
     #[test]

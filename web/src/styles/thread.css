@@ -2530,6 +2530,63 @@ button.detail-row:hover {
   max-height: 90%;
   transition: transform 150ms ease;
 }
+
+/* A published agent page: the timeline card, and the dialog that shows it larger. */
+.render-card {
+  margin: 4px 0 6px 22px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+}
+.render-card figcaption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-small);
+}
+.render-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-textSoft);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.render-body,
+.render-stage {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-background);
+}
+.render-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+.dialog-wide {
+  width: min(1120px, calc(100vw - 48px));
+}
+.render-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.render-zoom input {
+  flex: 1;
+  accent-color: var(--color-primary);
+}
+.render-zoom output {
+  min-width: 5ch;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 .md-thread-link {
   color: var(--color-primary);
 }

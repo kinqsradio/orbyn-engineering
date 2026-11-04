@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use support::{Options, Service, TempDir, setup};
 
 /// The exact policy a published page and its images are served with.
-const CSP: &str = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+const CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
 fn header<'a>(response: &'a reqwest::Response, name: &str) -> &'a str {
     response
@@ -329,6 +329,139 @@ async fn another_thread_cannot_read_this_render() {
         .unwrap();
     assert_eq!(mine.status(), 200);
     assert_eq!(mine.bytes().await.unwrap().to_vec(), b"png");
+}
+
+#[tokio::test]
+async fn a_frame_token_serves_its_own_page_and_images_and_nothing_else() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let project = service.json(&format!("/api/threads/{thread}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let sibling = service.thread(&project, "codex").await;
+    let root = checkout(&service, &thread).await;
+    std::fs::write(root.join("logo.png"), b"png").unwrap();
+
+    let html = "<!doctype html><script>draw()</script><img src=\"logo.png\"><p>framed</p>";
+    let (status, body) = publish(&service, &thread, html).await;
+    assert_eq!(status, 201, "{body}");
+    let id = body["id"].as_str().unwrap().to_owned();
+    let url = body["url"].as_str().unwrap().to_owned();
+    let frame = body["frame_token"].as_str().unwrap().to_owned();
+    assert_eq!(frame.len(), 64, "{frame}");
+    assert!(
+        frame.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "{frame}"
+    );
+    // A frame URL stays a path: the client adds `?render=`.
+    assert!(!url.contains('?'), "{url}");
+    assert!(!body.to_string().contains(&service.token), "{body}");
+
+    // The frame token opens the page and the images the publish copied, with no
+    // Authorization header at all.
+    let page = service
+        .client
+        .get(format!("{}{url}?render={frame}", service.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page.status(), 200);
+    assert_eq!(header(&page, "content-security-policy"), CSP);
+    assert!(header(&page, "content-security-policy").contains("script-src 'unsafe-inline'"));
+    assert_eq!(
+        page.text().await.unwrap(),
+        "<!doctype html><script>draw()</script><img src=\"image-1.png\"><p>framed</p>"
+    );
+    let image = service
+        .client
+        .get(format!("{}{url}/image-1.png?render={frame}", service.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(image.status(), 200);
+    assert_eq!(image.bytes().await.unwrap().to_vec(), b"png");
+
+    // The service token still opens the same route, as it did before frames.
+    let service_token = service
+        .client
+        .get(format!("{}{url}?token={}", service.url, service.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(service_token.status(), 200);
+
+    // A wrong token, a missing one and the service token in the frame slot are all
+    // unauthorized rather than not found: the route is a credential, not a lookup.
+    for credential in [
+        "render=wrong".to_owned(),
+        "render=".to_owned(),
+        "render=".to_owned() + &service.token,
+        "other=1".to_owned(),
+    ] {
+        let refused = service
+            .client
+            .get(format!("{}{url}?{credential}", service.url))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), 401, "?{credential}");
+    }
+
+    // The token does not reach another render, another thread's render id, another
+    // route, or a write.
+    let (status, second) = publish(&service, &thread, "<p>second</p>").await;
+    assert_eq!(status, 201, "{second}");
+    let second_id = second["id"].as_str().unwrap();
+    assert_ne!(second_id, id);
+    for path in [
+        format!("/api/threads/{thread}/renders/{second_id}"),
+        format!("/api/threads/{sibling}/renders/{id}"),
+        format!("/api/threads/{sibling}/renders/{id}/image-1.png"),
+        format!("{url}/index.html"),
+        format!("{url}/frame.sha256"),
+        format!("{url}/image-2.png"),
+        "/api/settings".to_owned(),
+        format!("/api/threads/{thread}/files/raw"),
+    ] {
+        let refused = service
+            .client
+            .get(format!("{}{path}?render={frame}", service.url))
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            refused.status() == 401 || refused.status() == 404,
+            "{path} {}",
+            refused.status()
+        );
+        assert_ne!(refused.status(), 200, "{path}");
+    }
+    let published = service
+        .client
+        .post(format!(
+            "{}/api/threads/{thread}/renders?render={frame}",
+            service.url
+        ))
+        .json(&json!({ "html": "<p>again</p>" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(published.status(), 401);
+
+    // The folder holds the digest, never the token.
+    let folder = render_root(&dir, &thread).join(&id);
+    let stored = std::fs::read_to_string(folder.join("frame.sha256")).unwrap();
+    assert_eq!(stored.len(), 64, "{stored}");
+    assert_ne!(stored, frame);
+    for entry in std::fs::read_dir(&folder).unwrap().flatten() {
+        assert!(
+            !std::fs::read_to_string(entry.path()).is_ok_and(|text| text.contains(&frame)),
+            "{} holds the token",
+            entry.path().display()
+        );
+    }
+    service.stop().await;
 }
 
 #[tokio::test]

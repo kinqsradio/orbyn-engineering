@@ -798,7 +798,16 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         (None, None)
     };
     let access = Arc::new(
-        Access::new(&token, args.allowed_hosts.clone(), key_digest).with_desktop(args.parent_stdin),
+        Access::new(&token, args.allowed_hosts.clone(), key_digest)
+            .with_desktop(args.parent_stdin)
+            // A frame URL carries a capability for one published page instead of the
+            // service token, and only core knows which render a token belongs to.
+            .with_frames({
+                let core = core.clone();
+                Arc::new(move |thread: &str, render: &str, token: &str| {
+                    core.render_frame_token_matches(thread, render, token)
+                })
+            }),
     );
     let app = router(AppState {
         core: core.clone(),

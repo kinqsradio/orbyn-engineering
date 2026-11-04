@@ -15,10 +15,16 @@ use crate::api::{ApiJson, ApiResult, AppState};
 
 /// Stops a published page from reading the API, the network, this origin's storage
 /// or a form. `img-src 'self'` is what lets the page show the images the publish
-/// copied, and `data:` keeps an inline picture working. The `sandbox` attribute the
-/// web frame adds is the other half of this, and `allow-same-origin` must never be
-/// added to either.
-const PAGE_CSP: &str = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+/// copied, and `data:` keeps an inline picture working. `script-src 'unsafe-inline'`
+/// lets an inline script draw a chart; it grants no external script, and there is no
+/// `connect-src`, so nothing can be fetched. The `sandbox` attribute the web frame
+/// adds is the other half of this: `allow-scripts` without `allow-same-origin` gives
+/// the page an opaque origin, so it has no storage, no cookie and no API, and the
+/// only credential its URL carries is a frame token scoped to that one render. That
+/// token cannot be used on another render, another route or with `POST`, so a script
+/// that reads or leaks it has nothing it can do with it. `allow-same-origin` must
+/// never be added to either half.
+const PAGE_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
 #[derive(Deserialize)]
 pub struct Publish {
@@ -36,6 +42,7 @@ pub async fn publish(
         Json(json!({
             "id": render.id,
             "url": render.url,
+            "frame_token": render.frame_token,
             "images": render.images,
             "bytes": render.bytes,
         })),
@@ -93,15 +100,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_page_policy_keeps_the_page_off_the_api_and_never_allows_a_shared_origin() {
+    fn the_page_policy_allows_an_inline_script_and_nothing_it_could_reach() {
         assert!(PAGE_CSP.starts_with("default-src 'none'"));
         assert!(PAGE_CSP.contains("img-src 'self' data:"));
         assert!(PAGE_CSP.contains("frame-ancestors 'self'"));
+        // An agent's page may draw a chart, so inline script is allowed. That is only
+        // safe with the frame's opaque origin and the closed network below.
+        assert!(PAGE_CSP.contains("script-src 'unsafe-inline'"));
         for open in [
             "connect-src",
-            "script-src",
+            // No external or same-origin script: the page cannot load code from here.
+            "script-src 'self'",
+            "'unsafe-eval'",
             "allow-same-origin",
-            "sandbox allow",
+            "http:",
+            "https:",
         ] {
             assert!(!PAGE_CSP.contains(open), "{open}");
         }

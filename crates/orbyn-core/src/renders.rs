@@ -1,9 +1,16 @@
 //! Published pages. An agent writes HTML for a thread, Orbyn stores the page under
 //! that thread's own app-data folder and copies the checkout pictures it names, so a
-//! page that runs with no script and no origin of its own can still show them. The
-//! page is never read from the checkout at serve time, and one folder per render is
-//! the whole record: there is no database row, so the folder is removed with its
-//! thread (see `remove_renders`) and nothing accumulates across restarts by itself.
+//! page that runs with no origin of its own can still show them. The page is never
+//! read from the checkout at serve time, and one folder per render is the whole
+//! record: there is no database row, so the folder is removed with its thread (see
+//! `remove_renders`) and nothing accumulates across restarts by itself.
+//!
+//! Each publish also mints a frame token: the page runs in a frame, which cannot set
+//! a header and whose URL is readable by the page's own scripts, so the service token
+//! must never appear there. Only the token's digest is stored, in `frame.sha256`
+//! beside the page, and core is the only place that can answer whether a presented
+//! token belongs to one render (`render_frame_token_matches`). The access middleware
+//! asks that question and nothing else.
 
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -11,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
-use crate::util::new_id;
+use crate::util::{new_id, random_token, secrets_match, sha256_hex};
 
 /// A page may be this large; past it the publish is refused instead of stored.
 pub const MAX_RENDER_HTML_BYTES: u64 = 512 * 1024;
@@ -24,6 +31,9 @@ pub const MAX_RENDERS_PER_THREAD: usize = 20;
 
 const RENDERS_FOLDER: &str = "renders";
 const PAGE_FILE: &str = "index.html";
+/// The digest of this render's frame token. Written before the page, so a served
+/// page always has a hash to check against.
+const FRAME_FILE: &str = "frame.sha256";
 const PAGE_TYPE: &str = "text/html; charset=utf-8";
 
 /// True when a document of this size is over the publish limit.
@@ -335,9 +345,13 @@ fn evict_renders(folder: &Path, keep: usize) {
 /// What a publish stored: the render, the path that serves it and what it copied.
 pub struct PublishedRender {
     pub id: String,
-    /// The page's own route, with no token. A client adds `?token=` as it does for
-    /// a raw file, because an iframe cannot send an `Authorization` header.
+    /// The page's own route, with no query. A client adds `?render=<frame_token>`,
+    /// because a frame cannot set an `Authorization` header and must not carry the
+    /// service token in a URL its own page can read.
     pub url: String,
+    /// The capability that opens exactly this render in a frame. Only its digest is
+    /// kept, so the publish response is the only time the token exists in the clear.
+    pub frame_token: String,
     pub images: usize,
     pub bytes: usize,
 }
@@ -373,6 +387,11 @@ impl Core {
         let id = new_id();
         let dir = folder.join(&id);
         std::fs::create_dir_all(&dir)?;
+        // The frame capability comes first, so a folder the page route can open
+        // always carries the hash its frame URL is checked against. The token itself
+        // is never written, and it is gone from this process once the caller has it.
+        let frame_token = random_token()?;
+        std::fs::write(dir.join(FRAME_FILE), sha256_hex(frame_token.as_bytes()))?;
         let mut copied = 0usize;
         let (page, images) = embed_images(html, MAX_RENDER_IMAGES, &mut |src| {
             // `open_raw_file` is the same read every file route uses: it needs the
@@ -400,9 +419,38 @@ impl Core {
         Ok(PublishedRender {
             id: id.clone(),
             url: format!("/api/threads/{thread_id}/renders/{id}"),
+            frame_token,
             images,
             bytes: page.len(),
         })
+    }
+
+    /// True when `token` is the frame token this one render was published with.
+    ///
+    /// The access middleware is the only caller: it keeps the route shapes and the
+    /// methods, and this answers the storage half. Only the digest is on disk and the
+    /// comparison goes through digests, so a stolen folder hands out no capability
+    /// and a wrong guess learns nothing. A render that was never published, one whose
+    /// id could not have been written here, and another thread's folder all simply
+    /// say no.
+    pub fn render_frame_token_matches(
+        &self,
+        thread_id: &str,
+        render_id: &str,
+        token: &str,
+    ) -> bool {
+        if token.is_empty() || !is_render_id(render_id) || self.store.thread(thread_id).is_err() {
+            return false;
+        }
+        let path = self
+            .renders_root()
+            .join(thread_id)
+            .join(render_id)
+            .join(FRAME_FILE);
+        let Ok(stored) = std::fs::read_to_string(path) else {
+            return false;
+        };
+        secrets_match(token, stored.trim())
     }
 
     /// The stored page of one render. Another thread's render id is simply not in
