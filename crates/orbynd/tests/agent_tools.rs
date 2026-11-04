@@ -532,3 +532,66 @@ async fn a_thread_is_organized_and_configured_inside_its_project_only() {
     }
     service.stop().await;
 }
+
+#[tokio::test]
+async fn a_page_is_published_from_a_thread_and_its_frame_token_serves_it() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    full_access(&service, &thread).await;
+    let html = "<!doctype html><script>draw()</script><p>tides</p>";
+    let mut seen = None;
+    let text = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_html_render",
+        json!({ "html": html, "title": "  Tide chart  ", "height": 9000 }),
+    )
+    .await;
+    let reply: Value =
+        serde_json::from_str(text.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    let id = reply["id"].as_str().unwrap();
+    let frame = reply["frame_token"].as_str().unwrap();
+    assert_eq!(reply["title"], "Tide chart");
+    assert_eq!(reply["height"], 2000);
+    assert_eq!(reply["images"], 0);
+    assert_eq!(reply["bytes"], html.len());
+    assert_eq!(reply["url"], format!("/api/threads/{thread}/renders/{id}"));
+    assert_eq!(frame.len(), 64);
+
+    // The frame token opens the page with no header at all, and the service token in
+    // that slot does not.
+    let url = reply["url"].as_str().unwrap();
+    let page = service
+        .client
+        .get(format!("{}{url}?render={frame}", service.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page.status(), 200);
+    assert_eq!(page.text().await.unwrap(), html);
+    let refused = service
+        .client
+        .get(format!("{}{url}?render={}", service.url, service.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 401);
+
+    // The page is this thread's render, not another thread's.
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let sibling = service
+        .thread(body["project_id"].as_str().unwrap(), "codex")
+        .await;
+    let elsewhere = service
+        .client
+        .get(format!(
+            "{}/api/threads/{sibling}/renders/{id}?render={frame}",
+            service.url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(elsewhere.status(), 401);
+    service.stop().await;
+}
