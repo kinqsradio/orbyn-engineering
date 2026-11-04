@@ -348,14 +348,24 @@ describe("App against the mock API", () => {
   it("streams a run to completion", async () => {
     const user = userEvent.setup();
     go("#/threads/t-empty");
-    render(<App />);
-    await user.type(await screen.findByLabelText(/^Message/), "go{Enter}");
-    expect(await screen.findByText("scripted reply", {}, { timeout: 3000 })).toBeInTheDocument();
-    await waitFor(
-      () => expect(document.querySelector(".thread-state")).toHaveTextContent("Completed"),
-      { timeout: 3000 },
-    );
-    expect(screen.getByText("go")).toBeInTheDocument();
+    const view = render(<App />);
+    try {
+      const input = await screen.findByLabelText(/^Message/);
+      await user.type(input, "go");
+      vi.useFakeTimers();
+      fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+      // The mock emits one word per timer. Advance the script explicitly so
+      // jsdom rendering speed cannot turn a working stream into a timeout.
+      await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+      expect(screen.getByText("scripted reply")).toBeInTheDocument();
+      expect(document.querySelector(".thread-state")).not.toHaveTextContent("Completed");
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(document.querySelector(".thread-state")).toHaveTextContent("Completed");
+      expect(screen.getByText("go")).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it("cancels a run and expires its approvals", async () => {
