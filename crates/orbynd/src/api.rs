@@ -38,6 +38,7 @@ pub const LOCAL_USER: &str = "user";
 
 #[derive(Clone)]
 pub struct AppState {
+    pub images: Arc<orbyn_core::remote_images::ImageProxy>,
     pub core: Arc<Core>,
     pub access: Arc<Access>,
     pub remote: bool,

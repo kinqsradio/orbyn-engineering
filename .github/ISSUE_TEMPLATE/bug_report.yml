@@ -1,15 +1,40 @@
 name: Bug report
 description: Something in the app does not work as it should.
-title: "[Bug]: "
+title: "fix: "
 labels:
   - bug
   - needs triage
 body:
   - type: markdown
     attributes:
-      value: |
-        Do not include tokens, engine credentials, private project files or personal data.
-        Report vulnerabilities privately, as SECURITY.md describes.
+      value: "Title as `fix(scope): what is wrong`. No tokens, credentials or personal data; report vulnerabilities privately, as SECURITY.md describes."
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What goes wrong, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use a throwaway project and synthetic data.
+      placeholder: |
+        1. Add a project
+        2. Start a thread with ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected and actual
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
   - type: input
     id: revision
     attributes:
@@ -31,7 +56,7 @@ body:
   - type: dropdown
     id: surface
     attributes:
-      label: Where it happens
+      label: Where
       multiple: true
       options:
         - Desktop app
@@ -57,43 +82,25 @@ body:
     id: engine-version
     attributes:
       label: Engine version
-      description: For example the output of `claude --version` or `codex --version`.
+      placeholder: claude --version, or codex --version
   - type: textarea
-    id: steps
+    id: logs
     attributes:
-      label: Steps to reproduce
-      description: Use a throwaway project and synthetic data.
-      placeholder: |
-        1. Add a project
-        2. Start a thread with ...
-        3. ...
-    validations:
-      required: true
-  - type: textarea
-    id: outcome
-    attributes:
-      label: Expected and actual behaviour
-    validations:
-      required: true
+      label: Logs
+      description: Relevant service log lines, with secrets removed.
+      render: text
   - type: dropdown
     id: ai-used
     attributes:
       label: AI usage
-      description: Whether AI helped you find, reproduce or write this.
       options:
         - Human only
         - AI helped
     validations:
       required: true
-  - type: textarea
+  - type: input
     id: ai-details
     attributes:
       label: AI details
-      description: If AI helped, the harness and version, every model by exact ID and what it did, and the effort level. Leave empty for "Human only".
-      placeholder: Claude Code 2.1.150, claude-opus-5-5 (reproduced the bug), medium
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs
-      description: Relevant lines from the service log, with secrets removed.
-      render: text
+      description: If AI helped, the harness and version, each model by exact ID and what it did, and the effort.
+      placeholder: Claude Code 2.1.150, claude-opus-5-5 (reproduced it), medium

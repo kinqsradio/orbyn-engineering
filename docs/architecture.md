@@ -1045,6 +1045,68 @@ show sandboxed. An image or video element cannot set a header, so this route tak
 `?token=` as the streams do, with `no-referrer` to keep it out of anything a file links
 to.
 
+## Renders
+
+An agent's page is stored in app data, never in the checkout:
+`<data_dir>/renders/<thread_id>/<render_id>/index.html`, with one `image-<n>.<ext>` beside
+it for each checkout picture the page named and `frame.sha256`, the digest of that
+render's frame token. One folder per render is the whole record — no database row — so the
+folder is removed with its thread and the cap is counted from the folders that are there. A
+thread keeps 20 renders, and the oldest folder goes when a newer one is published.
+
+`POST /api/threads/:id/renders` takes `html` and answers with the render id, its route, its
+`frame_token`, the number of images copied and the stored size. A page over 512 KiB is
+refused whole. Each `<img src>` is resolved with the same read rules every file route uses,
+so a path outside the checkout, a link out, `..`, `.git` or an untrusted folder is refused
+per image: that src is left exactly as written and the rest of the page still publishes. A
+picture over 8 MiB, or the 33rd one, is left as written too. A remote http(s) src is never
+fetched and is left as written; the policy below is what stops it loading. The scan matches
+the tag and the attribute name case-insensitively, in any attribute order, with single,
+double or unquoted values, and ignores `<script>`, `<style>` and comments. It is not an
+HTML parser: it does not decode character references, and markup built by script is not
+seen.
+
+`GET /api/threads/:id/renders/:render_id` serves that page as `text/html; charset=utf-8`
+with `default-src 'none'; script-src 'unsafe-inline'; img-src 'self' data:; style-src
+'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors
+'self'`, and every render response also carries `nosniff`,
+`Cross-Origin-Resource-Policy: same-origin`, `no-referrer` and `private, no-cache`.
+`.../:render_id/:file` serves only `image-<n>.<ext>`, typed from its extension; any other
+name, a separator in it, `frame.sha256` or another thread's render id is not found.
+
+A frame runs the page's own script, so the credential in its URL must not be the service
+token. Each publish therefore mints a frame token with `random_token`, stores only its
+sha256 in `frame.sha256` before the page is written, and returns it once; the two read
+routes accept `?render=<frame token>`. The access middleware decides: the request must be
+`GET` or `HEAD` on exactly the page route or the image route of one render, and core must
+find that render and find that its stored digest matches. A wrong token, another render,
+another thread, another route, `POST` with `render=` and a render that was never published
+are all refused, so a page script that reads or leaks its own URL holds a capability for
+one render and nothing else. `?token=` with the service token still works on those routes,
+and so does the remote session cookie. A published page must never reach the API: this
+policy, the scoped frame token and the web frame's `sandbox` attribute (C21) are what stop
+it, and `allow-same-origin` belongs in neither. `script-src 'unsafe-inline'` is what lets an
+agent's page draw a chart, and it is only safe because the frame is `sandbox="allow-scripts"`
+without `allow-same-origin`: the page gets an opaque origin with no storage, no cookie and
+no API of this origin, there is no `connect-src`, so it has no network, and no external
+script may be loaded either.
+
+The timeline shows a published page as a card: the title, the page in a frame of the height
+the call asked for, and an Open control. The frame is `sandbox="allow-scripts"`,
+`referrerPolicy="no-referrer"`, and `color-scheme` from the app's current appearance. The
+frame's `src` is built on the client from the thread, the render id and the frame token
+(`/api/threads/<thread>/renders/<id>?render=<frame token>`) and never from a `token=`. The
+expanded view is a dialog with a zoom control from 50% to 200%: the frame is laid out at
+1/zoom and scaled back, so the card's height stays the height on screen. Nothing measures
+the page, so the height is the height the call asked for, or 480.
+
+C23 verifies the render surface in the real-service Playwright suite using the
+headless shell already installed for E2E. A published canvas is captured inside the
+same sandbox at 320 by 240 CSS pixels. The captured PNG is decoded to check its
+dimensions and known background and shape colours, with no console or page errors.
+The PNG is attached to the test result. This adds no browser download or runtime
+verification API; automatic page measurement remains unimplemented.
+
 ## Approval lifecycle
 
 ```text
@@ -1397,8 +1459,8 @@ sets no `PATH`: `child_env` widens that for every child without sourcing a shell
 random per run, is passed only to that run's engine, and is revoked at run end.
 Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
 governed `computer_*` tools and `orbyn_*` tools for threads, projects, worktrees,
-attachments, preview tabs, pull requests, delegation, scheduling and declaring writes.
-`approve` is listed only for Claude.
+attachments, preview tabs, published pages, pull requests, delegation, scheduling and
+declaring writes. `approve` is listed only for Claude.
 
 An `orbyn_*` tool reaches only the caller's project, its thread's preview tabs and, for
 an attachment, its own checkout; anything else reads as not found. A preference a tool
@@ -1408,6 +1470,15 @@ Claude's permission prompt passes Orbyn's own tools without asking, so each tool
 an effect goes through the gate itself as a `tool` action, which needs a person unless
 the thread is in full access or a rule allows it. Every call is audited first. A
 delegated thread cannot delegate further, so one run cannot fan out without limit.
+
+`orbyn_html_render` is how an agent puts a page in its own timeline: it takes `html`,
+plus an optional `title` (trimmed, cut to 200 characters, `HTML` when absent) and an
+optional `height` (120 to 2000, 480 by default), publishes with the same store as the
+HTTP route, and answers with the id, the route, the frame token, the title, the images
+copied, the stored size and the height. It carries an effect, so the gate asks. The route
+it returns has no query; a client builds the frame URL with `?render=`. Nothing measures
+the page yet, so the height the call asks for is the height it gets, and the tool
+says so.
 
 ## Computer gateway
 
@@ -1494,6 +1565,40 @@ and reports `ended: false`. A request can be 512 KiB and a reply is cut at 256 K
 - The key is shown once, as `access_key` on the first remote start's JSON line.
 - `Secure` is added when a proxy reports `X-Forwarded-Proto: https`; Tailscale and
   SSH tunnels are not HTTPS, so it cannot be unconditional.
+
+## Remote image security
+
+Message images use `GET /api/media/image?url=...`, an authenticated capability
+owned by Core and served by `orbynd`. Image elements may supply the launch token
+only on the exact GET/HEAD route; Host, Origin and native-origin checks still apply.
+The web and bundled desktop CSPs keep direct remote images and connections closed.
+The proxy is the decision for issue #122, rather than adding `https:` to `img-src`.
+
+An upstream URL is at most 4096 bytes, HTTPS on port 443, without user information.
+Fragments are discarded. All DNS answers (at most 16) must be public unicast;
+private, loopback, link-local, reserved and IPv6 transition ranges are refused.
+The validated addresses are pinned to that request's HTTP client, with ordinary
+TLS certificate validation, no environment proxy and no redirects. No browser
+cookies, launch token, Authorization, Referer or upstream response headers are
+forwarded. A request has five seconds including DNS and body reading; at most four
+upstream fetches run at once, and overload is refused without queuing.
+
+Only PNG, JPEG, GIF, WebP and ICO MIME/signature pairs are served, up to 5 MiB
+of actual streamed bytes. Encoded bodies, SVG, HTML, AVIF and other formats are
+refused. Successful bytes are cached in memory for 60 seconds, with FIFO eviction
+at 32 entries or 32 MiB; nothing is persisted. Browser replies are `no-store`,
+`nosniff`, `no-referrer` and sandboxed with `default-src 'none'`. Save requests
+receive an attachment disposition; Copy link keeps the original URL rather than
+exposing the launch-token-bearing proxy address. Failures show the existing
+unavailable state, with no direct-URL retry.
+
+This is still an outbound request selected by untrusted agent output. The image
+host sees the service's IP and the full URL, including agent-supplied query data;
+tracking and URL-based exfiltration remain possible. The proxy enforces network
+and resource limits; it does not establish consent or make remote content private.
+Remote videos remain outside this capability. H38 can reuse the image boundary
+when favicons are implemented, but does not gain icons here. C22's scan and render
+sandbox remain separate and receive no remote-fetch permission from this route.
 
 ## Persistence
 
@@ -1637,11 +1742,13 @@ for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBY
 
 All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 `Authorization: Bearer <token>`, or the session cookie. SSE, WebSocket and
-`files/raw` also accept `?token=` because browsers cannot set headers on them.
+`files/raw` and the exact GET/HEAD `/api/media/image` route also accept `?token=`
+because browsers cannot set headers on them.
 
 | Method and path | Purpose |
 | --- | --- |
 | `GET /api/info` | `ServerInfo` |
+| `GET, HEAD /api/media/image?url=&download=` | Bounded public HTTPS raster image; authenticated, no redirects; `502 image_unavailable` on refusal/failure; `download` forces an attachment |
 | `GET /api/workspace` | `WorkspaceStatus` |
 | `POST /api/workspace/setup` | Optional. `WorkspaceSetup`: adopt a library, or ask for the clone now; `409 runs_active`, `409 library_dirty` |
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |

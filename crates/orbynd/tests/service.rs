@@ -801,6 +801,16 @@ async fn static_ui_has_csp_and_spa_fallback() {
         .to_owned();
     assert!(csp.contains("default-src 'self'"));
     assert!(csp.contains("frame-ancestors 'none'"));
+    let directive = |name: &str| {
+        csp.split(';')
+            .map(str::trim)
+            .find(|value| value.starts_with(&format!("{name} ")))
+            .unwrap()
+    };
+    assert_eq!(directive("img-src"), "img-src 'self' data:");
+    assert_eq!(directive("connect-src"), "connect-src 'self'");
+    assert_eq!(directive("script-src"), "script-src 'self'");
+    assert_eq!(page.headers()["referrer-policy"], "no-referrer");
     assert!(page.text().await.unwrap().contains("<title>app</title>"));
     let script = client
         .get(format!("{}/assets/app.js", service.url))
@@ -817,6 +827,48 @@ async fn static_ui_has_csp_and_spa_fallback() {
     assert_eq!(missing_api.status(), 404);
     let body: Value = missing_api.json().await.unwrap();
     assert_eq!(body["code"], "not_found");
+}
+
+#[tokio::test]
+async fn remote_images_require_auth_and_refuse_local_destinations() {
+    let dir = TempDir::new();
+    let service = Service::start(&dir.path().join("data"), Options::default());
+    let client = reqwest::Client::new();
+    let path = "/api/media/image?url=https%3A%2F%2F127.0.0.1%2Fsecret";
+    let url = format!("{}{path}", service.url);
+    assert_eq!(client.get(&url).send().await.unwrap().status(), 401);
+    let refused = service.get(path).send().await.unwrap();
+    assert_eq!(refused.status(), 502);
+    assert_eq!(
+        refused.json::<Value>().await.unwrap()["code"],
+        "image_unavailable"
+    );
+    let query_url = format!("{url}&token={}", service.token);
+    assert_eq!(client.get(&query_url).send().await.unwrap().status(), 502);
+    assert_eq!(client.head(&query_url).send().await.unwrap().status(), 502);
+    assert_eq!(client.post(&query_url).send().await.unwrap().status(), 401);
+    assert_eq!(
+        client
+            .get(format!(
+                "{}/api/media/image/extra?token={}",
+                service.url, service.token
+            ))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(
+        client
+            .get(&query_url)
+            .header("Origin", "https://evil.example")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
 }
 
 #[tokio::test]

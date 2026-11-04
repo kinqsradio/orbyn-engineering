@@ -6,6 +6,8 @@ mod preview_routes;
 mod pulls;
 mod raw_files;
 mod recent_events;
+mod remote_images;
+mod renders;
 mod stream;
 mod terminal_ws;
 mod ui;
@@ -156,6 +158,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
 fn router(state: AppState) -> Router {
     let access = state.access.clone();
     let protected = Router::new()
+        .route("/api/media/image", get(remote_images::serve))
         .route("/api/info", get(api::info))
         .route("/api/projects", get(api::list_projects))
         .route("/api/projects/clone", post(api::clone_project))
@@ -251,6 +254,12 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/threads/{id}/files/raw", get(raw_files::serve))
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
+        .route("/api/threads/{id}/renders", post(renders::publish))
+        .route("/api/threads/{id}/renders/{render_id}", get(renders::page))
+        .route(
+            "/api/threads/{id}/renders/{render_id}/{file}",
+            get(renders::image),
+        )
         .route("/api/editors", get(api::editors))
         .route("/api/threads/{id}/commits", get(api::commits))
         .route("/api/threads/{id}/checkpoints", get(api::checkpoints))
@@ -791,13 +800,23 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         (None, None)
     };
     let access = Arc::new(
-        Access::new(&token, args.allowed_hosts.clone(), key_digest).with_desktop(args.parent_stdin),
+        Access::new(&token, args.allowed_hosts.clone(), key_digest)
+            .with_desktop(args.parent_stdin)
+            // A frame URL carries a capability for one published page instead of the
+            // service token, and only core knows which render a token belongs to.
+            .with_frames({
+                let core = core.clone();
+                Arc::new(move |thread: &str, render: &str, token: &str| {
+                    core.render_frame_token_matches(thread, render, token)
+                })
+            }),
     );
     let app = router(AppState {
         core: core.clone(),
         access,
         remote: args.remote,
         ui_dir: args.ui_dir.clone(),
+        images: Arc::new(orbyn_core::remote_images::ImageProxy::default()),
     });
 
     // Attach before readiness so the early parent reader cannot drop a reply

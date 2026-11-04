@@ -39,6 +39,7 @@ impl Core {
             self.setups.forget(&deleted);
             self.terminals.close(&deleted);
             self.previews.close_thread(&deleted);
+            self.remove_renders(&deleted);
         }
         for file in files {
             let _ = std::fs::remove_file(file);

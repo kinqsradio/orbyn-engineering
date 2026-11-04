@@ -8,12 +8,14 @@ interface DialogProps {
   onClose(): void;
   /** Blocks Escape and Close while a write is in flight. */
   busy?: boolean;
+  /** Extra classes on the dialog element, for a surface wider than a form. */
+  className?: string;
   children: ReactNode;
   footer?: ReactNode;
 }
 
 /** A native modal: the top layer owns focus containment and Escape. */
-export function Dialog({ title, onClose, busy, children, footer }: DialogProps) {
+export function Dialog({ title, onClose, busy, className, children, footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -35,7 +37,7 @@ export function Dialog({ title, onClose, busy, children, footer }: DialogProps) 
   return (
     <dialog
       ref={ref}
-      className="dialog"
+      className={["dialog", className ?? ""].filter(Boolean).join(" ")}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();

@@ -180,6 +180,30 @@ export function FileBytes({ threadId, path, size, as }: { threadId: string; path
   );
 }
 
+/**
+ * A file the viewer could not read as what its name promised, with its own
+ * bytes one click away: the hex view reads any file, so a damaged document or a
+ * mislabelled archive still shows something instead of a dead end.
+ */
+export function BytesFallback({ threadId, path, size }: { threadId: string; path: string; size: number }) {
+  const [showing, setShowing] = useState(false);
+  if (!showing) {
+    return (
+      <Button small onClick={() => setShowing(true)}>
+        Show the file's bytes
+      </Button>
+    );
+  }
+  return (
+    <div className="file-bytes-fallback">
+      <Button small tone="quiet" onClick={() => setShowing(false)}>
+        Back to the reader
+      </Button>
+      <FileBytes threadId={threadId} path={path} size={size} as="hex" />
+    </div>
+  );
+}
+
 function joinChunks(chunks: readonly Uint8Array[]): Uint8Array {
   const whole = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
   let at = 0;
