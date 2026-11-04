@@ -29,12 +29,29 @@ const FORM_PAGE: &str = "<!doctype html><title>f</title>\
 fn serve_page() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    let snapshot_page = format!(
+        "<!doctype html><title>snapshot</title><body>{}\
+         <label for=email>Email address</label><input id=email>\
+         <span id=full-name>Full name</span><input id=name aria-labelledby=full-name>\
+         <input id=password type=password value=private>\
+         <button id=fixed style='position:fixed;top:0;right:0'>Fixed</button>\
+         <button id=hidden style='visibility:hidden'>Hidden</button>\
+         <button id=duplicate>Duplicate first</button><button id=duplicate>Duplicate second</button>\
+         <button id='trailing '>Trailing</button>\
+         <section><div><div><div><div><div><button>First</button></div></div></div></div></div></section>\
+         <section><div><div><div><div><div><button onclick=\"document.title='Second'\">Second</button></div></div></div></div></div></section>\
+         <button id='{}'>Long</button><button id=short>Short</button></body>",
+        "<p>intro</p>".repeat(151),
+        "x".repeat(301),
+    );
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let mut stream = stream;
             let mut buffer = [0u8; 2048];
             let _ = stream.read(&mut buffer);
-            let page = if buffer.starts_with(b"GET /alert") {
+            let page = if buffer.starts_with(b"GET /snapshot") {
+                &snapshot_page
+            } else if buffer.starts_with(b"GET /alert") {
                 ALERT_PAGE
             } else if buffer.starts_with(b"GET /form") {
                 FORM_PAGE
@@ -445,6 +462,81 @@ async fn a_page_is_read_and_driven_by_an_agent() {
     )
     .await;
     assert!(top["value"].as_f64().unwrap() > 0.0, "{top}");
+
+    call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "url": format!("http://127.0.0.1:{port}/snapshot") }),
+    )
+    .await;
+    let snapshot = call("orbyn_preview_snapshot", json!({ "tab_id": id })).await;
+    assert_eq!(snapshot["truncated"], true, "the long selector was omitted");
+    let controls = snapshot["elements"].as_array().unwrap();
+    let named = |name: &str| controls.iter().find(|row| row["name"] == name).unwrap();
+    assert_eq!(named("Email address")["selector"], "#email");
+    assert_eq!(named("Full name")["selector"], "#name");
+    assert_eq!(named("Fixed")["selector"], "#fixed");
+    assert_eq!(named("Short")["selector"], "#short");
+    assert!(controls.iter().all(|row| row["selector"] != "#hidden"));
+    let password = controls
+        .iter()
+        .find(|row| row["selector"] == "#password")
+        .unwrap();
+    assert!(
+        password.get("value").is_none(),
+        "passwords stay out of snapshots"
+    );
+    assert_ne!(named("First")["selector"], named("Second")["selector"]);
+    assert_ne!(
+        named("Duplicate first")["selector"],
+        named("Duplicate second")["selector"]
+    );
+    assert_eq!(named("Trailing")["selector"], "#trailing\\ ");
+    call(
+        "orbyn_preview_act",
+        json!({ "tab_id": id, "action": "click", "selector": named("Second")["selector"] }),
+    )
+    .await;
+    let title = call(
+        "orbyn_preview_evaluate",
+        json!({ "tab_id": id, "expression": "document.title" }),
+    )
+    .await;
+    assert_eq!(
+        title["value"], "Second",
+        "the second selector clicks the second control"
+    );
+
+    // Slow selector preflight must consume the same budget as the polls. A late
+    // CDP reply must also leave the next request usable after cancellation.
+    call(
+        "orbyn_preview_evaluate",
+        json!({ "tab_id": id, "expression": "window.savedQuery = document.querySelector; document.querySelector = function(s) { const end = Date.now() + 1000; while (Date.now() < end) {} return window.savedQuery.call(this, s); }; true" }),
+    )
+    .await;
+    let timeout = call(
+        "orbyn_preview_wait_for",
+        json!({ "tab_id": id, "selector": "#short", "timeout_ms": 20 }),
+    )
+    .await;
+    assert_eq!(
+        timeout["found"], false,
+        "the selector read exceeded its budget"
+    );
+    assert!(timeout["waited_ms"].as_u64().unwrap() < 500, "{timeout}");
+    call(
+        "orbyn_preview_evaluate",
+        json!({ "tab_id": id, "expression": "document.querySelector = window.savedQuery; true" }),
+    )
+    .await;
+    let recovered = call(
+        "orbyn_preview_wait_for",
+        json!({ "tab_id": id, "selector": "#short", "timeout_ms": 2000 }),
+    )
+    .await;
+    assert_eq!(
+        recovered["found"], true,
+        "late replies cannot consume the next call"
+    );
 
     call("orbyn_preview_close", json!({ "tab_id": id })).await;
     service.stop().await;

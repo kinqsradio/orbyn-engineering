@@ -93,33 +93,37 @@ const PICK_ELEMENT: &str = r"(() => {
   };
 })()";
 
-/// Walks the visible elements of a page into roles, names and selectors, with a
-/// bounded sample of its text. Every field is cut here as well as in Rust, so one
-/// snapshot of a huge page still costs about the same.
+/// Reads visible semantic elements with bounded names, values and page text.
+/// Selectors stay whole and must uniquely identify their element.
 const SNAPSHOT_PAGE: &str = r"(() => {
   const LIMIT = __MAX_ELEMENTS__;
   const TEXT_LIMIT = __MAX_TEXT__;
   const NAME_LIMIT = 120;
   const VALUE_LIMIT = 120;
-  const PATH_LIMIT = 5;
+  const SELECTOR_LIMIT = 300;
   const cut = (value, limit) => {
     const text = (value || '').trim().slice(0, limit);
     return /[\uD800-\uDBFF]$/.test(text) ? text.slice(0, -1) : text;
   };
   const selectorOf = (el) => {
     const path = [];
-    for (let node = el; node && node.nodeType === 1 && path.length < PATH_LIMIT; node = node.parentElement) {
-      if (node.id) {
-        path.unshift(`#${window.CSS && CSS.escape ? CSS.escape(node.id) : node.id}`);
+    for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+      const id = node.id ? `#${CSS.escape(node.id)}` : '';
+      if (id && document.querySelectorAll(id).length === 1) {
+        path.unshift(id);
         break;
       }
       const same = [...(node.parentElement ? node.parentElement.children : [])]
         .filter((other) => other.localName === node.localName);
+      const tag = CSS.escape(node.localName);
       path.unshift(same.length > 1
-        ? `${node.localName}:nth-of-type(${same.indexOf(node) + 1})`
-        : node.localName);
+        ? `${tag}:nth-of-type(${same.indexOf(node) + 1})`
+        : tag);
     }
-    return path.join(' > ');
+    const selector = path.join(' > ');
+    if (selector.length > SELECTOR_LIMIT) return null;
+    const matches = document.querySelectorAll(selector);
+    return matches.length === 1 && matches[0] === el ? selector : null;
   };
   const roleOf = (el) => {
     const type = (el.getAttribute('type') || 'text').toLowerCase();
@@ -142,9 +146,20 @@ const SNAPSHOT_PAGE: &str = r"(() => {
   };
   const inner = (el) => (el.innerText != null ? el.innerText : el.textContent) || '';
   const nameOf = (el) => {
+    const labelledBy = (el.getAttribute('aria-labelledby') || '').trim().split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent || '').join(' ');
+    const referenced = cut(labelledBy.replace(/\s+/g, ' '), NAME_LIMIT);
+    if (referenced) return referenced;
     const label = cut(el.getAttribute('aria-label'), NAME_LIMIT);
     if (label) return label;
-    const shown = cut(inner(el).replace(/\s+/g, ' '), NAME_LIMIT);
+    const associated = cut(Array.from(el.labels || []).map((label) => {
+      const copy = label.cloneNode(true);
+      copy.querySelectorAll('input,select,textarea,button').forEach((control) => control.remove());
+      return copy.textContent || '';
+    }).join(' ').replace(/\s+/g, ' '), NAME_LIMIT);
+    if (associated) return associated;
+    const shown = ['input', 'select', 'textarea'].includes(el.localName)
+      ? '' : cut(inner(el).replace(/\s+/g, ' '), NAME_LIMIT);
     if (shown) return shown;
     return cut(
       el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('alt'),
@@ -154,15 +169,18 @@ const SNAPSHOT_PAGE: &str = r"(() => {
   const elements = [];
   let truncated = false;
   for (const el of document.querySelectorAll('body *')) {
-    if (el.offsetParent === null) continue;
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.visibility === 'collapse') continue;
     const box = el.getBoundingClientRect();
-    if (box.width <= 0 || box.height <= 0) continue;
+    if (!el.getClientRects().length || box.width <= 0 || box.height <= 0) continue;
     const role = roleOf(el);
-    const shown = cut(inner(el).replace(/\s+/g, ' '), NAME_LIMIT);
-    if (!role && !shown) continue;
+    if (!role) continue;
     if (elements.length >= LIMIT) { truncated = true; break; }
-    const found = { role: role, name: nameOf(el), selector: selectorOf(el) };
-    if (role === 'textbox' || role === 'combobox') {
+    const selector = selectorOf(el);
+    if (!selector) { truncated = true; continue; }
+    const found = { role: role, name: nameOf(el), selector: selector };
+    if ((role === 'textbox' || role === 'combobox') &&
+        !(el.localName === 'input' && el.type === 'password')) {
       const value = typeof el.value === 'string' ? cut(el.value, VALUE_LIMIT) : '';
       if (value) found.value = value;
     }
@@ -241,8 +259,8 @@ fn field<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-/// A page's snapshot with every field cut again here, in case the page answered
-/// more than it was asked for.
+/// Bounds the page's answer again. An oversized selector is omitted, since
+/// shortening a selector could select a different element.
 fn capped_snapshot(page: &Value, limit: usize) -> Value {
     let mut elements: Vec<Value> = Vec::new();
     let mut truncated = page
@@ -259,10 +277,15 @@ fn capped_snapshot(page: &Value, limit: usize) -> Value {
             truncated = true;
             break;
         }
+        let selector = field(entry, "selector");
+        if selector.trim().is_empty() || selector.chars().count() > MAX_SELECTOR_CHARS {
+            truncated = true;
+            continue;
+        }
         let mut element = json!({
             "role": capped(field(entry, "role"), MAX_NAME_CHARS),
             "name": capped(field(entry, "name").trim(), MAX_NAME_CHARS),
-            "selector": capped(field(entry, "selector").trim(), MAX_SELECTOR_CHARS),
+            "selector": selector,
         });
         let value = capped(field(entry, "value").trim(), MAX_VALUE_CHARS);
         if !value.is_empty() {
@@ -891,44 +914,45 @@ impl PreviewManager {
     ) -> Result<Value> {
         let tab = self.tab(thread_id, id)?;
         let timeout = wait_timeout(timeout_ms);
-        let expression = match (selector, wanted) {
-            (Some(selector), None) => {
-                if tab
-                    .session
-                    .lock()
-                    .await
-                    .read(&parses_expression(selector))
-                    .await?
-                    != json!(true)
-                {
-                    return Err(CoreError::Invalid(format!(
-                        "{selector} is not a selector a page can read."
-                    )));
-                }
-                wait_selector_expression(selector)
-            }
-            (None, Some(wanted)) => wait_text_expression(wanted),
-            _ => {
-                return Err(CoreError::Invalid(
-                    "Name a selector or text to wait for, not both.".into(),
-                ));
-            }
-        };
         let started = Instant::now();
         let waited = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        for _ in 0..WAIT_ROUNDS {
-            let found = tab.session.lock().await.read(&expression).await;
-            if found.as_ref().is_ok_and(|value| value == &json!(true)) {
-                return Ok(json!({ "found": true, "waited_ms": waited() }));
+        // Include session contention and CDP reads, not only the delays between polls.
+        let outcome = tokio::time::timeout(timeout, async {
+            let expression = match (selector, wanted) {
+                (Some(selector), None) => {
+                    if tab
+                        .session
+                        .lock()
+                        .await
+                        .read(&parses_expression(selector))
+                        .await?
+                        != json!(true)
+                    {
+                        return Err(CoreError::Invalid(format!(
+                            "{selector} is not a selector a page can read."
+                        )));
+                    }
+                    wait_selector_expression(selector)
+                }
+                (None, Some(wanted)) => wait_text_expression(wanted),
+                _ => {
+                    return Err(CoreError::Invalid(
+                        "Name a selector or text to wait for, not both.".into(),
+                    ));
+                }
+            };
+            for _ in 0..WAIT_ROUNDS {
+                let found = tab.session.lock().await.read(&expression).await;
+                if found.as_ref().is_ok_and(|value| value == &json!(true)) {
+                    return Ok(json!({ "found": true, "waited_ms": waited() }));
+                }
+                // A page that navigated mid-poll answers an error, which is a miss.
+                tokio::time::sleep(WAIT_POLL).await;
             }
-            // A page that navigated mid-poll answers an error, which is a miss and
-            // not a reason to stop waiting.
-            if started.elapsed() >= timeout {
-                break;
-            }
-            tokio::time::sleep(WAIT_POLL).await;
-        }
-        Ok(json!({ "found": false, "waited_ms": waited() }))
+            Ok(json!({ "found": false, "waited_ms": waited() }))
+        })
+        .await;
+        outcome.unwrap_or_else(|_| Ok(json!({ "found": false, "waited_ms": waited() })))
     }
 
     pub fn start_recording(&self, thread_id: &str, id: &str, folder: PathBuf) -> Result<()> {
@@ -1550,7 +1574,7 @@ mod tests {
                 {
                     "role": "button",
                     "name": "n".repeat(MAX_NAME_CHARS + 80),
-                    "selector": "s".repeat(MAX_SELECTOR_CHARS + 80),
+                    "selector": "#field",
                     "value": "v".repeat(MAX_VALUE_CHARS + 80),
                 },
                 { "role": "link", "name": "second", "selector": "#two" },
@@ -1573,10 +1597,7 @@ mod tests {
             first["value"].as_str().unwrap().chars().count(),
             MAX_VALUE_CHARS
         );
-        assert_eq!(
-            first["selector"].as_str().unwrap().chars().count(),
-            MAX_SELECTOR_CHARS
-        );
+        assert_eq!(first["selector"], "#field");
         assert_eq!(
             snapshot["text"].as_str().unwrap().chars().count(),
             MAX_SNAPSHOT_TEXT
@@ -1601,6 +1622,25 @@ mod tests {
         assert_eq!(empty["elements"], json!([]));
         assert_eq!(empty["text"], "");
         assert_eq!(empty["truncated"], false);
+    }
+
+    #[test]
+    fn a_snapshot_omits_oversized_selectors_without_retargeting_them() {
+        let page = json!({ "elements": [
+            { "selector": format!("#{}", "x".repeat(MAX_SELECTOR_CHARS)), "name": "long" },
+            { "selector": "#short", "name": "short" }
+        ] });
+        let snapshot = capped_snapshot(&page, 10);
+        assert_eq!(snapshot["truncated"], true);
+        assert_eq!(snapshot["elements"].as_array().unwrap().len(), 1);
+        assert_eq!(snapshot["elements"][0]["selector"], "#short");
+    }
+
+    #[test]
+    fn a_snapshot_preserves_trailing_selector_escape_spaces() {
+        let page = json!({ "elements": [{ "selector": "#ends\\ " }] });
+        let snapshot = capped_snapshot(&page, 10);
+        assert_eq!(snapshot["elements"][0]["selector"], "#ends\\ ");
     }
 
     #[test]
