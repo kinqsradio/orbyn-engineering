@@ -117,6 +117,26 @@ and the record should say so:
   request's AI usage section instead.
 - Keep active branches current by merging `main` into them at least daily.
 
+## Leaving work behind
+
+Some work does not finish inside the pull request that found it: a row that was
+deliberately deferred, a limit the change had to accept, a test that was already
+failing, or a decision only the maintainer can make. None of it may stay in a chat,
+a session or a local note, because nobody else can pick it up there.
+
+Open an issue for it before the pull request merges, with the evidence that makes it
+actionable:
+
+- what is unfinished or wrong, and the row ID when a parity row owns it;
+- how to reproduce it, with the command and its output;
+- the options and the trade-off, when it is a decision;
+- what done looks like, so someone else can finish it;
+- the pull request it came from, and the label that puts it in the right queue
+  (`parity`, the area label, and `help wanted` when it is deliberately left open).
+
+The pull request then links the issue where it records the limit, so the two places
+point at each other.
+
 ## Checks
 
 Run the affected checks locally before pushing:
