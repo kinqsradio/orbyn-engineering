@@ -2,8 +2,10 @@
 //! makes the service exit when this process dies, even after a crash.
 
 mod child_owner;
+mod readiness;
 
 use child_owner::{StartupGuard, reap_after_grace};
+pub(crate) use readiness::phase as startup_phase;
 use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -12,8 +14,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-
-const START_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Deserialize)]
 struct Ready {
@@ -142,6 +142,7 @@ impl CoreProcess {
         // Declared before stdin: every early return closes the parent pipe before
         // the guard starts bounded cleanup, including timeout and malformed ready.
         let mut startup = StartupGuard::new(child.clone(), stopping.clone());
+        startup_phase("service-spawned");
         let stdin = child
             .lock()
             .expect("core child")
@@ -183,8 +184,7 @@ impl CoreProcess {
             }
         });
 
-        let line = receiver
-            .recv_timeout(START_TIMEOUT)
+        let line = readiness::wait_for_ready(&receiver)
             .map_err(|_| "The local service did not start in time.".to_string())?;
         let ready: Ready = serde_json::from_str(&line)
             .map_err(|_| failure_text("no start message", &last_line(&log)))?;
