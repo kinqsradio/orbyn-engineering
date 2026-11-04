@@ -92,6 +92,10 @@ export const scenes = {
     { method: "item/commandExecution/outputDelta", params: { itemId: "l2", delta: "tick\n" } },
     { hold: true },
   ],
+  "trace-batch": [
+    ...Array.from({ length: 43 }, (_, n) => command(`trace${n}`, `echo trace${n}`, `trace${n}\n`, 0)).flat(),
+    { hold: true },
+  ],
   "tool-outcomes": [
     ...fileChange("changed", ["a.ts", "b.ts"]),
     started(item("failed", "mcpToolCall", { server: "files", tool: "Write", arguments: { path: "refused.ts" }, status: "inProgress" })),

@@ -52,6 +52,31 @@ test("a running turn shows its header and streams output; Stop folds it as stopp
   await expect(page.getByRole("button", { name: /^You stopped after/ })).toBeVisible({ timeout: 15_000 });
 });
 
+test("a long live tool trace groups in fives and defers rows beyond thirty", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:trace-batch]");
+  const earlier = page.getByRole("button", { name: "Show 15 earlier activities" });
+  await expect(earlier).toBeVisible();
+  await expect(page.locator(".work-log > .trace")).toHaveCount(28);
+  await expect(page.getByRole("button", { name: "Ran 5 commands", exact: true })).toHaveCount(5);
+  await earlier.click();
+  await expect(page.locator(".work-log > .trace")).toHaveCount(43);
+  await expect(page.getByRole("button", { name: "Ran 3 commands", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await settled(service, threadIdOf(page));
+});
+
+test("a failed non-command tool is excluded from completed action counts", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:tool-outcomes]");
+  await settled(service, threadIdOf(page));
+  const fold = page.getByRole("button", { name: /^Changed 2 files; 1 tool call failed ·/ });
+  await expect(fold).toBeVisible();
+  await fold.click();
+  await page.getByRole("button", { name: "Changed 2 files; 1 tool call failed", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^files.Write/ })).toBeVisible();
+});
+
 test("rich Markdown renders: table, math, diagram, links, image and details", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.route("https://example.com/square.png", (route) =>
@@ -226,15 +251,4 @@ test("a link to a commit here opens it in Diff", async ({ page }) => {
   await page.getByRole("link", { name: "this commit" }).click();
   await expect(page.getByRole("radiogroup", { name: "Diff source" }).getByRole("radio", { name: "Commit" })).toBeChecked();
   await expect(page.getByRole("combobox", { name: /commit/i })).toContainText("First");
-});
-
-test("a failed non-command tool is excluded from completed action counts", async ({ page }) => {
-  await page.goto(`${service.page}#/new/${projectId}`);
-  await send(page, "[scene:tool-outcomes]");
-  await settled(service, threadIdOf(page));
-  const fold = page.getByRole("button", { name: /^Changed 2 files; 1 tool call failed ·/ });
-  await expect(fold).toBeVisible();
-  await fold.click();
-  await page.getByRole("button", { name: "Changed 2 files; 1 tool call failed", exact: true }).click();
-  await expect(page.getByRole("button", { name: /^files.Write/ })).toBeVisible();
 });

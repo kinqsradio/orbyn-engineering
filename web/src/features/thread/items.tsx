@@ -451,7 +451,7 @@ function Fold({ fold }: { fold: TurnFold }) {
         }
       >
         <div className="work-fold">
-          {fold.entries.map((entry) => (
+          {(!fold.lazy || open) && fold.entries.map((entry) => (
             <TimelineRow key={entry.key} entry={entry} live={false} tools={NO_TOOLS} />
           ))}
         </div>

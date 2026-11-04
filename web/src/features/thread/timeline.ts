@@ -16,6 +16,7 @@ export interface TurnFold {
   key: string;
   label: string;
   entries: TimelineEntry[];
+  lazy?: boolean;
 }
 
 /** The live header while a turn runs. */
@@ -34,20 +35,49 @@ const isWork = (item: ThreadItem): item is WorkItem => item.kind === "reasoning"
 export function groupWork(items: readonly ThreadItem[]): (Shown | WorkGroup)[] {
   const entries: (Shown | WorkGroup)[] = [];
   let run: WorkItem[] = [];
+  let calls = 0;
   const close = () => {
     const first = run[0];
     if (first) entries.push({ kind: "work", key: `work:${first.key}`, items: run });
     run = [];
+    calls = 0;
   };
   for (const item of items) {
     if (isWork(item)) {
       run.push(item);
+      if ((item.kind === "tool" && ++calls === 5) || run.length === LIVE_ROW_LIMIT) close();
     } else {
       close();
       entries.push(item);
     }
   }
   close();
+  return entries;
+}
+
+/** Older live work remains available without mounting an unbounded tool log. */
+function liveWork(items: readonly ThreadItem[], runId: string): TimelineEntry[] {
+  const groups = groupWork(items);
+  let count = 0;
+  const olderKeys = new Set<string>();
+  for (const group of [...groups].reverse()) {
+    if (group.kind !== "work") continue;
+    count += group.items.length;
+    if (count > LIVE_ROW_LIMIT) olderKeys.add(group.key);
+  }
+  const entries: TimelineEntry[] = [];
+  let older: WorkGroup[] = [];
+  const flush = () => {
+    const first = older[0];
+    if (first) entries.push({ kind: "fold", key: `earlier:${runId}:${first.key}`,
+      label: `Show ${older.reduce((sum, group) => sum + group.items.length, 0)} earlier activities`, entries: older, lazy: true });
+    older = [];
+  };
+  for (const group of groups) {
+    if (group.kind === "work" && olderKeys.has(group.key)) older.push(group);
+    else { flush(); entries.push(group); }
+  }
+  flush();
   return entries;
 }
 
@@ -90,7 +120,7 @@ function arrangeTurn(items: readonly ThreadItem[], runId: string, span: RunSpan 
     return [
       ...groupWork(prompts),
       ...(since ? [{ kind: "working" as const, key: `working:${runId}`, since }] : []),
-      ...groupWork(body),
+      ...liveWork(body, runId),
     ];
   }
   let answer = -1;

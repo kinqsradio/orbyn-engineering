@@ -226,6 +226,12 @@ a failure. No new exit code is synthesized. Older logs and unsupported outcomes
 stay unknown. Group and finished-turn summaries count only reported successful
 actions, list failures separately, and use neutral wording for missing results.
 
+Consecutive work groups contain at most five tool calls and at most thirty
+activities including reasoning. The live view retains whole recent groups within
+thirty activities, preserving group keys and expanded state as calls arrive. Older
+groups are deferred in place, separated by messages and approvals; opening their
+fold reveals them. Finished turns retain their searchable mounted content.
+
 ## Questions
 
 An engine question holds its run in `awaiting_approval` until it is answered,
