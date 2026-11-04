@@ -1506,6 +1506,18 @@ an effect goes through the gate itself as a `tool` action, which needs a person 
 the thread is in full access or a rule allows it. Every call is audited first. A
 delegated thread cannot delegate further, so one run cannot fan out without limit.
 
+`orbyn_workflow_stop` requests cancellation of one direct delegated child of the
+caller, within the same project. Self, ordinary sibling threads and another
+parent's children read as not found. It uses the existing durable cancellation
+path, including running delegated descendants, and reports `stopped: true` when
+the request is accepted; this is not terminal completion. An idle child returns
+`stopped: false`, and cancellation errors are reported. This is a delegated-run
+control, not the unimplemented M13 workflow/script engine. `orbyn_thread_wait`
+then observes completion, accepts only non-negative integer seconds, clamps at
+40 seconds and reports `ended: false` when that bounded wait expires.
+The stop tool's entire call, including its approval wait, is capped at 45 seconds;
+an expired approval cannot authorize a later effect.
+
 `orbyn_html_render` is how an agent puts a page in its own timeline: it takes `html`,
 plus an optional `title` (trimmed, cut to 200 characters, `HTML` when absent) and an
 optional `height` (120 to 2000, 480 by default), publishes with the same store as the

@@ -53,6 +53,166 @@ async fn reading_needs_no_approval_and_stays_in_the_project() {
 }
 
 #[tokio::test]
+async fn delegated_work_stop_asks_and_only_stops_the_callers_child() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    let own = service.json(&format!("/api/threads/{thread}")).await;
+    let sibling = service
+        .thread(own["project_id"].as_str().unwrap(), "codex")
+        .await;
+    let (status, child) = service
+        .send(
+            &format!("/api/threads/{thread}/delegate"),
+            json!({ "prompt": "[hang]", "title": "Delegated work" }),
+        )
+        .await;
+    assert_eq!(status, 201);
+    let child = child["id"].as_str().unwrap();
+    service
+        .events_until(child, None, |event| {
+            event["event"]["type"] == "ACTIVITY_SNAPSHOT"
+        })
+        .await;
+
+    service
+        .admit(
+            &thread,
+            &call("orbyn_workflow_stop", json!({ "thread_id": child })),
+        )
+        .await;
+    let approval = service.pending().await;
+    assert!(
+        approval["summary"]
+            .as_str()
+            .unwrap()
+            .contains("orbyn_workflow_stop")
+    );
+    assert_eq!(
+        service
+            .decide(approval["id"].as_str().unwrap(), false)
+            .await
+            .0,
+        200
+    );
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert!(!service.json(&format!("/api/threads/{child}")).await["active_run"].is_null());
+    full_access(&service, &thread).await;
+
+    let outside_folder = dir.path().join("outside");
+    std::fs::create_dir_all(&outside_folder).unwrap();
+    let outside_project = service.project(&outside_folder, true).await;
+    let outside = service.thread(&outside_project, "codex").await;
+    let (status, other_child) = service
+        .send(
+            &format!("/api/threads/{sibling}/delegate"),
+            json!({ "prompt": "[hang]", "title": "Other parent's work" }),
+        )
+        .await;
+    assert_eq!(status, 201);
+    let other_child = other_child["id"].as_str().unwrap();
+    service
+        .events_until(other_child, None, |event| {
+            event["event"]["type"] == "ACTIVITY_SNAPSHOT"
+        })
+        .await;
+    let mut seen = service.all_events(&thread).await.last().unwrap()["seq"].as_i64();
+    for id in [
+        thread.as_str(),
+        sibling.as_str(),
+        outside.as_str(),
+        other_child,
+    ] {
+        service
+            .admit(
+                &thread,
+                &call("orbyn_workflow_stop", json!({ "thread_id": id })),
+            )
+            .await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        let text = text_of(&events);
+        assert!(
+            text.contains("tool error=true") && text.contains("not found"),
+            "{text}"
+        );
+    }
+    assert!(!service.json(&format!("/api/threads/{other_child}")).await["active_run"].is_null());
+    let waiting = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_thread_wait",
+        json!({ "thread_id": child, "seconds": 0 }),
+    )
+    .await;
+    assert!(waiting.contains("\"ended\":false"), "{waiting}");
+    let stop_run = service
+        .admit(
+            &thread,
+            &call("orbyn_workflow_stop", json!({ "thread_id": child })),
+        )
+        .await;
+    let stopped = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED" && event["event"]["runId"] == stop_run
+        })
+        .await;
+    seen = stopped.last().unwrap()["seq"].as_i64();
+    let stop = text_of(&stopped);
+    assert!(stop.contains("tool error=false"), "{stop}");
+    assert!(stop.contains("\"stopped\":true"), "{stop}");
+    assert_eq!(service.finished(child).await, "cancelled");
+
+    // Completion reports start another parent run. Its transcript contains the
+    // fake engine's [hang] marker, so explicitly stop that report before sending
+    // more tools; never mistake its terminal event for a tool's reply.
+    let report = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_STARTED"
+        })
+        .await;
+    let report_start = report.last().unwrap();
+    let report_run = report_start["event"]["runId"].as_str().unwrap();
+    assert_ne!(report_run, stop_run);
+    assert_eq!(
+        service
+            .send(&format!("/api/threads/{thread}/force-stop"), json!({}))
+            .await
+            .0,
+        200
+    );
+    let finished = service
+        .events_until(&thread, report_start["seq"].as_i64(), |event| {
+            event["event"]["type"] == "RUN_FINISHED" && event["event"]["runId"] == report_run
+        })
+        .await;
+    seen = finished.last().unwrap()["seq"].as_i64();
+    let waiting = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_thread_wait",
+        json!({ "thread_id": child, "seconds": 0 }),
+    )
+    .await;
+    assert!(waiting.contains("\"ended\":true"), "{waiting}");
+    let stop = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_workflow_stop",
+        json!({ "thread_id": child }),
+    )
+    .await;
+    assert!(stop.contains("\"stopped\":false"), "{stop}");
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn a_tool_with_an_effect_asks_and_a_denial_changes_nothing() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, engines(), "codex").await;

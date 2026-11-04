@@ -112,7 +112,7 @@ const TOOLS: &[Tool] = &[
     ),
     read(
         "orbyn_thread_wait",
-        "Wait for a thread's run to end, up to five minutes.",
+        "Wait for a thread's run to end, up to forty seconds; ended is false at the deadline.",
         &[("thread_id", "string"), ("seconds", "number")],
         &["thread_id"],
     ),
@@ -428,6 +428,12 @@ const TOOLS: &[Tool] = &[
         &["thread_id"],
     ),
     act(
+        "orbyn_workflow_stop",
+        "Request a stop for this caller's delegated thread and its running delegated children. An idle thread is unchanged.",
+        &[("thread_id", "string")],
+        &["thread_id"],
+    ),
+    act(
         "orbyn_schedule_task",
         "Run a prompt in this project every so many minutes.",
         &[
@@ -490,6 +496,16 @@ fn number(args: &Value, key: &str) -> Result<u64> {
     args.get(key)
         .and_then(Value::as_u64)
         .ok_or_else(|| CoreError::Invalid(format!("{key} is required.")))
+}
+
+fn wait_seconds(args: &Value) -> Result<u64> {
+    match args.get("seconds") {
+        None => Ok(30),
+        Some(value) => value
+            .as_u64()
+            .map(|seconds| seconds.min(MAX_WAIT_SECONDS))
+            .ok_or_else(|| CoreError::Invalid("seconds must be a non-negative integer.".into())),
+    }
 }
 
 /// `orbyn_preview_act`'s arguments, checked before the page is touched: one known
@@ -774,9 +790,8 @@ impl Core {
                         "A thread cannot wait for itself.".into(),
                     ));
                 }
-                let seconds = args.get("seconds").and_then(Value::as_u64).unwrap_or(30);
-                let deadline = std::time::Instant::now()
-                    + std::time::Duration::from_secs(seconds.min(MAX_WAIT_SECONDS));
+                let seconds = wait_seconds(args)?;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
                 loop {
                     let thread = self.store.thread(&thread.id)?;
                     let ended = thread.active_run.is_none();
@@ -1091,6 +1106,26 @@ impl Core {
                 };
                 json!(self.update_thread(&thread.id, &patch, &actor)?)
             }
+            "orbyn_workflow_stop" => {
+                let id = text(args, "thread_id")?;
+                if id.len() > 128 {
+                    return Err(CoreError::Invalid("thread_id is at most 128 bytes.".into()));
+                }
+                let thread = self.project_thread(binding, id)?;
+                if !thread.lifecycle.as_ref().is_some_and(|lifecycle| {
+                    lifecycle.relation.as_deref() == Some("subagent")
+                        && lifecycle.parent_thread_id.as_deref() == Some(own.id.as_str())
+                }) {
+                    return Err(CoreError::NotFound("delegated thread".into()));
+                }
+                let stopped = if let Some(run) = thread.active_run {
+                    self.runs.cancel(&run.id)?;
+                    true
+                } else {
+                    false
+                };
+                json!({ "stopped": stopped })
+            }
             "orbyn_thread_interrupt" | "orbyn_task_cancel" => {
                 let thread = thread_arg()?;
                 if thread.id == own.id {
@@ -1208,6 +1243,31 @@ mod tests {
     #[test]
     fn thread_transfer_cannot_cross_the_project_boundary() {
         assert!(!is_tool("orbyn_thread_transfer"));
+    }
+
+    #[test]
+    fn delegated_stop_is_gated_and_background_wait_is_bounded() {
+        let stop = TOOLS
+            .iter()
+            .find(|t| t.name == "orbyn_workflow_stop")
+            .unwrap();
+        assert!(has_effect(stop.name));
+        assert_eq!(stop.args, &[("thread_id", "string")]);
+        assert_eq!(stop.required, &["thread_id"]);
+        let wait = TOOLS
+            .iter()
+            .find(|t| t.name == "orbyn_thread_wait")
+            .unwrap();
+        assert!(!has_effect(wait.name));
+        assert_eq!(wait.args, &[("thread_id", "string"), ("seconds", "number")]);
+        assert_eq!(wait.required, &["thread_id"]);
+        assert!(wait.description.contains("forty seconds"));
+        assert_eq!(wait_seconds(&json!({})).unwrap(), 30);
+        assert_eq!(wait_seconds(&json!({"seconds": 0})).unwrap(), 0);
+        assert_eq!(wait_seconds(&json!({"seconds": u64::MAX})).unwrap(), 40);
+        for seconds in [json!(-1), json!(0.5), json!("1"), Value::Null] {
+            assert!(wait_seconds(&json!({"seconds": seconds})).is_err());
+        }
     }
 
     #[test]
