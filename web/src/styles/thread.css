@@ -2481,7 +2481,7 @@ button.detail-row:hover {
 }
 .md-image {
   display: block;
-  max-width: 100%;
+  max-width: min(100%, 30rem);
   margin-block: 8px;
   padding: 0;
   border: 1px solid var(--color-border);
@@ -2493,9 +2493,32 @@ button.detail-row:hover {
 .md-image img {
   display: block;
   max-width: 100%;
-  max-height: 360px;
+  max-height: 30rem;
+  object-fit: contain;
 }
-.md-image-failed {
+.md-video {
+  position: relative;
+  display: inline-block;
+  max-width: min(100%, 30rem);
+  margin-block: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  vertical-align: top;
+}
+.md-video video {
+  display: block;
+  width: 100%;
+  max-height: 30rem;
+  background: var(--color-backdrop);
+}
+.md-media-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: color-mix(in srgb, var(--color-backdrop) 72%, transparent);
+}
+.md-media-failed {
   color: var(--color-muted);
 }
 .lightbox {
@@ -2515,8 +2538,18 @@ button.detail-row:hover {
   right: 12px;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
+  max-width: calc(100vw - 24px);
+}
+.lightbox-readout {
+  padding-inline: 4px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .lightbox-stage {
   display: grid;
@@ -2529,6 +2562,12 @@ button.detail-row:hover {
   max-width: 90%;
   max-height: 90%;
   transition: transform 150ms ease;
+}
+.lightbox-stage video {
+  max-width: 90%;
+  max-height: 90%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 .md-thread-link {
   color: var(--color-primary);
