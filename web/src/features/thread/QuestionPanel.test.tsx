@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ApiFailure, request } from "../../api/client";
-import type { QuestionRequest } from "../../api/types";
+import type { QuestionRequest, Thread } from "../../api/types";
+import { useWorkspace } from "../../state/workspace";
 import { QuestionPanel } from "./QuestionPanel";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
@@ -69,6 +70,64 @@ it("links remote question images without creating a media fetch element", async 
   expect(screen.getByRole("link", { name: "Other" })).toHaveAttribute("href", "http://remote.example/a.png");
   expect(container.querySelector("img, video, iframe, svg[onload], script")).toBeNull();
   expect(container).toHaveTextContent("<svg onload=unsafe()></svg>");
+});
+
+function atCheckout(cwd: string) {
+  window.location.hash = "#/threads/t";
+  const thread: Thread = { id: "t", project_id: "p", title: "Question", engine: "codex", model: null,
+    cwd, worktree: null, skill_profile: null, scratch: false, active_run: null, last_run_state: null,
+    created_at: "", updated_at: "" };
+  useWorkspace.setState({ threads: { t: thread } });
+}
+
+it.each([
+  ["/work/checkout", "docs/shot.png", "docs/shot.png"],
+  ["/work/checkout", "docs/my%20shot.png", "docs/my shot.png"],
+  ["/work/checkout", "/work/checkout/docs/shot.png", "docs/shot.png"],
+  ["C:\\work\\checkout", "C:/work/checkout/docs/my%20shot.png", "docs/my shot.png"],
+])("renders a checkout image in a question (%s, %s)", async (cwd, source, path) => {
+  atCheckout(cwd);
+  ask.questions[0]!.question = `Review **![Checkout diagram](${source})**.`;
+  render(<QuestionPanel threadId="t" waiting />);
+  const image = await screen.findByRole("img", { name: "Checkout diagram" });
+  expect(image).toHaveAttribute("src", `/api/threads/t/files/raw?${new URLSearchParams({ path })}`);
+  expect(screen.getByRole("button", { name: "Expand Checkout diagram" })).toBeVisible();
+});
+
+it("shows an unavailable checkout image without losing the question or answer", async () => {
+  const user = userEvent.setup();
+  atCheckout("/work/checkout");
+  ask.questions[0]!.question = "Review ![Missing](docs/missing.png).";
+  render(<QuestionPanel threadId="t" waiting />);
+  const image = await screen.findByRole("img", { name: "Missing" });
+  const option = screen.getByRole("button", { name: /A\s*First/ });
+  await user.click(option);
+  fireEvent.error(image);
+  expect(screen.getByText("Image unavailable · Missing")).toBeVisible();
+  expect(screen.queryByRole("img", { name: "Missing" })).toBeNull();
+  expect(option).toBeEnabled();
+  expect(option).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Dismiss" })).toBeEnabled();
+});
+
+it("leaves outside-root and file URLs inert in question prose", async () => {
+  atCheckout("/work/checkout");
+  const prose = "![Outside](/other/shot.png) ![Sibling](/work/checkout-other/shot.png) ![File](file:///work/checkout/shot.png)";
+  ask.questions[0]!.question = prose;
+  const { container } = render(<QuestionPanel threadId="t" waiting />);
+  await screen.findByRole("region", { name: "Question from the agent" });
+  expect(container.querySelector("img, video, iframe")).toBeNull();
+  expect(container).toHaveTextContent(prose);
+});
+
+it("does not resolve checkout media without a thread route", async () => {
+  atCheckout("/work/checkout");
+  window.location.hash = "#/";
+  ask.questions[0]!.question = "![Checkout](docs/shot.png)";
+  const { container } = render(<QuestionPanel threadId="t" waiting />);
+  await screen.findByRole("region", { name: "Question from the agent" });
+  expect(container.querySelector("img")).toBeNull();
+  expect(container).toHaveTextContent("![Checkout](docs/shot.png)");
 });
 
 it("dismisses without submitting selected or custom answers", async () => {

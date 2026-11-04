@@ -45,20 +45,25 @@ test("custom question text replaces a selected option in the real answer flow", 
   let failure: unknown;
   try {
     const binary = process.env.ORBYN_BIN ?? resolve(web, "../target/debug/orbynd");
-    const fake = resolve(binary, "../orbyn-fake-engine");
+    const fake = resolve(binary, `../orbyn-fake-engine${process.platform === "win32" ? ".exe" : ""}`);
     const wrapper = join(profile, "question-engine.mjs");
-    const prose = "### Review approach\n\nUse **small** steps and `checks`.\n\n- First\n- Next\n\n```mermaid\ngraph LR; A-->B;\n```\n\n![Remote diagram](https://remote.example/diagram.svg)\n\n<script>unsafe()</script>";
+    const launcher = process.platform === "win32" ? join(profile, "question-engine.cmd") : wrapper;
+    // The service follows this npm-style shim to Node on Windows; it never invokes cmd.exe.
+    if (launcher !== wrapper) writeFileSync(launcher, '@echo off\r\nnode "%~dp0\\question-engine.mjs" %*\r\n');
+    const library = join(profile, "library");
+    const questionFile = join(profile, "question.md");
     // Only question prose/options are enriched; the existing protocol double handles all requests.
     writeFileSync(wrapper, `#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { readFileSync } from "node:fs";
 const child = spawn(process.env.ORBYN_E2E_FAKE, process.argv.slice(2), { stdio: ["pipe", "pipe", "inherit"] });
 process.stdin.pipe(child.stdin);
 createInterface({ input: child.stdout }).on("line", (line) => {
   let message;
   try { message = JSON.parse(line); } catch { process.stdout.write(line + "\\n"); return; }
   if (message.method === "item/tool/requestUserInput") {
-    Object.assign(message.params.questions[0], { header: "Review", question: ${JSON.stringify(prose)}, isSecret: false, isOther: true,
+    Object.assign(message.params.questions[0], { header: "Review", question: readFileSync(${JSON.stringify(questionFile)}, "utf8"), isSecret: false, isOther: true,
       options: [{ label: "Small batch", description: "" }, { label: "All at once", description: "" }] });
     message.params.questions.push({ id: "q2", header: "Follow-up", question: "What should we **keep**?", isSecret: false, isOther: true, options: null });
   }
@@ -66,7 +71,6 @@ createInterface({ input: child.stdout }).on("line", (line) => {
 });
 child.on("exit", (code) => process.exit(code ?? 1));
 `, { mode: 0o755 });
-    const library = join(profile, "library");
     mkdirSync(join(library, "skills/how"), { recursive: true });
     writeFileSync(join(library, "AGENTS.md"), "# Test library\n");
     writeFileSync(join(library, ".gitignore"), "repo/\n");
@@ -75,7 +79,7 @@ child.on("exit", (code) => process.exit(code ?? 1));
     const kept = ["PATH", "Path", "SystemRoot", "TEMP", "TMP", "TMPDIR", "LANG"];
     const env = { ...Object.fromEntries(kept.filter((key) => process.env[key]).map((key) => [key, process.env[key]])),
       HOME: profile, CFFIXED_USER_HOME: profile, USERPROFILE: profile, ORBYN_OFFLINE: "1",
-      ORBYN_CLAUDE_BIN: join(profile, "no-claude"), ORBYN_CODEX_BIN: wrapper, ORBYN_E2E_FAKE: fake,
+      ORBYN_CLAUDE_BIN: join(profile, "no-claude"), ORBYN_CODEX_BIN: launcher, ORBYN_E2E_FAKE: fake, ORBYN_KNOWN_ENGINE_IDS: "[]",
       CODEX_HOME: join(profile, "codex"), CLAUDE_CONFIG_DIR: join(profile, "claude"),
       GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com" };
     const git = (...args: string[]) => execFileSync("git", args, { cwd: library, env, stdio: "ignore" });
@@ -92,7 +96,21 @@ child.on("exit", (code) => process.exit(code ?? 1));
       return response.json() as Promise<T>;
     }
     await api("POST", "/api/workspace/setup", {});
-    const project = await api<{ id: string }>("POST", "/api/projects/create", { name: "question-markdown", readme: true });
+    const project = await api<{ id: string; path: string }>("POST", "/api/projects/create", { name: "question-markdown", readme: true });
+    const checkout = project.path;
+    const outside = resolve(checkout, "../..", "outside.png");
+    const absoluteImage = encodeURI(join(checkout, "docs", "absolute shot.png").replace(/\\/g, "/"));
+    const outsideImage = encodeURI(outside.replace(/\\/g, "/"));
+    const prose = "### Review approach\n\nUse **small** steps and `checks`.\n\n- First\n- Next\n\n```mermaid\ngraph LR; A-->B;\n```\n\n![Remote diagram](https://remote.example/diagram.svg)\n\n"
+      + `![Relative](docs/relative.png) ![Encoded](docs/my%20shot.png) ![Absolute](${absoluteImage})\n\n`
+      + `![Missing](docs/missing.png) ![Traversal](..%2F..%2Foutside.png) ![Outside](${outsideImage})\n\n`
+      + "<script>unsafe()</script>\n\n<svg onload=unsafe()></svg>";
+    writeFileSync(questionFile, prose);
+    mkdirSync(join(checkout, "docs"));
+    // Synthetic PNGs only; the outside file proves refusal rather than a missing-file result.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=", "base64");
+    for (const name of ["relative.png", "my shot.png", "absolute shot.png"]) writeFileSync(join(checkout, "docs", name), png);
+    writeFileSync(outside, png);
     await api("POST", `/api/projects/${project.id}/trust`);
     await api("PUT", "/api/preferences", { values: { auto_thread_titles: false } });
     const thread = await api<{ id: string }>("POST", "/api/threads", { project_id: project.id, engine: "codex", title: "Question", model: null, worktree: null, skill_profile: null });
@@ -109,6 +127,18 @@ child.on("exit", (code) => process.exit(code ?? 1));
     await firstLine(vite, (line) => line.includes(`:${port}/`));
     await page.setViewportSize({ width: 1280, height: 900 });
     const remoteRequests: string[] = [];
+    const remoteMediaRequests: string[] = [];
+    const rawResponses = new Map<string, number>();
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/media/image") remoteMediaRequests.push(url.pathname);
+    });
+    page.on("response", (response) => {
+      const url = new URL(response.url());
+      if (url.pathname === `/api/threads/${thread.id}/files/raw`) {
+        rawResponses.set(url.searchParams.get("path") ?? "", response.status());
+      }
+    });
     await page.route("https://remote.example/**", (route) => { remoteRequests.push(route.request().url()); return route.abort(); });
     await page.goto(`http://localhost:${port}/?token=${ready.token}#/threads/${thread.id}`);
     await api("POST", `/api/threads/${thread.id}/runs`, { prompt: "[question] Show the review question" });
@@ -119,9 +149,34 @@ child.on("exit", (code) => process.exit(code ?? 1));
     await expect(panel.getByRole("img", { name: "Diagram", exact: true })).toBeVisible();
     await expect(panel.locator("script")).toHaveCount(0);
     await expect(panel.getByRole("link", { name: "Remote diagram" })).toHaveAttribute("href", "https://remote.example/diagram.svg");
-    await expect(panel.locator("img, video, iframe")).toHaveCount(0);
+    for (const name of ["Relative", "Encoded", "Absolute"]) {
+      const image = panel.getByRole("img", { name, exact: true });
+      await image.scrollIntoViewIfNeeded();
+      await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true);
+    }
+    await expect(panel.getByText("Image unavailable · Missing", { exact: true })).toBeVisible();
+    await expect(panel.getByText("Image unavailable · Traversal", { exact: true })).toBeVisible();
+    expect(rawResponses.get("docs/relative.png")).toBe(200);
+    expect(rawResponses.get("docs/my shot.png")).toBe(200);
+    expect(rawResponses.get("docs/absolute shot.png")).toBe(200);
+    expect(rawResponses.get("docs/missing.png")).toBe(404);
+    expect(rawResponses.get("../../outside.png")).toBe(400);
+    expect([...rawResponses.keys()].sort()).toEqual([
+      "docs/relative.png", "docs/my shot.png", "docs/absolute shot.png", "docs/missing.png", "../../outside.png",
+    ].sort());
+    await expect(panel).toContainText(`![Outside](${outsideImage})`);
+    await expect(panel.locator("img")).toHaveCount(3);
+    await expect(panel.locator("video, iframe, svg[onload]")).toHaveCount(0);
     expect(remoteRequests).toEqual([]);
+    expect(remoteMediaRequests).toEqual([]);
     await expect(panel).toContainText("<script>unsafe()</script>");
+    await expect(panel).toContainText("<svg onload=unsafe()></svg>");
+    await panel.getByRole("button", { name: "Expand Encoded", exact: true }).click();
+    const imageDialog = page.getByRole("dialog", { name: "Encoded", exact: true });
+    await expect(imageDialog.getByRole("img", { name: "Encoded", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(imageDialog).toBeHidden();
+    await expect(panel.getByRole("button", { name: "Expand Encoded", exact: true })).toBeFocused();
     await page.screenshot({ path: info.outputPath("question-markdown.png") });
     await panel.getByRole("button", { name: "Small batch", exact: true }).click();
     const custom = panel.getByRole("group", { name: "Review", exact: true }).getByRole("textbox");
