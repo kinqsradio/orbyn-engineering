@@ -7,6 +7,7 @@ mod links;
 mod menu;
 mod shell_state;
 mod system;
+mod window_actions;
 
 use core_process::{CoreProcess, ServiceMessage};
 use links::ServicePort;
@@ -415,9 +416,12 @@ fn main() {
         })
         .on_window_event(|window, event| match event {
             // Closing keeps agents running; Quit in the tray stops them.
-            WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
+            WindowEvent::CloseRequested { api, .. } if window_actions::hide_on_close(window.label()) => {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            WindowEvent::Destroyed => {
+                window.app_handle().state::<Zoom>().1.lock().expect("viewer zoom").forget(window.label());
             }
             // A permission is granted in System Settings, away from this window.
             WindowEvent::Focused(true) => system::report(window.app_handle()),

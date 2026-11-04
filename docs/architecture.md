@@ -1452,7 +1452,11 @@ runs. A second launch hands its links to the first and exits.
 path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
 the window, and everything else goes to the windows as a `command`, the same ones keys
 run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
-is kept beside the window state in the app's config folder.
+of the main window is kept beside its window state in the app's config folder. Native
+Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
+application window; without one they do nothing. Viewer zoom is independent and transient.
+Main-window close hides it for the tray and running service; viewer close destroys only
+that viewer. App-wide commands such as Settings still reveal and target the main window.
 
 The service owns the rule for running work and sends `activity` when it changes: the
 counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
