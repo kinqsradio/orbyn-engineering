@@ -17,6 +17,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { SiteIcon } from "./SiteIcon";
 import {
   RESIZE_HANDLES,
   RESIZE_KEY_HINT,
@@ -693,6 +694,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
                 setActiveId(tab.id);
               }}
             >
+              <SiteIcon tab={tab} />
               {tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"}
             </button>
             <IconButton

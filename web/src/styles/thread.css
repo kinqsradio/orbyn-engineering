@@ -3189,6 +3189,8 @@ button.detail-row:hover {
 }
 
 /* Browser surface */
+.browser-tab-icon { object-fit: contain; flex-shrink: 0; }
+.browser-tabs button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; }
 .browser-panel {
   display: flex;
   flex-direction: column;

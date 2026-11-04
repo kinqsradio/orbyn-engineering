@@ -6,6 +6,10 @@ export type PreviewTab = { id: string, thread_id: string, url: string,
  */
 control: string, recording: boolean, viewers: number, width: number, height: number, can_go_back: boolean, can_go_forward: boolean, title: string, 
 /**
+ * Page-declared icon; bytes must go through the bounded image proxy.
+ */
+favicon_url?: string, 
+/**
  * `1` is actual size.
  */
 zoom: number, 
