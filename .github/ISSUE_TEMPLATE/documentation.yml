@@ -7,44 +7,44 @@ labels:
 body:
   - type: markdown
     attributes:
-      value: |
-        The title starts with the kind of change this will take, in the form
-        `type(scope): summary`, such as `docs: the release steps name an old script`.
-        Kinds: feat, fix, docs, test, refactor, perf, build, ci, chore, style,
-        revert, and question for an issue that only asks something.
+      value: "Title as `docs(scope): what is wrong`."
   - type: input
     id: page
     attributes:
       label: Page or section
-      description: The file or heading that is wrong, with a link when you have one.
       placeholder: docs/architecture.md, "Renders"
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
-      label: What is wrong
-      description: Quote the text as it reads now, and say what it should say instead.
+      label: What it says now
+      description: Quote the current text.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: What it should say
     validations:
       required: true
   - type: textarea
     id: source
     attributes:
-      label: What you checked
-      description: The code, command output or page you read that shows the current text is wrong.
+      label: How you know
+      description: The code, command output or page that shows the current text is wrong.
   - type: dropdown
-    id: ai-usage
+    id: ai-used
     attributes:
       label: AI usage
-      description: Whether AI helped you find or write this.
       options:
         - Human only
         - AI helped
     validations:
       required: true
-  - type: textarea
+  - type: input
     id: ai-details
     attributes:
       label: AI details
-      description: If AI helped, the harness and version, every model by exact ID and what it did, and the effort level. Leave empty for "Human only".
-      placeholder: Claude Code 2.1.150, claude-opus-5-5 (found the stale steps), medium
+      description: If AI helped, the harness and version, each model by exact ID and what it did, and the effort.
+      placeholder: Claude Code 2.1.150, claude-opus-5-5 (reproduced it), medium
