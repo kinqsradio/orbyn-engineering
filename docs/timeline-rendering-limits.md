@@ -76,3 +76,17 @@ Owned service and browser processes stopped without cleanup errors.
 This qualifies this Codex success/failure path through the real service and web UI.
 Other live providers, unknown-outcome variants and native desktop observation
 remain unqualified. C4 stays partial; protocol items without an outcome stay unknown.
+
+## C37 real Codex grouping observation
+
+The same single turn described above produced seven command calls in the web
+timeline. Opening the completed turn showed a five-call group labelled
+`Ran 5 commands` and a two-call group labelled `Ran 1 command; 1 tool call failed`.
+The rendered child rows contained the six fixture reads and the missing-file read
+in order. The final turn folded to the outcome-aware C4 summary.
+
+This observes the group-of-five boundary with real Codex events. It does not
+qualify the live thirty-activity bound, recovery of older live rows or the native
+desktop shell. Those live-bound paths retain their existing protocol-double and
+component evidence, and C37 remains partial. No second paid turn was run to
+manufacture a longer trace.
