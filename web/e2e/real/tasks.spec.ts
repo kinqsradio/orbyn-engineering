@@ -153,15 +153,18 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
   const details = page.getByRole("complementary", { name: "Thread details" });
   const automations = details.getByRole("list", { name: "Automations" });
   await expect(automations).toContainText("Nightly review");
+  await expect(automations.getByRole("listitem")).toHaveCount(1);
+  await expect(automations).not.toContainText("On pushes");
 
-  await details.getByRole("switch", { name: "Pause Nightly review" }).click();
+  await details.getByRole("switch", { name: "Enable Nightly review" }).click();
   await expect.poll(async () => (await stored())?.enabled).toBe(false);
-  await expect(details.getByRole("switch", { name: "Resume Nightly review" })).not.toBeChecked();
-  await details.getByRole("switch", { name: "Resume Nightly review" }).click();
+  await expect(details.getByRole("switch", { name: "Enable Nightly review" })).not.toBeChecked();
+  await details.getByRole("switch", { name: "Enable Nightly review" }).click();
   await expect.poll(async () => (await stored())?.enabled).toBe(true);
+  await expect(details.getByRole("switch", { name: "Enable Nightly review" })).toBeChecked();
 
   await details.getByRole("button", { name: "Run Nightly review now" }).click();
-  await expect.poll(async () => (await stored())?.last_status).not.toBe("never");
+  await expect.poll(async () => (await stored())?.last_status).toBe("started");
 
   await details.getByRole("button", { name: "Edit Nightly review" }).click();
   await expect(page).toHaveURL((url) => url.hash === `#/settings/tasks?task=${task.id}`);

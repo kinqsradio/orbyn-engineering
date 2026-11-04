@@ -39,7 +39,7 @@ export function useAsync<T>(key: string, load: (signal: AbortSignal) => Promise<
     const abort = new AbortController();
     controller.current = abort;
     setState((previous) => ({ ...previous, refreshing: true }));
-    loader.current(abort.signal).then(
+    return loader.current(abort.signal).then(
       (data) => {
         if (id === generation.current) {
           setState({ status: "ready", data, error: null, refreshing: false });

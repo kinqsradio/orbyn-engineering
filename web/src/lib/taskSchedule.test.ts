@@ -60,3 +60,12 @@ it("adds the next run, pause state or failure to the schedule", () => {
 it("marks a next run that is already due without claiming it is in the future", () => {
   expect(scheduleLine(task({ next_run_at: new Date(now - 5 * 60_000).toISOString() }), now)).toBe("Every 60 min · overdue");
 });
+
+it("treats the minute around the due time as due, not as next or overdue", () => {
+  const at = (offset: number) => new Date(now + offset).toISOString();
+  expect(scheduleLine(task({ next_run_at: at(30_000) }), now)).toBe("Every 60 min · due");
+  expect(scheduleLine(task({ next_run_at: at(0) }), now)).toBe("Every 60 min · due");
+  expect(scheduleLine(task({ next_run_at: at(-30_000) }), now)).toBe("Every 60 min · due");
+  expect(scheduleLine(task({ next_run_at: at(-61_000) }), now)).toBe("Every 60 min · overdue");
+  expect(scheduleLine(task({ next_run_at: at(60_000) }), now)).toBe("Every 60 min · next in 1 min");
+});

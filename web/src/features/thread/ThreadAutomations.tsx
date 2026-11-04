@@ -4,7 +4,7 @@ import { request } from "../../api/client";
 import type { ScheduledTask } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useNow } from "../../lib/useNow";
-import { scheduleLine, taskTone } from "../../lib/taskSchedule";
+import { scheduleLine, taskTone, type TaskTone } from "../../lib/taskSchedule";
 import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
@@ -25,11 +25,25 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
   const bound = (tasks.data ?? []).filter((task) => task.thread_id === threadId);
   const now = useNow(bound.some((task) => task.enabled && task.next_run_at !== null), 30_000);
   const reload = tasks.reload;
+  const dueAt = bound.reduce(
+    (earliest, task) =>
+      task.enabled && task.next_run_at ? Math.min(earliest, new Date(task.next_run_at).getTime()) : earliest,
+    Number.POSITIVE_INFINITY,
+  );
+  const refreshedAt = useRef(Date.now());
 
   useEffect(() => {
-    if (wasInSettings.current && !inSettings) reload();
+    if (wasInSettings.current && !inSettings) void reload();
     wasInSettings.current = inSettings;
   }, [inSettings, reload]);
+
+  // A fired task gets a new next_run_at in the service. Re-read once the old one
+  // passes so the row cannot stay "overdue" while the task keeps running.
+  useEffect(() => {
+    if (!Number.isFinite(dueAt) || now < dueAt + 5_000 || now - refreshedAt.current < 60_000) return;
+    refreshedAt.current = now;
+    void reload();
+  }, [dueAt, now, reload]);
 
   if (tasks.status === "loading") return null;
   if (tasks.status === "error" && bound.length === 0) {
@@ -56,7 +70,9 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
     setPending((current) => ({ ...current, [task.id]: enabled }));
     try {
       await request("POST", `/api/tasks/${q(task.id)}/enabled`, { enabled });
-      tasks.reload();
+      // Keep the optimistic value until the reloaded row carries it; otherwise
+      // the switch snaps back to the old state while the GET is in flight.
+      await reload();
     } catch (failure) {
       pushToast(`Couldn't ${enabled ? "resume" : "pause"} ${task.name}. ${toFailure(failure).message}`);
     } finally {
@@ -73,10 +89,11 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
     setBusy(task.id);
     try {
       await request("POST", `/api/tasks/${q(task.id)}/run`);
-      tasks.reload();
     } catch (failure) {
       pushToast(`Couldn't run ${task.name}. ${toFailure(failure).message}`);
     } finally {
+      // A failed run records its reason in last_status, so refresh in both cases.
+      await reload();
       setBusy(null);
     }
   };
@@ -96,7 +113,7 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
             <li key={task.id} className="detail-row detail-row-static">
               <div className="detail-automation-icon">
                 <CalendarClock size={16} aria-hidden />
-                <span className={`detail-dot detail-dot-${tone}`} aria-hidden />
+                <span className={`detail-dot detail-dot-${tone}`} role="img" aria-label={toneLabel(tone)} />
               </div>
               <span title={`${task.name} — ${line}`}>
                 <span className="detail-automation-name">{task.name}</span>
@@ -117,7 +134,7 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
               <input
                 type="checkbox"
                 role="switch"
-                aria-label={enabled ? `Pause ${task.name}` : `Resume ${task.name}`}
+                aria-label={`Enable ${task.name}`}
                 checked={enabled}
                 disabled={busy !== null}
                 onChange={(event) => void toggle(task, event.target.checked)}
@@ -133,6 +150,13 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
       ) : null}
     </div>
   );
+}
+
+/** The dot's meaning, for readers who cannot see its colour. */
+function toneLabel(tone: TaskTone): string {
+  if (tone === "idle") return "Not run yet";
+  if (tone === "ok") return "Last run started";
+  return "Last run failed";
 }
 
 function ManageButton() {

@@ -56,7 +56,7 @@ export function ProjectActionShortcuts({ threadId }: { threadId: string }) {
     return id ? run(id) : false;
   }, (command) => activeThread() && (scripts.status !== "ready" || scripts.refreshing)
     && Boolean(command && actionIdFromCommand(command)));
-  useCommand("projectActions.reload", reload);
+  useCommand("projectActions.reload", () => void reload());
   useEffect(() => {
     window.addEventListener("focus", reload);
     return () => window.removeEventListener("focus", reload);

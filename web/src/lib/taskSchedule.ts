@@ -43,8 +43,10 @@ export function taskTone(task: Pick<ScheduledTask, "last_status">): TaskTone {
 function nextRun(iso: string, now: number): string {
   const at = new Date(iso).getTime();
   if (Number.isNaN(at)) return "";
-  if (at - now >= 0) return `next ${relativeTime(iso, now).replace(/\.$/, "")}`;
-  return at - now < -60_000 ? "overdue" : "due";
+  const diff = at - now;
+  // relativeTime says "Just now" under a minute, which reads as "next Just now".
+  if (diff >= 60_000) return `next ${relativeTime(iso, now).replace(/\.$/, "")}`;
+  return diff < -60_000 ? "overdue" : "due";
 }
 
 /** The schedule, then the next run, pause state or the last failure. */

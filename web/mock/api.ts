@@ -390,7 +390,10 @@ export function createMockApi(options: MockOptions = {}) {
       case "GET /api/updates":
         return { status: 200, body: updatesBody() };
       case "GET /api/tasks":
-        return { status: 200, body: tasks };
+        if (seg.length === 4 && seg[3] === "deliveries") return { status: 200, body: [] };
+        if (seg.length !== 2) break;
+        // Copy on read: callers hold this snapshot until their next reload.
+        return { status: 200, body: structuredClone(tasks) };
       case "POST /api/tasks": {
         const task = tasks.find((entry) => entry.id === seg[2]);
         if (!task) return err(404, "not_found", "Task not found.");

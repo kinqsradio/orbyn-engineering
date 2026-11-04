@@ -74,7 +74,7 @@ Manage link. The Settings task editor opens a linked task once and clears the
 Real `orbynd` browser qualification passes: a task bound to a thread lists in the
 details card, pauses and resumes through the enabled route, fires Run now, opens
 the editor from Edit, saves and clears the link, and the panel shows the new name
-before Manage opens the task list. Web checks and 394 unit tests pass; the details
+before Manage opens the task list. Web checks and 398 unit tests pass; the details
 and tasks real-service specs and the mock workspace spec pass. Windows native is
 unverified.
 
@@ -98,7 +98,7 @@ concurrent unit run timed out in the App streaming case at its unchanged five-
 second limit; focused 42 and full 338 reruns passed without limit changes. No cause
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
-Parity metadata at `58d86e9`: 343 declared checked, 50 partial, 139 open and 2 not
+Parity metadata at `58d86e9`: 343 declared checked, 48 partial, 141 open and 2 not
 doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
 release inputs below remain in force. No current-head hosted CI, native or Windows
 qualification is inferred.

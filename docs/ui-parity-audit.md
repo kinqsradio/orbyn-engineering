@@ -60,6 +60,7 @@ saw no harness launch of an installed Chrome. The shell needs `--in-process-gpu`
 | Timeline | Changed files | Source: per-turn tree with open diff | Flat list, Real, opens and scrolls to the file | Flat, not a tree |
 | Timeline | Subagent bar | Source: model, effort, status, Runs on its own, Open parent | Match, Real on a delegated thread | Live activity not shown in the parent |
 | Thread details | Limits | Source: remaining windows row | Match, Real from the protocol double | Checked once in five minutes per page load |
+| Thread details | Automations | Source: tasks tied to a thread, with schedule, status, pause/resume, run now, edit and manage | Match, Real | Binding is set through the API or MCP; no Settings control picks a thread yet |
 | Usage | Price and alias | Source: per-model rates, counts as | Dialog from the model row, Real | A failed save keeps the form; no Mixed price |
 | Timeline | Announcers | Source | Background threads live region, Real | Current-thread activity uses the status row |
 | Timeline | Markdown | Live: 14/22.75, p margin 10.4, h2 18/600 | Match | 0 |
