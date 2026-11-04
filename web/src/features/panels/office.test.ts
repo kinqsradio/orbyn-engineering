@@ -125,6 +125,47 @@ it("strips control characters from every string it shows", async () => {
   expect(model.blocks).toEqual([{ kind: "paragraph", text: "abcd" }]);
 });
 
+it("keeps a line break and a tab a workbook cell holds", async () => {
+  // The shape a real writer produces: openpyxl puts the cell's text in the
+  // shared string part and writes its line break as `&#10;`, and Excel writes
+  // the same for Alt+Enter.
+  const model = await readWorkbook(
+    buildXlsx(
+      [
+        {
+          name: "Notes",
+          xml: worksheet(
+            `<row r="1"><c r="A1" t="s"><v>0</v></c>` +
+              `<c r="B1" t="inlineStr"><is><t xml:space="preserve">plain&#9;tabbed</t></is></c></row>`,
+          ),
+        },
+      ],
+      ["line one&#10;line two"],
+    ),
+  );
+  expect(model.sheets).toEqual([{ name: "Notes", rows: [["line one\nline two", "plain\ttabbed"]] }]);
+});
+
+it("takes a text box's text from one branch of an alternate content block", async () => {
+  const alternate =
+    `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">` +
+    `<mc:Choice Requires="wps"><w:drawing><w:txbxContent>${docxParagraph("Inside the box")}</w:txbxContent></w:drawing></mc:Choice>` +
+    `<mc:Fallback><w:pict><w:txbxContent>${docxParagraph("Inside the box")}</w:txbxContent></w:pict></mc:Fallback>` +
+    `</mc:AlternateContent>`;
+  const model = await read(buildDocx(`<w:p><w:r><w:t>before</w:t></w:r><w:r>${alternate}</w:r><w:r><w:t>after</w:t></w:r></w:p>`));
+  expect(model.blocks).toEqual([{ kind: "paragraph", text: "beforeInside the boxafter" }]);
+});
+
+it("does not print a body-level alternate content block twice either", async () => {
+  const alternate =
+    `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">` +
+    `<mc:Choice Requires="wps">${docxParagraph("Chosen")}</mc:Choice>` +
+    `<mc:Fallback>${docxParagraph("Chosen")}</mc:Fallback>` +
+    `</mc:AlternateContent>`;
+  const model = await read(buildDocx(alternate));
+  expect(model.blocks).toEqual([{ kind: "paragraph", text: "Chosen" }]);
+});
+
 it("reads what a damaged part still holds", async () => {
   const model = await read(buildOfficePackage({ "word/document.xml": `<w:document><w:body><w:p><w:r><w:t>cut` }));
   expect(model.blocks).toEqual([{ kind: "paragraph", text: "cut" }]);

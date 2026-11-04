@@ -109,13 +109,36 @@ export interface OfficeParts {
 /** The part a Word document keeps its body in. */
 const DOCX_DOCUMENT_PART = "word/document.xml";
 
-/** Control characters and line breaks added by markup never come from the text. */
+/** The controls that are genuinely noise, in one test: below a tab, between a
+ * newline and a space, and the two control blocks. A tab and a newline are not
+ * among them, because a cell's own text can hold either. */
+function isNoise(code: number): boolean {
+  return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+}
+
+/** Every control character and line break: a name, an attribute, or a run of
+ * text, where a break can only have come from markup this reader already
+ * turns into one (`w:tab`, `w:br`). */
 export function stripControlChars(text: string): string {
   let clean = "";
   for (const character of text) {
     const code = character.codePointAt(0) ?? 0;
     if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) continue;
     clean += character;
+  }
+  return clean;
+}
+
+/**
+ * The noise taken out of a string whose own tabs and line breaks are content:
+ * a workbook cell, where Alt+Enter is a real `&#10;` in the file. The grid
+ * shows one so the reader can see it, and the markup the scanner drops is
+ * never a line break, so nothing here invents one.
+ */
+export function stripNoise(text: string): string {
+  let clean = "";
+  for (const character of text) {
+    if (!isNoise(character.codePointAt(0) ?? 0)) clean += character;
   }
   return clean;
 }
@@ -189,10 +212,10 @@ function parseXml(source: string): XmlElement {
     const top = open[open.length - 1];
     if (!top) break;
     if (start < 0) {
-      top.text += stripControlChars(decodeEntities(source.slice(at)));
+      top.text += stripNoise(decodeEntities(source.slice(at)));
       break;
     }
-    top.text += stripControlChars(decodeEntities(source.slice(at, start)));
+    top.text += stripNoise(decodeEntities(source.slice(at, start)));
     if (source.startsWith("<!--", start)) {
       const end = source.indexOf("-->", start + 4);
       at = end < 0 ? source.length : end + 3;
@@ -201,7 +224,7 @@ function parseXml(source: string): XmlElement {
     if (source.startsWith("<![CDATA[", start)) {
       const end = source.indexOf("]]>", start + 9);
       const stop = end < 0 ? source.length : end;
-      top.text += stripControlChars(source.slice(start + 9, stop));
+      top.text += stripNoise(source.slice(start + 9, stop));
       at = end < 0 ? source.length : end + 3;
       continue;
     }
@@ -345,11 +368,22 @@ function paragraphText(paragraph: XmlElement): string {
   return text;
 }
 
+/**
+ * An `mc:Fallback` block repeats what its `mc:Choice` already said, in markup
+ * for a reader that knows none of the newer names: Word writes the same
+ * `w:txbxContent` in both branches of a text box, so descending into both
+ * prints that box's text twice.
+ */
+function isFallback(node: XmlElement): boolean {
+  return localName(node.name) === "Fallback";
+}
+
 function nodeText(node: XmlElement): string {
   const name = localName(node.name);
-  if (name === "t") return node.text;
+  if (name === "t") return stripControlChars(node.text);
   if (name === "tab") return "\t";
   if (name === "br" || name === "cr") return "\n";
+  if (isFallback(node)) return "";
   let text = "";
   for (const child of node.children) text += nodeText(child);
   return text;
@@ -381,7 +415,7 @@ function collectCellLines(parent: XmlElement, lines: string[]): void {
     if (name === "p") lines.push(paragraphText(node));
     else if (name === "tbl") {
       for (const row of children(node, "tr")) lines.push(children(row, "tc").map(cellText).join("\t"));
-    } else collectCellLines(node, lines);
+    } else if (!isFallback(node)) collectCellLines(node, lines);
   }
 }
 
@@ -391,7 +425,7 @@ function collectBlocks(parent: XmlElement, blocks: DocxBlock[]): void {
     const name = localName(node.name);
     if (name === "p") blocks.push(paragraphBlock(node));
     else if (name === "tbl") blocks.push(tableBlock(node));
-    else collectBlocks(node, blocks);
+    else if (!isFallback(node)) collectBlocks(node, blocks);
     if (blocks.length > MAX_BLOCKS) {
       throw new OfficeError(
         "office_too_many_blocks",
@@ -523,7 +557,7 @@ async function sheetGrid(parts: OfficeParts, name: string, part: string, shared:
       const reference = attr(cell, "r");
       const position = reference === null ? null : cellPosition(reference);
       if (reference !== null && position === null) continue;
-      const text = stripControlChars(cellDisplayText(cell, shared));
+      const text = stripNoise(cellDisplayText(cell, shared));
       if (text === "") continue;
       const at = position?.row ?? rowNumber;
       column = position?.column ?? column + 1;

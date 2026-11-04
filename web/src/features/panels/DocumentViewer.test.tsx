@@ -210,6 +210,22 @@ it("says so when a sheet is empty", async () => {
   expect(await screen.findByText("This sheet is empty.")).toBeInTheDocument();
 });
 
+it("keeps a cell's own line break in the grid rather than collapsing it", async () => {
+  serveFile(buildXlsx([{ name: "Notes", xml: worksheet("") }]));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="book.xlsx"
+      kind="xlsx"
+      run={answers({ format: "xlsx", sheets: [{ name: "Notes", rows: [["line one\nline two"]] }] })}
+    />,
+  );
+  const cell = await screen.findByRole("cell", { name: /line one/ });
+  // The grid's own style is `white-space: pre-wrap`, so the break is a second
+  // line on screen; the text must reach it unbroken for that to work.
+  expect(cell.textContent).toBe("line one\nline two");
+});
+
 it("shows a spreadsheet refusal under the spreadsheet's own title", async () => {
   serveFile(buildXlsx([{ name: "Tall", xml: worksheet("") }]));
   render(
