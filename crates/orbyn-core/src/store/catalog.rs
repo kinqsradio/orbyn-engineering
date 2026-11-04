@@ -239,9 +239,15 @@ impl Store {
     /// Database size and what `VACUUM` would give back.
     pub fn database_storage(&self) -> Result<(u64, u64)> {
         let conn = self.reader();
-        let page: u64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
-        let pages: u64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0))?;
-        let free: u64 = conn.query_row("PRAGMA freelist_count", [], |row| row.get(0))?;
+        let read_count = |pragma: &str| {
+            conn.query_row(pragma, [], |row| {
+                let value: i64 = row.get(0)?;
+                u64::try_from(value).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, value))
+            })
+        };
+        let page = read_count("PRAGMA page_size")?;
+        let pages = read_count("PRAGMA page_count")?;
+        let free = read_count("PRAGMA freelist_count")?;
         Ok((page * pages, page * free))
     }
 

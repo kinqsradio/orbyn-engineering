@@ -772,6 +772,22 @@ fn migrations_apply_once() {
 }
 
 #[test]
+fn fresh_database_reports_storage_and_preserves_writes_after_reopen() {
+    let f = fixture();
+    let (bytes, reclaimable) = f.store.database_storage().unwrap();
+    assert!(bytes > 0);
+    assert!(reclaimable <= bytes);
+    f.store.set_setting("storage-test", "persisted").unwrap();
+    drop(f.store);
+
+    let reopened = Store::open(&f.path, "epoch-b").unwrap();
+    assert_eq!(
+        reopened.setting("storage-test").unwrap().as_deref(),
+        Some("persisted")
+    );
+}
+
+#[test]
 fn events_are_gapless_per_thread_and_survive_reopen() {
     let f = fixture();
     let run = running(&f.store, &f.thread);
