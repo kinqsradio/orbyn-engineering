@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { useAsync } from "./useAsync";
 
 describe("useAsync", () => {
+  it("keeps confirmed data when a read started before setData finishes late", async () => {
+    let finishRead!: (value: string) => void;
+    const { result } = renderHook(() => useAsync("task", () => new Promise<string>((resolve) => {
+      finishRead = resolve;
+    })));
+    await waitFor(() => expect(finishRead).toBeDefined());
+    act(() => result.current.setData("saved task"));
+    await act(async () => { finishRead("old task"); });
+    expect(result.current.data).toBe("saved task");
+    expect(result.current.status).toBe("ready");
+  });
+
   it("applies only the current key's result", async () => {
     const resolvers: Record<string, (value: string) => void> = {};
     const { result, rerender } = renderHook(
