@@ -1,4 +1,4 @@
-import { AppWindow, ChevronRight, Download, ExternalLink, File, Folder, Search } from "lucide-react";
+import { AppWindow, ChevronRight, Copy, Download, ExternalLink, File, Folder, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import type { FileContent, FileEntry, SearchHit } from "../../api/types";
@@ -120,6 +120,28 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
   );
   const preferred = useUi((state) => state.preferredEditor);
   const pushToast = useUi((state) => state.pushToast);
+  const [copying, setCopying] = useState(false);
+  // Only a complete, non-binary file has text to copy: a media file is never
+  // read here, and a truncated one is not all there is.
+  const copyable = file.data && !file.data.binary && !file.data.truncated ? file.data.content : null;
+  const copyContents = async () => {
+    if (copyable === null) return;
+    const clipboard = navigator.clipboard;
+    if (!clipboard) {
+      pushToast("Couldn't copy. The clipboard is unavailable.");
+      return;
+    }
+    setCopying(true);
+    try {
+      await clipboard.writeText(copyable);
+      pushToast("Contents copied");
+    } catch (failure) {
+      const reason = failure instanceof Error && failure.message ? failure.message : "The clipboard is unavailable.";
+      pushToast(`Couldn't copy. ${reason}`);
+    } finally {
+      setCopying(false);
+    }
+  };
   const open = async () => {
     try {
       const editors = await api.editors();
@@ -146,6 +168,9 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
         </Button>
         <code title={path}>{path}</code>
         {zip && file.data ? <span className="zip-size">{formatBytes(file.data.size)}</span> : null}
+        <IconButton label="Copy contents" disabled={copyable === null || copying} onClick={() => void copyContents()}>
+          <Copy size={14} aria-hidden />
+        </IconButton>
         <a className="icon-btn" aria-label="Save file" title="Save file" href={rawUrl(threadId, path, true)} download>
           <Download size={14} aria-hidden />
         </a>
