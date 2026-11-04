@@ -11,6 +11,7 @@ import { ErrorState, Loading } from "../../ui/states";
 import { FileBytes, FileMedia, mediaKind, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
+import { primaryEditor } from "../thread/editorPreferences";
 import { useWorkspace } from "../../state/workspace";
 
 const q = encodeURIComponent;
@@ -116,7 +117,7 @@ function Viewer({ threadId, path, line, onBack }: { threadId: string; path: stri
   const open = async () => {
     try {
       const editors = await api.editors();
-      const editor = editors.find((entry) => entry.id === preferred) ?? editors[0];
+      const editor = primaryEditor(editors, preferred);
       if (!editor) return;
       await api.openInEditor(threadId, { path, editor: editor.id, ...(line ? { line } : {}) });
     } catch (failure) {

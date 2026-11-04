@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { KeybindingRule } from "../api/types";
-import { isTerminalShortcut, runHandlers, setTerminalRules, useCommand } from "./shortcuts";
+import { isTerminalShortcut, commandShortcut, formatShortcut, runHandlers, setTerminalRules, useCommand } from "./shortcuts";
 
 const command = "script.fixture-action.run";
 const rule = (key: string, when: string | null = null): KeybindingRule => ({ key, command, when, remove: false });
@@ -60,4 +60,21 @@ it("does not reserve action keys for an inactive owner, a dialog, or repeated ev
   dialogOpen = false;
   expect(isTerminalShortcut(key("k", { ctrlKey: true, repeat: true }))).toBe(false);
   expect(isTerminalShortcut(key("k", { ctrlKey: true, isComposing: true }))).toBe(false);
+});
+
+it("formats rules the way each platform writes them", () => {
+  expect(formatShortcut("mod+o", "MacIntel")).toBe("⌘O");
+  expect(formatShortcut("mod+o", "Win32")).toBe("Ctrl+O");
+  expect(formatShortcut("mod+shift+alt+p", "MacIntel")).toBe("⌘⌥⇧P");
+  expect(formatShortcut("mod+shift+alt+p", "Linux x86_64")).toBe("Ctrl+Alt+Shift+P");
+  expect(formatShortcut("ctrl+space", "MacIntel")).toBe("⌃Space");
+  expect(formatShortcut("esc", "Win32")).toBe("Esc");
+  expect(formatShortcut("mod+[", "MacIntel")).toBe("⌘[");
+});
+
+it("reads a command's key from the service, the fallback, or a removed rule", () => {
+  expect(commandShortcut([{ key: "mod+shift+o", command: "editor.openFavorite", when: null, remove: false }], "editor.openFavorite")).toBe("mod+shift+o");
+  expect(commandShortcut(null, "editor.openFavorite")).toBe("mod+o");
+  expect(commandShortcut([{ key: "mod+o", command: "editor.openFavorite", when: null, remove: true }], "editor.openFavorite")).toBeNull();
+  expect(commandShortcut([], "editor.openFavorite")).toBe("mod+o");
 });

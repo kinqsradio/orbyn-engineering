@@ -114,6 +114,52 @@ export function whenHolds(when: string | null, context: WhenContext): boolean {
   );
 }
 
+const KEY_LABELS: Record<string, string> = {
+  space: "Space",
+  esc: "Esc",
+  escape: "Esc",
+  enter: "Enter",
+  tab: "Tab",
+  backspace: "Backspace",
+  delete: "Delete",
+  home: "Home",
+  end: "End",
+  pageup: "PageUp",
+  pagedown: "PageDown",
+  up: "↑",
+  down: "↓",
+  left: "←",
+  right: "→",
+};
+
+/** A rule's key as people write it: mod+o is ⌘O on macOS and Ctrl+O elsewhere. */
+export function formatShortcut(rule: string, platform = navigator.platform): string {
+  const parts = rule.toLowerCase().split(/\+(?=.)/);
+  const key = parts.pop() ?? "";
+  const has = (name: string) => parts.includes(name);
+  const onMac = /mac/i.test(platform);
+  const modifiers: string[] = [];
+  const add = (label: string) => {
+    if (!modifiers.includes(label)) modifiers.push(label);
+  };
+  if (has("mod")) add(onMac ? "⌘" : "Ctrl");
+  if (has("ctrl")) add(onMac ? "⌃" : "Ctrl");
+  if (has("meta") || has("cmd")) add(onMac ? "⌘" : "Meta");
+  if (has("alt")) add(onMac ? "⌥" : "Alt");
+  if (has("shift")) add(onMac ? "⇧" : "Shift");
+  const label = KEY_LABELS[key] ?? (key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1));
+  return onMac ? `${modifiers.join("")}${label}` : [...modifiers, label].join("+");
+}
+
+/** The active key for a command, from the service's rules or the fallback. */
+export function commandShortcut(rules: KeybindingRule[] | null | undefined, command: string): string | null {
+  const known = rules?.filter((rule) => rule.command === command) ?? [];
+  const chosen = known.length > 0
+    ? known.find((rule) => !rule.remove)
+    : FALLBACK_RULES.find((rule) => rule.command === command && !rule.remove);
+  return chosen?.key ?? null;
+}
+
 /** What applies before the service's list arrives, or if it can't be read. */
 export const FALLBACK_RULES: KeybindingRule[] = (
   [
@@ -124,6 +170,7 @@ export const FALLBACK_RULES: KeybindingRule[] = (
     ["mod+d", "diff.toggle", "!terminalFocus"],
     ["mod+k", "commandPalette.toggle", "!terminalFocus"],
     ["mod+p", "filePicker.toggle", "!terminalFocus"],
+    ["mod+o", "editor.openFavorite", null],
     ["mod+u", "usage.open", "!terminalFocus"],
     ["mod+f", "chat.find", "!terminalFocus && !previewFocus"],
     ["mod+shift+[", "thread.previous", null],

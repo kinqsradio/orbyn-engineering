@@ -9,6 +9,8 @@ export interface MenuItem {
   disabled?: boolean;
   destructive?: boolean;
   separatorBefore?: boolean;
+  /** Shown right-aligned, such as the key that runs the same command. */
+  shortcut?: string;
   /** Opens a submenu instead of acting. */
   children?: MenuItem[];
   onSelect?(): void;
@@ -125,6 +127,7 @@ function MenuList({
             >
               {item.icon}
               <span>{item.label}</span>
+              {item.shortcut ? <span className="menu-shortcut">{item.shortcut}</span> : null}
               {item.children ? <ChevronRight size={14} className="menu-chev" aria-hidden /> : null}
             </button>
           </FragmentRow>
