@@ -1098,7 +1098,14 @@ frame's `src` is built on the client from the thread, the render id and the fram
 (`/api/threads/<thread>/renders/<id>?render=<frame token>`) and never from a `token=`. The
 expanded view is a dialog with a zoom control from 50% to 200%: the frame is laid out at
 1/zoom and scaled back, so the card's height stays the height on screen. Nothing measures
-the page (C23), so the height is the height the call asked for, or 480.
+the page, so the height is the height the call asked for, or 480.
+
+C23 verifies the render surface in the real-service Playwright suite using the
+headless shell already installed for E2E. A published canvas is captured inside the
+same sandbox at 320 by 240 CSS pixels. The captured PNG is decoded to check its
+dimensions and known background and shape colours, with no console or page errors.
+The PNG is attached to the test result. This adds no browser download or runtime
+verification API; automatic page measurement remains unimplemented.
 
 ## Approval lifecycle
 
@@ -1470,7 +1477,7 @@ optional `height` (120 to 2000, 480 by default), publishes with the same store a
 HTTP route, and answers with the id, the route, the frame token, the title, the images
 copied, the stored size and the height. It carries an effect, so the gate asks. The route
 it returns has no query; a client builds the frame URL with `?render=`. Nothing measures
-the page yet (C23), so the height the call asks for is the height it gets, and the tool
+the page yet, so the height the call asks for is the height it gets, and the tool
 says so.
 
 ## Computer gateway
