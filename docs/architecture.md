@@ -179,6 +179,12 @@ true` always asks. A failure, a stand-in or an answer with no models never repla
 one stays, with `error` saying why, and a read of Claude stops at 4 MiB. With no list
 yet, a failure is reported with the list empty rather than as an error.
 
+The provider card offers Refresh models even when discovery returned no models.
+It asks with `refresh=true`, keeps the available list while loading or after a
+transport failure, and shows a retryable discovery error. A later refresh owns
+its result: an older response or failure cannot overwrite it. These caches stay
+in process memory; this does not add a hosted manifest or a cache across restarts.
+
 A selection is a model, an effort and `options` by `ModelOption` id: `service_tier`
 (`default` is Standard), `fast_mode` (`on`, `off`), `mode` and `config:<id>` for ACP.
 It belongs to the thread, is set by `PATCH`, by a turn, or by a queued message when that

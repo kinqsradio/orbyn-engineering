@@ -328,8 +328,8 @@ export const api = {
 
   engines: (signal?: AbortSignal) =>
     request<EngineStatus[]>("GET", "/api/engines", undefined, signal),
-  models: (engine: string, signal?: AbortSignal) =>
-    request<EngineModels>("GET", `/api/engines/${q(engine)}/models`, undefined, signal),
+  models: (engine: string, signal?: AbortSignal, refresh = false) =>
+    request<EngineModels>("GET", `/api/engines/${q(engine)}/models${refresh ? "?refresh=true" : ""}`, undefined, signal),
   switchEngine: (threadId: string, engine: string, model: string | null) =>
     request<Thread>("POST", `/api/threads/${q(threadId)}/switch-engine`, { engine, model }),
   refreshEngines: () => request<EngineStatus[]>("POST", "/api/engines/refresh"),

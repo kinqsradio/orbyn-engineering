@@ -67,3 +67,27 @@ After each slice, update its parity row with observed evidence and remaining
 dependencies. Put unfinished work in a repository issue linked to the row, as
 [CONTRIBUTING.md](../CONTRIBUTING.md) requires. Missing engine access does not
 waive the required current-head CI checks or the maintainer's merge decision.
+
+## I40 implementation evidence — 5 November 2026
+
+The provider card now offers forced discovery, including after an initially empty
+or failed list. It retains the available models during refresh or a transport
+failure, reports failure, and permits retry. A newer refresh fences older replies
+and failures. The existing service caches remain in process memory.
+
+On Windows, real `orbynd` used an unmodified copy of installed Codex 0.160.0 under
+fresh task-owned profile/configuration/data directories and an ephemeral credential
+store. The service reported `logged_out` and discovered eight models. Making only
+that task-owned executable copy unavailable caused forced discovery to fail while
+retaining the good catalog with an error. Restoring the unchanged copy recovered
+the same catalog. No turn, login or installed-user-state change was involved.
+Direct app-server initialization and two `model/list` requests also succeeded
+with `account/read` reporting a null account. Catalog discovery is not evidence
+of inference access.
+
+The real-service browser test in
+`web/e2e/real/provider-model-refresh.spec.ts` covers initial failure, manual refresh,
+retaining the good list, and recovery. Its protocol double tests orchestration;
+the separate installed-Codex run establishes the actual discovery protocol.
+Claude was not invoked. Its integration and macOS protocol qualification remain
+open under #140; this evidence does not complete the whole I40 row.
