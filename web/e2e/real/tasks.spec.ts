@@ -192,5 +192,8 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
   await expect(automations).toContainText("Nightly check");
   await details.getByRole("button", { name: "Manage scheduled tasks" }).click();
   await expect(page).toHaveURL((url) => url.hash === "#/settings/tasks");
-  await expect(page.getByRole("button", { name: "Edit Nightly check" })).toBeVisible();
+  // The thread details behind Settings has an Edit button with the same name.
+  await expect(
+    page.getByRole("dialog", { name: "Settings" }).getByRole("button", { name: "Edit Nightly check" }),
+  ).toBeVisible();
 });
