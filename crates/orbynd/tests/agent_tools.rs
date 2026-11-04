@@ -30,8 +30,23 @@ async fn reading_needs_no_approval_and_stays_in_the_project() {
     std::fs::create_dir_all(&other_folder).unwrap();
     let other = service.project(&other_folder, true).await;
     let foreign = service.thread(&other, "codex").await;
+    let own = service.json(&format!("/api/threads/{thread}")).await;
+    let listed = one_turn(&service, &thread, &call("orbyn_project_list", json!({}))).await;
+    assert!(listed.contains("tool error=false"), "{listed}");
+    let projects: Value =
+        serde_json::from_str(listed.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    assert_eq!(projects.as_array().unwrap().len(), 1);
+    assert_eq!(projects[0]["id"], own["project_id"]);
+    assert_ne!(projects[0]["id"], other);
     let prompt = call("orbyn_thread_read", json!({ "thread_id": foreign }));
-    let text = one_turn(&service, &thread, &prompt).await;
+    let seen = service.all_events(&thread).await.last().unwrap()["seq"].as_i64();
+    service.admit(&thread, &prompt).await;
+    let events = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED"
+        })
+        .await;
+    let text = text_of(&events);
     assert!(text.contains("tool error=true"), "{text}");
     assert!(text.contains("not found"), "{text}");
     service.stop().await;

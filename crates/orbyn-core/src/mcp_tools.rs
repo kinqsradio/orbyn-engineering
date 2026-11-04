@@ -74,6 +74,12 @@ const fn act(
 
 const TOOLS: &[Tool] = &[
     read(
+        "orbyn_project_list",
+        "Projects visible to this caller: only its own project.",
+        &[],
+        &[],
+    ),
+    read(
         "orbyn_environment_read",
         "This service's version, platform and this thread's folder.",
         &[],
@@ -730,6 +736,7 @@ impl Core {
                 "project": self.store.project(&own.project_id)?,
                 "file": self.project_file(&own.id)?,
             }),
+            "orbyn_project_list" => json!([self.store.project(&own.project_id)?]),
             "orbyn_worktree_list" => {
                 let project = self.store.project(&own.project_id)?;
                 let found = crate::git::linked_worktrees(Path::new(&project.path)).await;
@@ -1186,6 +1193,17 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_list_is_a_read_with_no_cross_project_selector() {
+        let list = TOOLS
+            .iter()
+            .find(|t| t.name == "orbyn_project_list")
+            .unwrap();
+        assert!(!has_effect(list.name));
+        assert!(list.args.is_empty());
+        assert!(list.required.is_empty());
+    }
 
     #[test]
     fn every_word_must_match_in_any_order() {
