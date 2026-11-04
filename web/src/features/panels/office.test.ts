@@ -7,7 +7,6 @@ import {
 import {
   MAX_BLOCKS,
   MAX_CELLS,
-  MAX_COLUMNS_PER_SHEET,
   MAX_ROWS_PER_SHEET,
   MAX_SHEETS,
   cellPosition,
@@ -337,28 +336,35 @@ it("keeps a sheet whose part is there and skips one whose part is not", async ()
   expect(model.sheets).toEqual([{ name: "Kept", rows: [["Kept"]] }]);
 });
 
-it("refuses a sheet past the row cap with the cap it hit", async () => {
+it("shows the rows of a sheet that fit and marks the rest as cut", async () => {
   const tall = MAX_ROWS_PER_SHEET + 1;
-  const answer = await refused(
-    buildXlsx([{ name: "Tall", xml: worksheet(`<row r="${tall}"><c r="A${tall}"><v>1</v></c></row>`) }]),
-    "xlsx",
+  const model = await readWorkbook(
+    buildXlsx([
+      {
+        name: "Tall",
+        xml: worksheet(`<row r="1"><c r="A1"><v>1</v></c></row><row r="${tall}"><c r="A${tall}"><v>2</v></c></row>`),
+      },
+    ]),
   );
-  expect(answer.code).toBe("office_sheet_too_large");
-  expect(answer.message).toBe(
-    `The sheet "Tall" puts a value past row ${MAX_ROWS_PER_SHEET}; the viewer shows at most ${MAX_ROWS_PER_SHEET} rows.`,
-  );
+  expect(model.sheets).toEqual([{ name: "Tall", rows: [["1"]], rowsCut: true }]);
 });
 
-it("refuses a sheet past the column cap with the cap it hit", async () => {
+it("shows the columns of a sheet that fit and marks the rest as cut", async () => {
   // BM is column 65, the first one past the cap.
-  const answer = await refused(
-    buildXlsx([{ name: "Wide", xml: worksheet(`<row r="1"><c r="BM1"><v>1</v></c></row>`) }]),
-    "xlsx",
+  const model = await readWorkbook(
+    buildXlsx([
+      { name: "Wide", xml: worksheet(`<row r="1"><c r="A1"><v>1</v></c><c r="BM1"><v>2</v></c></row>`) },
+    ]),
   );
-  expect(answer.code).toBe("office_sheet_too_large");
-  expect(answer.message).toBe(
-    `The sheet "Wide" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
+  expect(model.sheets).toEqual([{ name: "Wide", rows: [["1"]], columnsCut: true }]);
+});
+
+it("marks neither a row nor a column cut when a sheet is inside both caps", async () => {
+  const model = await readWorkbook(
+    buildXlsx([{ name: "Fits", xml: worksheet(`<row r="${MAX_ROWS_PER_SHEET}"><c r="A1"><v>1</v></c></row>`) }]),
   );
+  expect(model.sheets[0]?.rowsCut).toBeUndefined();
+  expect(model.sheets[0]?.columnsCut).toBeUndefined();
 });
 
 it("keeps the cells one 200-sheet workbook lays out bounded", async () => {

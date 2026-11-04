@@ -38,8 +38,7 @@ export type OfficeRefusal =
   | "office_unreadable"
   | "office_too_many_blocks"
   | "office_too_many_sheets"
-  | "office_too_many_cells"
-  | "office_sheet_too_large";
+  | "office_too_many_cells";
 
 /** A refusal to read a document, with a message ready to show. */
 export class OfficeError extends Error {
@@ -85,8 +84,12 @@ export interface DocxDocument {
 /** One worksheet: its tab's label and the used range as display text. */
 export interface OfficeSheet {
   name: string;
-  /** Rows from row 1, each padded to the widest used column. */
+  /** Rows from row 1, each holding the cells up to its own last value. */
   rows: string[][];
+  /** Set when the sheet holds a value past the row cap, which is not shown. */
+  rowsCut?: boolean;
+  /** Set when the sheet holds a value past the column cap, which is not shown. */
+  columnsCut?: boolean;
 }
 
 export interface XlsxDocument {
@@ -570,11 +573,20 @@ function cellDisplayText(cell: XmlElement, shared: readonly string[]): string {
  * The used range: a value's own reference decides where it sits, so a cell at
  * `D5` stays in column D. A reference that cannot be read is skipped rather
  * than fatal, and a cell with nothing to show does not count towards the caps.
+ *
+ * A value past a cap is left out and the sheet says so, because refusing the
+ * whole sheet would hide the part of it that does fit.
  */
-async function sheetGrid(parts: OfficeParts, name: string, part: string, shared: readonly string[]): Promise<string[][]> {
+async function sheetGrid(
+  parts: OfficeParts,
+  part: string,
+  shared: readonly string[],
+): Promise<{ rows: string[][]; rowsCut: boolean; columnsCut: boolean }> {
   const sheet = await readPartXml(parts, part);
   const data = child(sheet, "sheetData");
   const values: string[][] = [];
+  let rowsCut = false;
+  let columnsCut = false;
   let rowNumber = 0;
   for (const row of data === null ? [] : children(data, "row")) {
     const declared = Number.parseInt(attr(row, "r") ?? "", 10);
@@ -589,16 +601,12 @@ async function sheetGrid(parts: OfficeParts, name: string, part: string, shared:
       const at = position?.row ?? rowNumber;
       column = position?.column ?? column + 1;
       if (column > MAX_COLUMNS_PER_SHEET) {
-        throw new OfficeError(
-          "office_sheet_too_large",
-          `The sheet "${name}" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
-        );
+        columnsCut = true;
+        continue;
       }
       if (at > MAX_ROWS_PER_SHEET) {
-        throw new OfficeError(
-          "office_sheet_too_large",
-          `The sheet "${name}" puts a value past row ${MAX_ROWS_PER_SHEET}; the viewer shows at most ${MAX_ROWS_PER_SHEET} rows.`,
-        );
+        rowsCut = true;
+        continue;
       }
       const line = values[at - 1] ?? (values[at - 1] = []);
       line[column - 1] = text;
@@ -613,7 +621,7 @@ async function sheetGrid(parts: OfficeParts, name: string, part: string, shared:
     while (line.length > 0 && line.at(-1) === "") line.pop();
     rows.push(line);
   }
-  return rows;
+  return { rows, rowsCut, columnsCut };
 }
 
 export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
@@ -648,7 +656,8 @@ export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
     // A workbook that names a part it does not carry still opens: its other
     // sheets are readable, and inventing an empty one would misstate the file.
     if (findPart(parts.names, part) === null) continue;
-    const rows = await sheetGrid(parts, name, part, shared);
+    const grid = await sheetGrid(parts, part, shared);
+    const { rows } = grid;
     // A sheet is read one at a time, and its own caps hold each one to 320,000
     // cells, so the workbook is refused once the sheets together pass the
     // budget rather than after every sheet has been laid out.
@@ -660,7 +669,12 @@ export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
         `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
       );
     }
-    sheets.push({ name, rows });
+    sheets.push({
+      name,
+      rows,
+      ...(grid.rowsCut ? { rowsCut: true } : {}),
+      ...(grid.columnsCut ? { columnsCut: true } : {}),
+    });
   }
   if (sheets.length === 0) {
     throw new OfficeError("office_unreadable", "This workbook's worksheets are missing from the file, so the viewer can't read it.");

@@ -2,9 +2,19 @@ import { useState } from "react";
 import { ApiFailure } from "../../api/client";
 import { useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
-import { rawUrl } from "./FileMedia";
+import { BytesFallback, rawUrl } from "./FileMedia";
 import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
-import type { DocxBlock, DocxDocument, OfficeKind, OfficeRequest, OfficeResponse, XlsxDocument } from "./office";
+import {
+  MAX_COLUMNS_PER_SHEET,
+  MAX_ROWS_PER_SHEET,
+  type DocxBlock,
+  type DocxDocument,
+  type OfficeKind,
+  type OfficeRequest,
+  type OfficeResponse,
+  type OfficeSheet,
+  type XlsxDocument,
+} from "./office";
 
 /**
  * The Word and spreadsheet formats this viewer opens, by name. `.docm` and
@@ -114,6 +124,32 @@ function DocxBody({ document, path }: { document: DocxDocument; path: string }) 
   );
 }
 
+/**
+ * The refusals that mean the file is not the document the viewer expected, or
+ * is too large to hand to a reader at all. The bytes are still there to look
+ * at, so those refusals offer them instead of ending the panel.
+ */
+const NO_BYTES_LOST: ReadonlySet<string> = new Set([
+  "office_unreadable",
+  "zip_unreadable",
+  "zip_too_large",
+  "no_decompression",
+  "entry_unsupported",
+]);
+
+/** What a sheet's own caps left out, said in the grid rather than in silence. */
+function CutNotice({ sheet }: { sheet: OfficeSheet }) {
+  const parts: string[] = [];
+  if (sheet.rowsCut) parts.push(`the first ${MAX_ROWS_PER_SHEET} rows`);
+  if (sheet.columnsCut) parts.push(`the first ${MAX_COLUMNS_PER_SHEET} columns`);
+  if (parts.length === 0) return null;
+  return (
+    <p className="office-note">
+      Showing {parts.join(" and ")} of &quot;{sheet.name}&quot;; the rest is not shown.
+    </p>
+  );
+}
+
 /** The grid's column label: A, B, ... Z, AA. */
 export function columnName(index: number): string {
   let name = "";
@@ -140,6 +176,7 @@ function BookBody({ book }: { book: XlsxDocument }) {
           </button>
         ))}
       </div>
+      <CutNotice sheet={sheet} />
       <div className="office-grid" role="tabpanel" aria-label={sheet.name}>
         {sheet.rows.length === 0 ? (
           <p className="muted office-empty">This sheet is empty.</p>
@@ -217,13 +254,20 @@ export function DocumentViewer({
   }
   const answer = document.data;
   if (!answer.ok) {
-    return (
+    const refusal = (
       <ErrorState
         compact
         title={`Couldn't read this ${noun}`}
         failure={new ApiFailure(answer.code, answer.message, 0)}
         onRetry={document.reload}
       />
+    );
+    if (size === undefined || !NO_BYTES_LOST.has(answer.code)) return refusal;
+    return (
+      <div className="office-refusal">
+        {refusal}
+        <BytesFallback threadId={threadId} path={path} size={size} />
+      </div>
     );
   }
   return answer.model.format === "docx" ? (

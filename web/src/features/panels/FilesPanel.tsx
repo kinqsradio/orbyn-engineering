@@ -193,7 +193,7 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
       ) : file.status === "error" ? (
         <ErrorState compact title="Couldn't read this file" failure={file.error} onRetry={file.reload} />
       ) : !file.data ? null : zip ? (
-        <ZipViewer threadId={threadId} path={path} />
+        <ZipViewer threadId={threadId} path={path} size={file.data.size} />
       ) : office ? (
         <DocumentViewer threadId={threadId} path={path} kind={office} size={file.data.size} />
       ) : file.data.binary ? (

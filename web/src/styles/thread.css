@@ -2428,6 +2428,29 @@ button.detail-row:hover {
   padding: 8px;
   font-size: var(--text-small);
 }
+/* What a sheet's own caps left out: said above the grid, not inside its scroll. */
+.office-note {
+  flex: none;
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--color-faint);
+  font-size: var(--text-small);
+}
+.office-refusal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+}
+.file-bytes-fallback {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 0;
+}
 .office-book {
   display: flex;
   flex: 1;

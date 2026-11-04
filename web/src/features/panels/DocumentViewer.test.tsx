@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { DocumentViewer, officeKind, runInWorker, type OfficeRun } from "./DocumentViewer";
 import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
 import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
-import type { DocxDocument, OfficeModel, OfficeRequest, OfficeResponse, XlsxDocument } from "./office";
+import { MAX_CELLS, type DocxDocument, type OfficeModel, type OfficeRequest, type OfficeResponse, type XlsxDocument } from "./office";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -272,6 +272,45 @@ it("keeps a cell's own line break in the grid rather than collapsing it", async 
   expect(cell.textContent).toBe("line one\nline two");
 });
 
+it("says which rows and columns of a sheet it left out", async () => {
+  serveFile(buildXlsx([{ name: "Tall", xml: worksheet("") }]));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="book.xlsx"
+      kind="xlsx"
+      run={answers({
+        format: "xlsx",
+        sheets: [{ name: "Tall", rows: [["1", "2"]], rowsCut: true, columnsCut: true }],
+      })}
+    />,
+  );
+  // What fits is still shown, and the cut is said out loud rather than hidden.
+  const grid = await screen.findByRole("tabpanel", { name: "Tall" });
+  expect(within(grid).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["1", "2"]);
+  expect(screen.getByText("Showing the first 5000 rows and the first 64 columns of \"Tall\"; the rest is not shown.")).toBeInTheDocument();
+});
+
+it("offers the file's own bytes when it can't be read as a document", async () => {
+  const user = userEvent.setup();
+  serveFile(new Uint8Array(Buffer.from("definitely not a package")));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="broken.docx"
+      kind="docx"
+      size={30}
+      run={async () => ({ ok: false, code: "zip_unreadable", message: "This file has no zip central directory." })}
+    />,
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Couldn't read this document");
+  await user.click(screen.getByRole("button", { name: "Show the file's bytes" }));
+  expect(await screen.findByLabelText("Bytes")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Back to the reader" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("no zip central directory");
+});
+
 it("shows a spreadsheet refusal under the spreadsheet's own title", async () => {
   serveFile(buildXlsx([{ name: "Tall", xml: worksheet("") }]));
   render(
@@ -281,15 +320,15 @@ it("shows a spreadsheet refusal under the spreadsheet's own title", async () => 
       kind="xlsx"
       run={async () => ({
         ok: false,
-        code: "office_sheet_too_large",
-        message: "The sheet \"Tall\" puts a value past row 5000; the viewer shows at most 5000 rows.",
+        code: "office_too_many_cells",
+        message: `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
       })}
     />,
   );
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("Couldn't read this spreadsheet");
-  expect(alert).toHaveTextContent("past row 5000");
-  expect(alert).toHaveTextContent("office_sheet_too_large");
+  expect(alert).toHaveTextContent(`at most ${MAX_CELLS} across all its sheets`);
+  expect(alert).toHaveTextContent("office_too_many_cells");
 });
 
 it("reads a real workbook through the worker's own protocol", async () => {
