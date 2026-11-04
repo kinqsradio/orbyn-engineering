@@ -54,12 +54,14 @@ test("a running turn shows its header and streams output; Stop folds it as stopp
 
 test("rich Markdown renders: table, math, diagram, links, image and details", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await page.route("https://example.com/square.png", (route) =>
-    route.fulfill({
-      contentType: "image/svg+xml",
-      body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="red"/></svg>',
-    }),
-  );
+  // The browser now loads the authenticated proxy, not the upstream URL.
+  await page.route("**/api/media/image?**", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("url")).toBe("https://example.com/square.png");
+    return route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAAALUlEQVR4nO3NMQkAAAwDsPo3vckolED+5JKKzioWi8VisVgsFovFYrFYLB6NH6r1OhvW1o1iAAAAAElFTkSuQmCC", "base64"),
+    });
+  });
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:markdown]");
   await expect(page).toHaveURL(/#\/threads\//);

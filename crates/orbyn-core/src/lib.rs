@@ -37,6 +37,7 @@ pub mod project_scopes;
 mod project_setup;
 pub mod projects;
 pub mod questions;
+pub mod remote_images;
 pub mod renders;
 pub mod runs;
 pub mod scm;

@@ -1566,6 +1566,40 @@ and reports `ended: false`. A request can be 512 KiB and a reply is cut at 256 K
 - `Secure` is added when a proxy reports `X-Forwarded-Proto: https`; Tailscale and
   SSH tunnels are not HTTPS, so it cannot be unconditional.
 
+## Remote image security
+
+Message images use `GET /api/media/image?url=...`, an authenticated capability
+owned by Core and served by `orbynd`. Image elements may supply the launch token
+only on the exact GET/HEAD route; Host, Origin and native-origin checks still apply.
+The web and bundled desktop CSPs keep direct remote images and connections closed.
+The proxy is the decision for issue #122, rather than adding `https:` to `img-src`.
+
+An upstream URL is at most 4096 bytes, HTTPS on port 443, without user information.
+Fragments are discarded. All DNS answers (at most 16) must be public unicast;
+private, loopback, link-local, reserved and IPv6 transition ranges are refused.
+The validated addresses are pinned to that request's HTTP client, with ordinary
+TLS certificate validation, no environment proxy and no redirects. No browser
+cookies, launch token, Authorization, Referer or upstream response headers are
+forwarded. A request has five seconds including DNS and body reading; at most four
+upstream fetches run at once, and overload is refused without queuing.
+
+Only PNG, JPEG, GIF, WebP and ICO MIME/signature pairs are served, up to 5 MiB
+of actual streamed bytes. Encoded bodies, SVG, HTML, AVIF and other formats are
+refused. Successful bytes are cached in memory for 60 seconds, with FIFO eviction
+at 32 entries or 32 MiB; nothing is persisted. Browser replies are `no-store`,
+`nosniff`, `no-referrer` and sandboxed with `default-src 'none'`. Save requests
+receive an attachment disposition; Copy link keeps the original URL rather than
+exposing the launch-token-bearing proxy address. Failures show the existing
+unavailable state, with no direct-URL retry.
+
+This is still an outbound request selected by untrusted agent output. The image
+host sees the service's IP and the full URL, including agent-supplied query data;
+tracking and URL-based exfiltration remain possible. The proxy enforces network
+and resource limits; it does not establish consent or make remote content private.
+Remote videos remain outside this capability. H38 can reuse the image boundary
+when favicons are implemented, but does not gain icons here. C22's scan and render
+sandbox remain separate and receive no remote-fetch permission from this route.
+
 ## Persistence
 
 SQLite in WAL mode in the OS app-data directory. Migrations are ordered and
@@ -1708,11 +1742,13 @@ for older shells. Environment: `ORBYN_DATA_DIR`, `ORBYN_ACP_REGISTRY_URL`, `ORBY
 
 All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 `Authorization: Bearer <token>`, or the session cookie. SSE, WebSocket and
-`files/raw` also accept `?token=` because browsers cannot set headers on them.
+`files/raw` and the exact GET/HEAD `/api/media/image` route also accept `?token=`
+because browsers cannot set headers on them.
 
 | Method and path | Purpose |
 | --- | --- |
 | `GET /api/info` | `ServerInfo` |
+| `GET, HEAD /api/media/image?url=&download=` | Bounded public HTTPS raster image; authenticated, no redirects; `502 image_unavailable` on refusal/failure; `download` forces an attachment |
 | `GET /api/workspace` | `WorkspaceStatus` |
 | `POST /api/workspace/setup` | Optional. `WorkspaceSetup`: adopt a library, or ask for the clone now; `409 runs_active`, `409 library_dirty` |
 | `POST /api/workspace/update` | `{apply}`: fetch and report, or fast-forward |

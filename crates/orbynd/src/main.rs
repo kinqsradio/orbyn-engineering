@@ -6,6 +6,7 @@ mod preview_routes;
 mod pulls;
 mod raw_files;
 mod recent_events;
+mod remote_images;
 mod renders;
 mod stream;
 mod terminal_ws;
@@ -157,6 +158,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
 fn router(state: AppState) -> Router {
     let access = state.access.clone();
     let protected = Router::new()
+        .route("/api/media/image", get(remote_images::serve))
         .route("/api/info", get(api::info))
         .route("/api/projects", get(api::list_projects))
         .route("/api/projects/clone", post(api::clone_project))
@@ -814,6 +816,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         access,
         remote: args.remote,
         ui_dir: args.ui_dir.clone(),
+        images: Arc::new(orbyn_core::remote_images::ImageProxy::default()),
     });
 
     // Attach before readiness so the early parent reader cannot drop a reply

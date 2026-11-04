@@ -1,4 +1,6 @@
 import { mediaKind, rawUrl } from "../panels/FileMedia";
+import { serviceUrl } from "../../api/origin";
+import { readToken } from "../../api/token";
 
 /** A media element of a message, and everything the expanded view acts on. */
 export interface MediaItem {
@@ -9,6 +11,7 @@ export interface MediaItem {
   /** Checkout-relative, so the raw route can serve the original bytes. */
   path?: string;
   threadId?: string;
+  remoteUrl?: string;
 }
 
 /** The thread whose checkout a path in a message is read from; its cwd is the root. */
@@ -93,8 +96,13 @@ export function workspacePath(raw: string, cwd: string | null): string | null {
 /** What a message's media markdown resolves to, or null to leave the markdown as text. */
 export function resolveMediaSource(raw: string, alt: string, thread: MediaThread | null): MediaItem | null {
   const remote = remoteHref(raw);
-  // A remote video file plays here too; every other remote address is drawn as an image.
-  if (remote) return { kind: mediaKind(remotePath(remote)) === "video" ? "video" : "image", src: remote, alt };
+  if (remote) {
+    if (mediaKind(remotePath(remote)) === "video") return { kind: "video", src: remote, alt };
+    const query = new URLSearchParams({ url: remote });
+    const token = readToken();
+    if (token) query.set("token", token);
+    return { kind: "image", src: serviceUrl(`/api/media/image?${query}`), remoteUrl: remote, alt };
+  }
   if (!thread) return null;
   const path = workspacePath(raw, thread.cwd);
   const kind = path ? mediaKind(path) : null;
@@ -112,7 +120,7 @@ export function readMediaAttribute(node: Element): MediaItem | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
-    const { kind, src, alt, path, threadId } = value;
+    const { kind, src, alt, path, threadId, remoteUrl } = value;
     if ((kind !== "image" && kind !== "video") || typeof src !== "string" || !src) return null;
     return {
       kind,
@@ -120,6 +128,7 @@ export function readMediaAttribute(node: Element): MediaItem | null {
       alt: typeof alt === "string" ? alt : "",
       ...(typeof path === "string" ? { path } : {}),
       ...(typeof threadId === "string" ? { threadId } : {}),
+      ...(typeof remoteUrl === "string" ? { remoteUrl } : {}),
     };
   } catch {
     return null;
@@ -146,6 +155,7 @@ export function mediaGallery(target: Element, fallback: MediaItem): { items: Med
 
 /** Where Save sends the browser: the download route for checkout media, the URL itself for a blob. */
 export function mediaSaveUrl(item: MediaItem): string | null {
+  if (item.remoteUrl) return `${item.src}&download=true`;
   if (item.path && item.threadId) return rawUrl(item.threadId, item.path, true);
   return /^https?:/i.test(item.src) ? null : item.src;
 }
@@ -156,6 +166,7 @@ export function mediaSaveUrl(item: MediaItem): string | null {
  * lives only in this page, so it copies nothing.
  */
 export function mediaCopyTarget(item: MediaItem): string | null {
+  if (item.remoteUrl) return item.remoteUrl;
   if (item.path) return item.path;
   return /^https?:/i.test(item.src) ? item.src : null;
 }
