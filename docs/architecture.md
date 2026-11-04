@@ -1498,6 +1498,9 @@ removed from a tool, since those reach past it.
 `orbyn_project_list` therefore returns exactly the caller's one project, not the
 application's project catalog. A folder nested inside it still becomes a different
 project when registered; path containment does not grant cross-project authority.
+Thread transfer is unavailable to tools for the same reason. The product move API
+also requires a thread that has never run, which excludes moving the caller's own
+running thread even before considering the destination project.
 Claude's permission prompt passes Orbyn's own tools without asking, so each tool with
 an effect goes through the gate itself as a `tool` action, which needs a person unless
 the thread is in full access or a rule allows it. Every call is audited first. A

@@ -1206,6 +1206,11 @@ mod tests {
     }
 
     #[test]
+    fn thread_transfer_cannot_cross_the_project_boundary() {
+        assert!(!is_tool("orbyn_thread_transfer"));
+    }
+
+    #[test]
     fn every_word_must_match_in_any_order() {
         assert!(matches_words("Fix the Login page", "login fix"));
         assert!(!matches_words("Fix the login page", "login logout"));
