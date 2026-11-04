@@ -36,6 +36,7 @@ import { CodeBlock } from "./CodeBlock";
 import { Markdown } from "./Markdown";
 import { PlanCard } from "./PlanCard";
 import { proposedPlanIn, textAroundPlan } from "./proposedPlan";
+import { SentFiles } from "./SentFiles";
 import {
   LIVE_ROW_LIMIT,
   type TimelineEntry,
@@ -66,6 +67,7 @@ function Message({ item, live }: { item: MessageItem; live: boolean }) {
       <div className="msg-user" data-minimap={item.key}>
         <span className="sr-only">You said:</span>
         <p className="msg-bubble">{item.text}</p>
+        <SentFiles attachments={item.attachments} text={item.text} />
         <MessageActions text={item.text} runId={item.runId} role="user" />
       </div>
     );

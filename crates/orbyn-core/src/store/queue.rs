@@ -333,6 +333,15 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    pub fn attachment(&self, id: &str) -> Result<(Attachment, String)> {
+        let conn = self.reader();
+        let mut statement = conn.prepare_cached("SELECT * FROM attachments WHERE id = ?1")?;
+        statement
+            .query_row([id], attachment_row)
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound("attachment".into()))
+    }
+
     pub fn link_pull(&self, thread_id: &str, pull: &PullRequest) -> Result<()> {
         self.commit(|tx, _| {
             tx.execute(

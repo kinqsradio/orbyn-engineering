@@ -148,6 +148,27 @@ export async function request<T>(
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** The bytes a sent message carried. JSON requests can't carry them, so this is separate. */
+export async function attachmentBlob(id: string, signal?: AbortSignal): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(serviceUrl(`/api/attachments/${q(id)}/content`), {
+      credentials: "same-origin",
+      signal,
+      headers: authHeaders(),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiFailure(NETWORK_ERROR, "Can't reach the Orbyn service.", 0);
+  }
+  if (!response.ok) {
+    const failure = await failureFrom(response);
+    if (response.status === 401) onUnauthorized();
+    throw failure;
+  }
+  return response.blob();
+}
+
 const q = encodeURIComponent;
 
 export const api = {

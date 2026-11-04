@@ -49,11 +49,11 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `58d86e9`
+## Reconciled status at `d6e2ec4`
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
-Main has 709 rows and 384 source checkboxes ticked. Scope metadata reports 534
-included rows: 343 declared checked, 48 partial, 141 open and 2 not doable.
+Main has 709 rows and 388 source checkboxes ticked. Scope metadata reports 534
+included rows: 348 declared checked, 50 partial, 134 open and 2 not doable.
 There are 175 excluded and zero unresolved-scope rows. These are checklist
 declarations, not a fresh runtime verification count. F30 remains partial for
 missing cleanup rules and scheduling. The former 365/573 calculation is not a
@@ -64,19 +64,26 @@ builds on both, and E2E. The repository is public and has no license yet.
 
 ### Current local section
 
-The active section branch is `feat/thread-automations` in the
-`thread-automations` worktree, based on main `958c2ae`. It adds the thread details
-Automations panel for tasks bound to a thread: the schedule line and status dot,
-pause/resume, Run now for non-webhook tasks, an Edit deep link into Settings and a
-Manage link. The Settings task editor opens a linked task once and clears the
-`task` query when it closes. No contract or service change.
+The active section branch is `feat/sent-context-chips` in the
+`sent-context-chips` worktree, based on main `d6e2ec4`. It completes B65's prompt
+context chips: a sent user message keeps its attachments and typed `@path`
+mentions as read-only chips. An attachment chip opens a preview (image lightbox,
+text dialog, or download) from the new `GET /api/attachments/{id}/content`; a typed
+path chip reveals the file in the Files panel. Before its engine starts, a run logs
+`CUSTOM user.attachments` with each record's id, name, media type and size, so the
+transcript never asks the engine or the composer. No contract, schema or migration
+change.
 
-Real `orbynd` browser qualification passes: a task bound to a thread lists in the
-details card, pauses and resumes through the enabled route, fires Run now, opens
-the editor from Edit, saves and clears the link, and the panel shows the new name
-before Manage opens the task list. Web checks and 398 unit tests pass; the details
-and tasks real-service specs and the mock workspace spec pass. Windows native is
-unverified.
+Real `orbynd` browser qualification passes: the sent-context scene attaches a text
+file, sends it with `@README.md`, previews the attachment from its chip and reveals
+the typed path in the Files panel. Web checks and 405 unit tests pass; the
+sent-context real-service spec passes 1/1 and the mock workspace spec passes 24/24.
+Windows native and a packaged macOS walkthrough are unverified.
+
+M3 landed in main through `d6e2ec4`: the thread details Automations panel lists
+tasks bound to the thread, pauses and resumes them, fires Run now, and opens the
+editor from Edit. Its 398 unit tests and real-service details/tasks specs passed
+before the merge.
 
 The previous project-settings section evidence below remains historical at main
 `58d86e9`; read it as earlier evidence, not current-head qualification.
@@ -98,8 +105,8 @@ concurrent unit run timed out in the App streaming case at its unchanged five-
 second limit; focused 42 and full 338 reruns passed without limit changes. No cause
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
-Parity metadata at `58d86e9`: 343 declared checked, 48 partial, 141 open and 2 not
-doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
+Parity metadata at `d6e2ec4` with B65 ticked: 348 declared checked, 50 partial,
+134 open and 2 not doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
 release inputs below remain in force. No current-head hosted CI, native or Windows
 qualification is inferred.
 

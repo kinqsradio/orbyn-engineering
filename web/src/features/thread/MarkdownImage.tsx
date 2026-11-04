@@ -5,7 +5,7 @@ import { IconButton } from "../../ui/controls";
 const STEP = 0.25;
 
 /** The expanded view. The image is a remote URL; only local content runs in this page. */
-function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose(): void }) {
+export function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose(): void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [zoom, setZoom] = useState(1);
   useEffect(() => {

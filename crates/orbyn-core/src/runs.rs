@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use orbyn_contracts::{
-    AgUiEvent, EngineTier, ForcedStop, ModelSelection, PermissionMode, QueuedMessage, Run,
-    RunState, SteerState, Thread, ThreadGoal,
+    AgUiEvent, Attachment, EngineTier, ForcedStop, ModelSelection, PermissionMode, QueuedMessage,
+    Run, RunState, SteerState, Thread, ThreadGoal,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -404,17 +404,24 @@ impl RunManager {
         Ok(())
     }
 
-    fn attachment_files(&self, thread_id: &str, ids: &[String]) -> Result<Vec<PathBuf>> {
+    /// The files a message attaches, with the records the transcript shows.
+    fn attachment_files(
+        &self,
+        thread_id: &str,
+        ids: &[String],
+    ) -> Result<(Vec<PathBuf>, Vec<Attachment>)> {
         let stored = self.store.list_attachments(thread_id)?;
-        ids.iter()
-            .map(|id| {
-                stored
-                    .iter()
-                    .find(|(attachment, _)| attachment.id == *id)
-                    .map(|(_, path)| PathBuf::from(path))
-                    .ok_or_else(|| CoreError::Invalid("That attachment is not ready.".into()))
-            })
-            .collect()
+        let mut files = Vec::with_capacity(ids.len());
+        let mut sent = Vec::with_capacity(ids.len());
+        for id in ids {
+            let (attachment, path) = stored
+                .iter()
+                .find(|(attachment, _)| attachment.id == *id)
+                .ok_or_else(|| CoreError::Invalid("That attachment is not ready.".into()))?;
+            files.push(PathBuf::from(path));
+            sent.push(attachment.clone());
+        }
+        Ok((files, sent))
     }
 
     fn launch(
@@ -425,7 +432,18 @@ impl RunManager {
         attachments: &[String],
         root: &Path,
     ) -> Result<()> {
-        let files = self.attachment_files(&thread.id, attachments)?;
+        let (files, sent) = self.attachment_files(&thread.id, attachments)?;
+        // Written before the engine starts, so a transcript can show what the
+        // message carried without asking the engine or the composer.
+        if !sent.is_empty() {
+            self.store.append_run_event(
+                &run.id,
+                &AgUiEvent::Custom {
+                    name: "user.attachments".into(),
+                    value: json!({ "attachments": sent }),
+                },
+            )?;
+        }
         let from_checkout = self
             .engines
             .driver(&thread.engine)?

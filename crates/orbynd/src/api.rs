@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{FromRequest, Path, Query, Request, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
     AcpNativeSessionsQuery, DeleteAcpNativeSession, ImportAcpNativeSession, ModelSelection,
@@ -1214,6 +1214,39 @@ pub async fn remove_attachment(
 ) -> ApiResult<StatusCode> {
     state.core.remove_attachment(&id)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /api/attachments/{id}/content`. The bytes a sent message carried.
+pub async fn attachment_content(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let (attachment, path) = state.core.store.attachment(&id)?;
+    let bytes = tokio::fs::read(&path).await.map_err(|_| {
+        ApiFailure::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "That attachment is gone.",
+        )
+    })?;
+    let content_type = HeaderValue::from_str(&attachment.mime)
+        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (
+                header::X_CONTENT_TYPE_OPTIONS,
+                HeaderValue::from_static("nosniff"),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, no-cache"),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
