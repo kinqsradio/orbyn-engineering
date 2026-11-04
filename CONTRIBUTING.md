@@ -86,6 +86,21 @@ type(scope): summary
   title does not fit, and starts again when the title is edited. Dependabot opens
   its own titles and is skipped.
 
+## Credit
+
+A person who writes or amends the commits on a branch is an author of that change,
+and the record should say so:
+
+- Their own commits already carry them as author, which is the strongest record and
+  needs nothing extra.
+- The pull request lists every such person in its `## Co-authors` section, with the
+  commits they wrote, so the change credits them where people read it.
+- When their work is folded into a commit someone else authors, as happens when a
+  review fix is amended into the row commit, that commit carries the trailer
+  `Co-authored-by: Name <email>`.
+- Assistants and tools are never an author, a trailer, a title or a branch name; what
+  they did belongs in the AI usage section, which is the only place for it.
+
 ## Branches and commits
 
 - Branch from `main` with a short purpose name: `feat/`, `fix/`, `docs/`,

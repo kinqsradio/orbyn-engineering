@@ -23,6 +23,15 @@ mock data and the fake engines have hidden real bugs before. -->
 
 Not verified:
 
+## Co-authors
+
+<!-- Every person who wrote or amended commits here, with their commits, such as
+"- Ada Lovelace <ada@example.com>: `1a2b3c4 fix(x): ...`". "none" when it is only
+you. Their own commits already carry them as author; this is where the pull request
+credits them. -->
+
+none
+
 ## AI usage
 
 <!-- Required. Tick "Written by hand", or fill in every line below from what
