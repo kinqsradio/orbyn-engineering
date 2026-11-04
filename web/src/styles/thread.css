@@ -2329,6 +2329,150 @@ button.detail-row:hover {
   flex: none;
   width: 12px;
 }
+.zip-viewer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.zip-tree {
+  flex: 1;
+  min-height: 0;
+  padding: 0 4px 8px;
+}
+.zip-tree button[data-selected] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.zip-name {
+  flex: 1;
+}
+.zip-size {
+  flex: none;
+  color: var(--color-faint);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+.zip-badge {
+  flex: none;
+  color: var(--color-warn);
+  font-size: var(--text-meta);
+}
+.zip-entry {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 55%;
+  padding: 0 8px 8px;
+  border-top: 1px solid var(--color-divider);
+}
+.zip-entry .file-preview,
+.zip-entry .file-source {
+  flex: 1;
+  min-height: 0;
+}
+.zip-empty {
+  padding: 8px;
+  font-size: var(--text-small);
+}
+/* A Word or a spreadsheet document, read from its own bytes. */
+.office-doc {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.office-body {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px 12px;
+  overflow: auto;
+}
+.office-heading,
+.office-para {
+  margin: 0 0 6px;
+}
+.office-heading {
+  font-weight: 600;
+  line-height: 1.3;
+}
+.office-heading[data-level="1"] {
+  margin-top: 4px;
+  font-size: 20px;
+}
+.office-heading[data-level="2"] {
+  font-size: 18px;
+}
+.office-heading[data-level="3"] {
+  font-size: 16px;
+}
+.office-heading[data-level="4"] {
+  font-size: 14px;
+}
+.office-table {
+  margin: 8px 0;
+  overflow: auto;
+}
+.office-table table {
+  border-collapse: collapse;
+  font-size: var(--text-small);
+}
+.office-table td {
+  padding: 3px 8px;
+  border: 1px solid var(--color-divider);
+  text-align: left;
+  vertical-align: top;
+}
+.office-empty {
+  padding: 8px;
+  font-size: var(--text-small);
+}
+.office-book {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.office-tabs {
+  flex: none;
+  align-self: flex-start;
+  max-width: calc(100% - 16px);
+  margin: 4px 8px;
+  overflow-x: auto;
+}
+.office-tabs button[aria-selected="true"] {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.office-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.office-grid table {
+  border-collapse: collapse;
+  font-size: var(--text-small);
+}
+.office-grid th,
+.office-grid td {
+  padding: 2px 8px;
+  border: 1px solid var(--color-divider);
+  text-align: left;
+  vertical-align: top;
+}
+.office-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-raised);
+  color: var(--color-faint);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.office-grid td {
+  white-space: pre-wrap;
+}
 .file-source {
   position: relative;
   flex: 1;
