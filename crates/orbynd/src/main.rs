@@ -215,6 +215,10 @@ fn router(state: AppState) -> Router {
             "/api/attachments/{id}",
             axum::routing::delete(api::remove_attachment),
         )
+        .route(
+            "/api/attachments/{id}/content",
+            get(api::attachment_content),
+        )
         .route("/api/threads/{id}/mentions", get(api::mentions))
         .route("/api/threads/{id}/commands", get(api::slash_commands))
         .route("/api/threads/{id}/items", get(api::list_items))

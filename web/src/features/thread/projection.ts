@@ -14,11 +14,21 @@ interface ItemBase {
   runId: string | null;
 }
 
+/** A file the message carried, as the server recorded it at send time. */
+export interface SentAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
 export interface MessageItem extends ItemBase {
   kind: "message";
   role: string;
   text: string;
   done: boolean;
+  /** Attachments this user message carried; absent when it had none. */
+  attachments?: readonly SentAttachment[];
 }
 export interface ReasoningItem extends ItemBase {
   kind: "reasoning";
@@ -110,6 +120,8 @@ export interface ThreadLog {
   subagents: readonly SubagentActivity[];
   /** The latest usage report, as the engine sent it. */
   usage: JsonValue | null;
+  /** What each run's message carried, kept until that run's message starts. */
+  sent: Readonly<Record<string, readonly SentAttachment[]>>;
 }
 
 export const emptyLog: ThreadLog = {
@@ -121,6 +133,7 @@ export const emptyLog: ThreadLog = {
   runs: {},
   subagents: [],
   usage: null,
+  sent: {},
 };
 
 function record(value: JsonValue | undefined): { [key in string]?: JsonValue } | null {
@@ -226,6 +239,8 @@ interface Fold {
   runs: Record<string, RunSpan>;
   subagents: SubagentActivity[];
   usage: JsonValue | null;
+  /** What each run's message carried, by run id. */
+  sent: Record<string, readonly SentAttachment[]>;
 }
 
 /** Things that happened to the conversation rather than in it. */
@@ -309,7 +324,8 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
       });
       log("Run failed", event.message, "error");
       break;
-    case "TEXT_MESSAGE_START":
+    case "TEXT_MESSAGE_START": {
+      const carried = event.role === "user" && wire.run_id ? fold.sent[wire.run_id] : undefined;
       put(fold, {
         ...base,
         key: scoped("msg", event.messageId),
@@ -317,8 +333,10 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         role: event.role,
         text: "",
         done: false,
+        ...(carried && carried.length > 0 ? { attachments: carried } : {}),
       });
       break;
+    }
     case "TEXT_MESSAGE_CONTENT":
       patch(fold, scoped("msg", event.messageId), "message", (item) => ({
         ...item,
@@ -425,6 +443,28 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         const text = LIFECYCLE_NOTES[event.name] ?? "";
         put(fold, { ...base, key: `notice:${wire.seq}`, kind: "notice", tone: "neutral", text, code: null });
         log(text, null);
+      } else if (event.name === "user.attachments") {
+        const body = record(event.value);
+        const entries = Array.isArray(body?.attachments) ? body.attachments : [];
+        const sent = entries.flatMap((entry): SentAttachment[] => {
+          const file = record(entry);
+          return typeof file?.id === "string" &&
+            typeof file.name === "string" &&
+            typeof file.mime === "string" &&
+            typeof file.size === "number"
+            ? [{ id: file.id, name: file.name, mime: file.mime, size: file.size }]
+            : [];
+        });
+        if (wire.run_id) fold.sent[wire.run_id] = sent;
+        if (sent.length > 0) {
+          const at = fold.items.findIndex(
+            (item) => item.kind === "message" && item.role === "user" && item.runId === wire.run_id,
+          );
+          if (at >= 0) {
+            const item = fold.items[at];
+            if (item?.kind === "message") fold.items[at] = { ...item, attachments: sent };
+          }
+        }
       } else if (event.name === "engine.retrying") {
         const message = record(event.value)?.message;
         log("Engine retrying", typeof message === "string" ? message : null, "attention");
@@ -473,7 +513,7 @@ function fold(
   log: ThreadLog,
   events: readonly WireThreadEvent[],
   incremental: boolean,
-): Pick<ThreadLog, "items" | "timeline" | "runs" | "subagents" | "usage"> {
+): Pick<ThreadLog, "items" | "timeline" | "runs" | "subagents" | "usage" | "sent"> {
   const working: Fold = incremental
     ? {
         threadId,
@@ -483,11 +523,21 @@ function fold(
         runs: { ...log.runs },
         subagents: [...log.subagents],
         usage: log.usage,
+        sent: { ...log.sent },
       }
-    : { threadId, items: [], index: new Map(), timeline: [], runs: {}, subagents: [], usage: null };
+    : {
+        threadId,
+        items: [],
+        index: new Map(),
+        timeline: [],
+        runs: {},
+        subagents: [],
+        usage: null,
+        sent: {},
+      };
   for (const event of events) applyEvent(working, event);
-  const { items, timeline, runs, subagents, usage } = working;
-  return { items, timeline, runs, subagents, usage };
+  const { items, timeline, runs, subagents, usage, sent } = working;
+  return { items, timeline, runs, subagents, usage, sent };
 }
 
 /**

@@ -454,6 +454,25 @@ async fn attachments_stay_out_of_the_target_reach_the_prompt_and_die_with_the_th
     assert!(log.contains("Attached files"), "{log}");
     assert!(!dir.path().join("library/repo/project/evil.txt").exists());
 
+    let response = service
+        .client
+        .get(format!("{}/api/attachments/{id}/content", service.url))
+        .bearer_auth(&service.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "text/plain");
+    assert_eq!(response.bytes().await.unwrap().as_ref(), b"hi");
+    let response = service
+        .client
+        .get(format!("{}/api/attachments/missing/content", service.url))
+        .bearer_auth(&service.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 404);
+
     let stored = dir.path().join("data/attachments");
     assert_eq!(std::fs::read_dir(&stored).unwrap().count(), 1);
     let response = service

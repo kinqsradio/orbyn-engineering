@@ -123,7 +123,8 @@
 }
 .msg-user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
 }
 .msg-bubble {
   max-width: 80%;
@@ -132,6 +133,65 @@
   background: var(--color-message);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.sent-files {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 80%;
+  margin-top: 6px;
+  padding: 0;
+  list-style: none;
+}
+.sent-files button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  max-width: 240px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-chip);
+  color: inherit;
+  font-size: var(--text-meta);
+  cursor: pointer;
+}
+.sent-files button:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+.sent-files button:disabled {
+  color: var(--color-muted);
+  cursor: progress;
+}
+.sent-files span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sent-files svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.sent-path span {
+  font-family: var(--font-mono);
+}
+.sent-files-error {
+  max-width: 80%;
+  margin-top: 4px;
+  color: var(--color-danger);
+  font-size: var(--text-meta);
+}
+.sent-preview-text {
+  max-height: 60vh;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
 }
 .msg-assistant {
   position: relative;
@@ -1631,6 +1691,9 @@ button.detail-row:hover {
     height: auto;
   }
   .msg-bubble {
+    max-width: 90%;
+  }
+  .sent-files {
     max-width: 90%;
   }
 }

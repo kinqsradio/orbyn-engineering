@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgUiEvent, WireThreadEvent } from "../../api/types";
+import type { AgUiEvent, JsonValue, WireThreadEvent } from "../../api/types";
 import { applyEvents, emptyLog } from "./projection";
 
 const ev = (seq: number, event: AgUiEvent): WireThreadEvent => ({
@@ -180,6 +180,41 @@ describe("applyEvents", () => {
     const log = applyEvents("t", emptyLog, [text(1, "orphan")]);
     expect(log.items).toHaveLength(0);
     expect(log.lastSeq).toBe(1);
+  });
+
+  it("attaches what a user message carried, before or after its start", () => {
+    const files = [{ id: "a1", name: "notes.txt", mime: "text/plain", size: 5 }];
+    const sent = (seq: number, value: JsonValue) => ({
+      ...ev(seq, { type: "CUSTOM", name: "user.attachments", value }),
+    });
+    const startUser = (seq: number) =>
+      ev(seq, { type: "TEXT_MESSAGE_START", messageId: "u1", role: "user" });
+
+    const before = applyEvents("t", emptyLog, [
+      sent(1, { attachments: files }),
+      startUser(2),
+      ev(3, { type: "TEXT_MESSAGE_CONTENT", messageId: "u1", delta: "read it" }),
+    ]);
+    expect(before.items[0]).toMatchObject({ role: "user", attachments: files });
+
+    const after = applyEvents("t", emptyLog, [startUser(1), sent(2, { attachments: files })]);
+    expect(after.items[0]).toMatchObject({ role: "user", attachments: files });
+
+    const first = applyEvents("t", emptyLog, [sent(1, { attachments: files })]);
+    const next = applyEvents("t", first, [startUser(2)]);
+    expect(next.items[0]).toMatchObject({ role: "user", attachments: files });
+  });
+
+  it("ignores malformed attachment entries", () => {
+    const log = applyEvents("t", emptyLog, [
+      ev(1, {
+        type: "CUSTOM",
+        name: "user.attachments",
+        value: { attachments: [{ id: 1 }, { id: "a", name: "n", mime: "m", size: 1 }] },
+      }),
+      ev(2, { type: "TEXT_MESSAGE_START", messageId: "u1", role: "user" }),
+    ]);
+    expect(log.items[0]).toMatchObject({ attachments: [{ id: "a", name: "n", mime: "m", size: 1 }] });
   });
 
   it("renders an unknown activity type without crashing", () => {

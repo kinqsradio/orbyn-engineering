@@ -146,7 +146,10 @@ engines with `decline_feedback`, which today is Claude; elsewhere the message qu
 Attachments stay in app data, never in a target, and are removed with their thread.
 The limits are 100 per thread, 10 MiB per image, 80 MiB of images and 50 MiB per other
 file. A record exists only once its bytes are in place, and a message naming an
-attachment that is not ready is refused before anything is admitted.
+attachment that is not ready is refused before anything is admitted. Before its engine
+starts, a run logs `CUSTOM user.attachments` with each record's id, name, media type
+and size, so a transcript shows what the message carried without asking the engine.
+`GET /api/attachments/:id/content` returns those bytes while the record lives.
 
 ## Models
 
@@ -1676,6 +1679,7 @@ All bodies are JSON and errors are `ApiError` with a stable `code`. Auth is
 | `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported); a selection applies from the next turn |
 | `GET, POST /api/threads/:id/attachments?name=` | Raw upload body; `Content-Type` is the kind |
 | `DELETE /api/attachments/:id` | Remove an attachment |
+| `GET /api/attachments/:id/content` | The stored bytes with their recorded `Content-Type`; `404` once gone |
 | `GET /api/threads/:id/mentions?q=` | `Mentions`: profile skills, ranked unignored files, this project's threads |
 | `GET /api/search/messages?q=&project_id=&thread_id=&archived=&limit=` | `MessageSearch`: `MessageHit[]`, newest first, each with `seq` and `message_id` to open at |
 | `GET /api/threads/:id/commands?skills=` | `SlashCommand[]`: Orbyn's, the engine's, its agents (`source: agent`), custom command files, and skills when `true` |

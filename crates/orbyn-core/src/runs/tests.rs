@@ -250,6 +250,53 @@ async fn completed_run_logs_in_order_and_leaves_no_residue() {
 }
 
 #[tokio::test]
+async fn a_run_records_the_attachments_its_message_carried() {
+    let f = fixture(finished()).await;
+    let attachment = f
+        .core
+        .add_attachment(&f.thread, "notes.txt", "text/plain", b"hello")
+        .unwrap();
+    let run = f
+        .core
+        .runs
+        .admit_with(&f.thread, "go", std::slice::from_ref(&attachment.id), "t")
+        .unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+    let events = f.core.store.events_after(&f.thread, 0, 100).unwrap();
+    let event = events
+        .iter()
+        .find(
+            |event| matches!(&event.event, AgUiEvent::Custom { name, .. } if name == "user.attachments"),
+        )
+        .expect("a user.attachments event");
+    assert_eq!(event.run_id.as_deref(), Some(run.id.as_str()));
+    let AgUiEvent::Custom { value, .. } = &event.event else {
+        unreachable!()
+    };
+    let sent = value
+        .get("attachments")
+        .and_then(Value::as_array)
+        .expect("an attachments array");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0]["id"], json!(attachment.id));
+    assert_eq!(sent[0]["name"], json!("notes.txt"));
+    assert_eq!(sent[0]["mime"], json!("text/plain"));
+    assert_eq!(sent[0]["size"], json!(5));
+}
+
+#[tokio::test]
+async fn a_run_without_attachments_records_none() {
+    let f = fixture(finished()).await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+    let events = f.core.store.events_after(&f.thread, 0, 100).unwrap();
+    assert!(!events.iter().any(|event| matches!(
+        &event.event,
+        AgUiEvent::Custom { name, .. } if name == "user.attachments"
+    )));
+}
+
+#[tokio::test]
 async fn admission_is_durable_before_the_engine_starts() {
     let seen: Arc<Mutex<Option<RunState>>> = Arc::default();
     let store_slot: Arc<Mutex<Option<Arc<Store>>>> = Arc::default();
