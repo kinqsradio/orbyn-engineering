@@ -8,6 +8,7 @@ import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { FILE_MENTION_TYPE } from "../thread/skillMention";
 import { ErrorState, Loading } from "../../ui/states";
+import { DocumentViewer, officeKind } from "./DocumentViewer";
 import { FileBytes, FileMedia, mediaKind, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
 import { ZipViewer, isZipPath } from "./ZipViewer";
@@ -113,6 +114,8 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
   // An archive is read as a folder list rather than as bytes, so it never
   // reaches the hex view even though the service calls the file binary.
   const zip = isZipPath(path);
+  // A Word document is read the same way: its own bytes, through the worker.
+  const office = officeKind(path);
   const file = useAsync(`file:${threadId}:${media ? "" : path}`, (signal) =>
     media
       ? Promise.resolve(null)
@@ -167,7 +170,7 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
           Files
         </Button>
         <code title={path}>{path}</code>
-        {zip && file.data ? <span className="zip-size">{formatBytes(file.data.size)}</span> : null}
+        {file.data && (zip || office) ? <span className="zip-size">{formatBytes(file.data.size)}</span> : null}
         <IconButton label="Copy contents" disabled={copyable === null || copying} onClick={() => void copyContents()}>
           <Copy size={14} aria-hidden />
         </IconButton>
@@ -191,6 +194,8 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
         <ErrorState compact title="Couldn't read this file" failure={file.error} onRetry={file.reload} />
       ) : !file.data ? null : zip ? (
         <ZipViewer threadId={threadId} path={path} />
+      ) : office ? (
+        <DocumentViewer threadId={threadId} path={path} kind={office} />
       ) : file.data.binary ? (
         <FileBytes threadId={threadId} path={path} size={file.data.size} as="hex" />
       ) : file.data.truncated ? (

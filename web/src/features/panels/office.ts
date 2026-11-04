@@ -1,0 +1,409 @@
+/**
+ * A small reader for the Open XML part the file viewer shows: the Word body in
+ * `word/document.xml`. It is hand-written for the same reasons the archive
+ * reader is: opening a document must not add a dependency, and a worker has no
+ * `DOMParser` to lean on, so the markup is scanned here.
+ *
+ * It only reads. Nothing here writes a document, and every part comes from the
+ * archive reader in `zipArchive.ts`, so no path on a disk is ever involved. A
+ * document's own content is never inserted as HTML: the model below is text,
+ * and the viewer renders it as React elements.
+ */
+
+import { ZipError, formatBytes, readEntryBytes, readZipArchive, type ZipEntry } from "./zipArchive";
+
+/** The most XML one part may hold. The archive reader caps an entry at the same 2 MiB. */
+export const MAX_PART_BYTES = 2 * 1024 * 1024;
+/** The most paragraphs and tables one Word document may hold. */
+export const MAX_BLOCKS = 5000;
+
+/** The formats this reader opens. `.docm` carries the same parts as `.docx`. */
+export type OfficeKind = "docx";
+
+/** Why a document was refused. Every one of these is shown to the person. */
+export type OfficeRefusal = "office_unreadable" | "office_part_too_large" | "office_too_many_blocks";
+
+/** A refusal to read a document, with a message ready to show. */
+export class OfficeError extends Error {
+  readonly code: OfficeRefusal | string;
+
+  constructor(code: OfficeRefusal | string, message: string) {
+    super(message);
+    this.name = "OfficeError";
+    this.code = code;
+  }
+}
+
+/** One block of a Word body, with the plain text the reader can show as source. */
+export interface DocxHeading {
+  kind: "heading";
+  /** 1 to 4; a deeper heading style is shown at the deepest level here. */
+  level: 1 | 2 | 3 | 4;
+  text: string;
+}
+
+export interface DocxParagraph {
+  kind: "paragraph";
+  text: string;
+}
+
+export interface DocxTable {
+  kind: "table";
+  /** One entry per row; a cell's paragraphs are joined with a newline. */
+  rows: string[][];
+  /** The rows flattened: cells by tab, rows by newline. */
+  text: string;
+}
+
+export type DocxBlock = DocxHeading | DocxParagraph | DocxTable;
+
+export interface DocxDocument {
+  format: "docx";
+  blocks: DocxBlock[];
+  /** The source view's text: each block's own text on its own line. */
+  text: string;
+}
+
+export type OfficeModel = DocxDocument;
+
+/** What the viewer hands the worker: the file's bytes and what it should be. */
+export interface OfficeRequest {
+  kind: OfficeKind;
+  bytes: Uint8Array<ArrayBuffer>;
+}
+
+/** What the worker hands back: a model, or a refusal with its own code. */
+export type OfficeResponse = { ok: true; model: OfficeModel } | { ok: false; code: string; message: string };
+
+/** The XML parts of one archive, read on demand. */
+export interface OfficeParts {
+  /** Every file entry, as the archive names it with `/` separators. */
+  readonly names: readonly string[];
+  /** One part's decompressed bytes, with the archive reader's caps and checks. */
+  read(name: string): Promise<Uint8Array<ArrayBuffer>>;
+}
+
+/** The part a Word document keeps its body in. */
+const DOCX_DOCUMENT_PART = "word/document.xml";
+
+/** Control characters and line breaks added by markup never come from the text. */
+export function stripControlChars(text: string): string {
+  let clean = "";
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) continue;
+    clean += character;
+  }
+  return clean;
+}
+
+/** One element of a scanned part. Only what the two formats need is kept. */
+interface XmlElement {
+  name: string;
+  attrs: Map<string, string>;
+  children: XmlElement[];
+  /** The character data directly inside this element, entities decoded. */
+  text: string;
+}
+
+const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const TAG_NAME = /^[^\s/>]+/;
+const ATTRIBUTES = /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
+function decodeEntities(text: string): string {
+  if (!text.includes("&")) return text;
+  return text.replace(/&(#[xX]?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (!body.startsWith("#")) return NAMED_ENTITIES[body] ?? whole;
+    const hex = body[1] === "x" || body[1] === "X";
+    const code = Number.parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+    // A lone surrogate cannot be built and has no meaning here.
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return whole;
+    return String.fromCodePoint(code);
+  });
+}
+
+/** The end of a tag: a `>` inside a quoted value does not end it. */
+function findTagEnd(source: string, from: number): number {
+  let quote = "";
+  for (let at = from; at < source.length; at += 1) {
+    const character = source[at] ?? "";
+    if (quote) {
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === ">") return at;
+  }
+  return -1;
+}
+
+function readAttributes(text: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  for (const match of text.matchAll(ATTRIBUTES)) {
+    const name = match[1];
+    if (!name) continue;
+    const value = match[2] ?? match[3] ?? "";
+    attrs.set(name, stripControlChars(decodeEntities(value)));
+  }
+  return attrs;
+}
+
+/**
+ * A part as a tree. The scanner is deliberately forgiving: a stray close tag
+ * and a tag cut short by the end of the bytes are ignored, because a document
+ * that is damaged in one place should still show what it does hold. Comments,
+ * the declaration and a doctype are skipped, and CDATA is taken as text.
+ */
+function parseXml(source: string): XmlElement {
+  const root: XmlElement = { name: "#root", attrs: new Map(), children: [], text: "" };
+  const open: XmlElement[] = [root];
+  let at = 0;
+  while (at < source.length) {
+    const start = source.indexOf("<", at);
+    const top = open[open.length - 1];
+    if (!top) break;
+    if (start < 0) {
+      top.text += stripControlChars(decodeEntities(source.slice(at)));
+      break;
+    }
+    top.text += stripControlChars(decodeEntities(source.slice(at, start)));
+    if (source.startsWith("<!--", start)) {
+      const end = source.indexOf("-->", start + 4);
+      at = end < 0 ? source.length : end + 3;
+      continue;
+    }
+    if (source.startsWith("<![CDATA[", start)) {
+      const end = source.indexOf("]]>", start + 9);
+      const stop = end < 0 ? source.length : end;
+      top.text += stripControlChars(source.slice(start + 9, stop));
+      at = end < 0 ? source.length : end + 3;
+      continue;
+    }
+    if (source.startsWith("<?", start)) {
+      const end = source.indexOf("?>", start + 2);
+      at = end < 0 ? source.length : end + 2;
+      continue;
+    }
+    if (source.startsWith("<!", start)) {
+      // A doctype; this reader never needs its declarations.
+      const end = findTagEnd(source, start + 2);
+      at = end < 0 ? source.length : end + 1;
+      continue;
+    }
+    const end = findTagEnd(source, start + 1);
+    if (end < 0) break;
+    const body = source.slice(start + 1, end);
+    at = end + 1;
+    if (body.startsWith("/")) {
+      const name = body.slice(1).trim();
+      while (open.length > 1 && open[open.length - 1]?.name !== name) open.pop();
+      if (open.length > 1) open.pop();
+      continue;
+    }
+    const selfClosing = body.endsWith("/");
+    const tag = selfClosing ? body.slice(0, -1) : body;
+    const name = TAG_NAME.exec(tag)?.[0] ?? "";
+    if (name === "") continue;
+    const element: XmlElement = { name, attrs: readAttributes(tag.slice(name.length)), children: [], text: "" };
+    top.children.push(element);
+    if (!selfClosing) open.push(element);
+  }
+  return root;
+}
+
+/** The part after a namespace prefix: `w:p` is `p`, and `r:id` is `id`. */
+function localName(name: string): string {
+  const at = name.indexOf(":");
+  return at < 0 ? name : name.slice(at + 1);
+}
+
+/**
+ * A match by local name, so a prefixed `w:p` and an unprefixed `p` both count:
+ * a Word body prefixes its elements and a sheet's XML usually does not.
+ */
+function child(element: XmlElement, name: string): XmlElement | null {
+  return element.children.find((node) => localName(node.name) === name) ?? null;
+}
+
+function children(element: XmlElement, name: string): XmlElement[] {
+  return element.children.filter((node) => localName(node.name) === name);
+}
+
+/** An attribute by local name, so `w:val` and `val` both answer. */
+function attr(element: XmlElement, name: string): string | null {
+  const exact = element.attrs.get(name);
+  if (exact !== undefined) return exact;
+  for (const [key, value] of element.attrs) if (localName(key) === name) return value;
+  return null;
+}
+
+/** OPC part names compare without case, and a package may name one either way. */
+function findPart(names: readonly string[], name: string): string | null {
+  if (names.includes(name)) return name;
+  const lower = name.toLowerCase();
+  return names.find((candidate) => candidate.toLowerCase() === lower) ?? null;
+}
+
+/**
+ * An archive's parts, read through the archive reader that already exists: its
+ * 50 MB, 2000 entry and 2 MiB entry caps and its checksum checks all still
+ * apply, and a refusal keeps its own code and message.
+ */
+export function openOfficeParts(bytes: Uint8Array<ArrayBuffer>): OfficeParts {
+  const read = readZipArchive(bytes);
+  if (!read.ok) throw new OfficeError(read.code, read.message);
+  const entries = new Map<string, ZipEntry>();
+  for (const entry of read.entries) if (!entry.isDirectory) entries.set(entry.path, entry);
+  const names = [...entries.keys()];
+  return {
+    names,
+    async read(name: string) {
+      const path = findPart(names, name);
+      const entry = path === null ? undefined : entries.get(path);
+      if (!entry) throw new OfficeError("office_unreadable", `This file has no ${name}.`);
+      try {
+        return await readEntryBytes(bytes, entry);
+      } catch (failure) {
+        // The caps and the corruption checks belong to the archive reader, and
+        // its message already names what it refused.
+        if (failure instanceof ZipError) throw new OfficeError(failure.code, failure.message);
+        throw failure;
+      }
+    },
+  };
+}
+
+async function readPartXml(parts: OfficeParts, name: string): Promise<XmlElement> {
+  const bytes = await parts.read(name);
+  if (bytes.length > MAX_PART_BYTES) {
+    throw new OfficeError(
+      "office_part_too_large",
+      `This document's ${name} is ${formatBytes(bytes.length)}; the viewer reads at most ${formatBytes(MAX_PART_BYTES)} of one part.`,
+    );
+  }
+  return parseXml(new TextDecoder("utf-8").decode(bytes));
+}
+
+/** A heading style this viewer knows: `Heading1` to `Heading4`, deeper ones clamped. */
+const HEADING_LEVELS: Readonly<Record<string, 1 | 2 | 3 | 4>> = {
+  "1": 1,
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  "5": 4,
+  "6": 4,
+  "7": 4,
+  "8": 4,
+  "9": 4,
+};
+
+function headingLevel(paragraph: XmlElement): 1 | 2 | 3 | 4 | null {
+  const properties = child(paragraph, "pPr");
+  const style = properties === null ? null : child(properties, "pStyle");
+  const value = style === null ? null : attr(style, "val");
+  const match = value === null ? null : /^heading\s*([1-9])$/i.exec(value.trim());
+  return match ? (HEADING_LEVELS[match[1] ?? ""] ?? null) : null;
+}
+
+/**
+ * A paragraph's text, runs joined in order. A `w:tab` becomes a tab and a
+ * `w:br` a newline; `w:delText` is a deleted run and is deliberately not
+ * matched, so a tracked change that removed text does not bring it back.
+ * Insertions, content controls and field markup are flattened as written.
+ */
+function paragraphText(paragraph: XmlElement): string {
+  let text = "";
+  for (const node of paragraph.children) text += nodeText(node);
+  return text;
+}
+
+function nodeText(node: XmlElement): string {
+  const name = localName(node.name);
+  if (name === "t") return node.text;
+  if (name === "tab") return "\t";
+  if (name === "br" || name === "cr") return "\n";
+  let text = "";
+  for (const child of node.children) text += nodeText(child);
+  return text;
+}
+
+function paragraphBlock(paragraph: XmlElement): DocxBlock {
+  const text = paragraphText(paragraph);
+  const level = headingLevel(paragraph);
+  return level === null ? { kind: "paragraph", text } : { kind: "heading", level, text };
+}
+
+function tableBlock(table: XmlElement): DocxTable {
+  // `w:gridSpan` and `w:vMerge` are not spread out: a merged cell stays one
+  // cell here, so a row's cells are exactly the cells its markup holds.
+  const rows = children(table, "tr").map((row) => children(row, "tc").map(cellText));
+  return { kind: "table", rows, text: rows.map((row) => row.join("\t")).join("\n") };
+}
+
+function cellText(cell: XmlElement): string {
+  const lines: string[] = [];
+  collectCellLines(cell, lines);
+  return lines.join("\n");
+}
+
+/** A table inside a cell is flattened: one line per row, its cells by tab. */
+function collectCellLines(parent: XmlElement, lines: string[]): void {
+  for (const node of parent.children) {
+    const name = localName(node.name);
+    if (name === "p") lines.push(paragraphText(node));
+    else if (name === "tbl") {
+      for (const row of children(node, "tr")) lines.push(children(row, "tc").map(cellText).join("\t"));
+    } else collectCellLines(node, lines);
+  }
+}
+
+/** Body blocks in order. A wrapper such as a content control is descended into. */
+function collectBlocks(parent: XmlElement, blocks: DocxBlock[]): void {
+  for (const node of parent.children) {
+    const name = localName(node.name);
+    if (name === "p") blocks.push(paragraphBlock(node));
+    else if (name === "tbl") blocks.push(tableBlock(node));
+    else collectBlocks(node, blocks);
+    if (blocks.length > MAX_BLOCKS) {
+      throw new OfficeError(
+        "office_too_many_blocks",
+        `This document holds more than ${MAX_BLOCKS} paragraphs and tables; the viewer shows at most ${MAX_BLOCKS}.`,
+      );
+    }
+  }
+}
+
+export async function parseDocx(parts: OfficeParts): Promise<DocxDocument> {
+  if (findPart(parts.names, DOCX_DOCUMENT_PART) === null) {
+    throw new OfficeError(
+      "office_unreadable",
+      "This file has no word/document.xml, so the viewer can't read it as a Word document.",
+    );
+  }
+  const document = await readPartXml(parts, DOCX_DOCUMENT_PART);
+  // Relationships, images, styles and footnotes are not resolved: nothing but
+  // this body's own text is read, so a document with pictures shows its words.
+  const blocks: DocxBlock[] = [];
+  collectBlocks(child(document, "body") ?? document, blocks);
+  return { format: "docx", blocks, text: blocks.map((block) => block.text).join("\n") };
+}
+
+/**
+ * The worker's whole answer, refusal included, kept here so the worker is a
+ * three-line wrapper and a test can stand in for a Worker without one.
+ */
+export async function respondToOfficeRequest(request: OfficeRequest): Promise<OfficeResponse> {
+  try {
+    if (request.kind !== "docx") {
+      throw new OfficeError("office_unreadable", `The viewer can't read ${String(request.kind)} files.`);
+    }
+    return { ok: true, model: await parseDocx(openOfficeParts(request.bytes)) };
+  } catch (failure) {
+    if (failure instanceof OfficeError) return { ok: false, code: failure.code, message: failure.message };
+    if (failure instanceof Error && failure.message) return { ok: false, code: "office_unreadable", message: failure.message };
+    return { ok: false, code: "office_unreadable", message: "This document can't be read." };
+  }
+}

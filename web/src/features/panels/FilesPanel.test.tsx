@@ -5,6 +5,7 @@ import { Viewer } from "./FilesPanel";
 import { useUi } from "../../state/ui";
 import { buildZipArchive } from "./zipArchive.test-support";
 import { formatBytes } from "./zipArchive";
+import { buildDocx, docxParagraph, stubWorker } from "./office.test-support";
 
 /** The toast the last action raised. */
 const lastToast = () => useUi.getState().toasts.at(-1)?.text;
@@ -105,4 +106,19 @@ it("leaves Copy contents disabled for a truncated file", async () => {
   serve({ content: "", binary: false, truncated: true, size: 12 * 1024 * 1024 });
   render(<Viewer threadId="t" path="huge.log" line={null} onBack={() => undefined} />);
   expect(await screen.findByRole("button", { name: "Copy contents" })).toBeDisabled();
+});
+
+it("opens a Word document in the document viewer rather than the hex view", async () => {
+  stubWorker();
+  const document = buildDocx(
+    `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Plan</w:t></w:r></w:p>${docxParagraph("Hello from Word")}`,
+  );
+  serve({ content: "", binary: true, truncated: false, size: document.byteLength }, document);
+  render(<Viewer threadId="t" path="plan.docx" line={null} onBack={() => undefined} />);
+
+  expect(await screen.findByRole("heading", { name: "Plan" })).toBeInTheDocument();
+  expect(screen.getByText("Hello from Word")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Bytes")).toBeNull();
+  // The bar carries the document's size where a text file would have none.
+  expect(screen.getByText(formatBytes(document.byteLength))).toBeInTheDocument();
 });
