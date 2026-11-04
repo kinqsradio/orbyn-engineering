@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readShellStatus } from "../../api/shell";
 import type { PreviewTab } from "../../api/types";
 import { BrowserPane, BrowserPanel } from "./BrowserPanel";
@@ -20,6 +20,8 @@ beforeEach(() => {
   useBrowserPanels.setState({ moved: {} });
   vi.stubGlobal("WebSocket", FakeSocket);
 });
+
+afterEach(() => vi.useRealTimers());
 
 function serve(attached = false) {
   const tabs: PreviewTab[] = ["first", "second"].map((id) => ({
@@ -89,11 +91,17 @@ it("sends popout to the existing tab's service boundary when a shell is attached
 });
 
 it("cannot create a hidden replacement when a dedicated tab closes", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const { calls, tabs } = serve();
   render(<BrowserPane threadId="t" onlyTabId="first" detached />);
-  const address = await screen.findByRole("combobox", { name: "Search or enter URL" });
+  await screen.findByRole("tab", { name: "first" });
+  const openedAddress = screen.getByRole("combobox", { name: "Search or enter URL" });
   tabs.length = 0;
-  await screen.findByText("This preview tab is closed.");
+  // The viewer observes external closure on its next poll, not when the fixture mutates.
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  expect(screen.getByText("This preview tab is closed.")).toBeInTheDocument();
+  expect(openedAddress).not.toBeInTheDocument();
+  const address = screen.getByRole("combobox", { name: "Search or enter URL" });
   expect(address).toBeDisabled();
   fireEvent.change(address, { target: { value: "https://example.com/replacement" } });
   fireEvent.keyDown(address, { key: "Enter" });

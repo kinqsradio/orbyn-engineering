@@ -100,8 +100,11 @@ mod tests {
     fn preview_keeps_the_bundled_origin_and_rejects_route_injection() {
         let service = Url::parse("http://127.0.0.1:30001/?token=test").unwrap();
         let page = preview(&service, "thread-1", "tab_1").unwrap();
-        assert_eq!(page.origin(), application(&service).origin());
         assert_eq!(page.fragment(), Some("/preview/thread-1/tab_1"));
+        // The macOS tauri scheme has opaque URL origins, each with a distinct identity.
+        let mut document = page.clone();
+        document.set_fragment(None);
+        assert_eq!(document, application(&service));
         assert!(
             page.query_pairs()
                 .any(|(key, value)| key == "token" && value == "test")
