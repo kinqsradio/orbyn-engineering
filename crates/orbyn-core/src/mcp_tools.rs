@@ -1,5 +1,6 @@
-//! Orbyn's own tools for a running agent, under Orbyn names. A tool reaches only
-//! the caller's project. Claude's permission prompt passes these tools without
+//! Orbyn's own tools for a running agent, under Orbyn names. Tools reach only
+//! the caller's project except the explicitly approved project add/remove surface.
+//! Claude's permission prompt passes these tools without
 //! asking, so each one with an effect goes through the gate here, as a `tool` action:
 //! it needs a person unless the thread is in full access or a rule allows it.
 
@@ -25,6 +26,8 @@ const MAX_WAIT_SECONDS: u64 = 40;
 const MAX_SEARCH_CHARS: usize = 200_000;
 const MAX_HITS: usize = 50;
 const MAX_BATCH: usize = 16;
+const MAX_PROJECT_PATH_BYTES: usize = 4096;
+const MAX_PROJECT_ID_BYTES: usize = 128;
 /// A published page's frame height. Nothing measures the page yet (C23), so a call
 /// picks the height and these are the bounds it is held to.
 const DEFAULT_RENDER_HEIGHT: u64 = 480;
@@ -73,6 +76,18 @@ const fn act(
 }
 
 const TOOLS: &[Tool] = &[
+    act(
+        "orbyn_project_create",
+        "Add an existing absolute folder in place as an untrusted project, through the tool approval policy. Does not create, clone, move or trust a folder.",
+        &[("path", "string")],
+        &["path"],
+    ),
+    act(
+        "orbyn_project_delete",
+        "Remove an approved project's registration and idle thread metadata, keeping every file. Refuses own, library, scratch, busy or cross-project thread families.",
+        &[("project_id", "string")],
+        &["project_id"],
+    ),
     read(
         "orbyn_project_list",
         "Projects visible to this caller: only its own project.",
@@ -508,6 +523,16 @@ fn wait_seconds(args: &Value) -> Result<u64> {
     }
 }
 
+fn bounded_project_text<'a>(args: &'a Value, key: &str, max_bytes: usize) -> Result<&'a str> {
+    let value = text(args, key)?;
+    if value.len() > max_bytes || value.contains('\0') {
+        return Err(CoreError::Invalid(format!(
+            "{key} is at most {max_bytes} bytes and cannot contain NUL."
+        )));
+    }
+    Ok(value)
+}
+
 /// `orbyn_preview_act`'s arguments, checked before the page is touched: one known
 /// action, a selector where it needs one, and text only where typing uses it.
 fn page_act(args: &Value) -> Result<PreviewAct> {
@@ -628,6 +653,62 @@ fn render_title(args: &Value) -> String {
 }
 
 impl Core {
+    /// Only project add/remove may reach another project. Resolve exactly what
+    /// the approval describes; callers cannot supply the internal preview fields.
+    async fn project_tool_preview(
+        &self,
+        binding: &McpBinding,
+        name: &str,
+        args: &Value,
+    ) -> Result<Option<Value>> {
+        if binding.scope.plan && matches!(name, "orbyn_project_create" | "orbyn_project_delete") {
+            return Err(CoreError::Invalid(
+                "Plan mode does not add or remove projects.".into(),
+            ));
+        }
+        match name {
+            "orbyn_project_create" => {
+                let path = bounded_project_text(args, "path", MAX_PROJECT_PATH_BYTES)?;
+                if !Path::new(path).is_absolute() {
+                    return Err(CoreError::Invalid(
+                        "path must be an absolute existing folder.".into(),
+                    ));
+                }
+                let root =
+                    crate::workspace::resolve_project(&self.workspace.root()?, Path::new(path))
+                        .await?;
+                let path = root.path.to_string_lossy().into_owned();
+                bounded_project_text(&json!({ "path": path }), "path", MAX_PROJECT_PATH_BYTES)?;
+                Ok(Some(
+                    json!({ "path": path, "trusted": false, "files_created": false }),
+                ))
+            }
+            "orbyn_project_delete" => {
+                let id = bounded_project_text(args, "project_id", MAX_PROJECT_ID_BYTES)?;
+                let project = self.store.project(id)?;
+                bounded_project_text(
+                    &json!({ "path": project.path }),
+                    "path",
+                    MAX_PROJECT_PATH_BYTES,
+                )?;
+                bounded_project_text(&json!({ "name": project.name }), "name", 4096)?;
+                let own = self.store.thread(&binding.scope.thread_id)?;
+                if project.id == own.project_id
+                    || project.scratch
+                    || Path::new(&project.path) == self.workspace.root()?
+                {
+                    return Err(CoreError::Invalid("The caller's own, library and scratch projects cannot be removed by a tool.".into()));
+                }
+                let threads = self.store.agent_project_threads(id)?;
+                Ok(Some(json!({
+                    "project_id": id, "path": project.path, "name": project.name,
+                    "thread_ids": threads, "files_removed": false,
+                })))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Runs one of Orbyn's tools for `binding`'s run. A tool with an effect is
     /// refused unless the gate allows it, and the gate's reason comes back.
     pub async fn call_orbyn_tool(
@@ -640,11 +721,25 @@ impl Core {
             .iter()
             .find(|tool| tool.name == name)
             .ok_or_else(|| CoreError::NotFound(format!("tool {name}")))?;
+        let preview = self.project_tool_preview(binding, name, args).await?;
+        let args = preview.as_ref().unwrap_or(args);
         if tool.effect {
+            let summary = match name {
+                "orbyn_project_create" => format!(
+                    "Add existing folder {} to Orbyn as untrusted; keep all files",
+                    text(args, "path")?
+                ),
+                "orbyn_project_delete" => format!(
+                    "Remove project {} at {} from Orbyn; keep all files",
+                    text(args, "project_id")?,
+                    text(args, "path")?
+                ),
+                _ => format!("Use {name}"),
+            };
             let ask = ActionAsk {
                 kind: ActionKind::Tool,
                 target: name.to_owned(),
-                summary: format!("Use {name}"),
+                summary,
                 detail: args.clone(),
                 paths: Vec::new(),
             };
@@ -753,6 +848,43 @@ impl Core {
                 "file": self.project_file(&own.id)?,
             }),
             "orbyn_project_list" => json!([self.store.project(&own.project_id)?]),
+            "orbyn_project_create" => {
+                let approved = text(args, "path")?;
+                let root =
+                    crate::workspace::resolve_project(&self.workspace.root()?, Path::new(approved))
+                        .await?;
+                if root.path != Path::new(approved) {
+                    return Err(CoreError::Invalid(
+                        "The approved folder changed; ask again.".into(),
+                    ));
+                }
+                let name = root.path.file_name().map_or_else(
+                    || "Project".to_owned(),
+                    |name| name.to_string_lossy().into_owned(),
+                );
+                json!(self.store.insert_agent_project(
+                    approved,
+                    &name,
+                    root.is_git,
+                    &binding.scope
+                )?)
+            }
+            "orbyn_project_delete" => {
+                let id = text(args, "project_id")?;
+                let threads: Vec<String> = serde_json::from_value(args["thread_ids"].clone())?;
+                let removed = self.store.remove_agent_project(
+                    id,
+                    text(args, "path")?,
+                    &threads,
+                    &self.workspace.root()?.to_string_lossy(),
+                    &binding.scope,
+                )?;
+                for thread in removed {
+                    self.setups.forget(&thread);
+                    self.terminals.close(&thread);
+                }
+                json!({ "project_id": id, "removed": true, "files_removed": false, "kept_path": args["path"] })
+            }
             "orbyn_worktree_list" => {
                 let project = self.store.project(&own.project_id)?;
                 let found = crate::git::linked_worktrees(Path::new(&project.path)).await;
@@ -1238,6 +1370,39 @@ mod tests {
         assert!(!has_effect(list.name));
         assert!(list.args.is_empty());
         assert!(list.required.is_empty());
+    }
+
+    #[test]
+    fn project_mutations_are_gated_and_arguments_are_bounded() {
+        for (name, argument) in [
+            ("orbyn_project_create", "path"),
+            ("orbyn_project_delete", "project_id"),
+        ] {
+            let tool = TOOLS.iter().find(|tool| tool.name == name).unwrap();
+            assert!(has_effect(name));
+            assert_eq!(tool.args, &[(argument, "string")]);
+            assert_eq!(tool.required, &[argument]);
+        }
+        assert!(bounded_project_text(&json!({}), "path", MAX_PROJECT_PATH_BYTES).is_err());
+        assert!(
+            bounded_project_text(
+                &json!({"path": "x".repeat(4097)}),
+                "path",
+                MAX_PROJECT_PATH_BYTES
+            )
+            .is_err()
+        );
+        assert!(
+            bounded_project_text(&json!({"path": "x\0y"}), "path", MAX_PROJECT_PATH_BYTES).is_err()
+        );
+        assert!(
+            bounded_project_text(
+                &json!({"project_id": "x".repeat(129)}),
+                "project_id",
+                MAX_PROJECT_ID_BYTES
+            )
+            .is_err()
+        );
     }
 
     #[test]

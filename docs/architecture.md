@@ -1493,13 +1493,26 @@ declaring writes. `approve` is listed only for Claude.
 
 An `orbyn_*` tool reaches only the caller's project, its thread's preview tabs and, for
 an attachment, its own checkout; anything else reads as not found. A preference a tool
-sets is the project's, never a global one. A project cannot be created, cloned or
-removed from a tool, since those reach past it.
+sets is the project's, never a global one. The owner authorized a narrow exception
+for project add/remove in issue #127: `orbyn_project_create` registers an existing
+absolute folder in place, untrusted, and `orbyn_project_delete` forgets the selected
+project and its idle thread metadata while keeping every file. Both are acting tools
+under the existing approval policy (including its rules and permission modes), with
+a 45-second whole-call budget. Their approval previews show the resolved path,
+selected project and bounded thread IDs; caller-supplied internal preview fields
+cannot redirect the effect. Adding never creates a folder, clones, moves or trusts it.
 `orbyn_project_list` therefore returns exactly the caller's one project, not the
 application's project catalog. A folder nested inside it still becomes a different
 project when registered; path containment does not grant cross-project authority.
-For issue #127 the owner explicitly retained this boundary: project add/remove
-remain unavailable to agents, and clone remains excluded by the add-in-place rule.
+The exception grants no broader project reads, settings changes, thread transfer,
+file access, trust or clone operation. Removal refuses the caller's own project,
+library and scratch projects, busy threads, changed approval membership and any
+descendant cascade crossing into a third project. The identity, membership, busy
+and cascade checks, effect audit and metadata deletion share one immediate writer
+transaction with run admission. At most 256 thread IDs are accepted for removal;
+larger targets are refused. A concurrent duplicate add is refused atomically rather
+than returning an existing, possibly trusted registration. Setup/terminal and event
+hub cleanup follows commit; no attachment or checkout files are deleted.
 Thread transfer is unavailable to tools for the same reason. The product move API
 also requires a thread that has never run, which excludes moving the caller's own
 running thread even before considering the destination project.
