@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { startProject, type Service } from "./service";
 
 /** The Browser surface driving the service's headless Chrome. */
@@ -29,6 +31,12 @@ test.beforeAll(async () => {
   threadId = thread.id;
 });
 test.afterAll(async () => {
+  // End the browsers before the service exits, so Windows can release their profiles.
+  const base = `/api/threads/${threadId}/previews`;
+  for (const tab of await service.api<{ id: string }[]>("GET", base)) {
+    await service.api("DELETE", `${base}/${tab.id}`);
+    await expect.poll(() => existsSync(join(service.dataDir, "preview-profiles", tab.id))).toBe(false);
+  }
   await service.stop();
   site.close();
 });

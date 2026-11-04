@@ -2,7 +2,7 @@
 
 mod support;
 
-use std::io::{Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 
@@ -131,6 +131,121 @@ async fn put_json(service: &Service, path: &str) -> u16 {
         .unwrap()
         .status()
         .as_u16()
+}
+
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn preview_window_requires_its_owning_thread_and_an_attached_shell() {
+    let dir = TempDir::new();
+    let (mut desktop, thread) = setup(
+        &dir,
+        Options {
+            args: vec!["--parent-stdin".into()],
+            ..Options::default()
+        },
+        "codex",
+    )
+    .await;
+    let port = serve_page();
+    let base = format!("/api/threads/{thread}/previews");
+    let (status, tab) = desktop
+        .send(
+            &base,
+            json!({
+                "url": format!("http://127.0.0.1:{port}/"), "width": 600, "height": 400
+            }),
+        )
+        .await;
+    assert_eq!(status, 201, "{tab}");
+    let id = tab["id"].as_str().unwrap();
+    let project = desktop.json(&format!("/api/threads/{thread}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let other = desktop.thread(&project, "codex").await;
+    assert_eq!(
+        desktop
+            .post(&format!("/api/threads/{other}/previews/{id}/window"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(
+        desktop
+            .post(&format!("{base}/missing/window"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(
+        desktop
+            .post(&format!("/api/threads/missing/previews/{id}/window"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(
+        desktop
+            .post(&format!("{base}/{id}/window"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        204
+    );
+    let expected = json!({"type":"preview_window", "thread_id":thread, "tab_id":id});
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            if desktop.stdout.read_line(&mut line).unwrap_or(0) == 0 {
+                break;
+            }
+            let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if message["type"] == "preview_window" {
+                let _ = sender.send(message);
+                return;
+            }
+        }
+    });
+    assert_eq!(
+        receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("no preview window message"),
+        expected
+    );
+
+    let plain_dir = TempDir::new();
+    let (plain, plain_thread) = setup(&plain_dir, Options::default(), "codex").await;
+    let plain_base = format!("/api/threads/{plain_thread}/previews");
+    let (status, plain_tab) = plain
+        .send(
+            &plain_base,
+            json!({
+                "url": format!("http://127.0.0.1:{port}/"), "width": 600, "height": 400
+            }),
+        )
+        .await;
+    assert_eq!(status, 201, "{plain_tab}");
+    let plain_id = plain_tab["id"].as_str().unwrap();
+    assert_eq!(
+        plain
+            .post(&format!("{plain_base}/{plain_id}/window"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        422
+    );
 }
 
 #[tokio::test]

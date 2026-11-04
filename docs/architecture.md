@@ -1518,6 +1518,22 @@ only an explicit allow rule passes.
 
 ## Preview
 
+Moving a preview to another panel changes viewer layout only: the service tab,
+profile, navigation and control state stay alive. A second panel has its own selected
+tab; returning it never opens or closes a browser. `POST
+/api/threads/:id/previews/:tab/window` validates the thread and tab before asking
+the attached desktop shell to open or focus that tab's separate window; a plain
+service returns `422`. The shell builds a bundled `#/preview/<thread>/<tab>` URL
+from its owned service origin and token, accepts no caller-supplied URL, and retains
+the same native navigation restrictions. A dedicated viewer shows only that tab
+and does not auto-resize the shared page. Closing the window leaves the tab alive;
+an explicit Close tab still ends it. Restarting the service closes its old preview
+windows and fences queued requests from earlier service generations. Unexpected
+service loss follows the ordinary disconnected-page state until restart. Shell
+window creation failures use the existing shell error event; the HTTP success means
+the request was queued. Native DevTools cannot inspect a remote page from its JPEG
+stream, so that action is not doable.
+
 The browser discovers a page's declared icon, falling back to its origin's
 `/favicon.ico`, alongside its title. The optional `favicon_url` is metadata only:
 the viewer loads bytes through the existing authenticated `/api/media/image`

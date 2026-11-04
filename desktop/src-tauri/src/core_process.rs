@@ -27,6 +27,7 @@ pub enum ServiceMessage {
     CheckAppUpdate,
     InstallAppUpdate,
     ShellAction { action: ShellAction },
+    PreviewWindow { thread_id: String, tab_id: String },
     Activity(Activity),
 }
 
