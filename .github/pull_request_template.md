@@ -1,57 +1,48 @@
-<!-- Title: `type(scope): summary`, such as `fix(web): keep the composer focused
-after send`. Kinds: feat, fix, docs, test, refactor, perf, build, ci, chore,
-style, revert. The scope is optional and lowercase. Keep the whole title under
-72 characters. The Title check fails while the title does not fit, and the form
-is written up in CONTRIBUTING.md. -->
+<!-- Title: `type(scope): summary` under 72 characters, such as
+`fix(web): keep the composer focused after send`. See CONTRIBUTING.md#titles. -->
 
-## What changes
+## Summary
 
-<!-- What a user sees or what behaviour changes, and why. -->
+<!-- What changes for a user, and why, in one to three sentences. -->
+
+Closes #
 
 ## Parity rows
 
-<!-- Row IDs from docs/parity.md this closes or changes, such as I13 and I52, or "none". -->
+<!-- Row IDs from docs/parity.md this closes or changes, such as I13, or "none". -->
 
-## Verification
+## Testing
 
-<!-- Commands you ran and what they showed. Name any real engine or platform run;
+- [ ] Rust: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`
+- [ ] Web: `npm run check` and `npm test` in `web`
+- [ ] Launched the packaged app (desktop shell changes only)
+
+<!-- Anything else you ran and what it showed. Name any real engine or platform run:
 mock data and the fake engines have hidden real bugs before. -->
 
-- [ ] `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`
-- [ ] `npm run check` and `npm test` in `web`
-- [ ] Launched the packaged app, if the desktop shell changed
-
-Not verified:
+Not tested:
 
 ## Co-authors
 
-<!-- Every person who wrote or amended commits here, with their commits, such as
-"- Ada Lovelace <ada@example.com>: `1a2b3c4 fix(x): ...`". "none" when it is only
-you. Their own commits already carry them as author; this is where the pull request
-credits them. -->
+<!-- Everyone else who wrote or amended commits here, with their commits, or "none". -->
 
 none
 
 ## AI usage
 
-<!-- Required. Tick "Written by hand", or fill in every line below from what
-actually ran. The PR check fails while this section is empty. -->
+<!-- Required, and checked. Tick "Written by hand", or fill in every line from what
+actually ran. -->
 
 - [ ] Written by hand, with no AI
-- Harness and version: <!-- such as Claude Code 2.1.150, Codex 0.166.0, Cursor -->
-- Models: <!-- every model by exact ID and what it did, such as claude-opus-5-5 (lead, all code), or claude-opus-5-5 (plan, review) and claude-sonnet-5-5 (code) -->
+- Harness and version: <!-- such as Claude Code 2.1.150 or Codex 0.166.0 -->
+- Models: <!-- every model by exact ID and what it did, such as claude-opus-5-5 (all), or claude-opus-5-5 (plan) and claude-sonnet-5-5 (code) -->
 - Effort: <!-- low, medium or high, per model if they differ -->
 - Human role: <!-- what you decided, reviewed or changed yourself -->
-- Sources: <!-- every outside project, document or page used, with a link, or "none" -->
+- Sources: <!-- outside projects, documents or pages used, with links, or "none" -->
 
 ## Checklist
 
-- [ ] Works on Windows and macOS: no Unix-only path, shell or signal without its Windows branch and a CI test.
-- [ ] `web/src/generated` is committed with any contract change.
-- [ ] `docs/architecture.md` is updated in the same commit as any rule or lifecycle change.
-- [ ] No source is copied from another project.
-- [ ] No secrets, engine credentials, personal data or files from my machine.
-- [ ] The title follows `type(scope): summary`, which is what the Title check reads.
-- [ ] No agent or tool attribution in commits, the title or the branch name; AI use is recorded above.
-
-Related issue:
+- [ ] Works on Windows and macOS.
+- [ ] `web/src/generated` is committed with any contract change, and `docs/architecture.md` with any rule change.
+- [ ] No copied source, secrets, engine credentials or personal data.
+- [ ] No AI attribution in commits, the title or the branch name.
