@@ -75,6 +75,8 @@ def check(title: str, kind: str) -> list[str]:
     summary = match.group("summary").strip()
     if len(summary) < 3:
         problems.append("The summary is too short to say what changes.")
+    if summary and summary[0].isupper():
+        problems.append("The summary starts with a capital letter; use lowercase.")
     if summary.endswith("."):
         problems.append("The summary ends with a full stop; titles do not.")
     if summary.startswith(":") or summary.startswith("-"):

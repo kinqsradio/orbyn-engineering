@@ -1,7 +1,7 @@
 name: Title
 # Checks that the pull request title says what kind of change it is, in the form
-# `type(scope): summary`. It reads only the title from the event and never checks
-# out or runs pull request code. Issue titles use the same form; the issue forms
+# `type(scope): summary`. It reads the title from the event and runs the pull
+# request's checker and tests. Issue titles use the same form; the issue forms
 # start them off, and nothing gates an issue on it.
 on:
   pull_request:
@@ -15,9 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      # Only `scripts/`, because this check needs nothing else. It reads the title
-      # from the event and never runs pull request code.
-      - uses: actions/checkout@v4
+      # Check out `scripts/` from the pull request to test and run its checker.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: scripts
       - name: Check the title checker

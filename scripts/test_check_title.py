@@ -18,6 +18,8 @@ class AcceptedTitles(unittest.TestCase):
             "revert(web): drop the gallery counter",
             "feat(core)!: rename the render route",
             "fix(web): web/src/generated stays in the same commit",
+            "feat(web): support 3d previews",
+            "fix(web): 3d previews keep their size",
         ]:
             with self.subTest(title=title):
                 self.assertEqual(check(title, "pr"), [], title)
@@ -30,6 +32,16 @@ class AcceptedTitles(unittest.TestCase):
 
 
 class RefusedTitles(unittest.TestCase):
+    def test_an_uppercase_summary_is_refused(self):
+        for kind in ("pr", "issue"):
+            for title in (
+                "fix: Keep focus",
+                "feat(web)!: Rename the preview",
+                "docs: Éviter les doublons",
+            ):
+                with self.subTest(kind=kind, title=title):
+                    self.assertTrue(check(title, kind), title)
+
     def test_a_sentence_case_title_is_refused(self):
         problems = check("Resize the preview page from its device toolbar", "pr")
         self.assertTrue(any("type(scope): summary" in problem for problem in problems), problems)

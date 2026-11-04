@@ -82,7 +82,7 @@ type(scope): summary
   AI usage section describes.
 - The issue forms start the title with its kind. If the work changes shape, edit
   the title rather than opening a second issue.
-- The [Title](../.github/workflows/pr-title.yml) check fails a pull request whose
+- The [Title](.github/workflows/pr-title.yml) check fails a pull request whose
   title does not fit, and starts again when the title is edited. Dependabot opens
   its own titles and is skipped.
 
