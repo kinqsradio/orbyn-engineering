@@ -1,4 +1,5 @@
 //! Static UI with SPA fallback and a strict content security policy.
+//! Remote raster images use the authenticated proxy, never a direct CSP grant.
 
 use std::path::{Component, Path, PathBuf};
 

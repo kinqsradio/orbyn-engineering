@@ -5,7 +5,7 @@ import type { Thread } from "../../api/types";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Markdown } from "./Markdown";
-import { resolveMediaSource, workspacePath } from "./mediaSource";
+import { mediaCopyTarget, resolveMediaSource, workspacePath } from "./mediaSource";
 
 const atThread = () => {
   window.location.hash = "#/threads/t1";
@@ -35,6 +35,25 @@ afterEach(() => {
 });
 
 describe("media sources", () => {
+  it("uses the native service origin and keeps its token out of Copy link", () => {
+    sessionStorage.setItem("orbyn.token", "launch-token");
+    vi.stubGlobal("window", { location: {
+      protocol: "tauri:", hostname: "localhost", port: "",
+      search: "?service_origin=http%3A%2F%2F127.0.0.1%3A4321",
+    } });
+    try {
+      const item = resolveMediaSource("https://example.com/a.png?q=1&name=a", "a", null)!;
+      const src = new URL(item.src);
+      expect(src.origin).toBe("http://127.0.0.1:4321");
+      expect(src.pathname).toBe("/api/media/image");
+      expect(src.searchParams.get("token")).toBe("launch-token");
+      expect(src.searchParams.get("url")).toBe("https://example.com/a.png?q=1&name=a");
+      expect(mediaCopyTarget(item)).toBe("https://example.com/a.png?q=1&name=a");
+    } finally {
+      sessionStorage.removeItem("orbyn.token");
+      vi.unstubAllGlobals();
+    }
+  });
   it("normalises separators and keeps a path inside the thread's root", () => {
     expect(workspacePath("docs\\shot.png", null)).toBe("docs/shot.png");
     expect(workspacePath("./out/run.mp4", null)).toBe("out/run.mp4");
@@ -79,7 +98,7 @@ describe("media sources", () => {
     expect(workspacePath("javascript%253Aalert/x.png", null)).toBe("javascript%3Aalert/x.png");
   });
 
-  it("transport-encodes the decoded filename and leaves remote URLs unchanged", () => {
+  it("transport-encodes checkout paths and proxies remote images", () => {
     const scoped = { id: "t1", cwd: "/work/checkout" };
     const item = resolveMediaSource("docs/my%20shot.png", "shot", scoped);
     expect(item?.path).toBe("docs/my shot.png");
@@ -88,9 +107,9 @@ describe("media sources", () => {
     expect(resolveMediaSource("docs/100%2520.png", "shot", scoped)?.src)
       .toBe("/api/threads/t1/files/raw?path=docs%2F100%2520.png");
     expect(resolveMediaSource("https://example.com/my%20shot.png", "shot", scoped)?.src)
-      .toBe("https://example.com/my%20shot.png");
+      .toBe("/api/media/image?url=https%3A%2F%2Fexample.com%2Fmy%2520shot.png");
     expect(resolveMediaSource("https://example.com/100%2520.png", "shot", scoped)?.src)
-      .toBe("https://example.com/100%2520.png");
+      .toBe("/api/media/image?url=https%3A%2F%2Fexample.com%2F100%252520.png");
   });
 
   it("resolves only images and videos of the thread's checkout", () => {
@@ -106,7 +125,8 @@ describe("media sources", () => {
     expect(resolveMediaSource("docs/a.png", "a", null)).toBeNull();
     expect(resolveMediaSource("https://example.com/a.png", "a", null)).toMatchObject({
       kind: "image",
-      src: "https://example.com/a.png",
+      src: "/api/media/image?url=https%3A%2F%2Fexample.com%2Fa.png",
+      remoteUrl: "https://example.com/a.png",
     });
   });
 
@@ -259,8 +279,8 @@ describe("the expanded view", () => {
     expect(screen.getByText("2 of 2")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Previous"));
     expect(screen.getByText("1 of 2")).toBeInTheDocument();
-    expect(screen.getByText("Open in new tab")).toHaveAttribute("href", "https://example.com/a.png");
-    expect(screen.queryByText("Save")).toBeNull();
+    expect(screen.getByText("Save")).toHaveAttribute("href", "/api/media/image?url=https%3A%2F%2Fexample.com%2Fa.png&download=true");
+    expect(screen.queryByText("Open in new tab")).toBeNull();
   });
 
   it("stays inside the message it was opened from", async () => {
@@ -349,16 +369,14 @@ describe("the expanded view", () => {
     );
   });
 
-  it("offers a new tab rather than a cross-origin download", async () => {
+  it("saves proxied bytes and copies the original URL without the service token", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<Markdown text={"![pic](https://example.com/a.png)"} />);
     await user.click(screen.getByLabelText("Expand pic"));
-    const open = screen.getByText("Open in new tab");
-    expect(open).toHaveAttribute("href", "https://example.com/a.png");
-    expect(open).toHaveAttribute("target", "_blank");
-    expect(screen.queryByText("Save")).toBeNull();
+    expect(screen.getByText("Save")).toHaveAttribute("href", "/api/media/image?url=https%3A%2F%2Fexample.com%2Fa.png&download=true");
+    expect(screen.queryByText("Open in new tab")).toBeNull();
     await user.click(screen.getByLabelText("Copy link"));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://example.com/a.png"));
     await waitFor(() => expect(toastTexts()).toContain("Link copied"));

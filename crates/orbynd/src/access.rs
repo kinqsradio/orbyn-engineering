@@ -271,6 +271,7 @@ fn authorized(access: &Access, request: &Request<Body>) -> bool {
         && (path.starts_with("/ws/")
             || path.ends_with("/events")
             || path.ends_with("/files/raw")
+            || path == "/api/media/image"
             || project_image_read(path));
     streaming && query_token(request).is_some_and(|token| access.token_valid(token))
 }
@@ -329,9 +330,13 @@ mod tests {
     }
 
     #[test]
-    fn project_image_query_tokens_are_only_for_exact_read_routes() {
+    fn image_query_tokens_are_only_for_exact_read_routes() {
         let access = access();
-        for path in ["/api/projects/p/icon/raw", "/api/projects/p/images/raw"] {
+        for path in [
+            "/api/projects/p/icon/raw",
+            "/api/projects/p/images/raw",
+            "/api/media/image",
+        ] {
             for method in [Method::GET, Method::HEAD] {
                 let request = Request::builder()
                     .method(method)
@@ -353,6 +358,8 @@ mod tests {
             "/api/projects/p/nested/icon/raw",
             "/api/projects//images/raw",
             "/other/projects/p/icon/raw",
+            "/api/media/image/extra",
+            "/api/media/images",
         ] {
             let request = Request::builder()
                 .uri(format!("{path}?token=secret"))
