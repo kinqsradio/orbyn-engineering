@@ -58,6 +58,49 @@ node scripts/sync-labels.mjs
 | Platform | `platform: macos`, `platform: windows` |
 | Workflow | `needs triage`, `parity`, `good first issue`, `help wanted`, `duplicate`, `invalid`, `wontfix` |
 
+## Titles
+
+Pull request and issue titles say what kind of change it is, in the same form as a
+[Conventional Commits](https://www.conventionalcommits.org/) subject, so a title
+reads like the commit it becomes:
+
+```
+type(scope): summary
+```
+
+- A kind is required: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`,
+  `ci`, `chore`, `style` or `revert`. An issue may also use `question`, when the
+  issue only asks something and no change is settled yet.
+- A scope is optional and lowercase, and names the area the change touches, such
+  as `feat(web):` or `fix(core):`. `!` before the colon marks a breaking change,
+  as in `feat(core)!:`.
+- The summary is a short imperative phrase: lowercase first letter, no full stop
+  at the end, no run of spaces, and a whole title of at most 72 characters.
+- A title names the change and never credits a tool or an assistant for it. A
+  change may still be *about* an engine or a model ("show the claude usage limit"),
+  and a scope may name one, as in `fix(codex):`. AI use belongs in the body, as the
+  AI usage section describes.
+- The issue forms start the title with its kind. If the work changes shape, edit
+  the title rather than opening a second issue.
+- The [Title](.github/workflows/pr-title.yml) check fails a pull request whose
+  title does not fit, and starts again when the title is edited. Dependabot opens
+  its own titles and is skipped.
+
+## Credit
+
+A person who writes or amends the commits on a branch is an author of that change,
+and the record should say so:
+
+- Their own commits already carry them as author, which is the strongest record and
+  needs nothing extra.
+- The pull request lists every such person in its `## Co-authors` section, with the
+  commits they wrote, so the change credits them where people read it.
+- When their work is folded into a commit someone else authors, as happens when a
+  review fix is amended into the row commit, that commit carries the trailer
+  `Co-authored-by: Name <email>`.
+- Assistants and tools are never an author, a trailer, a title or a branch name; what
+  they did belongs in the AI usage section, which is the only place for it.
+
 ## Branches and commits
 
 - Branch from `main` with a short purpose name: `feat/`, `fix/`, `docs/`,
@@ -73,6 +116,26 @@ node scripts/sync-labels.mjs
   commit messages, pull request titles or branch names. Record AI use in the pull
   request's AI usage section instead.
 - Keep active branches current by merging `main` into them at least daily.
+
+## Leaving work behind
+
+Some work does not finish inside the pull request that found it: a row that was
+deliberately deferred, a limit the change had to accept, a test that was already
+failing, or a decision only the maintainer can make. None of it may stay in a chat,
+a session or a local note, because nobody else can pick it up there.
+
+Open an issue for it before the pull request merges, with the evidence that makes it
+actionable:
+
+- what is unfinished or wrong, and the row ID when a parity row owns it;
+- how to reproduce it, with the command and its output;
+- the options and the trade-off, when it is a decision;
+- what done looks like, so someone else can finish it;
+- the pull request it came from, and the label that puts it in the right queue
+  (`parity`, the area label, and `help wanted` when it is deliberately left open).
+
+The pull request then links the issue where it records the limit, so the two places
+point at each other.
 
 ## Checks
 
