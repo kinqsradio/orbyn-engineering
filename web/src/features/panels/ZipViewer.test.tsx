@@ -126,6 +126,17 @@ it("refuses an archive that is not a zip in the panel's error state", async () =
   expect(screen.queryByRole("list")).toBeNull();
 });
 
+it("offers the file's own bytes when it can't be read as an archive", async () => {
+  const user = userEvent.setup();
+  stubArchive(new Uint8Array(Buffer.from("not a zip at all")));
+  render(<ZipViewer threadId="t" path="notes.zip" size={16} />);
+  await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Show the file's bytes" }));
+  expect(await screen.findByLabelText("Bytes")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Back to the reader" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't read this archive");
+});
+
 it("refuses an archive past the 50 MB cap with the reason", async () => {
   stubArchive(new Uint8Array(50 * 1024 * 1024 + 1));
   render(<ZipViewer threadId="t" path="huge.zip" />);

@@ -1,11 +1,15 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { DocumentViewer, officeKind, type OfficeRun } from "./DocumentViewer";
+import { DocumentViewer, OFFICE_READ_TIMEOUT_MS, officeKind, runInWorker, type OfficeRun } from "./DocumentViewer";
+import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
 import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
-import type { DocxDocument, OfficeModel, OfficeRequest, OfficeResponse, XlsxDocument } from "./office";
+import { MAX_CELLS, type DocxDocument, type OfficeModel, type OfficeRequest, type OfficeResponse, type XlsxDocument } from "./office";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 /** Serves one package over the raw route, whatever the address asks for. */
 function serveFile(bytes: Uint8Array<ArrayBuffer>, status = 200) {
@@ -69,6 +73,96 @@ it("says so when a document holds no text", async () => {
   serveFile(buildDocx(""));
   render(page(answers({ format: "docx", blocks: [], text: "" })));
   expect(await screen.findByText("This document holds no text the viewer can show.")).toBeInTheDocument();
+});
+
+it("refuses an oversized document before it downloads a byte of it", async () => {
+  const fetch = serveFile(buildDocx(""));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="huge.docx"
+      kind="docx"
+      size={MAX_ARCHIVE_BYTES + 1}
+      run={answers(model)}
+    />,
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(`This document is ${formatBytes(MAX_ARCHIVE_BYTES + 1)}`);
+  expect(alert).toHaveTextContent(`at most ${formatBytes(MAX_ARCHIVE_BYTES)}`);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("gives up on a reader that never answers and offers a retry", async () => {
+  vi.useFakeTimers();
+  class SilentWorker {
+    constructor(_url: URL, _options?: unknown) {}
+
+    addEventListener(): void {}
+
+    removeEventListener(): void {}
+
+    terminate(): void {}
+
+    postMessage(): void {}
+  }
+  vi.stubGlobal("Worker", SilentWorker);
+  serveFile(buildDocx(""));
+  render(page());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(OFFICE_READ_TIMEOUT_MS);
+  });
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent("The document reader didn't answer");
+  expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+});
+
+it("says documents can't be read here when the page is not allowed a worker", async () => {
+  class BlockedWorker {
+    constructor() {
+      throw new DOMException("blocked by Content Security Policy", "SecurityError");
+    }
+  }
+  vi.stubGlobal("Worker", BlockedWorker);
+  serveFile(buildDocx(""));
+  render(page());
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("This browser can't read documents here.");
+  expect(alert).not.toHaveTextContent("Something went wrong");
+});
+
+it("says the same in a browser that has no Worker at all", async () => {
+  vi.stubGlobal("Worker", undefined);
+  serveFile(buildDocx(""));
+  render(page());
+  expect(await screen.findByRole("alert")).toHaveTextContent("This browser can't read documents here.");
+});
+
+it("hands the worker the file's own buffer instead of a copy", async () => {
+  const transferred: Transferable[][] = [];
+  class RecordingWorker {
+    private readonly listeners = new Set<(event: { data: OfficeResponse }) => void>();
+
+    constructor(_url: URL, _options?: unknown) {}
+
+    addEventListener(type: string, listener: (event: { data: OfficeResponse }) => void): void {
+      if (type === "message") this.listeners.add(listener);
+    }
+
+    removeEventListener(type: string, listener: (event: { data: OfficeResponse }) => void): void {
+      if (type === "message") this.listeners.delete(listener);
+    }
+
+    terminate(): void {}
+
+    postMessage(_request: OfficeRequest, transfer: Transferable[] = []): void {
+      transferred.push(transfer);
+      for (const listener of [...this.listeners]) listener({ data: { ok: true, model } });
+    }
+  }
+  vi.stubGlobal("Worker", RecordingWorker);
+  const bytes = buildDocx(docxParagraph("Owned"));
+  await runInWorker({ kind: "docx", bytes }, new AbortController().signal);
+  expect(transferred).toEqual([[bytes.buffer]]);
 });
 
 it("hands the file's own bytes to the reader", async () => {
@@ -210,6 +304,61 @@ it("says so when a sheet is empty", async () => {
   expect(await screen.findByText("This sheet is empty.")).toBeInTheDocument();
 });
 
+it("keeps a cell's own line break in the grid rather than collapsing it", async () => {
+  serveFile(buildXlsx([{ name: "Notes", xml: worksheet("") }]));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="book.xlsx"
+      kind="xlsx"
+      run={answers({ format: "xlsx", sheets: [{ name: "Notes", rows: [["line one\nline two"]] }] })}
+    />,
+  );
+  const cell = await screen.findByRole("cell", { name: /line one/ });
+  // The grid's own style is `white-space: pre-wrap`, so the break is a second
+  // line on screen; the text must reach it unbroken for that to work.
+  expect(cell.textContent).toBe("line one\nline two");
+});
+
+it("says which rows and columns of a sheet it left out", async () => {
+  serveFile(buildXlsx([{ name: "Tall", xml: worksheet("") }]));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="book.xlsx"
+      kind="xlsx"
+      run={answers({
+        format: "xlsx",
+        sheets: [{ name: "Tall", rows: [["1", "2"]], rowsCut: true, columnsCut: true }],
+      })}
+    />,
+  );
+  // What fits is still shown, and the cut is said out loud rather than hidden.
+  const grid = await screen.findByRole("tabpanel", { name: "Tall" });
+  expect(within(grid).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["1", "2"]);
+  expect(screen.getByText("Showing the first 5000 rows and the first 64 columns of \"Tall\"; the rest is not shown.")).toBeInTheDocument();
+});
+
+it("offers the file's own bytes when it can't be read as a document", async () => {
+  const user = userEvent.setup();
+  serveFile(new Uint8Array(Buffer.from("definitely not a package")));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="broken.docx"
+      kind="docx"
+      size={30}
+      run={async () => ({ ok: false, code: "zip_unreadable", message: "This file has no zip central directory." })}
+    />,
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Couldn't read this document");
+  await user.click(screen.getByRole("button", { name: "Show the file's bytes" }));
+  expect(await screen.findByLabelText("Bytes")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Back to the reader" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("no zip central directory");
+});
+
 it("shows a spreadsheet refusal under the spreadsheet's own title", async () => {
   serveFile(buildXlsx([{ name: "Tall", xml: worksheet("") }]));
   render(
@@ -219,15 +368,15 @@ it("shows a spreadsheet refusal under the spreadsheet's own title", async () => 
       kind="xlsx"
       run={async () => ({
         ok: false,
-        code: "office_sheet_too_large",
-        message: "The sheet \"Tall\" puts a value past row 5000; the viewer shows at most 5000 rows.",
+        code: "office_too_many_cells",
+        message: `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
       })}
     />,
   );
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("Couldn't read this spreadsheet");
-  expect(alert).toHaveTextContent("past row 5000");
-  expect(alert).toHaveTextContent("office_sheet_too_large");
+  expect(alert).toHaveTextContent(`at most ${MAX_CELLS} across all its sheets`);
+  expect(alert).toHaveTextContent("office_too_many_cells");
 });
 
 it("reads a real workbook through the worker's own protocol", async () => {

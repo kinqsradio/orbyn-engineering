@@ -5,7 +5,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
-import { rawUrl } from "./FileMedia";
+import { BytesFallback, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
 import {
   ZipError,
@@ -107,7 +107,7 @@ function TreeRows({
  * A zip archive as a folder list, read from its own bytes. Entries are read on
  * demand, so a large archive costs one pass to list and one entry to open.
  */
-export function ZipViewer({ threadId, path }: { threadId: string; path: string }) {
+export function ZipViewer({ threadId, path, size }: { threadId: string; path: string; size?: number }) {
   const archive = useAsync(`zip:${threadId}:${path}`, (signal) => loadArchive(threadId, path, signal));
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [view, setView] = useState<EntryView>({ status: "idle" });
@@ -170,13 +170,22 @@ export function ZipViewer({ threadId, path }: { threadId: string; path: string }
   }
   if (!read) return null;
   if (!read.ok) {
-    return (
+    const refusal = (
       <ErrorState
         compact
         title="Couldn't read this archive"
         failure={new ApiFailure(read.code, read.message, 0)}
         onRetry={archive.reload}
       />
+    );
+    // An archive this reader won't list may still be something: its own bytes
+    // are here, and the hex view reads any file.
+    if (size === undefined) return refusal;
+    return (
+      <div className="office-refusal">
+        {refusal}
+        <BytesFallback threadId={threadId} path={path} size={size} />
+      </div>
     );
   }
 

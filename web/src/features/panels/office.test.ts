@@ -6,17 +6,14 @@ import {
 } from "./zipArchive";
 import {
   MAX_BLOCKS,
-  MAX_COLUMNS_PER_SHEET,
-  MAX_PART_BYTES,
+  MAX_CELLS,
+  MAX_NESTING,
   MAX_ROWS_PER_SHEET,
   MAX_SHEETS,
-  OfficeError,
   cellPosition,
-  parseDocx,
   respondToOfficeRequest,
   type DocxDocument,
   type OfficeKind,
-  type OfficeParts,
   type XlsxDocument,
 } from "./office";
 import { buildDocx, buildOfficePackage, buildXlsx, docxParagraph, workbookParts, worksheet } from "./office.test-support";
@@ -45,17 +42,6 @@ async function refused(
   const answer = await respondToOfficeRequest({ kind, bytes });
   if (answer.ok) throw new Error("Expected this document to be refused.");
   return answer;
-}
-
-/** The error the parser itself raised. */
-async function refusal(promise: Promise<unknown>): Promise<OfficeError> {
-  try {
-    await promise;
-  } catch (error) {
-    if (error instanceof OfficeError) return error;
-    throw error;
-  }
-  throw new Error("Expected this document to be refused.");
 }
 
 it("reads headings, paragraphs and tables in the order the body gives them", async () => {
@@ -113,6 +99,23 @@ it("flattens a table nested inside a cell", async () => {
   expect(model.blocks).toEqual([{ kind: "table", rows: [["outer\ninner\tcell"]], text: "outer\ninner\tcell" }]);
 });
 
+it("reads a table row the body wraps in a content control", async () => {
+  // Word writes a repeating row as `<w:sdt><w:sdtContent><w:tr>`.
+  const model = await read(
+    buildDocx(
+      `<w:tbl>` +
+        `<w:sdt><w:sdtPr><w:tblHeader/></w:sdtPr><w:sdtContent>` +
+        `<w:tr><w:tc><w:p><w:r><w:t>Region</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Sales</w:t></w:r></w:p></w:tc></w:tr>` +
+        `</w:sdtContent></w:sdt>` +
+        `<w:tr><w:tc><w:p><w:r><w:t>North</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>12</w:t></w:r></w:p></w:tc></w:tr>` +
+        `</w:tbl>`,
+    ),
+  );
+  expect(model.blocks).toEqual([
+    { kind: "table", rows: [["Region", "Sales"], ["North", "12"]], text: "Region\tSales\nNorth\t12" },
+  ]);
+});
+
 it("leaves the text of a deleted run out and keeps an inserted one", async () => {
   const model = await read(
     buildDocx(`<w:p><w:del><w:r><w:delText>removed</w:delText></w:r></w:del><w:ins><w:r><w:t>added</w:t></w:r></w:ins></w:p>`),
@@ -123,6 +126,68 @@ it("leaves the text of a deleted run out and keeps an inserted one", async () =>
 it("strips control characters from every string it shows", async () => {
   const model = await read(buildDocx(`<w:p><w:r><w:t>a\u0001b\u0007c\u009fd</w:t></w:r></w:p>`));
   expect(model.blocks).toEqual([{ kind: "paragraph", text: "abcd" }]);
+});
+
+it("keeps a line break and a tab a workbook cell holds", async () => {
+  // The shape a real writer produces: openpyxl puts the cell's text in the
+  // shared string part and writes its line break as `&#10;`, and Excel writes
+  // the same for Alt+Enter.
+  const model = await readWorkbook(
+    buildXlsx(
+      [
+        {
+          name: "Notes",
+          xml: worksheet(
+            `<row r="1"><c r="A1" t="s"><v>0</v></c>` +
+              `<c r="B1" t="inlineStr"><is><t xml:space="preserve">plain&#9;tabbed</t></is></c></row>`,
+          ),
+        },
+      ],
+      ["line one&#10;line two"],
+    ),
+  );
+  expect(model.sheets).toEqual([{ name: "Notes", rows: [["line one\nline two", "plain\ttabbed"]] }]);
+});
+
+it("takes a text box's text from one branch of an alternate content block", async () => {
+  const alternate =
+    `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">` +
+    `<mc:Choice Requires="wps"><w:drawing><w:txbxContent>${docxParagraph("Inside the box")}</w:txbxContent></w:drawing></mc:Choice>` +
+    `<mc:Fallback><w:pict><w:txbxContent>${docxParagraph("Inside the box")}</w:txbxContent></w:pict></mc:Fallback>` +
+    `</mc:AlternateContent>`;
+  const model = await read(buildDocx(`<w:p><w:r><w:t>before</w:t></w:r><w:r>${alternate}</w:r><w:r><w:t>after</w:t></w:r></w:p>`));
+  expect(model.blocks).toEqual([{ kind: "paragraph", text: "beforeInside the boxafter" }]);
+});
+
+it("does not print a body-level alternate content block twice either", async () => {
+  const alternate =
+    `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">` +
+    `<mc:Choice Requires="wps">${docxParagraph("Chosen")}</mc:Choice>` +
+    `<mc:Fallback>${docxParagraph("Chosen")}</mc:Fallback>` +
+    `</mc:AlternateContent>`;
+  const model = await read(buildDocx(alternate));
+  expect(model.blocks).toEqual([{ kind: "paragraph", text: "Chosen" }]);
+});
+
+it("refuses a document nested past its depth cap with a message of its own", async () => {
+  const open = `<w:sdt>`.repeat(MAX_NESTING + 10);
+  const close = `</w:sdt>`.repeat(MAX_NESTING + 10);
+  const answer = await refused(buildDocx(open + docxParagraph("deep") + close));
+  expect(answer.code).toBe("office_too_deep");
+  expect(answer.message).toBe(
+    `This document nests its content more than ${MAX_NESTING} levels deep; the viewer can't read it.`,
+  );
+});
+
+it("refuses the deeply nested part from the issue without a stack overflow", async () => {
+  // 120,000 nested content controls in a 1.4 MB part: the recursion used to
+  // reach the user as "Maximum call stack size exceeded".
+  const depth = 120_000;
+  const open = `<w:sdt>`.repeat(depth);
+  const close = `</w:sdt>`.repeat(depth);
+  const answer = await refused(buildDocx(open + docxParagraph("deep") + close));
+  expect(answer.code).toBe("office_too_deep");
+  expect(answer.message).not.toContain("call stack");
 });
 
 it("reads what a damaged part still holds", async () => {
@@ -143,22 +208,14 @@ it("refuses a document past the block cap with the cap it hit", async () => {
   );
 });
 
-it("refuses a part past the part cap with the cap it hit", async () => {
-  const parts: OfficeParts = {
-    names: ["word/document.xml"],
-    read: async () => new Uint8Array(MAX_PART_BYTES + 1),
-  };
-  const error = await refusal(parseDocx(parts));
-  expect(error.code).toBe("office_part_too_large");
-  expect(error.message).toBe(
-    `This document's word/document.xml is ${formatBytes(MAX_PART_BYTES + 1)}; the viewer reads at most ${formatBytes(MAX_PART_BYTES)} of one part.`,
-  );
-});
-
-it("refuses a part the archive reader will not decompress, with the entry cap it hit", async () => {
+it("refuses an oversized part with the archive reader's entry cap, naming the part", async () => {
+  // The archive reader's 2 MiB entry cap is the one that fires: the reader
+  // asks it for every part, so no separate per-part branch can be reached.
   const answer = await refused(buildOfficePackage({ "word/document.xml": "x".repeat(MAX_ENTRY_BYTES + 1) }));
   expect(answer.code).toBe("entry_too_large");
-  expect(answer.message).toContain(`at most ${formatBytes(MAX_ENTRY_BYTES)} of an entry`);
+  expect(answer.message).toBe(
+    `This document's word/document.xml can't be read. This entry is ${formatBytes(MAX_ENTRY_BYTES + 1)}; the viewer reads at most ${formatBytes(MAX_ENTRY_BYTES)} of an entry.`,
+  );
 });
 
 it("refuses a document over the archive cap the way an archive is refused", async () => {
@@ -224,13 +281,9 @@ it("reads a workbook's sheets with their shared strings, numbers, booleans and a
 
 it("places a cell where its own reference says, counting rows from 1 and columns from A", async () => {
   const model = await readWorkbook(buildXlsx([{ name: "Placed", xml: worksheet(`<row r="5"><c r="D5"><v>7</v></c></row>`) }]));
-  expect(model.sheets[0]?.rows).toEqual([
-    ["", "", "", ""],
-    ["", "", "", ""],
-    ["", "", "", ""],
-    ["", "", "", ""],
-    ["", "", "", "7"],
-  ]);
+  // The four empty rows above the value keep its position, and a row is not
+  // padded out to the sheet's widest column: the grid's own width does that.
+  expect(model.sheets[0]?.rows).toEqual([[], [], [], [], ["", "", "", "7"]]);
 });
 
 it("skips a malformed or impossible reference and keeps reading the row", async () => {
@@ -305,28 +358,62 @@ it("keeps a sheet whose part is there and skips one whose part is not", async ()
   expect(model.sheets).toEqual([{ name: "Kept", rows: [["Kept"]] }]);
 });
 
-it("refuses a sheet past the row cap with the cap it hit", async () => {
+it("shows the rows of a sheet that fit and marks the rest as cut", async () => {
   const tall = MAX_ROWS_PER_SHEET + 1;
-  const answer = await refused(
-    buildXlsx([{ name: "Tall", xml: worksheet(`<row r="${tall}"><c r="A${tall}"><v>1</v></c></row>`) }]),
-    "xlsx",
+  const model = await readWorkbook(
+    buildXlsx([
+      {
+        name: "Tall",
+        xml: worksheet(`<row r="1"><c r="A1"><v>1</v></c></row><row r="${tall}"><c r="A${tall}"><v>2</v></c></row>`),
+      },
+    ]),
   );
-  expect(answer.code).toBe("office_sheet_too_large");
+  expect(model.sheets).toEqual([{ name: "Tall", rows: [["1"]], rowsCut: true }]);
+});
+
+it("shows the columns of a sheet that fit and marks the rest as cut", async () => {
+  // BM is column 65, the first one past the cap.
+  const model = await readWorkbook(
+    buildXlsx([
+      { name: "Wide", xml: worksheet(`<row r="1"><c r="A1"><v>1</v></c><c r="BM1"><v>2</v></c></row>`) },
+    ]),
+  );
+  expect(model.sheets).toEqual([{ name: "Wide", rows: [["1"]], columnsCut: true }]);
+});
+
+it("marks neither a row nor a column cut when a sheet is inside both caps", async () => {
+  const model = await readWorkbook(
+    buildXlsx([{ name: "Fits", xml: worksheet(`<row r="${MAX_ROWS_PER_SHEET}"><c r="A1"><v>1</v></c></row>`) }]),
+  );
+  expect(model.sheets[0]?.rowsCut).toBeUndefined();
+  expect(model.sheets[0]?.columnsCut).toBeUndefined();
+});
+
+it("keeps the cells one 200-sheet workbook lays out bounded", async () => {
+  // The shape from issue #136: 61 KB, 200 sheets, each one cell at row 5000
+  // column BL, which the old padding turned into 64,000,000 cells and a 194 MB
+  // model. The whole workbook is now refused before the fourth sheet is laid
+  // out, and the refusal names the budget.
+  const sheets = Array.from({ length: MAX_SHEETS }, (_, at) => ({
+    name: `S${at + 1}`,
+    xml: worksheet(`<row r="${MAX_ROWS_PER_SHEET}"><c r="BL${MAX_ROWS_PER_SHEET}"><v>${at + 1}</v></c></row>`),
+  }));
+  const answer = await refused(buildXlsx(sheets), "xlsx");
+  expect(answer.code).toBe("office_too_many_cells");
   expect(answer.message).toBe(
-    `The sheet "Tall" puts a value past row ${MAX_ROWS_PER_SHEET}; the viewer shows at most ${MAX_ROWS_PER_SHEET} rows.`,
+    `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
   );
 });
 
-it("refuses a sheet past the column cap with the cap it hit", async () => {
-  // BM is column 65, the first one past the cap.
-  const answer = await refused(
-    buildXlsx([{ name: "Wide", xml: worksheet(`<row r="1"><c r="BM1"><v>1</v></c></row>`) }]),
-    "xlsx",
-  );
-  expect(answer.code).toBe("office_sheet_too_large");
-  expect(answer.message).toBe(
-    `The sheet "Wide" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
-  );
+it("reads a workbook whose grids stay inside the whole-workbook budget", async () => {
+  const sheets = Array.from({ length: MAX_SHEETS }, (_, at) => ({
+    name: `S${at + 1}`,
+    xml: worksheet(`<row r="1"><c r="A1"><v>${at + 1}</v></c></row>`),
+  }));
+  const model = await readWorkbook(buildXlsx(sheets));
+  expect(model.sheets).toHaveLength(MAX_SHEETS);
+  const shown = model.sheets.reduce((all, sheet) => all + sheet.rows.length * sheet.rows[0]!.length, 0);
+  expect(shown).toBeLessThanOrEqual(MAX_CELLS);
 });
 
 it("refuses a workbook past the sheet cap with the cap it hit", async () => {

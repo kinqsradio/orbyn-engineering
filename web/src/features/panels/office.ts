@@ -11,10 +11,11 @@
  * and the viewer renders it as React elements.
  */
 
-import { ZipError, formatBytes, readEntryBytes, readZipArchive, type ZipEntry } from "./zipArchive";
+import { ZipError, readEntryBytes, readZipArchive, type ZipEntry } from "./zipArchive";
 
-/** The most XML one part may hold. The archive reader caps an entry at the same 2 MiB. */
-export const MAX_PART_BYTES = 2 * 1024 * 1024;
+/** How deep a part may nest before the reader refuses it: every descent below
+ * this is a recursive call, and a stack overflow is not a message to show. */
+export const MAX_NESTING = 100;
 /** The most paragraphs and tables one Word document may hold. */
 export const MAX_BLOCKS = 5000;
 /** The most worksheets one workbook may name. */
@@ -22,6 +23,15 @@ export const MAX_SHEETS = 200;
 /** The most rows and the most columns one sheet's grid shows. */
 export const MAX_ROWS_PER_SHEET = 5000;
 export const MAX_COLUMNS_PER_SHEET = 64;
+/**
+ * The most cells every grid of one workbook may show together: each sheet's
+ * rows by its widest column, added up, with a sheet that holds no value still
+ * counting one column for its rows. One sheet at its own caps shows 320,000,
+ * so this is about three such sheets. Bounding each sheet alone was not
+ * enough: two hundred sheets of one cell at row 5000 column BL each show
+ * 320,000 cells, which is 64,000,000 together, off a 61 KB file.
+ */
+export const MAX_CELLS = 1000 * 1000;
 
 /** The formats this reader opens. `.docm` and `.xlsm` carry the same parts. */
 export type OfficeKind = "docx" | "xlsx";
@@ -29,10 +39,10 @@ export type OfficeKind = "docx" | "xlsx";
 /** Why a document was refused. Every one of these is shown to the person. */
 export type OfficeRefusal =
   | "office_unreadable"
-  | "office_part_too_large"
+  | "office_too_deep"
   | "office_too_many_blocks"
   | "office_too_many_sheets"
-  | "office_sheet_too_large";
+  | "office_too_many_cells";
 
 /** A refusal to read a document, with a message ready to show. */
 export class OfficeError extends Error {
@@ -78,8 +88,12 @@ export interface DocxDocument {
 /** One worksheet: its tab's label and the used range as display text. */
 export interface OfficeSheet {
   name: string;
-  /** Rows from row 1, each padded to the widest used column. */
+  /** Rows from row 1, each holding the cells up to its own last value. */
   rows: string[][];
+  /** Set when the sheet holds a value past the row cap, which is not shown. */
+  rowsCut?: boolean;
+  /** Set when the sheet holds a value past the column cap, which is not shown. */
+  columnsCut?: boolean;
 }
 
 export interface XlsxDocument {
@@ -109,13 +123,36 @@ export interface OfficeParts {
 /** The part a Word document keeps its body in. */
 const DOCX_DOCUMENT_PART = "word/document.xml";
 
-/** Control characters and line breaks added by markup never come from the text. */
+/** The controls that are genuinely noise, in one test: below a tab, between a
+ * newline and a space, and the two control blocks. A tab and a newline are not
+ * among them, because a cell's own text can hold either. */
+function isNoise(code: number): boolean {
+  return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+}
+
+/** Every control character and line break: a name, an attribute, or a run of
+ * text, where a break can only have come from markup this reader already
+ * turns into one (`w:tab`, `w:br`). */
 export function stripControlChars(text: string): string {
   let clean = "";
   for (const character of text) {
     const code = character.codePointAt(0) ?? 0;
     if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) continue;
     clean += character;
+  }
+  return clean;
+}
+
+/**
+ * The noise taken out of a string whose own tabs and line breaks are content:
+ * a workbook cell, where Alt+Enter is a real `&#10;` in the file. The grid
+ * shows one so the reader can see it, and the markup the scanner drops is
+ * never a line break, so nothing here invents one.
+ */
+export function stripNoise(text: string): string {
+  let clean = "";
+  for (const character of text) {
+    if (!isNoise(character.codePointAt(0) ?? 0)) clean += character;
   }
   return clean;
 }
@@ -189,10 +226,10 @@ function parseXml(source: string): XmlElement {
     const top = open[open.length - 1];
     if (!top) break;
     if (start < 0) {
-      top.text += stripControlChars(decodeEntities(source.slice(at)));
+      top.text += stripNoise(decodeEntities(source.slice(at)));
       break;
     }
-    top.text += stripControlChars(decodeEntities(source.slice(at, start)));
+    top.text += stripNoise(decodeEntities(source.slice(at, start)));
     if (source.startsWith("<!--", start)) {
       const end = source.indexOf("-->", start + 4);
       at = end < 0 ? source.length : end + 3;
@@ -201,7 +238,7 @@ function parseXml(source: string): XmlElement {
     if (source.startsWith("<![CDATA[", start)) {
       const end = source.indexOf("]]>", start + 9);
       const stop = end < 0 ? source.length : end;
-      top.text += stripControlChars(source.slice(start + 9, stop));
+      top.text += stripNoise(source.slice(start + 9, stop));
       at = end < 0 ? source.length : end + 3;
       continue;
     }
@@ -290,24 +327,27 @@ export function openOfficeParts(bytes: Uint8Array<ArrayBuffer>): OfficeParts {
       try {
         return await readEntryBytes(bytes, entry);
       } catch (failure) {
-        // The caps and the corruption checks belong to the archive reader, and
-        // its message already names what it refused.
-        if (failure instanceof ZipError) throw new OfficeError(failure.code, failure.message);
+        // The caps and the corruption checks belong to the archive reader. Its
+        // message says what it refused; this one says which part that was, so
+        // a reader of a document that holds dozens of parts knows where to
+        // look. The 2 MiB entry cap is the one that bounds a part.
+        if (failure instanceof ZipError) {
+          throw new OfficeError(failure.code, `This document's ${name} can't be read. ${failure.message}`);
+        }
         throw failure;
       }
     },
   };
 }
 
-/** One part's own document element, which is its first element; the scanner's wrapper is not one. */
+/**
+ * One part's own document element, which is its first element; the scanner's
+ * wrapper is not one. The part's size is already bounded by the archive
+ * reader's 2 MiB entry cap, which every part comes through, so there is no
+ * second cap here to reach.
+ */
 async function readPartXml(parts: OfficeParts, name: string): Promise<XmlElement> {
   const bytes = await parts.read(name);
-  if (bytes.length > MAX_PART_BYTES) {
-    throw new OfficeError(
-      "office_part_too_large",
-      `This document's ${name} is ${formatBytes(bytes.length)}; the viewer reads at most ${formatBytes(MAX_PART_BYTES)} of one part.`,
-    );
-  }
   const root = parseXml(new TextDecoder("utf-8").decode(bytes));
   return root.children[0] ?? root;
 }
@@ -341,17 +381,38 @@ function headingLevel(paragraph: XmlElement): 1 | 2 | 3 | 4 | null {
  */
 function paragraphText(paragraph: XmlElement): string {
   let text = "";
-  for (const node of paragraph.children) text += nodeText(node);
+  for (const node of paragraph.children) text += nodeText(node, 0);
   return text;
 }
 
-function nodeText(node: XmlElement): string {
+/** A part nested deeper than any document the viewer reads: refused with its
+ * own reason rather than recursing until the stack runs out. */
+function tooDeep(): OfficeError {
+  return new OfficeError(
+    "office_too_deep",
+    `This document nests its content more than ${MAX_NESTING} levels deep; the viewer can't read it.`,
+  );
+}
+
+/**
+ * An `mc:Fallback` block repeats what its `mc:Choice` already said, in markup
+ * for a reader that knows none of the newer names: Word writes the same
+ * `w:txbxContent` in both branches of a text box, so descending into both
+ * prints that box's text twice.
+ */
+function isFallback(node: XmlElement): boolean {
+  return localName(node.name) === "Fallback";
+}
+
+function nodeText(node: XmlElement, depth: number): string {
+  if (depth > MAX_NESTING) throw tooDeep();
   const name = localName(node.name);
-  if (name === "t") return node.text;
+  if (name === "t") return stripControlChars(node.text);
   if (name === "tab") return "\t";
   if (name === "br" || name === "cr") return "\n";
+  if (isFallback(node)) return "";
   let text = "";
-  for (const child of node.children) text += nodeText(child);
+  for (const child of node.children) text += nodeText(child, depth + 1);
   return text;
 }
 
@@ -361,37 +422,58 @@ function paragraphBlock(paragraph: XmlElement): DocxBlock {
   return level === null ? { kind: "paragraph", text } : { kind: "heading", level, text };
 }
 
+/**
+ * A table's rows in the order the body gives them, found through the wrapper
+ * Word puts around a repeating row (`<w:sdt><w:sdtContent><w:tr>`) and through
+ * any other element that is not itself a row, a cell or a table.
+ */
+function tableRows(table: XmlElement): XmlElement[] {
+  const rows: XmlElement[] = [];
+  const visit = (node: XmlElement, depth: number) => {
+    if (depth > MAX_NESTING) throw tooDeep();
+    for (const child of node.children) {
+      const name = localName(child.name);
+      if (name === "tr") rows.push(child);
+      else if (name !== "tbl" && name !== "tc" && !isFallback(child)) visit(child, depth + 1);
+    }
+  };
+  visit(table, 0);
+  return rows;
+}
+
 function tableBlock(table: XmlElement): DocxTable {
   // `w:gridSpan` and `w:vMerge` are not spread out: a merged cell stays one
   // cell here, so a row's cells are exactly the cells its markup holds.
-  const rows = children(table, "tr").map((row) => children(row, "tc").map(cellText));
+  const rows = tableRows(table).map((row) => children(row, "tc").map(cellText));
   return { kind: "table", rows, text: rows.map((row) => row.join("\t")).join("\n") };
 }
 
 function cellText(cell: XmlElement): string {
   const lines: string[] = [];
-  collectCellLines(cell, lines);
+  collectCellLines(cell, lines, 0);
   return lines.join("\n");
 }
 
 /** A table inside a cell is flattened: one line per row, its cells by tab. */
-function collectCellLines(parent: XmlElement, lines: string[]): void {
+function collectCellLines(parent: XmlElement, lines: string[], depth: number): void {
+  if (depth > MAX_NESTING) throw tooDeep();
   for (const node of parent.children) {
     const name = localName(node.name);
     if (name === "p") lines.push(paragraphText(node));
     else if (name === "tbl") {
-      for (const row of children(node, "tr")) lines.push(children(row, "tc").map(cellText).join("\t"));
-    } else collectCellLines(node, lines);
+      for (const row of tableRows(node)) lines.push(children(row, "tc").map(cellText).join("\t"));
+    } else if (!isFallback(node)) collectCellLines(node, lines, depth + 1);
   }
 }
 
 /** Body blocks in order. A wrapper such as a content control is descended into. */
-function collectBlocks(parent: XmlElement, blocks: DocxBlock[]): void {
+function collectBlocks(parent: XmlElement, blocks: DocxBlock[], depth = 0): void {
+  if (depth > MAX_NESTING) throw tooDeep();
   for (const node of parent.children) {
     const name = localName(node.name);
     if (name === "p") blocks.push(paragraphBlock(node));
     else if (name === "tbl") blocks.push(tableBlock(node));
-    else collectBlocks(node, blocks);
+    else if (!isFallback(node)) collectBlocks(node, blocks, depth + 1);
     if (blocks.length > MAX_BLOCKS) {
       throw new OfficeError(
         "office_too_many_blocks",
@@ -439,12 +521,13 @@ export function cellPosition(reference: string): { row: number; column: number }
 }
 
 /** The text of one string part: its runs joined, a phonetic run left out. */
-function stringText(element: XmlElement): string {
+function stringText(element: XmlElement, depth = 0): string {
+  if (depth > MAX_NESTING) throw tooDeep();
   let text = "";
   for (const node of element.children) {
     const name = localName(node.name);
     if (name === "rPh") continue;
-    text += name === "t" ? node.text : stringText(node);
+    text += name === "t" ? node.text : stringText(node, depth + 1);
   }
   return text;
 }
@@ -508,12 +591,20 @@ function cellDisplayText(cell: XmlElement, shared: readonly string[]): string {
  * The used range: a value's own reference decides where it sits, so a cell at
  * `D5` stays in column D. A reference that cannot be read is skipped rather
  * than fatal, and a cell with nothing to show does not count towards the caps.
+ *
+ * A value past a cap is left out and the sheet says so, because refusing the
+ * whole sheet would hide the part of it that does fit.
  */
-async function sheetGrid(parts: OfficeParts, name: string, part: string, shared: readonly string[]): Promise<string[][]> {
+async function sheetGrid(
+  parts: OfficeParts,
+  part: string,
+  shared: readonly string[],
+): Promise<{ rows: string[][]; rowsCut: boolean; columnsCut: boolean }> {
   const sheet = await readPartXml(parts, part);
   const data = child(sheet, "sheetData");
   const values: string[][] = [];
-  let widest = 0;
+  let rowsCut = false;
+  let columnsCut = false;
   let rowNumber = 0;
   for (const row of data === null ? [] : children(data, "row")) {
     const declared = Number.parseInt(attr(row, "r") ?? "", 10);
@@ -523,33 +614,32 @@ async function sheetGrid(parts: OfficeParts, name: string, part: string, shared:
       const reference = attr(cell, "r");
       const position = reference === null ? null : cellPosition(reference);
       if (reference !== null && position === null) continue;
-      const text = stripControlChars(cellDisplayText(cell, shared));
+      const text = stripNoise(cellDisplayText(cell, shared));
       if (text === "") continue;
       const at = position?.row ?? rowNumber;
       column = position?.column ?? column + 1;
       if (column > MAX_COLUMNS_PER_SHEET) {
-        throw new OfficeError(
-          "office_sheet_too_large",
-          `The sheet "${name}" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
-        );
+        columnsCut = true;
+        continue;
       }
       if (at > MAX_ROWS_PER_SHEET) {
-        throw new OfficeError(
-          "office_sheet_too_large",
-          `The sheet "${name}" puts a value past row ${MAX_ROWS_PER_SHEET}; the viewer shows at most ${MAX_ROWS_PER_SHEET} rows.`,
-        );
+        rowsCut = true;
+        continue;
       }
       const line = values[at - 1] ?? (values[at - 1] = []);
       line[column - 1] = text;
-      if (column > widest) widest = column;
     }
   }
+  // A row keeps only the cells up to its own last value. Padding every row out
+  // to the widest column built nothing the grid needed: it gives each row the
+  // sheet's width from that one width, and shows a missing cell as nothing.
   const rows: string[][] = [];
   for (let at = 0; at < values.length; at += 1) {
-    const line = values[at];
-    rows.push(Array.from({ length: widest }, (_, column) => line?.[column] ?? ""));
+    const line = Array.from(values[at] ?? [], (cell) => cell ?? "");
+    while (line.length > 0 && line.at(-1) === "") line.pop();
+    rows.push(line);
   }
-  return rows;
+  return { rows, rowsCut, columnsCut };
 }
 
 export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
@@ -574,6 +664,7 @@ export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
   const targets = await workbookTargets(parts);
   const shared = await sharedStrings(parts);
   const sheets: OfficeSheet[] = [];
+  let shown = 0;
   for (const [at, element] of elements.entries()) {
     const declared = attr(element, "name");
     const name = declared === null || declared.trim() === "" ? `Sheet ${at + 1}` : declared;
@@ -583,7 +674,25 @@ export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
     // A workbook that names a part it does not carry still opens: its other
     // sheets are readable, and inventing an empty one would misstate the file.
     if (findPart(parts.names, part) === null) continue;
-    sheets.push({ name, rows: await sheetGrid(parts, name, part, shared) });
+    const grid = await sheetGrid(parts, part, shared);
+    const { rows } = grid;
+    // A sheet is read one at a time, and its own caps hold each one to 320,000
+    // cells, so the workbook is refused once the sheets together pass the
+    // budget rather than after every sheet has been laid out.
+    const widest = rows.reduce((width, row) => Math.max(width, row.length), 0);
+    shown += rows.length * Math.max(1, widest);
+    if (shown > MAX_CELLS) {
+      throw new OfficeError(
+        "office_too_many_cells",
+        `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
+      );
+    }
+    sheets.push({
+      name,
+      rows,
+      ...(grid.rowsCut ? { rowsCut: true } : {}),
+      ...(grid.columnsCut ? { columnsCut: true } : {}),
+    });
   }
   if (sheets.length === 0) {
     throw new OfficeError("office_unreadable", "This workbook's worksheets are missing from the file, so the viewer can't read it.");

@@ -178,6 +178,37 @@ describe("readZipArchive", () => {
     expect(readZipArchive(new Uint8Array([1, 2, 3])).ok).toBe(false);
   });
 
+  it("reads past an end-of-central-directory-shaped record inside a comment", () => {
+    const entries = [
+      { name: "one.txt", data: Buffer.from("1") },
+      { name: "two.txt", data: Buffer.from("2") },
+    ];
+    // The offset of the real central directory, so a record that trusted this
+    // fake one would read exactly one entry out of it.
+    const directoryAt = Buffer.from(buildZip(entries)).indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    expect(directoryAt).toBeGreaterThan(0);
+    const fake = Buffer.alloc(22);
+    fake.writeUInt32LE(0x06054b50, 0);
+    fake.writeUInt16LE(1, 10);
+    fake.writeUInt32LE(directoryAt, 16);
+    // The comment runs on past the fake record, so the fake's own comment
+    // length does not reach the end of the file and the real record does.
+    const bytes = buildZip(entries, {
+      commentBytes: Buffer.concat([fake, Buffer.from("and the comment carries on")]),
+    });
+    expect(read(bytes).map((entry) => entry.path)).toEqual(["one.txt", "two.txt"]);
+  });
+
+  it("refuses a file whose record does not end at the end of the file", () => {
+    const whole = buildZip([{ name: "a.txt", data: Buffer.from("x") }]);
+    const padded = new Uint8Array(whole.length + 4);
+    padded.set(whole);
+    const result = refusal(padded);
+    expect(result.code).toBe("zip_unreadable");
+    expect(result.message).toContain("central directory");
+    expect(findEndOfCentralDirectory(padded)).toBe(-1);
+  });
+
   it("finds the record behind a long comment", () => {
     const bytes = buildZip([{ name: "a.txt", data: Buffer.from("x") }], { comment: "x".repeat(60_000) });
     expect(findEndOfCentralDirectory(bytes)).toBe(bytes.length - 22 - 60_000);

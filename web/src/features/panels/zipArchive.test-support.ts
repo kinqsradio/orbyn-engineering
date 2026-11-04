@@ -23,6 +23,8 @@ export interface ZipSpec {
 
 export interface ZipOptions {
   comment?: string;
+  /** The comment's raw bytes, for a comment that is not text. */
+  commentBytes?: Buffer;
   /** Writes a Zip64 end of central directory locator before the record. */
   zip64Locator?: boolean;
   /** Overrides fields of the end of central directory record. */
@@ -75,7 +77,7 @@ export function buildZipArchive(specs: ZipSpec[], options: ZipOptions = {}): Uin
     centrals.push(central, nameBytes);
   }
   const directory = Buffer.concat(centrals);
-  const comment = Buffer.from(options.comment ?? "", "utf8");
+  const comment = options.commentBytes ?? Buffer.from(options.comment ?? "", "utf8");
   const count = options.eocd?.entries ?? specs.length;
   const record = Buffer.alloc(22);
   record.writeUInt32LE(0x06054b50, 0);
