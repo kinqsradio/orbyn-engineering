@@ -1045,6 +1045,37 @@ show sandboxed. An image or video element cannot set a header, so this route tak
 `?token=` as the streams do, with `no-referrer` to keep it out of anything a file links
 to.
 
+## Renders
+
+An agent's page is stored in app data, never in the checkout:
+`<data_dir>/renders/<thread_id>/<render_id>/index.html`, with one `image-<n>.<ext>` beside
+it for each checkout picture the page named. One folder per render is the whole record —
+no database row — so the folder is removed with its thread and the cap is counted from
+the folders that are there. A thread keeps 20 renders, and the oldest folder goes when a
+newer one is published.
+
+`POST /api/threads/:id/renders` takes `html` and answers with the render id, its route,
+the number of images copied and the stored size. A page over 512 KiB is refused whole.
+Each `<img src>` is resolved with the same read rules every file route uses, so a path
+outside the checkout, a link out, `..`, `.git` or an untrusted folder is refused per
+image: that src is left exactly as written and the rest of the page still publishes. A
+picture over 8 MiB, or the 33rd one, is left as written too. A remote http(s) src is
+never fetched and is left as written; the policy below is what stops it loading. The scan
+matches the tag and the attribute name case-insensitively, in any attribute order, with
+single, double or unquoted values, and ignores `<script>`, `<style>` and comments. It is
+not an HTML parser: it does not decode character references, and markup built by script
+is not seen.
+
+`GET /api/threads/:id/renders/:render_id` serves that page as `text/html; charset=utf-8`
+with `default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src
+'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`, and every render
+response also carries `nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
+`no-referrer` and `private, no-cache`. `.../:render_id/:file` serves only
+`image-<n>.<ext>`, typed from its extension; any other name, a separator in it or another
+thread's render id is not found. Both routes take `?token=` because an iframe cannot set
+a header. A published page must never reach the API: this policy and the web frame's
+`sandbox` attribute (C21) are what stop it, and `allow-same-origin` belongs in neither.
+
 ## Approval lifecycle
 
 ```text

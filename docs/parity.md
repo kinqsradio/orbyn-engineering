@@ -234,7 +234,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [ ] C19 Media in messages: image gallery, video, save/copy path | apps/web/src/components/chat/ChatMarkdownMedia.tsx | w d m | M
 - [x] C20 Image lightbox: zoomable expanded view | apps/web/src/components/chat/ExpandedImageDialog.tsx | w d | S
 - [ ] C21 HTML renders: sandboxed agent pages with theme and zoom | apps/web/src/components/chat/HtmlRenderFrame.tsx | w d m s | L
-- [ ] C22 Render publish: embeds local images, deleted with thread | apps/server/src/htmlRender | s | M
+- [x] C22 Render publish: embeds local images, deleted with thread | apps/server/src/htmlRender | s | M | server done: stores `<data_dir>/renders/<thread>/<render>/index.html` with one `image-<n>.<ext>` per embedded checkout picture and serves the page and those names under `default-src 'none'; img-src 'self' data:` with nosniff, same-origin CORP, no-referrer and `private, no-cache`, both readable with `?token=` for an iframe; caps 512 KiB a page, 8 MiB an image, 32 images and 20 renders a thread, the oldest folder evicted, and the folder is the record, removed with the thread; limits: remote and data images are left as written and simply do not load under the policy, and the web frame itself is C21, not this change
 - [ ] C23 Render verification: headless screenshots, one 120 MB browser download | docs/user/html-renders.md | s | M
 - [ ] C24 MCP Apps: interactive tool UI inline, Codex only today | apps/web/src/components/chat/McpAppFrame.tsx | w d m s | L
 - [ ] C25 MCP App controls: tool-call and message approvals, full screen | docs/user/html-renders.md | w d m | L

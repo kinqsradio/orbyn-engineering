@@ -36,7 +36,8 @@ pub struct RawFile {
 
 /// The type for an extension, for formats that run no script in this origin. SVG
 /// can hold script, so it is listed with the sandbox on, like everything else here.
-fn inline_type(extension: &str) -> Option<&'static str> {
+/// A published page takes its image types from this same list.
+pub(crate) fn inline_type(extension: &str) -> Option<&'static str> {
     Some(match extension {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",

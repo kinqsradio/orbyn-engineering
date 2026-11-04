@@ -11,6 +11,7 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
+use orbyn_core::renders::{is_image_name, is_render_id};
 use orbyn_core::util::{random_token, secrets_match, sha256_hex};
 
 use crate::api::ApiFailure;
@@ -264,15 +265,33 @@ fn authorized(access: &Access, request: &Request<Body>) -> bool {
     if access.cookie_valid(request.headers()) {
         return true;
     }
-    // Browsers cannot set headers on EventSource, WebSocket or an image or video
-    // element, so only those read routes take the token in the URL.
+    // Browsers cannot set headers on EventSource, WebSocket, an iframe or an image
+    // or video element, so only those read routes take the token in the URL.
     let path = request.uri().path();
     let streaming = matches!(*request.method(), Method::GET | Method::HEAD)
         && (path.starts_with("/ws/")
             || path.ends_with("/events")
             || path.ends_with("/files/raw")
+            || render_read(path)
             || project_image_read(path));
     streaming && query_token(request).is_some_and(|token| access.token_valid(token))
+}
+
+/// A published page is loaded in an iframe, which cannot set a header, so its page
+/// route and its image route take `?token=` like the raw-file route. Publishing a
+/// render is a `POST` and never does.
+fn render_read(path: &str) -> bool {
+    let Some(tail) = path.strip_prefix("/api/threads/") else {
+        return false;
+    };
+    let parts: Vec<&str> = tail.split('/').collect();
+    match *parts.as_slice() {
+        [thread, "renders", render] => !thread.is_empty() && is_render_id(render),
+        [thread, "renders", render, file] => {
+            !thread.is_empty() && is_render_id(render) && is_image_name(file)
+        }
+        _ => false,
+    }
 }
 
 /// Image elements may address only these registered-project image capabilities.
@@ -353,6 +372,44 @@ mod tests {
             "/api/projects/p/nested/icon/raw",
             "/api/projects//images/raw",
             "/other/projects/p/icon/raw",
+        ] {
+            let request = Request::builder()
+                .uri(format!("{path}?token=secret"))
+                .body(Body::empty())
+                .unwrap();
+            assert!(!authorized(&access, &request), "{path}");
+        }
+    }
+
+    #[test]
+    fn render_query_tokens_are_only_for_reads_of_that_render() {
+        let access = access();
+        let id = "01jc8xw9kq0000000000000000";
+        for path in [
+            format!("/api/threads/t1/renders/{id}"),
+            format!("/api/threads/t1/renders/{id}/image-1.png"),
+        ] {
+            for method in [Method::GET, Method::HEAD] {
+                let request = Request::builder()
+                    .method(method)
+                    .uri(format!("{path}?token=secret"))
+                    .body(Body::empty())
+                    .unwrap();
+                assert!(authorized(&access, &request), "{path}");
+            }
+            let published = Request::builder()
+                .method(Method::POST)
+                .uri(format!("{path}?token=secret"))
+                .body(Body::empty())
+                .unwrap();
+            assert!(!authorized(&access, &published), "{path}");
+        }
+        for path in [
+            "/api/threads/t1/renders".to_owned(),
+            "/api/threads/t1/renders/../secret".to_owned(),
+            format!("/api/threads/t1/renders/{id}/index.html"),
+            format!("/api/threads/t1/renders/{id}/image-1.png/extra"),
+            format!("/api/threads//renders/{id}"),
         ] {
             let request = Request::builder()
                 .uri(format!("{path}?token=secret"))

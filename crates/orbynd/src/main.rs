@@ -6,6 +6,7 @@ mod preview_routes;
 mod pulls;
 mod raw_files;
 mod recent_events;
+mod renders;
 mod stream;
 mod terminal_ws;
 mod ui;
@@ -251,6 +252,12 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/threads/{id}/files/raw", get(raw_files::serve))
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
+        .route("/api/threads/{id}/renders", post(renders::publish))
+        .route("/api/threads/{id}/renders/{render_id}", get(renders::page))
+        .route(
+            "/api/threads/{id}/renders/{render_id}/{file}",
+            get(renders::image),
+        )
         .route("/api/editors", get(api::editors))
         .route("/api/threads/{id}/commits", get(api::commits))
         .route("/api/threads/{id}/checkpoints", get(api::checkpoints))
