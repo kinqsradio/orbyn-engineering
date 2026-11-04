@@ -2952,6 +2952,7 @@ button.detail-row:hover {
   min-width: 0;
 }
 .browser-stage {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -2965,6 +2966,101 @@ button.detail-row:hover {
   background: var(--color-raised);
 }
 .browser-frame[data-human] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+/* The page's own box, centred in the stage, which the frame fills exactly. */
+.browser-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.browser-box .browser-frame {
+  object-fit: fill;
+}
+.browser-handle {
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+.browser-handle::after {
+  position: absolute;
+  border-radius: 999px;
+  background: var(--color-borderStrong);
+  content: "";
+}
+.browser-handle[data-edge="west"],
+.browser-handle[data-edge="east"] {
+  top: 0;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+}
+.browser-handle[data-edge="west"] {
+  left: 0;
+}
+.browser-handle[data-edge="east"] {
+  right: 0;
+}
+.browser-handle[data-edge="south"] {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 10px;
+  cursor: ns-resize;
+}
+.browser-handle[data-edge="southwest"],
+.browser-handle[data-edge="southeast"] {
+  bottom: 0;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+}
+.browser-handle[data-edge="southwest"] {
+  left: 0;
+  cursor: nesw-resize;
+}
+.browser-handle[data-edge="southeast"] {
+  right: 0;
+  cursor: nwse-resize;
+}
+.browser-handle[data-edge="west"]::after,
+.browser-handle[data-edge="east"]::after {
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+}
+.browser-handle[data-edge="south"]::after {
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+}
+.browser-handle[data-edge="southwest"]::after,
+.browser-handle[data-edge="southeast"]::after {
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+}
+.browser-handle[data-edge="southwest"]::after {
+  left: 3px;
+}
+.browser-handle[data-edge="southeast"]::after {
+  right: 3px;
+}
+.browser-handle:hover::after,
+.browser-handle:focus-visible::after,
+.browser-handle[data-dragging]::after {
+  background: var(--color-primary);
+}
+.browser-handle:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }
