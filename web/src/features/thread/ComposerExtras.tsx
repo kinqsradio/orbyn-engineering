@@ -103,9 +103,13 @@ export function ComposerBanners({ engine }: { engine: EngineStatus | null }) {
   if (!engine) return null;
   const problem = !engine.installed
     ? `${engine.name} isn't installed on this machine.`
-    : engine.auth === "logged_out"
-      ? `${engine.name} is signed out. Sign in from its own terminal.`
-      : null;
+    : engine.problem
+      ? `${engine.name}: ${engine.problem}`
+      : engine.auth === "logged_out"
+        ? `${engine.name} is signed out. Sign in from its own terminal.`
+        : engine.updating
+          ? `${engine.name} is updating. Wait for the update to finish.`
+          : null;
   if (!problem) return null;
   return (
     <p className="composer-banner" role="status">

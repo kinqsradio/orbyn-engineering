@@ -114,6 +114,12 @@ the first pass after a restart, and a held queue stays held until that run ends.
 
 ## Composer
 
+Above the message box, provider status follows the selected engine's service
+report: missing installation, a reported problem, signed-out state, or an update
+in progress. Unknown authentication alone produces no signed-out warning. The
+banner follows status changes after the existing explicit provider refresh;
+this adds no automatic engine polling or authenticated probe.
+
 A queued message becomes a run in one transaction, so it cannot start twice or
 vanish. A run ending in anything but success holds the queue until a resume, and
 new messages join a held queue; recovery holds it too. `send-now` puts one message

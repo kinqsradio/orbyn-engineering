@@ -91,3 +91,19 @@ retaining the good list, and recovery. Its protocol double tests orchestration;
 the separate installed-Codex run establishes the actual discovery protocol.
 Claude was not invoked. Its integration and macOS protocol qualification remain
 open under #140; this evidence does not complete the whole I40 row.
+
+## I41 implementation evidence — 5 November 2026
+
+The composer now includes the service's reported problem and update-in-progress
+state alongside its existing missing-installation and signed-out warnings.
+Unknown authentication alone does not imply a signed-out engine. It follows
+status changes after the existing explicit provider refresh; no automatic health
+polling or authenticated health probe was added.
+
+`web/e2e/real/provider-health.spec.ts` runs against real `orbynd` with controlled
+engine-status responses. It uses Settings → Providers → Check again → Close
+settings to exercise problem, missing, signed-out, updating and recovered states
+in the same document, while preserving an unsent draft. A component test also
+covers state transitions and unknown authentication. These prove presentation
+and manual-refresh recovery, not an authenticated engine handshake. Packaged
+Windows/macOS webview qualification remains open under #140.
