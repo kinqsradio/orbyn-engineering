@@ -1,6 +1,14 @@
 import { serviceSocketUrl } from "../../api/origin";
 import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent,
+} from "react";
 import { request } from "../../api/client";
 import { readToken } from "../../api/token";
 import type { BrowserProfile, LocalServer, PickedElement, PreviewTab } from "../../api/types";
@@ -9,6 +17,20 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import {
+  RESIZE_HANDLES,
+  RESIZE_KEY_HINT,
+  deviceChoice,
+  draggedPage,
+  pageBox,
+  pageSize,
+  nudgedPage,
+  resizeKeyStep,
+  type PageSize,
+  type ResizeEdge,
+} from "./viewportResize";
+
+export { pageSize };
 
 const q = encodeURIComponent;
 const VIEWPORT = { width: 1280, height: 800 };
@@ -31,8 +53,6 @@ export function resolveAddress(input: string, engine: string): string {
   return `${ENGINES[engine] ?? ENGINES.duckduckgo}${q(text)}`;
 }
 
-const PAGE_MIN = 100;
-const PAGE_MAX = 4096;
 const RESIZE_DELAY_MS = 300;
 /** Pixels of change, both ways together, worth asking the browser to lay out again. */
 const RESIZE_SLACK = 8;
@@ -70,16 +90,173 @@ export function pickedText(picked: PickedElement): string {
   return lines.join("\n");
 }
 
-/** The page follows the panel, within the sizes the service takes. */
-export function pageSize(width: number, height: number): { width: number; height: number } {
-  const fit = (value: number) => Math.min(PAGE_MAX, Math.max(PAGE_MIN, Math.round(value)));
-  return { width: fit(width), height: fit(height) };
-}
-
 function frameSocket(threadId: string, tabId: string) {
   const token = readToken();
   const query = token ? `?token=${q(token)}` : "";
   return new WebSocket(serviceSocketUrl(`/ws/preview/${q(threadId)}/${q(tabId)}${query}`));
+}
+
+/** Where the device toolbar sends a page it is drawing at a size of its own. */
+interface PageResize {
+  /** The size a drag or a run of key presses has reached, while it is under way. */
+  live: PageSize | null;
+  /** True while the device toolbar is open, which is what offers the handles. */
+  handles: boolean;
+  onPreview(size: PageSize | null): void;
+  onCommit(size: PageSize): void;
+}
+
+/**
+ * The handles on a page's box. A drag follows the pointer and commits once, on
+ * release; the arrow keys step the page's own pixels and commit after a pause,
+ * so a run of presses is one resize.
+ */
+function ResizeHandles({
+  page,
+  stage,
+  scale,
+  onPreview,
+  onCommit,
+}: {
+  page: PageSize;
+  stage: PageSize;
+  scale: number;
+  onPreview(size: PageSize | null): void;
+  onCommit(size: PageSize): void;
+}) {
+  const [dragging, setDragging] = useState<ResizeEdge | null>(null);
+  /** The size a run of key presses reached, waiting to be committed as one. */
+  const waiting = useRef<PageSize | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /** Takes the window listeners of a drag that is under way back off. */
+  const detach = useRef<(() => void) | null>(null);
+  const stop = () => {
+    clearTimeout(timer.current);
+    timer.current = undefined;
+  };
+  const letGo = () => {
+    detach.current?.();
+    detach.current = null;
+  };
+  // A page is left where it is when the toolbar or the panel goes away.
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current);
+      detach.current?.();
+    },
+    [],
+  );
+  const press = (edge: ResizeEdge) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    const step = resizeKeyStep(edge, event.key, event.shiftKey);
+    if (!step) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const from = waiting.current ?? page;
+    const next = nudgedPage(from, step);
+    if (next.width === from.width && next.height === from.height) return;
+    waiting.current = next;
+    onPreview(next);
+    stop();
+    timer.current = setTimeout(() => {
+      timer.current = undefined;
+      const size = waiting.current;
+      waiting.current = null;
+      if (size) onCommit(size);
+    }, RESIZE_DELAY_MS);
+  };
+  const grab = (edge: ResizeEdge) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // The pointer wins over a size the keys had not sent yet.
+    waiting.current = null;
+    stop();
+    letGo();
+    const held = {
+      edge,
+      pointer: event.pointerId,
+      start: page,
+      x: event.clientX,
+      y: event.clientY,
+      latest: page,
+      moved: false,
+      stage: stage,
+      scale: scale,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // The browser may refuse capture, and the drag still works without it.
+    }
+    // The pointer is watched on the window, since a drag leaves the edge it started on.
+    const target = event.currentTarget;
+    const pull = (move: PointerEvent) => {
+      if (move.pointerId !== held.pointer) return;
+      move.preventDefault();
+      held.moved = true;
+      held.latest = draggedPage(
+        held.start,
+        { x: move.clientX - held.x, y: move.clientY - held.y },
+        held.stage,
+        held.scale,
+        held.edge,
+      );
+      onPreview(held.latest);
+    };
+    const release = () => {
+      letGo();
+      setDragging(null);
+      try {
+        target.releasePointerCapture(held.pointer);
+      } catch {
+        // Capture may already be gone.
+      }
+      const same = held.latest.width === held.start.width && held.latest.height === held.start.height;
+      if (!held.moved || same) {
+        onPreview(null);
+        return;
+      }
+      onCommit(held.latest);
+    };
+    const cancel = () => {
+      // A cancelled pointer never commits, so the page keeps the size it had.
+      letGo();
+      setDragging(null);
+      onPreview(null);
+    };
+    const onUp = (up: PointerEvent) => {
+      if (up.pointerId === held.pointer) release();
+    };
+    const onCancel = (gone: PointerEvent) => {
+      if (gone.pointerId === held.pointer) cancel();
+    };
+    window.addEventListener("pointermove", pull);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    detach.current = () => {
+      window.removeEventListener("pointermove", pull);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+    setDragging(edge);
+  };
+  return (
+    <>
+      {RESIZE_HANDLES.map(({ edge, name }) => (
+        <button
+          key={edge}
+          type="button"
+          className="browser-handle"
+          data-edge={edge}
+          data-dragging={dragging === edge || undefined}
+          aria-label={`${name}. ${RESIZE_KEY_HINT}`}
+          title={`${name}. ${RESIZE_KEY_HINT}`}
+          onPointerDown={grab(edge)}
+          onKeyDown={press(edge)}
+        />
+      ))}
+    </>
+  );
 }
 
 /** The page's frames, with input forwarded while you hold control. */
@@ -88,6 +265,7 @@ export function PageView({
   tab,
   fitted: follow = true,
   picking = false,
+  resize = null,
   onPicked,
 }: {
   threadId: string;
@@ -95,14 +273,20 @@ export function PageView({
   /** False leaves the page at the size it was given. */
   fitted?: boolean;
   picking?: boolean;
+  /** Set by the device toolbar while it shows a page at a size of its own. */
+  resize?: PageResize | null;
   onPicked?(picked: PickedElement): void;
 }) {
   const [frame, setFrame] = useState<string | null>(null);
   const [lost, setLost] = useState(false);
+  const [stageSize, setStageSize] = useState<PageSize>({ width: 0, height: 0 });
   const stage = useRef<HTMLImageElement>(null);
   const area = useRef<HTMLDivElement>(null);
   const pushToast = useUi((state) => state.pushToast);
   const human = tab.control === "human";
+  const boxed = resize !== null;
+  const page = resize?.live ?? { width: tab.width, height: tab.height };
+  const box = pageBox(page, stageSize);
   useEffect(() => {
     const socket = frameSocket(threadId, tab.id);
     socket.onmessage = (event) => {
@@ -159,6 +343,23 @@ export function PageView({
       observer.disconnect();
     };
   }, [threadId, tab.id, pushToast, follow]);
+  // The box is sized from the stage's pixels, which no CSS rule can hand it.
+  useEffect(() => {
+    const element = area.current;
+    if (!element || !boxed) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      setStageSize((previous) =>
+        previous.width === rect.width && previous.height === rect.height
+          ? previous
+          : { width: rect.width, height: rect.height },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [boxed]);
   const click = (event: MouseEvent) => {
     if (!picking) {
       send({ kind: "click", ...point(event) });
@@ -169,21 +370,37 @@ export function PageView({
       (failure: unknown) => pushToast(`Couldn't read that element. ${toFailure(failure).message}`),
     );
   };
+  const picture = frame ? (
+    <img
+      ref={stage}
+      className="browser-frame"
+      data-preview
+      data-human={human || undefined}
+      tabIndex={0}
+      alt={`Page at ${tab.url}`}
+      src={`data:image/jpeg;base64,${frame}`}
+      onClick={click}
+      onKeyDown={onKey}
+      onWheel={onWheel}
+    />
+  ) : null;
   return (
     <div ref={area} className="browser-stage" data-picking={picking || undefined}>
-      {frame ? (
-        <img
-          ref={stage}
-          className="browser-frame"
-          data-preview
-          data-human={human || undefined}
-          tabIndex={0}
-          alt={`Page at ${tab.url}`}
-          src={`data:image/jpeg;base64,${frame}`}
-          onClick={click}
-          onKeyDown={onKey}
-          onWheel={onWheel}
-        />
+      {picture && resize ? (
+        <div className="browser-box" style={{ width: box.width, height: box.height }}>
+          {picture}
+          {resize.handles ? (
+            <ResizeHandles
+              page={page}
+              stage={stageSize}
+              scale={box.scale}
+              onPreview={resize.onPreview}
+              onCommit={resize.onCommit}
+            />
+          ) : null}
+        </div>
+      ) : picture ? (
+        picture
       ) : (
         <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>
       )}
@@ -289,11 +506,14 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const [profile, setProfile] = useState("");
   /** The device each tab is shown as, while the toolbar is open. */
   const [devices, setDevices] = useState<Record<string, string>>({});
+  /** The size a handle has dragged or stepped the page to, before it is committed. */
+  const [live, setLive] = useState<PageSize | null>(null);
   const [toolbar, setToolbar] = useState(false);
   const recent = useUi((state) => state.recentUrls);
   const waiting = useUi((state) => state.previewRequest);
   const searchEngine = useUi((state) => state.previewSearchEngine);
   const setPrefs = useUi((state) => state.setPrefs);
+  const pushToast = useUi((state) => state.pushToast);
   const reload = tabs.reload;
   useCommand("preview.focusUrl", () => {
     document.querySelector<HTMLInputElement>("[data-preview-address]")?.focus();
@@ -341,19 +561,50 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const clear = (what: { cookies?: boolean; cache?: boolean }) => {
     if (active) void act(() => request("POST", `${base}/${q(active.id)}/clear`, what));
   };
-  const device = active ? (devices[active.id] ?? "fit") : "fit";
-  const setDevice = (id: string, rotate = false) => {
+  const chosen = active ? (devices[active.id] ?? "fit") : "fit";
+  const size = { width: active?.width ?? 0, height: active?.height ?? 0 };
+  // A resized page is no preset, so the select stops claiming one.
+  const device = active ? deviceChoice(chosen, size, DEVICES) : "fit";
+  /** What the toolbar reads out, which follows the handles while they move. */
+  const shownSize = live ?? size;
+  useEffect(() => {
+    setLive(null);
+  }, [active?.id, toolbar, device]);
+  /** One resize for a whole drag or run of key presses, then the tab list catches up. */
+  const commitResize = (next: PageSize) => {
     if (!active) return;
-    const chosen = DEVICES.find((entry) => entry.id === id);
+    request("POST", `${base}/${q(active.id)}/resize`, next).then(
+      () => void reload().then(() => setLive(null)),
+      (failure: unknown) => {
+        // The page keeps the size it had.
+        setLive(null);
+        pushToast(`Couldn't resize the page. ${toFailure(failure).message}`);
+      },
+    );
+  };
+  /** Rotates the chosen preset, or the size a custom page has reached. */
+  const rotate = () => {
+    if (!active || device === "fit") return;
+    if (device !== "custom") {
+      setDevice(device, true);
+      return;
+    }
+    setLive(null);
+    void act(() => request("POST", `${base}/${q(active.id)}/resize`, pageSize(active.height, active.width)));
+  };
+  const setDevice = (id: string, rotate = false) => {
+    // Custom is what the select says about a size a handle already set.
+    if (!active || id === "custom") return;
+    const preset = DEVICES.find((entry) => entry.id === id);
     setDevices((all) => ({ ...all, [active.id]: id }));
-    if (!chosen?.size) {
+    if (!preset?.size) {
       view({ mobile: false });
       return;
     }
-    const size = rotate ? { width: active.height, height: active.width } : chosen.size;
+    const next = rotate ? { width: active.height, height: active.width } : preset.size;
     void act(async () => {
-      await request("POST", `${base}/${q(active.id)}/resize`, size);
-      await request("POST", `${base}/${q(active.id)}/view`, { mobile: chosen.phone });
+      await request("POST", `${base}/${q(active.id)}/resize`, next);
+      await request("POST", `${base}/${q(active.id)}/view`, { mobile: preset.phone });
     });
   };
   const openWaiting = useRef(go);
@@ -543,11 +794,14 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
                 {entry.label}
               </option>
             ))}
+            {device === "custom" ? (
+              <option value="custom">{`Custom, ${shownSize.width} by ${shownSize.height}`}</option>
+            ) : null}
           </select>
           <span>
-            {active.width} by {active.height}
+            {shownSize.width} by {shownSize.height}
           </span>
-          <IconButton label="Rotate" disabled={device === "fit"} onClick={() => setDevice(device, true)}>
+          <IconButton label="Rotate" disabled={device === "fit"} onClick={rotate}>
             <RotateCw size={14} aria-hidden />
           </IconButton>
         </div>
@@ -558,7 +812,14 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         </p>
       ) : null}
       {active ? (
-        <PageView threadId={threadId} tab={active} fitted={device === "fit"} picking={picking} onPicked={onPicked} />
+        <PageView
+          threadId={threadId}
+          tab={active}
+          fitted={device === "fit"}
+          picking={picking}
+          resize={device === "fit" ? null : { live, handles: toolbar, onPreview: setLive, onCommit: commitResize }}
+          onPicked={onPicked}
+        />
       ) : busy ? (
         <p className="browser-note" role="status">
           Connecting...

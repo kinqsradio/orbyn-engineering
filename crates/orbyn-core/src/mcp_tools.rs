@@ -14,6 +14,10 @@ use crate::app::Core;
 use crate::approvals::{ActionAsk, Verdict};
 use crate::error::{CoreError, Result};
 use crate::mcp::McpBinding;
+use crate::preview::{
+    DEFAULT_SCROLL, MAX_SCROLL, MAX_SELECTOR_CHARS, MAX_TYPE_CHARS, MAX_WAIT_TEXT_CHARS,
+    PreviewAct, PreviewAction,
+};
 use crate::store::AuditRecord;
 
 /// Under the 45 seconds a tool has to answer, so the caller hears `ended: false`.
@@ -161,6 +165,24 @@ const TOOLS: &[Tool] = &[
         &["tab_id"],
     ),
     read(
+        "orbyn_preview_snapshot",
+        "The visible controls and a sample of the text of a preview tab's page, \
+         capped in size.",
+        &[("tab_id", "string"), ("max_elements", "number")],
+        &["tab_id"],
+    ),
+    read(
+        "orbyn_preview_wait_for",
+        "Wait for a selector or text to show up in a preview tab, up to twenty seconds.",
+        &[
+            ("tab_id", "string"),
+            ("selector", "string"),
+            ("text", "string"),
+            ("timeout_ms", "number"),
+        ],
+        &["tab_id"],
+    ),
+    read(
         "orbyn_track_files",
         "Before writing files no tool reports, such as from a shell script, call this with \
          the checkout paths; call it again with done true afterwards.",
@@ -281,6 +303,25 @@ const TOOLS: &[Tool] = &[
         "Set a preview tab's color scheme: system, light or dark.",
         &[("tab_id", "string"), ("appearance", "string")],
         &["tab_id", "appearance"],
+    ),
+    act(
+        "orbyn_preview_act",
+        "Click, type into or scroll a preview tab's page.",
+        &[
+            ("tab_id", "string"),
+            ("action", "string"),
+            ("selector", "string"),
+            ("text", "string"),
+            ("dy", "number"),
+        ],
+        &["tab_id", "action"],
+    ),
+    act(
+        "orbyn_preview_evaluate",
+        "Run an expression in a preview tab's page and return its value, or its size \
+         when that is over 20000 bytes.",
+        &[("tab_id", "string"), ("expression", "string")],
+        &["tab_id", "expression"],
     ),
     act(
         "orbyn_preview_dialog",
@@ -443,6 +484,94 @@ fn number(args: &Value, key: &str) -> Result<u64> {
     args.get(key)
         .and_then(Value::as_u64)
         .ok_or_else(|| CoreError::Invalid(format!("{key} is required.")))
+}
+
+/// `orbyn_preview_act`'s arguments, checked before the page is touched: one known
+/// action, a selector where it needs one, and text only where typing uses it.
+fn page_act(args: &Value) -> Result<PreviewAct> {
+    let asked = text(args, "action")?;
+    let action = match asked {
+        "click" => PreviewAction::Click,
+        "type" => PreviewAction::Type,
+        "scroll" => PreviewAction::Scroll,
+        other => {
+            return Err(CoreError::Invalid(format!(
+                "{other} is not an action. Use click, type or scroll."
+            )));
+        }
+    };
+    let selector = args
+        .get("selector")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned);
+    let typed = args
+        .get("text")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    if action != PreviewAction::Scroll && selector.is_none() {
+        return Err(CoreError::Invalid(
+            "Name the selector of the element to act on.".into(),
+        ));
+    }
+    if action == PreviewAction::Type {
+        let Some(typed) = typed.as_ref() else {
+            return Err(CoreError::Invalid("Say what text to type.".into()));
+        };
+        if typed.chars().count() > MAX_TYPE_CHARS {
+            return Err(CoreError::Invalid(format!(
+                "Text to type is at most {MAX_TYPE_CHARS} characters."
+            )));
+        }
+    }
+    let dy = args
+        .get("dy")
+        .and_then(Value::as_f64)
+        .filter(|dy| dy.is_finite())
+        .unwrap_or(DEFAULT_SCROLL)
+        .clamp(-MAX_SCROLL, MAX_SCROLL);
+    Ok(PreviewAct {
+        action,
+        selector,
+        text: typed,
+        dy,
+    })
+}
+
+/// `orbyn_preview_wait_for` waits on exactly one of a selector or a text, and the
+/// text it looks for is short enough to check on every poll.
+fn wait_target(args: &Value) -> Result<(Option<String>, Option<String>)> {
+    let field = |key: &str| {
+        args.get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+    };
+    match (field("selector"), field("text")) {
+        (Some(selector), None) => {
+            if selector.chars().count() > MAX_SELECTOR_CHARS {
+                return Err(CoreError::Invalid(format!(
+                    "A selector is at most {MAX_SELECTOR_CHARS} characters."
+                )));
+            }
+            Ok((Some(selector), None))
+        }
+        (None, Some(wanted)) => {
+            if wanted.chars().count() > MAX_WAIT_TEXT_CHARS {
+                return Err(CoreError::Invalid(format!(
+                    "Text to wait for is at most {MAX_WAIT_TEXT_CHARS} characters."
+                )));
+            }
+            Ok((None, Some(wanted)))
+        }
+        (Some(_), Some(_)) => Err(CoreError::Invalid(
+            "Name a selector or text to wait for, not both.".into(),
+        )),
+        (None, None) => Err(CoreError::Invalid(
+            "Name a selector or text to wait for.".into(),
+        )),
+    }
 }
 
 /// All of the query's words, in any order, ignoring case.
@@ -867,6 +996,37 @@ impl Core {
                 let tabs = self.previews.list(&own.id);
                 json!(tabs.into_iter().find(|view| view.id == tab))
             }
+            "orbyn_preview_snapshot" => {
+                let tab = self.own_preview(&own, args)?;
+                let max_elements = args.get("max_elements").and_then(Value::as_u64);
+                json!(self.previews.snapshot(&own.id, &tab, max_elements).await?)
+            }
+            "orbyn_preview_wait_for" => {
+                let tab = self.own_preview(&own, args)?;
+                let (selector, wanted) = wait_target(args)?;
+                let timeout = args.get("timeout_ms").and_then(Value::as_u64);
+                json!(
+                    self.previews
+                        .wait_for(
+                            &own.id,
+                            &tab,
+                            selector.as_deref(),
+                            wanted.as_deref(),
+                            timeout
+                        )
+                        .await?
+                )
+            }
+            "orbyn_preview_act" => {
+                let tab = self.own_preview(&own, args)?;
+                let step = page_act(args)?;
+                json!(self.previews.act(&own.id, &tab, &step).await?)
+            }
+            "orbyn_preview_evaluate" => {
+                let tab = self.own_preview(&own, args)?;
+                let expression = text(args, "expression")?;
+                json!(self.previews.evaluate(&own.id, &tab, expression).await?)
+            }
             "orbyn_preview_set_appearance" => {
                 let tab = self.own_preview(&own, args)?;
                 let view = orbyn_contracts::PreviewView {
@@ -1111,5 +1271,92 @@ mod tests {
             render_title(&json!({ "title": "x".repeat(300) })).len(),
             200
         );
+    }
+
+    #[test]
+    fn the_page_tools_read_or_act_and_all_need_a_tab() {
+        for (name, effect, extra) in [
+            ("orbyn_preview_snapshot", false, None),
+            ("orbyn_preview_wait_for", false, None),
+            ("orbyn_preview_act", true, Some("action")),
+            ("orbyn_preview_evaluate", true, Some("expression")),
+        ] {
+            let tool = TOOLS
+                .iter()
+                .find(|tool| tool.name == name)
+                .unwrap_or_else(|| panic!("{name} is missing"));
+            assert_eq!(tool.effect, effect, "{name}");
+            assert!(tool.required.contains(&"tab_id"), "{name}");
+            if let Some(extra) = extra {
+                assert!(tool.required.contains(&extra), "{name}");
+            }
+            assert!(
+                name.starts_with("orbyn_preview"),
+                "{name} escapes the browser-access guard"
+            );
+        }
+        assert!(text(&json!({}), "tab_id").is_err(), "a tab is required");
+        assert!(text(&json!({ "tab_id": "  " }), "tab_id").is_err());
+        assert_eq!(text(&json!({ "tab_id": "t" }), "tab_id").unwrap(), "t");
+    }
+
+    #[test]
+    fn a_page_action_needs_a_known_action_and_what_that_action_uses() {
+        let click = page_act(&json!({ "action": "click", "selector": "#b" })).unwrap();
+        assert_eq!(
+            click,
+            PreviewAct {
+                action: PreviewAction::Click,
+                selector: Some("#b".to_owned()),
+                text: None,
+                dy: DEFAULT_SCROLL,
+            }
+        );
+        let scroll = page_act(&json!({ "action": "scroll" })).unwrap();
+        assert_eq!(
+            (scroll.action, scroll.selector, scroll.dy),
+            (PreviewAction::Scroll, None, DEFAULT_SCROLL)
+        );
+        let back = page_act(&json!({ "action": "scroll", "selector": "#b", "dy": -250 })).unwrap();
+        assert_eq!((back.selector.as_deref(), back.dy), (Some("#b"), -250.0));
+        let huge = page_act(&json!({ "action": "scroll", "dy": 1e12 })).unwrap();
+        assert_eq!(huge.dy, MAX_SCROLL);
+        let typed =
+            page_act(&json!({ "action": "type", "selector": "#name", "text": "Ada" })).unwrap();
+        assert_eq!(typed.text.as_deref(), Some("Ada"));
+
+        let refused = |args: Value| match page_act(&args) {
+            Err(CoreError::Invalid(message)) => message,
+            other => panic!("{args} was not refused: {other:?}"),
+        };
+        assert!(refused(json!({})).contains("action is required"));
+        assert!(refused(json!({ "action": "drag" })).contains("is not an action"));
+        assert!(refused(json!({ "action": "click" })).contains("selector"));
+        assert!(refused(json!({ "action": "click", "selector": "  " })).contains("selector"));
+        assert!(refused(json!({ "action": "type", "text": "Ada" })).contains("selector"));
+        assert!(refused(json!({ "action": "type", "selector": "#name" })).contains("what text"));
+        let long = json!({ "action": "type", "selector": "#name", "text": "x".repeat(MAX_TYPE_CHARS + 1) });
+        assert!(refused(long).contains("at most"));
+    }
+
+    #[test]
+    fn a_wait_names_exactly_one_target_of_a_bounded_size() {
+        assert_eq!(
+            wait_target(&json!({ "selector": "#b" })).unwrap(),
+            (Some("#b".to_owned()), None)
+        );
+        assert_eq!(
+            wait_target(&json!({ "text": "done" })).unwrap(),
+            (None, Some("done".to_owned()))
+        );
+        assert!(wait_target(&json!({ "selector": " #b ", "text": "done" })).is_err());
+        assert!(wait_target(&json!({ "both": true })).is_err());
+        assert!(wait_target(&json!({ "selector": "   " })).is_err());
+        assert!(wait_target(&json!({ "selector": "s".repeat(MAX_SELECTOR_CHARS + 1) })).is_err());
+        assert!(wait_target(&json!({ "selector": "s".repeat(MAX_SELECTOR_CHARS) })).is_ok());
+        let long = "t".repeat(MAX_WAIT_TEXT_CHARS + 1);
+        assert!(wait_target(&json!({ "text": long })).is_err());
+        let at_cap = "t".repeat(MAX_WAIT_TEXT_CHARS);
+        assert!(wait_target(&json!({ "text": at_cap })).is_ok());
     }
 }

@@ -2481,7 +2481,7 @@ button.detail-row:hover {
 }
 .md-image {
   display: block;
-  max-width: 100%;
+  max-width: min(100%, 30rem);
   margin-block: 8px;
   padding: 0;
   border: 1px solid var(--color-border);
@@ -2493,9 +2493,32 @@ button.detail-row:hover {
 .md-image img {
   display: block;
   max-width: 100%;
-  max-height: 360px;
+  max-height: 30rem;
+  object-fit: contain;
 }
-.md-image-failed {
+.md-video {
+  position: relative;
+  display: inline-block;
+  max-width: min(100%, 30rem);
+  margin-block: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  vertical-align: top;
+}
+.md-video video {
+  display: block;
+  width: 100%;
+  max-height: 30rem;
+  background: var(--color-backdrop);
+}
+.md-media-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: color-mix(in srgb, var(--color-backdrop) 72%, transparent);
+}
+.md-media-failed {
   color: var(--color-muted);
 }
 .lightbox {
@@ -2515,8 +2538,18 @@ button.detail-row:hover {
   right: 12px;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
+  max-width: calc(100vw - 24px);
+}
+.lightbox-readout {
+  padding-inline: 4px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .lightbox-stage {
   display: grid;
@@ -2529,6 +2562,12 @@ button.detail-row:hover {
   max-width: 90%;
   max-height: 90%;
   transition: transform 150ms ease;
+}
+.lightbox-stage video {
+  max-width: 90%;
+  max-height: 90%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 /* A published agent page: the timeline card, and the dialog that shows it larger. */
@@ -3009,6 +3048,7 @@ button.detail-row:hover {
   min-width: 0;
 }
 .browser-stage {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -3022,6 +3062,101 @@ button.detail-row:hover {
   background: var(--color-raised);
 }
 .browser-frame[data-human] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+/* The page's own box, centred in the stage, which the frame fills exactly. */
+.browser-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.browser-box .browser-frame {
+  object-fit: fill;
+}
+.browser-handle {
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+.browser-handle::after {
+  position: absolute;
+  border-radius: 999px;
+  background: var(--color-borderStrong);
+  content: "";
+}
+.browser-handle[data-edge="west"],
+.browser-handle[data-edge="east"] {
+  top: 0;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+}
+.browser-handle[data-edge="west"] {
+  left: 0;
+}
+.browser-handle[data-edge="east"] {
+  right: 0;
+}
+.browser-handle[data-edge="south"] {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 10px;
+  cursor: ns-resize;
+}
+.browser-handle[data-edge="southwest"],
+.browser-handle[data-edge="southeast"] {
+  bottom: 0;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+}
+.browser-handle[data-edge="southwest"] {
+  left: 0;
+  cursor: nesw-resize;
+}
+.browser-handle[data-edge="southeast"] {
+  right: 0;
+  cursor: nwse-resize;
+}
+.browser-handle[data-edge="west"]::after,
+.browser-handle[data-edge="east"]::after {
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+}
+.browser-handle[data-edge="south"]::after {
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+}
+.browser-handle[data-edge="southwest"]::after,
+.browser-handle[data-edge="southeast"]::after {
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+}
+.browser-handle[data-edge="southwest"]::after {
+  left: 3px;
+}
+.browser-handle[data-edge="southeast"]::after {
+  right: 3px;
+}
+.browser-handle:hover::after,
+.browser-handle:focus-visible::after,
+.browser-handle[data-dragging]::after {
+  background: var(--color-primary);
+}
+.browser-handle:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }

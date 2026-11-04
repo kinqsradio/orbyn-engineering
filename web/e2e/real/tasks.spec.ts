@@ -156,12 +156,24 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
   await expect(automations.getByRole("listitem")).toHaveCount(1);
   await expect(automations).not.toContainText("On pushes");
 
+  // The mutation reaches the real service; only the browser's subsequent read
+  // fails. The switch and schedule must keep the confirmed saved pause state.
+  await page.route("**/api/tasks", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "unavailable", message: "Refresh unavailable." }) })
+      : route.continue(),
+  );
   await details.getByRole("switch", { name: "Enable Nightly review" }).click();
   await expect.poll(async () => (await stored())?.enabled).toBe(false);
+  await expect(details.getByRole("alert")).toContainText(/Paused Nightly review.*refresh/);
+  await expect(details.getByRole("switch", { name: "Enable Nightly review" })).toBeEnabled();
   await expect(details.getByRole("switch", { name: "Enable Nightly review" })).not.toBeChecked();
+  await expect(automations).toContainText("paused");
+  await page.unroute("**/api/tasks");
   await details.getByRole("switch", { name: "Enable Nightly review" }).click();
   await expect.poll(async () => (await stored())?.enabled).toBe(true);
   await expect(details.getByRole("switch", { name: "Enable Nightly review" })).toBeChecked();
+  await expect(details.getByRole("alert")).toHaveCount(0);
 
   await details.getByRole("button", { name: "Run Nightly review now" }).click();
   await expect.poll(async () => (await stored())?.last_status).toBe("started");

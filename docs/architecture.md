@@ -1426,12 +1426,19 @@ shows the log's last line with Try again, and threads and runs are kept. Every
 post-spawn startup failure closes the parent pipe and retains child ownership through
 a five-second graceful-exit period, then kills and reaps a service that has not exited.
 Successful readiness transfers that ownership to the running shell.
+The shell allows up to sixty seconds for the first ready line, including cold
+bundled-library unpacking and Git indexing. The package-service smoke uses that same
+budget; the installed-app smoke retains its ninety-second outer startup deadline.
+Timeout still closes the parent pipe and runs the bounded child cleanup above.
 
 The desktop job installs the built package and starts it with a private profile and no
 secrets: `scripts/smoke-app.mjs` waits for the UI to connect from the window, checks a
 second launch hands over, and sees the service end with the app. `scripts/smoke-package.mjs`
 only proves the service runs. The release job adds notarization checks, a SHA-256 per
 asset and a CycloneDX inventory from the lockfiles, which fails when a source is empty.
+For its private launch, app smoke enables fixed shell startup milestones and prints
+an allowlisted summary on failure. It does not publish raw shell stderr, profiles,
+service handles or launch tokens through that diagnostic summary.
 Windows binaries link the C runtime statically, and the installer is per-user with the
 WebView2 bootstrapper embedded and silent. The release workflow publishes nothing: it
 leaves a bundle for a person to promote.
@@ -1482,8 +1489,23 @@ Frames are polled about five times a second, only while someone watches or recor
 and a frame that did not change is not sent. `/ws/preview` sends each as base64 JPEG
 text. Watching gives no control: input needs a person to take the page first.
 Recording keeps the changed frames as numbered JPEG files in
-`<data>/browser-artifacts`, with no video encoder. Agents do not act on a preview tab
-yet, so taking control only guards against a watcher's stray input.
+`<data>/browser-artifacts`, with no video encoder. Agents can read their thread's
+tabs with `orbyn_preview_snapshot` and `orbyn_preview_wait_for`, and drive them
+with `orbyn_preview_act` (click, append text, scroll) and `orbyn_preview_evaluate`
+(page JavaScript). The acting tools use the normal `tool` approval gate. Taking
+control guards a person's input against a watcher's stray input; it does not
+suspend approved agent actions.
+
+Snapshots keep semantic elements separate from the page's text sample, include
+visible fixed controls, and name fields from `aria-labelledby`, `aria-label` or
+associated labels before falling back to their contents and hints. Password
+values are omitted. Selectors must uniquely identify their element; entries that
+cannot fit a whole selector in 300 characters are omitted with `truncated: true`.
+Snapshots default to 150 elements (300 maximum), 4,000 characters of text and
+120-character names and values. Expressions are limited to 2,000 characters and
+typed text to 4,000; evaluate returns a whole value or its byte count above 20,000
+bytes. A wait defaults to five seconds and is capped at twenty, with one deadline
+covering session lock acquisition, selector validation, CDP reads and polling.
 
 A tab's zoom, appearance and phone layout are set with `/view`. Zoom keeps the frame the
 same size and lays the page out smaller, 0.25 to 3 times. New tabs start from the

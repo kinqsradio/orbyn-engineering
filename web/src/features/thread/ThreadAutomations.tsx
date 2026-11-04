@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarClock, Pencil, Play, Settings2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { request } from "../../api/client";
 import type { ScheduledTask } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -18,6 +18,21 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
   );
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState<{
+    threadId: string;
+    name: string;
+    enabled: boolean;
+    rows: ScheduledTask[];
+  } | null>(null);
+  const rows = useRef(tasks.data);
+  const shownThread = useRef<string | null>(threadId);
+  useLayoutEffect(() => {
+    rows.current = tasks.data;
+  });
+  useLayoutEffect(() => {
+    shownThread.current = threadId;
+    return () => { shownThread.current = null; };
+  }, [threadId]);
   const pushToast = useUi((state) => state.pushToast);
   const route = useRoute();
   const inSettings = route.name === "settings";
@@ -68,14 +83,34 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
   const toggle = async (task: ScheduledTask, enabled: boolean) => {
     setBusy(task.id);
     setPending((current) => ({ ...current, [task.id]: enabled }));
+    setSaved(null);
+    let row: ScheduledTask;
     try {
-      await request("POST", `/api/tasks/${q(task.id)}/enabled`, { enabled });
-      // Keep the optimistic value until the reloaded row carries it; otherwise
-      // the switch snaps back to the old state while the GET is in flight.
-      await reload();
+      row = await request<ScheduledTask>("POST", `/api/tasks/${q(task.id)}/enabled`, { enabled });
     } catch (failure) {
-      pushToast(`Couldn't ${enabled ? "resume" : "pause"} ${task.name}. ${toFailure(failure).message}`);
-    } finally {
+      if (shownThread.current === threadId) {
+        pushToast(`Couldn't ${enabled ? "resume" : "pause"} ${task.name}. ${toFailure(failure).message}`);
+      }
+      finish();
+      return;
+    }
+
+    if (shownThread.current !== threadId) {
+      finish();
+      return;
+    }
+    if (rows.current) {
+      // The POST returns the saved row. Keep it even when the follow-up GET
+      // fails, and fence reads started before the save with setData.
+      const next = rows.current.map((entry) => entry.id === row.id ? row : entry);
+      rows.current = next;
+      tasks.setData(next);
+      setSaved({ threadId, name: row.name, enabled: row.enabled, rows: next });
+    }
+    await reload();
+    finish();
+
+    function finish() {
       setBusy(null);
       setPending((current) => {
         const next = { ...current };
@@ -145,6 +180,9 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
       </ul>
       {tasks.status === "error" ? (
         <p className="detail-automation-error" role="alert">
+          {saved?.threadId === threadId && saved.rows === tasks.data
+            ? `${saved.enabled ? "Resumed" : "Paused"} ${saved.name}. `
+            : ""}
           Couldn't refresh automations. {tasks.error.message}
         </p>
       ) : null}
