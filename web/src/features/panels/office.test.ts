@@ -7,6 +7,7 @@ import {
 import {
   MAX_BLOCKS,
   MAX_CELLS,
+  MAX_NESTING,
   MAX_ROWS_PER_SHEET,
   MAX_SHEETS,
   cellPosition,
@@ -166,6 +167,27 @@ it("does not print a body-level alternate content block twice either", async () 
     `</mc:AlternateContent>`;
   const model = await read(buildDocx(alternate));
   expect(model.blocks).toEqual([{ kind: "paragraph", text: "Chosen" }]);
+});
+
+it("refuses a document nested past its depth cap with a message of its own", async () => {
+  const open = `<w:sdt>`.repeat(MAX_NESTING + 10);
+  const close = `</w:sdt>`.repeat(MAX_NESTING + 10);
+  const answer = await refused(buildDocx(open + docxParagraph("deep") + close));
+  expect(answer.code).toBe("office_too_deep");
+  expect(answer.message).toBe(
+    `This document nests its content more than ${MAX_NESTING} levels deep; the viewer can't read it.`,
+  );
+});
+
+it("refuses the deeply nested part from the issue without a stack overflow", async () => {
+  // 120,000 nested content controls in a 1.4 MB part: the recursion used to
+  // reach the user as "Maximum call stack size exceeded".
+  const depth = 120_000;
+  const open = `<w:sdt>`.repeat(depth);
+  const close = `</w:sdt>`.repeat(depth);
+  const answer = await refused(buildDocx(open + docxParagraph("deep") + close));
+  expect(answer.code).toBe("office_too_deep");
+  expect(answer.message).not.toContain("call stack");
 });
 
 it("reads what a damaged part still holds", async () => {

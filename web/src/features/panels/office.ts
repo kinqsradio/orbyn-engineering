@@ -13,6 +13,9 @@
 
 import { ZipError, readEntryBytes, readZipArchive, type ZipEntry } from "./zipArchive";
 
+/** How deep a part may nest before the reader refuses it: every descent below
+ * this is a recursive call, and a stack overflow is not a message to show. */
+export const MAX_NESTING = 100;
 /** The most paragraphs and tables one Word document may hold. */
 export const MAX_BLOCKS = 5000;
 /** The most worksheets one workbook may name. */
@@ -36,6 +39,7 @@ export type OfficeKind = "docx" | "xlsx";
 /** Why a document was refused. Every one of these is shown to the person. */
 export type OfficeRefusal =
   | "office_unreadable"
+  | "office_too_deep"
   | "office_too_many_blocks"
   | "office_too_many_sheets"
   | "office_too_many_cells";
@@ -377,8 +381,17 @@ function headingLevel(paragraph: XmlElement): 1 | 2 | 3 | 4 | null {
  */
 function paragraphText(paragraph: XmlElement): string {
   let text = "";
-  for (const node of paragraph.children) text += nodeText(node);
+  for (const node of paragraph.children) text += nodeText(node, 0);
   return text;
+}
+
+/** A part nested deeper than any document the viewer reads: refused with its
+ * own reason rather than recursing until the stack runs out. */
+function tooDeep(): OfficeError {
+  return new OfficeError(
+    "office_too_deep",
+    `This document nests its content more than ${MAX_NESTING} levels deep; the viewer can't read it.`,
+  );
 }
 
 /**
@@ -391,14 +404,15 @@ function isFallback(node: XmlElement): boolean {
   return localName(node.name) === "Fallback";
 }
 
-function nodeText(node: XmlElement): string {
+function nodeText(node: XmlElement, depth: number): string {
+  if (depth > MAX_NESTING) throw tooDeep();
   const name = localName(node.name);
   if (name === "t") return stripControlChars(node.text);
   if (name === "tab") return "\t";
   if (name === "br" || name === "cr") return "\n";
   if (isFallback(node)) return "";
   let text = "";
-  for (const child of node.children) text += nodeText(child);
+  for (const child of node.children) text += nodeText(child, depth + 1);
   return text;
 }
 
@@ -415,14 +429,15 @@ function paragraphBlock(paragraph: XmlElement): DocxBlock {
  */
 function tableRows(table: XmlElement): XmlElement[] {
   const rows: XmlElement[] = [];
-  const visit = (node: XmlElement) => {
+  const visit = (node: XmlElement, depth: number) => {
+    if (depth > MAX_NESTING) throw tooDeep();
     for (const child of node.children) {
       const name = localName(child.name);
       if (name === "tr") rows.push(child);
-      else if (name !== "tbl" && name !== "tc" && !isFallback(child)) visit(child);
+      else if (name !== "tbl" && name !== "tc" && !isFallback(child)) visit(child, depth + 1);
     }
   };
-  visit(table);
+  visit(table, 0);
   return rows;
 }
 
@@ -435,28 +450,30 @@ function tableBlock(table: XmlElement): DocxTable {
 
 function cellText(cell: XmlElement): string {
   const lines: string[] = [];
-  collectCellLines(cell, lines);
+  collectCellLines(cell, lines, 0);
   return lines.join("\n");
 }
 
 /** A table inside a cell is flattened: one line per row, its cells by tab. */
-function collectCellLines(parent: XmlElement, lines: string[]): void {
+function collectCellLines(parent: XmlElement, lines: string[], depth: number): void {
+  if (depth > MAX_NESTING) throw tooDeep();
   for (const node of parent.children) {
     const name = localName(node.name);
     if (name === "p") lines.push(paragraphText(node));
     else if (name === "tbl") {
       for (const row of tableRows(node)) lines.push(children(row, "tc").map(cellText).join("\t"));
-    } else if (!isFallback(node)) collectCellLines(node, lines);
+    } else if (!isFallback(node)) collectCellLines(node, lines, depth + 1);
   }
 }
 
 /** Body blocks in order. A wrapper such as a content control is descended into. */
-function collectBlocks(parent: XmlElement, blocks: DocxBlock[]): void {
+function collectBlocks(parent: XmlElement, blocks: DocxBlock[], depth = 0): void {
+  if (depth > MAX_NESTING) throw tooDeep();
   for (const node of parent.children) {
     const name = localName(node.name);
     if (name === "p") blocks.push(paragraphBlock(node));
     else if (name === "tbl") blocks.push(tableBlock(node));
-    else if (!isFallback(node)) collectBlocks(node, blocks);
+    else if (!isFallback(node)) collectBlocks(node, blocks, depth + 1);
     if (blocks.length > MAX_BLOCKS) {
       throw new OfficeError(
         "office_too_many_blocks",
@@ -504,12 +521,13 @@ export function cellPosition(reference: string): { row: number; column: number }
 }
 
 /** The text of one string part: its runs joined, a phonetic run left out. */
-function stringText(element: XmlElement): string {
+function stringText(element: XmlElement, depth = 0): string {
+  if (depth > MAX_NESTING) throw tooDeep();
   let text = "";
   for (const node of element.children) {
     const name = localName(node.name);
     if (name === "rPh") continue;
-    text += name === "t" ? node.text : stringText(node);
+    text += name === "t" ? node.text : stringText(node, depth + 1);
   }
   return text;
 }
