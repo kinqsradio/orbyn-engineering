@@ -139,6 +139,48 @@ point at each other.
 
 ## Checks
 
+### Keep Cargo artifacts private to each worktree
+
+Use a separate target directory for every checkout, including worktrees in
+`<repo>-wt/<purpose>/`. Never run builds, Clippy or tests from different checkouts
+against one writable `CARGO_TARGET_DIR`. In [issue #123](https://github.com/kinqsradio/orbyn-engineering/issues/123),
+Cargo reported packages as `Fresh` while tests ran another checkout's binary;
+concurrent runs also produced fingerprint errors and tried to spawn a partially
+written `orbynd`.
+
+Before running the checks below, select this worktree's own ignored `target/`
+directory. These commands override an inherited shared `CARGO_TARGET_DIR` and use
+an absolute path, so changing into a subdirectory keeps the same target.
+
+From the selected worktree, in Bash (macOS or Git Bash):
+
+```bash
+export CARGO_TARGET_DIR="$(git rev-parse --show-toplevel)/target"
+```
+
+Or in PowerShell (Windows):
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path (git rev-parse --show-toplevel) 'target'
+```
+
+Use that target for only this checkout, and finish its Cargo commands before
+starting another verification run there. Do not launch an integration binary
+while a build is replacing it.
+
+If the selected target was previously shared or contains suspect artifacts, stop
+its Cargo processes and test binaries, then run `cargo clean` with the private
+target selected above and rebuild. Do not clean a target another checkout uses.
+Before trusting an integration result, confirm the binary in the selected target
+contains the change: exercise a new route or other changed behavior and check its
+expected response. A `Fresh` message alone does not establish that.
+
+Issue #123 records a hard-link-copy workaround. Hard links still share file
+contents, so that copy is not independent of writes to the original cache. Prefer
+a fresh private target for verification; do not use a hard-linked target alongside
+a writer to the original. The per-worktree convention above works on both
+supported platforms without a cache-copy tool.
+
 Run the affected checks locally before pushing:
 
 ```bash
