@@ -107,3 +107,28 @@ in the same document, while preserving an unsent draft. A component test also
 covers state transitions and unknown authentication. These prove presentation
 and manual-refresh recovery, not an authenticated engine handshake. Packaged
 Windows/macOS webview qualification remains open under #140.
+
+## I9 and I51 remain open
+
+Codex 0.160.0's locally generated schema includes `feedback/upload`. Its parameters
+include `classification`, `includeLogs`, `reason`, `threadId`, `extraLogFiles` and
+`tags`; its response includes `threadId` and optional `promptHash`. The
+[official app-server documentation](https://developers.openai.com/codex/app-server)
+describes the request and version-specific schema generation. Neither that schema
+nor the successful unauthenticated model-list requests establish that upstream
+feedback works without authentication or a live session. No feedback was sent.
+I9 remains open until an explicitly authorized sanitized submission establishes
+the actual response and requirements. No feedback UI or speculative service route
+has been added.
+
+The signed `engines/tested-versions.json` contains only minimum and tested versions.
+It has no known-problem advisories or recommended replacement policy, and existing
+installer-owned update plans target latest rather than a recommended pinned
+version. An untested version is not evidence of a known problem. I51 therefore
+remains open: the next implementation needs a maintained advisory source and the
+owner's recommended-version policy, retaining manifest signature verification,
+proven installer ownership, manual instructions for unknown owners and active-run
+exclusion. This batch changes none of those trust or installer boundaries.
+
+Both decisions remain tracked by #140. The PR for this supported slice must link
+to that issue without closing it.
