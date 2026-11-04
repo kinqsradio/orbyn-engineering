@@ -117,6 +117,35 @@ mod tests {
     }
 
     #[test]
+    fn a_different_valid_key_cannot_verify_the_embedded_signature() {
+        let other = ed25519_dalek::SigningKey::from_bytes(&[7; 32]).verifying_key();
+        let key = crate::util::hex(&other.to_bytes());
+        assert!(verified_parse(MANIFEST, SIGNATURE, &key).is_none());
+    }
+
+    #[test]
+    fn malformed_signature_and_key_encodings_are_rejected() {
+        for signature in ["", "zz", &"00".repeat(63), &"00".repeat(65)] {
+            assert!(verified_parse(MANIFEST, signature, PUBLIC_KEY).is_none());
+        }
+        for key in ["", "zz", &"00".repeat(31), &"00".repeat(33)] {
+            assert!(verified_parse(MANIFEST, SIGNATURE, key).is_none());
+        }
+    }
+
+    #[test]
+    fn tampered_and_noncanonical_signatures_are_rejected() {
+        let mut signature = from_hex(SIGNATURE.trim()).unwrap();
+        signature[0] ^= 1;
+        assert!(verified_parse(MANIFEST, &crate::util::hex(&signature), PUBLIC_KEY).is_none());
+
+        let mut signature = from_hex(SIGNATURE.trim()).unwrap();
+        // The scalar half must be smaller than the Ed25519 subgroup order.
+        signature[32..].fill(0xff);
+        assert!(verified_parse(MANIFEST, &crate::util::hex(&signature), PUBLIC_KEY).is_none());
+    }
+
+    #[test]
     fn numeric_comparison_is_not_lexical() {
         assert!(numbers("0.166.0") > numbers("0.20.0"));
     }
