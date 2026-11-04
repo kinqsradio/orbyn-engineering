@@ -580,7 +580,11 @@ mod tests {
 
     #[test]
     fn only_checkout_paths_are_candidates() {
-        let checkout = Path::new("/tmp/checkout");
+        // Built from the host's own root: a leading slash is not an absolute path on
+        // Windows, so a hard-coded "/tmp/checkout" would test nothing there.
+        let root = std::env::temp_dir();
+        let checkout = root.join("checkout");
+        let checkout = checkout.as_path();
         for candidate in ["./art/a.png", "art/a.png", "a.png"] {
             assert_eq!(
                 checkout_relative(candidate, checkout).as_deref(),
@@ -588,13 +592,22 @@ mod tests {
                 "{candidate}"
             );
         }
+        let inside = checkout.join("a.png");
         assert_eq!(
-            checkout_relative("/tmp/checkout/a.png", checkout).as_deref(),
+            checkout_relative(&inside.to_string_lossy(), checkout).as_deref(),
             Some("a.png")
         );
-        assert_eq!(checkout_relative("/tmp/elsewhere/a.png", checkout), None);
+        let outside = root.join("elsewhere").join("a.png");
+        assert_eq!(
+            checkout_relative(&outside.to_string_lossy(), checkout),
+            None
+        );
         // An absolute path that leaves the checkout is refused, not repaired.
-        assert_eq!(checkout_relative("/tmp/checkout/../a.png", checkout), None);
+        let climbing = checkout.join("..").join("a.png");
+        assert_eq!(
+            checkout_relative(&climbing.to_string_lossy(), checkout),
+            None
+        );
         for remote in [
             "https://example.test/a.png",
             "HTTPS://example.test/a.png",
