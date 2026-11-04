@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
@@ -241,6 +241,17 @@ function linkFor(key: string, rawHref: string, label: ReactNode, fallback: strin
 const INLINE =
   /!\[([^\]\n]*)\]\(([^()\s]+)\)|(?<![\\$\w])\$(?![\s$])([^$\n]+?)(?<!\s)\$(?![\d$])|(`+)([\s\S]*?[^`])\4(?!`)|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|\*([^\s*](?:[\s\S]*?[^\s*])?)\*|(?<![\w])_([^\s_](?:[\s\S]*?[^\s_])?)_(?![\w])|~~([\s\S]+?)~~|\[([^\]\n]+)\]\(([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
 
+const RemoteImages = createContext<"render" | "link">("render");
+
+function InlineMedia({ source, alt, fallback }: { source: string; alt: string; fallback: string }) {
+  const policy = useContext(RemoteImages);
+  const href = safeHref(source);
+  if (policy === "link" && href && /^https?:/i.test(href)) {
+    return <ExternalLink href={href}>{alt || "Image"}</ExternalLink>;
+  }
+  return <MarkdownMedia source={source} alt={alt} fallback={fallback} />;
+}
+
 function renderInline(text: string, keyPrefix = ""): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
@@ -251,7 +262,7 @@ function renderInline(text: string, keyPrefix = ""): ReactNode[] {
     const key = `${keyPrefix}${index++}`;
     const [whole, imageAlt, imageSrc, math, , code, bold1, bold2, em1, em2, strike, linkText, linkHref, bare] = match;
     if (imageSrc !== undefined) {
-      out.push(<MarkdownMedia key={key} source={imageSrc} alt={imageAlt ?? ""} fallback={whole} />);
+      out.push(<InlineMedia key={key} source={imageSrc} alt={imageAlt ?? ""} fallback={whole} />);
     } else if (math !== undefined) out.push(<InlineMath key={key} source={math} />);
     else if (code !== undefined) out.push(<code key={key}>{code}</code>);
     else if (bold1 !== undefined || bold2 !== undefined)
@@ -375,7 +386,7 @@ function renderBlock(block: Block, key: number): ReactNode {
   }
 }
 
-export function Markdown({ text, projectId = null }: { text: string; projectId?: string | null }) {
+export function Markdown({ text, projectId = null, remoteImages = "render" }: { text: string; projectId?: string | null; remoteImages?: "render" | "link" }) {
   const blocks = useMemo(() => parseBlocks(text.split(/\r\n|\n|\r/)), [text]);
   const route = useRoute();
   const threadId = route.name === "thread" ? route.id : null;
@@ -384,7 +395,9 @@ export function Markdown({ text, projectId = null }: { text: string; projectId?:
   return (
     <MarkdownProjectContext.Provider value={projectId}>
       <MarkdownThreadContext.Provider value={thread}>
-        <div className="md">{blocks.map(renderBlock)}</div>
+        <RemoteImages.Provider value={remoteImages}>
+          <div className="md">{blocks.map(renderBlock)}</div>
+        </RemoteImages.Provider>
       </MarkdownThreadContext.Provider>
     </MarkdownProjectContext.Provider>
   );

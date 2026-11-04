@@ -47,6 +47,8 @@ export interface ToolItem extends ItemBase {
   done: boolean;
   /** What a command exited with, when the engine reports it. */
   exitCode: number | null;
+  /** The driver's reported protocol outcome; absent in older logs. */
+  outcome?: "success" | "failure";
 }
 export interface ApprovalItem extends ItemBase {
   kind: "approval";
@@ -476,6 +478,12 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
             ...item,
             output: item.output + delta,
           }));
+        }
+      } else if (event.name === "tool.outcome") {
+        const body = record(event.value);
+        const outcome = body?.outcome;
+        if (typeof body?.toolCallId === "string" && (outcome === "success" || outcome === "failure")) {
+          patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({ ...item, outcome }));
         }
       } else if (event.name === "tool.finished") {
         const body = record(event.value);

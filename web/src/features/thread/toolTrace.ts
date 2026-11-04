@@ -111,7 +111,7 @@ const callWeight = (item: ToolItem): number => {
   return Math.max(paths(parsed(item.args)).length, 1);
 };
 
-export const toolFailed = (item: ToolItem) => item.exitCode !== null && item.exitCode !== 0;
+export const toolFailed = (item: ToolItem) => item.outcome === "failure" || (item.exitCode !== null && item.exitCode !== 0);
 
 export interface WorkSummary {
   summary: string;
@@ -130,7 +130,11 @@ export function summarizeWork(items: readonly (ToolItem | ReasoningItem)[]): Wor
     };
   }
   const groups = new Map<ToolAction, { calls: number; weight: number; order: number }>();
-  for (const tool of tools) {
+  const failed = tools.filter(toolFailed).length;
+  const succeeded = tools.filter((tool) => !toolFailed(tool) && (tool.outcome === "success" || tool.exitCode === 0) && tool.done && tool.result !== null);
+  const unknown = tools.filter((tool) => !toolFailed(tool) && tool.outcome !== "success" && tool.exitCode === null && tool.done && tool.result !== null).length;
+  const pending = tools.length - failed - succeeded.length - unknown;
+  for (const tool of succeeded) {
     const { action } = traceTool(tool);
     const group = groups.get(action) ?? { calls: 0, weight: 0, order: groups.size };
     groups.set(action, { ...group, calls: group.calls + 1, weight: group.weight + callWeight(tool) });
@@ -140,15 +144,18 @@ export function summarizeWork(items: readonly (ToolItem | ReasoningItem)[]): Wor
     .slice(0, 2)
     .sort(([, x], [, y]) => x.order - y.order);
   const labels = picked.map(([action, group]) => actionSentence(action, group.weight));
-  const rest = tools.length - picked.reduce((sum, [, group]) => sum + group.calls, 0);
+  const rest = succeeded.length - picked.reduce((sum, [, group]) => sum + group.calls, 0);
   if (rest > 0) labels.push(`Performed ${rest} other ${plural(rest, "action", "actions")}`);
   const sentence = labels.map((label, at) => (at === 0 ? label : label.charAt(0).toLowerCase() + label.slice(1)));
-  const summary =
+  const work =
     sentence.length < 3 ? sentence.join(" and ") : `${sentence.slice(0, -1).join(", ")}, and ${sentence.at(-1)}`;
+  const summary = [work, failed ? `${failed} tool ${plural(failed, "call", "calls")} failed` : "",
+    unknown ? `${unknown} tool ${plural(unknown, "call", "calls")} finished without a reported outcome` : "",
+    pending ? `${pending} tool ${plural(pending, "call", "calls")} without a result` : ""].filter(Boolean).join("; ");
   return {
     summary,
-    action: groups.size === 1 ? (picked[0]?.[0] ?? "other") : "mixed",
-    failed: tools.some(toolFailed),
+    action: groups.size === 0 ? traceTool(tools[0]!).action : groups.size === 1 ? (picked[0]?.[0] ?? "other") : "mixed",
+    failed: failed > 0,
   };
 }
 

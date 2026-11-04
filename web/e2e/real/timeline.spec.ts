@@ -18,7 +18,7 @@ test("a finished turn folds, groups its tools and shows command output", async (
   await expect(page).toHaveURL(/#\/threads\//);
   await settled(service, threadIdOf(page));
 
-  const fold = page.getByRole("button", { name: /^Worked for/ });
+  const fold = page.locator("button.work-summary").filter({ hasText: /^Ran 1 command and changed 2 files; 1 tool call failed; 1 tool call finished without a reported outcome ·/ });
   await expect(fold).toBeVisible();
   await expect(page.locator(".msg-assistant").getByText("done")).toBeVisible();
   await expect(page.getByText("I'll look around first.")).toBeHidden();
@@ -26,8 +26,9 @@ test("a finished turn folds, groups its tools and shows command output", async (
 
   await fold.click();
   await expect(page.getByText("I'll look around first.")).toBeVisible();
-  const group = page.getByRole("button", {
-    name: "Ran 2 commands, changed 2 files, and performed 1 other action, tool call failed",
+  const group = page.locator(".work-rows").getByRole("button", {
+    name: "Ran 1 command and changed 2 files; 1 tool call failed; 1 tool call finished without a reported outcome",
+    exact: true,
   });
   await group.click();
   await page.getByRole("button", { name: /^cat missing\.txt/ }).click();
@@ -50,6 +51,33 @@ test("a running turn shows its header and streams output; Stop folds it as stopp
   await page.getByRole("button", { name: /^Ran 1 command/ }).or(page.locator(".trace-summary").first()).first().click();
   await page.getByRole("button", { name: /Stop/ }).first().click();
   await expect(page.getByRole("button", { name: /^You stopped after/ })).toBeVisible({ timeout: 15_000 });
+});
+
+test("a long live tool trace groups in fives and defers rows beyond thirty", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:trace-batch]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  const earlier = page.getByRole("button", { name: "Show 15 earlier activities" });
+  await expect(earlier).toBeVisible();
+  await expect(page.locator(".work-log > .trace")).toHaveCount(28);
+  await expect(page.getByRole("button", { name: "Ran 5 commands", exact: true })).toHaveCount(5);
+  await earlier.click();
+  await expect(page.locator(".work-log > .trace")).toHaveCount(43);
+  await expect(page.getByRole("button", { name: "Ran 3 commands", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await settled(service, threadIdOf(page));
+});
+
+test("a failed non-command tool is excluded from completed action counts", async ({ page }) => {
+  await page.goto(`${service.page}#/new/${projectId}`);
+  await send(page, "[scene:tool-outcomes]");
+  await expect(page).toHaveURL(/#\/threads\//);
+  await settled(service, threadIdOf(page));
+  const fold = page.getByRole("button", { name: /^Changed 2 files; 1 tool call failed ·/ });
+  await expect(fold).toBeVisible();
+  await fold.click();
+  await page.getByRole("button", { name: "Changed 2 files; 1 tool call failed", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^files.Write/ })).toBeVisible();
 });
 
 test("rich Markdown renders: table, math, diagram, links, image and details", async ({ page }) => {
@@ -216,7 +244,7 @@ test("a failed turn keeps its error in view and a command with no output says so
   await expect(page.getByRole("alert").filter({ hasText: "disk full" })).toBeVisible({ timeout: 15_000 });
   await settled(service, threadIdOf(page));
   await send(page, "[scene:empty]");
-  await page.getByRole("button", { name: /^Worked for/ }).last().click();
+  await page.getByRole("button", { name: /^Ran 1 command ·/ }).last().click();
   await page.getByRole("button", { name: /^true/ }).click();
   await expect(page.getByText("No output.")).toBeVisible();
 });

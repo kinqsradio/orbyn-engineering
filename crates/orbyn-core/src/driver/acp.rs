@@ -1065,6 +1065,13 @@ impl UpdateMapper {
                         .into(),
                     );
                     events.push(
+                        AgUiEvent::Custom {
+                            name: "tool.outcome".into(),
+                            value: json!({ "toolCallId": id, "outcome": if status == Some("completed") { "success" } else { "failure" } }),
+                        }
+                        .into(),
+                    );
+                    events.push(
                         AgUiEvent::ToolCallResult {
                             message_id: self.next_message_id(),
                             tool_call_id: id,
@@ -1182,6 +1189,41 @@ fn tool_output(update: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_updates_report_only_terminal_outcomes() {
+        let mut mapper = UpdateMapper::default();
+        for (id, status, expected) in [
+            ("ok", "completed", Some("success")),
+            ("bad", "failed", Some("failure")),
+            ("pending", "in_progress", None),
+        ] {
+            mapper.on_update(
+                &json!({ "sessionUpdate":"tool_call", "toolCallId":id, "title":"Tool" }),
+            );
+            let events = mapper.on_update(
+                &json!({ "sessionUpdate":"tool_call_update", "toolCallId":id, "status":status }),
+            );
+            let outcomes: Vec<_> = events
+                .into_iter()
+                .filter_map(|event| match event {
+                    EngineEvent::Agui(AgUiEvent::Custom { name, value })
+                        if name == "tool.outcome" =>
+                    {
+                        Some(value)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                outcomes,
+                expected
+                    .map(|outcome| json!({ "toolCallId":id, "outcome":outcome }))
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 
     fn options() -> Value {
         json!({ "options": [

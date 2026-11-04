@@ -92,6 +92,16 @@ export const scenes = {
     { method: "item/commandExecution/outputDelta", params: { itemId: "l2", delta: "tick\n" } },
     { hold: true },
   ],
+  "trace-batch": [
+    ...Array.from({ length: 43 }, (_, n) => command(`trace${n}`, `echo trace${n}`, `trace${n}\n`, 0)).flat(),
+    { hold: true },
+  ],
+  "tool-outcomes": [
+    ...fileChange("changed", ["a.ts", "b.ts"]),
+    started(item("failed", "mcpToolCall", { server: "files", tool: "Write", arguments: { path: "refused.ts" }, status: "inProgress" })),
+    completed(item("failed", "mcpToolCall", { server: "files", tool: "Write", arguments: { path: "refused.ts" }, status: "failed", error: "Write refused" })),
+    ...message("outcome-final", "Only the successful edit is counted."),
+  ],
   deaf: [...command("d1", "sleep 100", "tick\n", 0), { deaf: true }],
   edit: [
     started(item("e1", "fileChange", { status: "inProgress", changes: [{ path: "notes.txt", kind: { type: "update" }, diff: "" }] })),

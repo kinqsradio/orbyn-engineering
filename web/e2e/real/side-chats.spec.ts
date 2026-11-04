@@ -60,6 +60,7 @@ test("a side chat opens from the launcher while the thread works, and an unused 
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
   await page.getByRole("button", { name: "New surface" }).click();
+  await page.getByRole("menuitem", { name: "Open a surface", exact: true }).click();
   await page.locator(".launcher").getByRole("button", { name: /Side chat/ }).click();
   await expect(pane(page)).toBeVisible();
   await expect.poll(async () => (await sideOf(id)).length).toBe(1);

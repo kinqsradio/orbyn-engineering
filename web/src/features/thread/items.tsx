@@ -405,7 +405,7 @@ export function WorkGroupView({ group, live }: { group: WorkGroup; live: boolean
         summary={
           <>
             <Icon size={14} aria-hidden />
-            <span className="trace-label">{failed ? `${summary}, tool call failed` : summary}</span>
+            <span className="trace-label">{summary}</span>
             {failed ? <X size={14} className="trace-failed" aria-hidden /> : null}
             <ChevronRight size={14} className="chev trace-end" aria-hidden />
           </>
@@ -457,7 +457,7 @@ function Fold({ fold }: { fold: TurnFold }) {
         }
       >
         <div className="work-fold">
-          {fold.entries.map((entry) => (
+          {(!fold.lazy || open) && fold.entries.map((entry) => (
             <TimelineRow key={entry.key} entry={entry} live={false} tools={NO_TOOLS} />
           ))}
         </div>

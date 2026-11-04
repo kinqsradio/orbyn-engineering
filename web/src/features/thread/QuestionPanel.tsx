@@ -31,7 +31,7 @@ function QuestionRow({
   return (
     <fieldset className="question">
       <legend className={question.header ? undefined : "sr-only"}>{question.header || question.question}</legend>
-      <Markdown text={question.question} />
+      <Markdown text={question.question} remoteImages="link" />
       <div className="question-options">
         {question.options.map((option) => {
           const on = picked.includes(option.label);

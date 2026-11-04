@@ -215,6 +215,29 @@ thread. Each run logs what it went out with as `CUSTOM engine.selection`. A real
 0.166.0 turn through `orbynd` wrote the chosen model and effort and a null tier to its
 session record.
 
+## Timeline rendering
+
+Tool outcomes are distinct from execution exit codes. Drivers publish the existing
+`CUSTOM` event `tool.outcome` with `{toolCallId, outcome: "success" | "failure"}`
+only when the engine reports a supported outcome: Claude's `tool_result.is_error`,
+ACP's terminal tool status, or Codex's explicit completed/failed status or exit
+code. Command exit codes still use `tool.finished`; an actual nonzero code remains
+a failure. No new exit code is synthesized. Older logs and unsupported outcomes
+stay unknown. Group and finished-turn summaries count only reported successful
+actions, list failures separately, and use neutral wording for missing results.
+
+Consecutive work groups contain at most five tool calls and at most thirty
+activities including reasoning. The live view retains whole recent groups within
+thirty activities, preserving group keys and expanded state as calls arrive. Older
+groups are deferred in place, separated by messages and approvals; opening their
+fold reveals them. Finished turns retain their searchable mounted content.
+
+The surface add menu opens existing Browser, Files, Diff, linked pull requests and
+side-chat surfaces. Terminal opens the existing drawer. Individual Pull request
+and Device entries remain disabled because those surfaces are unavailable. Browser
+mute is not offered because the preview protocol has no mute capability. Existing
+close, resize, maximize and small-screen behavior remains owned by the pane.
+
 ## Questions
 
 An engine question holds its run in `awaiting_approval` until it is answered,
@@ -226,6 +249,12 @@ reaches Codex as an empty answer set and Claude as a denial. Questions are logge
 `ACTIVITY_SNAPSHOT` with `activityType: "question"`, whose content is the
 `QuestionRequest`. A secret answer goes to the engine and is stored only as
 `[hidden]`, so it never reaches the database or the event log.
+
+Question Markdown uses a question-only remote-image link policy: a remote media
+URL becomes an ordinary link without mounting an image or video. General message
+media retains its own policy. Markdown tags stay inert text; strict Mermaid is the
+supported diagram path. Questions gain no arbitrary HTML/SVG execution surface.
+Agent-published HTML renders retain their separate publishing boundary.
 
 ## Engine failures
 
