@@ -244,6 +244,12 @@ reaches Codex as an empty answer set and Claude as a denial. Questions are logge
 `QuestionRequest`. A secret answer goes to the engine and is stored only as
 `[hidden]`, so it never reaches the database or the event log.
 
+Question Markdown uses a question-only remote-image link policy: a remote media
+URL becomes an ordinary link without mounting an image or video. General message
+media retains its own policy. Markdown tags stay inert text; strict Mermaid is the
+supported diagram path. Questions gain no arbitrary HTML/SVG execution surface.
+Agent-published HTML renders retain their separate publishing boundary.
+
 ## Engine failures
 
 Failure text is cleaned before anyone sees it: terminal codes go, and a line that looks

@@ -47,7 +47,7 @@ test("custom question text replaces a selected option in the real answer flow", 
     const binary = process.env.ORBYN_BIN ?? resolve(web, "../target/debug/orbynd");
     const fake = resolve(binary, "../orbyn-fake-engine");
     const wrapper = join(profile, "question-engine.mjs");
-    const prose = "### Review approach\n\nUse **small** steps and `checks`.\n\n- First\n- Next\n\n```mermaid\ngraph LR; A-->B;\n```\n\n<script>unsafe()</script>";
+    const prose = "### Review approach\n\nUse **small** steps and `checks`.\n\n- First\n- Next\n\n```mermaid\ngraph LR; A-->B;\n```\n\n![Remote diagram](https://remote.example/diagram.svg)\n\n<script>unsafe()</script>";
     // Only question prose/options are enriched; the existing protocol double handles all requests.
     writeFileSync(wrapper, `#!/usr/bin/env node
 import { spawn } from "node:child_process";
@@ -108,6 +108,8 @@ child.on("exit", (code) => process.exit(code ?? 1));
     children.push(vite);
     await firstLine(vite, (line) => line.includes(`:${port}/`));
     await page.setViewportSize({ width: 1280, height: 900 });
+    const remoteRequests: string[] = [];
+    await page.route("https://remote.example/**", (route) => { remoteRequests.push(route.request().url()); return route.abort(); });
     await page.goto(`http://localhost:${port}/?token=${ready.token}#/threads/${thread.id}`);
     await api("POST", `/api/threads/${thread.id}/runs`, { prompt: "[question] Show the review question" });
     const panel = page.getByRole("region", { name: "Question from the agent" });
@@ -116,6 +118,9 @@ child.on("exit", (code) => process.exit(code ?? 1));
     await expect(panel.getByRole("list")).toHaveCount(1);
     await expect(panel.getByRole("img", { name: "Diagram", exact: true })).toBeVisible();
     await expect(panel.locator("script")).toHaveCount(0);
+    await expect(panel.getByRole("link", { name: "Remote diagram" })).toHaveAttribute("href", "https://remote.example/diagram.svg");
+    await expect(panel.locator("img, video, iframe")).toHaveCount(0);
+    expect(remoteRequests).toEqual([]);
     await expect(panel).toContainText("<script>unsafe()</script>");
     await page.screenshot({ path: info.outputPath("question-markdown.png") });
     await panel.getByRole("button", { name: "Small batch", exact: true }).click();

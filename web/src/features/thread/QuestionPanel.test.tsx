@@ -62,6 +62,15 @@ it("keeps picks and a custom answer after a failed submission", async () => {
   expect(screen.getByRole("button", { name: "Submit answers" })).toBeEnabled();
 });
 
+it("links remote question images without creating a media fetch element", async () => {
+  ask.questions[0]!.question = "Choose **![Diagram](https://remote.example/diagram.svg)** or ![Other](http://remote.example/a.png).\n\n<svg onload=unsafe()></svg>";
+  const { container } = render(<QuestionPanel threadId="t" waiting />);
+  expect(await screen.findByRole("link", { name: "Diagram" })).toHaveAttribute("href", "https://remote.example/diagram.svg");
+  expect(screen.getByRole("link", { name: "Other" })).toHaveAttribute("href", "http://remote.example/a.png");
+  expect(container.querySelector("img, video, iframe, svg[onload], script")).toBeNull();
+  expect(container).toHaveTextContent("<svg onload=unsafe()></svg>");
+});
+
 it("dismisses without submitting selected or custom answers", async () => {
   const user = userEvent.setup(); render(<QuestionPanel threadId="t" waiting />);
   await user.click(await screen.findByRole("button", { name: "Dismiss" }));
