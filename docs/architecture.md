@@ -215,6 +215,17 @@ thread. Each run logs what it went out with as `CUSTOM engine.selection`. A real
 0.166.0 turn through `orbynd` wrote the chosen model and effort and a null tier to its
 session record.
 
+## Timeline rendering
+
+Tool outcomes are distinct from execution exit codes. Drivers publish the existing
+`CUSTOM` event `tool.outcome` with `{toolCallId, outcome: "success" | "failure"}`
+only when the engine reports a supported outcome: Claude's `tool_result.is_error`,
+ACP's terminal tool status, or Codex's explicit completed/failed status or exit
+code. Command exit codes still use `tool.finished`; an actual nonzero code remains
+a failure. No new exit code is synthesized. Older logs and unsupported outcomes
+stay unknown. Group and finished-turn summaries count only reported successful
+actions, list failures separately, and use neutral wording for missing results.
+
 ## Questions
 
 An engine question holds its run in `awaiting_approval` until it is answered,

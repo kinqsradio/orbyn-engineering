@@ -1,5 +1,5 @@
 import type { ReasoningItem, RunSpan, ThreadItem, ToolItem } from "./projection";
-import { workDuration } from "./toolTrace";
+import { summarizeWork, workDuration } from "./toolTrace";
 
 export type WorkItem = ReasoningItem | ToolItem;
 
@@ -73,6 +73,11 @@ function foldLabel(span: RunSpan | undefined, items: readonly ThreadItem[]): str
   const ms = start && end ? new Date(end).getTime() - new Date(start).getTime() : Number.NaN;
   const duration = Number.isFinite(ms) ? workDuration(ms) : null;
   if (span?.outcome === "cancelled") return duration ? `You stopped after ${duration}` : "You stopped this response";
+  const work = items.filter(isWork);
+  if (work.some((item) => item.kind === "tool")) {
+    const { summary } = summarizeWork(work);
+    return duration ? `${summary} · ${duration}` : summary;
+  }
   return duration ? `Worked for ${duration}` : "Worked";
 }
 

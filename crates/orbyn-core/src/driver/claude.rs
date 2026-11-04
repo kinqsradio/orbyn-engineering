@@ -1049,21 +1049,39 @@ fn on_user(frame: &Value) -> Vec<EngineEvent> {
     let Some(content) = frame.pointer("/message/content").and_then(Value::as_array) else {
         return Vec::new();
     };
-    content
+    let mut events = Vec::new();
+    for block in content
         .iter()
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
-        .filter_map(|block| {
-            Some(
-                AgUiEvent::ToolCallResult {
-                    message_id: new_id(),
-                    tool_call_id: text_of(block, "tool_use_id")?,
-                    content: tool_text(block.get("content")),
-                    role: Some("tool".into()),
+    {
+        let Some(id) = text_of(block, "tool_use_id") else {
+            continue;
+        };
+        events.push(
+            AgUiEvent::ToolCallResult {
+                message_id: new_id(),
+                tool_call_id: id.clone(),
+                content: tool_text(block.get("content")),
+                role: Some("tool".into()),
+            }
+            .into(),
+        );
+        let outcome = match block.get("is_error") {
+            None | Some(Value::Bool(false)) => Some("success"),
+            Some(Value::Bool(true)) => Some("failure"),
+            _ => None,
+        };
+        if let Some(outcome) = outcome {
+            events.push(
+                AgUiEvent::Custom {
+                    name: "tool.outcome".into(),
+                    value: json!({ "toolCallId": id, "outcome": outcome }),
                 }
                 .into(),
-            )
-        })
-        .collect()
+            );
+        }
+    }
+    events
 }
 
 fn tool_text(content: Option<&Value>) -> String {
@@ -1118,6 +1136,32 @@ fn result_outcome(frame: &Value) -> EngineOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_result_outcomes_preserve_unknown_flags() {
+        let frame = json!({ "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "ok" },
+            { "type": "tool_result", "tool_use_id": "bad", "is_error": true },
+            { "type": "tool_result", "tool_use_id": "unknown", "is_error": "unknown" }
+        ] } });
+        let outcomes: Vec<_> = on_user(&frame)
+            .into_iter()
+            .filter_map(|event| match event {
+                EngineEvent::Agui(AgUiEvent::Custom { name, value }) if name == "tool.outcome" => {
+                    Some(value)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            outcomes,
+            vec![
+                json!({"toolCallId":"ok","outcome":"success"}),
+                json!({"toolCallId":"bad","outcome":"failure"})
+            ]
+        );
+    }
+
     use std::path::PathBuf;
 
     #[tokio::test]

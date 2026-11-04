@@ -185,7 +185,7 @@ test("status loops are stepped and pause when not visible", async ({ page }) => 
 test("disclosures animate height over 200 ms", async ({ page }) => {
   await page.goto("/#/threads/t-done");
   const panel = page.locator(".work .collapsible-panel").first();
-  await page.getByRole("button", { name: /^Worked for/ }).first().click();
+  await page.locator(".work-summary[aria-expanded]").first().click();
   const transition = await panel.evaluate((element) => {
     const style = getComputedStyle(element);
     return { property: style.transitionProperty, duration: style.transitionDuration };

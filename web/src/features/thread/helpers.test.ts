@@ -114,7 +114,7 @@ describe("arrangeTimeline", () => {
     const span = { startedAt: at(0), endedAt: at(49), outcome: "success" as const };
     const entries = arrangeTimeline(items, { r: span }, null);
     expect(entries.map((entry) => entry.kind)).toEqual(["message", "fold", "message"]);
-    expect(entries[1]).toMatchObject({ label: "Worked for 49s" });
+    expect(entries[1]).toMatchObject({ label: "Ran 1 command · 49s" });
   });
   it("says who stopped a turn", () => {
     const span = { startedAt: at(0), endedAt: at(9), outcome: "cancelled" as const };
@@ -141,7 +141,7 @@ describe("summarizeWork", () => {
     expect(summary).toBe("Ran 2 commands, changed 2 files, and performed 1 other action");
   });
   it("marks a failed command", () => {
-    expect(summarizeWork([tool("Bash", { command: "x" }, 1)])).toMatchObject({ summary: "Ran 1 command", failed: true });
+    expect(summarizeWork([tool("Bash", { command: "x" }, 1)])).toMatchObject({ summary: "1 tool call failed", failed: true });
   });
   it("calls reasoning alone a thought", () => {
     const thought = { seq: 1, runId: "r", ts: "", kind: "reasoning" as const, key: "r", text: "", done: true };

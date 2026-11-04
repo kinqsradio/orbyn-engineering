@@ -1277,6 +1277,20 @@ impl TurnMapper {
                     return;
                 };
                 self.open_tool(id, name, args, events);
+                let outcome = match (exit_code, item.get("status").and_then(Value::as_str)) {
+                    (Some(0), _) | (None, Some("completed")) => Some("success"),
+                    (Some(_), _) | (None, Some("failed")) => Some("failure"),
+                    _ => None,
+                };
+                if let Some(outcome) = outcome {
+                    events.push(
+                        AgUiEvent::Custom {
+                            name: "tool.outcome".into(),
+                            value: json!({ "toolCallId": id, "outcome": outcome }),
+                        }
+                        .into(),
+                    );
+                }
                 self.open.remove(id);
                 self.file_paths.remove(id);
                 events.push(
@@ -1433,6 +1447,59 @@ fn spent_window_reset(params: &Value) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_items_report_known_outcomes_only() {
+        for (item, expected) in [
+            (
+                json!({ "type":"mcpToolCall", "id":"ok", "status":"completed" }),
+                Some("success"),
+            ),
+            (
+                json!({ "type":"mcpToolCall", "id":"bad", "status":"failed" }),
+                Some("failure"),
+            ),
+            (
+                json!({ "type":"mcpToolCall", "id":"pending", "status":"inProgress" }),
+                None,
+            ),
+            (
+                json!({ "type":"commandExecution", "id":"zero", "status":"failed", "exitCode":0 }),
+                Some("success"),
+            ),
+            (
+                json!({ "type":"commandExecution", "id":"nonzero", "status":"completed", "exitCode":1 }),
+                Some("failure"),
+            ),
+            (json!({ "type":"commandExecution", "id":"unknown" }), None),
+        ] {
+            let id = item["id"].as_str().unwrap();
+            let mut mapper = TurnMapper::new("thread".into());
+            let step = mapper.on_notification(
+                "item/completed",
+                &json!({ "threadId":"thread", "item":item }),
+            );
+            let outcomes: Vec<_> = step
+                .events
+                .into_iter()
+                .filter_map(|event| match event {
+                    EngineEvent::Agui(AgUiEvent::Custom { name, value })
+                        if name == "tool.outcome" =>
+                    {
+                        Some(value)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                outcomes,
+                expected
+                    .map(|outcome| json!({ "toolCallId":id, "outcome":outcome }))
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 
     fn mapper() -> TurnMapper {
         TurnMapper::new("thread".into())
