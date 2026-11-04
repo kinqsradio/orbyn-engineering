@@ -343,7 +343,7 @@ function useGlobalKeys(route: Route) {
   useSlowRequestToast();
   const keymap = useAsync("keybindings", (signal) => api.keybindings(signal));
   const reload = keymap.reload;
-  useCommand("keybindings.reload", reload);
+  useCommand("keybindings.reload", () => void reload());
   const rules = keymap.data?.rules ?? FALLBACK_RULES;
   useEffect(() => {
     setTerminalRules(rules, () => keyContext(parseRoute(window.location.hash)));

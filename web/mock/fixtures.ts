@@ -6,6 +6,7 @@ import type {
   Project,
   Run,
   RunState,
+  ScheduledTask,
   ServerInfo,
   Thread,
   WireThreadEvent,
@@ -286,6 +287,71 @@ export function threads(): Thread[] {
     );
   });
   return list;
+}
+
+export function scheduledTasks(): ScheduledTask[] {
+  return [
+    {
+      id: "task-review",
+      project_id: "p-app",
+      thread_id: "t-approval",
+      name: "Daily review",
+      prompt: "Review the open changes.",
+      engine: "claude",
+      schedule: { kind: "interval", every_minutes: 30, time: null, weekdays: [], utc_offset_minutes: 0, only_on_success: false },
+      enabled: true,
+      signature: null,
+      has_secret: false,
+      filters: [],
+      dedupe: null,
+      max_age_seconds: null,
+      timestamp_path: null,
+      next_run_at: iso(600),
+      last_run_at: iso(-1200),
+      last_status: "started",
+      created_at: iso(-86400),
+    },
+    {
+      id: "task-hook",
+      project_id: "p-app",
+      thread_id: "t-approval",
+      name: "Incoming hook",
+      prompt: "Handle the webhook.",
+      engine: "claude",
+      schedule: { kind: "webhook", every_minutes: null, time: null, weekdays: [], utc_offset_minutes: 0, only_on_success: false },
+      enabled: false,
+      signature: null,
+      has_secret: false,
+      filters: [],
+      dedupe: null,
+      max_age_seconds: null,
+      timestamp_path: null,
+      next_run_at: null,
+      last_run_at: null,
+      last_status: "never",
+      created_at: iso(-86400),
+    },
+    {
+      id: "task-elsewhere",
+      project_id: "p-app",
+      thread_id: "t-done",
+      name: "Explain the event log",
+      prompt: "Explain how the event log resumes.",
+      engine: "claude",
+      schedule: { kind: "fixed_time", every_minutes: null, time: "09:00", weekdays: [1, 2, 3, 4, 5], utc_offset_minutes: 0, only_on_success: false },
+      enabled: true,
+      signature: null,
+      has_secret: false,
+      filters: [],
+      dedupe: null,
+      max_age_seconds: null,
+      timestamp_path: null,
+      next_run_at: null,
+      last_run_at: null,
+      last_status: "never",
+      created_at: iso(-86400),
+    },
+  ];
 }
 
 export function pendingApprovals(): Approval[] {

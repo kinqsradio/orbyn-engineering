@@ -15,6 +15,7 @@ import type {
   Project,
   ProjectFileView,
   QueuedMessage,
+  ScheduledTask,
   ServerSettings,
   Thread,
   UpdateStatus,
@@ -67,6 +68,7 @@ export function createMockApi(options: MockOptions = {}) {
   let settings: ServerSettings = fixtures.serverSettings();
   let failStep: string | null = null;
   let queued: QueuedMessage[] = [];
+  let tasks: ScheduledTask[] = [];
   let failures: Failure[] = [];
   let clones: unknown[] = [];
   let delayMs = 0;
@@ -94,6 +96,7 @@ export function createMockApi(options: MockOptions = {}) {
     projects = blank ? [] : structuredClone(fixtures.projects);
     threads = blank ? [] : fixtures.threads();
     approvals = blank ? [] : fixtures.pendingApprovals();
+    tasks = blank ? [] : fixtures.scheduledTasks();
     logs = blank ? {} : fixtures.logs();
     if (next === "reference") {
       const state = fixtures.referenceState(Date.now());
@@ -386,6 +389,29 @@ export function createMockApi(options: MockOptions = {}) {
         break;
       case "GET /api/updates":
         return { status: 200, body: updatesBody() };
+      case "GET /api/tasks":
+        if (seg.length === 4 && seg[3] === "deliveries") return { status: 200, body: [] };
+        if (seg.length !== 2) break;
+        // Copy on read: callers hold this snapshot until their next reload.
+        return { status: 200, body: structuredClone(tasks) };
+      case "POST /api/tasks": {
+        const task = tasks.find((entry) => entry.id === seg[2]);
+        if (!task) return err(404, "not_found", "Task not found.");
+        if (seg[3] === "enabled") {
+          task.enabled = data.enabled === true;
+          task.next_run_at = task.enabled ? fixtures.iso(600) : null;
+          return { status: 200, body: task };
+        }
+        if (seg[3] === "run") {
+          task.last_status = "started";
+          task.last_run_at = now();
+          return { status: 202 };
+        }
+        break;
+      }
+      case "DELETE /api/tasks":
+        tasks = tasks.filter((entry) => entry.id !== seg[2]);
+        return { status: 204 };
       case "POST /api/updates":
         if (seg[2] === "check") {
           updates = { ...updates, checked_at: new Date().toISOString() };

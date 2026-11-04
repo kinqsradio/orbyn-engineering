@@ -65,7 +65,7 @@ builds on both, and E2E. The repository is public and has no license yet.
 ### Current local section
 
 The active section branch is `feat/pr-link-preview` in the `pr-link-preview`
-worktree, based on main `958c2ae`. It completes F60's hover preview: after a short
+worktree, based on main `d6e2ec4`. It completes F60's hover preview: after a short
 hover, a pull request link in prose shows its title, `owner/repo#number` and state,
 author and age, and checks and review outcome. The card reads the link's project
 (the thread's, or the pull page's), stays quiet when the project answers with a
@@ -74,14 +74,20 @@ Copy link and Open on the host menu is unchanged. No contract or service change.
 
 Real `orbynd` browser qualification passes: the pull-link scene shows the card for
 the stand-in forge's #42, then the link still opens the in-app panel and its
-context menu. Web checks and 391 unit tests pass; the details real-service spec
+context menu. Web checks and 410 unit tests pass; the details real-service spec
 passes 6/6 and the mock workspace spec passes 24/24. Windows native and a packaged
 macOS walkthrough are unverified.
+
+M3 landed in main through `d6e2ec4`: the thread details Automations panel lists
+tasks bound to the thread, pauses and resumes through the enabled route, fires Run
+now, opens the editor from Edit, saves and clears the link, and the panel shows the
+new name before Manage opens the task list. Its 398 unit tests and real-service
+details/tasks specs passed before the merge.
 
 The previous project-settings section evidence below remains historical at main
 `58d86e9`; read it as earlier evidence, not current-head qualification.
 
-Final production Rust passed 1055 workspace tests with 9 existing ignored,
+That earlier section's final production Rust passed 1055 workspace tests with 9 existing ignored,
 formatting and all-target Clippy. The final metadata test file separately passed
 all eight cases, including actual populated schema-20 migration and writer fences.
 Web type/lint checks, 338 unit tests and the production build passed. Full default
@@ -98,10 +104,10 @@ concurrent unit run timed out in the App streaming case at its unchanged five-
 second limit; focused 42 and full 338 reruns passed without limit changes. No cause
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
-Current local parity metadata: 347 declared checked, 49 partial, 136 open and 2 not
-doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
-release inputs below remain in force. No current-head hosted CI, native or Windows
-qualification is inferred.
+Parity metadata at `d6e2ec4` with F60 ticked: 348 declared checked, 49 partial, 135
+open and 2 not doable out of 534 included. K6/K7 remain partial. Native/tool stops
+and missing release inputs below remain in force. No current-head hosted CI,
+native or Windows qualification is inferred.
 
 The K7 image continuation is locally qualified on the section branch. Choose file
 opens the shared project-image search; selection saves the same relative hint for each selected
@@ -631,7 +637,7 @@ not commit it. Move it to a real secret store before any release.
    object merely because these forms share the scope selector. Reference owners
    are `TelemetryExportSettings.tsx`, `StorageSettings.tsx` and
    `ProviderInstanceCard.tsx` under T3's settings components.
-   M3 remains a next backend slice; I33 ACP sessions landed with `feat/provider-sessions`.
+   M3 landed with `feat/thread-automations`; I33 ACP sessions landed with `feat/provider-sessions`.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
    package-service smoke now fails instead of warning, and the prior holder is unknown. A prior #60 Windows
    package-start timeout remains a failed observation even if a later run passes.
