@@ -222,7 +222,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [x] C7 Item inspector: raw turn item view | apps/web/src/components/chat/V2ItemInspector.tsx | w d s | M
 - [x] C8 Proposed plan card: collapse, copy, save/download, follow-up | apps/web/src/components/chat/ProposedPlanCard.tsx | w d m | M
 - [x] C9 Plan follow-up banner: implement plan from a banner | apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx | w d | M
-- [ ] C10 Claude task lists: Tasks row via env flag | docs/user/providers-claude.md | w d | S
+- [ ] C10 Claude task lists: Tasks row via env flag | docs/user/providers-claude.md | w d | S | status: partial | local: the driver already translates TodoWrite into the plan checklist | remaining: modern TaskCreate/TaskUpdate/TaskList results are not projected. Refused enabling a Tasks flag alone: it would expose tools whose task state is not rendered. The referenced T3 provider document is not available locally; no live Claude turn was run. Anthropic documents CLAUDE_CODE_ENABLE_TODO_TOOLS=1 for opt-in and CLAUDE_CODE_ENABLE_TASKS=0 for legacy TodoWrite, so a flag alone does not establish modern Tasks parity (https://code.claude.com/docs/en/tools-reference#task-tool-availability)
 - [x] C11 Subagent bar: live delegated agents and tooltips | apps/web/src/components/chat/ProviderSubagentBar.tsx | w d m | M
 - [x] C12 Markdown renderer: streaming blocks, tables, details, direction handling | apps/web/src/components/ChatMarkdown.tsx | w d m | L
 - [x] C13 Code blocks: highlighting and copy | apps/web/src/components/chat/MarkdownCodeBlock.tsx | w d m | M
