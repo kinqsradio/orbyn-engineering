@@ -1,7 +1,8 @@
 # Handoff
 
-Start here if you are picking this project up. Reconciled 2 November 2026 against
-`main` at `58d86e9`. Trust the repository over this document where they differ,
+Start here if you are picking this project up. Reconciled 4 November 2026 against
+`main` at `6c69b8d`; the dated sections below it are kept as evidence and are not
+current. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
 
@@ -49,7 +50,57 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 - Stale reports happen. `| web done` and `| server done` are defined in
   `docs/parity.md`; count from the file, not from a summary.
 
-## Reconciled status at `4e01947`
+## Where things stand now
+
+`main` is `6c69b8d` and nothing beyond it is merged. `python3 scripts/count-parity.py`
+reports 709 rows with 387 source checkboxes ticked, and 534 included rows: 346
+declared checked, 50 partial, 136 open, 2 not doable, 175 excluded, none with an
+unresolved scope. Those are checklist declarations, not a fresh runtime count.
+
+Five pull requests are open, each one branch for one section with one commit per
+completed row:
+
+| Pull request | Rows | Branch | State |
+| --- | --- | --- | --- |
+| #114 | H36 device-toolbar resize handles | `feat/browser-resize-handles` | every check green, waiting for review |
+| #115 | C19 media in messages | `feat/markdown-media` | every check green, waiting for review |
+| #116 | N9 agent preview inspection tools | `feat/agent-preview-tools` | open, with a reviewer's `403d1cf` on top |
+| #117 | contribution rules: titles, credit, unfinished work | `docs/pr-issue-titles` | open |
+| #118 | C21+C22 renders and N3 `orbyn_html_render` | `feat/html-renders` | every check green, waiting for review |
+
+Two sections are being built before they become pull requests: D18+D27 (zip browsing
+and the viewer's copy control) on `feat/file-viewer`, and D11+D29 (Word and
+spreadsheet viewing) queued behind it.
+
+### Picking up work
+
+Unfinished work belongs in an issue, never in a session or a local note, and
+CONTRIBUTING says what such an issue must carry. The open queue:
+
+- #120 an ignored browser test that fails on `main`;
+- #121 C23, the deferred screenshot verification, with its browser-download decision;
+- #122 the remote-media decision the packaged content policy forces;
+- #123 the shared `CARGO_TARGET_DIR` hazard described below;
+- #124 D11+D29, the Word and spreadsheet viewer.
+
+Filter by `parity` for rows, `help wanted` for work deliberately left open, and the
+`area:` label for its owner. The rest of the roadmap is `docs/parity.md`: every row
+carries its surface, size and `scope:` fields, and blocked work (the device tool
+chain, mobile, hosted services) is marked there so it does not look open.
+
+### Worktrees, and one trap
+
+Parity work happens in `<repo>-wt/<purpose>/`. Several worktrees may share one
+`CARGO_TARGET_DIR` to avoid a 10 GB build each, and that sharing is not safe on its
+own: cargo has reported packages `Fresh` while linking another checkout's artefacts,
+so an integration test ran a binary without the change under test. When evidence
+matters, hard-link a private copy and force the two packages to rebuild, then check
+the binary carries the change — #123 has the commands.
+
+Everything below this point is the record of earlier pickups, with the dates and
+revisions it was written at.
+
+## Reconciled status at `4e01947` (historical)
 
 Run `python3 scripts/count-parity.py` to count `docs/parity.md` directly.
 Main has 709 rows and 390 source checkboxes ticked. Scope metadata reports 534
