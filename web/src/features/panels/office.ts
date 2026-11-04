@@ -395,10 +395,28 @@ function paragraphBlock(paragraph: XmlElement): DocxBlock {
   return level === null ? { kind: "paragraph", text } : { kind: "heading", level, text };
 }
 
+/**
+ * A table's rows in the order the body gives them, found through the wrapper
+ * Word puts around a repeating row (`<w:sdt><w:sdtContent><w:tr>`) and through
+ * any other element that is not itself a row, a cell or a table.
+ */
+function tableRows(table: XmlElement): XmlElement[] {
+  const rows: XmlElement[] = [];
+  const visit = (node: XmlElement) => {
+    for (const child of node.children) {
+      const name = localName(child.name);
+      if (name === "tr") rows.push(child);
+      else if (name !== "tbl" && name !== "tc" && !isFallback(child)) visit(child);
+    }
+  };
+  visit(table);
+  return rows;
+}
+
 function tableBlock(table: XmlElement): DocxTable {
   // `w:gridSpan` and `w:vMerge` are not spread out: a merged cell stays one
   // cell here, so a row's cells are exactly the cells its markup holds.
-  const rows = children(table, "tr").map((row) => children(row, "tc").map(cellText));
+  const rows = tableRows(table).map((row) => children(row, "tc").map(cellText));
   return { kind: "table", rows, text: rows.map((row) => row.join("\t")).join("\n") };
 }
 
@@ -414,7 +432,7 @@ function collectCellLines(parent: XmlElement, lines: string[]): void {
     const name = localName(node.name);
     if (name === "p") lines.push(paragraphText(node));
     else if (name === "tbl") {
-      for (const row of children(node, "tr")) lines.push(children(row, "tc").map(cellText).join("\t"));
+      for (const row of tableRows(node)) lines.push(children(row, "tc").map(cellText).join("\t"));
     } else if (!isFallback(node)) collectCellLines(node, lines);
   }
 }

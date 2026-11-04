@@ -113,6 +113,23 @@ it("flattens a table nested inside a cell", async () => {
   expect(model.blocks).toEqual([{ kind: "table", rows: [["outer\ninner\tcell"]], text: "outer\ninner\tcell" }]);
 });
 
+it("reads a table row the body wraps in a content control", async () => {
+  // Word writes a repeating row as `<w:sdt><w:sdtContent><w:tr>`.
+  const model = await read(
+    buildDocx(
+      `<w:tbl>` +
+        `<w:sdt><w:sdtPr><w:tblHeader/></w:sdtPr><w:sdtContent>` +
+        `<w:tr><w:tc><w:p><w:r><w:t>Region</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Sales</w:t></w:r></w:p></w:tc></w:tr>` +
+        `</w:sdtContent></w:sdt>` +
+        `<w:tr><w:tc><w:p><w:r><w:t>North</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>12</w:t></w:r></w:p></w:tc></w:tr>` +
+        `</w:tbl>`,
+    ),
+  );
+  expect(model.blocks).toEqual([
+    { kind: "table", rows: [["Region", "Sales"], ["North", "12"]], text: "Region\tSales\nNorth\t12" },
+  ]);
+});
+
 it("leaves the text of a deleted run out and keeps an inserted one", async () => {
   const model = await read(
     buildDocx(`<w:p><w:del><w:r><w:delText>removed</w:delText></w:r></w:del><w:ins><w:r><w:t>added</w:t></w:r></w:ins></w:p>`),
