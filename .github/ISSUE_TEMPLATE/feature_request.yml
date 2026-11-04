@@ -1,6 +1,6 @@
 name: Feature request
 description: Propose a feature or a change to how the app behaves.
-title: "[Feature]: "
+title: "feat: "
 labels:
   - enhancement
   - needs triage
@@ -10,6 +10,10 @@ body:
       value: |
         Features come from the planned list in docs/parity.md. A surface that is not on
         the list needs the maintainer's agreement before work starts.
+        The title starts with the kind of change this will take, in the form
+        `type(scope): summary`, such as `fix(web): the composer loses focus`.
+        Kinds: feat, fix, docs, test, refactor, perf, build, ci, chore, style,
+        revert, and question for an issue that only asks something.
   - type: input
     id: row
     attributes:
