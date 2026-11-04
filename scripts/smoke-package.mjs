@@ -33,6 +33,11 @@ const info = await smokeService(
     if (!page.ok || !(await page.text()).includes("<div")) throw new Error("UI was not served.");
     return info.json();
   },
-  { env: { ...process.env, ORBYN_LOG: "info,orbyn_core::workspace::provision=debug" } },
+  {
+    // Initializing the bundled library can take longer on a cold Windows runner.
+    // Match the installed-app smoke budget while keeping startup bounded.
+    readyMs: 90_000,
+    env: { ...process.env, ORBYN_LOG: "info,orbyn_core::workspace::provision=debug" },
+  },
 );
 console.log("Package smoke passed:", info);
