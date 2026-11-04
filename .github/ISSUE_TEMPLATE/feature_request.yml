@@ -27,8 +27,9 @@ body:
     id: checklist
     attributes:
       label: Checklist
-      description: One line per row or piece of work, so progress shows on the issue.
+      description: One line per task. Start with what to do in plain words, then the parity row in brackets, so a maintainer knows what it is without looking it up.
       value: |
+        - [ ] **Show the engine's real model list, and let people refresh it.** Read it from the installed engine and recover when refresh fails. (I40)
         - [ ] 
     validations:
       required: true
