@@ -1445,8 +1445,8 @@ sets no `PATH`: `child_env` widens that for every child without sourcing a shell
 random per run, is passed only to that run's engine, and is revoked at run end.
 Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
 governed `computer_*` tools and `orbyn_*` tools for threads, projects, worktrees,
-attachments, preview tabs, pull requests, delegation, scheduling and declaring writes.
-`approve` is listed only for Claude.
+attachments, preview tabs, published pages, pull requests, delegation, scheduling and
+declaring writes. `approve` is listed only for Claude.
 
 An `orbyn_*` tool reaches only the caller's project, its thread's preview tabs and, for
 an attachment, its own checkout; anything else reads as not found. A preference a tool
@@ -1457,6 +1457,14 @@ an effect goes through the gate itself as a `tool` action, which needs a person 
 the thread is in full access or a rule allows it. Every call is audited first. A
 delegated thread cannot delegate further, so one run cannot fan out without limit.
 
+`orbyn_html_render` is how an agent puts a page in its own timeline: it takes `html`,
+plus an optional `title` (trimmed, cut to 200 characters, `HTML` when absent) and an
+optional `height` (120 to 2000, 480 by default), publishes with the same store as the
+HTTP route, and answers with the id, the route, the frame token, the title, the images
+copied, the stored size and the height. It carries an effect, so the gate asks. The route
+it returns has no query; a client builds the frame URL with `?render=`. Nothing measures
+the page yet (C23), so the height the call asks for is the height it gets, and the tool
+says so.
 
 ## Computer gateway
 
