@@ -1371,12 +1371,19 @@ shows the log's last line with Try again, and threads and runs are kept. Every
 post-spawn startup failure closes the parent pipe and retains child ownership through
 a five-second graceful-exit period, then kills and reaps a service that has not exited.
 Successful readiness transfers that ownership to the running shell.
+The shell allows up to sixty seconds for the first ready line, including cold
+bundled-library unpacking and Git indexing. The package-service smoke uses that same
+budget; the installed-app smoke retains its ninety-second outer startup deadline.
+Timeout still closes the parent pipe and runs the bounded child cleanup above.
 
 The desktop job installs the built package and starts it with a private profile and no
 secrets: `scripts/smoke-app.mjs` waits for the UI to connect from the window, checks a
 second launch hands over, and sees the service end with the app. `scripts/smoke-package.mjs`
 only proves the service runs. The release job adds notarization checks, a SHA-256 per
 asset and a CycloneDX inventory from the lockfiles, which fails when a source is empty.
+For its private launch, app smoke enables fixed shell startup milestones and prints
+an allowlisted summary on failure. It does not publish raw shell stderr, profiles,
+service handles or launch tokens through that diagnostic summary.
 Windows binaries link the C runtime statically, and the installer is per-user with the
 WebView2 bootstrapper embedded and silent. The release workflow publishes nothing: it
 leaves a bundle for a person to promote.

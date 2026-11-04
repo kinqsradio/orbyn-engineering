@@ -80,7 +80,7 @@ test("rich Markdown renders: table, math, diagram, links, image and details", as
   const box = page.getByRole("dialog", { name: "a square" });
   await box.getByRole("button", { name: "Zoom in" }).click();
   await expect(box.locator("output")).toHaveText("125%");
-  await box.getByRole("button", { name: "Close image" }).click();
+  await box.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("link", { name: "the docs" }).click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
