@@ -55,6 +55,7 @@ test("a running turn shows its header and streams output; Stop folds it as stopp
 test("a long live tool trace groups in fives and defers rows beyond thirty", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:trace-batch]");
+  await expect(page).toHaveURL(/#\/threads\//);
   const earlier = page.getByRole("button", { name: "Show 15 earlier activities" });
   await expect(earlier).toBeVisible();
   await expect(page.locator(".work-log > .trace")).toHaveCount(28);
@@ -69,6 +70,7 @@ test("a long live tool trace groups in fives and defers rows beyond thirty", asy
 test("a failed non-command tool is excluded from completed action counts", async ({ page }) => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, "[scene:tool-outcomes]");
+  await expect(page).toHaveURL(/#\/threads\//);
   await settled(service, threadIdOf(page));
   const fold = page.getByRole("button", { name: /^Changed 2 files; 1 tool call failed ·/ });
   await expect(fold).toBeVisible();

@@ -1278,8 +1278,9 @@ impl TurnMapper {
                 };
                 self.open_tool(id, name, args, events);
                 let outcome = match (exit_code, item.get("status").and_then(Value::as_str)) {
+                    (_, Some("failed")) => Some("failure"),
+                    (Some(code), _) if code != 0 => Some("failure"),
                     (Some(0), _) | (None, Some("completed")) => Some("success"),
-                    (Some(_), _) | (None, Some("failed")) => Some("failure"),
                     _ => None,
                 };
                 if let Some(outcome) = outcome {
@@ -1465,11 +1466,15 @@ mod tests {
             ),
             (
                 json!({ "type":"commandExecution", "id":"zero", "status":"failed", "exitCode":0 }),
-                Some("success"),
+                Some("failure"),
             ),
             (
                 json!({ "type":"commandExecution", "id":"nonzero", "status":"completed", "exitCode":1 }),
                 Some("failure"),
+            ),
+            (
+                json!({ "type":"commandExecution", "id":"success", "status":"completed", "exitCode":0 }),
+                Some("success"),
             ),
             (json!({ "type":"commandExecution", "id":"unknown" }), None),
         ] {
