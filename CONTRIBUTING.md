@@ -58,6 +58,34 @@ node scripts/sync-labels.mjs
 | Platform | `platform: macos`, `platform: windows` |
 | Workflow | `needs triage`, `parity`, `good first issue`, `help wanted`, `duplicate`, `invalid`, `wontfix` |
 
+## Titles
+
+Pull request and issue titles say what kind of change it is, in the same form as a
+[Conventional Commits](https://www.conventionalcommits.org/) subject, so a title
+reads like the commit it becomes:
+
+```
+type(scope): summary
+```
+
+- A kind is required: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`,
+  `ci`, `chore`, `style` or `revert`. An issue may also use `question`, when the
+  issue only asks something and no change is settled yet.
+- A scope is optional and lowercase, and names the area the change touches, such
+  as `feat(web):` or `fix(core):`. `!` before the colon marks a breaking change,
+  as in `feat(core)!:`.
+- The summary is a short imperative phrase: lowercase first letter, no full stop
+  at the end, no run of spaces, and a whole title of at most 72 characters.
+- A title names the change and never credits a tool or an assistant for it. A
+  change may still be *about* an engine or a model ("show the claude usage limit"),
+  and a scope may name one, as in `fix(codex):`. AI use belongs in the body, as the
+  AI usage section describes.
+- The issue forms start the title with its kind. If the work changes shape, edit
+  the title rather than opening a second issue.
+- The [Title](../.github/workflows/pr-title.yml) check fails a pull request whose
+  title does not fit, and starts again when the title is edited. Dependabot opens
+  its own titles and is skipped.
+
 ## Branches and commits
 
 - Branch from `main` with a short purpose name: `feat/`, `fix/`, `docs/`,

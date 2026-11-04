@@ -51,6 +51,10 @@ trailer for an assistant, no generated-by line, and no model or tool name in com
 messages, pull request titles or branch names. The AI usage section is the one place
 for it.
 
+Pull request and issue titles use `type(scope): summary`, with a kind from
+CONTRIBUTING.md's list and a summary of at most 72 characters; the Title check
+fails while a title does not fit.
+
 Windows and macOS are both supported targets. Never add a Unix-only path, shell
 or signal without its Windows branch and a test on the CI matrix.
 

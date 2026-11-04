@@ -1,6 +1,6 @@
 name: Bug report
 description: Something in the app does not work as it should.
-title: "[Bug]: "
+title: "fix: "
 labels:
   - bug
   - needs triage
@@ -10,6 +10,10 @@ body:
       value: |
         Do not include tokens, engine credentials, private project files or personal data.
         Report vulnerabilities privately, as SECURITY.md describes.
+        The title starts with the kind of change this will take, in the form
+        `type(scope): summary`, such as `fix(web): the composer loses focus`.
+        Kinds: feat, fix, docs, test, refactor, perf, build, ci, chore, style,
+        revert, and question for an issue that only asks something.
   - type: input
     id: revision
     attributes:

@@ -1,0 +1,28 @@
+name: Title
+# Checks that the pull request title says what kind of change it is, in the form
+# `type(scope): summary`. It reads only the title from the event and never checks
+# out or runs pull request code. Issue titles use the same form; the issue forms
+# start them off, and nothing gates an issue on it.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  title:
+    name: Pull request title
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Only `scripts/`, because this check needs nothing else. It reads the title
+      # from the event and never runs pull request code.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - name: Check the title checker
+        run: python3 scripts/test_check_title.py
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/check_title.py --kind pull-request --title "$TITLE"

@@ -1,3 +1,9 @@
+<!-- Title: `type(scope): summary`, such as `fix(web): keep the composer focused
+after send`. Kinds: feat, fix, docs, test, refactor, perf, build, ci, chore,
+style, revert. The scope is optional and lowercase. Keep the whole title under
+72 characters. The Title check fails while the title does not fit, and the form
+is written up in CONTRIBUTING.md. -->
+
 ## What changes
 
 <!-- What a user sees or what behaviour changes, and why. -->
@@ -36,6 +42,7 @@ actually ran. The PR check fails while this section is empty. -->
 - [ ] `docs/architecture.md` is updated in the same commit as any rule or lifecycle change.
 - [ ] No source is copied from another project.
 - [ ] No secrets, engine credentials, personal data or files from my machine.
+- [ ] The title follows `type(scope): summary`, which is what the Title check reads.
 - [ ] No agent or tool attribution in commits, the title or the branch name; AI use is recorded above.
 
 Related issue:
