@@ -33,6 +33,9 @@ const info = await smokeService(
     if (!page.ok || !(await page.text()).includes("<div")) throw new Error("UI was not served.");
     return info.json();
   },
-  { env: { ...process.env, ORBYN_LOG: "info,orbyn_core::workspace::provision=debug" } },
+  {
+    readyMs: 60_000, // Cold bundle provisioning shares the desktop's startup budget.
+    env: { ...process.env, ORBYN_LOG: "info,orbyn_core::workspace::provision=debug" },
+  },
 );
 console.log("Package smoke passed:", info);

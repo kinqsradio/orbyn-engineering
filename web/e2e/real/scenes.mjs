@@ -66,6 +66,12 @@ export const scenes = {
   get "limit-soon"() {
     return limitStop(Math.floor(Date.now() / 1000) + 2);
   },
+  // Two pictures the checkout holds as SVG text, and one path it does not.
+  media: [
+    { write: { path: "shot-a.svg", text: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#2a6"/></svg>\n' } },
+    { write: { path: "shot-b.svg", text: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="40"><rect width="20" height="40" fill="#26a"/></svg>\n' } },
+    ...message("media", "Here: ![first](shot-a.svg) and ![second](shot-b.svg), but not ![third](gone.svg)."),
+  ],
   timeline: [
     started(item("rs1", "reasoning", {})),
     { method: "item/reasoning/summaryTextDelta", params: { itemId: "rs1", summaryIndex: 0, delta: "planning" } },

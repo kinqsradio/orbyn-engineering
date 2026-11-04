@@ -84,3 +84,36 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   await expect(page.getByText("No preview yet")).toBeVisible();
   await expect(page.getByRole("list", { name: "Recent pages" })).toContainText("/one");
 });
+
+test("the device toolbar resizes the page from its edges", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1500, height: 900 });
+  await page.goto(`${service.page}#/threads/${threadId}`);
+  await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
+  await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
+  await page.getByRole("button", { name: /^Browser/ }).first().click();
+  const address = page.getByRole("combobox", { name: "Search or enter URL" });
+  await address.fill(`localhost:${SITE_PORT}/one`);
+  await address.press("Enter");
+  await expect(page.getByRole("img", { name: /^Page at/ })).toBeVisible({ timeout: 40_000 });
+
+  const tab = async () => (await service.api<{ width: number; height: number }[]>("GET", `/api/threads/${threadId}/previews`))[0];
+  await page.getByRole("button", { name: "More page actions" }).click();
+  await page.getByRole("menuitem", { name: "Show device toolbar" }).click();
+  await page.getByRole("combobox", { name: "Device" }).selectOption("phone");
+  await expect.poll(async () => (await tab())?.width, { timeout: 15_000 }).toBe(393);
+
+  const handle = page.getByRole("button", { name: /Resize the page from the right edge/ });
+  const box = await handle.boundingBox();
+  if (!box) throw new Error("the right edge has no box to drag");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 10 });
+  await expect.poll(async () => (await tab())?.width, { timeout: 15_000 }).toBe(393);
+  await page.mouse.up();
+
+  // One resize for the whole drag, and the page is no preset any more.
+  await expect.poll(async () => (await tab())?.width, { timeout: 15_000 }).toBeGreaterThan(450);
+  await expect.poll(async () => (await tab())?.height, { timeout: 15_000 }).toBe(852);
+  await expect(page.getByRole("combobox", { name: "Device" })).toHaveValue("custom");
+});
