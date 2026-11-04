@@ -3,6 +3,7 @@ import { ApiFailure } from "../../api/client";
 import { useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
 import { rawUrl } from "./FileMedia";
+import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
 import type { DocxBlock, DocxDocument, OfficeKind, OfficeRequest, OfficeResponse, XlsxDocument } from "./office";
 
 /**
@@ -21,7 +22,9 @@ export type OfficeRun = (request: OfficeRequest, signal: AbortSignal) => Promise
 
 /**
  * One worker per read, so parsing a large document cannot block typing. The
- * worker owns the bytes and answers once; aborting an unmounted read stops it.
+ * worker owns the bytes — the buffer is transferred rather than copied, which
+ * is why it arrives without a second copy of a file that may be tens of
+ * megabytes — and answers once; aborting an unmounted read stops it.
  */
 export function runInWorker(request: OfficeRequest, signal: AbortSignal): Promise<OfficeResponse> {
   return new Promise((resolve, reject) => {
@@ -45,7 +48,9 @@ export function runInWorker(request: OfficeRequest, signal: AbortSignal): Promis
       worker.terminate();
       reject(new ApiFailure("worker_stopped", "The document reader stopped before it finished.", 0));
     });
-    worker.postMessage(request);
+    // Nothing on this thread reads these bytes again, so the worker takes the
+    // buffer itself instead of a structured-cloned copy of it.
+    worker.postMessage(request, [request.bytes.buffer]);
   });
 }
 
@@ -174,16 +179,29 @@ export function DocumentViewer({
   threadId,
   path,
   kind,
+  size,
   run = runInWorker,
 }: {
   threadId: string;
   path: string;
   kind: OfficeKind;
+  /**
+   * The file's size, as the panel already knows it. A document past the archive
+   * cap is refused from that number, before any of it is downloaded.
+   */
+  size?: number;
   /** The worker in the app; a test passes its own reader instead. */
   run?: OfficeRun;
 }) {
   const noun = kind === "docx" ? "document" : "spreadsheet";
-  const document = useAsync(`office:${threadId}:${path}:${kind}`, async (signal) => {
+  const document = useAsync(`office:${threadId}:${path}:${kind}`, async (signal): Promise<OfficeResponse> => {
+    if (size !== undefined && size > MAX_ARCHIVE_BYTES) {
+      return {
+        ok: false,
+        code: "zip_too_large",
+        message: `This ${noun} is ${formatBytes(size)}; the viewer opens at most ${formatBytes(MAX_ARCHIVE_BYTES)}.`,
+      };
+    }
     const response = await fetch(rawUrl(threadId, path), { credentials: "same-origin", signal });
     if (!response.ok) {
       throw new ApiFailure(`http_${response.status}`, `The service answered ${response.status}.`, response.status);

@@ -195,7 +195,7 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
       ) : !file.data ? null : zip ? (
         <ZipViewer threadId={threadId} path={path} />
       ) : office ? (
-        <DocumentViewer threadId={threadId} path={path} kind={office} />
+        <DocumentViewer threadId={threadId} path={path} kind={office} size={file.data.size} />
       ) : file.data.binary ? (
         <FileBytes threadId={threadId} path={path} size={file.data.size} as="hex" />
       ) : file.data.truncated ? (

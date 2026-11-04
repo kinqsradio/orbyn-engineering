@@ -1,7 +1,8 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { DocumentViewer, officeKind, type OfficeRun } from "./DocumentViewer";
+import { DocumentViewer, officeKind, runInWorker, type OfficeRun } from "./DocumentViewer";
+import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
 import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
 import type { DocxDocument, OfficeModel, OfficeRequest, OfficeResponse, XlsxDocument } from "./office";
 
@@ -69,6 +70,51 @@ it("says so when a document holds no text", async () => {
   serveFile(buildDocx(""));
   render(page(answers({ format: "docx", blocks: [], text: "" })));
   expect(await screen.findByText("This document holds no text the viewer can show.")).toBeInTheDocument();
+});
+
+it("refuses an oversized document before it downloads a byte of it", async () => {
+  const fetch = serveFile(buildDocx(""));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="huge.docx"
+      kind="docx"
+      size={MAX_ARCHIVE_BYTES + 1}
+      run={answers(model)}
+    />,
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(`This document is ${formatBytes(MAX_ARCHIVE_BYTES + 1)}`);
+  expect(alert).toHaveTextContent(`at most ${formatBytes(MAX_ARCHIVE_BYTES)}`);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("hands the worker the file's own buffer instead of a copy", async () => {
+  const transferred: Transferable[][] = [];
+  class RecordingWorker {
+    private readonly listeners = new Set<(event: { data: OfficeResponse }) => void>();
+
+    constructor(_url: URL, _options?: unknown) {}
+
+    addEventListener(type: string, listener: (event: { data: OfficeResponse }) => void): void {
+      if (type === "message") this.listeners.add(listener);
+    }
+
+    removeEventListener(type: string, listener: (event: { data: OfficeResponse }) => void): void {
+      if (type === "message") this.listeners.delete(listener);
+    }
+
+    terminate(): void {}
+
+    postMessage(_request: OfficeRequest, transfer: Transferable[] = []): void {
+      transferred.push(transfer);
+      for (const listener of [...this.listeners]) listener({ data: { ok: true, model } });
+    }
+  }
+  vi.stubGlobal("Worker", RecordingWorker);
+  const bytes = buildDocx(docxParagraph("Owned"));
+  await runInWorker({ kind: "docx", bytes }, new AbortController().signal);
+  expect(transferred).toEqual([[bytes.buffer]]);
 });
 
 it("hands the file's own bytes to the reader", async () => {
