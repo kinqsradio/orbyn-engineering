@@ -37,6 +37,7 @@ import type {
   LimitsOverview,
   Mentions,
   PermissionMode,
+  PreviewTab,
   Project,
   ProjectRemoval,
   QueuedMessage,
@@ -252,6 +253,8 @@ export const api = {
   editors: (signal?: AbortSignal) => request<EditorInfo[]>("GET", "/api/editors", undefined, signal),
   openInEditor: (threadId: string, body: { path: string; editor: string; line?: number; column?: number }) =>
     request<void>("POST", `/api/threads/${q(threadId)}/files/open`, body),
+  openPreviewFile: (threadId: string, path: string) =>
+    request<PreviewTab>("POST", `/api/threads/${q(threadId)}/previews/file`, { path }),
   allThreads: (signal?: AbortSignal) => request<Thread[]>("GET", "/api/threads", undefined, signal),
   adoptScratch: (threadId: string) => request<Project>("POST", `/api/threads/${q(threadId)}/adopt`, {}),
   thread: (id: string, signal?: AbortSignal) =>
