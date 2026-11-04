@@ -26,8 +26,9 @@ test("a finished turn folds, groups its tools and shows command output", async (
 
   await fold.click();
   await expect(page.getByText("I'll look around first.")).toBeVisible();
-  const group = page.getByRole("button", {
+  const group = page.locator(".work-rows").getByRole("button", {
     name: "Ran 1 command and changed 2 files; 1 tool call failed; 1 tool call finished without a reported outcome",
+    exact: true,
   });
   await group.click();
   await page.getByRole("button", { name: /^cat missing\.txt/ }).click();
