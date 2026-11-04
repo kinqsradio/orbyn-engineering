@@ -516,6 +516,10 @@ fn router(state: AppState) -> Router {
             post(preview_routes::view),
         )
         .route(
+            "/api/threads/{id}/previews/{tab}/window",
+            post(preview_routes::window),
+        )
+        .route(
             "/api/threads/{id}/previews/{tab}/reload",
             post(preview_routes::reload),
         )

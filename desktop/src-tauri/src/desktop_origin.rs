@@ -18,6 +18,23 @@ pub fn application(service: &Url) -> Url {
     target
 }
 
+/// A dedicated viewer for the existing preview, on the same bundled origin.
+pub fn preview(service: &Url, thread_id: &str, tab_id: &str) -> Option<Url> {
+    let valid = |id: &str| {
+        !id.is_empty()
+            && id.len() <= 128
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    };
+    if !valid(thread_id) || !valid(tab_id) {
+        return None;
+    }
+    let mut target = application(service);
+    target.set_fragment(Some(&format!("/preview/{thread_id}/{tab_id}")));
+    Some(target)
+}
+
 pub fn startup(error: Option<&str>) -> Url {
     let mut target = Url::parse(if cfg!(windows) {
         "http://orbyn-startup.localhost/index.html"
@@ -77,5 +94,19 @@ mod tests {
         ] {
             assert!(!is_startup(&Url::parse(text).unwrap()));
         }
+    }
+
+    #[test]
+    fn preview_keeps_the_bundled_origin_and_rejects_route_injection() {
+        let service = Url::parse("http://127.0.0.1:30001/?token=test").unwrap();
+        let page = preview(&service, "thread-1", "tab_1").unwrap();
+        assert_eq!(page.origin(), application(&service).origin());
+        assert_eq!(page.fragment(), Some("/preview/thread-1/tab_1"));
+        assert!(
+            page.query_pairs()
+                .any(|(key, value)| key == "token" && value == "test")
+        );
+        assert!(preview(&service, "thread/other", "tab").is_none());
+        assert!(preview(&service, "thread", "tab#other").is_none());
     }
 }

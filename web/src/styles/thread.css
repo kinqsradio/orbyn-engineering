@@ -3189,8 +3189,12 @@ button.detail-row:hover {
 }
 
 /* Browser surface */
+.browser-panels { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.browser-pane { flex: 1; min-height: 0; overflow: hidden; }
+.browser-pane + .browser-pane { border-top: 1px solid var(--color-border); }
 .browser-tab-icon { object-fit: contain; flex-shrink: 0; }
 .browser-tabs button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; }
+.preview-window { height: 100dvh; min-height: 0; }
 .browser-panel {
   display: flex;
   flex-direction: column;

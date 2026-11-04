@@ -86,6 +86,21 @@ impl ShellBridge {
         }
     }
 
+    /// Ask the shell to show a preview already checked by the service.
+    pub fn preview_window(&self, thread_id: &str, tab_id: &str) -> Result<()> {
+        if !is_id(thread_id) || !is_id(tab_id) {
+            return Err(CoreError::NotFound("preview".to_owned()));
+        }
+        if self.send(json!({ "type": "preview_window", "thread_id": thread_id, "tab_id": tab_id }))
+        {
+            Ok(())
+        } else {
+            Err(CoreError::Unsupported(
+                "This needs the desktop app.".to_owned(),
+            ))
+        }
+    }
+
     pub fn status(&self) -> ShellStatus {
         ShellStatus {
             attached: lock(&self.lines).is_some(),
@@ -304,6 +319,23 @@ mod tests {
         assert_eq!(
             out.try_recv().unwrap(),
             json!({ "type": "shell_action", "action": "zoom_reset" })
+        );
+    }
+
+    #[test]
+    fn preview_window_uses_only_validated_identifiers_and_requires_a_shell() {
+        let shell = ShellBridge::default();
+        assert!(shell.preview_window("thread-1", "tab_1").is_err());
+        let (lines, mut out) = mpsc::unbounded_channel();
+        shell.attach(lines);
+        assert!(shell.preview_window("../other", "tab_1").is_err());
+        assert!(out.try_recv().is_err());
+        shell.preview_window("thread-1", "tab_1").unwrap();
+        assert_eq!(
+            out.try_recv().unwrap(),
+            json!({
+                "type": "preview_window", "thread_id": "thread-1", "tab_id": "tab_1"
+            })
         );
     }
 

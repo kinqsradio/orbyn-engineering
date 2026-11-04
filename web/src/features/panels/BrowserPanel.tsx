@@ -18,6 +18,8 @@ import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { SiteIcon } from "./SiteIcon";
+import { useBrowserPanels } from "./browserPanels";
+import { inDesktopApp } from "../../api/shell";
 import {
   RESIZE_HANDLES,
   RESIZE_KEY_HINT,
@@ -494,7 +496,31 @@ function StartPage({
 }
 
 export function BrowserPanel({ threadId }: { threadId: string }) {
+  const moved = useBrowserPanels((state) => state.moved[threadId]);
+  const move = useBrowserPanels((state) => state.move);
+  return (
+    <div className="browser-panels">
+      <section className="browser-pane" aria-label="Browser panel">
+        <BrowserPane threadId={threadId} excludedTabId={moved} onMove={(id) => move(threadId, id)} />
+      </section>
+      {moved ? <section className="browser-pane" aria-label="Second Browser panel">
+        <BrowserPane threadId={threadId} onlyTabId={moved} onMove={() => move(threadId, null)} />
+      </section> : null}
+    </div>
+  );
+}
+
+export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detached = false }: {
+  threadId: string;
+  onlyTabId?: string;
+  excludedTabId?: string;
+  onMove?(tabId: string): void;
+  detached?: boolean;
+}) {
   const base = `/api/threads/${q(threadId)}/previews`;
+  const pane = useRef<HTMLDivElement>(null);
+  const ownsFocus = () => Boolean(pane.current?.contains(document.activeElement)) ||
+    (document.activeElement === document.body && (!onlyTabId || detached));
   const tabs = useAsync(`previews:${threadId}`, (signal) => request<PreviewTab[]>("GET", base, undefined, signal));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftTab, setDraftTab] = useState(false);
@@ -517,9 +543,9 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   const pushToast = useUi((state) => state.pushToast);
   const reload = tabs.reload;
   useCommand("preview.focusUrl", () => {
-    document.querySelector<HTMLInputElement>("[data-preview-address]")?.focus();
-  });
-  const list = tabs.data ?? [];
+    pane.current?.querySelector<HTMLInputElement>("[data-preview-address]")?.focus();
+  }, ownsFocus);
+  const list = (tabs.data ?? []).filter((tab) => tab.id !== excludedTabId && (!onlyTabId || tab.id === onlyTabId));
   const active = draftTab ? null : (list.find((tab) => tab.id === activeId) ?? list[0] ?? null);
 
   const remember = (url: string) => {
@@ -538,6 +564,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     }
   };
   const go = (raw: string) => {
+    if (!active && onlyTabId) return;
     const url = resolveAddress(raw, searchEngine);
     setAddress(url);
     if (!(active?.private ?? isPrivate)) remember(url);
@@ -613,7 +640,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     openWaiting.current = go;
   });
   useEffect(() => {
-    if (waiting === null) return;
+    if (waiting === null || onlyTabId) return;
     useUi.getState().showInBrowser(null);
     // An empty request only brings the panel forward, for a tab already made.
     if (typeof waiting === "object") {
@@ -622,7 +649,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
       reload();
     } else if (waiting) openWaiting.current(waiting);
     else reload();
-  }, [waiting, reload]);
+  }, [waiting, reload, onlyTabId]);
   const onPicked = (picked: PickedElement) => {
     const { drafts, setDraft } = useUi.getState();
     const before = drafts[threadId] ?? "";
@@ -644,7 +671,9 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
       ],
     },
     { label: toolbar ? "Hide device toolbar" : "Show device toolbar", separatorBefore: true, onSelect: () => setToolbar(!toolbar) },
-    { label: "Float over chat", onSelect: () => useUi.getState().setPreviewFloat({ threadId, tabId: tab.id }) },
+    ...(!detached ? [{ label: "Float over chat", onSelect: () => useUi.getState().setPreviewFloat({ threadId, tabId: tab.id }) }] : []),
+    ...(onMove ? [{ label: onlyTabId ? "Move to Browser panel" : "Move to another panel", onSelect: () => onMove(tab.id) }] : []),
+    { label: "Open in separate window", disabled: !inDesktopApp(), onSelect: () => void act(() => request("POST", `${base}/${q(tab.id)}/window`)) },
     { label: "Clear cookies", separatorBefore: true, destructive: true, onSelect: () => clear({ cookies: true }) },
     { label: "Clear cache", destructive: true, onSelect: () => clear({ cache: true }) },
   ];
@@ -653,7 +682,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     void act(() => request("POST", `${base}/${q(active.id)}/history`, { back }));
   };
   // A link clicked in the page moves the tab with nobody telling this side.
-  const watching = active !== null;
+  const watching = active !== null || Boolean(onlyTabId);
   useEffect(() => {
     if (!watching) return;
     const timer = setInterval(reload, TAB_POLL_MS);
@@ -663,7 +692,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
   useCommand("preview.refresh", () => {
     if (!shown) return false;
     go(shown);
-  });
+  }, ownsFocus);
   // Keys can outrun the tab list, so each press steps from the last one sent.
   const sentZoom = useRef<number | null>(null);
   const shownZoom = active?.zoom;
@@ -675,13 +704,13 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
     sentZoom.current = zoom(sentZoom.current ?? active.zoom);
     view({ zoom: sentZoom.current });
   };
-  useCommand("preview.zoomIn", () => zoomTo((from) => stepZoom(from, true)));
-  useCommand("preview.zoomOut", () => zoomTo((from) => stepZoom(from, false)));
-  useCommand("preview.resetZoom", () => zoomTo(() => 1));
+  useCommand("preview.zoomIn", () => zoomTo((from) => stepZoom(from, true)), ownsFocus);
+  useCommand("preview.zoomOut", () => zoomTo((from) => stepZoom(from, false)), ownsFocus);
+  useCommand("preview.resetZoom", () => zoomTo(() => 1), ownsFocus);
   const human = active?.control === "human";
 
   return (
-    <div className="browser-panel">
+    <div ref={pane} className="browser-panel">
       <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
         {list.map((tab) => (
           <span key={tab.id} className="surface-tab" data-selected={tab.id === active?.id || undefined}>
@@ -705,7 +734,7 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
             </IconButton>
           </span>
         ))}
-        <IconButton
+        {!onlyTabId ? <><IconButton
           label="New tab"
           onClick={() => {
             setPrivate(false);
@@ -722,7 +751,8 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
           }}
         >
           <EyeOff size={14} aria-hidden />
-        </IconButton>
+        </IconButton></> : null}
+        {onlyTabId && onMove ? <IconButton label="Close second Browser panel" onClick={() => onMove(onlyTabId)}><X size={14} aria-hidden /></IconButton> : null}
       </div>
       <div className="browser-bar">
         <IconButton label="Back" disabled={!active?.can_go_back} onClick={() => step(true)}>
@@ -737,24 +767,25 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         <input
           key={shown}
           data-preview-address
-          list="browser-history"
+          list={`browser-history-${onlyTabId ?? "main"}`}
           aria-label="Search or enter URL"
           placeholder="Search or enter URL"
+          disabled={Boolean(onlyTabId) && !active}
           defaultValue={shown || address}
           onKeyDown={(event) => {
             if (event.key === "Enter" && event.currentTarget.value.trim()) go(event.currentTarget.value);
           }}
         />
-        <datalist id="browser-history">
+        <datalist id={`browser-history-${onlyTabId ?? "main"}`}>
           {recent.map((url) => (
             <option key={url} value={url} />
           ))}
         </datalist>
         {active ? (
           <>
-            <IconButton label="Pick an element" pressed={picking} onClick={() => setPicking(!picking)}>
+            {!detached ? <IconButton label="Pick an element" pressed={picking} onClick={() => setPicking(!picking)}>
               <Crosshair size={14} aria-hidden />
-            </IconButton>
+            </IconButton> : null}
             <IconButton
               label={human ? "Give control back" : "Take control"}
               pressed={human}
@@ -817,15 +848,17 @@ export function BrowserPanel({ threadId }: { threadId: string }) {
         <PageView
           threadId={threadId}
           tab={active}
-          fitted={device === "fit"}
+          fitted={!detached && device === "fit"}
           picking={picking}
-          resize={device === "fit" ? null : { live, handles: toolbar, onPreview: setLive, onCommit: commitResize }}
+          resize={device === "fit" && !detached ? null : { live, handles: device !== "fit" && toolbar, onPreview: setLive, onCommit: commitResize }}
           onPicked={onPicked}
         />
       ) : busy ? (
         <p className="browser-note" role="status">
           Connecting...
         </p>
+      ) : onlyTabId ? (
+        <p className="browser-note" role="status">{tabs.status === "loading" ? "Connecting..." : "This preview tab is closed."}</p>
       ) : (
         <StartPage threadId={threadId} onOpen={go} profile={profile} setProfile={setProfile} isPrivate={isPrivate} />
       )}
