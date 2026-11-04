@@ -1,12 +1,15 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { DocumentViewer, officeKind, runInWorker, type OfficeRun } from "./DocumentViewer";
+import { DocumentViewer, OFFICE_READ_TIMEOUT_MS, officeKind, runInWorker, type OfficeRun } from "./DocumentViewer";
 import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
 import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
 import { MAX_CELLS, type DocxDocument, type OfficeModel, type OfficeRequest, type OfficeResponse, type XlsxDocument } from "./office";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 /** Serves one package over the raw route, whatever the address asks for. */
 function serveFile(bytes: Uint8Array<ArrayBuffer>, status = 200) {
@@ -87,6 +90,51 @@ it("refuses an oversized document before it downloads a byte of it", async () =>
   expect(alert).toHaveTextContent(`This document is ${formatBytes(MAX_ARCHIVE_BYTES + 1)}`);
   expect(alert).toHaveTextContent(`at most ${formatBytes(MAX_ARCHIVE_BYTES)}`);
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it("gives up on a reader that never answers and offers a retry", async () => {
+  vi.useFakeTimers();
+  class SilentWorker {
+    constructor(_url: URL, _options?: unknown) {}
+
+    addEventListener(): void {}
+
+    removeEventListener(): void {}
+
+    terminate(): void {}
+
+    postMessage(): void {}
+  }
+  vi.stubGlobal("Worker", SilentWorker);
+  serveFile(buildDocx(""));
+  render(page());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(OFFICE_READ_TIMEOUT_MS);
+  });
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent("The document reader didn't answer");
+  expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+});
+
+it("says documents can't be read here when the page is not allowed a worker", async () => {
+  class BlockedWorker {
+    constructor() {
+      throw new DOMException("blocked by Content Security Policy", "SecurityError");
+    }
+  }
+  vi.stubGlobal("Worker", BlockedWorker);
+  serveFile(buildDocx(""));
+  render(page());
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("This browser can't read documents here.");
+  expect(alert).not.toHaveTextContent("Something went wrong");
+});
+
+it("says the same in a browser that has no Worker at all", async () => {
+  vi.stubGlobal("Worker", undefined);
+  serveFile(buildDocx(""));
+  render(page());
+  expect(await screen.findByRole("alert")).toHaveTextContent("This browser can't read documents here.");
 });
 
 it("hands the worker the file's own buffer instead of a copy", async () => {

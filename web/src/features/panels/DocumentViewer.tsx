@@ -30,33 +30,68 @@ export function officeKind(path: string): OfficeKind | null {
 /** How the viewer gets a model: the worker in the app, or a test's own reader. */
 export type OfficeRun = (request: OfficeRequest, signal: AbortSignal) => Promise<OfficeResponse>;
 
+/** How long one read may take before the worker is stopped and said to be stuck. */
+export const OFFICE_READ_TIMEOUT_MS = 30_000;
+
 /**
  * One worker per read, so parsing a large document cannot block typing. The
  * worker owns the bytes — the buffer is transferred rather than copied, which
  * is why it arrives without a second copy of a file that may be tens of
  * megabytes — and answers once; aborting an unmounted read stops it.
+ *
+ * A browser that gives this page no worker at all says so in its own words,
+ * and a worker that never answers is stopped at the watchdog: either way the
+ * panel ends in an error state with a Retry rather than reading forever.
  */
 export function runInWorker(request: OfficeRequest, signal: AbortSignal): Promise<OfficeResponse> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./office.worker.ts", import.meta.url), { type: "module" });
-    const stop = () => {
-      worker.terminate();
-      reject(new DOMException("Aborted", "AbortError"));
-    };
     if (signal.aborted) {
-      stop();
+      reject(new DOMException("Aborted", "AbortError"));
       return;
     }
-    signal.addEventListener("abort", stop, { once: true });
-    worker.addEventListener("message", (event: MessageEvent<OfficeResponse>) => {
+    let worker: Worker;
+    try {
+      if (typeof Worker === "undefined") throw new Error("no Worker");
+      worker = new Worker(new URL("./office.worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      // No Worker, or a worker-src policy that refuses this one: the document
+      // cannot be read on this page, which is not an unexpected failure.
+      reject(
+        new ApiFailure(
+          "office_unsupported",
+          "This browser can't read documents here. It has no background worker, or this page is not allowed to start one.",
+          0,
+        ),
+      );
+      return;
+    }
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    /** The one place a read ends, so the timer and the worker are let go once. */
+    const settle = (finish: () => void) => {
+      if (watchdog !== undefined) clearTimeout(watchdog);
+      watchdog = undefined;
       signal.removeEventListener("abort", stop);
       worker.terminate();
-      resolve(event.data);
+      finish();
+    };
+    const stop = () => settle(() => reject(new DOMException("Aborted", "AbortError")));
+    signal.addEventListener("abort", stop, { once: true });
+    watchdog = setTimeout(() => {
+      settle(() =>
+        reject(
+          new ApiFailure(
+            "office_timeout",
+            `The document reader didn't answer within ${Math.round(OFFICE_READ_TIMEOUT_MS / 1000)} seconds, so it was stopped.`,
+            0,
+          ),
+        ),
+      );
+    }, OFFICE_READ_TIMEOUT_MS);
+    worker.addEventListener("message", (event: MessageEvent<OfficeResponse>) => {
+      settle(() => resolve(event.data));
     });
     worker.addEventListener("error", () => {
-      signal.removeEventListener("abort", stop);
-      worker.terminate();
-      reject(new ApiFailure("worker_stopped", "The document reader stopped before it finished.", 0));
+      settle(() => reject(new ApiFailure("worker_stopped", "The document reader stopped before it finished.", 0)));
     });
     // Nothing on this thread reads these bytes again, so the worker takes the
     // buffer itself instead of a structured-cloned copy of it.
