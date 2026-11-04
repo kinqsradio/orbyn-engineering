@@ -113,11 +113,17 @@ test("user messages keep same-thread editing and assistant responses keep forks"
   await expect(page.locator(".msg-user")).toHaveCount(1);
 });
 
-test("a pull request link opens in the panel, and its menu offers the host", async ({ page }) => {
+test("a pull request link opens in the panel, previews on hover, and its menu offers the host", async ({ page }) => {
   const id = await fresh(page, "[scene:pull-link] go");
   await settled(service, id);
   const link = page.getByRole("link", { name: "the pull request" });
+  await link.hover();
+  const preview = page.locator("[data-pull-preview]");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("Fix the login");
+  await expect(preview).toContainText("o/r#42 · Open");
   await link.click();
+  await expect(preview).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Pull requests" })).toBeVisible();
   await expect(page.getByRole("tabpanel").getByText("Fix the login").first()).toBeVisible();
   await link.click({ button: "right" });

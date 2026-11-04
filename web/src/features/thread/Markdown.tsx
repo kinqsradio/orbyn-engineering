@@ -5,7 +5,7 @@ import { IconButton } from "../../ui/controls";
 import { Collapsible } from "../../ui/Collapsible";
 import { CodeBlock } from "./CodeBlock";
 import { MarkdownImage } from "./MarkdownImage";
-import { ExternalLink, FileLink, fileLinkTarget, threadLinkId, ThreadLink } from "./MarkdownLink";
+import { ExternalLink, FileLink, fileLinkTarget, MarkdownProjectContext, threadLinkId, ThreadLink } from "./MarkdownLink";
 import { Mermaid } from "./Mermaid";
 import { Tex } from "./Tex";
 
@@ -386,7 +386,11 @@ function renderBlock(block: Block, key: number): ReactNode {
   }
 }
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, projectId = null }: { text: string; projectId?: string | null }) {
   const blocks = useMemo(() => parseBlocks(text.split(/\r\n|\n|\r/)), [text]);
-  return <div className="md">{blocks.map(renderBlock)}</div>;
+  return (
+    <MarkdownProjectContext.Provider value={projectId}>
+      <div className="md">{blocks.map(renderBlock)}</div>
+    </MarkdownProjectContext.Provider>
+  );
 }

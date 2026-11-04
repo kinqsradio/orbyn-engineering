@@ -64,16 +64,22 @@ builds on both, and E2E. The repository is public and has no license yet.
 
 ### Current local section
 
-The active section branch is `feat/project-settings` in the
-`file-setting-inheritance` worktree. Main remains `58d86e9`; its post-merge CI
-`41322108228` passed every required job. The section includes selected Name CAS,
-registered Checkouts and removal, checked project images/automatic badges,
-bounded config reads, descendant-safe family removal, isolated provider discovery,
-and the structured project icon picker. Implementation `7e3d25f` and stale-read
-correction `d76dd71` are pushed; the remote section ref was verified at full head
-`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No section PR was open at
-qualification; read GitHub for current delivery. Delivery remains
-section/about-20-row grouping with separate commits and green exact-head merge gates.
+The active section branch is `feat/pr-link-preview` in the `pr-link-preview`
+worktree, based on main `958c2ae`. It completes F60's hover preview: after a short
+hover, a pull request link in prose shows its title, `owner/repo#number` and state,
+author and age, and checks and review outcome. The card reads the link's project
+(the thread's, or the pull page's), stays quiet when the project answers with a
+different repository, and disappears on leave, click or right-click. The existing
+Copy link and Open on the host menu is unchanged. No contract or service change.
+
+Real `orbynd` browser qualification passes: the pull-link scene shows the card for
+the stand-in forge's #42, then the link still opens the in-app panel and its
+context menu. Web checks and 391 unit tests pass; the details real-service spec
+passes 6/6 and the mock workspace spec passes 24/24. Windows native and a packaged
+macOS walkthrough are unverified.
+
+The previous project-settings section evidence below remains historical at main
+`58d86e9`; read it as earlier evidence, not current-head qualification.
 
 Final production Rust passed 1055 workspace tests with 9 existing ignored,
 formatting and all-target Clippy. The final metadata test file separately passed
@@ -92,7 +98,7 @@ concurrent unit run timed out in the App streaming case at its unchanged five-
 second limit; focused 42 and full 338 reruns passed without limit changes. No cause
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
-Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
+Current local parity metadata: 347 declared checked, 49 partial, 136 open and 2 not
 doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
 release inputs below remain in force. No current-head hosted CI, native or Windows
 qualification is inferred.
