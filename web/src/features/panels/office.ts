@@ -22,6 +22,15 @@ export const MAX_SHEETS = 200;
 /** The most rows and the most columns one sheet's grid shows. */
 export const MAX_ROWS_PER_SHEET = 5000;
 export const MAX_COLUMNS_PER_SHEET = 64;
+/**
+ * The most cells every grid of one workbook may show together: each sheet's
+ * rows by its widest column, added up, with a sheet that holds no value still
+ * counting one column for its rows. One sheet at its own caps shows 320,000,
+ * so this is about three such sheets. Bounding each sheet alone was not
+ * enough: two hundred sheets of one cell at row 5000 column BL each show
+ * 320,000 cells, which is 64,000,000 together, off a 61 KB file.
+ */
+export const MAX_CELLS = 1000 * 1000;
 
 /** The formats this reader opens. `.docm` and `.xlsm` carry the same parts. */
 export type OfficeKind = "docx" | "xlsx";
@@ -32,6 +41,7 @@ export type OfficeRefusal =
   | "office_part_too_large"
   | "office_too_many_blocks"
   | "office_too_many_sheets"
+  | "office_too_many_cells"
   | "office_sheet_too_large";
 
 /** A refusal to read a document, with a message ready to show. */
@@ -565,7 +575,6 @@ async function sheetGrid(parts: OfficeParts, name: string, part: string, shared:
   const sheet = await readPartXml(parts, part);
   const data = child(sheet, "sheetData");
   const values: string[][] = [];
-  let widest = 0;
   let rowNumber = 0;
   for (const row of data === null ? [] : children(data, "row")) {
     const declared = Number.parseInt(attr(row, "r") ?? "", 10);
@@ -593,13 +602,16 @@ async function sheetGrid(parts: OfficeParts, name: string, part: string, shared:
       }
       const line = values[at - 1] ?? (values[at - 1] = []);
       line[column - 1] = text;
-      if (column > widest) widest = column;
     }
   }
+  // A row keeps only the cells up to its own last value. Padding every row out
+  // to the widest column built nothing the grid needed: it gives each row the
+  // sheet's width from that one width, and shows a missing cell as nothing.
   const rows: string[][] = [];
   for (let at = 0; at < values.length; at += 1) {
-    const line = values[at];
-    rows.push(Array.from({ length: widest }, (_, column) => line?.[column] ?? ""));
+    const line = Array.from(values[at] ?? [], (cell) => cell ?? "");
+    while (line.length > 0 && line.at(-1) === "") line.pop();
+    rows.push(line);
   }
   return rows;
 }
@@ -626,6 +638,7 @@ export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
   const targets = await workbookTargets(parts);
   const shared = await sharedStrings(parts);
   const sheets: OfficeSheet[] = [];
+  let shown = 0;
   for (const [at, element] of elements.entries()) {
     const declared = attr(element, "name");
     const name = declared === null || declared.trim() === "" ? `Sheet ${at + 1}` : declared;
@@ -635,7 +648,19 @@ export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
     // A workbook that names a part it does not carry still opens: its other
     // sheets are readable, and inventing an empty one would misstate the file.
     if (findPart(parts.names, part) === null) continue;
-    sheets.push({ name, rows: await sheetGrid(parts, name, part, shared) });
+    const rows = await sheetGrid(parts, name, part, shared);
+    // A sheet is read one at a time, and its own caps hold each one to 320,000
+    // cells, so the workbook is refused once the sheets together pass the
+    // budget rather than after every sheet has been laid out.
+    const widest = rows.reduce((width, row) => Math.max(width, row.length), 0);
+    shown += rows.length * Math.max(1, widest);
+    if (shown > MAX_CELLS) {
+      throw new OfficeError(
+        "office_too_many_cells",
+        `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
+      );
+    }
+    sheets.push({ name, rows });
   }
   if (sheets.length === 0) {
     throw new OfficeError("office_unreadable", "This workbook's worksheets are missing from the file, so the viewer can't read it.");

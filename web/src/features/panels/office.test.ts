@@ -6,6 +6,7 @@ import {
 } from "./zipArchive";
 import {
   MAX_BLOCKS,
+  MAX_CELLS,
   MAX_COLUMNS_PER_SHEET,
   MAX_PART_BYTES,
   MAX_ROWS_PER_SHEET,
@@ -282,13 +283,9 @@ it("reads a workbook's sheets with their shared strings, numbers, booleans and a
 
 it("places a cell where its own reference says, counting rows from 1 and columns from A", async () => {
   const model = await readWorkbook(buildXlsx([{ name: "Placed", xml: worksheet(`<row r="5"><c r="D5"><v>7</v></c></row>`) }]));
-  expect(model.sheets[0]?.rows).toEqual([
-    ["", "", "", ""],
-    ["", "", "", ""],
-    ["", "", "", ""],
-    ["", "", "", ""],
-    ["", "", "", "7"],
-  ]);
+  // The four empty rows above the value keep its position, and a row is not
+  // padded out to the sheet's widest column: the grid's own width does that.
+  expect(model.sheets[0]?.rows).toEqual([[], [], [], [], ["", "", "", "7"]]);
 });
 
 it("skips a malformed or impossible reference and keeps reading the row", async () => {
@@ -385,6 +382,33 @@ it("refuses a sheet past the column cap with the cap it hit", async () => {
   expect(answer.message).toBe(
     `The sheet "Wide" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
   );
+});
+
+it("keeps the cells one 200-sheet workbook lays out bounded", async () => {
+  // The shape from issue #136: 61 KB, 200 sheets, each one cell at row 5000
+  // column BL, which the old padding turned into 64,000,000 cells and a 194 MB
+  // model. The whole workbook is now refused before the fourth sheet is laid
+  // out, and the refusal names the budget.
+  const sheets = Array.from({ length: MAX_SHEETS }, (_, at) => ({
+    name: `S${at + 1}`,
+    xml: worksheet(`<row r="${MAX_ROWS_PER_SHEET}"><c r="BL${MAX_ROWS_PER_SHEET}"><v>${at + 1}</v></c></row>`),
+  }));
+  const answer = await refused(buildXlsx(sheets), "xlsx");
+  expect(answer.code).toBe("office_too_many_cells");
+  expect(answer.message).toBe(
+    `This workbook's grids add up to more than ${MAX_CELLS} cells; the viewer shows at most ${MAX_CELLS} across all its sheets.`,
+  );
+});
+
+it("reads a workbook whose grids stay inside the whole-workbook budget", async () => {
+  const sheets = Array.from({ length: MAX_SHEETS }, (_, at) => ({
+    name: `S${at + 1}`,
+    xml: worksheet(`<row r="1"><c r="A1"><v>${at + 1}</v></c></row>`),
+  }));
+  const model = await readWorkbook(buildXlsx(sheets));
+  expect(model.sheets).toHaveLength(MAX_SHEETS);
+  const shown = model.sheets.reduce((all, sheet) => all + sheet.rows.length * sheet.rows[0]!.length, 0);
+  expect(shown).toBeLessThanOrEqual(MAX_CELLS);
 });
 
 it("refuses a workbook past the sheet cap with the cap it hit", async () => {
