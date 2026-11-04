@@ -1227,6 +1227,59 @@ button.detail-row:hover {
   font-size: var(--text-caption);
   font-weight: 500;
 }
+.detail-automations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.detail-automation-icon {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+}
+.detail-dot {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--color-raised);
+}
+.detail-dot-idle {
+  background: var(--color-muted);
+  opacity: 0.5;
+}
+.detail-dot-ok {
+  background: var(--color-success);
+}
+.detail-dot-fail {
+  background: var(--color-danger);
+}
+.detail-automation-name,
+.detail-automation-when {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-automation-when {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-weight: 400;
+}
+.detail-automation-when.is-failed {
+  color: var(--color-danger);
+}
+.detail-automation-error {
+  margin: 0;
+  padding: 2px 10px 4px;
+  color: var(--color-danger);
+  font-size: var(--text-meta);
+}
 .detail-running li {
   display: flex;
   align-items: center;

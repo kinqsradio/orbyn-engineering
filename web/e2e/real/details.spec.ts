@@ -46,7 +46,7 @@ test("details shows linked pull requests, and right-click turns rows off and bac
   await page.getByRole("menuitem", { name: "Reset" }).click();
   await expect(details(page).getByRole("button", { name: /Fix the login/ })).toBeVisible();
   await page.goto(`${service.page}#/settings/general`);
-  await expect(page.getByRole("button", { name: "7 of 8 on" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "8 of 9 on" })).toBeVisible();
 });
 
 test("Related threads lists the parent and its forks", async ({ page }) => {

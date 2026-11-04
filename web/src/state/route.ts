@@ -25,7 +25,13 @@ export type Route =
   | { name: "thread"; id: string }
   | { name: "new"; projectId: string | null }
   | { name: "trust"; projectId: string; threadId: string | null }
-  | { name: "settings"; section: SettingsSection | null; selection?: ProjectSettingsSelection; machine?: string }
+  | {
+      name: "settings";
+      section: SettingsSection | null;
+      selection?: ProjectSettingsSelection;
+      machine?: string;
+      task?: string;
+    }
   | { name: "usage" }
   | { name: "pulls" };
 
@@ -51,6 +57,7 @@ export function routeHref(route: Route): string {
       if (route.machine !== undefined) params.set("machine", route.machine);
       if (route.selection?.kind === "project_group" || route.selection?.kind === "checkout") params.set("project", route.selection.group_key);
       if (route.selection?.kind === "checkout") params.set("checkout", route.selection.project_id);
+      if (route.task !== undefined) params.set("task", route.task);
       return params.size ? `${path}?${params}` : path;
     }
   }
@@ -94,6 +101,7 @@ export function parseRoute(hash: string): Route {
         section: SETTINGS_SECTIONS.find((section) => section === first) ?? null,
         ...(selection ? { selection } : {}),
         ...(params.has("machine") ? { machine: params.get("machine") ?? "" } : {}),
+        ...(params.has("task") ? { task: params.get("task") ?? "" } : {}),
       };
     }
     default:

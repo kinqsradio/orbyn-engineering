@@ -64,18 +64,24 @@ builds on both, and E2E. The repository is public and has no license yet.
 
 ### Current local section
 
-The active section branch is `feat/project-settings` in the
-`file-setting-inheritance` worktree. Main remains `58d86e9`; its post-merge CI
-`41322108228` passed every required job. The section includes selected Name CAS,
-registered Checkouts and removal, checked project images/automatic badges,
-bounded config reads, descendant-safe family removal, isolated provider discovery,
-and the structured project icon picker. Implementation `7e3d25f` and stale-read
-correction `d76dd71` are pushed; the remote section ref was verified at full head
-`d76dd717c9ecc7b89609c76ab58fb61d9b4eeeda`. No section PR was open at
-qualification; read GitHub for current delivery. Delivery remains
-section/about-20-row grouping with separate commits and green exact-head merge gates.
+The active section branch is `feat/thread-automations` in the
+`thread-automations` worktree, based on main `958c2ae`. It adds the thread details
+Automations panel for tasks bound to a thread: the schedule line and status dot,
+pause/resume, Run now for non-webhook tasks, an Edit deep link into Settings and a
+Manage link. The Settings task editor opens a linked task once and clears the
+`task` query when it closes. No contract or service change.
 
-Final production Rust passed 1055 workspace tests with 9 existing ignored,
+Real `orbynd` browser qualification passes: a task bound to a thread lists in the
+details card, pauses and resumes through the enabled route, fires Run now, opens
+the editor from Edit, saves and clears the link, and the panel shows the new name
+before Manage opens the task list. Web checks and 394 unit tests pass; the details
+and tasks real-service specs and the mock workspace spec pass. Windows native is
+unverified.
+
+The previous project-settings section evidence below remains historical at main
+`58d86e9`; read it as earlier evidence, not current-head qualification.
+
+That earlier section's final production Rust passed 1055 workspace tests with 9 existing ignored,
 formatting and all-target Clippy. The final metadata test file separately passed
 all eight cases, including actual populated schema-20 migration and writer fences.
 Web type/lint checks, 338 unit tests and the production build passed. Full default
@@ -92,7 +98,7 @@ concurrent unit run timed out in the App streaming case at its unchanged five-
 second limit; focused 42 and full 338 reruns passed without limit changes. No cause
 is claimed for that timeout. The final immutable-runtime 241 run is the delivery gate.
 
-Current local parity metadata: 343 declared checked, 50 partial, 139 open and 2 not
+Parity metadata at `58d86e9`: 343 declared checked, 50 partial, 139 open and 2 not
 doable out of 534 included. K6/K7 remain partial. Native/tool stops and missing
 release inputs below remain in force. No current-head hosted CI, native or Windows
 qualification is inferred.
@@ -625,7 +631,7 @@ not commit it. Move it to a real secret store before any release.
    object merely because these forms share the scope selector. Reference owners
    are `TelemetryExportSettings.tsx`, `StorageSettings.tsx` and
    `ProviderInstanceCard.tsx` under T3's settings components.
-   M3 remains a next backend slice; I33 ACP sessions landed with `feat/provider-sessions`.
+   M3 landed with `feat/thread-automations`; I33 ACP sessions landed with `feat/provider-sessions`.
 5. Continue investigating any Windows startup or `workspace` lock recurrence; the
    package-service smoke now fails instead of warning, and the prior holder is unknown. A prior #60 Windows
    package-start timeout remains a failed observation even if a later run passes.

@@ -1,10 +1,12 @@
 import { serviceUrl } from "../../api/origin";
 import { chooseDraftEngine } from "../onboarding/draftEngine";
 import { Pencil, Play, Plus, ScrollText, Trash2, Webhook, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { request } from "../../api/client";
 import type { ScheduledTask, WebhookDelivery, WebhookEndpoint, WebhookFilter } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { WEEKDAYS } from "../../lib/taskSchedule";
+import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Field, IconButton } from "../../ui/controls";
@@ -13,8 +15,6 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 const listTasks = (signal?: AbortSignal) => request<ScheduledTask[]>("GET", "/api/tasks", undefined, signal);
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type TaskKind = "interval" | "fixed_time" | "webhook" | "after_thread";
 
@@ -394,6 +394,29 @@ export function ScheduledTasksSection() {
   const [webhook, setWebhook] = useState<ScheduledTask | null>(null);
   const [deliveries, setDeliveries] = useState<ScheduledTask | null>(null);
   const pushToast = useUi((state) => state.pushToast);
+  const route = useRoute();
+  const linkedId = route.name === "settings" ? route.task : undefined;
+  const [openedLink, setOpenedLink] = useState<string | undefined>(undefined);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+
+  useEffect(() => {
+    if (linkedId === undefined) {
+      setOpenedLink(undefined);
+      return;
+    }
+    if (openedLink === linkedId || tasks.status !== "ready") return;
+    setOpenedLink(linkedId);
+    const task = tasks.data.find((entry) => entry.id === linkedId);
+    if (!task) navigate({ name: "settings", section: "tasks" });
+    else if (editingRef.current === null) setEditing(task);
+  }, [linkedId, openedLink, tasks.status, tasks.data]);
+
+  const closeEditor = () => {
+    setEditing(null);
+    if (linkedId !== undefined) navigate({ name: "settings", section: "tasks" });
+  };
+
   const act = (work: Promise<unknown>) =>
     work.then(tasks.reload, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));
   return (
@@ -453,7 +476,7 @@ export function ScheduledTasksSection() {
         </SettingGroup>
       )}
       {editing ? (
-        <TaskDialog task={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={tasks.reload} />
+        <TaskDialog task={editing === "new" ? null : editing} onClose={closeEditor} onSaved={tasks.reload} />
       ) : null}
       {webhook ? <WebhookDialog task={webhook} onClose={() => setWebhook(null)} /> : null}
       {deliveries ? <DeliveriesDialog task={deliveries} onClose={() => setDeliveries(null)} /> : null}
