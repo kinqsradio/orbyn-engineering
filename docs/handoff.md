@@ -52,41 +52,60 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 
 ## Where things stand now
 
-`main` is `6c69b8d` and nothing beyond it is merged. `python3 scripts/count-parity.py`
-reports 709 rows with 387 source checkboxes ticked, and 534 included rows: 346
-declared checked, 50 partial, 136 open, 2 not doable, 175 excluded, none with an
-unresolved scope. Those are checklist declarations, not a fresh runtime count.
+`main` is `651faf7`. `python3 scripts/count-parity.py` reports 709 rows with 398
+source checkboxes ticked, and 534 included rows: 356 declared checked, 49 partial,
+127 open, 2 not doable, 175 excluded, none with an unresolved scope. Those are
+checklist declarations, not a fresh runtime count.
 
-Five pull requests are open, each one branch for one section with one commit per
-completed row:
+Merged since this file was last reconciled: rows **H36** (#114), **C19** (#115),
+**N9** (#116) and the whole of the files work — **D11, D18, D27, D29** (#131, one
+branch for the section with one commit per row) — plus the repository rules for
+titles, credit and unfinished work (#117), the Cargo worktree-isolation notes
+(#132), the provider work queue (#133), and a task-state fix (#119).
 
-| Pull request | Rows | Branch | State |
-| --- | --- | --- | --- |
-| #114 | H36 device-toolbar resize handles | `feat/browser-resize-handles` | every check green, waiting for review |
-| #115 | C19 media in messages | `feat/markdown-media` | every check green, waiting for review |
-| #116 | N9 agent preview inspection tools | `feat/agent-preview-tools` | open, with a reviewer's `403d1cf` on top |
-| #117 | contribution rules: titles, credit, unfinished work | `docs/pr-issue-titles` | open |
-| #118 | C21+C22 renders and N3 `orbyn_html_render` | `feat/html-renders` | every check green, waiting for review |
+Open pull requests, each one branch with one commit per completed row:
 
-Two sections are being built before they become pull requests: D18+D27 (zip browsing
-and the viewer's copy control) on `feat/file-viewer`, and D11+D29 (Word and
-spreadsheet viewing) queued behind it.
+| Pull request | What | State |
+| --- | --- | --- |
+| #118 | C21+C22 renders, and N3 `orbyn_html_render` | every check green, waiting for review |
+| #139 | the ten Office-reader fixes from review, closing #136 | 10/10 green, waiting for review |
+| #137 | the scoped timeline rendering rows | open |
+| #134 | C23 render verification by headless screenshot | open |
+| #135 | proxying remote message images through the service | open |
+| #130 | the seven major dependency upgrades | open |
+| #125 | this document | open |
 
 ### Picking up work
 
 Unfinished work belongs in an issue, never in a session or a local note, and
-CONTRIBUTING says what such an issue must carry. The open queue:
+CONTRIBUTING says what such an issue must carry. What is open:
 
-- #120 an ignored browser test that fails on `main`;
-- #121 C23, the deferred screenshot verification, with its browser-download decision;
-- #122 the remote-media decision the packaged content policy forces;
-- #123 the shared `CARGO_TARGET_DIR` hazard described below;
-- #124 D11+D29, the Word and spreadsheet viewer.
+| Issue | What | Owner |
+| --- | --- | --- |
+| #120 | an ignored browser test that fails on `main` | @luannn010 |
+| #126 | finish the preview surface (H35 remainder, H41, H42; H38 waits on #122) | @luannn010 |
+| #127 | finish the agent tool surface (N6, N12, N19 remainder, N21) | @luannn010 |
+| #128 | the timeline rendering rows that are left | unassigned |
+| #138 | the resize component test flakes about one full run in three | unassigned |
+| #136 | the Office-reader findings | fixed by #139, closes when it merges |
+
+Already answered, so they are not work: **#121** by #134, **#122** by #135 (the
+proxy, not a widened policy), **#123** by #132, **#129** by #133, and **#124** closed
+by #131.
 
 Filter by `parity` for rows, `help wanted` for work deliberately left open, and the
 `area:` label for its owner. The rest of the roadmap is `docs/parity.md`: every row
 carries its surface, size and `scope:` fields, and blocked work (the device tool
 chain, mobile, hosted services) is marked there so it does not look open.
+
+### Review before a feature merges
+
+Green checks do not mean the feature is right. Section D's rows merged with ten
+defects that CI could not see — text glued together, a text box printed twice, a
+table row dropped, a 61 KB workbook inflating to a 64,000,000-cell model — and a
+read-only review pass with permission to run probes found all ten in one go (#136).
+Treat a child that dies without a closing report as unverified rather than finished,
+and re-read its brief item by item before shipping what it left behind.
 
 ### Worktrees, and one trap
 
@@ -95,7 +114,7 @@ Parity work happens in `<repo>-wt/<purpose>/`. Several worktrees may share one
 own: cargo has reported packages `Fresh` while linking another checkout's artefacts,
 so an integration test ran a binary without the change under test. When evidence
 matters, hard-link a private copy and force the two packages to rebuild, then check
-the binary carries the change — #123 has the commands.
+the binary carries the change — #132 has the commands.
 
 Everything below this point is the record of earlier pickups, with the dates and
 revisions it was written at.
