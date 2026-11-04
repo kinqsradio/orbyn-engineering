@@ -25,6 +25,12 @@ const MAX_WAIT_SECONDS: u64 = 40;
 const MAX_SEARCH_CHARS: usize = 200_000;
 const MAX_HITS: usize = 50;
 const MAX_BATCH: usize = 16;
+/// A published page's frame height. Nothing measures the page yet (C23), so a call
+/// picks the height and these are the bounds it is held to.
+const DEFAULT_RENDER_HEIGHT: u64 = 480;
+const MIN_RENDER_HEIGHT: u64 = 120;
+const MAX_RENDER_HEIGHT: u64 = 2000;
+const MAX_RENDER_TITLE_CHARS: usize = 200;
 
 struct Tool {
     name: &'static str,
@@ -346,6 +352,19 @@ const TOOLS: &[Tool] = &[
         &["tab_id"],
     ),
     act(
+        "orbyn_html_render",
+        "Publish an HTML page in this thread's timeline, as a card with a frame. The page \
+         runs sandboxed: no network, no API and no storage of its own. `html` is the whole \
+         page. `height` is the frame's height in CSS pixels; nothing measures the page yet, \
+         so a page that needs more room needs a taller height.",
+        &[
+            ("html", "string"),
+            ("title", "string"),
+            ("height", "number"),
+        ],
+        &["html"],
+    ),
+    act(
         "orbyn_thread_update",
         "Rename, pin or settle a thread.",
         &[
@@ -560,6 +579,30 @@ pub(crate) fn matches_words(haystack: &str, query: &str) -> bool {
     let haystack = haystack.to_lowercase();
     let mut words = query.split_whitespace().peekable();
     words.peek().is_some() && words.all(|word| haystack.contains(&word.to_lowercase()))
+}
+
+/// The frame height a published page is shown at. A caller's number stands, held to a
+/// size a card can show; without one the page gets the default. Nothing measures the
+/// page yet (C23), so this is the whole of what decides it.
+fn render_height(args: &Value) -> u64 {
+    args.get("height")
+        .and_then(Value::as_f64)
+        .map_or(DEFAULT_RENDER_HEIGHT, |height| {
+            let bounded = height.clamp(MIN_RENDER_HEIGHT as f64, MAX_RENDER_HEIGHT as f64);
+            // The bound is not negative, so the cast is exact after rounding.
+            bounded.round() as u64
+        })
+}
+
+/// The card's title: trimmed, cut to a length a row can show, and `HTML` when the
+/// call named none.
+fn render_title(args: &Value) -> String {
+    args.get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(|title| title.chars().take(MAX_RENDER_TITLE_CHARS).collect())
+        .unwrap_or_else(|| "HTML".to_owned())
 }
 
 impl Core {
@@ -1017,6 +1060,20 @@ impl Core {
                 let tab = self.own_preview(&own, args)?;
                 json!(self.previews.stop_recording(&own.id, &tab)?)
             }
+            "orbyn_html_render" => {
+                // The caller's own thread, so a page lands in the timeline that asked
+                // for it. The route stays a path: the client adds `?render=<token>`.
+                let render = self.publish_render(&own.id, text(args, "html")?)?;
+                json!({
+                    "id": render.id,
+                    "url": render.url,
+                    "frame_token": render.frame_token,
+                    "title": render_title(args),
+                    "images": render.images,
+                    "bytes": render.bytes,
+                    "height": render_height(args),
+                })
+            }
             "orbyn_thread_update" => {
                 let thread = thread_arg()?;
                 let patch = UpdateThread {
@@ -1149,6 +1206,71 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_render_tool_publishes_a_page_and_says_what_sets_its_height() {
+        let tool = TOOLS
+            .iter()
+            .find(|tool| tool.name == "orbyn_html_render")
+            .expect("the render tool is in the table");
+        assert!(
+            tool.effect,
+            "publishing a page has an effect, so the gate asks"
+        );
+        assert!(has_effect("orbyn_html_render"));
+        assert!(is_tool("orbyn_html_render"));
+        assert_eq!(
+            tool.args.to_vec(),
+            vec![
+                ("html", "string"),
+                ("title", "string"),
+                ("height", "number")
+            ]
+        );
+        assert_eq!(tool.required.to_vec(), vec!["html"]);
+        // The description has to say that the height is the caller's to choose, because
+        // nothing measures the page yet.
+        assert!(
+            tool.description.contains("nothing measures"),
+            "{}",
+            tool.description
+        );
+    }
+
+    #[test]
+    fn a_render_height_is_held_to_a_size_a_card_can_show() {
+        let args = |value: Value| json!({ "height": value });
+        assert_eq!(render_height(&json!({})), DEFAULT_RENDER_HEIGHT);
+        assert_eq!(render_height(&json!({})), 480);
+        assert_eq!(render_height(&args(json!(320))), 320);
+        assert_eq!(render_height(&args(json!(600.4))), 600);
+        assert_eq!(render_height(&args(json!(0))), MIN_RENDER_HEIGHT);
+        assert_eq!(render_height(&args(json!(20))), 120);
+        assert_eq!(render_height(&args(json!(99_999))), MAX_RENDER_HEIGHT);
+        assert_eq!(render_height(&args(json!(2000))), 2000);
+        // A value that is not a number is no value at all.
+        assert_eq!(render_height(&args(json!("tall"))), DEFAULT_RENDER_HEIGHT);
+        assert_eq!(render_height(&args(Value::Null)), DEFAULT_RENDER_HEIGHT);
+    }
+
+    #[test]
+    fn a_render_title_is_trimmed_cut_and_never_empty() {
+        assert_eq!(render_title(&json!({})), "HTML");
+        assert_eq!(render_title(&json!({ "title": "   " })), "HTML");
+        assert_eq!(render_title(&json!({ "title": 7 })), "HTML");
+        assert_eq!(
+            render_title(&json!({ "title": "  Tide chart  " })),
+            "Tide chart"
+        );
+        assert_eq!(
+            render_title(&json!({ "title": "é".repeat(300) })).len(),
+            400
+        );
+        assert_eq!(
+            render_title(&json!({ "title": "x".repeat(300) })).len(),
+            200
+        );
     }
 
     #[test]

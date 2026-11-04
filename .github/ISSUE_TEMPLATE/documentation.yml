@@ -1,0 +1,50 @@
+name: Documentation
+description: Something in the documentation is missing, wrong or out of date.
+title: "docs: "
+labels:
+  - documentation
+  - needs triage
+body:
+  - type: markdown
+    attributes:
+      value: "Title as `docs(scope): what is wrong`."
+  - type: input
+    id: page
+    attributes:
+      label: Page or section
+      placeholder: docs/architecture.md, "Renders"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What it says now
+      description: Quote the current text.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: What it should say
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: How you know
+      description: The code, command output or page that shows the current text is wrong.
+  - type: dropdown
+    id: ai-used
+    attributes:
+      label: AI usage
+      options:
+        - Human only
+        - AI helped
+    validations:
+      required: true
+  - type: input
+    id: ai-details
+    attributes:
+      label: AI details
+      description: If AI helped, the harness and version, each model by exact ID and what it did, and the effort.
+      placeholder: Claude Code 2.1.150, claude-opus-5-5 (reproduced it), medium

@@ -33,6 +33,7 @@ import { Button, Pill } from "../../ui/controls";
 import { outputSpans } from "./ansi";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
 import { CodeBlock } from "./CodeBlock";
+import { HtmlRender } from "./HtmlRender";
 import { Markdown } from "./Markdown";
 import { PlanCard } from "./PlanCard";
 import { proposedPlanIn, textAroundPlan } from "./proposedPlan";
@@ -190,38 +191,43 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
   const trace = traceTool(item);
   const failed = toolFailed(item);
   const Icon = ACTION_ICONS[trace.action];
+  const threadId = useThreadOfTimeline();
   const timestampFormat = useUi((state) => state.timestampFormat);
   return (
-    <Collapsible
-      className="trace"
-      data-live={running || undefined}
-      summaryClassName="trace-summary"
-      summary={
-        <>
-          <Icon size={14} aria-hidden />
-          <span className={running ? "trace-label text-sweep" : "trace-label"} title={trace.label}>
-            {trace.label}
-          </span>
-          {running ? <span className="sr-only">Running</span> : null}
-          {failed ? <X size={14} className="trace-failed" role="img" aria-label="Tool call failed" /> : null}
-          <span className="trace-time" aria-hidden>
-            {clockTime(item.ts, timestampFormat)}
-          </span>
-          <ChevronRight size={14} className="chev trace-end" aria-hidden />
-        </>
-      }
-    >
-      <div className="trace-body">
-        {trace.command ? (
-          <CodeBlock code={trace.command} lang="bash" bare />
-        ) : (
-          <pre tabIndex={0}>{prettyJson(item.args) || "None"}</pre>
-        )}
-        <CommandOutput item={item} running={running} />
-        {item.exitCode !== null ? <p className="tool-exit" data-failed={failed || undefined}>Exit code {item.exitCode}</p> : null}
-        {finished ? <InspectItem item={item} /> : null}
-      </div>
-    </Collapsible>
+    <>
+      <Collapsible
+        className="trace"
+        data-live={running || undefined}
+        summaryClassName="trace-summary"
+        summary={
+          <>
+            <Icon size={14} aria-hidden />
+            <span className={running ? "trace-label text-sweep" : "trace-label"} title={trace.label}>
+              {trace.label}
+            </span>
+            {running ? <span className="sr-only">Running</span> : null}
+            {failed ? <X size={14} className="trace-failed" role="img" aria-label="Tool call failed" /> : null}
+            <span className="trace-time" aria-hidden>
+              {clockTime(item.ts, timestampFormat)}
+            </span>
+            <ChevronRight size={14} className="chev trace-end" aria-hidden />
+          </>
+        }
+      >
+        <div className="trace-body">
+          {trace.command ? (
+            <CodeBlock code={trace.command} lang="bash" bare />
+          ) : (
+            <pre tabIndex={0}>{prettyJson(item.args) || "None"}</pre>
+          )}
+          <CommandOutput item={item} running={running} />
+          {item.exitCode !== null ? <p className="tool-exit" data-failed={failed || undefined}>Exit code {item.exitCode}</p> : null}
+          {finished ? <InspectItem item={item} /> : null}
+        </div>
+      </Collapsible>
+      {/* A published page is the result, so it stays visible with the details closed. */}
+      <HtmlRender item={item} threadId={threadId} />
+    </>
   );
 }
 

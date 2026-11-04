@@ -38,6 +38,7 @@ mod project_setup;
 pub mod projects;
 pub mod questions;
 pub mod remote_images;
+pub mod renders;
 pub mod runs;
 pub mod scm;
 pub mod scratch;
