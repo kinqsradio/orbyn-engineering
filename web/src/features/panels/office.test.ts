@@ -6,15 +6,20 @@ import {
 } from "./zipArchive";
 import {
   MAX_BLOCKS,
+  MAX_COLUMNS_PER_SHEET,
   MAX_PART_BYTES,
+  MAX_ROWS_PER_SHEET,
+  MAX_SHEETS,
   OfficeError,
+  cellPosition,
   parseDocx,
   respondToOfficeRequest,
   type DocxDocument,
   type OfficeKind,
   type OfficeParts,
+  type XlsxDocument,
 } from "./office";
-import { buildDocx, buildOfficePackage, docxParagraph } from "./office.test-support";
+import { buildDocx, buildOfficePackage, buildXlsx, docxParagraph, workbookParts, worksheet } from "./office.test-support";
 
 /** The model of a Word document the reader accepted. */
 async function read(bytes: Uint8Array<ArrayBuffer>): Promise<DocxDocument> {
@@ -24,9 +29,20 @@ async function read(bytes: Uint8Array<ArrayBuffer>): Promise<DocxDocument> {
   return answer.model;
 }
 
+/** The model of a workbook the reader accepted. */
+async function readWorkbook(bytes: Uint8Array<ArrayBuffer>): Promise<XlsxDocument> {
+  const answer = await respondToOfficeRequest({ kind: "xlsx", bytes });
+  if (!answer.ok) throw new Error(`Expected a workbook, got ${answer.code}: ${answer.message}`);
+  if (answer.model.format !== "xlsx") throw new Error("Expected a spreadsheet.");
+  return answer.model;
+}
+
 /** The refusal the reader answered with, for a document it rejected. */
-async function refused(bytes: Uint8Array<ArrayBuffer>): Promise<{ code: string; message: string }> {
-  const answer = await respondToOfficeRequest({ kind: "docx", bytes });
+async function refused(
+  bytes: Uint8Array<ArrayBuffer>,
+  kind: OfficeKind = "docx",
+): Promise<{ code: string; message: string }> {
+  const answer = await respondToOfficeRequest({ kind, bytes });
   if (answer.ok) throw new Error("Expected this document to be refused.");
   return answer;
 }
@@ -170,4 +186,166 @@ it("answers a kind it does not know with a refusal rather than a throw", async (
     code: "office_unreadable",
     message: "The viewer can't read pptx files.",
   });
+});
+
+it("reads a cell reference only when it is one", () => {
+  expect(cellPosition("A1")).toEqual({ row: 1, column: 1 });
+  expect(cellPosition(" ab12 ")).toEqual({ row: 12, column: 28 });
+  expect(cellPosition("A0")).toBeNull();
+  expect(cellPosition("1A")).toBeNull();
+  expect(cellPosition("ABCD1")).toBeNull();
+  expect(cellPosition("")).toBeNull();
+});
+
+it("reads a workbook's sheets with their shared strings, numbers, booleans and a cached formula", async () => {
+  const model = await readWorkbook(
+    buildXlsx(
+      [
+        {
+          name: "Sales",
+          xml: worksheet(
+            `<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>` +
+              `<row r="2"><c r="A2"><v>12</v></c><c r="B2" t="inlineStr"><is><t>note</t></is></c></row>` +
+              `<row r="3"><c r="A3"><f>SUM(A2:A2)</f><v>12</v></c><c r="B3" t="b"><v>1</v></c></row>`,
+          ),
+        },
+        { name: "Later", xml: worksheet(`<row r="1"><c r="A1"><v>2.5</v></c></row>`) },
+        { name: "Blank", xml: worksheet("") },
+      ],
+      ["Region", "Total"],
+    ),
+  );
+  expect(model.sheets).toEqual([
+    { name: "Sales", rows: [["Region", "Total"], ["12", "note"], ["12", "TRUE"]] },
+    { name: "Later", rows: [["2.5"]] },
+    { name: "Blank", rows: [] },
+  ]);
+});
+
+it("places a cell where its own reference says, counting rows from 1 and columns from A", async () => {
+  const model = await readWorkbook(buildXlsx([{ name: "Placed", xml: worksheet(`<row r="5"><c r="D5"><v>7</v></c></row>`) }]));
+  expect(model.sheets[0]?.rows).toEqual([
+    ["", "", "", ""],
+    ["", "", "", ""],
+    ["", "", "", ""],
+    ["", "", "", ""],
+    ["", "", "", "7"],
+  ]);
+});
+
+it("skips a malformed or impossible reference and keeps reading the row", async () => {
+  const model = await readWorkbook(
+    buildXlsx([
+      {
+        name: "Skipped",
+        xml: worksheet(
+          `<row r="1"><c r="A1"><v>1</v></c><c r="B"></c><c r="1C"><v>9</v></c><c r="A0"><v>8</v></c>` +
+            `<c r="AAAA1"><v>7</v></c><c><v>5</v></c></row>`,
+        ),
+      },
+    ]),
+  );
+  // The cell with no reference at all follows the cell before it.
+  expect(model.sheets[0]?.rows).toEqual([["1", "5"]]);
+});
+
+it("shows an index past the shared strings, and a formula with no cached value, as nothing", async () => {
+  const model = await readWorkbook(
+    buildXlsx(
+      [{ name: "Sparse", xml: worksheet(`<row r="1"><c r="A1" t="s"><v>9</v></c><c r="B1"><f>1+1</f></c></row>`) }],
+      ["only"],
+    ),
+  );
+  expect(model.sheets[0]?.rows).toEqual([]);
+});
+
+it("numbers rows one after another when the markup does not say", async () => {
+  const model = await readWorkbook(
+    buildXlsx([{ name: "Unnumbered", xml: worksheet(`<row><c r="A1"><v>1</v></c></row><row><c><v>2</v></c></row>`) }]),
+  );
+  expect(model.sheets[0]?.rows).toEqual([["1"], ["2"]]);
+});
+
+it("strips control characters from a sheet name and a cell", async () => {
+  const model = await readWorkbook(
+    buildXlsx([
+      { name: "Tab\u0001le", xml: worksheet(`<row r="1"><c r="A1" t="inlineStr"><is><t>a\u0007b</t></is></c></row>`) },
+    ]),
+  );
+  expect(model.sheets).toEqual([{ name: "Table", rows: [["ab"]] }]);
+});
+
+it("labels a sheet that carries no name by its position", async () => {
+  const model = await readWorkbook(buildXlsx([{ name: "", xml: worksheet(`<row r="1"><c r="A1"><v>1</v></c></row>`) }]));
+  expect(model.sheets).toEqual([{ name: "Sheet 1", rows: [["1"]] }]);
+});
+
+it("follows the relationship target a workbook names its sheet by", async () => {
+  const model = await readWorkbook(
+    buildOfficePackage(
+      workbookParts(
+        [{ name: "Custom", xml: worksheet(`<row r="1"><c r="A1" t="inlineStr"><is><t>Custom</t></is></c></row>`) }],
+        ["worksheets/tab.xml"],
+      ),
+    ),
+  );
+  expect(model.sheets).toEqual([{ name: "Custom", rows: [["Custom"]] }]);
+});
+
+it("keeps a sheet whose part is there and skips one whose part is not", async () => {
+  const parts = workbookParts(
+    [
+      { name: "Kept", xml: worksheet(`<row r="1"><c r="A1" t="inlineStr"><is><t>Kept</t></is></c></row>`) },
+      { name: "Gone", xml: worksheet(`<row r="1"><c r="A1"><v>2</v></c></row>`) },
+    ],
+    ["worksheets/sheet1.xml", "worksheets/missing.xml"],
+  );
+  delete parts["xl/worksheets/missing.xml"];
+  const model = await readWorkbook(buildOfficePackage(parts));
+  expect(model.sheets).toEqual([{ name: "Kept", rows: [["Kept"]] }]);
+});
+
+it("refuses a sheet past the row cap with the cap it hit", async () => {
+  const tall = MAX_ROWS_PER_SHEET + 1;
+  const answer = await refused(
+    buildXlsx([{ name: "Tall", xml: worksheet(`<row r="${tall}"><c r="A${tall}"><v>1</v></c></row>`) }]),
+    "xlsx",
+  );
+  expect(answer.code).toBe("office_sheet_too_large");
+  expect(answer.message).toBe(
+    `The sheet "Tall" puts a value past row ${MAX_ROWS_PER_SHEET}; the viewer shows at most ${MAX_ROWS_PER_SHEET} rows.`,
+  );
+});
+
+it("refuses a sheet past the column cap with the cap it hit", async () => {
+  // BM is column 65, the first one past the cap.
+  const answer = await refused(
+    buildXlsx([{ name: "Wide", xml: worksheet(`<row r="1"><c r="BM1"><v>1</v></c></row>`) }]),
+    "xlsx",
+  );
+  expect(answer.code).toBe("office_sheet_too_large");
+  expect(answer.message).toBe(
+    `The sheet "Wide" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
+  );
+});
+
+it("refuses a workbook past the sheet cap with the cap it hit", async () => {
+  const sheets = Array.from({ length: MAX_SHEETS + 1 }, (_, at) => ({ name: `S${at + 1}`, xml: worksheet("") }));
+  const answer = await refused(buildXlsx(sheets), "xlsx");
+  expect(answer.code).toBe("office_too_many_sheets");
+  expect(answer.message).toBe(`This workbook names ${MAX_SHEETS + 1} sheets; the viewer shows at most ${MAX_SHEETS}.`);
+});
+
+it("refuses a package that holds no workbook", async () => {
+  const answer = await refused(buildDocx(docxParagraph("Words only")), "xlsx");
+  expect(answer.code).toBe("office_unreadable");
+  expect(answer.message).toContain("no xl/workbook.xml");
+});
+
+it("refuses a workbook whose worksheets are all missing", async () => {
+  const parts = workbookParts([{ name: "Gone", xml: worksheet("") }]);
+  delete parts["xl/worksheets/sheet1.xml"];
+  const answer = await refused(buildOfficePackage(parts), "xlsx");
+  expect(answer.code).toBe("office_unreadable");
+  expect(answer.message).toContain("worksheets are missing");
 });

@@ -1,8 +1,9 @@
 /**
- * A small reader for the Open XML part the file viewer shows: the Word body in
- * `word/document.xml`. It is hand-written for the same reasons the archive
- * reader is: opening a document must not add a dependency, and a worker has no
- * `DOMParser` to lean on, so the markup is scanned here.
+ * A small reader for the Open XML parts the file viewer shows: a Word body
+ * (`word/document.xml`) and a workbook (`xl/workbook.xml` and its sheets). It is
+ * hand-written for the same reasons the archive reader is: opening a document
+ * must not add a dependency, and a worker has no `DOMParser` to lean on, so the
+ * markup is scanned here.
  *
  * It only reads. Nothing here writes a document, and every part comes from the
  * archive reader in `zipArchive.ts`, so no path on a disk is ever involved. A
@@ -16,12 +17,22 @@ import { ZipError, formatBytes, readEntryBytes, readZipArchive, type ZipEntry } 
 export const MAX_PART_BYTES = 2 * 1024 * 1024;
 /** The most paragraphs and tables one Word document may hold. */
 export const MAX_BLOCKS = 5000;
+/** The most worksheets one workbook may name. */
+export const MAX_SHEETS = 200;
+/** The most rows and the most columns one sheet's grid shows. */
+export const MAX_ROWS_PER_SHEET = 5000;
+export const MAX_COLUMNS_PER_SHEET = 64;
 
-/** The formats this reader opens. `.docm` carries the same parts as `.docx`. */
-export type OfficeKind = "docx";
+/** The formats this reader opens. `.docm` and `.xlsm` carry the same parts. */
+export type OfficeKind = "docx" | "xlsx";
 
 /** Why a document was refused. Every one of these is shown to the person. */
-export type OfficeRefusal = "office_unreadable" | "office_part_too_large" | "office_too_many_blocks";
+export type OfficeRefusal =
+  | "office_unreadable"
+  | "office_part_too_large"
+  | "office_too_many_blocks"
+  | "office_too_many_sheets"
+  | "office_sheet_too_large";
 
 /** A refusal to read a document, with a message ready to show. */
 export class OfficeError extends Error {
@@ -64,7 +75,19 @@ export interface DocxDocument {
   text: string;
 }
 
-export type OfficeModel = DocxDocument;
+/** One worksheet: its tab's label and the used range as display text. */
+export interface OfficeSheet {
+  name: string;
+  /** Rows from row 1, each padded to the widest used column. */
+  rows: string[][];
+}
+
+export interface XlsxDocument {
+  format: "xlsx";
+  sheets: OfficeSheet[];
+}
+
+export type OfficeModel = DocxDocument | XlsxDocument;
 
 /** What the viewer hands the worker: the file's bytes and what it should be. */
 export interface OfficeRequest {
@@ -276,6 +299,7 @@ export function openOfficeParts(bytes: Uint8Array<ArrayBuffer>): OfficeParts {
   };
 }
 
+/** One part's own document element, which is its first element; the scanner's wrapper is not one. */
 async function readPartXml(parts: OfficeParts, name: string): Promise<XmlElement> {
   const bytes = await parts.read(name);
   if (bytes.length > MAX_PART_BYTES) {
@@ -284,7 +308,8 @@ async function readPartXml(parts: OfficeParts, name: string): Promise<XmlElement
       `This document's ${name} is ${formatBytes(bytes.length)}; the viewer reads at most ${formatBytes(MAX_PART_BYTES)} of one part.`,
     );
   }
-  return parseXml(new TextDecoder("utf-8").decode(bytes));
+  const root = parseXml(new TextDecoder("utf-8").decode(bytes));
+  return root.children[0] ?? root;
 }
 
 /** A heading style this viewer knows: `Heading1` to `Heading4`, deeper ones clamped. */
@@ -391,16 +416,193 @@ export async function parseDocx(parts: OfficeParts): Promise<DocxDocument> {
   return { format: "docx", blocks, text: blocks.map((block) => block.text).join("\n") };
 }
 
+/** The parts a workbook names its sheets in, and where those targets live. */
+const WORKBOOK_PART = "xl/workbook.xml";
+const WORKBOOK_RELS_PART = "xl/_rels/workbook.xml.rels";
+const SHARED_STRINGS_PART = "xl/sharedStrings.xml";
+/** The folder a relationship target is relative to, and the one a missing one falls back to. */
+const WORKBOOK_FOLDER = "xl";
+
+/**
+ * `AB12` is column 28 and row 12. Anything else is not a position, and no
+ * index in the markup is trusted: a caller skips what this refuses.
+ */
+export function cellPosition(reference: string): { row: number; column: number } | null {
+  const match = /^([A-Za-z]{1,3})([0-9]{1,7})$/.exec(reference.trim());
+  const letters = match?.[1];
+  const digits = match?.[2];
+  if (!letters || !digits) return null;
+  let column = 0;
+  for (const letter of letters.toUpperCase()) column = column * 26 + (letter.charCodeAt(0) - 64);
+  const row = Number.parseInt(digits, 10);
+  return row >= 1 && column >= 1 ? { row, column } : null;
+}
+
+/** The text of one string part: its runs joined, a phonetic run left out. */
+function stringText(element: XmlElement): string {
+  let text = "";
+  for (const node of element.children) {
+    const name = localName(node.name);
+    if (name === "rPh") continue;
+    text += name === "t" ? node.text : stringText(node);
+  }
+  return text;
+}
+
+/** A relationship target as a part name, from `xl/` or from the package root. */
+function resolvePartPath(target: string): string {
+  const path = target.replace(/\\/g, "/");
+  const segments: string[] = path.startsWith("/") ? [] : [WORKBOOK_FOLDER];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return segments.join("/");
+}
+
+/** The workbook's own relationships, by id; a target outside the package is not read. */
+async function workbookTargets(parts: OfficeParts): Promise<Map<string, string>> {
+  const targets = new Map<string, string>();
+  if (findPart(parts.names, WORKBOOK_RELS_PART) === null) return targets;
+  const rels = await readPartXml(parts, WORKBOOK_RELS_PART);
+  for (const rel of children(rels, "Relationship")) {
+    const id = attr(rel, "Id");
+    const target = attr(rel, "Target");
+    if (id === null || target === null) continue;
+    if ((attr(rel, "TargetMode") ?? "Internal") !== "Internal") continue;
+    targets.set(id, target);
+  }
+  return targets;
+}
+
+async function sharedStrings(parts: OfficeParts): Promise<string[]> {
+  if (findPart(parts.names, SHARED_STRINGS_PART) === null) return [];
+  return children(await readPartXml(parts, SHARED_STRINGS_PART), "si").map(stringText);
+}
+
+/**
+ * One cell's display text. Numbers keep the text stored for them, because a
+ * number format is a style and styles are not read: a date shows as its serial
+ * number. A boolean is TRUE or FALSE, and a formula shows its cached value,
+ * which is empty when the workbook was saved without one.
+ */
+function cellDisplayText(cell: XmlElement, shared: readonly string[]): string {
+  const type = attr(cell, "t") ?? "n";
+  if (type === "inlineStr") {
+    const inline = child(cell, "is");
+    return inline === null ? "" : stringText(inline);
+  }
+  const value = child(cell, "v");
+  const raw = value === null ? "" : value.text;
+  if (type === "s") {
+    const index = Number.parseInt(raw.trim(), 10);
+    return Number.isInteger(index) ? (shared[index] ?? "") : "";
+  }
+  if (type === "b") return raw.trim() === "1" ? "TRUE" : raw.trim() === "0" ? "FALSE" : "";
+  if (type === "n") return raw.trim();
+  return raw;
+}
+
+/**
+ * The used range: a value's own reference decides where it sits, so a cell at
+ * `D5` stays in column D. A reference that cannot be read is skipped rather
+ * than fatal, and a cell with nothing to show does not count towards the caps.
+ */
+async function sheetGrid(parts: OfficeParts, name: string, part: string, shared: readonly string[]): Promise<string[][]> {
+  const sheet = await readPartXml(parts, part);
+  const data = child(sheet, "sheetData");
+  const values: string[][] = [];
+  let widest = 0;
+  let rowNumber = 0;
+  for (const row of data === null ? [] : children(data, "row")) {
+    const declared = Number.parseInt(attr(row, "r") ?? "", 10);
+    rowNumber = Number.isInteger(declared) && declared > 0 ? declared : rowNumber + 1;
+    let column = 0;
+    for (const cell of children(row, "c")) {
+      const reference = attr(cell, "r");
+      const position = reference === null ? null : cellPosition(reference);
+      if (reference !== null && position === null) continue;
+      const text = stripControlChars(cellDisplayText(cell, shared));
+      if (text === "") continue;
+      const at = position?.row ?? rowNumber;
+      column = position?.column ?? column + 1;
+      if (column > MAX_COLUMNS_PER_SHEET) {
+        throw new OfficeError(
+          "office_sheet_too_large",
+          `The sheet "${name}" puts a value past column ${MAX_COLUMNS_PER_SHEET}; the viewer shows at most ${MAX_COLUMNS_PER_SHEET} columns.`,
+        );
+      }
+      if (at > MAX_ROWS_PER_SHEET) {
+        throw new OfficeError(
+          "office_sheet_too_large",
+          `The sheet "${name}" puts a value past row ${MAX_ROWS_PER_SHEET}; the viewer shows at most ${MAX_ROWS_PER_SHEET} rows.`,
+        );
+      }
+      const line = values[at - 1] ?? (values[at - 1] = []);
+      line[column - 1] = text;
+      if (column > widest) widest = column;
+    }
+  }
+  const rows: string[][] = [];
+  for (let at = 0; at < values.length; at += 1) {
+    const line = values[at];
+    rows.push(Array.from({ length: widest }, (_, column) => line?.[column] ?? ""));
+  }
+  return rows;
+}
+
+export async function parseXlsx(parts: OfficeParts): Promise<XlsxDocument> {
+  if (findPart(parts.names, WORKBOOK_PART) === null) {
+    throw new OfficeError(
+      "office_unreadable",
+      "This file has no xl/workbook.xml, so the viewer can't read it as a spreadsheet.",
+    );
+  }
+  const workbook = await readPartXml(parts, WORKBOOK_PART);
+  const group = child(workbook, "sheets");
+  const elements = group === null ? [] : children(group, "sheet");
+  if (elements.length === 0) {
+    throw new OfficeError("office_unreadable", "This workbook names no sheets, so the viewer can't read it as a spreadsheet.");
+  }
+  if (elements.length > MAX_SHEETS) {
+    throw new OfficeError(
+      "office_too_many_sheets",
+      `This workbook names ${elements.length} sheets; the viewer shows at most ${MAX_SHEETS}.`,
+    );
+  }
+  const targets = await workbookTargets(parts);
+  const shared = await sharedStrings(parts);
+  const sheets: OfficeSheet[] = [];
+  for (const [at, element] of elements.entries()) {
+    const declared = attr(element, "name");
+    const name = declared === null || declared.trim() === "" ? `Sheet ${at + 1}` : declared;
+    const id = attr(element, "id");
+    const target = id === null ? undefined : targets.get(id);
+    const part = target === undefined ? `${WORKBOOK_FOLDER}/worksheets/sheet${at + 1}.xml` : resolvePartPath(target);
+    // A workbook that names a part it does not carry still opens: its other
+    // sheets are readable, and inventing an empty one would misstate the file.
+    if (findPart(parts.names, part) === null) continue;
+    sheets.push({ name, rows: await sheetGrid(parts, name, part, shared) });
+  }
+  if (sheets.length === 0) {
+    throw new OfficeError("office_unreadable", "This workbook's worksheets are missing from the file, so the viewer can't read it.");
+  }
+  return { format: "xlsx", sheets };
+}
+
 /**
  * The worker's whole answer, refusal included, kept here so the worker is a
  * three-line wrapper and a test can stand in for a Worker without one.
  */
 export async function respondToOfficeRequest(request: OfficeRequest): Promise<OfficeResponse> {
   try {
-    if (request.kind !== "docx") {
+    if (request.kind !== "docx" && request.kind !== "xlsx") {
       throw new OfficeError("office_unreadable", `The viewer can't read ${String(request.kind)} files.`);
     }
-    return { ok: true, model: await parseDocx(openOfficeParts(request.bytes)) };
+    const parts = openOfficeParts(request.bytes);
+    if (request.kind === "docx") return { ok: true, model: await parseDocx(parts) };
+    return { ok: true, model: await parseXlsx(parts) };
   } catch (failure) {
     if (failure instanceof OfficeError) return { ok: false, code: failure.code, message: failure.message };
     if (failure instanceof Error && failure.message) return { ok: false, code: "office_unreadable", message: failure.message };

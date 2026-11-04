@@ -5,7 +5,7 @@ import { Viewer } from "./FilesPanel";
 import { useUi } from "../../state/ui";
 import { buildZipArchive } from "./zipArchive.test-support";
 import { formatBytes } from "./zipArchive";
-import { buildDocx, docxParagraph, stubWorker } from "./office.test-support";
+import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
 
 /** The toast the last action raised. */
 const lastToast = () => useUi.getState().toasts.at(-1)?.text;
@@ -121,4 +121,17 @@ it("opens a Word document in the document viewer rather than the hex view", asyn
   expect(screen.queryByLabelText("Bytes")).toBeNull();
   // The bar carries the document's size where a text file would have none.
   expect(screen.getByText(formatBytes(document.byteLength))).toBeInTheDocument();
+});
+
+it("opens a spreadsheet in the document viewer rather than the hex view", async () => {
+  stubWorker();
+  const book = buildXlsx([
+    { name: "Sheet", xml: worksheet(`<row r="1"><c r="A1" t="inlineStr"><is><t>Cell</t></is></c></row>`) },
+  ]);
+  serve({ content: "", binary: true, truncated: false, size: book.byteLength }, book);
+  render(<Viewer threadId="t" path="book.xlsx" line={null} onBack={() => undefined} />);
+
+  expect(await screen.findByRole("tab", { name: "Sheet" })).toBeInTheDocument();
+  expect(await screen.findByRole("cell", { name: "Cell" })).toBeInTheDocument();
+  expect(screen.queryByLabelText("Bytes")).toBeNull();
 });

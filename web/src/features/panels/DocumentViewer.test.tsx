@@ -2,8 +2,8 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { DocumentViewer, officeKind, type OfficeRun } from "./DocumentViewer";
-import { buildDocx, docxParagraph, stubWorker } from "./office.test-support";
-import type { DocxDocument, OfficeRequest, OfficeResponse } from "./office";
+import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
+import type { DocxDocument, OfficeModel, OfficeRequest, OfficeResponse, XlsxDocument } from "./office";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -26,7 +26,15 @@ const model: DocxDocument = {
 };
 
 /** A reader that answers with a model, standing in for the worker. */
-const answers = (given: DocxDocument): OfficeRun => async () => ({ ok: true, model: given });
+const answers = (given: OfficeModel): OfficeRun => async () => ({ ok: true, model: given });
+
+const book: XlsxDocument = {
+  format: "xlsx",
+  sheets: [
+    { name: "Sales", rows: [["Region", "Total"], ["North", "12"], ["South", "7"]] },
+    { name: "Costs", rows: [["Item", "Cost"], ["Hosting", "3"]] },
+  ],
+};
 
 const page = (run?: OfficeRun) => (
   <DocumentViewer threadId="t" path="plan.docx" kind="docx" run={run} />
@@ -145,11 +153,91 @@ it("reads the file through the raw route, which carries the token", async () => 
   sessionStorage.clear();
 });
 
-it("opens Word by name and leaves the other formats alone", () => {
+it("opens Word and spreadsheet by name and leaves the other formats alone", () => {
   expect(officeKind("a/plan.docx")).toBe("docx");
   expect(officeKind("PLAN.DOCM")).toBe("docx");
+  expect(officeKind("book.xlsx")).toBe("xlsx");
+  expect(officeKind("BOOK.XLSM")).toBe("xlsx");
   expect(officeKind("plan.doc")).toBeNull();
+  expect(officeKind("book.xls")).toBeNull();
   expect(officeKind("deck.pptx")).toBeNull();
-  expect(officeKind("book.xlsx")).toBeNull();
   expect(officeKind("data.csv")).toBeNull();
+});
+
+it("shows a workbook's sheets as tabs over one read-only grid", async () => {
+  serveFile(buildXlsx([{ name: "Sales", xml: worksheet("") }]));
+  render(<DocumentViewer threadId="t" path="book.xlsx" kind="xlsx" run={answers(book)} />);
+
+  const tabs = within(await screen.findByRole("tablist")).getAllByRole("tab");
+  expect(tabs.map((tab) => tab.textContent)).toEqual(["Sales", "Costs"]);
+  expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+
+  const grid = screen.getByRole("tabpanel", { name: "Sales" });
+  expect(within(grid).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["A", "B"]);
+  expect(within(grid).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+    "Region",
+    "Total",
+    "North",
+    "12",
+    "South",
+    "7",
+  ]);
+});
+
+it("switches to another sheet's grid", async () => {
+  const user = userEvent.setup();
+  serveFile(buildXlsx([{ name: "Sales", xml: worksheet("") }]));
+  render(<DocumentViewer threadId="t" path="book.xlsx" kind="xlsx" run={answers(book)} />);
+  await screen.findByRole("tab", { name: "Costs" });
+
+  await user.click(screen.getByRole("tab", { name: "Costs" }));
+  const grid = screen.getByRole("tabpanel", { name: "Costs" });
+  expect(within(grid).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Item", "Cost", "Hosting", "3"]);
+  expect(screen.getByRole("tab", { name: "Costs" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Sales" })).toHaveAttribute("aria-selected", "false");
+});
+
+it("says so when a sheet is empty", async () => {
+  serveFile(buildXlsx([{ name: "Blank", xml: worksheet("") }]));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="book.xlsx"
+      kind="xlsx"
+      run={answers({ format: "xlsx", sheets: [{ name: "Blank", rows: [] }] })}
+    />,
+  );
+  expect(await screen.findByText("This sheet is empty.")).toBeInTheDocument();
+});
+
+it("shows a spreadsheet refusal under the spreadsheet's own title", async () => {
+  serveFile(buildXlsx([{ name: "Tall", xml: worksheet("") }]));
+  render(
+    <DocumentViewer
+      threadId="t"
+      path="book.xlsx"
+      kind="xlsx"
+      run={async () => ({
+        ok: false,
+        code: "office_sheet_too_large",
+        message: "The sheet \"Tall\" puts a value past row 5000; the viewer shows at most 5000 rows.",
+      })}
+    />,
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Couldn't read this spreadsheet");
+  expect(alert).toHaveTextContent("past row 5000");
+  expect(alert).toHaveTextContent("office_sheet_too_large");
+});
+
+it("reads a real workbook through the worker's own protocol", async () => {
+  stubWorker();
+  serveFile(
+    buildXlsx([
+      { name: "Sheet", xml: worksheet(`<row r="1"><c r="A1" t="inlineStr"><is><t>From the worker</t></is></c></row>`) },
+    ]),
+  );
+  render(<DocumentViewer threadId="t" path="book.xlsx" kind="xlsx" />);
+  expect(await screen.findByRole("cell", { name: "From the worker" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Sheet" })).toBeInTheDocument();
 });

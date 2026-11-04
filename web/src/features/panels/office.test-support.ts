@@ -10,6 +10,9 @@ const CONTENT_TYPES = `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlfor
 const ROOT_RELS = `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
 
 const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const SPREADSHEET_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const DOCUMENT_RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
 
 /**
  * A real Open XML package: a zip whose parts are the XML written here, built by
@@ -37,6 +40,51 @@ export function buildDocx(body: string): Uint8Array<ArrayBuffer> {
 /** A paragraph whose one run holds the text given. */
 export function docxParagraph(text: string): string {
   return `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+}
+
+/** A worksheet part whose rows are exactly the markup given. */
+export function worksheet(rows: string): string {
+  return `${XML_DECLARATION}<worksheet xmlns="${SPREADSHEET_NAMESPACE}"><sheetData>${rows}</sheetData></worksheet>`;
+}
+
+/**
+ * The workbook and relationship parts that name the sheets given, one part
+ * each. `targets` overrides the relationship target of a sheet, for a package
+ * that names a part somewhere else or does not carry it at all.
+ */
+export function workbookParts(
+  sheets: readonly { name: string; xml: string }[],
+  targets?: readonly string[],
+): Record<string, string> {
+  const target = (at: number) => targets?.[at] ?? `worksheets/sheet${at + 1}.xml`;
+  const parts: Record<string, string> = {
+    "xl/workbook.xml": `${XML_DECLARATION}<workbook xmlns="${SPREADSHEET_NAMESPACE}" xmlns:r="${DOCUMENT_RELATIONSHIPS}"><sheets>${sheets
+      .map((sheet, at) => `<sheet name="${sheet.name}" sheetId="${at + 1}" r:id="rId${at + 1}"/>`)
+      .join("")}</sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `${XML_DECLARATION}<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">${sheets
+      .map(
+        (_, at) =>
+          `<Relationship Id="rId${at + 1}" Type="${DOCUMENT_RELATIONSHIPS}/worksheet" Target="${target(at)}"/>`,
+      )
+      .join("")}</Relationships>`,
+  };
+  for (const [at, sheet] of sheets.entries()) parts[`xl/${target(at)}`] = sheet.xml;
+  return parts;
+}
+
+/** A spreadsheet package: one part per sheet, and shared strings when given. */
+export function buildXlsx(
+  sheets: readonly { name: string; xml: string }[],
+  sharedStrings?: readonly string[],
+): Uint8Array<ArrayBuffer> {
+  const parts = workbookParts(sheets);
+  if (sharedStrings) {
+    parts["xl/sharedStrings.xml"] =
+      `${XML_DECLARATION}<sst xmlns="${SPREADSHEET_NAMESPACE}" count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">` +
+      sharedStrings.map((value) => `<si><t xml:space="preserve">${value}</t></si>`).join("") +
+      `</sst>`;
+  }
+  return buildOfficePackage(parts);
 }
 
 /**
