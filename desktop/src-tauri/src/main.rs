@@ -283,9 +283,12 @@ fn main() {
         .on_menu_event(menu::on_event)
         .invoke_handler(tauri::generate_handler![restart_core])
         .setup(|app| {
+            core_process::startup_phase("setup-started");
             let handle = app.handle().clone();
             open_window(&handle)?;
+            core_process::startup_phase("window-ready");
             install_tray(&handle)?;
+            core_process::startup_phase("tray-ready");
             let links = handle.clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {

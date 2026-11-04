@@ -1,10 +1,13 @@
 import { Check, ChevronRight, Copy } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
+import { useWorkspace } from "../../state/workspace";
 import { IconButton } from "../../ui/controls";
 import { Collapsible } from "../../ui/Collapsible";
 import { CodeBlock } from "./CodeBlock";
-import { MarkdownImage } from "./MarkdownImage";
+import { MarkdownMedia, MarkdownThreadContext } from "./MarkdownMedia";
+import { safeHref } from "./mediaSource";
 import { ExternalLink, FileLink, fileLinkTarget, MarkdownProjectContext, threadLinkId, ThreadLink } from "./MarkdownLink";
 import { Mermaid } from "./Mermaid";
 import { Tex } from "./Tex";
@@ -212,20 +215,7 @@ function parseBlocks(lines: string[]): Block[] {
   return blocks;
 }
 
-export function safeHref(raw: string): string | null {
-  const href = raw.trim();
-  // Control characters and whitespace can hide a scheme from a naive check.
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\s]/.test(href)) return null;
-  try {
-    const url = new URL(href);
-    return url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:"
-      ? url.href
-      : null;
-  } catch {
-    return null;
-  }
-}
+export { safeHref };
 
 /** Off, the source stays as the person would have typed it. */
 function InlineMath({ source }: { source: string }) {
@@ -261,8 +251,7 @@ function renderInline(text: string, keyPrefix = ""): ReactNode[] {
     const key = `${keyPrefix}${index++}`;
     const [whole, imageAlt, imageSrc, math, , code, bold1, bold2, em1, em2, strike, linkText, linkHref, bare] = match;
     if (imageSrc !== undefined) {
-      const href = safeHref(imageSrc);
-      out.push(href ? <MarkdownImage key={key} src={href} alt={imageAlt ?? ""} /> : whole);
+      out.push(<MarkdownMedia key={key} source={imageSrc} alt={imageAlt ?? ""} fallback={whole} />);
     } else if (math !== undefined) out.push(<InlineMath key={key} source={math} />);
     else if (code !== undefined) out.push(<code key={key}>{code}</code>);
     else if (bold1 !== undefined || bold2 !== undefined)
@@ -388,9 +377,15 @@ function renderBlock(block: Block, key: number): ReactNode {
 
 export function Markdown({ text, projectId = null }: { text: string; projectId?: string | null }) {
   const blocks = useMemo(() => parseBlocks(text.split(/\r\n|\n|\r/)), [text]);
+  const route = useRoute();
+  const threadId = route.name === "thread" ? route.id : null;
+  const cwd = useWorkspace((state) => (threadId === null ? null : (state.threads[threadId]?.cwd ?? null)));
+  const thread = useMemo(() => (threadId === null ? null : { id: threadId, cwd }), [threadId, cwd]);
   return (
     <MarkdownProjectContext.Provider value={projectId}>
-      <div className="md">{blocks.map(renderBlock)}</div>
+      <MarkdownThreadContext.Provider value={thread}>
+        <div className="md">{blocks.map(renderBlock)}</div>
+      </MarkdownThreadContext.Provider>
     </MarkdownProjectContext.Provider>
   );
 }

@@ -34,9 +34,7 @@ const info = await smokeService(
     return info.json();
   },
   {
-    // Initializing the bundled library can take longer on a cold Windows runner.
-    // Match the installed-app smoke budget while keeping startup bounded.
-    readyMs: 90_000,
+    readyMs: 60_000, // Cold bundle provisioning shares the desktop's startup budget.
     env: { ...process.env, ORBYN_LOG: "info,orbyn_core::workspace::provision=debug" },
   },
 );
