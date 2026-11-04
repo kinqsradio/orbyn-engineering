@@ -440,6 +440,10 @@ not-doable decision; this scope reconciliation does not mark them done.
 
 ## I. Providers
 
+Queue decision: [provider work without engine logins](provider-work-queue.md)
+(#129). I40's local portion, I41 and I51 are queued; I9 is conditional on proving
+its supported feedback route. This changes no row's scope or completion status.
+
 Surveyed against PandaCode 0.3.85's engine list. Any ACP agent runs here as a custom
 engine, with its models, modes and config options read from `session/new`. Engines with
 no row of their own are in I62. A CLI that speaks ACP is found and launched by itself, per

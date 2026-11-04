@@ -32,6 +32,13 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 | Delivery | One active branch per section, one small commit per completed row, local checks before pushing. Open a PR for a section or about 20 coherent rows; merge only with every required check green, without squashing. Keep active branches current with main at least daily and deliver ready green batches daily. No agent attribution in commits or branch names; every PR fills in its AI usage section. |
 | Autonomy | The owner makes no routine decisions: decide from T3's behaviour. Never ask for browser access; use the local references. |
 
+## Section I work queue
+
+[Provider work without engine logins](provider-work-queue.md) records the decision
+for #129: queue I40's local discovery, I41 and I51; investigate I9's supported
+feedback route before adding it. Other open provider rows retain their access and
+protocol evidence dependencies. No provider row is completed by this decision.
+
 ## Rules that were broken, so read twice
 
 - Stop at any declined, unanswered or refused permission prompt or tool. Report it.
