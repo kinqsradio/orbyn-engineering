@@ -52,6 +52,47 @@ describe("media sources", () => {
     expect(workspacePath("docs/a b.png", null)).toBeNull();
   });
 
+  it("decodes local Markdown destinations once before matching the checkout", () => {
+    expect(workspacePath("docs/my%20shot.png", null)).toBe("docs/my shot.png");
+    expect(workspacePath("C:/work/my%20checkout/docs/my%20shot.png", "C:/work/my checkout"))
+      .toBe("docs/my shot.png");
+    expect(workspacePath("C%3A%5Cwork%5Cmy%20checkout%5Cdocs%5Cmy%20shot.png", "C:\\work\\my checkout"))
+      .toBe("docs/my shot.png");
+    expect(workspacePath("/work/my%20checkout/shot.png", "/work/my checkout")).toBe("shot.png");
+    expect(workspacePath("docs/literal%2520.png", null)).toBe("docs/literal%20.png");
+    expect(workspacePath("/repo/a%2520b/x.png", "/repo/a%20b")).toBe("x.png");
+    expect(workspacePath("..%2Fsecret.png", "/repo")).toBe("../secret.png");
+    expect(workspacePath("/repo/..%2Fsecret.png", "/repo")).toBe("../secret.png");
+  });
+
+  it("keeps malformed escapes literal without partially decoding the filename", () => {
+    for (const source of ["docs/100%.png", "docs/bad%ZZ.png", "docs/bad%FF.png", "docs/my%20bad%ZZ.png"]) {
+      expect(workspacePath(source, null)).toBe(source);
+    }
+  });
+
+  it("checks decoded paths for controls, schemes and the checkout root", () => {
+    for (const source of ["docs/a%00.png", "docs/a%0A.png", "docs/a%7F.png", "docs/a%C2%85.png",
+      "javascript%3Aalert%2Fx.png", "data%3Aimage/png,x.png", "https%3A%2F%2Fevil/a.png", "/elsewhere/a%20b.png"]) {
+      expect(workspacePath(source, "/work/checkout"), source).toBeNull();
+    }
+    expect(workspacePath("javascript%253Aalert/x.png", null)).toBe("javascript%3Aalert/x.png");
+  });
+
+  it("transport-encodes the decoded filename and leaves remote URLs unchanged", () => {
+    const scoped = { id: "t1", cwd: "/work/checkout" };
+    const item = resolveMediaSource("docs/my%20shot.png", "shot", scoped);
+    expect(item?.path).toBe("docs/my shot.png");
+    expect(item?.src).toBe("/api/threads/t1/files/raw?path=docs%2Fmy+shot.png");
+    expect(new URL(item!.src, "http://localhost").searchParams.get("path")).toBe("docs/my shot.png");
+    expect(resolveMediaSource("docs/100%2520.png", "shot", scoped)?.src)
+      .toBe("/api/threads/t1/files/raw?path=docs%2F100%2520.png");
+    expect(resolveMediaSource("https://example.com/my%20shot.png", "shot", scoped)?.src)
+      .toBe("https://example.com/my%20shot.png");
+    expect(resolveMediaSource("https://example.com/100%2520.png", "shot", scoped)?.src)
+      .toBe("https://example.com/100%2520.png");
+  });
+
   it("resolves only images and videos of the thread's checkout", () => {
     const scoped = { id: "t1", cwd: "/Users/me/checkout" };
     expect(resolveMediaSource("docs/a.png", "a", scoped)).toMatchObject({
@@ -158,6 +199,38 @@ describe("media in messages", () => {
 });
 
 describe("the expanded view", () => {
+  it("preserves video arrow keys while keeping gallery navigation and Escape", async () => {
+    const user = userEvent.setup();
+    atThread();
+    render(<Markdown text={"![clip](out/run.mp4)\n\n![shot](docs/shot.png)"} />);
+    await user.click(screen.getByLabelText("Expand clip"));
+    const dialog = screen.getByRole("dialog");
+    const video = dialog.querySelector("video");
+    if (!video) throw new Error("gallery video did not render");
+    const bubbled = vi.fn();
+    document.addEventListener("keydown", bubbled);
+    try {
+      for (const key of ["ArrowRight", "ArrowLeft"]) {
+        expect(fireEvent.keyDown(video, { key, bubbles: true, cancelable: true })).toBe(true);
+        expect(screen.getByText("1 of 2")).toBeInTheDocument();
+        expect(dialog.querySelector("video")).toBe(video);
+      }
+      expect(bubbled).toHaveBeenCalledTimes(2);
+    } finally {
+      document.removeEventListener("keydown", bubbled);
+    }
+    expect(fireEvent.keyDown(dialog, { key: "ArrowRight" })).toBe(false);
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+    expect(fireEvent.keyDown(dialog.querySelector("img")!, { key: "ArrowLeft" })).toBe(false);
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    expect(fireEvent.keyDown(screen.getByLabelText("Next"), { key: "ArrowRight" })).toBe(false);
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "ArrowLeft" });
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    fireEvent.keyDown(dialog.querySelector("video")!, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("walks every media item of one message", async () => {
     const user = userEvent.setup();
     atThread();
@@ -220,11 +293,11 @@ describe("the expanded view", () => {
     atThread();
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<Markdown text={"![shot](docs/shot.png)"} />);
+    render(<Markdown text={"![shot](docs/my%20shot.png)"} />);
     await user.click(screen.getByLabelText("Expand shot"));
     const save = screen.getByText("Save");
-    expect(save).toHaveAttribute("href", "/api/threads/t1/files/raw?path=docs%2Fshot.png&download=true");
-    expect(save).toHaveAttribute("download", "shot.png");
+    expect(save).toHaveAttribute("href", "/api/threads/t1/files/raw?path=docs%2Fmy+shot.png&download=true");
+    expect(save).toHaveAttribute("download", "my shot.png");
     // jsdom would try to navigate the download; the browser hands it to the download manager instead.
     const swallow = (event: Event) => event.preventDefault();
     document.addEventListener("click", swallow);
@@ -235,7 +308,7 @@ describe("the expanded view", () => {
     }
     await waitFor(() => expect(toastTexts()).toContain("Download started"));
     await user.click(screen.getByLabelText("Copy path"));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("docs/shot.png"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("docs/my shot.png"));
     await waitFor(() => expect(toastTexts()).toContain("Path copied"));
   });
 

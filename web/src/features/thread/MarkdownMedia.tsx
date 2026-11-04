@@ -98,7 +98,11 @@ export function MediaDialog({ items, index: start, onClose }: { items: readonly 
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
-    } else if (event.key === "ArrowLeft" && many) {
+      return;
+    }
+    // Native controls retarget their key events to the video, whose arrows seek.
+    if (event.target instanceof HTMLVideoElement) return;
+    if (event.key === "ArrowLeft" && many) {
       event.preventDefault();
       move(-1);
     } else if (event.key === "ArrowRight" && many) {

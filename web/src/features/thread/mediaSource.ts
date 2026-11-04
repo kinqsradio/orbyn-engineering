@@ -65,9 +65,22 @@ const rootKey = (path: string) => (DRIVE.test(path) ? path.toLowerCase() : path)
  * thread's own root is refused here rather than shown as a broken element.
  */
 export function workspacePath(raw: string, cwd: string | null): string | null {
-  const value = raw.trim().replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+  const destination = raw.trim();
   // eslint-disable-next-line no-control-regex
-  if (!value || /[\u0000-\u001f\s]/.test(value)) return null;
+  if (!destination || /[\u0000-\u001f\s]/.test(destination)) return null;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(destination);
+  } catch (failure) {
+    if (!(failure instanceof URIError)) throw failure;
+    // A malformed escape can be a literal filename; never decode only part of it.
+    decoded = destination;
+  }
+  // Escaped spaces belong to filenames, but escaped controls must still be refused.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(decoded)) return null;
+  const value = decoded.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+  if (!value) return null;
   if (SCHEME.test(value) && !DRIVE.test(value)) return null;
   if (!value.startsWith("/") && !DRIVE.test(value)) return value;
   if (!cwd) return null;
