@@ -3,6 +3,7 @@
 //! the like belong to the page, which has its own rules for them, so no item takes them.
 
 use crate::core_process::ShellAction;
+use crate::window_actions::{self, Target, ViewerZoom};
 use std::sync::Mutex;
 use tauri::menu::{
     AboutMetadata, Menu, MenuBuilder, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
@@ -16,33 +17,43 @@ const ZOOM_STEP: f64 = 0.1;
 
 /// The window's zoom, kept with its size and place.
 #[derive(Default)]
-pub struct Zoom(pub Mutex<f64>);
+pub struct Zoom(pub Mutex<f64>, pub Mutex<ViewerZoom>);
 
 pub fn next_zoom(current: f64, step: f64) -> f64 {
     let value = (current + step).clamp(ZOOM_MIN, ZOOM_MAX);
     (value * 100.0).round() / 100.0
 }
 
-/// A command for the windows, or `None` for an item handled here.
-fn page_command(id: &str) -> Option<&'static str> {
-    match id {
-        "settings" => Some("settings.open"),
-        "new-thread" => Some("chat.new"),
-        "check-updates" => Some("updates.check"),
-        "toggle-sidebar" => Some("sidebar.toggle"),
-        "palette" => Some("commandPalette.toggle"),
-        _ => None,
-    }
+fn focused_window(app: &AppHandle) -> Option<WebviewWindow> {
+    app.webview_windows()
+        .into_values()
+        .find(|window| window.is_focused().unwrap_or(false))
 }
 
 fn set_zoom(app: &AppHandle, window: &WebviewWindow, value: f64) {
     let _ = window.set_zoom(value);
-    *app.state::<Zoom>().0.lock().expect("zoom") = value;
-    crate::shell_state::save(app);
+    if window.label() == "main" {
+        *app.state::<Zoom>().0.lock().expect("zoom") = value;
+        crate::shell_state::save(app);
+    } else {
+        app.state::<Zoom>()
+            .1
+            .lock()
+            .expect("viewer zoom")
+            .set(window.label(), value);
+    }
 }
 
 fn step_zoom(app: &AppHandle, window: &WebviewWindow, step: f64) {
-    let current = *app.state::<Zoom>().0.lock().expect("zoom");
+    let current = if window.label() == "main" {
+        *app.state::<Zoom>().0.lock().expect("zoom")
+    } else {
+        app.state::<Zoom>()
+            .1
+            .lock()
+            .expect("viewer zoom")
+            .get(window.label())
+    };
     set_zoom(app, window, next_zoom(current, step));
 }
 
@@ -76,13 +87,17 @@ fn speech(start: bool) {
 
 /// A window asking for what its keys can't reach through the menu, like the keypad.
 pub fn on_action(app: &AppHandle, action: ShellAction) {
-    let Some(window) = crate::main_window(app) else {
-        return;
-    };
     match action {
-        ShellAction::ZoomIn => step_zoom(app, &window, ZOOM_STEP),
-        ShellAction::ZoomOut => step_zoom(app, &window, -ZOOM_STEP),
-        ShellAction::ZoomReset => set_zoom(app, &window, 1.0),
+        ShellAction::ZoomIn | ShellAction::ZoomOut | ShellAction::ZoomReset => {
+            let Some(window) = focused_window(app) else {
+                return;
+            };
+            match action {
+                ShellAction::ZoomIn => step_zoom(app, &window, ZOOM_STEP),
+                ShellAction::ZoomOut => step_zoom(app, &window, -ZOOM_STEP),
+                _ => set_zoom(app, &window, 1.0),
+            }
+        }
         ShellAction::InstallCli
         | ShellAction::RemoveCli
         | ShellAction::OpenAccessibilitySettings
@@ -92,16 +107,26 @@ pub fn on_action(app: &AppHandle, action: ShellAction) {
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
-    if let Some(command) = page_command(id) {
-        crate::reveal(app);
-        crate::tell_core(
-            app,
-            serde_json::json!({ "type": "menu_command", "command": command }),
-        );
-        return;
-    }
-    let Some(window) = crate::main_window(app) else {
-        return;
+    let focused = focused_window(app);
+    let window = match window_actions::target(id, focused.as_ref().map(|window| window.label())) {
+        Target::MainCommand(command) => {
+            crate::reveal(app);
+            crate::tell_core(
+                app,
+                serde_json::json!({ "type": "menu_command", "command": command }),
+            );
+            return;
+        }
+        Target::Window(_) => {
+            let Some(window) = focused else { return };
+            window
+        }
+        Target::Responder => {
+            #[cfg(target_os = "macos")]
+            speech(id == "speech-start");
+            return;
+        }
+        Target::None => return,
     };
     match id {
         "reload" => {
@@ -127,10 +152,6 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "close-window" => {
             let _ = window.close();
         }
-        #[cfg(target_os = "macos")]
-        "speech-start" => speech(true),
-        #[cfg(target_os = "macos")]
-        "speech-stop" => speech(false),
         _ => {}
     }
 }
@@ -272,12 +293,5 @@ mod tests {
         assert_eq!(next_zoom(1.1, -ZOOM_STEP), 1.0);
         assert_eq!(next_zoom(3.0, ZOOM_STEP), ZOOM_MAX);
         assert_eq!(next_zoom(0.5, -ZOOM_STEP), ZOOM_MIN);
-    }
-
-    #[test]
-    fn items_for_the_page_name_real_commands() {
-        assert_eq!(page_command("new-thread"), Some("chat.new"));
-        assert_eq!(page_command("settings"), Some("settings.open"));
-        assert_eq!(page_command("reload"), None);
     }
 }
