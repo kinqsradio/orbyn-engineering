@@ -41,4 +41,4 @@ effort?: string,
 /**
  * Merged by key; an empty value goes back to the engine's default.
  */
-options?: { [key in string]?: string }, };
+options?: { [key in string]: string }, };

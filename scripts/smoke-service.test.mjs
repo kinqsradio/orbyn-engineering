@@ -54,6 +54,22 @@ test("a failed API check still awaits service cleanup", async () => {
   });
 });
 
+test("a service can report readiness after asynchronous startup", async () => {
+  await fixture(async ({ data, receipt }) => {
+    const delayed = `
+      const [receipt] = process.argv.slice(1);
+      process.stdin.resume();
+      process.stdin.on('end', () => require('node:fs').writeFileSync(receipt, 'released'));
+      setTimeout(() => console.log(JSON.stringify({ ready: true })), 100);
+    `;
+    await smokeService(process.execPath, ["-e", delayed, receipt], data, ({ ready }) => {
+      assert.equal(ready, true);
+    }, { readyMs: 2_000 });
+    assert.equal(readFileSync(receipt, "utf8"), "released");
+    assert.equal(existsSync(data), false);
+  });
+});
+
 test("readiness timeout enters cleanup and awaits the known service", async () => {
   await fixture(async ({ data, receipt }) => {
     await assert.rejects(smokeService(process.execPath, ["-e", graceful, data, receipt, "silent"], data, () => {

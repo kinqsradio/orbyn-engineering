@@ -75,13 +75,18 @@ function serve() {
 const resizes = (calls: { method: string; path: string; body: Record<string, unknown> | undefined }[]) =>
   calls.filter((call) => call.method === "POST" && call.path.endsWith("/resize")).map((call) => call.body);
 
+async function sendFrame() {
+  await waitFor(() => expect(FakeSocket.last?.onmessage).toBeTypeOf("function"));
+  act(() => FakeSocket.last?.onmessage?.({ data: "frame" }));
+}
+
 /** Renders the panel, opens its device toolbar and picks a phone. */
 async function openToolbar(user: ReturnType<typeof userEvent.setup>) {
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(domRect(STAGE.width, STAGE.height));
   render(<BrowserPanel threadId="t" />);
   await screen.findByRole("button", { name: "More page actions" });
-  act(() => FakeSocket.last?.onmessage?.({ data: "frame" }));
+  await sendFrame();
   await screen.findByRole("img", { name: /^Page at/ });
   await user.click(screen.getByRole("button", { name: "More page actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Show device toolbar" }));
@@ -99,6 +104,7 @@ function stubPointerCapture() {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  FakeSocket.last = null;
   Reflect.deleteProperty(Element.prototype, "setPointerCapture");
   Reflect.deleteProperty(Element.prototype, "releasePointerCapture");
 });
@@ -182,7 +188,7 @@ it("draws the floating page as it is, with nothing to drag", async () => {
   useUi.getState().setPreviewFloat({ threadId: "t", tabId: "tab-1" });
   render(<PreviewFloat threadId="t" />);
   await waitFor(() => expect(document.querySelector(".preview-float")).not.toBeNull());
-  act(() => FakeSocket.last?.onmessage?.({ data: "frame" }));
+  await sendFrame();
 
   await screen.findByRole("img", { name: /^Page at/ });
   expect(screen.queryByRole("button", { name: /Resize the page/ })).toBeNull();

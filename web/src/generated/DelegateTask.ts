@@ -4,4 +4,4 @@ export type DelegateTask = { prompt: string, title?: string,
 /**
  * Absent uses the parent's engine.
  */
-engine?: string, model?: string, effort?: string, options?: { [key in string]?: string }, };
+engine?: string, model?: string, effort?: string, options?: { [key in string]: string }, };

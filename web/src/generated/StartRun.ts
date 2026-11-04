@@ -17,4 +17,4 @@ effort?: string,
 /**
  * Merged into the thread's options for this turn and the ones after it.
  */
-options?: { [key in string]?: string }, };
+options?: { [key in string]: string }, };

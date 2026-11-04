@@ -17,7 +17,7 @@ effort?: string,
 /**
  * Choices beyond model and effort, by `ModelOption` id, such as `service_tier`.
  */
-options?: { [key in string]?: string }, 
+options?: { [key in string]: string }, 
 /**
  * The goal the engine is working toward, as last reported.
  */

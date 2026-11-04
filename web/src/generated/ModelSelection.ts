@@ -3,4 +3,4 @@
 /**
  * What was last chosen on an engine, carried to its new threads.
  */
-export type ModelSelection = { model?: string, effort?: string, options?: { [key in string]?: string }, };
+export type ModelSelection = { model?: string, effort?: string, options?: { [key in string]: string }, };

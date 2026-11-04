@@ -16,4 +16,4 @@ base_branch?: string,
 /**
  * Absent effort and options follow what was last chosen for this model.
  */
-effort?: string, options?: { [key in string]?: string }, };
+effort?: string, options?: { [key in string]: string }, };

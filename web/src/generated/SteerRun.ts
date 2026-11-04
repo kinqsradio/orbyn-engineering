@@ -4,4 +4,4 @@ export type SteerRun = { prompt: string,
 /**
  * A running turn keeps its own model; these apply from the next turn on.
  */
-model?: string, effort?: string, options?: { [key in string]?: string }, };
+model?: string, effort?: string, options?: { [key in string]: string }, };

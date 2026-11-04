@@ -14,7 +14,7 @@ use crate::approvals::WriteScope;
 use crate::error::{CoreError, Result};
 use crate::files::{inside, open_inside, opened_path};
 use crate::project_file::{FILE_NAMES, parse_project_text};
-use crate::util::canonicalize;
+use crate::util::{canonicalize, hex};
 use crate::workspace::guard_library;
 
 const IMAGE_LIMIT: usize = 1024 * 1024;
@@ -240,7 +240,7 @@ impl ImageScope {
         digest.update(mime.as_bytes());
         digest.update([0]);
         digest.update(&bytes);
-        let revision = format!("{:x}", digest.finalize());
+        let revision = hex(&digest.finalize());
         Ok(Some(ProjectIconImageData {
             source,
             relative_path: checked.relative_path,
@@ -400,7 +400,7 @@ impl ImageScope {
         {
             return Err(CoreError::StaleOwner);
         }
-        let revision = format!("{:x}", digest.finalize());
+        let revision = hex(&digest.finalize());
         let raw = crate::file_bytes::RawFile {
             file: opened.file,
             name: Path::new(&opened.relative_path)

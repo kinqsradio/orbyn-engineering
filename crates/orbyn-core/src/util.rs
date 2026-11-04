@@ -6,7 +6,7 @@ use crate::error::{CoreError, Result};
 use sha2::{Digest, Sha256};
 
 pub fn new_id() -> String {
-    ulid::Ulid::new().to_string().to_lowercase()
+    ulid::Ulid::generate().to_string().to_lowercase()
 }
 
 pub fn now() -> String {
@@ -297,6 +297,14 @@ mod tests {
         assert_eq!(from_hex(&hex(&[0, 171, 255])).unwrap(), vec![0, 171, 255]);
         assert!(from_hex("abc").is_none());
         assert!(from_hex("zz").is_none());
+    }
+
+    #[test]
+    fn sha256_hex_keeps_standard_digest_encoding() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]
