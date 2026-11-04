@@ -141,11 +141,9 @@ describe("published page in the timeline", () => {
     expect(within(dialog).getByText("150%")).toBeInTheDocument();
     // The frame lays out at 1/zoom and is scaled back, so the height above is the
     // height on screen at every zoom.
-    expect(staged).toHaveStyle({
-      height: `${520 / 1.5}px`,
-      transform: "scale(1.5)",
-      transformOrigin: "top left",
-    });
+    expect(staged).toHaveStyle({ transform: "scale(1.5)", transformOrigin: "top left" });
+    // jsdom 30 rounds a computed length to three decimals, so compare the number.
+    expect(parseFloat(getComputedStyle(staged).height)).toBeCloseTo(520 / 1.5, 2);
 
     fireEvent.change(zoom, { target: { value: "50" } });
     expect(staged).toHaveStyle({ height: "1040px", transform: "scale(0.5)" });
