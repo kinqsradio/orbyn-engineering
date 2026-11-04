@@ -6,7 +6,7 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Dialog } from "../../ui/Dialog";
 import { TimelineThread } from "./items";
-import { Lightbox } from "./MarkdownImage";
+import { Lightbox } from "./MarkdownMedia";
 import { fileLinkTarget } from "./MarkdownLink";
 import type { SentAttachment } from "./projection";
 

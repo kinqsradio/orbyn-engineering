@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { startupDiagnostics } from "./smoke-app-diagnostics.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const windows = process.platform === "win32";
@@ -37,6 +38,7 @@ const environment = {
   APPDATA: join(home, "AppData/Roaming"),
   ORBYN_DATA_DIR: data,
   ORBYN_OFFLINE: "1",
+  ORBYN_STARTUP_DIAGNOSTICS: "1",
 };
 
 function find(folder, test) {
@@ -163,6 +165,9 @@ async function main() {
     stop(app);
     await until(STOP_LIMIT_MS, "the service outlived the app", () => !existsSync(handle));
     console.log("The service ended with the app.");
+  } catch (error) {
+    console.error("App startup milestones:", startupDiagnostics(app.tail()));
+    throw error;
   } finally {
     stop(app, true);
     await Promise.race([app.exited, delay(5000)]);
