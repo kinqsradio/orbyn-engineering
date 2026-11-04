@@ -1609,8 +1609,9 @@ private, loopback, link-local, reserved and IPv6 transition ranges are refused.
 The validated addresses are pinned to that request's HTTP client, with ordinary
 TLS certificate validation, no environment proxy and no redirects. No browser
 cookies, launch token, Authorization, Referer or upstream response headers are
-forwarded. A request has five seconds including DNS and body reading; at most four
-upstream fetches run at once, and overload is refused without queuing.
+forwarded. A request has five seconds total including waiting for a fetch slot,
+DNS and body reading. At most four upstream fetches run at once; an uncached
+request waits for a free slot within that same budget, then fails if it expires.
 
 Only PNG, JPEG, GIF, WebP and ICO MIME/signature pairs are served, up to 5 MiB
 of actual streamed bytes. Encoded bodies, SVG, HTML, AVIF and other formats are
