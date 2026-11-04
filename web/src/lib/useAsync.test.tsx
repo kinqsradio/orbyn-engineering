@@ -30,11 +30,15 @@ describe("useAsync", () => {
     );
     await waitFor(() => expect(result.current.status).toBe("ready"));
     fail = true;
-    act(() => result.current.reload());
+    await act(async () => {
+      await result.current.reload();
+    });
     await waitFor(() => expect(result.current.status).toBe("error"));
     expect(result.current.data).toBe("ok");
     fail = false;
-    act(() => result.current.reload());
+    await act(async () => {
+      await result.current.reload();
+    });
     await waitFor(() => expect(result.current.status).toBe("ready"));
   });
 });

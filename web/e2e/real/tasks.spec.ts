@@ -124,3 +124,61 @@ test("a task pauses, runs now, edits and goes", async ({ page }) => {
   await page.getByRole("button", { name: "Delete Hourly check" }).click();
   await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeHidden();
 });
+
+test("a task bound to a thread pauses, runs and edits from the details card", async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 900 });
+  const engines = await service.api<{ id: string }[]>("GET", "/api/engines");
+  const thread = await service.api<{ id: string }>("POST", "/api/threads", {
+    project_id: projectId,
+    engine: engines.find((engine) => engine.id === "codex")?.id,
+    title: "Nightly review",
+    model: null,
+    worktree: null,
+    skill_profile: null,
+  });
+  const task = await service.api<{ id: string }>("POST", "/api/tasks", {
+    project_id: projectId,
+    thread_id: thread.id,
+    name: "Nightly review",
+    prompt: "[scene:usage] check",
+    engine: "codex",
+    schedule: { kind: "interval", every_minutes: 60, time: null, weekdays: [], utc_offset_minutes: 0, only_on_success: false },
+  });
+  const stored = async () =>
+    (await service.api<{ id: string; name: string; enabled: boolean; last_status: string }[]>("GET", "/api/tasks")).find(
+      (entry) => entry.id === task.id,
+    );
+
+  await page.goto(`${service.page}#/threads/${thread.id}`);
+  const details = page.getByRole("complementary", { name: "Thread details" });
+  const automations = details.getByRole("list", { name: "Automations" });
+  await expect(automations).toContainText("Nightly review");
+  await expect(automations.getByRole("listitem")).toHaveCount(1);
+  await expect(automations).not.toContainText("On pushes");
+
+  await details.getByRole("switch", { name: "Enable Nightly review" }).click();
+  await expect.poll(async () => (await stored())?.enabled).toBe(false);
+  await expect(details.getByRole("switch", { name: "Enable Nightly review" })).not.toBeChecked();
+  await details.getByRole("switch", { name: "Enable Nightly review" }).click();
+  await expect.poll(async () => (await stored())?.enabled).toBe(true);
+  await expect(details.getByRole("switch", { name: "Enable Nightly review" })).toBeChecked();
+
+  await details.getByRole("button", { name: "Run Nightly review now" }).click();
+  await expect.poll(async () => (await stored())?.last_status).toBe("started");
+
+  await details.getByRole("button", { name: "Edit Nightly review" }).click();
+  await expect(page).toHaveURL((url) => url.hash === `#/settings/tasks?task=${task.id}`);
+  const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
+  await expect(edit.getByLabel("Name")).toHaveValue("Nightly review");
+  await edit.getByLabel("Name").fill("Nightly check");
+  await edit.getByRole("button", { name: "Save task" }).click();
+  await expect(edit).toBeHidden();
+  await expect(page).toHaveURL((url) => url.hash === "#/settings/tasks");
+
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page).toHaveURL((url) => url.hash === `#/threads/${thread.id}`);
+  await expect(automations).toContainText("Nightly check");
+  await details.getByRole("button", { name: "Manage scheduled tasks" }).click();
+  await expect(page).toHaveURL((url) => url.hash === "#/settings/tasks");
+  await expect(page.getByRole("button", { name: "Edit Nightly check" })).toBeVisible();
+});

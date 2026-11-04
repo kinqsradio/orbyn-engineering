@@ -31,6 +31,7 @@ import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { BranchRow } from "./GitControl";
 import { OpenInEditor } from "./OpenInEditor";
+import { ThreadAutomations } from "./ThreadAutomations";
 import { runningTools } from "./timeline";
 import type { ProjectScript } from "../../generated/ProjectScript";
 import { runProjectAction } from "./runProjectAction";
@@ -104,6 +105,7 @@ export const DETAIL_ROWS: { id: string; label: string }[] = [
   { id: "branch", label: "Branch" },
   { id: "changes", label: "Changes" },
   { id: "pulls", label: "Pull requests" },
+  { id: "automations", label: "Automations" },
   { id: "servers", label: "Local servers" },
   { id: "limits", label: "Limits" },
   { id: "usage", label: "Usage" },
@@ -377,6 +379,7 @@ export function DetailsCard({
           </>
         ) : null}
       </div>
+      {shows("automations") ? <ThreadAutomations threadId={thread.id} /> : null}
       <SideChatRows threadId={thread.id} />
       {runningCount > 0 ? (
         <div className="details-section">
