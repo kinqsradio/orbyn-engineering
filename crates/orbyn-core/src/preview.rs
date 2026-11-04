@@ -41,6 +41,31 @@ const SIZES: std::ops::RangeInclusive<u32> = 100..=4096;
 /// How many frame ticks pass between looks at history, about one a second. A link
 /// clicked in the page changes it with nobody telling this side.
 const HISTORY_TICKS: u32 = 5;
+/// Discover only; the viewer fetches bytes through the restricted image proxy.
+const FAVICON: &str = r#"(() => {
+    const icon = document.querySelector('link[rel~="icon"]');
+    return { page_url: location.href, icon_url: icon ? icon.href : new URL('/favicon.ico', location.href).href };
+})()"#;
+
+fn favicon_url(value: &Value, page_url: &str) -> Option<String> {
+    if value.get("page_url")?.as_str()? != page_url {
+        return None;
+    }
+    let raw = value.get("icon_url")?.as_str()?;
+    if raw.len() > 4096 {
+        return None;
+    }
+    let mut url = reqwest::Url::parse(raw).ok()?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return None;
+    }
+    url.set_fragment(None);
+    Some(url.to_string())
+}
 const ZOOMS: std::ops::RangeInclusive<f64> = 0.25..=3.0;
 const PROFILE_NAME_LIMIT: usize = 64;
 /// How many crashes are put right, and over what time.
@@ -414,6 +439,9 @@ impl Tab {
     fn note_history(&self, history: &HistoryState) {
         let mut info = lock(&self.info);
         if !history.url.is_empty() {
+            if info.url != history.url {
+                info.favicon_url = None;
+            }
             history.url.clone_into(&mut info.url);
         }
         info.can_go_back = history.can_go_back;
@@ -580,13 +608,18 @@ async fn pump(tab: Arc<Tab>) {
             let mut session = tab.session.lock().await;
             let history = session.history().await;
             let title = session.title().await;
-            drop(session);
+            let icon = session.read(FAVICON).await;
             if let Ok(history) = history {
                 tab.note_history(&history);
             }
             if let Ok(title) = title {
                 lock(&tab.info).title = title;
             }
+            if let Ok(icon) = icon {
+                let mut info = lock(&tab.info);
+                info.favicon_url = favicon_url(&icon, &info.url);
+            }
+            drop(session);
         }
         let Ok(frame) = tab.session.lock().await.frame(FRAME_QUALITY).await else {
             if !tab.session.lock().await.is_alive().await {
@@ -647,7 +680,11 @@ impl PreviewManager {
         session.navigate(&url).await?;
         let history = session.history().await?;
         drop(session);
-        lock(&tab.info).url = url;
+        {
+            let mut info = lock(&tab.info);
+            info.url = url;
+            info.favicon_url = None;
+        }
         tab.note_history(&history);
         Ok(tab.view())
     }
@@ -1108,6 +1145,11 @@ impl Core {
         session.set_appearance(&appearance).await?;
         session.navigate(&url).await?;
         let title = session.title().await.unwrap_or_default();
+        let favicon_url = session
+            .read(FAVICON)
+            .await
+            .ok()
+            .and_then(|value| favicon_url(&value, &url));
         let (frames, _) = broadcast::channel(8);
         let tab = Arc::new(Tab {
             info: Mutex::new(PreviewTab {
@@ -1122,6 +1164,7 @@ impl Core {
                 can_go_back: false,
                 can_go_forward: false,
                 title,
+                favicon_url,
                 zoom,
                 appearance,
                 mobile: false,
@@ -1476,6 +1519,41 @@ async fn listeners(checkout: &Path) -> Vec<LocalServer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn favicon_discovery_never_widens_the_image_proxy_url_envelope() {
+        let icon = |raw: &str| {
+            favicon_url(
+                &json!({"page_url":"https://example.com/", "icon_url": raw}),
+                "https://example.com/",
+            )
+        };
+        assert_eq!(
+            icon("https://example.com:443/i.png#part"),
+            Some("https://example.com/i.png".into())
+        );
+        for raw in [
+            "http://example.com/i",
+            "file:///i",
+            "data:image/png,a",
+            "https://user:pass@example.com/i",
+            "https://example.com:444/i",
+        ] {
+            assert_eq!(icon(raw), None);
+        }
+        assert_eq!(favicon_url(&Value::Null, "https://example.com/"), None);
+        assert_eq!(
+            favicon_url(
+                &json!({"page_url":"https://example.com/new", "icon_url":"https://example.com/new.png"}),
+                "https://example.com/old"
+            ),
+            None
+        );
+        assert_eq!(
+            icon(&format!("https://example.com/{}", "x".repeat(4096))),
+            None
+        );
+    }
 
     #[test]
     fn windows_listeners_keep_local_ones_once_and_survive_bad_output() {

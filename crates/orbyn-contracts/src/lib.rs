@@ -2341,6 +2341,10 @@ pub struct PreviewTab {
     pub can_go_back: bool,
     pub can_go_forward: bool,
     pub title: String,
+    /// Page-declared icon; bytes must go through the bounded image proxy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub favicon_url: Option<String>,
     /// `1` is actual size.
     pub zoom: f64,
     /// `system`, `light` or `dark`.

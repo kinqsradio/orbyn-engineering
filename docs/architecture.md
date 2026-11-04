@@ -1518,6 +1518,15 @@ only an explicit allow rule passes.
 
 ## Preview
 
+The browser discovers a page's declared icon, falling back to its origin's
+`/favicon.ico`, alongside its title. The optional `favicon_url` is metadata only:
+the viewer loads bytes through the existing authenticated `/api/media/image`
+proxy and its unchanged HTTPS, public-destination, credential, redirect, format,
+size and cache limits. Unsupported icons keep a neutral globe. The viewer remembers
+at most 50 validated page/icon address pairs after successful loading, separate
+from the launch token. Private tabs neither restore nor save remembered icons.
+Navigation clears the preceding page's icon until discovery catches up.
+
 A preview tab is a headless Chrome with its own profile, apart from the governed
 browser agents use, and needs a trusted folder and an `http` or `https` URL. Up to
 four run at once, and they close when their thread settles, archives or is deleted.
