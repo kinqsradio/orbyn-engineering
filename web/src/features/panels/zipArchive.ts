@@ -86,13 +86,24 @@ export function formatBytes(size: number): string {
 
 const viewOf = (bytes: Uint8Array<ArrayBuffer>) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-/** The offset of the end of central directory record, or -1 when there is none. */
+/**
+ * The offset of the end of central directory record, or -1 when there is none.
+ *
+ * A signature alone proves nothing: entry names, and a comment, are free text,
+ * so a comment can carry a 22-byte record of its own and the first match going
+ * backwards would win. The record is only trusted when the comment it declares
+ * ends exactly at the end of the file, which no copy inside the file does. A
+ * scan that finds no such record answers -1, so the caller refuses rather than
+ * guesses at whichever signature happened to be last.
+ */
 export function findEndOfCentralDirectory(bytes: Uint8Array<ArrayBuffer>): number {
   if (bytes.length < 22) return -1;
   const view = viewOf(bytes);
   const oldest = Math.max(0, bytes.length - EOCD_SEARCH_BYTES);
-  for (let at = bytes.length - 22; at >= oldest; at -= 1) {
-    if (view.getUint32(at, true) === EOCD_SIGNATURE) return at;
+  const newest = bytes.length - 22;
+  for (let at = newest; at >= oldest; at -= 1) {
+    if (view.getUint32(at, true) !== EOCD_SIGNATURE) continue;
+    if (at + 22 + view.getUint16(at + 20, true) === bytes.length) return at;
   }
   return -1;
 }
