@@ -11,10 +11,8 @@
  * and the viewer renders it as React elements.
  */
 
-import { ZipError, formatBytes, readEntryBytes, readZipArchive, type ZipEntry } from "./zipArchive";
+import { ZipError, readEntryBytes, readZipArchive, type ZipEntry } from "./zipArchive";
 
-/** The most XML one part may hold. The archive reader caps an entry at the same 2 MiB. */
-export const MAX_PART_BYTES = 2 * 1024 * 1024;
 /** The most paragraphs and tables one Word document may hold. */
 export const MAX_BLOCKS = 5000;
 /** The most worksheets one workbook may name. */
@@ -38,7 +36,6 @@ export type OfficeKind = "docx" | "xlsx";
 /** Why a document was refused. Every one of these is shown to the person. */
 export type OfficeRefusal =
   | "office_unreadable"
-  | "office_part_too_large"
   | "office_too_many_blocks"
   | "office_too_many_sheets"
   | "office_too_many_cells"
@@ -323,24 +320,27 @@ export function openOfficeParts(bytes: Uint8Array<ArrayBuffer>): OfficeParts {
       try {
         return await readEntryBytes(bytes, entry);
       } catch (failure) {
-        // The caps and the corruption checks belong to the archive reader, and
-        // its message already names what it refused.
-        if (failure instanceof ZipError) throw new OfficeError(failure.code, failure.message);
+        // The caps and the corruption checks belong to the archive reader. Its
+        // message says what it refused; this one says which part that was, so
+        // a reader of a document that holds dozens of parts knows where to
+        // look. The 2 MiB entry cap is the one that bounds a part.
+        if (failure instanceof ZipError) {
+          throw new OfficeError(failure.code, `This document's ${name} can't be read. ${failure.message}`);
+        }
         throw failure;
       }
     },
   };
 }
 
-/** One part's own document element, which is its first element; the scanner's wrapper is not one. */
+/**
+ * One part's own document element, which is its first element; the scanner's
+ * wrapper is not one. The part's size is already bounded by the archive
+ * reader's 2 MiB entry cap, which every part comes through, so there is no
+ * second cap here to reach.
+ */
 async function readPartXml(parts: OfficeParts, name: string): Promise<XmlElement> {
   const bytes = await parts.read(name);
-  if (bytes.length > MAX_PART_BYTES) {
-    throw new OfficeError(
-      "office_part_too_large",
-      `This document's ${name} is ${formatBytes(bytes.length)}; the viewer reads at most ${formatBytes(MAX_PART_BYTES)} of one part.`,
-    );
-  }
   const root = parseXml(new TextDecoder("utf-8").decode(bytes));
   return root.children[0] ?? root;
 }

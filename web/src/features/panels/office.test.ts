@@ -8,16 +8,12 @@ import {
   MAX_BLOCKS,
   MAX_CELLS,
   MAX_COLUMNS_PER_SHEET,
-  MAX_PART_BYTES,
   MAX_ROWS_PER_SHEET,
   MAX_SHEETS,
-  OfficeError,
   cellPosition,
-  parseDocx,
   respondToOfficeRequest,
   type DocxDocument,
   type OfficeKind,
-  type OfficeParts,
   type XlsxDocument,
 } from "./office";
 import { buildDocx, buildOfficePackage, buildXlsx, docxParagraph, workbookParts, worksheet } from "./office.test-support";
@@ -46,17 +42,6 @@ async function refused(
   const answer = await respondToOfficeRequest({ kind, bytes });
   if (answer.ok) throw new Error("Expected this document to be refused.");
   return answer;
-}
-
-/** The error the parser itself raised. */
-async function refusal(promise: Promise<unknown>): Promise<OfficeError> {
-  try {
-    await promise;
-  } catch (error) {
-    if (error instanceof OfficeError) return error;
-    throw error;
-  }
-  throw new Error("Expected this document to be refused.");
 }
 
 it("reads headings, paragraphs and tables in the order the body gives them", async () => {
@@ -202,22 +187,14 @@ it("refuses a document past the block cap with the cap it hit", async () => {
   );
 });
 
-it("refuses a part past the part cap with the cap it hit", async () => {
-  const parts: OfficeParts = {
-    names: ["word/document.xml"],
-    read: async () => new Uint8Array(MAX_PART_BYTES + 1),
-  };
-  const error = await refusal(parseDocx(parts));
-  expect(error.code).toBe("office_part_too_large");
-  expect(error.message).toBe(
-    `This document's word/document.xml is ${formatBytes(MAX_PART_BYTES + 1)}; the viewer reads at most ${formatBytes(MAX_PART_BYTES)} of one part.`,
-  );
-});
-
-it("refuses a part the archive reader will not decompress, with the entry cap it hit", async () => {
+it("refuses an oversized part with the archive reader's entry cap, naming the part", async () => {
+  // The archive reader's 2 MiB entry cap is the one that fires: the reader
+  // asks it for every part, so no separate per-part branch can be reached.
   const answer = await refused(buildOfficePackage({ "word/document.xml": "x".repeat(MAX_ENTRY_BYTES + 1) }));
   expect(answer.code).toBe("entry_too_large");
-  expect(answer.message).toContain(`at most ${formatBytes(MAX_ENTRY_BYTES)} of an entry`);
+  expect(answer.message).toBe(
+    `This document's word/document.xml can't be read. This entry is ${formatBytes(MAX_ENTRY_BYTES + 1)}; the viewer reads at most ${formatBytes(MAX_ENTRY_BYTES)} of an entry.`,
+  );
 });
 
 it("refuses a document over the archive cap the way an archive is refused", async () => {
