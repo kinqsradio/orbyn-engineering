@@ -21,6 +21,11 @@ const PAGE: &str = "<!doctype html><title>t</title>\
 /// Opens a dialog once it has loaded, which holds the page until it is answered.
 const ALERT_PAGE: &str = "<script>setTimeout(() => alert('hi'), 1500)</script>";
 
+/// A field to type into and a body long enough to scroll.
+const FORM_PAGE: &str = "<!doctype html><title>f</title>\
+<body style='margin:0'><input id=name placeholder='your name'>\
+<div style='height:3000px'>tall</div></body>";
+
 fn serve_page() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -31,6 +36,8 @@ fn serve_page() -> u16 {
             let _ = stream.read(&mut buffer);
             let page = if buffer.starts_with(b"GET /alert") {
                 ALERT_PAGE
+            } else if buffer.starts_with(b"GET /form") {
+                FORM_PAGE
             } else {
                 PAGE
             };
@@ -301,6 +308,144 @@ async fn an_agent_records_a_page_in_its_own_tab() {
     )
     .await;
     assert_eq!(answered["handled"], true);
+    call("orbyn_preview_close", json!({ "tab_id": id })).await;
+    service.stop().await;
+}
+
+#[tokio::test]
+#[ignore = "needs an installed browser"]
+async fn a_page_is_read_and_driven_by_an_agent() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let (code, _) = service
+        .patch(&thread, json!({ "permission_mode": "full_access" }))
+        .await;
+    assert_eq!(code, 200);
+    let port = serve_page();
+    let mut seen = None;
+    let mut call = async |name: &str, args: serde_json::Value| {
+        service
+            .admit(&thread, &format!("[mcp-call:{name}]{args}[/mcp-call]"))
+            .await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        service.finished(&thread).await;
+        let text = support::text_of(&events);
+        assert!(text.contains("tool error=false"), "{name}: {text}");
+        let reply = text.rsplit("tool error=false ").next().unwrap().trim();
+        serde_json::from_str::<serde_json::Value>(reply).unwrap()
+    };
+    let tab = call(
+        "orbyn_preview_open",
+        json!({ "url": format!("http://127.0.0.1:{port}/") }),
+    )
+    .await;
+    let id = tab["id"].as_str().unwrap().to_owned();
+
+    // The snapshot names the page's one control, with the text it shows.
+    let snapshot = call("orbyn_preview_snapshot", json!({ "tab_id": id })).await;
+    assert_eq!(snapshot["title"], "t");
+    assert_eq!(snapshot["url"], format!("http://127.0.0.1:{port}/"));
+    assert_eq!(snapshot["truncated"], false, "{snapshot}");
+    let elements = snapshot["elements"].as_array().unwrap();
+    assert_eq!(
+        elements.len(),
+        1,
+        "the script tag is not a visible element: {snapshot}"
+    );
+    let button = elements
+        .iter()
+        .find(|element| element["name"] == "go")
+        .unwrap_or_else(|| panic!("{snapshot}"));
+    assert_eq!(button["role"], "button");
+    assert_eq!(button["selector"], "#b");
+    assert!(
+        snapshot["text"].as_str().unwrap().contains("go"),
+        "{snapshot}"
+    );
+
+    // A wait sees what is on the page now.
+    let shown = call(
+        "orbyn_preview_wait_for",
+        json!({ "tab_id": id, "text": "go", "timeout_ms": 2000 }),
+    )
+    .await;
+    assert_eq!(shown["found"], true, "{shown}");
+
+    // The click runs in the page, which paints itself and drops the button.
+    let clicked = call(
+        "orbyn_preview_act",
+        json!({ "tab_id": id, "action": "click", "selector": "#b" }),
+    )
+    .await;
+    assert_eq!(clicked["clicked"], "#b");
+    let gone = call(
+        "orbyn_preview_wait_for",
+        json!({ "tab_id": id, "selector": "#b", "timeout_ms": 400 }),
+    )
+    .await;
+    assert_eq!(gone["found"], false, "the button is gone: {gone}");
+    assert!(gone["waited_ms"].as_u64().unwrap() >= 300, "{gone}");
+    let background = call(
+        "orbyn_preview_evaluate",
+        json!({ "tab_id": id, "expression": "document.body.style.background" }),
+    )
+    .await;
+    assert_eq!(
+        (
+            background["truncated"].as_bool(),
+            background["value"].as_str()
+        ),
+        (Some(false), Some("rgb(255, 0, 0)")),
+        "{background}"
+    );
+
+    // Typing appends to the field, and a scroll moves the page.
+    call(
+        "orbyn_preview_navigate",
+        json!({ "tab_id": id, "url": format!("http://127.0.0.1:{port}/form") }),
+    )
+    .await;
+    let typed = call(
+        "orbyn_preview_act",
+        json!({ "tab_id": id, "action": "type", "selector": "#name", "text": "Ada" }),
+    )
+    .await;
+    assert_eq!(typed["typed"], "Ada");
+    let value = call(
+        "orbyn_preview_evaluate",
+        json!({ "tab_id": id, "expression": "document.getElementById('name').value" }),
+    )
+    .await;
+    assert_eq!(value["value"], "Ada", "{value}");
+    // The field is named from its placeholder and shows what it now holds.
+    let filled = call("orbyn_preview_snapshot", json!({ "tab_id": id })).await;
+    let field = filled["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|element| element["role"] == "textbox")
+        .unwrap_or_else(|| panic!("{filled}"));
+    assert_eq!(field["name"], "your name");
+    assert_eq!(field["selector"], "#name");
+    assert_eq!(field["value"], "Ada", "{filled}");
+    let scrolled = call(
+        "orbyn_preview_act",
+        json!({ "tab_id": id, "action": "scroll", "dy": 600 }),
+    )
+    .await;
+    assert_eq!(scrolled["scrolled"], 600.0, "{scrolled}");
+    let top = call(
+        "orbyn_preview_evaluate",
+        json!({ "tab_id": id, "expression": "Math.round(window.scrollY)" }),
+    )
+    .await;
+    assert!(top["value"].as_f64().unwrap() > 0.0, "{top}");
+
     call("orbyn_preview_close", json!({ "tab_id": id })).await;
     service.stop().await;
 }

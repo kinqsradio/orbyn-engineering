@@ -48,6 +48,32 @@ const CRASH_LIMIT: usize = 3;
 const CRASH_WINDOW: Duration = Duration::from_secs(30);
 const CRASH_DELAY: Duration = Duration::from_secs(1);
 
+/// A snapshot's bounds: how many elements an agent may read, and how long one
+/// name, value, selector, address or text sample may be. They hold in the page and
+/// again here, so a page that answers more than asked still stays small.
+const MAX_SNAPSHOT_ELEMENTS: usize = 300;
+const DEFAULT_SNAPSHOT_ELEMENTS: usize = 150;
+const MAX_SNAPSHOT_TEXT: usize = 4_000;
+const MAX_NAME_CHARS: usize = 120;
+const MAX_VALUE_CHARS: usize = 120;
+pub(crate) const MAX_SELECTOR_CHARS: usize = 300;
+const MAX_ADDRESS_CHARS: usize = 2_000;
+/// What an agent may ask a page to do at once: one typed string, one wheel of a
+/// sane size, one expression, and one waited-for string.
+pub(crate) const MAX_TYPE_CHARS: usize = 4_000;
+pub(crate) const DEFAULT_SCROLL: f64 = 400.0;
+/// Far more than a page can scroll, so a wheel event stays a wheel event.
+pub(crate) const MAX_SCROLL: f64 = 100_000.0;
+const MAX_EXPRESSION_CHARS: usize = 2_000;
+const MAX_RESULT_BYTES: usize = 20_000;
+/// A wait polls 150 ms apart and gives up inside the 45 seconds a tool has to
+/// answer, with the round count holding even if the clock stalls.
+const DEFAULT_WAIT_MS: u64 = 5_000;
+const MAX_WAIT_MS: u64 = 20_000;
+pub(crate) const MAX_WAIT_TEXT_CHARS: usize = 200;
+const WAIT_POLL: Duration = Duration::from_millis(150);
+const WAIT_ROUNDS: u32 = 140;
+
 /// Reads the element under a point: its tag, a selector that finds it again, and a
 /// bounded sample of what it holds.
 const PICK_ELEMENT: &str = r"(() => {
@@ -66,6 +92,264 @@ const PICK_ELEMENT: &str = r"(() => {
     html: el.outerHTML.slice(0, 1000),
   };
 })()";
+
+/// Walks the visible elements of a page into roles, names and selectors, with a
+/// bounded sample of its text. Every field is cut here as well as in Rust, so one
+/// snapshot of a huge page still costs about the same.
+const SNAPSHOT_PAGE: &str = r"(() => {
+  const LIMIT = __MAX_ELEMENTS__;
+  const TEXT_LIMIT = __MAX_TEXT__;
+  const NAME_LIMIT = 120;
+  const VALUE_LIMIT = 120;
+  const PATH_LIMIT = 5;
+  const cut = (value, limit) => {
+    const text = (value || '').trim().slice(0, limit);
+    return /[\uD800-\uDBFF]$/.test(text) ? text.slice(0, -1) : text;
+  };
+  const selectorOf = (el) => {
+    const path = [];
+    for (let node = el; node && node.nodeType === 1 && path.length < PATH_LIMIT; node = node.parentElement) {
+      if (node.id) {
+        path.unshift(`#${window.CSS && CSS.escape ? CSS.escape(node.id) : node.id}`);
+        break;
+      }
+      const same = [...(node.parentElement ? node.parentElement.children : [])]
+        .filter((other) => other.localName === node.localName);
+      path.unshift(same.length > 1
+        ? `${node.localName}:nth-of-type(${same.indexOf(node) + 1})`
+        : node.localName);
+    }
+    return path.join(' > ');
+  };
+  const roleOf = (el) => {
+    const type = (el.getAttribute('type') || 'text').toLowerCase();
+    switch (el.localName) {
+      case 'button': return 'button';
+      case 'a': return el.hasAttribute('href') ? 'link' : '';
+      case 'textarea': return 'textbox';
+      case 'select': return 'combobox';
+      case 'img': return 'img';
+      case 'input':
+        if (type === 'hidden') return '';
+        if (type === 'checkbox') return 'checkbox';
+        if (type === 'radio') return 'radio';
+        if (['button', 'submit', 'reset', 'image'].includes(type)) return 'button';
+        return 'textbox';
+      default:
+        if (el.isContentEditable) return 'textbox';
+        return (el.getAttribute('role') || '').split(/\s+/)[0];
+    }
+  };
+  const inner = (el) => (el.innerText != null ? el.innerText : el.textContent) || '';
+  const nameOf = (el) => {
+    const label = cut(el.getAttribute('aria-label'), NAME_LIMIT);
+    if (label) return label;
+    const shown = cut(inner(el).replace(/\s+/g, ' '), NAME_LIMIT);
+    if (shown) return shown;
+    return cut(
+      el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('alt'),
+      NAME_LIMIT,
+    );
+  };
+  const elements = [];
+  let truncated = false;
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.offsetParent === null) continue;
+    const box = el.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) continue;
+    const role = roleOf(el);
+    const shown = cut(inner(el).replace(/\s+/g, ' '), NAME_LIMIT);
+    if (!role && !shown) continue;
+    if (elements.length >= LIMIT) { truncated = true; break; }
+    const found = { role: role, name: nameOf(el), selector: selectorOf(el) };
+    if (role === 'textbox' || role === 'combobox') {
+      const value = typeof el.value === 'string' ? cut(el.value, VALUE_LIMIT) : '';
+      if (value) found.value = value;
+    }
+    elements.push(found);
+  }
+  const body = document.body ? inner(document.body) : '';
+  let text = body.slice(0, TEXT_LIMIT);
+  if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1);
+  return {
+    url: location.href,
+    title: document.title,
+    elements: elements,
+    text: text,
+    truncated: truncated || body.length > TEXT_LIMIT,
+  };
+})()";
+
+/// Focuses one element and puts the caret at its end, so the text an agent types
+/// appends to what the field already holds.
+const FOCUS_ELEMENT: &str = r"(() => {
+  const el = document.querySelector(__SELECTOR__);
+  if (!el) return false;
+  el.focus();
+  if (typeof el.setSelectionRange === 'function' && typeof el.value === 'string') {
+    try { el.setSelectionRange(el.value.length, el.value.length); } catch (unusable) {}
+  }
+  return document.activeElement === el;
+})()";
+
+/// The point a wheel event goes to: an element's centre after it is brought into
+/// view, or the middle of the viewport when the page is the target.
+const SCROLL_POINT: &str = r"(() => {
+  const selector = __SELECTOR__;
+  let target = null;
+  if (selector !== null) {
+    target = document.querySelector(selector);
+    if (!target) return null;
+    target.scrollIntoView({ block: 'center' });
+  }
+  const box = target
+    ? target.getBoundingClientRect()
+    : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+})()";
+
+/// A wait polls one boolean, so each look is a round trip of about a word.
+const WAIT_SELECTOR: &str = "document.querySelector(__SELECTOR__) !== null";
+const WAIT_TEXT: &str =
+    "(() => (document.body ? document.body.innerText : '').includes(__TEXT__))()";
+/// A selector the page cannot parse is refused once, before the wait starts.
+const WAIT_SELECTOR_PARSES: &str = r"(() => {
+  try { document.querySelector(__SELECTOR__); return true; } catch (unreadable) { return false; }
+})()";
+
+/// A snapshot's element limit: what was asked for, kept inside the cap.
+fn snapshot_limit(asked: Option<u64>) -> usize {
+    asked.map_or(DEFAULT_SNAPSHOT_ELEMENTS, |asked| {
+        usize::try_from(asked)
+            .unwrap_or(MAX_SNAPSHOT_ELEMENTS)
+            .clamp(1, MAX_SNAPSHOT_ELEMENTS)
+    })
+}
+
+/// A wait's length: five seconds unless asked for more, never past the cap.
+fn wait_timeout(asked: Option<u64>) -> Duration {
+    Duration::from_millis(asked.unwrap_or(DEFAULT_WAIT_MS).clamp(1, MAX_WAIT_MS))
+}
+
+/// At most `limit` characters, counted whole so no cut splits a character.
+fn capped(text: &str, limit: usize) -> String {
+    text.chars().take(limit).collect()
+}
+
+/// One string field of a page's answer, or nothing.
+fn field<'a>(value: &'a Value, key: &str) -> &'a str {
+    value.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+/// A page's snapshot with every field cut again here, in case the page answered
+/// more than it was asked for.
+fn capped_snapshot(page: &Value, limit: usize) -> Value {
+    let mut elements: Vec<Value> = Vec::new();
+    let mut truncated = page
+        .get("truncated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    for entry in page
+        .get("elements")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if elements.len() >= limit {
+            truncated = true;
+            break;
+        }
+        let mut element = json!({
+            "role": capped(field(entry, "role"), MAX_NAME_CHARS),
+            "name": capped(field(entry, "name").trim(), MAX_NAME_CHARS),
+            "selector": capped(field(entry, "selector").trim(), MAX_SELECTOR_CHARS),
+        });
+        let value = capped(field(entry, "value").trim(), MAX_VALUE_CHARS);
+        if !value.is_empty() {
+            element["value"] = json!(value);
+        }
+        elements.push(element);
+    }
+    let text = field(page, "text").trim();
+    if text.chars().count() > MAX_SNAPSHOT_TEXT {
+        truncated = true;
+    }
+    json!({
+        "url": capped(field(page, "url"), MAX_ADDRESS_CHARS),
+        "title": capped(field(page, "title").trim(), MAX_NAME_CHARS),
+        "elements": elements,
+        "text": capped(text, MAX_SNAPSHOT_TEXT),
+        "truncated": truncated,
+    })
+}
+
+/// What an agent gets from an expression: the whole value, or only its size,
+/// never a value cut in half.
+fn bounded_result(value: Value) -> Value {
+    let bytes = serde_json::to_string(&value).map_or(usize::MAX, |text| text.len());
+    if bytes > MAX_RESULT_BYTES {
+        return json!({ "truncated": true, "bytes": bytes });
+    }
+    json!({ "value": value, "truncated": false })
+}
+
+/// An agent's expression, checked against the cap before the page runs it.
+fn checked_expression(expression: &str) -> Result<&str> {
+    if expression.chars().count() > MAX_EXPRESSION_CHARS {
+        return Err(CoreError::Invalid(format!(
+            "An expression is at most {MAX_EXPRESSION_CHARS} characters."
+        )));
+    }
+    Ok(expression)
+}
+
+/// An expression that focuses one element, with the selector quoted as data.
+fn focus_expression(selector: &str) -> String {
+    FOCUS_ELEMENT.replace(
+        "__SELECTOR__",
+        &Value::String(selector.to_owned()).to_string(),
+    )
+}
+
+/// An expression for the point a wheel event goes to, for one element or all.
+fn scroll_expression(selector: Option<&str>) -> String {
+    let target = selector.map_or_else(
+        || "null".to_owned(),
+        |sel| Value::String(sel.to_owned()).to_string(),
+    );
+    SCROLL_POINT.replace("__SELECTOR__", &target)
+}
+
+/// An expression that is true once a selector matches.
+fn wait_selector_expression(selector: &str) -> String {
+    WAIT_SELECTOR.replace(
+        "__SELECTOR__",
+        &Value::String(selector.to_owned()).to_string(),
+    )
+}
+
+/// An expression that is true once the page's text holds a string.
+fn wait_text_expression(text: &str) -> String {
+    WAIT_TEXT.replace("__TEXT__", &Value::String(text.to_owned()).to_string())
+}
+
+/// An expression that is true when the page can parse a selector.
+fn parses_expression(selector: &str) -> String {
+    WAIT_SELECTOR_PARSES.replace(
+        "__SELECTOR__",
+        &Value::String(selector.to_owned()).to_string(),
+    )
+}
+
+/// A snapshot expression, with the element limit kept inside the cap.
+fn snapshot_expression(limit: usize) -> String {
+    SNAPSHOT_PAGE
+        .replace(
+            "__MAX_ELEMENTS__",
+            &limit.clamp(1, MAX_SNAPSHOT_ELEMENTS).to_string(),
+        )
+        .replace("__MAX_TEXT__", &MAX_SNAPSHOT_TEXT.to_string())
+}
 
 struct Recording {
     folder: PathBuf,
@@ -153,6 +437,23 @@ fn decode_base64(text: &str) -> Vec<u8> {
 pub struct OpenHow {
     pub private: bool,
     pub profile: Option<String>,
+}
+
+/// A page action an agent asked for, once its arguments are checked.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewAct {
+    pub action: PreviewAction,
+    pub selector: Option<String>,
+    pub text: Option<String>,
+    pub dy: f64,
+}
+
+/// The three ways an agent may drive a page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewAction {
+    Click,
+    Type,
+    Scroll,
 }
 
 /// A `file:` address for an absolute path, with each part escaped.
@@ -494,6 +795,140 @@ impl PreviewManager {
             }
             _ => Err(CoreError::Invalid("Unknown input.".into())),
         }
+    }
+
+    /// Reads the page's visible controls and a sample of its text. Both are capped
+    /// in the page and here, so a snapshot of a busy page still fits in an answer.
+    pub async fn snapshot(
+        &self,
+        thread_id: &str,
+        id: &str,
+        max_elements: Option<u64>,
+    ) -> Result<Value> {
+        let limit = snapshot_limit(max_elements);
+        let tab = self.tab(thread_id, id)?;
+        let page = tab
+            .session
+            .lock()
+            .await
+            .read(&snapshot_expression(limit))
+            .await?;
+        Ok(capped_snapshot(&page, limit))
+    }
+
+    /// Clicks one element, types into one field or turns the wheel once, so an
+    /// agent drives the page no further than the one action it named.
+    pub async fn act(&self, thread_id: &str, id: &str, step: &PreviewAct) -> Result<Value> {
+        if step.action != PreviewAction::Scroll && step.selector.is_none() {
+            return Err(CoreError::Invalid(
+                "Name the selector of the element to act on.".into(),
+            ));
+        }
+        let tab = self.tab(thread_id, id)?;
+        let mut session = tab.session.lock().await;
+        match step.action {
+            PreviewAction::Click => {
+                session
+                    .click(step.selector.as_deref().unwrap_or_default())
+                    .await
+            }
+            PreviewAction::Type => {
+                let selector = step.selector.as_deref().unwrap_or_default();
+                if session.read(&focus_expression(selector)).await? != json!(true) {
+                    return Err(CoreError::Invalid(format!(
+                        "Nothing to type into matches {selector}."
+                    )));
+                }
+                let typed = step.text.as_deref().unwrap_or_default();
+                session
+                    .input("Input.insertText", json!({ "text": typed }))
+                    .await?;
+                Ok(json!({ "typed": typed }))
+            }
+            PreviewAction::Scroll => {
+                let point = session
+                    .read(&scroll_expression(step.selector.as_deref()))
+                    .await?;
+                let place = |key: &str| point.get(key).and_then(Value::as_f64);
+                let (Some(x), Some(y)) = (place("x"), place("y")) else {
+                    return Err(CoreError::Invalid(format!(
+                        "Nothing to scroll matches {}.",
+                        step.selector.as_deref().unwrap_or("this page")
+                    )));
+                };
+                session
+                    .input(
+                        "Input.dispatchMouseEvent",
+                        json!({
+                            "type": "mouseWheel", "x": x, "y": y,
+                            "deltaX": 0, "deltaY": step.dy,
+                        }),
+                    )
+                    .await?;
+                Ok(json!({ "scrolled": step.dy }))
+            }
+        }
+    }
+
+    /// Runs an agent's expression in the page and answers it whole, or only its
+    /// size when the value is too big to pass on.
+    pub async fn evaluate(&self, thread_id: &str, id: &str, expression: &str) -> Result<Value> {
+        let expression = checked_expression(expression)?;
+        let tab = self.tab(thread_id, id)?;
+        let value = tab.session.lock().await.read(expression).await?;
+        Ok(bounded_result(value))
+    }
+
+    /// Waits for a selector or a string to show up. Each poll takes the session for
+    /// one boolean, so frames keep coming and other tools still run.
+    pub async fn wait_for(
+        &self,
+        thread_id: &str,
+        id: &str,
+        selector: Option<&str>,
+        wanted: Option<&str>,
+        timeout_ms: Option<u64>,
+    ) -> Result<Value> {
+        let tab = self.tab(thread_id, id)?;
+        let timeout = wait_timeout(timeout_ms);
+        let expression = match (selector, wanted) {
+            (Some(selector), None) => {
+                if tab
+                    .session
+                    .lock()
+                    .await
+                    .read(&parses_expression(selector))
+                    .await?
+                    != json!(true)
+                {
+                    return Err(CoreError::Invalid(format!(
+                        "{selector} is not a selector a page can read."
+                    )));
+                }
+                wait_selector_expression(selector)
+            }
+            (None, Some(wanted)) => wait_text_expression(wanted),
+            _ => {
+                return Err(CoreError::Invalid(
+                    "Name a selector or text to wait for, not both.".into(),
+                ));
+            }
+        };
+        let started = Instant::now();
+        let waited = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        for _ in 0..WAIT_ROUNDS {
+            let found = tab.session.lock().await.read(&expression).await;
+            if found.as_ref().is_ok_and(|value| value == &json!(true)) {
+                return Ok(json!({ "found": true, "waited_ms": waited() }));
+            }
+            // A page that navigated mid-poll answers an error, which is a miss and
+            // not a reason to stop waiting.
+            if started.elapsed() >= timeout {
+                break;
+            }
+            tokio::time::sleep(WAIT_POLL).await;
+        }
+        Ok(json!({ "found": false, "waited_ms": waited() }))
     }
 
     pub fn start_recording(&self, thread_id: &str, id: &str, folder: PathBuf) -> Result<()> {
@@ -1086,5 +1521,157 @@ mod tests {
         let netstat = "  TCP    127.0.0.1:8080   0.0.0.0:0   LISTENING   4242\n\
                        TCP    10.0.0.1:50000   1.2.3.4:443   ESTABLISHED   7\n";
         assert_eq!(parse_netstat(netstat), [(4242, String::new(), 8080)]);
+    }
+
+    #[test]
+    fn a_snapshot_expression_carries_its_limit_inside_the_cap() {
+        let expression = snapshot_expression(10_000);
+        assert!(expression.contains("const LIMIT = 300;"), "{expression}");
+        assert!(expression.contains("const TEXT_LIMIT = 4000;"));
+        assert!(snapshot_expression(40).contains("const LIMIT = 40;"));
+        assert!(snapshot_expression(0).contains("const LIMIT = 1;"));
+    }
+
+    #[test]
+    fn a_snapshot_limit_is_what_was_asked_and_never_more() {
+        assert_eq!(snapshot_limit(None), DEFAULT_SNAPSHOT_ELEMENTS);
+        assert_eq!(snapshot_limit(Some(40)), 40);
+        assert_eq!(snapshot_limit(Some(0)), 1);
+        assert_eq!(snapshot_limit(Some(9_999)), MAX_SNAPSHOT_ELEMENTS);
+        assert_eq!(snapshot_limit(Some(u64::MAX)), MAX_SNAPSHOT_ELEMENTS);
+    }
+
+    #[test]
+    fn a_snapshot_is_cut_again_so_a_page_cannot_flood_an_agent() {
+        let page = json!({
+            "url": format!("http://a/{}", "u".repeat(MAX_ADDRESS_CHARS)),
+            "title": "  t  ",
+            "elements": [
+                {
+                    "role": "button",
+                    "name": "n".repeat(MAX_NAME_CHARS + 80),
+                    "selector": "s".repeat(MAX_SELECTOR_CHARS + 80),
+                    "value": "v".repeat(MAX_VALUE_CHARS + 80),
+                },
+                { "role": "link", "name": "second", "selector": "#two" },
+            ],
+            "text": "t".repeat(MAX_SNAPSHOT_TEXT + 10),
+            "truncated": false,
+        });
+        let snapshot = capped_snapshot(&page, 10);
+        assert_eq!(snapshot["title"], "t");
+        assert_eq!(
+            snapshot["url"].as_str().unwrap().chars().count(),
+            MAX_ADDRESS_CHARS
+        );
+        let first = &snapshot["elements"][0];
+        assert_eq!(
+            first["name"].as_str().unwrap().chars().count(),
+            MAX_NAME_CHARS
+        );
+        assert_eq!(
+            first["value"].as_str().unwrap().chars().count(),
+            MAX_VALUE_CHARS
+        );
+        assert_eq!(
+            first["selector"].as_str().unwrap().chars().count(),
+            MAX_SELECTOR_CHARS
+        );
+        assert_eq!(
+            snapshot["text"].as_str().unwrap().chars().count(),
+            MAX_SNAPSHOT_TEXT
+        );
+        assert_eq!(snapshot["truncated"], true, "the text was cut here");
+        assert_eq!(snapshot["elements"].as_array().unwrap().len(), 2);
+        assert_eq!(snapshot["elements"][1]["selector"], "#two");
+    }
+
+    #[test]
+    fn a_snapshot_stops_at_its_limit_and_says_so() {
+        let elements: Vec<Value> = (0..5)
+            .map(|index| json!({ "role": "button", "name": format!("b{index}"), "selector": format!("#b{index}") }))
+            .collect();
+        let page = json!({ "elements": elements, "text": "x" });
+        let bounded = capped_snapshot(&page, 2);
+        assert_eq!(bounded["elements"].as_array().unwrap().len(), 2);
+        assert_eq!(bounded["truncated"], true);
+        let whole = capped_snapshot(&page, 5);
+        assert_eq!(whole["truncated"], false, "everything that came back fit");
+        let empty = capped_snapshot(&json!({}), 10);
+        assert_eq!(empty["elements"], json!([]));
+        assert_eq!(empty["text"], "");
+        assert_eq!(empty["truncated"], false);
+    }
+
+    #[test]
+    fn an_expression_answers_whole_or_only_with_its_size() {
+        let small = bounded_result(json!({ "a": 1 }));
+        assert_eq!(small, json!({ "value": { "a": 1 }, "truncated": false }));
+        let fits = "x".repeat(MAX_RESULT_BYTES - 2);
+        assert_eq!(
+            bounded_result(json!(fits))["truncated"],
+            false,
+            "a value of exactly the cap still fits"
+        );
+        let cut = bounded_result(json!("x".repeat(MAX_RESULT_BYTES)));
+        assert_eq!(cut["truncated"], true);
+        assert_eq!(
+            cut["bytes"].as_u64().unwrap(),
+            u64::try_from(MAX_RESULT_BYTES + 2).unwrap()
+        );
+        assert!(cut.get("value").is_none(), "a cut value is never sent");
+    }
+
+    #[test]
+    fn an_expression_is_refused_past_its_cap() {
+        assert_eq!(checked_expression("1 + 1").unwrap(), "1 + 1");
+        let at_cap = "x".repeat(MAX_EXPRESSION_CHARS);
+        assert!(checked_expression(&at_cap).is_ok());
+        let long = "x".repeat(MAX_EXPRESSION_CHARS + 1);
+        assert!(checked_expression(&long).is_err());
+    }
+
+    #[test]
+    fn a_wait_is_bounded_in_time_and_in_rounds() {
+        assert_eq!(
+            wait_timeout(None),
+            Duration::from_millis(DEFAULT_WAIT_MS),
+            "five seconds unless asked"
+        );
+        assert_eq!(
+            wait_timeout(Some(600_000)),
+            Duration::from_millis(MAX_WAIT_MS)
+        );
+        assert_eq!(wait_timeout(Some(0)), Duration::from_millis(1));
+        assert!(
+            WAIT_POLL * WAIT_ROUNDS >= Duration::from_millis(MAX_WAIT_MS),
+            "the rounds outlast the longest wait"
+        );
+    }
+
+    #[test]
+    fn the_page_expressions_quote_what_they_carry() {
+        let awkward = r#"a"b'c\d`e"#;
+        let quoted = Value::String(awkward.to_owned()).to_string();
+        for expression in [
+            focus_expression(awkward),
+            scroll_expression(Some(awkward)),
+            wait_selector_expression(awkward),
+            wait_text_expression(awkward),
+            parses_expression(awkward),
+            scroll_expression(None),
+            snapshot_expression(5),
+        ] {
+            assert!(!expression.contains("__"), "{expression}");
+        }
+        assert!(focus_expression(awkward).contains(&quoted));
+        assert!(wait_selector_expression(awkward).contains(&quoted));
+        assert!(wait_text_expression(awkward).contains(&quoted));
+        assert!(parses_expression(awkward).contains(&quoted));
+        assert!(scroll_expression(Some(awkward)).contains(&quoted));
+        assert!(
+            scroll_expression(None).contains("const selector = null;"),
+            "the page is the target when no selector is named"
+        );
     }
 }
