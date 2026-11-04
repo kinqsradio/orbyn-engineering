@@ -18,7 +18,7 @@ test("a finished turn folds, groups its tools and shows command output", async (
   await expect(page).toHaveURL(/#\/threads\//);
   await settled(service, threadIdOf(page));
 
-  const fold = page.locator("button.work-summary").filter({ hasText: /^Ran 1 command and changed 2 files; 1 tool call failed; 1 tool call finished without a reported outcome/ });
+  const fold = page.locator("button.work-summary").filter({ hasText: /^Ran 1 command and changed 2 files; 1 tool call failed; 1 tool call finished without a reported outcome ·/ });
   await expect(fold).toBeVisible();
   await expect(page.locator(".msg-assistant").getByText("done")).toBeVisible();
   await expect(page.getByText("I'll look around first.")).toBeHidden();
