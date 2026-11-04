@@ -1246,6 +1246,12 @@ mod tests {
     }
 
     #[test]
+    fn secret_requests_require_an_owner_decision_before_exposure() {
+        assert!(!is_tool("request_secret"));
+        assert!(!is_tool("orbyn_request_secret"));
+    }
+
+    #[test]
     fn delegated_stop_is_gated_and_background_wait_is_bounded() {
         let stop = TOOLS
             .iter()
