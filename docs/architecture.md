@@ -105,6 +105,15 @@ out of the thread list, works in the parent's folder and starts `supervised`. Br
 adds its own messages to the parent's handoff and leaves the parent's engine session
 alone, so the next run carries them once. It needs an idle parent.
 
+Project folders in the thread sidebar use the same local project-scope catalog as
+settings. The client sends its repository, repository-path or separate recipe and
+any per-project overrides; the service reads sanitized Git identity, and the browser
+performs no Git read. Checkouts of one folder keep their threads under its label.
+Project and thread sort remain client preferences, as does the saved open state of
+folders. A failed or partial catalog leaves an unobserved checkout in its own folder
+instead of hiding it or widening a group, and grouping changes no registration,
+trust or project file.
+
 A run that fails on a usage or rate limit leaves a limit on its thread: the engine's
 words, when it stopped and the reset if the engine gave one. Any new run, settle or
 archive clears it. With a reset in the future, `auto_resume_limited_threads` schedules a
@@ -176,6 +185,15 @@ chip becomes a readable block at the top of the prompt and the typed draft follo
 Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
 paste into a composer restores the chips and refetches a file whose text was not
 carried. Ordinary text, broken JSON and half-known chips never become chips.
+
+A terminal selection also records the one-based buffer rows it covered, so its
+chip and prompt block name those lines instead of the whole terminal. Chips count
+as part of the message, not as text beside it: the 120,000-character limit covers
+the complete prompt, a selection that would push it over is refused rather than
+added, and while a terminal chip is attached the composer refuses every local
+command, `/compact`, `/goal`, side chats and approval replies, keeping both the
+draft and the chip instead of consuming either. Captured output is plain text and
+is never reread from a running terminal.
 
 After a Claude thread has sat idle past its prompt-cache window, returning to it
 offers one compact action before the next turn. It is not offered while a run is
