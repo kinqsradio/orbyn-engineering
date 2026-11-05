@@ -136,3 +136,14 @@ driver now consumes the matching pending call without changing the plan when
 structured results and text-only create/update results retain their projection.
 These are offline fixtures. The text-only creation fixture has a null parent ID;
 it does not establish projection of actual nested subagent traffic.
+
+## C31 surface menu qualification
+
+A real-service browser fixture with a stand-in forge opens the thread's linked
+pull through `New surface` → `Pull request`, selects it again without duplicating
+the tab, and closes the tab while retaining the link. An unlinked thread keeps
+the entry disabled; Escape closes the menu and returns focus to its trigger.
+The Windows fixture uses a Node command shim and the native PATH separator, so
+the stand-in runs instead of an installed `gh`. This is browser qualification with
+synthetic forge data, not a live forge or native-desktop observation. Device and
+mute exclusions remain unchanged, and native qualification remains open.
