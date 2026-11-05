@@ -111,7 +111,7 @@ function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan
         </>
       }
     >
-      {plan.commit || plan.pull ? <p>Review and confirm your changes. Leave text blank to auto-generate it using your engine. This uses engine usage.</p> : null}
+      {plan.commit || plan.pull ? <p>Review and confirm your changes. Leave text blank to auto-generate it when your engine supports writing; this uses engine usage. Otherwise a blank PR title uses the thread title.</p> : null}
       {plan.commit ? (
         <Field label="Commit message">
           {(props) => <textarea {...props} rows={3} value={message} placeholder="Leave empty to auto-generate" autoFocus onChange={(event) => setMessage(event.target.value)} />}
