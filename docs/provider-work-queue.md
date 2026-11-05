@@ -117,8 +117,16 @@ that copy away, a plain read against a new service process returned the same nin
 models with the stored `checked_at` and the error `<path> was not found on this
 machine.`; a forced refresh did the same. Restoring the copy and forcing a refresh
 discovered nine models again with no error and a new `checked_at`, and rewrote the
-file. No turn, login or installed-user-state change was involved. Claude's
-discovery, and so its cache entry, remains unobserved without its own login.
+file. No turn, login or installed-user-state change was involved.
+
+Claude's discovery was then observed through the same service on macOS with
+installed Claude Code 2.1.318, a task-owned `CLAUDE_CONFIG_DIR` and data directory.
+The engine reported signed out (`tokenSource: none`) and forced discovery returned
+its five models from the engine, `source: engine` with no fallback, and wrote the
+`claude` entry to `catalog.json`. Its catalog key includes the CLI version and login
+state, so a missing binary or a different login is treated as a different engine
+rather than answered from the stored list. Claude discovery on Windows is still
+unobserved.
 
 `cargo fmt --all --check`, `cargo clippy -p orbyn-core --all-targets -- -D warnings`,
 `cargo test -p orbyn-core engines::` (39 passed) and
