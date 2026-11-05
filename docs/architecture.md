@@ -420,8 +420,17 @@ provider or guesses a smaller model. Only the guarded Claude one-shot path suppo
 repository-derived text: an owned temporary folder, empty tools, strict empty MCP
 configuration, disabled hooks/cloud MCP/IDE connections and slash commands,
 `dontAsk`, and no session persistence. Rejected flags fail without a retry.
-Codex and unproven drivers return unsupported for generated writing; manual text
-continues to work. Existing title calls retain their separate model policy and
+The guarded path is a separate driver call (`write_text`); the shared one-shot used
+for thread titles keeps its original flags. Codex and unproven drivers never
+generate: blank fields keep manual behavior there (a blank pull request title falls
+back to the thread title, a blank description stays blank, a blank commit message is
+refused). With a writing engine, a typed pull request title is kept and only the
+blank description is generated. Pull request context diffs against the upstream
+remote's tracking ref (the branch's configured remote, else `origin`) when it
+exists, else the local base branch; the staleness check uses the same ref. The
+checked snapshot includes the symbolic branch name (a fixed marker on a detached
+HEAD), so switching branches at the same commit during generation is refused.
+Existing title calls retain their separate model policy and
 Codex path; this change does not qualify that path as tool-free. No credential
 configuration or MCP server list is read to implement writing. Prompts and patches
 are not saved by the generation audit, which records purpose, engine and model.

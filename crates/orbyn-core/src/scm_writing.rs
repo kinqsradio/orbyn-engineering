@@ -201,6 +201,15 @@ async fn pending_modes(cwd: &Path, parent: &str) -> Result<BTreeMap<String, Stri
     Ok(modes)
 }
 
+/// The symbolic branch name, or a fixed marker on a detached HEAD, where
+/// `symbolic-ref --quiet` exits 1 with no output.
+async fn symbolic_head(cwd: &Path) -> Result<Vec<u8>> {
+    match read_git(cwd, &["symbolic-ref", "--quiet", "HEAD"]).await {
+        Err(CoreError::Git(message)) if message.is_empty() => Ok(b"detached HEAD".to_vec()),
+        other => other,
+    }
+}
+
 /// Fingerprint exactly the changed working files, including untracked files and
 /// staged-only changes that add -A will replace. Never follows a symlink.
 async fn candidate(cwd: &Path) -> Result<Candidate> {
@@ -234,7 +243,7 @@ async fn candidate(cwd: &Path) -> Result<Candidate> {
     names.extend(untracked.iter().map(|path| (*path).to_owned()));
     let mut hash = Sha256::new();
     hash.update(parent.as_bytes());
-    hash.update(read_git(cwd, &["symbolic-ref", "--quiet", "HEAD"]).await?);
+    hash.update(symbolic_head(cwd).await?);
     let mut context = String::new();
     let mut total = 0u64;
     for name in names {
@@ -358,6 +367,41 @@ async fn candidate(cwd: &Path) -> Result<Candidate> {
     })
 }
 
+/// The revision that names the base: the upstream remote's tracking ref when it
+/// exists (the local branch can be stale), else the name as given.
+async fn base_spec(cwd: &Path, base: &str) -> Result<String> {
+    if !base.starts_with("refs/") {
+        let branch = read_git(cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+            .await
+            .ok()
+            .and_then(|value| String::from_utf8(value).ok())
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_default();
+        let mut remote = "origin".to_owned();
+        if !branch.is_empty()
+            && let Ok(value) = read_git(
+                cwd,
+                &["config", "--get", &format!("branch.{branch}.remote")],
+            )
+            .await
+            && let Ok(value) = String::from_utf8(value)
+        {
+            let value = value.trim();
+            if !value.is_empty() && value != "." && !value.starts_with('-') {
+                remote = value.to_owned();
+            }
+        }
+        let tracking = format!("refs/remotes/{remote}/{base}^{{commit}}");
+        if read_git(cwd, &["rev-parse", "--verify", "--quiet", &tracking])
+            .await
+            .is_ok()
+        {
+            return Ok(tracking);
+        }
+    }
+    Ok(format!("{base}^{{commit}}"))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CommitText {
@@ -420,12 +464,20 @@ pub(crate) struct PreparedWriting {
     candidate: Option<Candidate>,
     base: Option<(String, String)>,
     head: Option<String>,
+    branch: Option<Vec<u8>>,
 }
 
 impl PreparedWriting {
     pub async fn check(&self, cwd: &Path) -> Result<()> {
         if let Some(head) = &self.head
             && utf8(read_git(cwd, &["rev-parse", "--verify", "HEAD"]).await?)? != *head
+        {
+            return Err(invalid(
+                "The branch changed while generating text. Try again.",
+            ));
+        }
+        if let Some(branch) = &self.branch
+            && symbolic_head(cwd).await? != *branch
         {
             return Err(invalid(
                 "The branch changed while generating text. Try again.",
@@ -458,6 +510,27 @@ impl Core {
         actor: &str,
     ) -> Result<PreparedWriting> {
         let mut action = action.clone();
+        // An engine that cannot generate keeps manual behavior for blank fields:
+        // a blank pull request title falls back to the thread title, a blank
+        // description stays blank and a blank commit message is refused later.
+        let writes = self
+            .engines
+            .driver(&thread.engine)
+            .is_ok_and(|driver| driver.supports_writing());
+        if !writes {
+            if let Some(draft) = action.pull_request.as_mut()
+                && draft.title.trim().is_empty()
+            {
+                draft.title = thread.title.clone();
+            }
+            return Ok(PreparedWriting {
+                action,
+                candidate: None,
+                base: None,
+                head: None,
+                branch: None,
+            });
+        }
         let commit = action
             .commit_message
             .as_ref()
@@ -472,6 +545,7 @@ impl Core {
                 candidate: None,
                 base: None,
                 head: None,
+                branch: None,
             });
         }
         self.check_engine_enabled(&thread.engine, &thread.project_id)?;
@@ -493,14 +567,6 @@ impl Core {
             },
         )?;
         let driver = self.engines.driver(&thread.engine)?;
-        // A separate driver capability fails closed unless its one-shot boundary
-        // is qualified for repository-derived untrusted text.
-        if !driver.supports_writing() {
-            return Err(CoreError::Unsupported(
-                "This engine cannot safely generate source control text. Enter text manually."
-                    .into(),
-            ));
-        }
         let cwd = Path::new(&thread.cwd);
         let root = utf8(read_git(cwd, &["rev-parse", "--show-toplevel"]).await?)?;
         let cwd = Path::new(root.trim_end_matches(['\r', '\n']));
@@ -512,6 +578,11 @@ impl Core {
             Some(utf8(
                 read_git(cwd, &["rev-parse", "--verify", "HEAD"]).await?,
             )?)
+        } else {
+            None
+        };
+        let branch = if pull {
+            Some(symbolic_head(cwd).await?)
         } else {
             None
         };
@@ -551,13 +622,8 @@ impl Core {
             if base.starts_with('-') || base.contains(['\n', '\0']) {
                 return Err(invalid("Choose a valid base branch."));
             }
-            let oid = utf8(
-                read_git(
-                    cwd,
-                    &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
-                )
-                .await?,
-            )?;
+            let spec = base_spec(cwd, &base).await?;
+            let oid = utf8(read_git(cwd, &["rev-parse", "--verify", &spec]).await?)?;
             let merge = utf8(read_git(cwd, &["merge-base", "HEAD", oid.trim()]).await?)?;
             template = style.template(cwd, oid.trim()).await?;
             let range = format!("{}..HEAD", merge.trim());
@@ -590,7 +656,7 @@ impl Core {
                     "This pull request is too large to describe. Enter text manually.",
                 ));
             }
-            base_identity = Some((format!("{base}^{{commit}}"), oid));
+            base_identity = Some((spec, oid));
             // Pin the same base that supplied the generation context.
             if draft.base.is_none() {
                 draft.base = base.strip_prefix("refs/remotes/origin/").map(str::to_owned);
@@ -646,7 +712,7 @@ impl Core {
                 run_id: None,
                 detail: json!({"purpose":purpose,"model":model}),
             })?;
-            let reply = driver.one_shot(&prompt, Some(&model)).await?;
+            let reply = driver.write_text(&prompt, Some(&model)).await?;
             if purpose == "commit" {
                 action.commit_message = Some(commit_reply(&reply)?);
             } else {
@@ -665,6 +731,7 @@ impl Core {
             candidate: snapshot,
             base: base_identity,
             head,
+            branch,
         })
     }
 }
@@ -837,5 +904,55 @@ mod tests {
         std::fs::write(cwd.join("new untracked.txt"), "new é content\n").unwrap();
         run_git(cwd, &["add", "-A"]);
         assert_eq!(before.identity, candidate(cwd).await.unwrap().identity);
+    }
+
+    #[tokio::test]
+    async fn detached_head_is_a_stable_candidate_marker_not_an_error() {
+        let dir = TempDir::new();
+        let cwd = dir.path();
+        run_git(cwd, &["init", "-q", "-b", "main"]);
+        run_git(cwd, &["config", "user.name", "Test"]);
+        run_git(cwd, &["config", "user.email", "test@example.com"]);
+        std::fs::write(cwd.join("one.txt"), "before\n").unwrap();
+        run_git(cwd, &["add", "."]);
+        run_git(cwd, &["commit", "-qm", "initial"]);
+        std::fs::write(cwd.join("one.txt"), "after\n").unwrap();
+        let attached = candidate(cwd).await.unwrap().identity;
+        run_git(cwd, &["checkout", "-q", "--detach"]);
+        let first = candidate(cwd).await.unwrap();
+        assert_eq!(first.identity, candidate(cwd).await.unwrap().identity);
+        assert_eq!(symbolic_head(cwd).await.unwrap(), b"detached HEAD");
+        assert_ne!(attached, first.identity);
+    }
+
+    #[tokio::test]
+    async fn base_prefers_the_upstream_tracking_ref_and_falls_back_to_local() {
+        let dir = TempDir::new();
+        let cwd = dir.path();
+        run_git(cwd, &["init", "-q", "-b", "main"]);
+        run_git(cwd, &["config", "user.name", "Test"]);
+        run_git(cwd, &["config", "user.email", "test@example.com"]);
+        std::fs::write(cwd.join("one.txt"), "one\n").unwrap();
+        run_git(cwd, &["add", "."]);
+        run_git(cwd, &["commit", "-qm", "initial"]);
+        assert_eq!(base_spec(cwd, "main").await.unwrap(), "main^{commit}");
+        std::fs::write(cwd.join("one.txt"), "two\n").unwrap();
+        run_git(cwd, &["commit", "-qam", "newer"]);
+        run_git(cwd, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        assert_eq!(
+            base_spec(cwd, "main").await.unwrap(),
+            "refs/remotes/origin/main^{commit}"
+        );
+        run_git(
+            cwd,
+            &["remote", "add", "fork", "https://example.invalid/x.git"],
+        );
+        run_git(cwd, &["config", "branch.main.remote", "fork"]);
+        assert_eq!(base_spec(cwd, "main").await.unwrap(), "main^{commit}");
+        run_git(cwd, &["update-ref", "refs/remotes/fork/main", "HEAD"]);
+        assert_eq!(
+            base_spec(cwd, "main").await.unwrap(),
+            "refs/remotes/fork/main^{commit}"
+        );
     }
 }

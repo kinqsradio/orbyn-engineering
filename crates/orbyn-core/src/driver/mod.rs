@@ -420,6 +420,14 @@ pub trait EngineDriver: Send + Sync {
             "This engine cannot answer a one-off request.".into(),
         ))
     }
+
+    /// A hardened one-shot for repository-derived text, used only when
+    /// `supports_writing` is true. Title generation keeps `one_shot`.
+    async fn write_text(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot safely generate source control text. Enter text manually.".into(),
+        ))
+    }
 }
 
 /// An `effort` option from the levels a model reports, in its order.

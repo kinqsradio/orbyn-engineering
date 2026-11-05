@@ -26,7 +26,7 @@ use tokio_util::codec::{FramedRead, LinesCodec};
 use tokio_util::sync::CancellationToken;
 
 use super::pipes::{
-    EngineProcess, exit_message, lines, one_shot_at, resolve_engine, spawn_engine,
+    EngineProcess, exit_message, lines, one_shot_at, one_shot_cli, resolve_engine, spawn_engine,
     spawn_engine_with,
 };
 use super::{
@@ -265,6 +265,21 @@ impl EngineDriver for ClaudeDriver {
     }
 
     async fn one_shot(&self, prompt: &str, model: Option<&str>) -> Result<String> {
+        let mut args = vec![
+            "-p",
+            "--output-format",
+            "text",
+            "--tools",
+            "",
+            "--no-session-persistence",
+        ];
+        if let Some(model) = model {
+            args.extend(["--model", model]);
+        }
+        one_shot_cli(&self.program, &args, prompt).await
+    }
+
+    async fn write_text(&self, prompt: &str, model: Option<&str>) -> Result<String> {
         let dir = ProbeDir::new()?;
         let mcp = dir.path().join("mcp.json");
         let settings = dir.path().join("settings.json");

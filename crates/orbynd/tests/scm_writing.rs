@@ -170,7 +170,9 @@ async fn unsupported_codex_generation_does_not_redirect_and_manual_text_bypasses
             json!({"commit_message":""}),
         )
         .await;
-    assert_eq!(status, 422, "{error}");
+    // Main's behavior: a blank commit message is refused, never generated.
+    assert_eq!(status, 400, "{error}");
+    assert_eq!(error["message"], "Enter a commit message.");
     assert!(!record.exists());
     let (status, result) = service
         .send(
@@ -454,5 +456,100 @@ async fn staged_unborn_mode_changed_during_generation_is_rejected_before_add() {
         "generation must reject before staging a new mode"
     );
     assert!(!cwd.join(".git/refs/heads/main").exists());
+    service.stop().await;
+}
+
+fn feature_with_commit(cwd: &Path) {
+    run_git(cwd, &["switch", "-qc", "feature"]);
+    std::fs::write(cwd.join("tracked.txt"), "feature change\n").unwrap();
+    run_git(cwd, &["commit", "-qam", "feature work"]);
+}
+
+async fn pull_titles(service: &Service, thread: &str) -> Vec<String> {
+    service
+        .audit(thread)
+        .await
+        .into_iter()
+        .filter(|row| row["action"] == "git.pull_request")
+        .map(|row| row["target"].as_str().unwrap().to_owned())
+        .rev()
+        .collect()
+}
+
+#[tokio::test]
+async fn engine_without_writing_keeps_manual_pull_request_behavior_for_blank_fields() {
+    let (dir, service, thread, record) = fixture("codex").await;
+    let cwd = dir.path().join("project");
+    feature_with_commit(&cwd);
+    let path = format!("/api/threads/{thread}/git/action");
+    let thread_title = service.json(&format!("/api/threads/{thread}")).await["title"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (status, result) = service
+        .send(
+            &path,
+            json!({"pull_request":{"title":"Typed title","body":"","base":"main"}}),
+        )
+        .await;
+    assert_eq!(status, 200, "{result}");
+    let (status, result) = service
+        .send(
+            &path,
+            json!({"pull_request":{"title":"","body":"","base":"main"}}),
+        )
+        .await;
+    assert_eq!(status, 200, "{result}");
+    assert_eq!(
+        pull_titles(&service, &thread).await,
+        ["Typed title".to_owned(), thread_title]
+    );
+    assert!(!record.exists(), "no generation for an unsupported engine");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn writing_engine_keeps_a_typed_title_and_generates_only_the_blank_body() {
+    let (dir, service, thread, record) = fixture("claude").await;
+    let cwd = dir.path().join("project");
+    feature_with_commit(&cwd);
+    let (status, result) = service
+        .send(
+            &format!("/api/threads/{thread}/git/action"),
+            json!({"pull_request":{"title":"Typed title","body":"","base":"main"}}),
+        )
+        .await;
+    assert_eq!(status, 200, "{result}");
+    assert!(record.exists(), "the body was generated");
+    assert_eq!(pull_titles(&service, &thread).await, ["Typed title"]);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn switching_branches_at_the_same_commit_during_pull_request_generation_is_refused() {
+    let (dir, service, thread, _) = fixture("claude").await;
+    let cwd = dir.path().join("project");
+    feature_with_commit(&cwd);
+    let barrier = dir.path().join("barrier");
+    std::fs::remove_file(barrier.with_extension("release")).unwrap();
+    let path = format!("/api/threads/{thread}/git/action");
+    let action = service.send(
+        &path,
+        json!({"push":true,"pull_request":{"title":"","body":"","base":"main"}}),
+    );
+    let switch = async {
+        for _ in 0..500 {
+            if barrier.with_extension("ready").exists() {
+                run_git(&cwd, &["switch", "-qc", "other"]);
+                std::fs::write(barrier.with_extension("release"), "release").unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("the synthetic model request was not admitted");
+    };
+    let ((status, error), ()) = tokio::join!(action, switch);
+    assert_eq!(status, 400, "{error}");
+    assert!(pull_titles(&service, &thread).await.is_empty());
     service.stop().await;
 }
