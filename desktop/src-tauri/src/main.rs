@@ -284,7 +284,9 @@ fn check_for_update(app: &AppHandle) {
                 message
             }
             Ok(None) => serde_json::json!({ "type": "app_update_none" }),
-            Err(message) => serde_json::json!({ "type": "app_update_failed", "message": message }),
+            Err(message) => {
+                serde_json::json!({ "type": "app_update_check_failed", "message": message })
+            }
         };
         tell_core(&app, message);
     });
