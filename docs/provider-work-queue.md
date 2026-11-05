@@ -119,18 +119,25 @@ and manual-refresh recovery, not an authenticated engine handshake. Both passed 
 suite's 648 passing tests. Packaged Windows/macOS webview qualification remains
 open under #140.
 
-## I9 and I51 remain open
+## I9 protocol check — 5 November 2026
 
-Codex 0.160.0's locally generated schema includes `feedback/upload`. Its parameters
-include `classification`, `includeLogs`, `reason`, `threadId`, `extraLogFiles` and
-`tags`; its response includes `threadId` and optional `promptHash`. The
+Installed Codex 0.166.0 generates `feedback/upload`, whose parameters are
+`classification`, `includeLogs`, `reason`, `threadId`, `extraLogFiles` and `tags`
+and whose response is `threadId` plus an optional `promptHash`; it also generates
+`feedback/save`, which writes a ZIP to a caller-owned path on the app-server host.
+The
 [official app-server documentation](https://developers.openai.com/codex/app-server)
-describes the request and version-specific schema generation. Neither that schema
-nor the successful unauthenticated model-list requests establish that upstream
-feedback works without authentication or a live session. No feedback was sent.
-I9 remains open until an explicitly authorized sanitized submission establishes
-the actual response and requirements. No feedback UI or speculative service route
-has been added.
+describes the request and version-specific schema generation.
+
+Run against the installed app-server with a task-owned `CODEX_HOME` holding no
+credentials, where `account/read` reported `{"account":null,"requiresOpenaiAuth":true}`,
+`feedback/upload` raised no authentication or session error. It attempted an upload
+to `https://o33249.ingest.us.sentry.io/...` and failed only because the probe pointed
+every proxy variable at a closed local port (`Connection refused`). The supported
+request therefore does not need a live authenticated session: the remaining
+dependency is authorization to send one sanitized report and observe the accepted
+response. Nothing was sent, no feedback UI or service route was added, and I9 stays
+open under #140.
 
 The signed `engines/tested-versions.json` contains only minimum and tested versions.
 It has no known-problem advisories or recommended replacement policy, and existing
