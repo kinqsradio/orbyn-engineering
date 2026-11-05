@@ -1,6 +1,87 @@
 # Command-line reference
 
-Run `orbyn help` or `orbyn triage --help` for command syntax.
+`orbyn` is the command beside `orbynd` in a built desktop bundle. It can use a
+running service or start the bundled one. It targets macOS and Windows. Run
+`orbyn help`, `orbyn help <command>` or `<command> --help` for exact syntax.
+From a source checkout, `cargo run -p orbynd --bin orbyn -- <arguments>` runs
+the CLI; starting a service also needs the built sibling `orbynd` and UI assets.
+This is a source/bundle workflow, not an npm distribution. There is currently no
+documented `npx orbyn` try-without-install command.
+
+## Shared options and service discovery
+
+- `--data-dir DIR` selects the service's data folder. `ORBYN_DATA_DIR` is the
+  fallback; otherwise the app-data location is used. Separate data folders isolate
+  services. On macOS the default is `~/Library/Application Support/Orbyn`; on
+  Windows it is `%LOCALAPPDATA%\Orbyn` (falling back to the home folder).
+- `--json` requests structured output for API commands and service dry-run plans.
+  It does not turn native triage terminal output into JSON.
+- `--help` and `--version` display command information without starting a service.
+
+API commands discover the URL and private launch token from `service.json` in the
+data folder. Do not share that file. Ordinary failures return exit 1; no running
+service returns 2; success returns 0. Clap syntax/help exits use Clap's normal
+codes. Triage passes the native child's numeric exit through to the operating
+system, including full Windows 32-bit statuses. An exit without a numeric code
+becomes 1; Unix process status exposes its usual low eight exit bits.
+
+## Starting and opening
+
+| Command | Behavior |
+| --- | --- |
+| `orbyn [FOLDER]` | Start or reuse a responding service and open its browser UI; register the folder if needed. |
+| `orbyn start [FOLDER] [--no-open]` | Same start behavior; optionally leave the browser alone. |
+| `orbyn app [FOLDER]` | Open the desktop app through `orbyn://`; a folder uses its project route and requires service discovery. |
+| `orbyn serve [OPTIONS...]` | Run sibling `orbynd serve` in this terminal, forwarding its options. |
+| `orbyn status` | Report service URL/version, active runs, terminals and workspace configuration. |
+
+New folder registrations start untrusted. Opening one does not authorize a run.
+`ORBYN_OPENER=-` prints the target that would open; another value names the opener
+program. Printed opener targets can contain the local session token: keep them
+private. A detached service writes `service.log` in its data folder.
+
+`orbynd serve --help` is the service-options reference. Common options include
+`--port`, `--data-dir`, `--ui-dir`, `--library-bundle`, `--update-manifest` and
+`--parent-stdin`; the last is the desktop's ownership channel, not an interactive
+session. `ORBYN_LIBRARY_BUNDLE` selects a bundled library and
+`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check. There is no
+CLI command here for exact-version update, channel switching or downgrade.
+
+## Threads, projects and preferences
+
+These commands use the same service APIs and rules as the UI.
+
+| Command | Options / behavior |
+| --- | --- |
+| `orbyn thread list` | `--project ID`, `--archived`. |
+| `orbyn thread start PROMPT` | `--project ID`, `--engine ID` (default `claude`), `--title TITLE`, `--wait`. No project starts a scratch thread. |
+| `orbyn thread send THREAD PROMPT` | Queue a message; `--wait` waits for the run and fails unless it completes. |
+| `orbyn thread show THREAD` | `--wait`, `--limit N` (default 200). |
+| `orbyn project list` | List registered projects. |
+| `orbyn project add PATH` | Register an existing folder, initially untrusted. |
+| `orbyn project remove PROJECT` | Unregister and remove its threads; keep the folder. |
+| `orbyn project rename PROJECT NAME` | Change the displayed name; keep the folder. |
+| `orbyn theme show`, `set NAME`, `clear` | Read/change/reset the stored `default_theme` preference. Running UI consumption remains a parity gap. |
+
+## Local maintenance
+
+| Command | Behavior |
+| --- | --- |
+| `orbyn doctor [--dry-run]` | Report database reclaimable space. |
+| `orbyn doctor --fix` | Ask the service to reclaim space; active runs refuse repair. |
+| `orbyn browser setup` | macOS/Windows: reports that no setup is required, without modifying the host. |
+| `orbyn trace summary [--since 30m] [--limit 25]` | Read local bounded timing records, even while the service is stopped. Durations also accept hours; use command help for accepted units. |
+| `orbyn service install [--dry-run]` | Install/start or repair the per-user background registration on supported service managers. |
+| `orbyn service uninstall [--dry-run]` | Stop/remove that registration and keep threads/settings. This does not uninstall the app or launcher. |
+| `orbyn service restart` | Ask the service manager to restart it. |
+| `orbyn service status` | Show the manager's status. |
+
+The background registration uses launchd on macOS. Windows background setup is
+unsupported; desktop startup and direct `service run` remain available. No
+administrator rights or PATH changes are requested. Dry runs print a plan without
+running a manager or modifying its files. Linux/systemd support in shared service
+planning is outside this product's macOS/Windows scope. There is no top-level
+uninstall or OOM-protection command.
 
 ## Triage in a native terminal
 
