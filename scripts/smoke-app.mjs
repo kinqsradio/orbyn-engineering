@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { startupDiagnostics } from "./smoke-app-diagnostics.mjs";
+import { smokeAppEnvironment } from "./smoke-app-environment.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const windows = process.platform === "win32";
@@ -20,26 +21,11 @@ const STOP_LIMIT_MS = 20_000;
 // Real path: Tauri refuses to find its resources through a symlink, and macOS's
 // temp folder is reached through one.
 const sandbox = mkdtempSync(join(realpathSync(tmpdir()), "orbyn-app-smoke-"));
-const home = join(sandbox, "home");
-const data = join(sandbox, "data");
-for (const dir of [home, data, join(home, "AppData/Local"), join(home, "AppData/Roaming")]) {
+const { environment, directories } = smokeAppEnvironment(process.env, sandbox);
+const data = environment.ORBYN_DATA_DIR;
+for (const dir of directories) {
   mkdirSync(dir, { recursive: true });
 }
-
-/** Names copied from this process; everything else, secrets included, stays behind. */
-const KEPT = ["PATH", "Path", "SystemRoot", "SystemDrive", "WINDIR", "ComSpec", "PATHEXT", "TEMP", "TMP", "TMPDIR", "LANG"];
-
-const environment = {
-  ...Object.fromEntries(KEPT.filter((name) => process.env[name]).map((name) => [name, process.env[name]])),
-  HOME: home,
-  CFFIXED_USER_HOME: home,
-  USERPROFILE: home,
-  LOCALAPPDATA: join(home, "AppData/Local"),
-  APPDATA: join(home, "AppData/Roaming"),
-  ORBYN_DATA_DIR: data,
-  ORBYN_OFFLINE: "1",
-  ORBYN_STARTUP_DIAGNOSTICS: "1",
-};
 
 function find(folder, test) {
   if (!existsSync(folder)) return [];
