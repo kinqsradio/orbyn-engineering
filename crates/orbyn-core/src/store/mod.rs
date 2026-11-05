@@ -2,6 +2,7 @@
 //! checks the current owner and state first; followers are woken only after
 //! commit. Calls are short local SQLite operations and never span an await.
 
+mod agent_projects;
 mod approvals;
 mod automations;
 mod catalog;

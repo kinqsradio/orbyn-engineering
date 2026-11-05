@@ -22,6 +22,280 @@ async fn one_turn(service: &Service, thread: &str, prompt: &str) -> String {
     text_of(&service.all_events(thread).await)
 }
 
+/// Project mutations expose their normalized target in the real approval gate.
+async fn project_tool_reply(
+    service: &Service,
+    thread: &str,
+    seen: &mut Option<i64>,
+    name: &str,
+    args: Value,
+    decision: Option<bool>,
+) -> String {
+    let run = service.admit(thread, &call(name, args)).await;
+    if let Some(allow) = decision {
+        let approval = service.pending().await;
+        assert_eq!(approval["kind"], "tool");
+        let summary = approval["summary"].as_str().unwrap();
+        let audit = service.audit(thread).await;
+        assert!(audit.iter().any(|row| {
+            row["action"] == "approval.request"
+                && row["target"] == name
+                && row["detail"]["approval_id"] == approval["id"]
+        }));
+        assert!(approval["detail"]["path"].as_str().unwrap().len() <= 4096);
+        if name == "orbyn_project_create" {
+            assert!(summary.starts_with("Add existing folder "), "{summary}");
+            assert_eq!(approval["detail"]["trusted"], false);
+        } else {
+            assert!(summary.starts_with("Remove project "), "{summary}");
+            assert_eq!(approval["detail"]["files_removed"], false);
+        }
+        assert!(summary.contains(approval["detail"]["path"].as_str().unwrap()));
+        assert_eq!(
+            service
+                .decide(approval["id"].as_str().unwrap(), allow)
+                .await
+                .0,
+            200
+        );
+    }
+    let events = service
+        .events_until(thread, *seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED" && event["event"]["runId"] == run
+        })
+        .await;
+    *seen = events.last().unwrap()["seq"].as_i64();
+    assert_eq!(service.finished(thread).await, "completed");
+    text_of(&events)
+}
+
+#[tokio::test]
+async fn project_add_remove_needs_approval_keeps_files_and_refuses_busy_projects() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    let candidate = dir.path().join("external-project");
+    std::fs::create_dir_all(&candidate).unwrap();
+    let sentinel = candidate.join("keep.txt");
+    std::fs::write(&sentinel, b"uncommitted user bytes").unwrap();
+    let mut seen = None;
+    let denied = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_create",
+        json!({ "path": candidate }),
+        Some(false),
+    )
+    .await;
+    assert!(denied.contains("tool error=true"), "{denied}");
+    let catalog = service.json("/api/projects").await;
+    assert!(
+        !catalog
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["path"].as_str().unwrap().ends_with("external-project"))
+    );
+    let added = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_create",
+        json!({ "path": candidate, "trusted": true }),
+        Some(true),
+    )
+    .await;
+    assert!(added.contains("tool error=false"), "{added}");
+    let project: Value =
+        serde_json::from_str(added.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    assert_eq!(project["trusted"], false);
+    assert_eq!(project["managed"], false);
+    let id = project["id"].as_str().unwrap();
+    assert_eq!(std::fs::read(&sentinel).unwrap(), b"uncommitted user bytes");
+
+    let own = service.json(&format!("/api/threads/{thread}")).await;
+    let listed = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_list",
+        json!({}),
+    )
+    .await;
+    let listed: Value =
+        serde_json::from_str(listed.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["id"], own["project_id"]);
+    let read = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_read",
+        json!({ "project_id": id }),
+    )
+    .await;
+    let read: Value =
+        serde_json::from_str(read.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    assert_eq!(read["project"]["id"], own["project_id"]);
+
+    let denied = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_delete",
+        json!({ "project_id": id, "delete_files": true }),
+        Some(false),
+    )
+    .await;
+    assert!(denied.contains("tool error=true"), "{denied}");
+    assert!(
+        service
+            .json("/api/projects")
+            .await
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == id)
+    );
+    assert_eq!(
+        service
+            .send(&format!("/api/projects/{id}/trust"), json!({}))
+            .await
+            .0,
+        200
+    );
+    let duplicate = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_create",
+        json!({ "path": candidate }),
+        Some(true),
+    )
+    .await;
+    assert!(duplicate.contains("tool error=true"), "{duplicate}");
+
+    let foreign = service.thread(id, "codex").await;
+    service.admit(&foreign, "[hang]").await;
+    service
+        .events_until(&foreign, None, |event| {
+            event["event"]["type"] == "ACTIVITY_SNAPSHOT"
+        })
+        .await;
+    let busy = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_delete",
+        json!({ "project_id": id, "thread_ids": [] }),
+        Some(true),
+    )
+    .await;
+    assert!(busy.contains("tool error=true"), "{busy}");
+    assert!(!service.json(&format!("/api/threads/{foreign}")).await["active_run"].is_null());
+    assert_eq!(
+        service
+            .send(&format!("/api/threads/{foreign}/force-stop"), json!({}))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(service.finished(&foreign).await, "cancelled");
+    let removed = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_delete",
+        json!({ "project_id": id, "delete_files": true }),
+        Some(true),
+    )
+    .await;
+    assert!(removed.contains("tool error=false"), "{removed}");
+    assert!(removed.contains("\"files_removed\":false"), "{removed}");
+    assert!(
+        !service
+            .json("/api/projects")
+            .await
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == id)
+    );
+    assert_eq!(
+        service
+            .get(&format!("/api/threads/{foreign}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(std::fs::read(&sentinel).unwrap(), b"uncommitted user bytes");
+    assert_eq!(std::fs::read_dir(&candidate).unwrap().count(), 1);
+
+    for args in [
+        json!({}),
+        json!({"path": "relative"}),
+        json!({"path": "x".repeat(4097)}),
+    ] {
+        let invalid = project_tool_reply(
+            &service,
+            &thread,
+            &mut seen,
+            "orbyn_project_create",
+            args,
+            None,
+        )
+        .await;
+        assert!(invalid.contains("tool error=true"), "{invalid}");
+    }
+    for args in [
+        json!({"project_id": own["project_id"]}),
+        json!({"project_id": "missing"}),
+        json!({"project_id": "x".repeat(129)}),
+    ] {
+        let invalid = project_tool_reply(
+            &service,
+            &thread,
+            &mut seen,
+            "orbyn_project_delete",
+            args,
+            None,
+        )
+        .await;
+        assert!(invalid.contains("tool error=true"), "{invalid}");
+    }
+    let audit = service.audit(&thread).await;
+    assert!(
+        audit
+            .iter()
+            .any(|row| row["action"] == "project.add" && row["actor"] == "engine:codex")
+    );
+    assert!(
+        audit
+            .iter()
+            .any(|row| row["action"] == "project.remove" && row["actor"] == "engine:codex")
+    );
+    assert_eq!(
+        service.patch(&thread, json!({"plan_mode": true})).await.0,
+        200
+    );
+    let planned = project_tool_reply(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_project_create",
+        json!({"path": candidate}),
+        None,
+    )
+    .await;
+    assert!(
+        planned.contains("Plan mode does not add or remove projects"),
+        "{planned}"
+    );
+    service.stop().await;
+}
+
 #[tokio::test]
 async fn reading_needs_no_approval_and_stays_in_the_project() {
     let dir = TempDir::new();
@@ -30,10 +304,185 @@ async fn reading_needs_no_approval_and_stays_in_the_project() {
     std::fs::create_dir_all(&other_folder).unwrap();
     let other = service.project(&other_folder, true).await;
     let foreign = service.thread(&other, "codex").await;
+    let own = service.json(&format!("/api/threads/{thread}")).await;
+    let listed = one_turn(&service, &thread, &call("orbyn_project_list", json!({}))).await;
+    assert!(listed.contains("tool error=false"), "{listed}");
+    let projects: Value =
+        serde_json::from_str(listed.rsplit("tool error=false ").next().unwrap().trim()).unwrap();
+    assert_eq!(projects.as_array().unwrap().len(), 1);
+    assert_eq!(projects[0]["id"], own["project_id"]);
+    assert_ne!(projects[0]["id"], other);
     let prompt = call("orbyn_thread_read", json!({ "thread_id": foreign }));
-    let text = one_turn(&service, &thread, &prompt).await;
+    let seen = service.all_events(&thread).await.last().unwrap()["seq"].as_i64();
+    service.admit(&thread, &prompt).await;
+    let events = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED"
+        })
+        .await;
+    let text = text_of(&events);
     assert!(text.contains("tool error=true"), "{text}");
     assert!(text.contains("not found"), "{text}");
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn delegated_work_stop_asks_and_only_stops_the_callers_child() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    let own = service.json(&format!("/api/threads/{thread}")).await;
+    let sibling = service
+        .thread(own["project_id"].as_str().unwrap(), "codex")
+        .await;
+    let (status, child) = service
+        .send(
+            &format!("/api/threads/{thread}/delegate"),
+            json!({ "prompt": "[hang]", "title": "Delegated work" }),
+        )
+        .await;
+    assert_eq!(status, 201);
+    let child = child["id"].as_str().unwrap();
+    service
+        .events_until(child, None, |event| {
+            event["event"]["type"] == "ACTIVITY_SNAPSHOT"
+        })
+        .await;
+
+    service
+        .admit(
+            &thread,
+            &call("orbyn_workflow_stop", json!({ "thread_id": child })),
+        )
+        .await;
+    let approval = service.pending().await;
+    assert!(
+        approval["summary"]
+            .as_str()
+            .unwrap()
+            .contains("orbyn_workflow_stop")
+    );
+    assert_eq!(
+        service
+            .decide(approval["id"].as_str().unwrap(), false)
+            .await
+            .0,
+        200
+    );
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert!(!service.json(&format!("/api/threads/{child}")).await["active_run"].is_null());
+    full_access(&service, &thread).await;
+
+    let outside_folder = dir.path().join("outside");
+    std::fs::create_dir_all(&outside_folder).unwrap();
+    let outside_project = service.project(&outside_folder, true).await;
+    let outside = service.thread(&outside_project, "codex").await;
+    let (status, other_child) = service
+        .send(
+            &format!("/api/threads/{sibling}/delegate"),
+            json!({ "prompt": "[hang]", "title": "Other parent's work" }),
+        )
+        .await;
+    assert_eq!(status, 201);
+    let other_child = other_child["id"].as_str().unwrap();
+    service
+        .events_until(other_child, None, |event| {
+            event["event"]["type"] == "ACTIVITY_SNAPSHOT"
+        })
+        .await;
+    let mut seen = service.all_events(&thread).await.last().unwrap()["seq"].as_i64();
+    for id in [
+        thread.as_str(),
+        sibling.as_str(),
+        outside.as_str(),
+        other_child,
+    ] {
+        service
+            .admit(
+                &thread,
+                &call("orbyn_workflow_stop", json!({ "thread_id": id })),
+            )
+            .await;
+        let events = service
+            .events_until(&thread, seen, |event| {
+                event["event"]["type"] == "RUN_FINISHED"
+            })
+            .await;
+        seen = events.last().unwrap()["seq"].as_i64();
+        let text = text_of(&events);
+        assert!(
+            text.contains("tool error=true") && text.contains("not found"),
+            "{text}"
+        );
+    }
+    assert!(!service.json(&format!("/api/threads/{other_child}")).await["active_run"].is_null());
+    let waiting = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_thread_wait",
+        json!({ "thread_id": child, "seconds": 0 }),
+    )
+    .await;
+    assert!(waiting.contains("\"ended\":false"), "{waiting}");
+    let stop_run = service
+        .admit(
+            &thread,
+            &call("orbyn_workflow_stop", json!({ "thread_id": child })),
+        )
+        .await;
+    let stopped = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED" && event["event"]["runId"] == stop_run
+        })
+        .await;
+    seen = stopped.last().unwrap()["seq"].as_i64();
+    let stop = text_of(&stopped);
+    assert!(stop.contains("tool error=false"), "{stop}");
+    assert!(stop.contains("\"stopped\":true"), "{stop}");
+    assert_eq!(service.finished(child).await, "cancelled");
+
+    // Completion reports start another parent run. Its transcript contains the
+    // fake engine's [hang] marker, so explicitly stop that report before sending
+    // more tools; never mistake its terminal event for a tool's reply.
+    let report = service
+        .events_until(&thread, seen, |event| {
+            event["event"]["type"] == "RUN_STARTED"
+        })
+        .await;
+    let report_start = report.last().unwrap();
+    let report_run = report_start["event"]["runId"].as_str().unwrap();
+    assert_ne!(report_run, stop_run);
+    assert_eq!(
+        service
+            .send(&format!("/api/threads/{thread}/force-stop"), json!({}))
+            .await
+            .0,
+        200
+    );
+    let finished = service
+        .events_until(&thread, report_start["seq"].as_i64(), |event| {
+            event["event"]["type"] == "RUN_FINISHED" && event["event"]["runId"] == report_run
+        })
+        .await;
+    seen = finished.last().unwrap()["seq"].as_i64();
+    let waiting = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_thread_wait",
+        json!({ "thread_id": child, "seconds": 0 }),
+    )
+    .await;
+    assert!(waiting.contains("\"ended\":true"), "{waiting}");
+    let stop = tool(
+        &service,
+        &thread,
+        &mut seen,
+        "orbyn_workflow_stop",
+        json!({ "thread_id": child }),
+    )
+    .await;
+    assert!(stop.contains("\"stopped\":false"), "{stop}");
     service.stop().await;
 }
 

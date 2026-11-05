@@ -303,6 +303,12 @@ fn deny_json(message: &str) -> String {
 fn budget_for(name: &str) -> Option<Duration> {
     if name == "approve" {
         None
+    } else if matches!(
+        name,
+        "orbyn_workflow_stop" | "orbyn_project_create" | "orbyn_project_delete"
+    ) {
+        // New project mutations and delegated stopping include the gate in 45s.
+        Some(TOOL_BUDGET)
     } else if name.starts_with("computer_") || crate::mcp_tools::has_effect(name) {
         Some(GATED_BUDGET)
     } else {
@@ -489,6 +495,9 @@ mod tests {
         assert_eq!(budget_for("approve"), None);
         assert_eq!(budget_for("skill_search"), Some(TOOL_BUDGET));
         assert_eq!(budget_for("orbyn_thread_list"), Some(TOOL_BUDGET));
+        assert_eq!(budget_for("orbyn_workflow_stop"), Some(TOOL_BUDGET));
+        assert_eq!(budget_for("orbyn_project_create"), Some(TOOL_BUDGET));
+        assert_eq!(budget_for("orbyn_project_delete"), Some(TOOL_BUDGET));
         assert_eq!(budget_for("orbyn_thread_send"), Some(GATED_BUDGET));
         assert_eq!(budget_for("computer_click"), Some(GATED_BUDGET));
     }
