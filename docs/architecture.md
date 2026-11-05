@@ -105,6 +105,15 @@ out of the thread list, works in the parent's folder and starts `supervised`. Br
 adds its own messages to the parent's handoff and leaves the parent's engine session
 alone, so the next run carries them once. It needs an idle parent.
 
+Project folders in the thread sidebar use the same local project-scope catalog as
+settings. The client sends its repository, repository-path or separate recipe and
+any per-project overrides; the service reads sanitized Git identity, and the browser
+performs no Git read. Checkouts of one folder keep their threads under its label.
+Project and thread sort remain client preferences, as does the saved open state of
+folders. A failed or partial catalog leaves an unobserved checkout in its own folder
+instead of hiding it or widening a group, and grouping changes no registration,
+trust or project file.
+
 A run that fails on a usage or rate limit leaves a limit on its thread: the engine's
 words, when it stopped and the reset if the engine gave one. Any new run, settle or
 archive clears it. With a reset in the future, `auto_resume_limited_threads` schedules a

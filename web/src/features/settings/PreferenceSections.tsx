@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import type { ForgeStatus, Thread } from "../../api/types";
 import { compactAge } from "../../lib/format";
+import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects } from "../../state/workspace";
@@ -52,6 +53,7 @@ function DetailRowsButton() {
 
 export function GeneralSection() {
   const working = useUi((state) => state.workingSection);
+  const projectGrouping = useUi((state) => state.projectGrouping);
   const threadSort = useUi((state) => state.threadSort);
   const projectSort = useUi((state) => state.projectSort);
   const notifications = useUi((state) => state.threadNotifications);
@@ -105,6 +107,20 @@ export function GeneralSection() {
           on={working}
           set={(on) => setPrefs({ workingSection: on })}
         />
+        <SettingRow
+          title={settingsLabel("general-project-grouping")}
+          description="How project folders combine checkouts of one repository. Used when Project folders is on."
+        >
+          <select
+            aria-label="Project grouping"
+            value={projectGrouping}
+            onChange={(event) => setPrefs({ projectGrouping: event.target.value as ProjectGroupingMode })}
+          >
+            <option value="repository">Repository</option>
+            <option value="repository_path">Repository path</option>
+            <option value="separate">Separate</option>
+          </select>
+        </SettingRow>
         <SettingRow title={settingsLabel("general-project-order")}>
           <select
             aria-label="Project order"
