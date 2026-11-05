@@ -1655,6 +1655,15 @@ it returns has no query; a client builds the frame URL with `?render=`. Nothing 
 the page yet, so the height the call asks for is the height it gets, and the tool
 says so.
 
+`orbyn_pull_guide_write` stores a review guide the calling agent wrote, one per project
+and pull request number, replacing the earlier one; `orbyn_pull_guide_read` returns it
+or `null`. Like viewed-file marks, a guide is this service's own and never reaches the
+forge. The write carries an effect, so the gate asks, and it fails while the project's
+`review_guides_enabled` preference is off. Its stops are rebuilt with only their known
+fields (title, summary, files with a path and note, questions) and are bounded: 30
+stops, a stored size of 128 KiB. Neither tool checks that the number names a real pull
+request, and `head_sha` is the agent's own claim.
+
 ## Computer gateway
 
 The order is fixed: resolve the target, evaluate policy, write audit, act. Browser
