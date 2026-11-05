@@ -599,9 +599,17 @@ fn codex() {
             }
             "feedback/upload" => {
                 record_launch("codex-feedback", &[message["params"].to_string()]);
-                send(&json!({ "id": id, "result": {
-                    "threadId": "fake-feedback-1", "promptHash": null,
-                }}));
+                if sibling_exists("feedback-error") {
+                    send(&json!({ "id": id, "error": {
+                        "code": -32000, "message": "Synthetic feedback failure.",
+                    }}));
+                } else if sibling_exists("feedback-malformed") {
+                    send(&json!({ "id": id, "result": { "promptHash": null } }));
+                } else {
+                    send(&json!({ "id": id, "result": {
+                        "threadId": "fake-feedback-1", "promptHash": null,
+                    }}));
+                }
             }
             "model/list" if sibling_exists("lost-models") => {
                 send(&json!({ "id": id, "error": { "code": -32000, "message": "no list" } }));
