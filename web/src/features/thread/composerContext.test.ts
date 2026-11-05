@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CHIP_ATTRIBUTE,
+  MAX_PROMPT_CHARS,
   asChip,
+  charactersOver,
+  chipLabel,
   chipPrompt,
   chipsClipboard,
   chipsFromClipboard,
@@ -9,6 +12,7 @@ import {
   languageForPath,
   promptWithChips,
   refillExcerpts,
+  terminalSelection,
   type ComposerChip,
 } from "./composerContext";
 
@@ -21,6 +25,8 @@ const chip = (over: Record<string, unknown> & Pick<ComposerChip, "kind">): Compo
     language: "rust",
     title: "Terminal selection",
     output: "cargo test\nok",
+    lineStart: 2,
+    lineEnd: 3,
     comment: "This line is wrong.",
     url: "http://localhost:5173/",
     selector: "#save",
@@ -84,5 +90,46 @@ describe("composer context", () => {
     expect(languageForPath("README.unknown")).toBeNull();
     expect(fileExcerpt("one\ntwo\nthree\nfour", 3, 1)).toBe("two\nthree\nfour");
     expect(fileExcerpt("one\ntwo", null, 1)).toBe("one\ntwo");
+  });
+
+  it("names the terminal rows a selection covered and keeps them through a paste", () => {
+    expect(chipLabel(chip({ kind: "terminal" }))).toBe("Terminal selection lines 2–3");
+    expect(chipPrompt(chip({ kind: "terminal" }))).toContain("Terminal selection lines 2–3");
+    expect(chipPrompt(chip({ kind: "terminal", lineStart: 5, lineEnd: 5 }))).toContain("Terminal selection line 5");
+    expect(chipPrompt(chip({ kind: "terminal", lineStart: null, lineEnd: null }))).toContain("Terminal selection\n```");
+    const payload = chipsClipboard([chip({ kind: "terminal" })]);
+    expect(chipsFromClipboard({ json: payload?.json })?.[0]).toMatchObject({
+      kind: "terminal",
+      lineStart: 2,
+      lineEnd: 3,
+    });
+    expect(asChip({ kind: "terminal", output: "ok", lineStart: 0, lineEnd: -4 })).toMatchObject({
+      lineStart: null,
+      lineEnd: null,
+    });
+  });
+
+  it("captures a terminal selection as plain text with its buffer rows", () => {
+    expect(terminalSelection("\r\n  hello\r\n世界\r\n", { start: { y: 1 }, end: { y: 2 } })).toEqual({
+      output: "  hello\n世界",
+      lineStart: 2,
+      lineEnd: 3,
+    });
+    expect(terminalSelection(" \n", { start: { y: 0 }, end: { y: 0 } })).toBeNull();
+    expect(terminalSelection("text", undefined)).toBeNull();
+    expect(terminalSelection("text", { start: { y: 7 }, end: { y: 3 } })).toEqual({
+      output: "text",
+      lineStart: 4,
+      lineEnd: 8,
+    });
+  });
+
+  it("counts the whole message by codepoint against the service limit", () => {
+    expect(MAX_PROMPT_CHARS).toBe(120_000);
+    expect(charactersOver("x".repeat(MAX_PROMPT_CHARS))).toBe(0);
+    expect(charactersOver("x".repeat(MAX_PROMPT_CHARS + 1))).toBe(1);
+    expect(charactersOver("😀".repeat(MAX_PROMPT_CHARS + 1))).toBe(1);
+    const block = promptWithChips("", [chip({ kind: "terminal" })]);
+    expect(charactersOver(block + "x".repeat(MAX_PROMPT_CHARS))).toBe(block.length);
   });
 });
