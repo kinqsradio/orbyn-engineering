@@ -1525,7 +1525,12 @@ runs. A second launch hands its links to the first and exits.
 `POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
 path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
 the window, and everything else goes to the windows as a `command`, the same ones keys
-run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
+run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. On macOS
+the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
+service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
+quits through the `quit` shell action after the key is held for one second, or pressed
+again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
 application window; without one they do nothing. Viewer zoom is independent and transient.

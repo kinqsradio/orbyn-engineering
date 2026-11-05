@@ -40,6 +40,33 @@ pub struct Activity {
     #[serde(default)]
     pub unread: u32,
     pub keep_awake: bool,
+    /// Absent from an older service, which only quit directly.
+    #[serde(default)]
+    pub quit_confirmation: QuitConfirmation,
+}
+
+/// How `Cmd+Q` quits. Only `Direct` keeps it on the menu; otherwise the page owns
+/// the key so it can see it held or pressed twice.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuitConfirmation {
+    #[default]
+    Direct,
+    Hold,
+    DoublePress,
+    /// A newer mode this shell doesn't know keeps the menu key, so Quit still works.
+    #[serde(other)]
+    Unknown,
+}
+
+impl QuitConfirmation {
+    /// The menu's accelerator for Quit under this mode.
+    pub fn accelerator(self) -> Option<&'static str> {
+        match self {
+            Self::Hold | Self::DoublePress => None,
+            Self::Direct | Self::Unknown => Some("Cmd+Q"),
+        }
+    }
 }
 
 /// The closed list in `ShellAction` on the service's side. A newer one is ignored.
@@ -53,6 +80,7 @@ pub enum ShellAction {
     RemoveCli,
     OpenAccessibilitySettings,
     OpenScreenRecordingSettings,
+    Quit,
 }
 
 pub struct CoreProcess {

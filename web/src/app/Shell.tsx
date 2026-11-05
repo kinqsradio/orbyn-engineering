@@ -1,3 +1,4 @@
+import { QuitConfirmation } from "../features/workspace/QuitConfirmation";
 import { PanelLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { create } from "zustand";
@@ -517,6 +518,7 @@ export function Shell() {
       </a>
       {showNav ? <Sidebar route={route} /> : null}
       <BackgroundAnnouncer />
+      <QuitConfirmation />
       <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
       <Toasts />
       <CloneJobs />

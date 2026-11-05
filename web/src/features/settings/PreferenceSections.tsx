@@ -166,6 +166,21 @@ export function GeneralSection() {
             ],
           },
           {
+            title: "Quitting",
+            rows: [
+              {
+                key: "quit_confirmation",
+                title: settingsLabel("general-quit-confirmation"),
+                description: "How ⌘Q quits the desktop app on macOS. The Quit menu item always quits.",
+                options: [
+                  { value: "direct", label: "Quit at once" },
+                  { value: "hold", label: "Hold ⌘Q" },
+                  { value: "double_press", label: "Press ⌘Q twice" },
+                ],
+              },
+            ],
+          },
+          {
             title: "Providers",
             rows: [
               { key: "enable_provider_update_checks", title: settingsLabel("general-check-providers-for-updates") },

@@ -61,6 +61,7 @@ fn normalized(key: &str, value: Value) -> Value {
     }
     value
 }
+const QUIT: &[&str] = &["direct", "hold", "double_press"];
 const NAMING: &[&str] = &["static", "semantic", "custom"];
 const ENV_MODE: &[&str] = &["local", "worktree"];
 const MERGE: &[&str] = &["", "merge", "squash", "rebase"];
@@ -85,6 +86,7 @@ const DEFINITIONS: &[Definition] = defs![
     "prefer_saved_login" Kind::Bool, false, false;
     "app_update_mode" Kind::OneOf(&["automatic", "notify", "off"]), "notify", false;
     "keep_awake_during_runs" Kind::Bool, true, false;
+    "quit_confirmation" Kind::OneOf(QUIT), "direct", false;
     "default_engine" Kind::Text, "", true;
     "fallback_model" Kind::Text, "", false;
     "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;

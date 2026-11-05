@@ -44,6 +44,7 @@ pub fn apply(app: &AppHandle, activity: Activity) {
         let _ = window.set_badge_count(badge(activity));
     }
     app.state::<KeepAwake>().set(activity.keep_awake);
+    crate::menu::set_quit_confirmation(app, activity.quit_confirmation);
 }
 
 /// Holds off idle sleep while set. The display may still sleep, and a closed lid
@@ -130,6 +131,7 @@ mod tests {
             waiting,
             unread: 0,
             keep_awake: running > 0,
+            quit_confirmation: Default::default(),
         }
     }
 
@@ -143,10 +145,31 @@ mod tests {
             ..activity(0, 1)
         };
         assert_eq!(badge(unread), Some(5));
+        assert_eq!(summary(unread), "Orbyn Engineering: 1 need you, 4 unread");
+    }
+
+    #[test]
+    fn only_direct_quit_keeps_the_menu_key() {
+        use crate::core_process::QuitConfirmation;
+        let line = |mode: &str| -> Activity {
+            serde_json::from_value(serde_json::json!({
+                "running": 0, "waiting": 0, "keep_awake": false, "quit_confirmation": mode
+            }))
+            .unwrap()
+        };
         assert_eq!(
-            summary(unread),
-            "Orbyn Engineering: 1 need you, 4 unread"
+            line("direct").quit_confirmation.accelerator(),
+            Some("Cmd+Q")
         );
+        assert_eq!(line("hold").quit_confirmation.accelerator(), None);
+        assert_eq!(line("double_press").quit_confirmation.accelerator(), None);
+        assert_eq!(line("later").quit_confirmation, QuitConfirmation::Unknown);
+        let old: Activity = serde_json::from_value(
+            serde_json::json!({ "running": 1, "waiting": 0, "keep_awake": true }),
+        )
+        .unwrap();
+        assert_eq!(old.quit_confirmation.accelerator(), Some("Cmd+Q"));
+        assert_eq!(old.unread, 0);
     }
 
     #[test]

@@ -2527,6 +2527,9 @@ pub enum ShellAction {
     RemoveCli,
     OpenAccessibilitySettings,
     OpenScreenRecordingSettings,
+    /// Quits the app, which stops its service and runs; sent once a window's quit
+    /// confirmation is met.
+    Quit,
 }
 }
 
