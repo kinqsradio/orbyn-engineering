@@ -16,6 +16,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "general-in-app-notifications", "title": "In-app notifications", "section": "general"},
   {"id": "general-rows", "title": "Rows", "section": "general"},
   {"id": "general-working-section", "title": "Working section", "section": "general"},
+  {"id": "general-project-grouping", "title": "Project grouping", "section": "general"},
   {"id": "general-project-order", "title": "Project order", "section": "general"},
   {"id": "general-thread-order", "title": "Thread order", "section": "general"},
   {"id": "general-activity-profile", "title": "Activity profile", "section": "general"},

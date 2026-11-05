@@ -154,30 +154,71 @@ export function sweepIds(
     .map((thread) => thread.id);
 }
 
+/** One folder from the service's grouping catalog. */
+export interface ProjectScopeGrouping {
+  key: string;
+  label: string;
+  projectIds: readonly string[];
+}
+
 export interface ProjectFolder {
+  key: string;
+  label: string;
+  /** The checkout whose badge and menu the folder uses. */
   project: Project;
+  projects: Project[];
   threads: Thread[];
 }
 
-/** Project folders for the active list, each with its own threads. */
+const newestThread = (threads: readonly Thread[]) =>
+  threads.reduce((at, thread) => (thread.updated_at > at ? thread.updated_at : at), "");
+
+const newestProject = (projects: readonly Project[]) =>
+  projects.reduce((at, project) => (project.created_at > at ? project.created_at : at), "");
+
+/**
+ * Project folders for the active list. A null or partial catalog keeps each
+ * unmatched checkout as its own folder, so grouping never hides a thread.
+ */
 export function foldersOf(
   projects: readonly Project[],
   threads: readonly Thread[],
+  grouping: readonly ProjectScopeGrouping[] | null,
   projectSort: ProjectSort,
   threadSort: ThreadSort,
 ): ProjectFolder[] {
-  const latest = (list: readonly Thread[], project: Project) =>
-    list.reduce((at, thread) => (thread.updated_at > at ? thread.updated_at : at), project.created_at);
-  return projects
-    .map((project) => ({
-      project,
-      threads: threads
-        .filter((thread) => thread.project_id === project.id)
-        .sort((a, b) => b[threadSort].localeCompare(a[threadSort])),
-    }))
-    .sort((a, b) =>
-      projectSort === "created_at"
-        ? b.project.created_at.localeCompare(a.project.created_at)
-        : latest(b.threads, b.project).localeCompare(latest(a.threads, a.project)),
-    );
+  const visible = new Map(projects.map((project) => [project.id, project]));
+  const collected = new Map<string, { label: string; projects: Project[] }>();
+  const placed = new Set<string>();
+  for (const group of grouping ?? []) {
+    const members = group.projectIds
+      .map((id) => visible.get(id))
+      .filter((project): project is Project => project !== undefined);
+    if (members.length === 0) continue;
+    collected.set(group.key, { label: group.label, projects: members });
+    for (const member of members) placed.add(member.id);
+  }
+  for (const project of projects) {
+    if (!placed.has(project.id)) {
+      collected.set(project.id, { label: project.name, projects: [project] });
+    }
+  }
+  const folders = [...collected.entries()].map(([key, group]): ProjectFolder => ({
+    key,
+    label: group.label,
+    project: group.projects[0]!,
+    projects: group.projects,
+    threads: threads
+      .filter((thread) => group.projects.some((project) => project.id === thread.project_id))
+      .sort((a, b) => b[threadSort].localeCompare(a[threadSort])),
+  }));
+  const activity = (folder: ProjectFolder) =>
+    projectSort === "created_at"
+      ? newestProject(folder.projects)
+      : newestThread(folder.threads) > newestProject(folder.projects)
+        ? newestThread(folder.threads)
+        : newestProject(folder.projects);
+  return folders.sort(
+    (a, b) => activity(b).localeCompare(activity(a)) || a.label.localeCompare(b.label),
+  );
 }

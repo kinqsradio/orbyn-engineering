@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings/themes";
+import type { ProjectGroupingMode } from "../generated/ProjectGroupingMode";
 import { readJson, writeJson } from "../lib/storage";
 import { useWorkspace } from "./workspace";
 
@@ -37,6 +38,10 @@ interface Prefs {
   projectFilter: string[];
   /** Folders the active list by project. */
   projectFolders: boolean;
+  /** How folders combine registered checkouts; separate keeps one per project. */
+  projectGrouping: ProjectGroupingMode;
+  /** A grouping recipe override for one physical project, by project ID. */
+  projectGroupingOverrides: Record<string, ProjectGroupingMode>;
   /** Lets folder rows wrap their title. */
   multilineRows: boolean;
   threadSort: "updated_at" | "created_at";
@@ -164,6 +169,8 @@ const defaults: Prefs = {
   groups: {},
   projectFilter: [],
   projectFolders: false,
+  projectGrouping: "separate",
+  projectGroupingOverrides: {},
   multilineRows: false,
   threadSort: "updated_at",
   projectSort: "updated_at",
@@ -319,6 +326,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   groups: state.groups,
   projectFilter: state.projectFilter,
   projectFolders: state.projectFolders,
+  projectGrouping: state.projectGrouping,
+  projectGroupingOverrides: state.projectGroupingOverrides,
   multilineRows: state.multilineRows,
   threadSort: state.threadSort,
   projectSort: state.projectSort,
@@ -374,7 +383,17 @@ function savedPrefs(): Partial<Prefs> {
     saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls" || saved.panelTab === "side"
       ? saved.panelTab
       : null;
-  return { ...saved, panelTab, layouts: saved.layouts ?? {} };
+  const grouping = saved.projectGrouping;
+  const projectGrouping =
+    grouping === "repository" || grouping === "repository_path" || grouping === "separate"
+      ? grouping
+      : defaults.projectGrouping;
+  const projectGroupingOverrides = Object.fromEntries(
+    Object.entries(saved.projectGroupingOverrides ?? {}).filter(
+      ([, mode]) => mode === "repository" || mode === "repository_path" || mode === "separate",
+    ),
+  );
+  return { ...saved, panelTab, layouts: saved.layouts ?? {}, projectGrouping, projectGroupingOverrides };
 }
 
 export const useUi = create<UiState>((set, get) => {
