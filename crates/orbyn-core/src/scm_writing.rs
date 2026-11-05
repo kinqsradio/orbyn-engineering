@@ -225,38 +225,13 @@ async fn candidate(cwd: &Path) -> Result<Candidate> {
     )?
     .trim()
         == "true";
-    let mut names = BTreeSet::new();
-    let tracked = utf8(read_git(cwd, &["ls-files", "--cached", "-z"]).await?)?;
-    let tracked: BTreeSet<&str> = tracked.split('\0').collect();
-    let mut paths = read_git(cwd, &["ls-files", "--others", "--exclude-standard", "-z"]).await?;
-    paths.extend(if parent.is_empty() {
-        read_git(cwd, &["ls-files", "--cached", "-z"]).await?
-    } else {
-        read_git(
-            cwd,
-            &[
-                "diff",
-                "--no-relative",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--name-only",
-                "-z",
-                &parent,
-                "--",
-            ],
-        )
-        .await?
-    });
-    for path in paths
-        .split(|byte| *byte == 0)
-        .filter(|path| !path.is_empty())
-    {
-        names.insert(
-            std::str::from_utf8(path)
-                .map_err(|_| invalid("Unsupported filename. Enter text manually."))?
-                .to_owned(),
-        );
-    }
+    let paths = utf8(read_git(cwd, &["ls-files", "--others", "--exclude-standard", "-z"]).await?)?;
+    let untracked: BTreeSet<&str> = paths.split_terminator('\0').collect();
+    // The raw, rename-disabled records already name every tracked pending
+    // change. Repeating a name-only diff and a full index listing adds no
+    // identity evidence. Untracked files are the only extra names to merge.
+    let mut names: BTreeSet<String> = modes.keys().cloned().collect();
+    names.extend(untracked.iter().map(|path| (*path).to_owned()));
     let mut hash = Sha256::new();
     hash.update(parent.as_bytes());
     hash.update(read_git(cwd, &["symbolic-ref", "--quiet", "HEAD"]).await?);
@@ -328,7 +303,7 @@ async fn candidate(cwd: &Path) -> Result<Candidate> {
                 hash.update(&bytes);
                 // Untracked files do not appear in a normal diff. Include their
                 // full text once; tracked files get their actual diff below.
-                if parent.is_empty() || !tracked.contains(name.as_str()) {
+                if parent.is_empty() || untracked.contains(name.as_str()) {
                     context.push_str(&format!("\nNew file {}:\n", json!(name)));
                     if bytes.contains(&0) {
                         context.push_str("[binary file]\n");
@@ -819,5 +794,48 @@ mod tests {
             run_git(cwd, &["config", "core.filemode", "true"]);
             assert_ne!(before.identity, candidate(cwd).await.unwrap().identity);
         }
+    }
+
+    #[tokio::test]
+    async fn raw_names_preserve_deletions_renames_untracked_and_ignored_controls() {
+        let dir = TempDir::new();
+        let cwd = dir.path();
+        run_git(cwd, &["init", "-q", "-b", "main"]);
+        run_git(cwd, &["config", "user.name", "Test"]);
+        run_git(cwd, &["config", "user.email", "test@example.com"]);
+        for (name, content) in [
+            (".gitignore", "*.tmp\n"),
+            ("deleted.txt", "delete me\n"),
+            ("old name.txt", "rename me\n"),
+            ("tracked.tmp", "tracked despite ignore\n"),
+        ] {
+            std::fs::write(cwd.join(name), content).unwrap();
+        }
+        run_git(cwd, &["add", "-A"]);
+        run_git(cwd, &["add", "-f", "tracked.tmp"]);
+        run_git(cwd, &["commit", "-qm", "initial"]);
+        std::fs::remove_file(cwd.join("deleted.txt")).unwrap();
+        std::fs::rename(cwd.join("old name.txt"), cwd.join("new name.txt")).unwrap();
+        std::fs::write(cwd.join("new untracked.txt"), "new é content\n").unwrap();
+        std::fs::write(cwd.join("tracked.tmp"), "tracked changed\n").unwrap();
+        std::fs::write(cwd.join("ignored.tmp"), "ignored outside candidate\n").unwrap();
+        let before = candidate(cwd).await.unwrap();
+        for expected in [
+            "deleted.txt",
+            "old name.txt",
+            "new name.txt",
+            "new é content",
+            "tracked changed",
+        ] {
+            assert!(before.context.contains(expected), "{expected}");
+        }
+        assert!(!before.context.contains("ignored outside candidate"));
+        std::fs::write(cwd.join("ignored.tmp"), "changed but still ignored\n").unwrap();
+        assert_eq!(before.identity, candidate(cwd).await.unwrap().identity);
+        std::fs::write(cwd.join("new untracked.txt"), "newer user data\n").unwrap();
+        assert_ne!(before.identity, candidate(cwd).await.unwrap().identity);
+        std::fs::write(cwd.join("new untracked.txt"), "new é content\n").unwrap();
+        run_git(cwd, &["add", "-A"]);
+        assert_eq!(before.identity, candidate(cwd).await.unwrap().identity);
     }
 }
