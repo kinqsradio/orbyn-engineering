@@ -89,8 +89,17 @@ The real-service browser test in
 `web/e2e/real/provider-model-refresh.spec.ts` covers initial failure, manual refresh,
 retaining the good list, and recovery. Its protocol double tests orchestration;
 the separate installed-Codex run establishes the actual discovery protocol.
-Claude was not invoked. Its integration and macOS protocol qualification remain
-open under #140; this evidence does not complete the whole I40 row.
+Claude was not invoked.
+
+On macOS the same path was exercised through real `orbynd` with an unmodified copy
+of installed Codex 0.166.0 under fresh task-owned profile, configuration and data
+directories. The engine reported `logged_out` throughout and no turn or login ran.
+Forced discovery returned its nine models from the engine's own app-server; a plain
+read with that copy moved away served the cached list with no error; a forced refresh
+reported the move while keeping the last good list; restoring the copy recovered the
+same list with no error. The macOS copy is task-owned, so it proves no installer
+ownership. Claude discovery is unobserved without its own login, and the model caches
+stay in process memory; both remain open under #140.
 
 ## I41 implementation evidence — 5 November 2026
 
