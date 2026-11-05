@@ -786,6 +786,21 @@ kbd {
   color: var(--color-muted);
   font-size: var(--text-body);
 }
+.usage-refresh-status {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 12px 24px 0;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.usage-history :is(.usage-total strong, .usage-engine strong, .usage-share, .usage-stat strong, .usage-table td:not(:first-child), .usage-chart) {
+  opacity: 1;
+  transition: opacity 0s;
+}
+.usage-history[data-refreshing] :is(.usage-total strong, .usage-engine strong, .usage-share, .usage-stat strong, .usage-table td:not(:first-child), .usage-chart) {
+  opacity: 0.4;
+  transition-delay: 150ms;
+}
 .usage-hero {
   display: grid;
   grid-template-columns: minmax(0, 288px) minmax(0, 1fr);

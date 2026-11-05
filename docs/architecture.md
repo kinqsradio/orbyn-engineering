@@ -300,7 +300,11 @@ under `~/.claude` (or `CLAUDE_CONFIG_DIR`) and `sessions/**/*.jsonl` under `~/.c
 credential file. Claude rewrites an entry as it streams, so each message counts once.
 Codex repeats its running total, so an unchanged total counts once. Costs come from
 configured `model_prices`, after `model_aliases`; a model with no price has an unknown
-cost and is never guessed. Unchanged files are served from memory. Subscription
+cost and is never guessed. Unchanged files are served from memory. The Usage page keeps
+the same period's figures and chart during an explicit local refresh, dimming them
+after 150 ms while the scan is pending. A failed refresh keeps those figures and
+offers Retry. Changing the period clears them, and an earlier response cannot
+replace the new period or clear its pending state. Subscription
 limits appear only where an engine reports them itself, as Codex does through
 `account/rateLimits/read`, cached for five minutes; `?force=true` reads again and
 spends no model usage. `/api/limits` also gives one number per window length across
