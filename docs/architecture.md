@@ -1706,8 +1706,9 @@ This is still an outbound request selected by untrusted agent output. The image
 host sees the service's IP and the full URL, including agent-supplied query data;
 tracking and URL-based exfiltration remain possible. The proxy enforces network
 and resource limits; it does not establish consent or make remote content private.
-Remote videos remain outside this capability. H38 can reuse the image boundary
-when favicons are implemented, but does not gain icons here. C22's scan and render
+Remote videos remain outside this capability. Preview favicons use this same
+boundary: the browser discovers a declared icon and the viewer fetches its bytes
+through this route, so H38 adds no broader fetch permission. C22's scan and render
 sandbox remain separate and receive no remote-fetch permission from this route.
 
 ## Persistence
