@@ -103,14 +103,38 @@ test("the device toolbar resizes the page from its edges", async ({ page }) => {
   await page.getByRole("combobox", { name: "Device" }).selectOption("phone");
   await expect.poll(async () => (await tab())?.width, { timeout: 15_000 }).toBe(393);
 
+  // The service can finish the preset before the viewer reloads it. Measuring
+  // the old box would aim the press outside the edge once the phone is drawn.
+  await expect(page.getByRole("combobox", { name: "Device" })).toHaveValue("phone");
+  const dimensions = page.getByRole("toolbar", { name: "Device toolbar" }).locator("span");
+  await expect(dimensions).toHaveText("393 by 852");
   const handle = page.getByRole("button", { name: /Resize the page from the right edge/ });
+  await handle.hover();
   const box = await handle.boundingBox();
   if (!box) throw new Error("the right edge has no box to drag");
+  // A rail, not the whole box: if the press lands anywhere else the drag silently
+  // does nothing, which is the failure this test used to report as a bare "393".
+  expect(box.width).toBeLessThanOrEqual(12);
+  expect(box.height).toBeGreaterThan(50);
+  const resizes: string[] = [];
+  const watched = (request: { method(): string; url(): string }) => {
+    if (request.method() === "POST" && request.url().endsWith("/resize")) resizes.push(request.url());
+  };
+  page.on("request", watched);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
+  await expect(handle).toHaveAttribute("data-dragging", "true");
   await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 10 });
+  await expect(dimensions).not.toHaveText("393 by 852");
   await expect.poll(async () => (await tab())?.width, { timeout: 15_000 }).toBe(393);
+  const resized = page.waitForResponse((response) =>
+    response.request().method() === "POST" && response.url().includes(`/api/threads/${threadId}/previews/`) && response.url().endsWith("/resize"),
+  );
   await page.mouse.up();
+  expect((await resized).ok()).toBe(true);
+  page.off("request", watched);
+  // The comment below promises one resize for the whole drag; now it is asserted.
+  expect(resizes).toHaveLength(1);
 
   // One resize for the whole drag, and the page is no preset any more.
   await expect.poll(async () => (await tab())?.width, { timeout: 15_000 }).toBeGreaterThan(450);
