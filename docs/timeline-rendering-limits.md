@@ -165,3 +165,13 @@ the read-only sandbox, model, effort, context and service tier. They do not prov
 that a real provider emits a question. The earlier Default-mode refusal remains
 a failed observation; no retry with broader permissions was made. A live-provider
 question and native desktop qualification remain open.
+
+A later Windows observation attempt used the installed Codex CLI 0.160.0. A
+no-turn `model/list` check confirmed `gpt-6.1-sol`, low effort and Standard tier,
+but the probe's five-second HTTP admission deadline expired before a run was
+created. A read-only audit of the stopped, isolated profile found zero run and
+question records. No provider turn or question payload was observed, no retry was
+made, and both owned service and browser-server processes were confirmed stopped.
+This is a failed pre-admission observation, not evidence of a provider question
+failure or successful live qualification. The live and native requirements remain
+open.
