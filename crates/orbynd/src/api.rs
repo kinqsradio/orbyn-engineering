@@ -1343,6 +1343,7 @@ pub async fn answer_question(
     Ok(Json(state.core.questions.answer(
         &id,
         body.answers,
+        body.attachments.unwrap_or_default(),
         LOCAL_USER,
     )?))
 }

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { request } from "../../api/client";
+import { Paperclip, X } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { api, request } from "../../api/client";
 import type { Question, QuestionRequest } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button } from "../../ui/controls";
@@ -80,6 +81,9 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
   const [others, setOthers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Files carried by a custom answer, kept per question. */
+  const [files, setFiles] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [uploading, setUploading] = useState<string | null>(null);
 
   useEffect(() => {
     if (!waiting) return;
@@ -104,6 +108,7 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
       await request("POST", `/api/questions/${encodeURIComponent(open.id)}/${path}`, body);
       setPicked({});
       setOthers({});
+      setFiles({});
       reload();
     } catch (failure) {
       setError(toFailure(failure).message);
@@ -111,12 +116,32 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
       setBusy(false);
     }
   };
+  const attach = async (questionId: string, file: File) => {
+    setUploading(questionId);
+    setError(null);
+    try {
+      const kept = await api.uploadAttachment(threadId, file);
+      setFiles((current) => ({
+        ...current,
+        [questionId]: [...(current[questionId] ?? []), { id: kept.id, name: kept.name }],
+      }));
+    } catch (failure) {
+      setError(`Couldn't attach that file. ${toFailure(failure).message}`);
+    } finally {
+      setUploading(null);
+    }
+  };
+  const keptFiles = Object.fromEntries(
+    Object.entries(files)
+      .filter(([, list]) => list.length > 0)
+      .map(([questionId, list]) => [questionId, list.map((entry) => entry.id)]),
+  );
 
   return (
     <section className="question-panel" aria-label="Question from the agent">
       {open.questions.map((question) => (
+        <Fragment key={question.id}>
         <QuestionRow
-          key={question.id}
           question={question}
           picked={picked[question.id] ?? []}
           other={others[question.id] ?? ""}
@@ -129,6 +154,42 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
             if (text.trim()) setPicked((current) => ({ ...current, [question.id]: [] }));
           }}
         />
+        {(question.allow_other || question.options.length === 0) && !question.secret ? (
+          <div className="question-files">
+            {(files[question.id] ?? []).map((entry) => (
+              <span key={entry.id} className="question-file">
+                {entry.name}
+                <button
+                  type="button"
+                  aria-label={`Remove ${entry.name}`}
+                  onClick={() =>
+                    setFiles((current) => ({
+                      ...current,
+                      [question.id]: (current[question.id] ?? []).filter((kept) => kept.id !== entry.id),
+                    }))
+                  }
+                >
+                  <X size={12} aria-hidden />
+                </button>
+              </span>
+            ))}
+            <label className="question-attach">
+              <Paperclip size={12} aria-hidden />
+              {uploading === question.id ? "Attaching..." : "Attach a file"}
+              <input
+                type="file"
+                hidden
+                aria-label={`Attach a file to ${question.question}`}
+                disabled={uploading !== null}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void attach(question.id, file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </div>          ) : null}
+        </Fragment>
       ))}
       {error ? (
         <p className="field-error" role="alert">
@@ -139,7 +200,17 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
         <Button small tone="quiet" disabled={busy} onClick={() => void finish("dismiss")}>
           Dismiss
         </Button>
-        <Button small tone="primary" disabled={busy || !complete} onClick={() => void finish("answer", { answers })}>
+        <Button
+          small
+          tone="primary"
+          disabled={busy || !complete || uploading !== null}
+          onClick={() =>
+            void finish("answer", {
+              answers,
+              ...(Object.keys(keptFiles).length > 0 ? { attachments: keptFiles } : {}),
+            })
+          }
+        >
           Submit answers
         </Button>
       </div>

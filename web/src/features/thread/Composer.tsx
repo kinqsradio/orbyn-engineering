@@ -13,7 +13,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
-import { api } from "../../api/client";
+import { api, request } from "../../api/client";
 import { useCommand as useSharedCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
@@ -25,7 +25,7 @@ import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { useWorkspace } from "../../state/workspace";
-import { ComposerBanners, ContextMeter, InlineLimits, StashDrawer, StopNotice } from "./ComposerExtras";
+import { CompactOffer, ComposerBanners, ContextMeter, InlineLimits, StashDrawer, StopNotice } from "./ComposerExtras";
 import {
   continueListLine,
   indentListLine,
@@ -43,6 +43,18 @@ import { QueuedMessages } from "./QueuedMessages";
 import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
 import { FILE_MENTION_TYPE, insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
+import { useComposerChips } from "../../state/composerChips";
+import { CODE_LANGUAGES, exitCodeBlock, indentCodeLines, openFenceAt, setFenceLanguage } from "./composerCodeBlock";
+import { ComposerChipShelf, copyChips } from "./ComposerChips";
+import {
+  CHIP_MIME,
+  chipsFromClipboard,
+  fileExcerpt,
+  languageForPath,
+  promptWithChips,
+  refillExcerpts,
+  type ComposerChip,
+} from "./composerContext";
 
 interface Suggestion {
   value: string;
@@ -73,6 +85,7 @@ const useOwnCommand = (side: boolean, command: string, handler: () => boolean | 
   useSharedCommand(command, () => (side ? false : handler()));
 
 const NO_STASHES: StashedPrompt[] = [];
+const NO_CHIPS: ComposerChip[] = [];
 const effortButton = () => document.querySelector<HTMLElement>("[data-effort-trigger]");
 const LOCAL_COMMANDS: Suggestion[] = [
   { value: "plan", detail: "Switch to Plan" },
@@ -147,6 +160,10 @@ export function Composer({
   const planControls = useUi((state) => state.planControls);
   const contextMeter = useUi((state) => state.contextMeter);
   const stashes = useUi((state) => state.stashes[thread.id] ?? NO_STASHES);
+  const chips = useComposerChips((state) => state.chips[thread.id] ?? NO_CHIPS);
+  const addChips = useComposerChips((state) => state.addMany);
+  const removeChip = useComposerChips((state) => state.remove);
+  const clearChips = useComposerChips((state) => state.clear);
   const log = useThreadLogs((state) => state.logs[thread.id]);
   const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
   const [stopping, setStopping] = useState(false);
@@ -162,7 +179,8 @@ export function Composer({
   const uploading = attachments.some((file) => file.id === null);
   const overBy = charactersOver(draft);
   const styled = useMemo(() => (draft && draft.length <= STYLED_CHARS ? composerMarkup(draft) : null), [draft]);
-  const canSend = draft.trim() !== "" && !sending && !uploading && overBy === 0;
+  const fence = openFenceAt(draft, caret);
+  const canSend = (draft.trim() !== "" || chips.length > 0) && !sending && !uploading && overBy === 0;
   const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
   const reloadQueue = queue.reload;
   const runId = thread.active_run?.id ?? null;
@@ -257,9 +275,10 @@ export function Composer({
 
   const send = async (followUp: "default" | "opposite" = "default") => {
     if (!canSend) return false;
-    const prompt = draft;
-    if (runLocal(prompt)) return false;
-    const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
+    const typed = draft;
+    const prompt = promptWithChips(draft, chips);
+    if (runLocal(typed)) return false;
+    const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(typed.trim());
     if (sideChat) {
       setDraft(thread.id, "");
       void openSideChat(thread, sideChat[1]?.trim() || null);
@@ -273,7 +292,7 @@ export function Composer({
       await beforeSend?.();
       // Claude hears a typed reply as the reason it was declined, so nothing is queued.
       if (pendingHere.length > 0 && engine?.capabilities.decline_feedback) {
-        await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false, prompt.trim())));
+        await Promise.all(pendingHere.map((approval) => api.decideApproval(approval.id, false, false, typed.trim())));
         setDraft(thread.id, "");
         void refreshThread(thread.id);
         recordUserPrompt();
@@ -287,10 +306,11 @@ export function Composer({
         if (steered.state === "queued") useUi.getState().pushToast("This engine reads it on its next turn");
       } else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
+      clearChips(thread.id);
       setRecall(null);
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
-      setDraft(thread.id, current === prompt ? "" : current);
+      setDraft(thread.id, current === typed ? "" : current);
       if (run) addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
       if (busy) reloadQueue();
       void refreshThread(thread.id);
@@ -352,6 +372,13 @@ export function Composer({
       return;
     }
     if (event.key === "Tab" && !menuOpen) {
+      const code = indentCodeLines(draft, element.selectionStart, element.selectionEnd, event.shiftKey);
+      if (code) {
+        event.preventDefault();
+        setDraft(thread.id, code.text);
+        caretAfterEdit.current = code.start;
+        return;
+      }
       const next = indentListLine(draft, element.selectionStart, event.shiftKey);
       if (next) {
         event.preventDefault();
@@ -368,6 +395,21 @@ export function Composer({
     if (event.key !== "Enter") return;
     // Left to the shell, whose rule sends and opens a new thread.
     if (event.altKey && (event.metaKey || event.ctrlKey)) return;
+    // A fenced block keeps its own lines; only Mod+Enter leaves it to send.
+    if (!event.shiftKey && !event.metaKey && !event.ctrlKey && openFenceAt(draft, element.selectionStart)) {
+      const exit = exitCodeBlock(draft, element.selectionStart);
+      if (exit) {
+        event.preventDefault();
+        setDraft(thread.id, exit.text);
+        caretAfterEdit.current = exit.caret;
+        return;
+      }
+      event.preventDefault();
+      const at = element.selectionStart;
+      setDraft(thread.id, `${draft.slice(0, at)}\n${draft.slice(element.selectionEnd)}`);
+      caretAfterEdit.current = at + 1;
+      return;
+    }
     if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
       const next = continueListLine(draft, element.selectionStart);
       if (next) {
@@ -386,6 +428,21 @@ export function Composer({
   };
 
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const carried = chipsFromClipboard({
+      json: event.clipboardData.getData(CHIP_MIME),
+      html: event.clipboardData.getData("text/html"),
+    });
+    if (carried) {
+      event.preventDefault();
+      void refillExcerpts(carried, async (path) => {
+        const found = await request<{ content: string }>(
+          "GET",
+          `/api/threads/${encodeURIComponent(thread.id)}/files/content?path=${encodeURIComponent(path)}`,
+        );
+        return { text: fileExcerpt(found.content, null), language: languageForPath(path) };
+      }).then((filled) => addChips(thread.id, filled));
+      return;
+    }
     const files = [...event.clipboardData.files];
     if (files.length > 0) {
       event.preventDefault();
@@ -623,6 +680,7 @@ export function Composer({
       />
       <QuestionPanel threadId={thread.id} waiting={thread.active_run?.state === "awaiting_approval"} />
       <ComposerBanners engine={engine} />
+      <CompactOffer threadId={thread.id} engine={thread.engine} active={busy} items={log?.items ?? []} />
       {runId !== null && runId === stoppedRun ? <StopNotice threadId={thread.id} runId={runId} /> : null}
       {limitsOpen ? <InlineLimits threadId={thread.id} onClose={() => setLimitsOpen(false)} /> : null}
       {stashOpen ? (
@@ -657,6 +715,34 @@ export function Composer({
               </li>
             ))}
           </ul>
+        ) : null}
+        <ComposerChipShelf
+          chips={chips}
+          onRemove={(id) => removeChip(thread.id, id)}
+          onCopy={(copy) =>
+            void copyChips(copy).then((ok) =>
+              useUi.getState().pushToast(ok ? "Chip copied" : "Couldn't copy the chip"),
+            )
+          }
+        />
+        {fence ? (
+          <div className="composer-codebar">
+            <span>Code block</span>
+            <select
+              aria-label="Code block language"
+              value={fence.language}
+              onChange={(event) => setDraft(thread.id, setFenceLanguage(draft, fence, event.target.value))}
+            >
+              {CODE_LANGUAGES.map((language) => (
+                <option key={language || "plain"} value={language}>
+                  {language || "Plain text"}
+                </option>
+              ))}
+              {(CODE_LANGUAGES as readonly string[]).includes(fence.language) ? null : (
+                <option value={fence.language}>{fence.language}</option>
+              )}
+            </select>
+          </div>
         ) : null}
         {attachments.length > 0 ? (
           <ul className="attachment-strip" aria-label="Attachments">

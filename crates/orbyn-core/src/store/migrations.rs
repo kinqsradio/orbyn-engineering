@@ -24,7 +24,12 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (20, WORKTREE_CLEANUP),
     (21, PROJECT_ICONS),
     (22, PROJECT_IMAGE_HISTORY),
+    (23, QUESTION_ATTACHMENTS),
 ];
+
+// A custom answer may carry files. They are kept beside the answer it belongs
+// to and are never sent to an engine that has no attachment field for them.
+const QUESTION_ATTACHMENTS: &str = "ALTER TABLE question_requests ADD COLUMN attachments TEXT;";
 
 // Image selections are remembered atomically with metadata. This also fences
 // writers that do not advance the revision when project trust changes.

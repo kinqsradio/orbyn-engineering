@@ -172,6 +172,24 @@ starts, a run logs `CUSTOM user.attachments` with each record's id, name, media 
 and size, so a transcript shows what the message carried without asking the engine.
 `GET /api/attachments/:id/content` returns those bytes while the record lives.
 
+The composer edits a fenced code block as plain text: Tab and Shift+Tab move the
+selected block's lines by two spaces, Enter from the block's empty last line closes
+the fence and puts the caret past it, any other Enter adds a line and only Mod+Enter
+sends, and a picker on the opening line names or clears the language. Tab outside a
+block keeps the list and focus rules.
+
+Context can sit above the draft as a chip: a cited reply, a terminal selection, a
+review comment on a stacked diff line, a picked page element, or the open file at
+its revealed line. A chip is not engine protocol; when the message is sent, each
+chip becomes a readable block at the top of the prompt and the typed draft follows.
+Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
+paste into a composer restores the chips and refetches a file whose text was not
+carried. Ordinary text, broken JSON and half-known chips never become chips.
+
+After a Claude thread has sat idle past its prompt-cache window, returning to it
+offers one compact action before the next turn. It is not offered while a run is
+active, and no other engine has that cache, so none is offered it.
+
 ## Models
 
 `GET /api/engines/:id/models` comes from the engine itself. Claude answers the
@@ -273,9 +291,12 @@ dismissed, timed out or the run ends, and all of those close it. A run returns t
 `item/tool/requestUserInput` and Claude's `AskUserQuestion` both arrive here; Claude's
 goes through the same `approve` callback, so it stays on the MCP gate. A dismissal
 reaches Codex as an empty answer set and Claude as a denial. Questions are logged as
-`ACTIVITY_SNAPSHOT` with `activityType: "question"`, whose content is the
-`QuestionRequest`. A secret answer goes to the engine and is stored only as
-`[hidden]`, so it never reaches the database or the event log.
+`ACTIVITY_SNAPSHOT` with `activityType: "question"`, whose content isthe `QuestionRequest`. A secret answer goes to the engine and is stored only as
+`[hidden]`, so it never reaches the database or the event log. A custom answer may
+carry files already uploaded to its thread, keyed by question; they stay with the
+settled question record and are refused when they belong to another thread. An
+engine's answer payload has no attachment field, so the typed answer reaches the
+engine and the files stay in the record.
 
 Question Markdown uses a question-only remote-image link policy: a remote media
 URL becomes an ordinary link without mounting an image or video. General message
@@ -1715,8 +1736,9 @@ This is still an outbound request selected by untrusted agent output. The image
 host sees the service's IP and the full URL, including agent-supplied query data;
 tracking and URL-based exfiltration remain possible. The proxy enforces network
 and resource limits; it does not establish consent or make remote content private.
-Remote videos remain outside this capability. H38 can reuse the image boundary
-when favicons are implemented, but does not gain icons here. C22's scan and render
+Remote videos remain outside this capability. Preview favicons use this same
+boundary: the browser discovers a declared icon and the viewer fetches its bytes
+through this route, so H38 adds no broader fetch permission. C22's scan and render
 sandbox remain separate and receive no remote-fetch permission from this route.
 
 ## Persistence
