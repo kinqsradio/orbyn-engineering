@@ -219,6 +219,23 @@ describe("media in messages", () => {
 });
 
 describe("the expanded view", () => {
+  it.each(["Escape", "Close"])("returns focus to the image opener after %s", async (action) => {
+    const user = userEvent.setup();
+    atThread();
+    render(<><button type="button">Other control</button><Markdown text="![shot](docs/shot.png)" /></>);
+    const opener = screen.getByRole("button", { name: "Expand shot" });
+    screen.getByRole("button", { name: "Other control" }).focus();
+    // Click activation need not move focus to its button on every platform.
+    fireEvent.click(opener);
+    const close = screen.getByRole("button", { name: /^Close$/ });
+    // The jsdom modal stub does not perform the browser's initial focus move.
+    close.focus();
+    if (action === "Escape") await user.keyboard("{Escape}");
+    else await user.click(close);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(opener).toHaveFocus();
+  });
+
   it("preserves video arrow keys while keeping gallery navigation and Escape", async () => {
     const user = userEvent.setup();
     atThread();

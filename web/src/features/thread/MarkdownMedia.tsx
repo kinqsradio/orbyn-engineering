@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Link2, Maximize2, Minus, Plus, X } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -69,18 +69,21 @@ function Unavailable({ item }: { item: MediaItem }) {
  * container the click landed in, with the actions its bytes allow. Zoom, the
  * counter and the arrow keys all address the same item the stage shows.
  */
-export function MediaDialog({ items, index: start, onClose }: { items: readonly MediaItem[]; index: number; onClose(): void }) {
+export function MediaDialog({ items, index: start, opener: trigger, onClose }: { items: readonly MediaItem[]; index: number; opener?: HTMLElement | null; onClose(): void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [at, setAt] = useState(start);
   const [zooms, setZooms] = useState<Record<number, number>>({});
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = ref.current;
+    const opener = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     dialog?.showModal();
     return () => {
+      // Close before the portal is removed, then restore the surviving opener.
       if (dialog?.open) dialog.close();
+      if (opener?.isConnected) opener.focus();
     };
-  }, []);
+  }, [trigger]);
   const item = items[at];
   if (!item) return null;
   const many = items.length > 1;
@@ -212,22 +215,22 @@ export function MarkdownMedia({ source, alt, fallback }: { source: string; alt: 
   const thread = useContext(MarkdownThreadContext);
   const item = useMemo(() => resolveMediaSource(source, alt, thread), [source, alt, thread]);
   const frame = useRef<HTMLSpanElement | null>(null);
-  const [expanded, setExpanded] = useState<{ items: MediaItem[]; index: number } | null>(null);
+  const [expanded, setExpanded] = useState<{ items: MediaItem[]; index: number; opener: HTMLElement } | null>(null);
   const [failed, setFailed] = useState(false);
   if (!item) return <>{fallback}</>;
   if (failed) return <Unavailable item={item} />;
-  const expand = (target: Element | null) => {
-    if (target) setExpanded(mediaGallery(target, item));
+  const expand = (target: Element | null, opener: HTMLElement) => {
+    if (target) setExpanded({ ...mediaGallery(target, item), opener });
   };
   const dialog = expanded ? (
-    <MediaDialog items={expanded.items} index={expanded.index} onClose={() => setExpanded(null)} />
+    <MediaDialog items={expanded.items} index={expanded.index} opener={expanded.opener} onClose={() => setExpanded(null)} />
   ) : null;
   if (item.kind === "video") {
     return (
       <>
         <span ref={frame} className="md-video" data-md-media={mediaAttribute(item)}>
           <video src={item.src} controls preload="metadata" aria-label={named(item)} onError={() => setFailed(true)} />
-          <IconButton className="md-media-expand" label={`Expand ${named(item)}`} onClick={() => expand(frame.current)}>
+          <IconButton className="md-media-expand" label={`Expand ${named(item)}`} onClick={(event) => expand(frame.current, event.currentTarget)}>
             <Maximize2 size={14} aria-hidden />
           </IconButton>
         </span>
@@ -242,7 +245,7 @@ export function MarkdownMedia({ source, alt, fallback }: { source: string; alt: 
         className="md-image"
         data-md-media={mediaAttribute(item)}
         aria-label={`Expand ${named(item)}`}
-        onClick={(event) => expand(event.currentTarget)}
+        onClick={(event) => expand(event.currentTarget, event.currentTarget)}
       >
         <img src={item.src} alt={item.alt} loading="lazy" onError={() => setFailed(true)} />
       </button>
