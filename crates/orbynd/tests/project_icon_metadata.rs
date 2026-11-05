@@ -190,7 +190,7 @@ async fn stale_name_membership_and_invalid_icon_inputs_never_overwrite_other_met
     );
 }
 #[tokio::test]
-async fn schema22_metadata_reopens_and_an_available_schema20_writer_is_refused() {
+async fn schema23_metadata_reopens_and_an_available_schema20_writer_is_refused() {
     let (dir, service, projects, scope) = fixture().await;
     let (code, rows) = service
         .send(
@@ -212,7 +212,7 @@ async fn schema22_metadata_reopens_and_an_available_schema20_writer_is_refused()
         conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r
             .get::<_, i64>(0))
             .unwrap(),
-        22
+        23
     );
     drop(conn);
     // The archived executable is a local qualification input, not a CI artifact.

@@ -29,6 +29,7 @@ fn activity(request: &QuestionRequest) -> Result<AgUiEvent> {
 fn question_row(row: &Row<'_>) -> rusqlite::Result<QuestionRequest> {
     let questions: String = row.get("questions")?;
     let answers: Option<String> = row.get("answers")?;
+    let attachments: Option<String> = row.get("attachments")?;
     Ok(QuestionRequest {
         id: row.get("id")?,
         thread_id: row.get("thread_id")?,
@@ -36,6 +37,7 @@ fn question_row(row: &Row<'_>) -> rusqlite::Result<QuestionRequest> {
         questions: parse_json(3, &questions)?,
         state: parse_wire(4, row.get("state")?)?,
         answers: answers.map(|text| parse_json(5, &text)).transpose()?,
+        attachments: attachments.map(|text| parse_json(6, &text)).transpose()?,
         decided_by: row.get("decided_by")?,
         decided_at: row.get("decided_at")?,
         created_at: row.get("created_at")?,
@@ -58,17 +60,31 @@ fn close(
     request: &mut QuestionRequest,
     state: QuestionState,
     answers: Option<BTreeMap<String, Vec<String>>>,
+    attachments: Option<BTreeMap<String, Vec<String>>>,
     actor: &str,
 ) -> Result<()> {
     let stamp = now();
     let stored = answers.as_ref().map(serde_json::to_string).transpose()?;
+    let stored_files = attachments
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
     tx.execute(
-        "UPDATE question_requests SET state = ?2, answers = ?3, decided_by = ?4, decided_at = ?5
-         WHERE id = ?1 AND state = 'pending'",
-        params![request.id, wire_name(state)?, stored, actor, stamp],
+        "UPDATE question_requests
+            SET state = ?2, answers = ?3, decided_by = ?4, decided_at = ?5, attachments = ?6
+          WHERE id = ?1 AND state = 'pending'",
+        params![
+            request.id,
+            wire_name(state)?,
+            stored,
+            actor,
+            stamp,
+            stored_files
+        ],
     )?;
     request.state = state;
     request.answers = answers;
+    request.attachments = attachments;
     request.decided_by = Some(actor.to_owned());
     request.decided_at = Some(stamp);
     insert_audit(
@@ -114,6 +130,7 @@ pub(super) fn expire_questions(
             &mut request,
             QuestionState::Expired,
             None,
+            None,
             actor,
         )?;
     }
@@ -138,6 +155,7 @@ impl Store {
                 questions: questions.to_vec(),
                 state: QuestionState::Pending,
                 answers: None,
+                attachments: None,
                 decided_by: None,
                 decided_at: None,
                 created_at: now(),
@@ -203,6 +221,7 @@ impl Store {
         id: &str,
         state: QuestionState,
         answers: Option<&BTreeMap<String, Vec<String>>>,
+        attachments: Option<&BTreeMap<String, Vec<String>>>,
         actor: &str,
     ) -> Result<QuestionRequest> {
         self.commit(|tx, appended| {
@@ -234,7 +253,15 @@ impl Store {
                     })
                     .collect()
             });
-            close(tx, appended, &mut request, state, masked, actor)?;
+            close(
+                tx,
+                appended,
+                &mut request,
+                state,
+                masked,
+                attachments.cloned(),
+                actor,
+            )?;
             let guard = guard_active(tx, &self.epoch, &request.run_id);
             if open_requests(tx, &request.run_id)? == 0
                 && let Ok(guard) = guard
