@@ -2774,6 +2774,36 @@ pub enum VersionSupport {
 }
 }
 
+wire_enum! {
+/// How badly the installed version is outside what the signed manifest supports.
+pub enum CompatibilityStatus {
+    /// A version the manifest names as known-incompatible.
+    Broken,
+    /// Below the manifest's minimum version.
+    Unsupported,
+    /// A version the manifest names as partly compatible.
+    Graceful,
+}
+}
+
+wire! {
+/// The signed manifest's warning about the installed version, and the version it
+/// recommends instead. Only a signed manifest can produce one.
+pub struct EngineCompatibility {
+    pub status: CompatibilityStatus,
+    pub message: String,
+    /// The recommended version, when the manifest names one and it is not installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recommended_version: Option<String>,
+    /// The installer command that installs that exact version, present only when
+    /// the installer that owns this binary can install one version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recommended_command: Option<String>,
+}
+}
+
 wire! {
 pub struct EngineStatus {
     pub id: String,
@@ -2787,6 +2817,10 @@ pub struct EngineStatus {
     pub installer: InstallerKind,
     pub latest: Option<String>,
     pub support: VersionSupport,
+    /// The signed manifest's warning about this version, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub compatibility: Option<EngineCompatibility>,
     /// Present only when the owning installer can update this binary.
     pub update_command: Option<String>,
     pub manual_hint: Option<String>,

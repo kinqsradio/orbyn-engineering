@@ -89,8 +89,17 @@ The real-service browser test in
 `web/e2e/real/provider-model-refresh.spec.ts` covers initial failure, manual refresh,
 retaining the good list, and recovery. Its protocol double tests orchestration;
 the separate installed-Codex run establishes the actual discovery protocol.
-Claude was not invoked. Its integration and macOS protocol qualification remain
-open under #140; this evidence does not complete the whole I40 row.
+Claude was not invoked.
+
+On macOS the same path was exercised through real `orbynd` with an unmodified copy
+of installed Codex 0.166.0 under fresh task-owned profile, configuration and data
+directories. The engine reported `logged_out` throughout and no turn or login ran.
+Forced discovery returned its nine models from the engine's own app-server; a plain
+read with that copy moved away served the cached list with no error; a forced refresh
+reported the move while keeping the last good list; restoring the copy recovered the
+same list with no error. The macOS copy is task-owned, so it proves no installer
+ownership. Claude discovery is unobserved without its own login, and the model caches
+stay in process memory; both remain open under #140.
 
 ## I41 implementation evidence — 5 November 2026
 
@@ -105,30 +114,62 @@ engine-status responses. It uses Settings → Providers → Check again → Clos
 settings to exercise problem, missing, signed-out, updating and recovered states
 in the same document, while preserving an unsent draft. A component test also
 covers state transitions and unknown authentication. These prove presentation
-and manual-refresh recovery, not an authenticated engine handshake. Packaged
-Windows/macOS webview qualification remains open under #140.
+and manual-refresh recovery, not an authenticated engine handshake. Both passed on
+`cabb8fe` on macOS: the browser test in 6.2 s and the component test in the web
+suite's 648 passing tests. Packaged Windows/macOS webview qualification remains
+open under #140.
 
-## I9 and I51 remain open
+## I9 protocol check — 5 November 2026
 
-Codex 0.160.0's locally generated schema includes `feedback/upload`. Its parameters
-include `classification`, `includeLogs`, `reason`, `threadId`, `extraLogFiles` and
-`tags`; its response includes `threadId` and optional `promptHash`. The
+Installed Codex 0.166.0 generates `feedback/upload`, whose parameters are
+`classification`, `includeLogs`, `reason`, `threadId`, `extraLogFiles` and `tags`
+and whose response is `threadId` plus an optional `promptHash`; it also generates
+`feedback/save`, which writes a ZIP to a caller-owned path on the app-server host.
+The
 [official app-server documentation](https://developers.openai.com/codex/app-server)
-describes the request and version-specific schema generation. Neither that schema
-nor the successful unauthenticated model-list requests establish that upstream
-feedback works without authentication or a live session. No feedback was sent.
-I9 remains open until an explicitly authorized sanitized submission establishes
-the actual response and requirements. No feedback UI or speculative service route
-has been added.
+describes the request and version-specific schema generation.
 
-The signed `engines/tested-versions.json` contains only minimum and tested versions.
-It has no known-problem advisories or recommended replacement policy, and existing
-installer-owned update plans target latest rather than a recommended pinned
-version. An untested version is not evidence of a known problem. I51 therefore
-remains open: the next implementation needs a maintained advisory source and the
-owner's recommended-version policy, retaining manifest signature verification,
-proven installer ownership, manual instructions for unknown owners and active-run
-exclusion. This batch changes none of those trust or installer boundaries.
+Run against the installed app-server with a task-owned `CODEX_HOME` holding no
+credentials, where `account/read` reported `{"account":null,"requiresOpenaiAuth":true}`,
+`feedback/upload` raised no authentication or session error. It attempted an upload
+to `https://o33249.ingest.us.sentry.io/...` and failed only because the probe pointed
+every proxy variable at a closed local port (`Connection refused`). The supported
+request therefore does not need a live authenticated session: the remaining
+dependency is authorization to send one sanitized report and observe the accepted
+response. Nothing was sent, no feedback UI or service route was added, and I9 stays
+open under #140.
 
-Both decisions remain tracked by #140. The PR for this supported slice must link
-to that issue without closing it.
+## I51 implementation evidence — 5 November 2026
+
+The provider card warns only from the signed manifest. A version below an engine's
+signed `minimum` is `unsupported`; an optional signed `known_problems` entry can
+name a version `broken` or `graceful`, and an optional signed `recommended` pins
+the replacement. Without that field the newest signed `tested` version is the
+recommendation, so the owner changes the policy by signing the manifest, and a
+version the manifest does not mention raises nothing. An untested version is still
+not evidence of a known problem. The card shows the warning, offers
+`Install <version>`, and prints the exact installer command in its confirmation.
+
+That action runs through the installer that provably owns the binary, pinned to one
+version: package arguments for npm, pnpm, Bun, Yarn, Volta and Vite+, and winget's
+`--version`. Homebrew, an engine's own updater and mise cannot install one version,
+so the action stays off and the card keeps the manual hint. A version the service
+did not itself recommend is refused, and an active run or update still refuses any
+install before the installer starts.
+
+On macOS, real `orbynd` read a real `npm install -g @openai/codex@0.160.0` in a
+task-owned prefix as `below_minimum` with the warning and the pinned
+`npm install -g @openai/codex@0.166.0`. While a real run was active the install
+answered `409 engine_busy`; once it settled, it ran that pinned npm command into
+the task prefix (the audit names it, `changed 2 packages`, 0.160.0 to 0.166.0) and
+the engine then read `tested` with no warning. The same below-minimum binary
+outside the root npm reports kept the manual instructions and refused the install.
+No user-installed engine, credential or account state was touched.
+
+Both card states are component-tested. Not verified: the card in a browser against
+that warning, Windows, Homebrew, winget, pnpm, Bun, Yarn, Volta and Vite+ pinning
+beyond unit tests, and a signed `known_problems` entry or `recommended` pin, which
+only the owner's key can add. I51 stays partial under #140.
+
+Both rows remain tracked by #140. The PR for this supported slice must link to that
+issue without closing it.

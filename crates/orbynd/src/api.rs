@@ -1557,6 +1557,21 @@ pub async fn update_engine(
     Ok(Json(state.core.engines.update(&id, LOCAL_USER).await?))
 }
 
+/// Installs the version the signed manifest recommends, through the installer
+/// that owns the binary.
+pub async fn install_recommended_engine(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        state
+            .core
+            .engines
+            .install_recommended(&id, LOCAL_USER)
+            .await?,
+    ))
+}
+
 fn slug(name: &str) -> String {
     let text: String = name
         .to_lowercase()

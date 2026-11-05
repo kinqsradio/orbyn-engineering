@@ -334,6 +334,7 @@ export const api = {
     request<Thread>("POST", `/api/threads/${q(threadId)}/switch-engine`, { engine, model }),
   refreshEngines: () => request<EngineStatus[]>("POST", "/api/engines/refresh"),
   updateEngine: (id: string) => request<void>("POST", `/api/engines/${q(id)}/update`),
+  installRecommended: (id: string) => request<void>("POST", `/api/engines/${q(id)}/install-recommended`),
   addCustomEngine: (body: CustomEngine) =>
     request<EngineStatus>("POST", "/api/engines/custom", body),
   removeCustomEngine: (id: string) => request<void>("DELETE", `/api/engines/custom/${q(id)}`),

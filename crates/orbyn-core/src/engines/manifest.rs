@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use orbyn_contracts::VersionSupport;
+use orbyn_contracts::{CompatibilityStatus, VersionSupport};
 use serde::Deserialize;
 
 use crate::util::from_hex;
@@ -15,9 +15,22 @@ const SIGNATURE: &str = include_str!("tested-versions.sig");
 const PUBLIC_KEY: &str = include_str!("tested-versions.pub");
 
 #[derive(Debug, Deserialize)]
+struct KnownProblem {
+    version: String,
+    status: CompatibilityStatus,
+    message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct EngineEntry {
     minimum: String,
     tested: Vec<String>,
+    /// The version the owner pins for this engine. Without it the newest tested
+    /// version is the recommendation.
+    #[serde(default)]
+    recommended: Option<String>,
+    #[serde(default)]
+    known_problems: Vec<KnownProblem>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -48,6 +61,58 @@ impl TestedManifest {
             VersionSupport::Tested
         } else {
             VersionSupport::Untested
+        }
+    }
+
+    /// The version the owner signed for this engine, or the newest tested one.
+    pub fn recommended(&self, engine: &str) -> Option<String> {
+        let entry = self.engines.get(engine)?;
+        if let Some(pinned) = &entry.recommended {
+            return Some(pinned.clone());
+        }
+        entry
+            .tested
+            .iter()
+            .max_by_key(|version| numbers(version))
+            .cloned()
+    }
+
+    /// Why this version is outside the manifest's support, and what to do instead.
+    /// A version the manifest does not mention produces no claim at all.
+    pub fn problem(&self, engine: &str, version: &str) -> Option<(CompatibilityStatus, String)> {
+        let entry = self.engines.get(engine)?;
+        if let Some(known) = entry
+            .known_problems
+            .iter()
+            .find(|known| known.version == version)
+        {
+            let status = known.status;
+            return Some((
+                status,
+                known.message.clone().unwrap_or_else(|| message(status)),
+            ));
+        }
+        let (found, minimum) = (numbers(version)?, numbers(&entry.minimum)?);
+        (found < minimum).then(|| {
+            (
+                CompatibilityStatus::Unsupported,
+                message(CompatibilityStatus::Unsupported),
+            )
+        })
+    }
+}
+
+/// The wording for each status, before any recommendation is appended.
+pub fn message(status: CompatibilityStatus) -> String {
+    match status {
+        CompatibilityStatus::Broken => {
+            "This engine version is known to be incompatible with this Orbyn release.".into()
+        }
+        CompatibilityStatus::Unsupported => {
+            "This engine version is outside the supported range for this Orbyn release.".into()
+        }
+        CompatibilityStatus::Graceful => {
+            "This engine version has limited compatibility with this Orbyn release.".into()
         }
     }
 }
@@ -148,5 +213,45 @@ mod tests {
     #[test]
     fn numeric_comparison_is_not_lexical() {
         assert!(numbers("0.166.0") > numbers("0.20.0"));
+    }
+
+    #[test]
+    fn the_recommendation_is_the_signed_pin_or_the_newest_tested() {
+        let manifest = TestedManifest::embedded();
+        // Nothing is pinned in the signed manifest, so the newest tested version wins.
+        assert_eq!(manifest.recommended("codex").as_deref(), Some("0.166.0"));
+        assert_eq!(manifest.recommended("claude").as_deref(), Some("2.1.150"));
+        assert_eq!(manifest.recommended("other"), None);
+        let pinned: TestedManifest = serde_json::from_str(
+            r#"{"engines":{"codex":{"minimum":"0.166.0","tested":["0.166.0","0.170.0"],"recommended":"0.166.0"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(pinned.recommended("codex").as_deref(), Some("0.166.0"));
+    }
+
+    #[test]
+    fn only_the_signed_manifest_can_raise_a_problem() {
+        let manifest = TestedManifest::embedded();
+        let (status, text) = manifest.problem("codex", "0.160.0").unwrap();
+        assert_eq!(status, CompatibilityStatus::Unsupported);
+        assert!(text.contains("outside the supported range"));
+        assert!(manifest.problem("codex", "0.166.0").is_none());
+        // An untested version above the minimum is not a known problem.
+        assert!(manifest.problem("claude", "2.1.318").is_none());
+        assert!(manifest.problem("other", "1.0.0").is_none());
+        assert!(manifest.problem("codex", "not-a-version").is_none());
+
+        let signed: TestedManifest = serde_json::from_str(
+            r#"{"engines":{"codex":{"minimum":"0.166.0","tested":["0.166.0"],
+                "known_problems":[{"version":"0.165.0","status":"broken"},
+                                  {"version":"0.164.0","status":"graceful","message":"Turn limits are wrong."}]}}}"#,
+        )
+        .unwrap();
+        let (status, text) = signed.problem("codex", "0.165.0").unwrap();
+        assert_eq!(status, CompatibilityStatus::Broken);
+        assert!(text.contains("known to be incompatible"));
+        let (status, text) = signed.problem("codex", "0.164.0").unwrap();
+        assert_eq!(status, CompatibilityStatus::Graceful);
+        assert_eq!(text, "Turn limits are wrong.");
     }
 }

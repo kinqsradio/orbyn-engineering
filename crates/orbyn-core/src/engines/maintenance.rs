@@ -207,6 +207,45 @@ fn package_plan(
     )
 }
 
+/// The same plan, asking for one exact version, when the owning installer can
+/// install one. Homebrew and an engine's own updater only move to the newest
+/// release, so they give `None` and the caller falls back to manual instructions.
+pub fn pinned(plan: &UpdatePlan, version: &str) -> Option<UpdatePlan> {
+    let plain = version.chars().next()?.is_ascii_digit()
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+    if !plain {
+        return None;
+    }
+    match plan.installer {
+        InstallerKind::Npm
+        | InstallerKind::Pnpm
+        | InstallerKind::Bun
+        | InstallerKind::Yarn
+        | InstallerKind::Volta
+        | InstallerKind::VitePlus => {
+            let package = plan.args.last()?.strip_suffix("@latest")?;
+            let mut args = plan.args.clone();
+            *args.last_mut()? = format!("{package}@{version}");
+            Some(UpdatePlan {
+                args,
+                ..plan.clone()
+            })
+        }
+        InstallerKind::Winget => {
+            let at = plan.args.iter().position(|arg| arg == "--exact")?;
+            let mut args = plan.args.clone();
+            args.splice(at..at, ["--version".to_owned(), version.to_owned()]);
+            Some(UpdatePlan {
+                args,
+                ..plan.clone()
+            })
+        }
+        _ => None,
+    }
+}
+
 async fn tool_answer(program: &str, args: &[&str]) -> Option<String> {
     let command = resolve(program)?;
     let output = capture(&command, args, ROOT_TIMEOUT).await?;
@@ -518,5 +557,66 @@ mod tests {
             "only the shim counts"
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_pinned_plan_uses_the_installer_that_owns_the_binary() {
+        let roots = InstallRoots {
+            npm: Some("/usr/local/lib/node_modules".into()),
+            pnpm: Some("/home/a/.local/share/pnpm/global/5/node_modules".into()),
+            bun: Some("/home/a/.bun/install/global/node_modules".into()),
+            brew: Some("/opt/homebrew".into()),
+            ..InstallRoots::default()
+        };
+        let npm = plan_from_paths(
+            Path::new("/usr/local/lib/node_modules/@openai/codex/bin/codex.js"),
+            Path::new("/usr/local/lib/node_modules/@openai/codex/bin/codex.js"),
+            &CODEX,
+            &roots,
+        )
+        .1
+        .unwrap();
+        assert_eq!(
+            pinned(&npm, "0.166.0").unwrap().display(),
+            "npm install -g @openai/codex@0.166.0"
+        );
+        let pnpm = plan_from_paths(
+            Path::new("/home/a/.local/share/pnpm/global/5/node_modules/@openai/codex/bin/codex.js"),
+            Path::new("/home/a/.local/share/pnpm/global/5/node_modules/@openai/codex/bin/codex.js"),
+            &CODEX,
+            &roots,
+        )
+        .1
+        .unwrap();
+        assert_eq!(
+            pinned(&pnpm, "1.2.3").unwrap().display(),
+            "pnpm add -g @openai/codex@1.2.3"
+        );
+        let winget = UpdatePlan {
+            installer: InstallerKind::Winget,
+            program: "winget".into(),
+            args: ["upgrade", "--id", "OpenAI.Codex", "--exact"]
+                .iter()
+                .map(|arg| (*arg).to_owned())
+                .collect(),
+            lock_key: "winget".into(),
+        };
+        assert_eq!(
+            pinned(&winget, "0.166.0").unwrap().display(),
+            "winget upgrade --id OpenAI.Codex --version 0.166.0 --exact"
+        );
+
+        // An installer that only moves to the newest release cannot pin a version.
+        for real in [
+            "/opt/homebrew/Cellar/codex/0.1/bin/codex",
+            "/home/a/.codex/packages/standalone/releases/x/codex",
+        ] {
+            let (_, brew) = plan_from_paths(Path::new(real), Path::new(real), &CODEX, &roots);
+            assert!(pinned(&brew.unwrap(), "0.166.0").is_none(), "{real}");
+        }
+        // A version that is not a plain version never reaches an installer.
+        for version in ["", "--force", "latest", "0.166.0; rm -rf /"] {
+            assert!(pinned(&npm, version).is_none(), "{version}");
+        }
     }
 }
