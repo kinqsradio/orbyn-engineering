@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineTier, ModelInfo, ModelOption,
-    ModelOptionValue, PermissionMode, ProviderInstance, Question, QuestionOption, SkillDelivery,
-    ThreadGoal, ThreadUsage,
+    ActionKind, AgUiEvent, AuthState, EngineCapabilities, EngineFeedbackReceipt,
+    EngineFeedbackRequest, EngineTier, ModelInfo, ModelOption, ModelOptionValue, PermissionMode,
+    ProviderInstance, Question, QuestionOption, SkillDelivery, ThreadGoal, ThreadUsage,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -32,6 +32,8 @@ use crate::selection::{SERVICE_TIER, STANDARD_TIER};
 use crate::util::new_id;
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// An upload is slower than a read, so it does not share the read allowance.
+const FEEDBACK_TIMEOUT: Duration = Duration::from_secs(120);
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 /// A turn started before tool startup finishes can reach the model with no usable
 /// tools, and it then answers that it cannot read the files. The startup status
@@ -216,6 +218,21 @@ impl EngineDriver for CodexDriver {
             apply_configured_tier(&mut models, &tier);
         }
         Ok(Some(ModelCatalog::engine(models)))
+    }
+
+    /// A report goes through Codex's own `feedback/upload`, so the Codex login on
+    /// this machine owns what reaches OpenAI. No thread is started for it.
+    async fn feedback(&self, request: &EngineFeedbackRequest) -> Result<EngineFeedbackReceipt> {
+        let session = self.short_session().await?;
+        let reply = session
+            .rpc
+            .call(
+                "feedback/upload",
+                feedback_params(request),
+                FEEDBACK_TIMEOUT,
+            )
+            .await?;
+        feedback_receipt(&reply)
     }
 
     /// Codex keeps a turn's model, effort and tier for the turns after it.
@@ -932,6 +949,46 @@ fn text(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
+/// Codex takes only its own classification here, and blank fields are left out
+/// rather than sent empty.
+fn feedback_params(request: &EngineFeedbackRequest) -> Value {
+    let mut params = json!({
+        "classification": "bug",
+        "includeLogs": request.include_logs,
+    });
+    let object = params
+        .as_object_mut()
+        .expect("feedback params are an object");
+    if let Some(reason) = request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        object.insert("reason".into(), json!(reason));
+    }
+    if let Some(thread) = request
+        .thread_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        object.insert("threadId".into(), json!(thread));
+    }
+    params
+}
+
+/// Codex promises the report's id. A reply without it is not the accepted shape
+/// Orbyn knows.
+fn feedback_receipt(value: &Value) -> Result<EngineFeedbackReceipt> {
+    let thread_id = text(value, "threadId")
+        .ok_or_else(|| CoreError::Internal("feedback/upload answered without threadId".into()))?;
+    Ok(EngineFeedbackReceipt {
+        thread_id,
+        prompt_hash: text(value, "promptHash"),
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ItemKind {
     Message,
@@ -1448,6 +1505,46 @@ fn spent_window_reset(params: &Value) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn feedback_request_matches_the_app_server_shape() {
+        let request = EngineFeedbackRequest {
+            reason: Some("  broke  ".into()),
+            include_logs: false,
+            thread_id: Some(" thread-1 ".into()),
+        };
+        assert_eq!(
+            feedback_params(&request),
+            json!({
+                "classification": "bug", "includeLogs": false,
+                "reason": "broke", "threadId": "thread-1",
+            })
+        );
+        let blank = EngineFeedbackRequest {
+            reason: Some("  ".into()),
+            include_logs: true,
+            thread_id: Some(String::new()),
+        };
+        assert_eq!(
+            feedback_params(&blank),
+            json!({ "classification": "bug", "includeLogs": true })
+        );
+    }
+
+    #[test]
+    fn feedback_reply_needs_a_thread_id() {
+        assert_eq!(
+            feedback_receipt(&json!({ "threadId": "t", "promptHash": null })).unwrap(),
+            EngineFeedbackReceipt {
+                thread_id: "t".into(),
+                prompt_hash: None,
+            }
+        );
+        assert!(matches!(
+            feedback_receipt(&json!({ "promptHash": null })),
+            Err(CoreError::Internal(_))
+        ));
+    }
 
     #[test]
     fn tool_items_report_known_outcomes_only() {

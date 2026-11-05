@@ -15,13 +15,13 @@ use orbyn_contracts::{
 use orbyn_contracts::{
     AddProject, AdoptScratch, AnswerQuestion, ApiError, ApprovalState, BatchThreads, CloneProject,
     ComputerAction, CreateBranch, CreatePolicyRule, CreateThread, CustomEngine, DecideApproval,
-    DelegateTask, EditQueuedMessage, EngineTier, EnqueueMessage, ForkThread, FsEntry, FsListing,
-    GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull, MergePull,
-    MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState, RenameProject,
-    ReorderThreads, ResolveThreadPath, RestoreChanges, RestoreWorkspace, RetryPreparation,
-    RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile, StartRun, SteerResult,
-    SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled, UpdateThread, UpsertTask,
-    WorkspaceSetup, WriteFile,
+    DelegateTask, EditQueuedMessage, EngineFeedbackRequest, EngineTier, EnqueueMessage, ForkThread,
+    FsEntry, FsListing, GitAction, InstallAcpAgent, KeybindingRule, LibraryUpdateRequest, LinkPull,
+    MergePull, MoveThread, NewProject, OpenInEditor, OtlpCheck, PublishProject, QuestionState,
+    RenameProject, ReorderThreads, ResolveThreadPath, RestoreChanges, RestoreWorkspace,
+    RetryPreparation, RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile,
+    StartRun, SteerResult, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled,
+    UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -1280,6 +1280,14 @@ pub async fn engine_models(
 ) -> ApiResult<impl IntoResponse> {
     let refresh = query.get("refresh").is_some_and(|value| value == "true");
     Ok(Json(state.core.engine_models(&id, refresh).await?))
+}
+
+pub async fn engine_feedback(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<EngineFeedbackRequest>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.engines.feedback(&id, &body).await?))
 }
 
 pub async fn native_session_capabilities(

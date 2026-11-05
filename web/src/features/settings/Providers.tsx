@@ -178,6 +178,74 @@ function CustomModels({ engine }: { engine: EngineStatus }) {
   );
 }
 
+/** Codex is the only driver with a feedback route; an instance runs the same one. */
+function hasFeedback(engine: EngineStatus) {
+  return engine.id === "codex" || engine.instance_of === "codex";
+}
+
+function FeedbackAction({ engine }: { engine: EngineStatus }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [includeLogs, setIncludeLogs] = useState(false);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="setting-sub">
+      <Button small tone="quiet" onClick={() => { setError(null); setOpen(true); }}>
+        Send feedback
+      </Button>
+      {receipt ? (
+        <p className="banner" role="status">Feedback sent to OpenAI through Codex. Report {receipt}.</p>
+      ) : null}
+      {open ? (
+        <ConfirmDialog
+          title={`Send feedback to ${engine.name}?`}
+          confirmLabel="Send feedback"
+          keepOpen
+          onClose={() => setOpen(false)}
+          onConfirm={async () => {
+            setError(null);
+            try {
+              const result = await api.sendFeedback(engine.id, {
+                reason: reason.trim() || null,
+                include_logs: includeLogs,
+                thread_id: null,
+              });
+              setReceipt(result.thread_id);
+              setReason("");
+              setOpen(false);
+            } catch (failure) {
+              setError(toFailure(failure).message);
+            }
+          }}
+        >
+          <p>This report goes to OpenAI through Codex, using the Codex login on this machine.</p>
+          <div className="field">
+            <label htmlFor="codex-feedback-reason">What went wrong? (optional)</label>
+            <textarea
+              id="codex-feedback-reason"
+              rows={4}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
+          <label className="check">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={includeLogs}
+              onChange={(event) => setIncludeLogs(event.target.checked)}
+            />
+            Include Codex logs
+          </label>
+          {includeLogs ? <p className="muted">Codex logs can include prompts, file paths and command output.</p> : null}
+          {error ? <p className="banner banner-warn" role="alert">{error}</p> : null}
+        </ConfirmDialog>
+      ) : null}
+    </div>
+  );
+}
+
 function EngineModelList({ engine }: { engine: EngineStatus }) {
   const hidden = useUi((state) => state.modelHidden);
   const order = useUi((state) => state.modelOrder);
@@ -241,6 +309,7 @@ function EngineModelList({ engine }: { engine: EngineStatus }) {
         </ul>
       ) : null}
       {open ? <><p className="muted">Custom models are saved on the selected environment.</p><CustomModels engine={engine} /></> : null}
+      {hasFeedback(engine) ? <FeedbackAction engine={engine} /> : null}
     </div>
   );
 }

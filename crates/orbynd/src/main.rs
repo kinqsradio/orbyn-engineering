@@ -400,6 +400,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/limits", get(api::thread_limits))
         .route("/api/engines/{id}/limits", get(api::engine_limits))
         .route("/api/engines/{id}/models", get(api::engine_models))
+        .route("/api/engines/{id}/feedback", post(api::engine_feedback))
         .route(
             "/api/engines/{id}/native-sessions/capabilities",
             get(api::native_session_capabilities),
