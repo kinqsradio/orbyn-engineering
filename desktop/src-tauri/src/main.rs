@@ -7,11 +7,13 @@ mod links;
 mod menu;
 mod shell_state;
 mod system;
+mod window_actions;
 
 use core_process::{CoreProcess, ServiceMessage};
 use links::ServicePort;
 use menu::Zoom;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -23,6 +25,9 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
 struct Core(Mutex<Option<CoreProcess>>);
+/// Fences window requests queued by an earlier service process.
+#[derive(Default)]
+struct ServiceGeneration(AtomicU64);
 /// The update found by the latest check, installed only when orbynd asks.
 struct PendingUpdate(Mutex<Option<Update>>);
 /// Links that arrived before the service could take them.
@@ -50,6 +55,15 @@ fn show_failure(app: &AppHandle, message: &str) {
 
 /// Replaces any running core, then supplies its address to the stable asset page.
 fn launch_core(app: &AppHandle) {
+    let generation = app
+        .state::<ServiceGeneration>()
+        .0
+        .fetch_add(1, Ordering::SeqCst)
+        + 1;
+    if let Err(error) = close_preview_windows(app) {
+        show_failure(app, &error);
+        return;
+    }
     let state = app.state::<Core>();
     let mut slot = state.0.lock().expect("core slot");
     if let Some(previous) = slot.take() {
@@ -61,6 +75,36 @@ fn launch_core(app: &AppHandle) {
         ServiceMessage::CheckAppUpdate => check_for_update(&messages),
         ServiceMessage::InstallAppUpdate => install_update(&messages),
         ServiceMessage::ShellAction { action } => menu::on_action(&messages, action),
+        ServiceMessage::PreviewWindow { thread_id, tab_id } => {
+            let app = messages.clone();
+            let dispatch = app.clone();
+            if let Err(error) = app.run_on_main_thread(move || {
+                if dispatch
+                    .state::<ServiceGeneration>()
+                    .0
+                    .load(Ordering::SeqCst)
+                    != generation
+                {
+                    return;
+                }
+                if let Err(error) = open_preview_window(&dispatch, &thread_id, &tab_id) {
+                    tell_core(
+                        &dispatch,
+                        serde_json::json!({
+                            "type": "shell_failed", "message": error
+                        }),
+                    );
+                }
+            }) {
+                tell_core(
+                    &app,
+                    serde_json::json!({
+                        "type": "shell_failed",
+                        "message": format!("Cannot open the preview window: {error}.")
+                    }),
+                );
+            }
+        }
         ServiceMessage::Activity(now) => activity::apply(&messages, now),
     };
     let on_exit = move |reason: String| {
@@ -88,6 +132,63 @@ fn launch_core(app: &AppHandle) {
             show_failure(app, &error);
         }
     }
+}
+
+/// The main thread serializes cleanup with pending preview-window creation.
+fn close_preview_windows(app: &AppHandle) -> Result<(), String> {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let windows = app.clone();
+    app.run_on_main_thread(move || {
+        let result = windows
+            .webview_windows()
+            .into_iter()
+            .filter(|(label, _)| label.starts_with("preview-"))
+            .try_for_each(|(_, window)| window.destroy())
+            .map_err(|error| format!("Cannot close an old preview window: {error}."));
+        let _ = sender.send(result);
+    })
+    .map_err(|error| format!("Cannot close old preview windows: {error}."))?;
+    receiver
+        .recv()
+        .map_err(|_| "Cannot close old preview windows: the main thread stopped.".to_owned())?
+}
+
+/// Each preview has one separate window. Reopening it brings that window forward.
+fn open_preview_window(app: &AppHandle, thread_id: &str, tab_id: &str) -> Result<(), String> {
+    let service = app.state::<Core>();
+    let target = service
+        .0
+        .lock()
+        .expect("core slot")
+        .as_ref()
+        .and_then(|core| desktop_origin::preview(&core.app_url(), thread_id, tab_id))
+        .ok_or("The preview window could not be opened.")?;
+    // Hex encoding makes the two identifiers unambiguous in Tauri window labels.
+    let encode = |id: &str| {
+        id.bytes()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+    let label = format!("preview-{}-{}", encode(thread_id), encode(tab_id));
+    if let Some(window) = app.get_webview_window(&label) {
+        window.show().map_err(|error| error.to_string())?;
+        window.unminimize().map_err(|error| error.to_string())?;
+        return window.set_focus().map_err(|error| error.to_string());
+    }
+    let navigating = app.clone();
+    let opening = app.clone();
+    WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::External(target))
+        .title("Preview")
+        .inner_size(1000.0, 720.0)
+        .min_inner_size(320.0, 240.0)
+        .on_navigation(move |url| links::on_navigation(&navigating, url))
+        .on_new_window(move |url, _| {
+            links::open_outside(&opening, &url);
+            NewWindowResponse::Deny
+        })
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -274,6 +375,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Core(Mutex::new(None)))
+        .manage(ServiceGeneration::default())
         .manage(PendingUpdate(Mutex::new(None)))
         .manage(WaitingLinks(Mutex::new(Vec::new())))
         .manage(ServicePort::default())
@@ -314,9 +416,12 @@ fn main() {
         })
         .on_window_event(|window, event| match event {
             // Closing keeps agents running; Quit in the tray stops them.
-            WindowEvent::CloseRequested { api, .. } => {
+            WindowEvent::CloseRequested { api, .. } if window_actions::hide_on_close(window.label()) => {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            WindowEvent::Destroyed => {
+                window.app_handle().state::<Zoom>().1.lock().expect("viewer zoom").forget(window.label());
             }
             // A permission is granted in System Settings, away from this window.
             WindowEvent::Focused(true) => system::report(window.app_handle()),

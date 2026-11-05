@@ -57,6 +57,18 @@ pub async fn open_file(
     Ok((StatusCode::CREATED, Json(tab)))
 }
 
+/// Open a second viewer of an existing tab in the desktop shell.
+pub async fn window(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    state.core.store.thread(&id)?;
+    // The manager checks that this tab actually belongs to this thread.
+    drop(state.core.previews.subscribe(&id, &tab)?);
+    state.core.shell.preview_window(&id, &tab)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn view(
     State(state): State<AppState>,
     Path((id, tab)): Path<(String, String)>,

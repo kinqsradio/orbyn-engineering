@@ -6,6 +6,8 @@ import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
 import { onShellEvent, Shell } from "./Shell";
+import { PreviewWindow } from "../features/panels/PreviewWindow";
+import { previewWindowRoute } from "../features/panels/browserPanels";
 
 type Boot =
   | { state: "loading" }
@@ -49,7 +51,11 @@ export function App() {
   useEffect(() => {
     if (!ready) return;
     void readShellStatus().catch(() => undefined);
-    return followShell(onShellEvent);
+    const preview = previewWindowRoute(window.location.hash);
+    return followShell((event) => {
+      if (!preview) onShellEvent(event);
+      else if (event.type === "failed") useUi.getState().pushToast(event.message);
+    });
   }, [ready]);
 
   switch (boot.state) {
@@ -67,7 +73,9 @@ export function App() {
           <ErrorState title="Can't reach Orbyn" failure={boot.failure} onRetry={start} />
         </main>
       );
-    case "ready":
-      return <Shell />;
+    case "ready": {
+      const preview = previewWindowRoute(window.location.hash);
+      return preview ? <PreviewWindow {...preview} /> : <Shell />;
+    }
   }
 }

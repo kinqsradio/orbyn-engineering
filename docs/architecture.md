@@ -1452,7 +1452,11 @@ runs. A second launch hands its links to the first and exits.
 path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
 the window, and everything else goes to the windows as a `command`, the same ones keys
 run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
-is kept beside the window state in the app's config folder.
+of the main window is kept beside its window state in the app's config folder. Native
+Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
+application window; without one they do nothing. Viewer zoom is independent and transient.
+Main-window close hides it for the tray and running service; viewer close destroys only
+that viewer. App-wide commands such as Settings still reveal and target the main window.
 
 The service owns the rule for running work and sends `activity` when it changes: the
 counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
@@ -1562,6 +1566,31 @@ lands. An action with no active run cannot wait for a person, so `ask` refuses a
 only an explicit allow rule passes.
 
 ## Preview
+
+Moving a preview to another panel changes viewer layout only: the service tab,
+profile, navigation and control state stay alive. A second panel has its own selected
+tab; returning it never opens or closes a browser. `POST
+/api/threads/:id/previews/:tab/window` validates the thread and tab before asking
+the attached desktop shell to open or focus that tab's separate window; a plain
+service returns `422`. The shell builds a bundled `#/preview/<thread>/<tab>` URL
+from its owned service origin and token, accepts no caller-supplied URL, and retains
+the same native navigation restrictions. A dedicated viewer shows only that tab
+and does not auto-resize the shared page. Closing the window leaves the tab alive;
+an explicit Close tab still ends it. Restarting the service closes its old preview
+windows and fences queued requests from earlier service generations. Unexpected
+service loss follows the ordinary disconnected-page state until restart. Shell
+window creation failures use the existing shell error event; the HTTP success means
+the request was queued. Native DevTools cannot inspect a remote page from its JPEG
+stream, so that action is not doable.
+
+The browser discovers a page's declared icon, falling back to its origin's
+`/favicon.ico`, alongside its title. The optional `favicon_url` is metadata only:
+the viewer loads bytes through the existing authenticated `/api/media/image`
+proxy and its unchanged HTTPS, public-destination, credential, redirect, format,
+size and cache limits. Unsupported icons keep a neutral globe. The viewer remembers
+at most 50 validated page/icon address pairs after successful loading, separate
+from the launch token. Private tabs neither restore nor save remembered icons.
+Navigation clears the preceding page's icon until discovery catches up.
 
 A preview tab is a headless Chrome with its own profile, apart from the governed
 browser agents use, and needs a trusted folder and an `http` or `https` URL. Up to
