@@ -28,6 +28,8 @@ import type {
   CreateThread,
   CustomEngine,
   EditorInfo,
+  EngineFeedbackReceipt,
+  EngineFeedbackRequest,
   EngineModels,
   EngineStatus,
   FileDiff,
@@ -330,6 +332,8 @@ export const api = {
     request<EngineStatus[]>("GET", "/api/engines", undefined, signal),
   models: (engine: string, signal?: AbortSignal, refresh = false) =>
     request<EngineModels>("GET", `/api/engines/${q(engine)}/models${refresh ? "?refresh=true" : ""}`, undefined, signal),
+  sendFeedback: (engine: string, body: EngineFeedbackRequest) =>
+    request<EngineFeedbackReceipt>("POST", `/api/engines/${q(engine)}/feedback`, body),
   switchEngine: (threadId: string, engine: string, model: string | null) =>
     request<Thread>("POST", `/api/threads/${q(threadId)}/switch-engine`, { engine, model }),
   refreshEngines: () => request<EngineStatus[]>("POST", "/api/engines/refresh"),

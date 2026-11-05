@@ -2791,6 +2791,34 @@ pub enum CompatibilityStatus {
 }
 
 wire! {
+/// A report sent through the engine's own feedback route. Orbyn collects no
+/// credential and adds no conversation of its own.
+pub struct EngineFeedbackRequest {
+    /// What the person wrote, when they wrote something.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub reason: Option<String>,
+    /// Attach the engine's logs, which can contain prompts and file paths.
+    #[serde(default)]
+    pub include_logs: bool,
+    /// The engine's own thread, when the report is about one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub thread_id: Option<String>,
+}
+}
+
+wire! {
+/// What the engine answered once it accepted a report.
+pub struct EngineFeedbackReceipt {
+    pub thread_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub prompt_hash: Option<String>,
+}
+}
+
+wire! {
 /// The signed manifest's warning about the installed version, and the version it
 /// recommends instead. Only a signed manifest can produce one.
 pub struct EngineCompatibility {
