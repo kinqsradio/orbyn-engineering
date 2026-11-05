@@ -217,6 +217,9 @@ async fn a_tab_streams_frames_and_a_person_must_take_it_to_click() {
     assert_eq!(forward["url"], format!("http://127.0.0.1:{port}/second"));
     assert_eq!(forward["can_go_forward"], false);
 
+    // Let a pre-resize frame queue, as it can for a slow viewer.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
     let (code, resized) = service
         .send(
             &format!("{base}/{id}/resize"),
@@ -228,9 +231,23 @@ async fn a_tab_streams_frames_and_a_person_must_take_it_to_click() {
         (resized["width"].as_u64(), resized["height"].as_u64()),
         (Some(320), Some(240))
     );
-    let framed = next_frame(&mut socket).await;
-    let jpeg = decode(&framed);
-    assert_eq!(jpeg_size(&jpeg), (320, 240), "a frame at the new size");
+    // This is a test synchronization wait, not a product resize fix: the HTTP
+    // response does not drain older frames already queued on the WebSocket.
+    // Check decoded dimensions until the new viewport arrives, with one deadline
+    // for the whole wait so a stream of stale frames cannot keep the test alive.
+    let mut last_size = None;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let framed = next_frame(&mut socket).await;
+            let size = jpeg_size(&decode(&framed));
+            last_size = Some(size);
+            if size == (320, 240) {
+                break;
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no frame at the new size (320, 240); last size: {last_size:?}"));
     let (code, _) = service
         .send(
             &format!("{base}/{id}/resize"),
