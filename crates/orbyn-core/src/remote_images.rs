@@ -47,6 +47,18 @@ pub struct ImageUnavailable;
 
 impl ImageProxy {
     pub async fn get(&self, raw: &str) -> Result<RemoteImage, ImageUnavailable> {
+        self.get_with_fetch(raw, fetch).await
+    }
+
+    async fn get_with_fetch<F, Fut>(
+        &self,
+        raw: &str,
+        fetch_image: F,
+    ) -> Result<RemoteImage, ImageUnavailable>
+    where
+        F: FnOnce(Url) -> Fut,
+        Fut: std::future::Future<Output = Result<RemoteImage, ImageUnavailable>>,
+    {
         let url = image_url(raw)?;
         {
             let mut cache = self.cache.lock().map_err(|_| ImageUnavailable)?;
@@ -55,11 +67,14 @@ impl ImageProxy {
                 return Ok(entry.image.clone());
             }
         }
-        let _permit = self.permits.try_acquire().map_err(|_| ImageUnavailable)?;
-        // Includes DNS, TLS and the entire body; slow DNS cannot escape the budget.
-        let image = tokio::time::timeout(TIMEOUT, fetch(url.clone()))
-            .await
-            .map_err(|_| ImageUnavailable)??;
+        // Queue waiting, DNS, TLS and the entire body share one budget. Dropping
+        // this future cancels the waiter or releases its active fetch permit.
+        let image = tokio::time::timeout(TIMEOUT, async {
+            let _permit = self.permits.acquire().await.map_err(|_| ImageUnavailable)?;
+            fetch_image(url.clone()).await
+        })
+        .await
+        .map_err(|_| ImageUnavailable)??;
         self.remember(url, image.clone())?;
         Ok(image)
     }
@@ -315,7 +330,159 @@ mod tests {
         assert!(proxy.get("https://example.com/uncached").await.is_err());
     }
 
-    #[tokio::test]
+    fn tiny_image() -> RemoteImage {
+        RemoteImage {
+            bytes: Arc::new(b"\x89PNG\r\n\x1a\n".to_vec()),
+            content_type: "image/png",
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn eight_uncached_images_wait_for_four_fetch_slots() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let proxy = ImageProxy::default();
+        let active = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let started = tokio::time::Instant::now();
+        let results = futures_util::future::join_all((0..8).map(|index| {
+            let proxy = &proxy;
+            let active = &active;
+            let peak = &peak;
+            async move {
+                proxy
+                    .get_with_fetch(&format!("https://example.com/{index}"), |_| async {
+                        let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak.fetch_max(count, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        active.fetch_sub(1, Ordering::SeqCst);
+                        Ok(tiny_image())
+                    })
+                    .await
+            }
+        }))
+        .await;
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 8);
+        assert_eq!(peak.load(Ordering::SeqCst), 4);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+        assert_eq!(started.elapsed(), Duration::from_secs(2));
+        assert_eq!(proxy.permits.available_permits(), 4);
+        assert_eq!(proxy.cache.lock().unwrap().len(), 8);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cached_image_bypasses_a_saturated_fetch_queue() {
+        let proxy = ImageProxy::default();
+        let url = Url::parse("https://example.com/cached").unwrap();
+        proxy.remember(url, tiny_image()).unwrap();
+        let _held = proxy.permits.acquire_many(4).await.unwrap();
+        let started = tokio::time::Instant::now();
+        assert!(
+            proxy
+                .get_with_fetch("https://example.com/cached#fragment", |_| async {
+                    panic!("a cache hit must not fetch")
+                })
+                .await
+                .is_ok()
+        );
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn queued_request_expires_without_starting_a_fetch() {
+        let proxy = ImageProxy::default();
+        let held = proxy.permits.acquire_many(4).await.unwrap();
+        let started = tokio::time::Instant::now();
+        let result = proxy
+            .get_with_fetch("https://example.com/queued", |_| async {
+                panic!("an expired queued request must not fetch")
+            })
+            .await;
+        assert!(result.is_err());
+        assert_eq!(started.elapsed(), TIMEOUT);
+        assert!(proxy.cache.lock().unwrap().is_empty());
+        drop(held);
+        assert_eq!(proxy.permits.available_permits(), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn queue_wait_and_fetch_share_one_deadline() {
+        let proxy = ImageProxy::default();
+        let held = proxy.permits.acquire_many(4).await.unwrap();
+        let started = tokio::time::Instant::now();
+        let fetch_started = std::cell::Cell::new(false);
+        let (_, result) = tokio::join!(
+            async {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+                drop(held);
+            },
+            proxy.get_with_fetch("https://example.com/slow", |_| async {
+                fetch_started.set(true);
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Ok(tiny_image())
+            })
+        );
+        assert!(fetch_started.get());
+        assert!(result.is_err());
+        assert_eq!(started.elapsed(), TIMEOUT);
+        assert_eq!(proxy.permits.available_permits(), 4);
+        assert!(proxy.cache.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancellation_and_failure_release_slots() {
+        let proxy = ImageProxy::default();
+        let held = proxy.permits.acquire_many(4).await.unwrap();
+        // Dropping a queued request must remove its semaphore waiter.
+        assert!(
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                proxy.get_with_fetch("https://example.com/cancel-queued", |_| async {
+                    panic!("a queued request cannot fetch")
+                })
+            )
+            .await
+            .is_err()
+        );
+        drop(held);
+        assert_eq!(proxy.permits.available_permits(), 4);
+
+        let fetch_started = std::cell::Cell::new(false);
+        assert!(
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                proxy.get_with_fetch("https://example.com/cancel-active", |_| async {
+                    fetch_started.set(true);
+                    std::future::pending().await
+                })
+            )
+            .await
+            .is_err()
+        );
+        assert!(fetch_started.get());
+        assert_eq!(proxy.permits.available_permits(), 4);
+        assert!(
+            proxy
+                .get_with_fetch("https://example.com/failed", |_| async {
+                    Err(ImageUnavailable)
+                })
+                .await
+                .is_err()
+        );
+        assert_eq!(proxy.permits.available_permits(), 4);
+        assert!(proxy.cache.lock().unwrap().is_empty());
+        assert!(
+            proxy
+                .get_with_fetch("https://example.com/recovered", |_| async {
+                    Ok(tiny_image())
+                })
+                .await
+                .is_ok()
+        );
+        assert_eq!(proxy.permits.available_permits(), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn cache_bounds_and_expiry() {
         let proxy = ImageProxy::default();
         let image = RemoteImage {
