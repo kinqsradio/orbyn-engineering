@@ -7,12 +7,12 @@ labels:
 body:
   - type: markdown
     attributes:
-      value: "Title as `feat(scope): what it adds`. Features come from docs/parity.md; anything not on it needs the maintainer's agreement before work starts."
+      value: "Title as `feat(scope): what it adds`. Keep it short: bullets and fragments, under about 150 words. Features come from docs/parity.md; anything not on it needs the maintainer's agreement before work starts."
   - type: textarea
     id: summary
     attributes:
       label: Summary
-      description: What a user can do afterwards that they cannot do today, and why it matters.
+      description: One line on what a user can do afterwards, and one on why it matters.
     validations:
       required: true
   - type: input
@@ -27,9 +27,9 @@ body:
     id: checklist
     attributes:
       label: Checklist
-      description: One line per task. Start with what to do in plain words, then the parity row in brackets, so a maintainer knows what it is without looking it up.
+      description: One line per task, under 12 words, starting with a verb, with the parity row in brackets. Detail goes in the linked doc or PR, not under the box.
       value: |
-        - [ ] **Show the engine's real model list, and let people refresh it.** Read it from the installed engine and recover when refresh fails. (I40)
+        - [ ] Refresh the model list from the installed engine (I40)
         - [ ] 
     validations:
       required: true
@@ -37,7 +37,7 @@ body:
     id: done
     attributes:
       label: Done when
-      description: What has to be true, and how it is shown, such as through the real service or on both platforms.
+      description: One or two lines on what has to be true and how it is shown, such as the real service on both platforms.
     validations:
       required: true
   - type: dropdown

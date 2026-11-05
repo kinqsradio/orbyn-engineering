@@ -7,12 +7,12 @@ labels:
 body:
   - type: markdown
     attributes:
-      value: "Title as `fix(scope): what is wrong`. No tokens, credentials or personal data; report vulnerabilities privately, as SECURITY.md describes."
+      value: "Title as `fix(scope): what is wrong`. Keep it short: bullets and fragments, under about 150 words. No tokens, credentials or personal data; report vulnerabilities privately, as SECURITY.md describes."
   - type: textarea
     id: summary
     attributes:
       label: Summary
-      description: What goes wrong, in one or two sentences.
+      description: What goes wrong, in one line.
     validations:
       required: true
   - type: textarea
@@ -87,7 +87,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Relevant service log lines, with secrets removed.
+      description: Only the lines that show the error, with secrets removed. Link a long log instead of pasting it.
       render: text
   - type: dropdown
     id: ai-used
