@@ -47,6 +47,8 @@ export type { Attachment } from "../generated/Attachment";
 export type { AuthState } from "../generated/AuthState";
 export type { CreateThread } from "../generated/CreateThread";
 export type { CustomEngine } from "../generated/CustomEngine";
+export type { EngineFeedbackReceipt } from "../generated/EngineFeedbackReceipt";
+export type { EngineFeedbackRequest } from "../generated/EngineFeedbackRequest";
 export type { EngineModels } from "../generated/EngineModels";
 export type { EngineStatus } from "../generated/EngineStatus";
 export type { EngineTier } from "../generated/EngineTier";

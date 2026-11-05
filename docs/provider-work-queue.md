@@ -39,7 +39,8 @@ feature. Before adding I9 to the implementation batch:
    someone with that access. Local plumbing alone does not complete I9.
 
 No feedback was sent and no credential-free Codex feedback route was established
-by this documentation decision.
+by this documentation decision. The route was established later; see the I9
+implementation evidence below.
 
 ## Remaining provider work
 
@@ -171,6 +172,39 @@ request therefore does not need a live authenticated session: the remaining
 dependency is authorization to send one sanitized report and observe the accepted
 response. Nothing was sent, no feedback UI or service route was added, and I9 stays
 open under #140.
+
+## I9 implementation evidence — 5 November 2026
+
+`POST /api/engines/{id}/feedback` sends `EngineFeedbackRequest` through the
+engine's own route and returns `EngineFeedbackReceipt`. Only the Codex driver
+implements it: a short-lived app-server calls `feedback/upload` with
+`classification: "bug"`, `includeLogs` from the request, and `reason` or
+`threadId` only when they are non-blank after trimming. A reply without
+`threadId` is an internal error rather than an invented receipt. Claude, ACP,
+terminal and AG-UI drivers keep the default `unsupported` answer, which the
+service maps to `422`.
+
+Settings → Providers shows Send feedback on Codex engines and their instances.
+The dialog explains that the report goes to OpenAI through Codex, takes an
+optional reason, leaves Include Codex logs unchecked, and reports the returned
+report id after success. A failed send stays in the dialog with the service's
+message. It is not shown for engines without the route.
+
+An authorized sanitized report through installed Codex 0.166.0's app-server,
+using a task-owned `CODEX_HOME` with no credentials, no live thread and no turn,
+returned:
+
+```json
+{"threadId":"no-active-thread-01a1aa37-453f-7150-b95c-7c4901b64fb5","promptHash":null}
+```
+
+The request-shape helpers are unit-tested. The fake app-server records the
+`feedback/upload` parameters, and a service test sends through the real route
+and checks the Codex parameters plus Claude's `unsupported` answer. Component
+tests cover the unchecked log box, the trimmed reason, the success line and a
+failed send. Not verified: the route and dialog against installed Codex (the
+protocol run above called the app-server directly), Windows, and the packaged
+app. I9 stays partial under #140.
 
 ## I51 implementation evidence — 5 November 2026
 

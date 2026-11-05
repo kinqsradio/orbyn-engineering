@@ -500,3 +500,43 @@ async fn computer_actions_on_an_instance_obey_its_native_family_deny() {
         .await;
     assert!(approvals.as_array().unwrap().is_empty(), "{approvals}");
 }
+
+#[tokio::test]
+async fn codex_feedback_uses_the_engines_own_upload_route() {
+    let dir = TempDir::new();
+    let launch = dir.path().join("launches");
+    let options = Options {
+        env: vec![(
+            "ORBYN_FAKE_LAUNCH_FILE".into(),
+            launch.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, _) = setup(&dir, options, "codex").await;
+    let (code, body) = service
+        .send(
+            "/api/engines/codex/feedback",
+            json!({ "reason": " broke ", "include_logs": false }),
+        )
+        .await;
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body, json!({ "thread_id": "fake-feedback-1" }));
+    let sent = launches(&launch)
+        .into_iter()
+        .rfind(|entry| entry["mode"] == "codex-feedback")
+        .expect("feedback reached the app-server");
+    let params: Value = serde_json::from_str(sent["args"][0].as_str().unwrap()).unwrap();
+    assert_eq!(
+        params,
+        json!({ "classification": "bug", "includeLogs": false, "reason": "broke" })
+    );
+    // Claude has no such route, and the answer says so instead of pretending.
+    let (code, body) = service
+        .send(
+            "/api/engines/claude/feedback",
+            json!({ "include_logs": false }),
+        )
+        .await;
+    assert_eq!(code, 422, "{body}");
+    assert_eq!(body["code"], "unsupported");
+}

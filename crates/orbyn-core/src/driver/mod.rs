@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use orbyn_contracts::{
-    ActionKind, AgUiEvent, AuthState, EngineAgent, EngineCapabilities, EngineTier, InstallerKind,
-    ModelInfo, ModelOption, ModelOptionValue,
+    ActionKind, AgUiEvent, AuthState, EngineAgent, EngineCapabilities, EngineFeedbackReceipt,
+    EngineFeedbackRequest, EngineTier, InstallerKind, ModelInfo, ModelOption, ModelOptionValue,
 };
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -379,6 +379,14 @@ pub trait EngineDriver: Send + Sync {
     /// `Ok(None)` means it has no way to report them.
     async fn models(&self) -> Result<Option<ModelCatalog>> {
         Ok(None)
+    }
+
+    /// Sends a feedback report through the engine's own route. The default says
+    /// this engine has none.
+    async fn feedback(&self, _request: &EngineFeedbackRequest) -> Result<EngineFeedbackReceipt> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine has no feedback route.".into(),
+        ))
     }
 
     /// What a cached list depends on. An engine with a key keeps its list until the

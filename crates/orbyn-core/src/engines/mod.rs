@@ -15,8 +15,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
-    AuthState, CustomEngine, EngineCompatibility, EngineModels, EngineStatus, EngineTier,
-    InstallerKind, ModelSelection, ProviderInstance, VersionSupport,
+    AuthState, CustomEngine, EngineCompatibility, EngineFeedbackReceipt, EngineFeedbackRequest,
+    EngineModels, EngineStatus, EngineTier, InstallerKind, ModelSelection, ProviderInstance,
+    VersionSupport,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -379,6 +380,15 @@ impl EngineManager {
         let mut models = self.models.lock().await;
         models.clear();
         lock(&self.known_models).clear();
+    }
+
+    /// Sends a report through the engine's own feedback route.
+    pub async fn feedback(
+        &self,
+        id: &str,
+        request: &EngineFeedbackRequest,
+    ) -> Result<EngineFeedbackReceipt> {
+        self.driver(id)?.feedback(request).await
     }
 
     /// What the engine says it offers. A failure is reported with the list empty,
