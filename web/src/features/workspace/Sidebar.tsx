@@ -5,6 +5,7 @@ import {
   FilePen,
   FolderPlus,
   GitPullRequest,
+  Layers,
   PanelLeft,
   Search,
   Settings,
@@ -22,8 +23,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api } from "../../api/client";
+import { api, request } from "../../api/client";
 import type { Project, ServerSettings, Thread } from "../../api/types";
+import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
+import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import { toFailure } from "../../lib/useAsync";
 import { DRAFT_KEY, useDraftStore } from "../onboarding/draftStore";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
@@ -49,6 +52,7 @@ import {
   type DropSection,
   type DropTarget,
   type DropVerb,
+  type ProjectFolder,
   type SidebarSection,
   type ThreadSections,
 } from "./groups";
@@ -70,6 +74,12 @@ import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
 import { ProviderUpdatePill, UpdatePill } from "./Updates";
 
 const SETTLED_PAGE = 10;
+
+const GROUPING_LABELS: Record<ProjectGroupingMode, string> = {
+  repository: "Repository",
+  repository_path: "Repository path",
+  separate: "Separate",
+};
 
 /** A project with no threads yet still needs a way in, and its trust state shown. */
 function EmptyProjectRow({ project }: { project: Project }) {
@@ -301,12 +311,14 @@ function SidebarFoot({ route }: { route: Route }) {
 
 function FolderHeader({
   project,
+  label,
   collapsed,
   count,
   onToggle,
   onMenu,
 }: {
   project: Project;
+  label: string;
   collapsed: boolean;
   count: number;
   onToggle(): void;
@@ -325,7 +337,7 @@ function FolderHeader({
         }}
       >
         <ProjectBadge name={project.name} project={project} />
-        <span className="folder-name">{project.name}</span>
+        <span className="folder-name">{label}</span>
         {collapsed && count > 0 ? <span className="group-count">{count}</span> : null}
         <ChevronRight size={12} className="chev" aria-hidden />
       </button>
@@ -437,6 +449,8 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const workingSection = useUi((state) => state.workingSection);
   const threadSort = useUi((state) => state.threadSort);
   const projectSort = useUi((state) => state.projectSort);
+  const projectGrouping = useUi((state) => state.projectGrouping);
+  const projectGroupingOverrides = useUi((state) => state.projectGroupingOverrides);
   const setPrefs = useUi((state) => state.setPrefs);
   const pushToast = useUi((state) => state.pushToast);
 
@@ -458,6 +472,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [sweep, setSweep] = useState<{ verb: DropVerb; ids: ReadonlySet<string> } | null>(null);
   const [settings, setSettings] = useState<ServerSettings | null>(null);
+  const [groupingCatalog, setGroupingCatalog] = useState<ProjectScopeCatalog | null>(null);
 
   const nav = useRef<HTMLElement>(null);
   const tree = useRef<HTMLDivElement>(null);
@@ -473,6 +488,31 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     return () => abort.abort();
   }, []);
   const presets = useMemo(() => settings?.snooze_presets ?? [], [settings]);
+  const groupingOverrides = useMemo(
+    () =>
+      Object.entries(projectGroupingOverrides)
+        .filter(([id]) => list.some((project) => project.id === id))
+        .map(([project_id, mode]) => ({ project_id, mode }))
+        .sort((a, b) => a.project_id.localeCompare(b.project_id)),
+    [list, projectGroupingOverrides],
+  );
+
+  useEffect(() => {
+    if (!projectFolders || projectGrouping === "separate") {
+      setGroupingCatalog(null);
+      return;
+    }
+    const abort = new AbortController();
+    request<ProjectScopeCatalog>(
+      "POST",
+      "/api/settings/project-scopes",
+      { recipe: { mode: projectGrouping, overrides: groupingOverrides } },
+      abort.signal,
+    ).then(setGroupingCatalog, () => {
+      if (!abort.signal.aborted) setGroupingCatalog(null);
+    });
+    return () => abort.abort();
+  }, [groupingOverrides, projectFolders, projectGrouping]);
 
   const scoped = useMemo(() => {
     const all = Object.values(threads);
@@ -780,6 +820,13 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     ? foldersOf(
         projectFilter.length > 0 ? list.filter((p) => projectFilter.includes(p.id)) : list,
         [...shown.active, ...shown.working],
+        projectGrouping === "separate"
+          ? null
+          : groupingCatalog?.groups.map((group) => ({
+              key: group.key,
+              label: group.label,
+              projectIds: group.members.map((member) => member.project_id),
+            })) ?? null,
         projectSort,
         threadSort,
       )
@@ -788,11 +835,35 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const hasShelf =
     shelves.length > 0 || shown.snoozed.length > 0 || shown.settled.length > 0 || dragging;
 
-  const folderMenu = (event: React.MouseEvent, project: Project) => {
+  const setGroupingOverride = (projectId: string, mode: ProjectGroupingMode | null) => {
+    const next = { ...projectGroupingOverrides };
+    if (mode === null) delete next[projectId];
+    else next[projectId] = mode;
+    setPrefs({ projectGroupingOverrides: next });
+  };
+
+  const folderMenu = (event: React.MouseEvent, folder: ProjectFolder) => {
+    const project = folder.project;
+    const groupingItems: MenuItem[] = folder.projects.map((member) => ({
+      label: member.name,
+      children: [
+        {
+          label: "Default grouping",
+          selected: projectGroupingOverrides[member.id] === undefined,
+          onSelect: () => setGroupingOverride(member.id, null),
+        },
+        ...(Object.entries(GROUPING_LABELS) as [ProjectGroupingMode, string][]).map(([mode, label]) => ({
+          label,
+          selected: (projectGroupingOverrides[member.id] ?? projectGrouping) === mode,
+          onSelect: () => setGroupingOverride(member.id, mode),
+        })),
+      ],
+    }));
+    const overridden = folder.projects.some((member) => projectGroupingOverrides[member.id]);
     setMenu({
       x: event.clientX,
       y: event.clientY,
-      label: `Actions for ${project.name}`,
+      label: `Actions for ${folder.label}`,
       items: [
         {
           label: "New thread",
@@ -809,6 +880,16 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           icon: <Settings size={14} aria-hidden />,
           onSelect: () => navigate({ name: "settings", section: "projects" }),
         },
+        ...(folder.projects.length > 1 || overridden
+          ? [
+              {
+                label: "Grouping",
+                icon: <Layers size={14} aria-hidden />,
+                separatorBefore: true,
+                children: groupingItems,
+              },
+            ]
+          : []),
       ],
     });
   };
@@ -906,19 +987,20 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
               {shown.pinned.map((thread) => row(thread, "pinned", false))}
               {dragging ? <DragBoundary label="Active" section="active" active={dragTarget === "active"} /> : null}
               {projectFolders
-                ? folders.map(({ project, threads: rows }) => {
-                    const key = `folder:${project.id}`;
+                ? folders.map((folder) => {
+                    const key = `folder:${folder.key}`;
                     const collapsed = closedGroups[key] === false;
                     return [
                       <FolderHeader
                         key={key}
-                        project={project}
+                        project={folder.project}
+                        label={folder.label}
                         collapsed={collapsed}
-                        count={rows.length}
+                        count={folder.threads.length}
                         onToggle={() => toggleGroup(key, true)}
-                        onMenu={(event) => folderMenu(event, project)}
+                        onMenu={(event) => folderMenu(event, folder)}
                       />,
-                      ...(collapsed ? [] : rows.map((thread) => row(thread, "active", true))),
+                      ...(collapsed ? [] : folder.threads.map((thread) => row(thread, "active", true))),
                     ];
                   })
                 : shown.active.map((thread) => row(thread, "active", false))}

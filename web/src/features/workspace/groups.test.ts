@@ -121,8 +121,8 @@ describe("press-drag", () => {
 });
 
 describe("folders", () => {
-  const project = (id: string, created_at: string) =>
-    ({ id, name: id, path: id, trusted: true, is_git: true, managed: false, scratch: false, created_at }) as const;
+  const project = (id: string, created_at: string, name = id) =>
+    ({ id, name, path: `/work/${id}`, trusted: true, is_git: true, managed: false, scratch: false, created_at }) as const;
 
   it("sorts projects by latest activity and threads by the chosen field", () => {
     const folders = foldersOf(
@@ -131,10 +131,55 @@ describe("folders", () => {
         thread("x", {}, { project_id: "old", updated_at: "2026-10-31T00:00:00Z" }),
         thread("y", {}, { project_id: "new", updated_at: "2026-10-30T00:00:00Z" }),
       ],
+      null,
       "updated_at",
       "updated_at",
     );
-    expect(folders.map((folder) => folder.project.id)).toEqual(["old", "new"]);
+    expect(folders.map((folder) => folder.key)).toEqual(["old", "new"]);
+    expect(folders[0]?.label).toBe("old");
+  });
+
+  it("keeps checkouts of one repository in one folder", () => {
+    const folders = foldersOf(
+      [project("one", "2026-01-01T00:00:00Z"), project("two", "2026-02-01T00:00:00Z")],
+      [
+        thread("a", {}, { project_id: "one", updated_at: "2026-10-30T00:00:00Z" }),
+        thread("b", {}, { project_id: "two", updated_at: "2026-10-31T00:00:00Z" }),
+      ],
+      [{ key: "repo", label: "Owner/Repo", projectIds: ["one", "two"] }],
+      "updated_at",
+      "updated_at",
+    );
+    expect(folders).toHaveLength(1);
+    expect(folders[0]?.label).toBe("Owner/Repo");
+    expect(folders[0]?.projects.map((member) => member.id)).toEqual(["one", "two"]);
+    expect(folders[0]?.threads.map((row) => row.id)).toEqual(["b", "a"]);
+  });
+
+  it("keeps a checkout missing from the catalog in its own folder", () => {
+    const folders = foldersOf(
+      [project("one", "2026-01-01T00:00:00Z"), project("two", "2026-02-01T00:00:00Z")],
+      [thread("a", {}, { project_id: "one" }), thread("b", {}, { project_id: "two" })],
+      [{ key: "repo", label: "Owner/Repo", projectIds: ["one"] }],
+      "updated_at",
+      "updated_at",
+    );
+    expect(folders.map((folder) => folder.label).sort()).toEqual(["Owner/Repo", "two"]);
+    expect(new Set(folders.flatMap((folder) => folder.threads.map((row) => row.id))).size).toBe(2);
+  });
+
+  it("sorts threads inside a group by the chosen field", () => {
+    const folders = foldersOf(
+      [project("one", "2026-01-01T00:00:00Z"), project("two", "2026-01-01T00:00:00Z")],
+      [
+        thread("old", {}, { project_id: "one", created_at: "2026-09-01T00:00:00Z", updated_at: "2026-10-31T00:00:00Z" }),
+        thread("new", {}, { project_id: "two", created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-30T00:00:00Z" }),
+      ],
+      [{ key: "repo", label: "Owner/Repo", projectIds: ["one", "two"] }],
+      "updated_at",
+      "created_at",
+    );
+    expect(folders[0]?.threads.map((row) => row.id)).toEqual(["new", "old"]);
   });
 });
 
