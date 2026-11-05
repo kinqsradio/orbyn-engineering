@@ -52,6 +52,7 @@ pub mod telemetry_export;
 pub mod terminal;
 pub mod threads;
 pub mod titles;
+pub mod triage;
 pub mod updates;
 pub mod usage;
 pub mod util;

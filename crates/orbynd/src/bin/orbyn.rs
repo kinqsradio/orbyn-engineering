@@ -1,4 +1,4 @@
-//! `orbyn`: the command line. Everything but `serve` goes to a running service through
+//! `orbyn`: the command line. API commands go to a running service through
 //! the same API as the UI, so there is one owner of every rule. It finds the service
 //! through `service.json` in the data folder, which the service writes at start, and
 //! removes at exit.
@@ -10,6 +10,8 @@ mod cli_service;
 mod cli_stdio;
 #[path = "../cli_trace.rs"]
 mod cli_trace;
+#[path = "../cli_triage.rs"]
+mod cli_triage;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, ExitCode, Stdio};
@@ -49,6 +51,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Investigate a local Orbyn problem in a fresh native agent terminal.
+    Triage {
+        /// Agent to use; ask when both are available in a terminal.
+        #[arg(long, value_enum)]
+        agent: Option<TriageAgent>,
+        /// Model passed literally to the native agent.
+        #[arg(long)]
+        model: Option<String>,
+    },
     /// Start the service in the background if it is not running, and open it.
     Start {
         /// A folder to open, registered first if it is new. It starts untrusted.
@@ -102,6 +113,21 @@ enum TraceCommand {
         #[arg(long, default_value_t = 25, value_parser = clap::value_parser!(u32).range(1..))]
         limit: u32,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum TriageAgent {
+    Claude,
+    Codex,
+}
+
+impl From<TriageAgent> for orbyn_core::triage::Agent {
+    fn from(agent: TriageAgent) -> Self {
+        match agent {
+            TriageAgent::Claude => Self::Claude,
+            TriageAgent::Codex => Self::Codex,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -996,15 +1022,38 @@ async fn run(cli: Cli) -> Outcome<()> {
     }
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
-    match run(Cli::parse()).await {
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    if let Some(Command::Triage { agent, model }) = &cli.command {
+        let result = data_dir(&cli).and_then(|data| {
+            cli_triage::run(&data, agent.map(Into::into), model.as_deref()).map_err(Failure::new)
+        });
+        return match result {
+            Ok(code) => {
+                // The foreground child is reaped and its launcher resources have
+                // dropped. No async runtime/service was started on this path.
+                // ExitCode's stable u8 constructor would truncate Windows status.
+                drop(cli);
+                std::process::exit(code)
+            }
+            Err(failure) => {
+                eprintln!("{}", failure.message);
+                ExitCode::from(failure.code)
+            }
+        };
+    }
+    match run_command(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
             eprintln!("{}", failure.message);
             ExitCode::from(failure.code)
         }
     }
+}
+
+#[tokio::main]
+async fn run_command(cli: Cli) -> Outcome<()> {
+    run(cli).await
 }
 
 #[cfg(test)]
