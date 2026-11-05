@@ -251,6 +251,18 @@ impl Store {
         })
     }
 
+    /// The run on `thread` that started last before `run`.
+    pub(crate) fn previous_run(&self, thread: &str, run: &str) -> Result<Option<String>> {
+        Ok(self
+            .reader()
+            .query_row(
+                "SELECT id FROM runs WHERE thread_id = ?1 AND id <> ?2 AND started_at <= (SELECT started_at FROM runs WHERE id = ?2) ORDER BY started_at DESC, id DESC LIMIT 1",
+                params![thread, run],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
     pub fn engine_session(&self, thread_id: &str) -> Result<Option<String>> {
         Ok(self
             .reader()

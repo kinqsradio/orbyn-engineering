@@ -7,6 +7,7 @@ pub mod known;
 pub mod maintenance;
 pub mod manifest;
 pub mod probe;
+pub mod warm;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -93,6 +94,8 @@ pub struct EngineManager {
     known_models: Mutex<HashMap<String, EngineModels>>,
     /// The same lists on disk, so a restart keeps what the engine last said.
     catalog: CatalogCache,
+    /// Processes started ahead of each thread's next turn, by thread.
+    warm: Mutex<HashMap<String, warm::WarmEntry>>,
 }
 
 struct CachedModels {
@@ -126,6 +129,7 @@ impl EngineManager {
             updating: Mutex::new(HashSet::new()),
             native_operations: Arc::default(),
             installer_locks: Mutex::new(HashMap::new()),
+            warm: Mutex::new(HashMap::new()),
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
             known_models: Mutex::new(HashMap::new()),
@@ -300,6 +304,38 @@ impl EngineManager {
             }
         }
         Ok(drivers)
+    }
+
+    /// Keeps a process for `thread`'s next turn, replacing any earlier one. Refused
+    /// while an engine updates, since it would hold the binary being replaced.
+    pub fn park_warm(&self, thread: &str, entry: warm::WarmEntry) -> bool {
+        let updating = lock(&self.updating);
+        if !updating.is_empty() {
+            return false;
+        }
+        lock(&self.warm).insert(thread.to_owned(), entry);
+        true
+    }
+
+    /// The process kept for `thread`, which is no longer kept either way.
+    pub fn take_warm(&self, thread: &str) -> Option<warm::WarmEntry> {
+        lock(&self.warm).remove(thread)
+    }
+
+    /// Ends `thread`'s warm process if it is still the one named `id`.
+    pub fn expire_warm(&self, thread: &str, id: &str) {
+        let mut warm = lock(&self.warm);
+        if warm.get(thread).is_some_and(|entry| entry.id == id) {
+            let entry = warm.remove(thread);
+            drop(warm);
+            drop(entry);
+        }
+    }
+
+    /// Ends every warm process, as the service stops.
+    pub fn end_warm(&self) {
+        let warm = std::mem::take(&mut *lock(&self.warm));
+        drop(warm);
     }
 
     /// Instances may share a binary, so no run starts during any engine update.
@@ -697,6 +733,9 @@ impl EngineManager {
             return Err(CoreError::EngineBusy(id.to_owned()));
         }
         updating.insert(id.to_owned());
+        // Instances can share the binary, and Windows cannot replace a running one.
+        let warm = std::mem::take(&mut *lock(&self.warm));
+        drop(warm);
         Ok(UpdateMarker {
             set: &self.updating,
             id: id.to_owned(),

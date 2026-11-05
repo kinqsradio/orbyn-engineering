@@ -339,6 +339,20 @@ Parsers are tested against recorded real frames in `driver/fixtures`, named by v
 `cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
 with no prompt.
 
+## Warm next turn
+
+When a Claude turn completes, the service starts the process the thread's next turn
+would launch, with the same arguments, folder, MCP URL, settings and mode, and leaves
+it idle on its input: nothing is sent, so it spends no usage. The next run on that
+thread adopts it only when it is the run right after the one that started it, the
+process is still alive, and every launch input gives the same key, which also names
+the CLI's path, size and modified time and the `prefer_saved_login` state. Anything
+else ends it unused and launches as usual. Its MCP token is bound to no run until a
+run adopts it, and is revoked whenever the process goes unadopted: after five idle
+minutes, at shutdown, or when any engine update begins, since instances can share the
+binary and Windows cannot replace a running one. A run that adopts logs `CUSTOM
+engine.warm`. Other engines launch per run as before.
+
 ## Session recovery
 
 An engine that no longer has the session a run tried to resume reports

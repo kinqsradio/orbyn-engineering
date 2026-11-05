@@ -406,6 +406,34 @@ pub trait EngineDriver: Send + Sync {
         false
     }
 
+    /// True for an engine that can start the next turn's process ahead of time.
+    fn can_warm(&self) -> bool {
+        false
+    }
+
+    /// Every input this engine's run process is launched with, for an engine that can
+    /// start the next turn's process ahead of time. `None` means it cannot.
+    fn warm_key(&self, _spec: &RunSpec) -> Option<String> {
+        None
+    }
+
+    /// Starts the process `spec` would launch, idle until a run adopts it. Nothing
+    /// is sent to it, so it spends no usage.
+    async fn start_warm(&self, _spec: RunSpec) -> Result<Option<WarmProcess>> {
+        Ok(None)
+    }
+
+    /// Runs `spec` on a process started ahead of time, whose key the caller checked.
+    async fn adopt_run(
+        &self,
+        spec: RunSpec,
+        events: mpsc::Sender<EngineEvent>,
+        warm: WarmProcess,
+    ) -> Result<RunHandle> {
+        drop(warm);
+        self.start_run(spec, events).await
+    }
+
     /// One prompt, one reply, no tools and no session. This spends the user's
     /// engine usage, so a caller that does so unasked needs a setting and a row in
     /// the network list.
@@ -445,6 +473,23 @@ fn effort_label(id: &str) -> String {
                 first.to_uppercase().chain(chars).collect()
             })
         }
+    }
+}
+
+/// An engine process started ahead of the turn it is for, idle on its input. Its
+/// files live in `dir`. Dropping it ends the process and removes the folder.
+pub struct WarmProcess {
+    /// Every launch input the process was started with. A run adopts it only when
+    /// its own inputs give the same key.
+    pub key: String,
+    pub(crate) process: pipes::EngineProcess,
+    pub(crate) dir: ProbeDir,
+}
+
+impl WarmProcess {
+    /// False once the process has ended on its own.
+    pub fn is_alive(&mut self) -> bool {
+        matches!(self.process.child.child_mut().try_wait(), Ok(None))
     }
 }
 
