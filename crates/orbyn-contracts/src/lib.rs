@@ -3200,6 +3200,19 @@ pub struct ServerInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub environment_theme: Option<EnvironmentTheme>,
+    /// `dev` for a debug build, `nightly` for a build made with
+    /// `ORBYN_CHANNEL=nightly`, otherwise `stable`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub channel: Option<ReleaseChannel>,
+}
+}
+
+wire_enum! {
+pub enum ReleaseChannel {
+    Stable,
+    Nightly,
+    Dev,
 }
 }
 

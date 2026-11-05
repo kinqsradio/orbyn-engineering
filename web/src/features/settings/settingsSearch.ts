@@ -70,6 +70,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "appearance-theme", "title": "Theme", "section": "appearance"},
   {"id": "appearance-contrast", "title": "Contrast", "section": "appearance"},
   {"id": "appearance-font-smoothing", "title": "Font smoothing", "section": "appearance"},
+  {"id": "appearance-environment-identification", "title": "Environment identification", "section": "appearance"},
   {"id": "appearance-effort-display", "title": "Effort display", "section": "appearance"},
   {"id": "threads-add-a-preset", "title": "Add a preset", "section": "threads"},
   {"id": "threads-settle-idle-threads", "title": "Settle idle threads", "section": "threads"},

@@ -1,10 +1,26 @@
 //! What the local environment says about itself to its viewers: the theme it
-//! publishes. Nothing here identifies a remote environment.
+//! publishes and the release channel it was built for. Nothing here identifies a
+//! remote environment.
 
-use orbyn_contracts::EnvironmentTheme;
+use orbyn_contracts::{EnvironmentTheme, ReleaseChannel};
 
 use crate::app::Core;
 use crate::error::Result;
+
+/// The channel this build belongs to, fixed when it was compiled.
+pub fn release_channel() -> ReleaseChannel {
+    channel_of(option_env!("ORBYN_CHANNEL"), cfg!(debug_assertions))
+}
+
+fn channel_of(named: Option<&str>, debug: bool) -> ReleaseChannel {
+    match named {
+        Some("nightly") => ReleaseChannel::Nightly,
+        Some("dev") => ReleaseChannel::Dev,
+        Some("stable") => ReleaseChannel::Stable,
+        _ if debug => ReleaseChannel::Dev,
+        _ => ReleaseChannel::Stable,
+    }
+}
 
 impl Core {
     /// The published theme, or none while `default_theme` is empty.
@@ -63,6 +79,16 @@ mod tests {
             core.preference("default_theme_set_at", None).unwrap(),
             json!(0)
         );
+    }
+
+    #[test]
+    fn a_named_channel_wins_and_debug_builds_are_dev() {
+        use super::channel_of;
+        use orbyn_contracts::ReleaseChannel;
+        assert_eq!(channel_of(Some("nightly"), false), ReleaseChannel::Nightly);
+        assert_eq!(channel_of(Some("stable"), true), ReleaseChannel::Stable);
+        assert_eq!(channel_of(None, true), ReleaseChannel::Dev);
+        assert_eq!(channel_of(Some("other"), false), ReleaseChannel::Stable);
     }
 
     #[test]

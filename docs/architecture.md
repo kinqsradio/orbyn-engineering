@@ -1062,6 +1062,11 @@ theme once, when its `set_at` is newer than the one it last applied, at startup 
 when the window takes focus; after that the viewer's own choice stays. An unknown id
 is recorded as applied and changes nothing. Remote environments publish nothing here.
 
+`/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
+`stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
+marks it as the viewer chose: Dev or Nightly artwork (nothing for stable), a version
+pill, or none. That choice is viewer-local.
+
 ## Message search
 
 A message is split over many events, so `thread_messages` keeps each one whole, written

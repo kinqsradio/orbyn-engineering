@@ -167,6 +167,7 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
         environment_label: state.core.environment_label(),
         // A storage error leaves the theme unpublished rather than failing /api/info.
         environment_theme: state.core.environment_theme().ok().flatten(),
+        channel: Some(orbyn_core::environment::release_channel()),
     })
 }
 

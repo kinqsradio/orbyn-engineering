@@ -1,7 +1,7 @@
 import { settingsLabel } from "./settingsSearch";
 import { useRef } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
-import { applyTheme, useUi, type ThemeChoice, type Typography } from "../../state/ui";
+import { applyTheme, useUi, type EnvironmentIdentification, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "./themes";
@@ -143,6 +143,7 @@ export function AppearanceSection() {
   const setPrefs = useUi((state) => state.setPrefs);
   const contrast = useUi((state) => state.contrast);
   const smoothing = useUi((state) => state.fontSmoothing);
+  const environmentIdentification = useUi((state) => state.environmentIdentification);
   return (
     <>
       <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -156,6 +157,20 @@ export function AppearanceSection() {
                 {choice.label}
               </option>
             ))}
+          </select>
+        </SettingRow>
+        <SettingRow
+          title={settingsLabel("appearance-environment-identification")}
+          description="How the sidebar marks a Dev or Nightly build of this environment."
+        >
+          <select
+            aria-label="Environment identification"
+            value={environmentIdentification}
+            onChange={(event) => setPrefs({ environmentIdentification: event.target.value as EnvironmentIdentification })}
+          >
+            <option value="artwork">Artwork</option>
+            <option value="pill">Version pill</option>
+            <option value="none">None</option>
           </select>
         </SettingRow>
       </SettingGroup>

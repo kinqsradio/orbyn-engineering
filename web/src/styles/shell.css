@@ -1002,3 +1002,23 @@ li[data-file-over] .thread-row {
   white-space: nowrap;
   cursor: pointer;
 }
+.environment-identity {
+  display: inline-flex;
+  flex: none;
+  min-width: 0;
+}
+.environment-art {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  color: var(--color-background);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.environment-art[data-channel="dev"] {
+  background: var(--color-warn);
+}
+.environment-art[data-channel="nightly"] {
+  background: var(--color-info);
+}
