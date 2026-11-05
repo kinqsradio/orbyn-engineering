@@ -713,7 +713,8 @@ async fn pump(tab: Arc<Tab>) {
         };
         if record_due && let Some(recording) = &recording {
             if let Some(captured) = captured {
-                recording.frame(captured).await;
+                // Hand over without waiting: live viewers never stall on encoding.
+                recording.submit(captured);
             } else {
                 recording
                     .fail("Recorded frame exceeds the JPEG size limit.")
@@ -1469,6 +1470,7 @@ impl Core {
         options: PreviewRecordingOptions,
     ) -> Result<()> {
         let root = self.config.data_dir.join("browser-artifacts");
+        crate::preview_recording::ensure_room(&root, crate::preview_recording::TOTAL_BUDGET)?;
         let folder = root.join(format!("{id}-{}", new_id()));
         self.previews
             .start_recording(thread_id, id, folder, options)

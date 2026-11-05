@@ -1,6 +1,7 @@
 //! Bounded JPEG recordings. Each recording owns its writer and cancellation fence.
 use std::io::Cursor;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,7 +19,11 @@ pub(super) const MAX_JPEG: usize = 16 * 1024 * 1024;
 const MAX_BYTES: u64 = 256 * 1024 * 1024 - 64 * 1024;
 const MAX_FRAMES: u64 = 3000;
 const MAX_DURATION: Duration = Duration::from_secs(300);
-// Across all tabs: decoded images and encoding work never run concurrently.
+// Total size of all recordings kept under the artifact folder.
+pub(super) const TOTAL_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
+// All recordings in production share this gate so decoded images and encoding
+// never run concurrently. Only a recording's own drain task ever waits on it.
+#[cfg_attr(test, allow(dead_code))]
 static COMPOSITOR: LazyLock<Arc<tokio::sync::Semaphore>> =
     LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(1)));
 
@@ -41,8 +46,13 @@ struct Writer {
     bytes: u64,
     timestamps: Vec<u64>,
     last: Option<Instant>,
-    error: Option<String>,
-    finalized: bool,
+}
+
+/// Newest-wins hand-off slot: at most one captured frame waits for the writer.
+#[derive(Default)]
+struct Queue {
+    pending: Option<CapturedFrame>,
+    draining: bool,
 }
 
 pub(super) struct Recording {
@@ -52,6 +62,11 @@ pub(super) struct Recording {
     stop: CancellationToken,
     overlay: Mutex<Overlay>,
     writer: Mutex<Writer>,
+    // Read without the writer lock, so a busy writer never hides these.
+    error: Mutex<Option<String>>,
+    finalized: AtomicBool,
+    queue: Mutex<Queue>,
+    gate: Arc<tokio::sync::Semaphore>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -62,6 +77,19 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl Recording {
     pub fn start(folder: PathBuf, options: PreviewRecordingOptions) -> Result<Arc<Self>> {
+        #[cfg(not(test))]
+        let gate = COMPOSITOR.clone();
+        // Tests run in parallel: each recording gets its own gate.
+        #[cfg(test)]
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        Self::start_with_gate(folder, options, gate)
+    }
+
+    fn start_with_gate(
+        folder: PathBuf,
+        options: PreviewRecordingOptions,
+        gate: Arc<tokio::sync::Semaphore>,
+    ) -> Result<Arc<Self>> {
         if ![1, 2, 5, 10].contains(&options.fps) {
             return Err(CoreError::Invalid(
                 "Recording frame rate is 1, 2, 5 or 10 FPS.".into(),
@@ -83,9 +111,11 @@ impl Recording {
                 bytes: 0,
                 timestamps: Vec::new(),
                 last: None,
-                error: None,
-                finalized: false,
             }),
+            error: Mutex::new(None),
+            finalized: AtomicBool::new(false),
+            queue: Mutex::new(Queue::default()),
+            gate,
         }))
     }
 
@@ -98,19 +128,11 @@ impl Recording {
     }
 
     pub fn published(&self) -> bool {
-        self.writer.try_lock().is_ok_and(|writer| writer.finalized)
+        self.finalized.load(Ordering::Acquire)
     }
 
     pub fn error(&self) -> Option<String> {
-        match self.writer.try_lock() {
-            Ok(writer) => writer.error.clone(),
-            Err(std::sync::TryLockError::Poisoned(error)) => error
-                .into_inner()
-                .error
-                .clone()
-                .or_else(|| Some("Recording worker failed.".into())),
-            Err(std::sync::TryLockError::WouldBlock) => None,
-        }
+        lock(&self.error).clone()
     }
 
     pub fn keys_enabled(&self) -> bool {
@@ -173,11 +195,40 @@ impl Recording {
         }
     }
 
+    /// Never waits: the newest frame replaces any waiting one, and this
+    /// recording's own task drains it, so a slow encoder cannot stall a caller.
+    pub fn submit(self: &Arc<Self>, captured: CapturedFrame) {
+        if self.stop.is_cancelled() {
+            return;
+        }
+        {
+            let mut queue = lock(&self.queue);
+            queue.pending = Some(captured);
+            if queue.draining {
+                return;
+            }
+            queue.draining = true;
+        }
+        let recording = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let next = {
+                    let mut queue = lock(&recording.queue);
+                    let next = queue.pending.take();
+                    queue.draining = next.is_some();
+                    next
+                };
+                let Some(captured) = next else { break };
+                recording.frame(captured).await;
+            }
+        });
+    }
+
     pub async fn frame(self: &Arc<Self>, captured: CapturedFrame) {
         if self.stop.is_cancelled() {
             return;
         }
-        let Ok(permit) = COMPOSITOR.clone().acquire_owned().await else {
+        let Ok(permit) = self.gate.clone().acquire_owned().await else {
             return;
         };
         let recording = self.clone();
@@ -246,7 +297,7 @@ impl Recording {
                 );
             }
             Err(error) => {
-                writer.error = Some(error);
+                *lock(&self.error) = Some(error);
                 self.stop.cancel();
                 if let Err(error) = self.summary(&mut writer) {
                     tracing::warn!(%error, "could not finalize a failed recording");
@@ -259,12 +310,16 @@ impl Recording {
     /// original caller was cancelled. Each new recording has its own owner.
     pub async fn finish(self: &Arc<Self>, reason: Option<&str>) -> Result<PreviewRecording> {
         self.stop.cancel();
+        lock(&self.queue).pending = None;
         let recording = self.clone();
         let reason = reason.map(str::to_owned);
         tokio::task::spawn_blocking(move || {
             let mut writer = lock(&recording.writer);
-            if !writer.finalized && writer.error.is_none() {
-                writer.error = reason;
+            if !recording.published() {
+                let mut error = lock(&recording.error);
+                if error.is_none() {
+                    *error = reason;
+                }
             }
             recording.summary(&mut writer)
         })
@@ -273,10 +328,10 @@ impl Recording {
     }
 
     fn summary(&self, writer: &mut Writer) -> Result<PreviewRecording> {
-        if !writer.finalized {
+        if !self.published() {
             let summary = serde_json::json!({
                 "fps": self.options.fps, "frames": writer.frames, "bytes": writer.bytes,
-                "timestamps_ms": writer.timestamps, "error": writer.error,
+                "timestamps_ms": writer.timestamps, "error": self.error(),
                 "show_key_presses": self.options.show_key_presses,
                 "show_mouse_presses": self.options.show_mouse_presses,
             });
@@ -288,19 +343,43 @@ impl Recording {
                 Ok(())
             })();
             if let Err(error) = publication {
-                writer.error.get_or_insert_with(|| {
+                lock(&self.error).get_or_insert_with(|| {
                     "Could not publish the recording summary. Try finishing again.".into()
                 });
                 return Err(error);
             }
-            writer.finalized = true;
+            self.finalized.store(true, Ordering::Release);
         }
         Ok(PreviewRecording {
             path: self.folder.to_string_lossy().into_owned(),
             frames: writer.frames,
-            error: writer.error.clone(),
+            error: self.error(),
         })
     }
+}
+
+/// Refuses a new recording once earlier ones already fill the folder budget.
+/// Nothing is deleted: the person removes recordings they no longer need.
+pub(super) fn ensure_room(root: &std::path::Path, budget: u64) -> Result<()> {
+    fn size(path: &std::path::Path, depth: u8) -> u64 {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .map(|entry| match entry.metadata() {
+                Ok(meta) if meta.is_file() => meta.len(),
+                Ok(meta) if meta.is_dir() && depth < 4 => size(&entry.path(), depth + 1),
+                _ => 0,
+            })
+            .sum()
+    }
+    if size(root, 0) >= budget {
+        return Err(CoreError::Invalid(
+            "Saved recordings fill their storage limit. Delete old recordings in the browser-artifacts folder, then try again.".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn key_label(key: &str) -> Option<&'static str> {
@@ -572,6 +651,56 @@ mod tests {
         assert_eq!(recording.finish(None).await.unwrap().frames, 1);
     }
 
+    #[test]
+    fn a_full_artifact_folder_refuses_a_new_recording() {
+        let root = folder();
+        assert!(ensure_room(&root, 10).is_ok(), "missing folder is empty");
+        let nested = root.join("one");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("000000.jpg"), [0u8; 8]).unwrap();
+        assert!(ensure_room(&root, 9).is_ok());
+        assert!(ensure_room(&root, 8).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn readers_never_depend_on_the_writer_lock() {
+        let path = folder();
+        let recording = Recording::start(path, options()).unwrap();
+        *lock(&recording.error) = Some("synthetic".into());
+        let held = lock(&recording.writer);
+        assert_eq!(recording.error().as_deref(), Some("synthetic"));
+        assert!(!recording.published());
+        drop(held);
+        recording.finish(None).await.unwrap();
+        let held = lock(&recording.writer);
+        assert!(
+            recording.published(),
+            "finalized state is visible while busy"
+        );
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn submit_never_waits_and_keeps_only_the_newest_frame() {
+        let path = folder();
+        let recording = Recording::start(path.clone(), options()).unwrap();
+        let held = recording.gate.clone().acquire_owned().await.unwrap();
+        for _ in 0..5 {
+            recording.submit(recording.capture(black()));
+        }
+        assert!(lock(&recording.queue).pending.is_some());
+        drop(held);
+        for _ in 0..200 {
+            if path.join("000000.jpg").exists() && lock(&recording.queue).pending.is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let done = recording.finish(None).await.unwrap();
+        assert_eq!(done.frames, 1, "older waiting frames were dropped");
+    }
+
     #[tokio::test]
     async fn duration_and_byte_quotas_finish_with_an_error() {
         let mut recording = Recording::start(folder(), options()).unwrap();
@@ -598,7 +727,7 @@ mod tests {
     async fn stop_fences_a_frame_waiting_for_the_compositor() {
         let path = folder();
         let recording = Recording::start(path.clone(), options()).unwrap();
-        let permit = COMPOSITOR.acquire().await.unwrap();
+        let permit = recording.gate.acquire().await.unwrap();
         let pending = recording.clone();
         let (started, waiting) = tokio::sync::oneshot::channel();
         let write = tokio::spawn(async move {
@@ -639,12 +768,12 @@ mod tests {
         let began = tokio::time::timeout(Duration::from_secs(2), started_seen).await;
         caller.abort();
         let _ = caller.await;
-        let retained = COMPOSITOR.available_permits() == 0;
+        let retained = recording.gate.available_permits() == 0;
         // Always release the test's barrier before asserting, so failure reaps
         // the real blocking writer instead of stranding another test's permit.
         release.send(()).unwrap();
         holder.join().unwrap();
-        let permit = tokio::time::timeout(Duration::from_secs(2), COMPOSITOR.acquire())
+        let permit = tokio::time::timeout(Duration::from_secs(2), recording.gate.acquire())
             .await
             .unwrap()
             .unwrap();

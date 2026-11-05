@@ -1653,7 +1653,9 @@ Each tab owns a monotonic sequence; positions are frame pixels, with zoom applie
 once at the input owner. Main-frame CDP document lifecycle (including same-URL reload), view changes and browser recovery clear the
 cue. Viewers scale it to the actual picture and expire it after 700 ms, with reduced
 motion support. A slow viewer skips cues and cannot block approved page input.
-Typing, failed or denied actions emit no pointer cue; arbitrary page evaluation is not
+Typing and denied actions emit no pointer cue, and an action that fails before
+dispatch emits none; a navigation reported after the mouse release can still show its
+cue for one frame on the new page. Arbitrary page evaluation is not
 interpreted as pointer input. The feed accepts no client-published cues and carries
 no typed text, selectors, page URLs or credentials. JPEG frame messages are unchanged.
 
@@ -1672,7 +1674,13 @@ without injecting UI into the page or changing streamed JPEGs.
 Each recording owns its captured cues, writer, successful frame/byte counts and
 summary. Stop cancels new frames and waits for the actual blocking writer before
 returning the saved path and frame count; cancelling an awaiting caller cannot
-release the writer's global compositor permit early. Limits are five minutes,
+release the writer's compositor permit early. The frame loop never waits on
+encoding: it hands each frame to a one-slot per-recording queue where the newest
+replaces a waiting one, and only that recording's own task takes the shared
+compositor gate, so a slow encoder cannot stall live viewers. Finished state and
+errors are readable while the writer is busy. A new recording is refused with an
+error once recordings under the folder total 2 GiB; nothing is deleted
+automatically. Limits are five minutes,
 3,000 frames and 256 MiB including reserved summary space. Input JPEGs are capped
 at 16 MiB and 4,096 pixels per dimension. A limit or write failure stops capture
 and retains an error. Failed summary publication retains the stopped owner for a
