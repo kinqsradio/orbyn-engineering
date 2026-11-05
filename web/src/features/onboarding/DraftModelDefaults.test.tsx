@@ -69,3 +69,18 @@ it("keeps an explicit draft model when defaults arrive later, then sends that ex
   await waitFor(() => expect(api.createThread).toHaveBeenCalledTimes(1));
   expect(vi.mocked(api.createThread).mock.calls[0]?.[0].model).toBe("explicit");
 });
+
+it("keeps a missing configured provider blocked until the person explicitly chooses a replacement", async () => {
+  const missing = defaults("missing-model"); missing[0]!.value = "removed-provider";
+  vi.mocked(request).mockResolvedValue(missing as never);
+  render(<DraftView projectId="a" />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("selected default provider is unavailable");
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(api.createThread).not.toHaveBeenCalled();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Model codex/automatic" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(api.createThread).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(api.createThread).mock.calls[0]?.[0]).toMatchObject({ engine: "codex", model: "explicit" });
+});
