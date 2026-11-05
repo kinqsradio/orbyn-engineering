@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useComposerChips } from "../../state/composerChips";
 import { useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
@@ -23,7 +23,12 @@ export function FileComments({ threadId, cwd, path, revision, text, revealedLine
   const [selection, setSelection] = useState<{ anchor: number; end: number } | null>(null);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const all = useComposerChips((state) => state.chips[threadId]);
+  const source = useRef<HTMLPreElement>(null);
+  // Scroll only when the reveal or the source changes, never on a selection or keystroke.
+  useEffect(() => {
+    source.current?.querySelector("[data-line]")?.scrollIntoView?.({ block: "center" });
+  }, [revealedLine, text]);
+  const all =useComposerChips((state) => state.chips[threadId]);
   const comments = (all ?? []).filter((chip) => chip.kind === "review" && chip.path === path
     && chip.sourceRevision === revision && chip.sourceCwd === cwd);
   const range = selection ? fileCommentRange(text, selection.anchor, selection.end) : null;
@@ -43,9 +48,7 @@ export function FileComments({ threadId, cwd, path, revision, text, revealedLine
   };
   return <>
     <p className="file-comment-hint">Select a line to comment. Shift-select another line for a range.</p>
-    <pre className="file-source file-comment-source" tabIndex={0} ref={(element) => {
-      element?.querySelector("[data-line]")?.scrollIntoView?.({ block: "center" });
-    }}>
+    <pre className="file-source file-comment-source" tabIndex={0} ref={source}>
       {text.split("\n").map((row, index) => {
         const line = index + 1;
         const selected = selection && line >= Math.min(selection.anchor, selection.end) && line <= Math.max(selection.anchor, selection.end);

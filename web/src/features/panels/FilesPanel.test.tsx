@@ -59,6 +59,16 @@ it("captures a reversed source range as one comment and removes the paired chip"
   expect(useComposerChips.getState().chips.t).toEqual([]);
 });
 
+it("scrolls to the revealed line once, not on each selection or keystroke", async () => {
+  const scroll = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scroll, configurable: true, writable: true });
+  render(<FileComments threadId="t" cwd="/repo" path="a.ts" revision="r1" text={"one\ntwo\nthree"} revealedLine={2} />);
+  expect(scroll).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole("button", { name: "Comment on line 3" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "File comment" }), "abc");
+  expect(scroll).toHaveBeenCalledTimes(1);
+});
+
 it("cancel leaves no chip and another revision never inherits stale annotation positions", async () => {
   const view = render(<FileComments threadId="t" cwd="/repo" path="a.ts" revision="r1" text="one" revealedLine={null} />);
   await userEvent.click(screen.getByRole("button", { name: "Comment on line 1" }));

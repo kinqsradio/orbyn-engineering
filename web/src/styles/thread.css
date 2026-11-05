@@ -2667,7 +2667,7 @@ button.detail-row:hover {
   display: block; width: 100%; min-height: 5em; margin: 6px 0; resize: vertical;
 }
 .file-comment-form > div { display: flex; justify-content: flex-end; gap: 8px; }
-.file-comment-list { list-style: none; overflow-wrap: anywhere; }
+.file-comment-list { flex: none; max-height: 35%; overflow: auto; list-style: none; overflow-wrap: anywhere; }
 .file-comment-list li + li { margin-top: 12px; }
 .file-comment-list p { white-space: pre-wrap; }
 .context-chips .review-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
