@@ -2363,6 +2363,19 @@ pub struct PreviewTab {
 }
 
 wire! {
+/// A content-free cue from a successful agent input; coordinates are frame pixels.
+pub struct PreviewPointer {
+    pub sequence: u32,
+    /// `move`, `click`, or `clear`.
+    pub phase: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: u32,
+    pub height: u32,
+}
+}
+
+wire! {
 pub struct OpenPreview {
     pub url: String,
     #[serde(default)]

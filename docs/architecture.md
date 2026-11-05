@@ -1629,6 +1629,16 @@ four run at once, and they close when their thread settles, archives or is delet
 Frames are polled about five times a second, only while someone watches or records,
 and a frame that did not change is not sent. `/ws/preview` sends each as base64 JPEG
 text. Watching gives no control: input needs a person to take the page first.
+The separate authenticated `/ws/preview/:thread/:tab/pointer` feed carries only
+server-created ephemeral cues after successful agent click or scroll input.
+Each tab owns a monotonic sequence; positions are frame pixels, with zoom applied
+once at the input owner. Main-frame CDP document lifecycle (including same-URL reload), view changes and browser recovery clear the
+cue. Viewers scale it to the actual picture and expire it after 700 ms, with reduced
+motion support. A slow viewer skips cues and cannot block approved page input.
+Typing, failed or denied actions emit no pointer cue; arbitrary page evaluation is not
+interpreted as pointer input. The feed accepts no client-published cues and carries
+no typed text, selectors, page URLs or credentials. JPEG frame messages are unchanged.
+
 Recording keeps the changed frames as numbered JPEG files in
 `<data>/browser-artifacts`, with no video encoder. Agents can read their thread's
 tabs with `orbyn_preview_snapshot` and `orbyn_preview_wait_for`, and drive them

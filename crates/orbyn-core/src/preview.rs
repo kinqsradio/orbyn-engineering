@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
-    BrowserProfile, LocalServer, PickedElement, PreviewInput, PreviewRecording, PreviewTab,
-    PreviewView,
+    BrowserProfile, LocalServer, PickedElement, PreviewInput, PreviewPointer, PreviewRecording,
+    PreviewTab, PreviewView,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -408,6 +408,8 @@ struct Tab {
     info: Mutex<PreviewTab>,
     session: tokio::sync::Mutex<BrowserSession>,
     frames: broadcast::Sender<Arc<str>>,
+    pointers: broadcast::Sender<PreviewPointer>,
+    trace: Mutex<crate::preview_trace::Trace>,
     recording: Mutex<Option<Recording>>,
     stop: CancellationToken,
     profile: PathBuf,
@@ -429,6 +431,23 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Tab {
+    fn pointer(&self, phase: &str, x: f64, y: f64) {
+        if self.stop.is_cancelled() {
+            return;
+        }
+        let info = lock(&self.info);
+        lock(&self.trace).emit(
+            &self.pointers,
+            phase,
+            (x * info.zoom, y * info.zoom),
+            (info.width, info.height),
+        );
+    }
+
+    fn clear_pointer(&self) {
+        self.pointer("clear", 0.0, 0.0);
+    }
+
     fn view(&self) -> PreviewTab {
         let mut info = lock(&self.info).clone();
         info.viewers = self.frames.receiver_count();
@@ -440,6 +459,12 @@ impl Tab {
         let mut info = lock(&self.info);
         if !history.url.is_empty() {
             if info.url != history.url {
+                lock(&self.trace).emit(
+                    &self.pointers,
+                    "clear",
+                    (0.0, 0.0),
+                    (info.width, info.height),
+                );
                 info.favicon_url = None;
             }
             history.url.clone_into(&mut info.url);
@@ -544,7 +569,8 @@ impl Crashes {
 }
 
 /// Starts the browser again on the same profile and page.
-async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
+async fn bring_back(tab: &Arc<Tab>, crashes: &mut Crashes) {
+    tab.clear_pointer();
     let Some(delay) = crashes.next_delay(Instant::now()) else {
         lock(&tab.info).crashed = true;
         return;
@@ -553,6 +579,7 @@ async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
     let view = lock(&tab.info).clone();
     let started = async {
         let mut session = BrowserSession::launch(&tab.browser, &tab.profile, tab.options).await?;
+        watch_document(&mut session, tab);
         session
             .set_view(view.width, view.height, view.zoom, view.mobile)
             .await?;
@@ -564,6 +591,15 @@ async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
         Ok(session) => *tab.session.lock().await = session,
         Err(error) => tracing::warn!(%error, "could not bring a preview back"),
     }
+}
+
+fn watch_document(session: &mut BrowserSession, tab: &Arc<Tab>) {
+    let tab = Arc::downgrade(tab);
+    session.on_document_change(move || {
+        if let Some(tab) = tab.upgrade() {
+            tab.clear_pointer();
+        }
+    });
 }
 
 /// Polls frames while anyone wants them. A page that did not change sends nothing,
@@ -665,6 +701,15 @@ impl PreviewManager {
         Ok(self.tab(thread_id, id)?.frames.subscribe())
     }
 
+    /// A separate event feed keeps legacy JPEG viewers compatible.
+    pub fn subscribe_pointers(
+        &self,
+        thread_id: &str,
+        id: &str,
+    ) -> Result<broadcast::Receiver<PreviewPointer>> {
+        Ok(self.tab(thread_id, id)?.pointers.subscribe())
+    }
+
     /// Takes the page or hands it back.
     pub fn set_control(&self, thread_id: &str, id: &str, human: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
@@ -677,6 +722,7 @@ impl PreviewManager {
         let url = normalize_url(url)?;
         let tab = self.tab(thread_id, id)?;
         let mut session = tab.session.lock().await;
+        tab.clear_pointer();
         session.navigate(&url).await?;
         let history = session.history().await?;
         drop(session);
@@ -692,7 +738,9 @@ impl PreviewManager {
     /// One page back or forward. At either end this changes nothing.
     pub async fn step(&self, thread_id: &str, id: &str, back: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
-        let history = tab.session.lock().await.step_history(back).await?;
+        let mut session = tab.session.lock().await;
+        tab.clear_pointer();
+        let history = session.step_history(back).await?;
         tab.note_history(&history);
         Ok(tab.view())
     }
@@ -712,6 +760,7 @@ impl PreviewManager {
         };
         let mut session = tab.session.lock().await;
         session.set_view(width, height, zoom, mobile).await?;
+        tab.clear_pointer();
         drop(session);
         {
             let mut info = lock(&tab.info);
@@ -750,6 +799,7 @@ impl PreviewManager {
             .set_view(current.width, current.height, zoom, mobile)
             .await?;
         session.set_appearance(&appearance).await?;
+        tab.clear_pointer();
         drop(session);
         {
             let mut info = lock(&tab.info);
@@ -775,7 +825,9 @@ impl PreviewManager {
 
     pub async fn reload(&self, thread_id: &str, id: &str, hard: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
-        tab.session.lock().await.reload(hard).await?;
+        let mut session = tab.session.lock().await;
+        tab.clear_pointer();
+        session.reload(hard).await?;
         Ok(tab.view())
     }
 
@@ -886,11 +938,15 @@ impl PreviewManager {
         }
         let tab = self.tab(thread_id, id)?;
         let mut session = tab.session.lock().await;
+        let document = session.document_generation();
         match step.action {
             PreviewAction::Click => {
-                session
-                    .click(step.selector.as_deref().unwrap_or_default())
-                    .await
+                let selector = step.selector.as_deref().unwrap_or_default();
+                let (x, y) = session.click_point(selector).await?;
+                if document == session.document_generation() {
+                    tab.pointer("click", x, y);
+                }
+                Ok(json!({ "clicked": selector }))
             }
             PreviewAction::Type => {
                 let selector = step.selector.as_deref().unwrap_or_default();
@@ -925,6 +981,9 @@ impl PreviewManager {
                         }),
                     )
                     .await?;
+                if document == session.document_generation() {
+                    tab.pointer("move", x, y);
+                }
                 Ok(json!({ "scrolled": step.dy }))
             }
         }
@@ -1151,6 +1210,7 @@ impl Core {
             .ok()
             .and_then(|value| favicon_url(&value, &url));
         let (frames, _) = broadcast::channel(8);
+        let (pointers, _) = broadcast::channel(16);
         let tab = Arc::new(Tab {
             info: Mutex::new(PreviewTab {
                 id: id.clone(),
@@ -1179,6 +1239,8 @@ impl Core {
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
+            pointers,
+            trace: Mutex::new(crate::preview_trace::Trace::default()),
             recording: Mutex::new(None),
             stop: CancellationToken::new(),
             profile,
@@ -1186,6 +1248,7 @@ impl Core {
             browser,
             options,
         });
+        watch_document(&mut *tab.session.lock().await, &tab);
         lock(&self.previews.tabs).insert(id, tab.clone());
         let view = tab.view();
         tokio::spawn(pump(tab));
@@ -1519,6 +1582,98 @@ async fn listeners(checkout: &Path) -> Vec<LocalServer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn screenshot_error_releases_the_session_for_health_check_and_next_frame() {
+        use futures_util::{SinkExt, StreamExt};
+        use std::sync::atomic::AtomicUsize;
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let shots = Arc::new(AtomicUsize::new(0));
+        let checks = Arc::new(AtomicUsize::new(0));
+        let (frames_seen, health_seen) = (shots.clone(), checks.clone());
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            while let Some(Ok(frame)) = socket.next().await {
+                let Ok(text) = frame.to_text() else { continue };
+                let request: Value = serde_json::from_str(text).unwrap();
+                let method = request["method"].as_str().unwrap();
+                let result = match method {
+                    "Target.getTargets" => {
+                        json!({ "targetInfos": [{ "type": "page", "targetId": "target" }] })
+                    }
+                    "Target.attachToTarget" => json!({ "sessionId": "session" }),
+                    "Page.getFrameTree" => json!({ "frameTree": { "frame": { "id": "main" } } }),
+                    "Page.captureScreenshot" => {
+                        if frames_seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                            socket.send(Message::text(json!({ "id": request["id"], "error": { "message": "synthetic screenshot refusal" } }).to_string())).await.unwrap();
+                            continue;
+                        }
+                        json!({ "data": "synthetic-frame" })
+                    }
+                    "Runtime.evaluate" => {
+                        health_seen.fetch_add(1, Ordering::SeqCst);
+                        json!({ "result": { "value": true } })
+                    }
+                    _ => json!({}),
+                };
+                socket
+                    .send(Message::text(
+                        json!({ "id": request["id"], "result": result }).to_string(),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        });
+        let session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        let (frames, mut viewer) = broadcast::channel(8);
+        let (pointers, _) = broadcast::channel(16);
+        let tab = Arc::new(Tab {
+            info: Mutex::new(
+                serde_json::from_value(json!({
+                    "id": "tab", "thread_id": "thread", "url": "http://fixture/",
+                    "control": "none", "recording": false, "viewers": 0,
+                    "width": 100, "height": 100, "can_go_back": false,
+                    "can_go_forward": false, "title": "", "zoom": 1.0,
+                    "appearance": "system", "mobile": false, "private": false,
+                    "profile": null, "opened_by": "person", "crashed": false
+                }))
+                .unwrap(),
+            ),
+            session: tokio::sync::Mutex::new(session),
+            frames,
+            pointers,
+            trace: Mutex::new(crate::preview_trace::Trace::default()),
+            recording: Mutex::new(None),
+            stop: CancellationToken::new(),
+            // No real browser or profile exists in this protocol fixture.
+            profile: PathBuf::new(),
+            keep_profile: true,
+            browser: PathBuf::new(),
+            options: LaunchOptions::default(),
+        });
+        let pumping = tokio::spawn(pump(tab.clone()));
+        let next = tokio::time::timeout(Duration::from_secs(2), viewer.recv()).await;
+        // Reap the synthetic tasks even when the regression fails on the old path.
+        pumping.abort();
+        let _ = pumping.await;
+        drop(tab);
+        server.await.unwrap();
+        assert!(
+            next.is_ok(),
+            "first screenshot refusal must recover, not keep its session lock: shots={}, health={}",
+            shots.load(Ordering::SeqCst),
+            checks.load(Ordering::SeqCst)
+        );
+        assert_eq!(next.unwrap().unwrap().as_ref(), "synthetic-frame");
+        assert_eq!(shots.load(Ordering::SeqCst), 2);
+        assert_eq!(checks.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn favicon_discovery_never_widens_the_image_proxy_url_envelope() {

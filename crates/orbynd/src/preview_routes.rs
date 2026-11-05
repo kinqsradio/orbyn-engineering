@@ -262,3 +262,29 @@ pub async fn stop_server(
     state.core.stop_server(&id, pid, LOCAL_USER).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Server-produced cues only; client messages never publish input events.
+pub async fn pointers(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    upgrade: WebSocketUpgrade,
+) -> ApiResult<Response> {
+    let mut events = state.core.previews.subscribe_pointers(&id, &tab)?;
+    Ok(upgrade.on_upgrade(move |mut socket| async move {
+        loop {
+            tokio::select! {
+                event = events.recv() => match event {
+                    Ok(event) => {
+                        let Ok(text) = serde_json::to_string(&event) else { return };
+                        if socket.send(Message::Text(text.into())).await.is_err() { return; }
+                    },
+                    Err(RecvError::Lagged(_)) => {},
+                    Err(RecvError::Closed) => return,
+                },
+                message = socket.recv() => {
+                    if !matches!(message, Some(Ok(_))) { return; }
+                }
+            }
+        }
+    }))
+}

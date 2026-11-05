@@ -3709,3 +3709,32 @@ button.context-meter:hover:not(:disabled) {
   flex: 1 1 120px;
   min-width: 120px;
 }
+
+/* Agent input remains a viewer cue; it cannot intercept a person's page input. */
+.browser-agent-cursor {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  color: var(--color-primary);
+  transition: left 150ms ease-out, top 150ms ease-out;
+}
+.browser-agent-cursor svg {
+  fill: var(--color-raised);
+  filter: drop-shadow(0 1px 2px var(--color-shadow));
+}
+.browser-agent-click {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  animation: browser-agent-click 700ms ease-out;
+}
+@keyframes browser-agent-click {
+  from { transform: scale(.5); opacity: .8; }
+  to { transform: scale(1.8); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-agent-cursor { transition: none; }
+  .browser-agent-click { animation: none; }
+}

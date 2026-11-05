@@ -20,6 +20,7 @@ import { chipId } from "../thread/composerContext";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { SiteIcon } from "./SiteIcon";
+import { AgentCursor } from "./AgentCursor";
 import { useBrowserPanels } from "./browserPanels";
 import { inDesktopApp } from "../../api/shell";
 import {
@@ -394,6 +395,7 @@ export function PageView({
       {picture && resize ? (
         <div className="browser-box" style={{ width: box.width, height: box.height }}>
           {picture}
+          <AgentCursor key={`${threadId}:${tab.id}:${tab.url}:${tab.width}:${tab.height}:${tab.zoom}`} threadId={threadId} tabId={tab.id} image={stage} />
           {resize.handles ? (
             <ResizeHandles
               page={page}
@@ -405,7 +407,7 @@ export function PageView({
           ) : null}
         </div>
       ) : picture ? (
-        picture
+        <>{picture}<AgentCursor key={`${threadId}:${tab.id}:${tab.url}:${tab.width}:${tab.height}:${tab.zoom}`} threadId={threadId} tabId={tab.id} image={stage} /></>
       ) : (
         <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>
       )}
