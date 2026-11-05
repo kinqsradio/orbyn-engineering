@@ -15,6 +15,8 @@ import type { BrowserProfile, LocalServer, PickedElement, PreviewTab } from "../
 import { useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
+import { useComposerChips } from "../../state/composerChips";
+import { chipId } from "../thread/composerContext";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { SiteIcon } from "./SiteIcon";
@@ -651,9 +653,15 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
     else reload();
   }, [waiting, reload, onlyTabId]);
   const onPicked = (picked: PickedElement) => {
-    const { drafts, setDraft } = useUi.getState();
-    const before = drafts[threadId] ?? "";
-    setDraft(threadId, `${before ? `${before.trimEnd()}\n\n` : ""}${pickedText(picked)}\n`);
+    useComposerChips.getState().add(threadId, {
+      id: chipId(),
+      kind: "annotation",
+      url: active?.url ?? "",
+      selector: picked.selector,
+      text: picked.text,
+      html: picked.html,
+    });
+    useUi.getState().pushToast("Element added to your message");
     setPicking(false);
   };
   const moreItems = (tab: PreviewTab): MenuItem[] => [

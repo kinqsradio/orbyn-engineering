@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
+import { useComposerChips } from "../../state/composerChips";
 import { DiffPanel } from "./DiffPanel";
 afterEach(() => vi.restoreAllMocks());
 it("shows a historical turn diff without exposing a per-file restore action", async () => {
@@ -19,4 +20,17 @@ it("shows a historical turn diff without exposing a per-file restore action", as
   expect(screen.queryByRole("button", { name: /Restore notes.txt/ })).toBeNull();
   expect(changes).not.toHaveBeenCalled();
   expect(screen.getByRole("group", { name: "Patch" })).toHaveTextContent("new");
+});
+
+it("numbers new lines and adds a review comment chip for one", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1,
+    deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new\n" }]);
+  render(<DiffPanel threadId="t" />);
+  await user.click(await screen.findByRole("button", { name: "Comment on this line" }));
+  await user.type(screen.getByLabelText("Review comment on notes.txt line 1"), "Please rename");
+  await user.click(screen.getByRole("button", { name: "Add to message" }));
+  expect(useComposerChips.getState().chips.t?.[0]).toMatchObject({
+    kind: "review", path: "notes.txt", line: 1, comment: "Please rename", excerpt: "new",
+  });
 });

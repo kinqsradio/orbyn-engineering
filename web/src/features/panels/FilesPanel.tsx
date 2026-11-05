@@ -1,9 +1,11 @@
-import { AppWindow, ChevronRight, Copy, Download, ExternalLink, File, Folder, Search } from "lucide-react";
+import { AppWindow, ChevronRight, Copy, Download, ExternalLink, File, Folder, Paperclip, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import type { FileContent, FileEntry, SearchHit } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
+import { useComposerChips } from "../../state/composerChips";
+import { chipId, fileExcerpt, languageForPath } from "../thread/composerContext";
 import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { FILE_MENTION_TYPE } from "../thread/skillMention";
@@ -173,6 +175,23 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
         {file.data && (zip || office) ? <span className="zip-size">{formatBytes(file.data.size)}</span> : null}
         <IconButton label="Copy contents" disabled={copyable === null || copying} onClick={() => void copyContents()}>
           <Copy size={14} aria-hidden />
+        </IconButton>
+        <IconButton
+          label="Add file to message"
+          disabled={copyable === null}
+          onClick={() => {
+            useComposerChips.getState().add(threadId, {
+              id: chipId(),
+              kind: "file",
+              path,
+              line,
+              excerpt: copyable === null ? null : fileExcerpt(copyable, line),
+              language: languageForPath(path),
+            });
+            pushToast("File added to your message");
+          }}
+        >
+          <Paperclip size={14} aria-hidden />
         </IconButton>
         <a className="icon-btn" aria-label="Save file" title="Save file" href={rawUrl(threadId, path, true)} download>
           <Download size={14} aria-hidden />

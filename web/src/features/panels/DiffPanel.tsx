@@ -1,4 +1,4 @@
-import { ChevronRight, Copy, RefreshCw } from "lucide-react";
+import { ChevronRight, Copy, MessageSquare, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { FileDiff } from "../../api/types";
@@ -6,6 +6,8 @@ import { useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
+import { useComposerChips } from "../../state/composerChips";
+import { chipId } from "../thread/composerContext";
 import { Button, IconButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
@@ -36,6 +38,27 @@ const markers: Record<DiffLine["kind"], string | null> = {
   ctx: null,
   meta: null,
 };
+
+/**
+ * The new-side line number each line lands on. A hunk header resets the count;
+ * removed lines take no new number, and metadata has none.
+ */
+export function numberedLines(lines: readonly DiffLine[]): { line: DiffLine; number: number | null }[] {
+  let next = 0;
+  return lines.map((line) => {
+    if (line.kind === "hunk") {
+      const match = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(line.text);
+      next = match?.[1] ? Number(match[1]) : 0;
+      return { line, number: null };
+    }
+    if (line.kind === "add" || line.kind === "ctx") {
+      const number = next > 0 ? next : null;
+      if (next > 0) next += 1;
+      return { line, number };
+    }
+    return { line, number: null };
+  });
+}
 
 /** Drops changed pairs that differ only in spacing, as `git diff -w` would show them. */
 export function withoutWhitespaceChanges(lines: DiffLine[]): DiffLine[] {
@@ -86,7 +109,7 @@ export function splitRows(lines: DiffLine[]): SplitRow[] {
   return rows;
 }
 
-function LineCell({ line, find }: { line: DiffLine | null; find: string }) {
+function LineCell({ line, find, onComment }: { line: DiffLine | null; find: string; onComment?(): void }) {
   if (!line) return <div className="patch-line patch-empty"> </div>;
   const marker = markers[line.kind];
   const hit = find !== "" && line.text.toLowerCase().includes(find);
@@ -94,20 +117,42 @@ function LineCell({ line, find }: { line: DiffLine | null; find: string }) {
     <div className={`patch-line patch-${line.kind}`} data-hit={hit || undefined}>
       {marker ? <span className="sr-only">{marker}: </span> : null}
       {line.text || " "}
+      {onComment ? (
+        <button type="button" className="patch-line-number" aria-label="Comment on this line" onClick={onComment}>
+          <MessageSquare size={12} aria-hidden />
+          Comment
+        </button>
+      ) : null}
     </div>
   );
 }
 
-function Patch({ patch, find }: { patch: string; find: string }) {
+function Patch({ patch, find, path, threadId }: { patch: string; find: string; path: string; threadId: string }) {
   const ignoreSpace = useUi((state) => state.diffIgnoreWhitespace);
   const layout = useUi((state) => state.diffLayout);
+  const pushToast = useUi((state) => state.pushToast);
   const lines = useMemo(() => {
     const parsed = parsePatch(patch);
     return ignoreSpace ? withoutWhitespaceChanges(parsed) : parsed;
   }, [patch, ignoreSpace]);
   const [all, setAll] = useState(false);
+  const [commenting, setCommenting] = useState<{ number: number; excerpt: string; text: string } | null>(null);
   const visible = all ? lines : lines.slice(0, LINE_LIMIT);
+  const numbered = useMemo(() => numberedLines(visible), [visible]);
   if (lines.length === 0) return <p className="muted diff-binary">No text changes to show.</p>;
+  const add = () => {
+    if (!commenting || commenting.text.trim() === "") return;
+    useComposerChips.getState().add(threadId, {
+      id: chipId(),
+      kind: "review",
+      path,
+      line: commenting.number,
+      comment: commenting.text.trim(),
+      excerpt: commenting.excerpt,
+    });
+    pushToast("Review comment added to your message");
+    setCommenting(null);
+  };
   return (
     <>
       <div className="patch" tabIndex={0} role="group" aria-label="Patch" data-layout={layout}>
@@ -119,9 +164,40 @@ function Patch({ patch, find }: { patch: string; find: string }) {
                   <LineCell line={row.right} find={find} />
                 </div>
               ))
-            : visible.map((line, at) => <LineCell key={at} line={line} find={find} />)}
+            : numbered.map(({ line, number }, at) => (
+                <LineCell
+                  key={at}
+                  line={line}
+                  find={find}
+                  onComment={
+                    number === null || commenting !== null
+                      ? undefined
+                      : () => setCommenting({ number, excerpt: line.text.slice(1), text: "" })
+                  }
+                />
+              ))}
         </div>
       </div>
+      {commenting ? (
+        <div className="review-comment">
+          <label>
+            Comment on {path}:{commenting.number}
+          </label>
+          <textarea
+            aria-label={`Review comment on ${path} line ${commenting.number}`}
+            value={commenting.text}
+            onChange={(event) => setCommenting({ ...commenting, text: event.target.value })}
+          />
+          <div>
+            <Button small tone="quiet" onClick={() => setCommenting(null)}>
+              Cancel
+            </Button>
+            <Button small tone="primary" disabled={commenting.text.trim() === ""} onClick={add}>
+              Add to message
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {lines.length > visible.length ? (
         <Button small tone="quiet" onClick={() => setAll(true)}>
           Show {lines.length - visible.length} more lines
@@ -148,11 +224,13 @@ function FileRow({
   file,
   open,
   find,
+  threadId,
   onToggle,
 }: {
   file: FileDiff;
   open: boolean;
   find: string;
+  threadId: string;
   onToggle(): void;
 }) {
   const pushToast = useUi((state) => state.pushToast);
@@ -177,7 +255,7 @@ function FileRow({
           <Copy size={14} aria-hidden />
         </IconButton>
       </div>
-      {open ? <Patch patch={file.patch} find={find} /> : null}
+      {open ? <Patch patch={file.patch} find={find} path={file.path} threadId={threadId} /> : null}
     </li>
   );
 }
@@ -350,6 +428,7 @@ export function DiffPanel({ threadId }: { threadId: string }) {
               key={file.path}
               file={file}
               find={needle}
+              threadId={threadId}
               open={collapsed === toggled.has(file.path)}
               onToggle={() => {
                 const next = new Set(toggled);
