@@ -662,7 +662,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [x] M7 Webhook filters: up to 16 conditions | apps/server/src/scheduledTasks/webhookFilter.ts | w d s | M | server done | web done
 - [x] M8 Replay and coalesce: dedupe with windows | apps/server/src/scheduledTasks/webhookDedupe.ts | s | L | server done
 - [x] M9 Webhook deliveries log: request and prompt detail | packages/contracts/src/rpc.ts | w d s | M | server done | web done
-- [ ] M10 Hold webhooks offline: relay stores up to 24 hours | apps/server/src/relay/HeldHooksWaker.ts | s | L | [hosted] | scope: excluded | reason: hosted webhook relay
+- [ ] M10 Hold webhooks offline: relay stores up to 24 hours | apps/server/src/relay/HeldHooksWaker.ts | s | L | [hosted] | scope: excluded | reason: hosted webhook relay; refused in writing for #181. Holding a delivery while the machine is off needs something else online to receive it, and a hosted relay is out of scope for #181 and the local-replica scope. The local `orbynd` cannot accept a request while it is not running, so there is nothing local to hold: M4's endpoint answers only while the service runs, M9 records every delivery it does receive, and M11 skips one that waits past a task's maximum age. No relay, queue or new storage was added.
 - [x] M11 Skip stale deliveries: maximum age per task | packages/contracts/src/scheduledTask.ts | s | S | server done
 - [x] M12 Delegated subagents: child threads with result wake | apps/server/src/mcp/OrchestratorMcpService.ts | w d m s | L | server done | web done
 - [ ] M13 Workflows: script view and stop | packages/contracts/src/orchestrationV2.ts | w d m s | L
