@@ -689,6 +689,17 @@ struct StreamMapper {
     plans_seen: HashSet<String>,
     /// Files each open write tool named, until its result arrives.
     writing: HashMap<String, Vec<String>>,
+    /// Claude's modern task list, kept in the order it was reported.
+    tasks: Vec<TaskStep>,
+    /// Task tool calls held until their result reports the new state.
+    task_calls: HashMap<String, (String, Value)>,
+}
+
+/// One row of the plan activity fed by Claude's TaskCreate/TaskUpdate/TaskList.
+struct TaskStep {
+    id: String,
+    title: String,
+    status: String,
 }
 
 impl StreamMapper {
@@ -709,6 +720,7 @@ impl StreamMapper {
             Some("assistant") if !nested => self.on_assistant(frame),
             Some("user") if !nested => {
                 let mut events = self.writes_finished(frame);
+                events.extend(self.tasks_finished(frame));
                 events.extend(on_user(frame));
                 events
             }
@@ -861,6 +873,7 @@ impl StreamMapper {
         for block in &content {
             events.extend(self.plan_events(block));
             self.write_started(block);
+            self.task_started(block);
         }
         if self.saw_partials {
             return events;
@@ -967,6 +980,143 @@ impl StreamMapper {
         }
     }
 
+    /// Claude's modern task tools only report their state in the result, so the
+    /// call is held until it arrives.
+    fn task_started(&mut self, block: &Value) {
+        if block.get("type").and_then(Value::as_str) != Some("tool_use") {
+            return;
+        }
+        let Some(name) = block.get("name").and_then(Value::as_str) else {
+            return;
+        };
+        if !matches!(name, "TaskCreate" | "TaskUpdate" | "TaskList") {
+            return;
+        }
+        if let Some(id) = text_of(block, "id") {
+            self.task_calls.insert(
+                id,
+                (
+                    name.to_owned(),
+                    block.get("input").cloned().unwrap_or(Value::Null),
+                ),
+            );
+        }
+    }
+
+    fn tasks_finished(&mut self, frame: &Value) -> Vec<EngineEvent> {
+        let Some(content) = frame.pointer("/message/content").and_then(Value::as_array) else {
+            return Vec::new();
+        };
+        let mut changed = false;
+        for block in content {
+            if block.get("type").and_then(Value::as_str) != Some("tool_result") {
+                continue;
+            }
+            let Some(id) = text_of(block, "tool_use_id") else {
+                continue;
+            };
+            let Some((name, input)) = self.task_calls.remove(&id) else {
+                continue;
+            };
+            let result = task_result(frame, block);
+            changed |= self.apply_task(&name, &input, &result);
+        }
+        if !changed {
+            return Vec::new();
+        }
+        vec![
+            AgUiEvent::ActivitySnapshot {
+                message_id: "plan".into(),
+                activity_type: "plan".into(),
+                content: task_content(&self.tasks),
+                replace: Some(true),
+            }
+            .into(),
+        ]
+    }
+
+    fn apply_task(&mut self, name: &str, input: &Value, result: &Value) -> bool {
+        match name {
+            "TaskList" => {
+                let Some(listed) = result.get("tasks").and_then(Value::as_array) else {
+                    return false;
+                };
+                let mut next = Vec::new();
+                for task in listed {
+                    let Some(id) = text_of(task, "id") else {
+                        continue;
+                    };
+                    next.push(TaskStep {
+                        id,
+                        title: text_of(task, "subject").unwrap_or_default(),
+                        status: task_status(text_of(task, "status").as_deref())
+                            .unwrap_or("pending")
+                            .to_owned(),
+                    });
+                }
+                self.tasks = next;
+                true
+            }
+            "TaskCreate" => {
+                let created = result.get("task");
+                let from_text = created_from_text(result);
+                let id = created
+                    .and_then(|task| text_of(task, "id"))
+                    .or_else(|| from_text.as_ref().map(|(id, _)| id.clone()));
+                let title = created
+                    .and_then(|task| text_of(task, "subject"))
+                    .or_else(|| from_text.map(|(_, subject)| subject))
+                    .or_else(|| text_of(input, "subject"));
+                let (Some(id), Some(title)) = (id, title) else {
+                    return false;
+                };
+                match self.tasks.iter_mut().find(|task| task.id == id) {
+                    Some(task) => task.title = title,
+                    None => self.tasks.push(TaskStep {
+                        id,
+                        title,
+                        status: "pending".into(),
+                    }),
+                }
+                true
+            }
+            "TaskUpdate" => {
+                if result.get("success").and_then(Value::as_bool) == Some(false) {
+                    return false;
+                }
+                if let Some(text) = result.as_str()
+                    && !text.starts_with("Updated task #")
+                {
+                    return false;
+                }
+                let id = text_of(input, "taskId").or_else(|| text_of(result, "taskId"));
+                let Some(index) =
+                    id.and_then(|id| self.tasks.iter().position(|task| task.id == id))
+                else {
+                    return false;
+                };
+                let native = text_of(input, "status");
+                if native.as_deref() == Some("deleted") {
+                    self.tasks.remove(index);
+                    return true;
+                }
+                let title =
+                    text_of(input, "subject").unwrap_or_else(|| self.tasks[index].title.clone());
+                let status = native
+                    .as_deref()
+                    .and_then(|value| task_status(Some(value)))
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| self.tasks[index].status.clone());
+                let changed =
+                    self.tasks[index].title != title || self.tasks[index].status != status;
+                self.tasks[index].title = title;
+                self.tasks[index].status = status;
+                changed
+            }
+            _ => false,
+        }
+    }
+
     fn close_open_blocks(&mut self) -> Vec<EngineEvent> {
         self.blocks
             .drain(..)
@@ -992,6 +1142,53 @@ fn todo_content(input: &Value) -> Value {
                 .collect()
         })
         .unwrap_or_default();
+    json!({ "steps": steps })
+}
+
+/// The structured result when Claude sends one, otherwise the text the tool
+/// result carries.
+fn task_result(frame: &Value, block: &Value) -> Value {
+    if let Some(result) = frame
+        .get("tool_use_result")
+        .filter(|value| !value.is_null())
+    {
+        return result.clone();
+    }
+    match block.get("content") {
+        Some(Value::Array(parts)) => Value::String(
+            parts
+                .iter()
+                .filter_map(|part| part.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join(""),
+        ),
+        Some(value) => value.clone(),
+        None => Value::Null,
+    }
+}
+
+/// A subagent result carries no structured task, only the created line.
+fn created_from_text(result: &Value) -> Option<(String, String)> {
+    let rest = result.as_str()?.strip_prefix("Task #")?;
+    let (id, subject) = rest.split_once(" created successfully: ")?;
+    Some((id.trim().to_owned(), subject.trim().to_owned()))
+}
+
+fn task_status(value: Option<&str>) -> Option<&'static str> {
+    match value {
+        Some("pending") => Some("pending"),
+        Some("in_progress") => Some("running"),
+        Some("completed") => Some("completed"),
+        _ => None,
+    }
+}
+
+/// The task list in the same `plan` activity shape `TodoWrite` produces.
+fn task_content(tasks: &[TaskStep]) -> Value {
+    let steps: Vec<Value> = tasks
+        .iter()
+        .map(|task| json!({ "title": task.title, "status": task.status }))
+        .collect();
     json!({ "steps": steps })
 }
 
@@ -1294,6 +1491,120 @@ mod tests {
         assert_eq!(content["steps"][0]["title"], "Read");
         assert_eq!(content["steps"][1]["status"], "in_progress");
         assert_eq!(content["steps"][2]["status"], "pending");
+    }
+
+    fn plan_snapshot(events: Vec<AgUiEvent>) -> Value {
+        events
+            .into_iter()
+            .find_map(|event| match event {
+                AgUiEvent::ActivitySnapshot {
+                    activity_type,
+                    content,
+                    ..
+                } if activity_type == "plan" => Some(content),
+                _ => None,
+            })
+            .expect("plan snapshot")
+    }
+
+    fn task_result(tool: &str, result: Value) -> Value {
+        json!({
+            "type": "user",
+            "parent_tool_use_id": null,
+            "message": { "content": [
+                { "type": "tool_result", "tool_use_id": tool, "content": "done" },
+            ]},
+            "tool_use_result": result,
+        })
+    }
+
+    /// Modern task tools report state in their result, and each change replaces
+    /// the plan activity's steps.
+    #[test]
+    fn modern_task_tools_feed_the_plan_activity() {
+        let mut mapper = StreamMapper {
+            saw_partials: true,
+            ..StreamMapper::default()
+        };
+        let created = mapper.on_frame(&tool_frame(
+            "c1",
+            "TaskCreate",
+            json!({ "subject": "alpha", "description": "first" }),
+        ));
+        assert!(agui(created).is_empty(), "the call waits for its result");
+        let steps = plan_snapshot(agui(mapper.on_frame(&task_result(
+            "c1",
+            json!({ "task": { "id": "1", "subject": "alpha" } }),
+        ))));
+        assert_eq!(
+            steps["steps"],
+            json!([{ "title": "alpha", "status": "pending" }])
+        );
+
+        mapper.on_frame(&tool_frame(
+            "u2",
+            "TaskUpdate",
+            json!({ "taskId": "1", "status": "in_progress" }),
+        ));
+        let steps = plan_snapshot(agui(mapper.on_frame(&task_result(
+            "u2",
+            json!({ "success": true, "taskId": "1" }),
+        ))));
+        assert_eq!(steps["steps"][0]["status"], "running");
+
+        mapper.on_frame(&tool_frame("l1", "TaskList", json!({})));
+        let steps = plan_snapshot(agui(mapper.on_frame(&task_result(
+            "l1",
+            json!({ "tasks": [
+                { "id": "1", "subject": "alpha", "status": "completed" },
+                { "id": "2", "subject": "beta", "status": "in_progress" },
+            ]}),
+        ))));
+        assert_eq!(
+            steps["steps"],
+            json!([
+                { "title": "alpha", "status": "completed" },
+                { "title": "beta", "status": "running" },
+            ])
+        );
+
+        mapper.on_frame(&tool_frame(
+            "d1",
+            "TaskUpdate",
+            json!({ "taskId": "1", "status": "deleted" }),
+        ));
+        let steps = plan_snapshot(agui(mapper.on_frame(&task_result(
+            "d1",
+            json!({ "success": true, "taskId": "1" }),
+        ))));
+        assert_eq!(
+            steps["steps"],
+            json!([{ "title": "beta", "status": "running" }])
+        );
+    }
+
+    /// A subagent reports the created task as text, not as a structured result.
+    #[test]
+    fn a_text_only_task_create_still_becomes_a_step() {
+        let mut mapper = StreamMapper::default();
+        mapper.on_frame(&tool_frame(
+            "c1",
+            "TaskCreate",
+            json!({ "subject": "from input" }),
+        ));
+        let frame = json!({
+            "type": "user",
+            "parent_tool_use_id": null,
+            "message": { "content": [
+                { "type": "tool_result", "tool_use_id": "c1",
+                  "content": "Task #7 created successfully: gamma" },
+            ]},
+        });
+        let steps = plan_snapshot(agui(mapper.on_frame(&frame)));
+        assert_eq!(
+            steps["steps"],
+            json!([{ "title": "gamma", "status": "pending" }])
+        );
     }
 
     #[test]

@@ -110,3 +110,21 @@ qualify the live thirty-activity bound, recovery of older live rows or the nativ
 desktop shell. Those live-bound paths retain their existing protocol-double and
 component evidence, and C37 remains partial. No second paid turn was run to
 manufacture a longer trace.
+
+## C10 Claude task tools
+
+Claude Code's older `TodoWrite` already reached the plan activity. Its modern
+`TaskCreate`, `TaskUpdate` and `TaskList` tools report their state in the tool
+result rather than the call, so the driver holds each call until that result
+arrives and then replaces the plan activity's steps with the reported list. A
+`TaskUpdate` that sets `status: "deleted"` removes the row, and a subagent's
+text-only `Task #7 created successfully: …` still becomes a step.
+
+The tools are opt-in on the engine side. Orbyn does not set
+`CLAUDE_CODE_ENABLE_TODO_TOOLS`, because enabling a tool whose output was not
+projected would put task state in the transcript without rendering it. A turn
+that forces the tools was attempted on installed Claude Code 2.1.318 and was
+refused with `Failed to authenticate: OAuth session expired and could not be
+refreshed`, so the live frames remain unobserved. The driver tests use recorded
+result shapes from the documented protocol, not a captured session. C10 stays
+partial on that live observation; the projection itself is covered by tests.
