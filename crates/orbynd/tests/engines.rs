@@ -540,3 +540,132 @@ async fn codex_feedback_uses_the_engines_own_upload_route() {
     assert_eq!(code, 422, "{body}");
     assert_eq!(body["code"], "unsupported");
 }
+
+/// These failures come from a protocol double, never an upstream submission.
+#[tokio::test]
+async fn codex_feedback_failure_and_malformed_receipt_do_not_retry() {
+    let dir = TempDir::new();
+    let launch = dir.path().join("launches");
+    let options = Options {
+        env: vec![(
+            "ORBYN_FAKE_LAUNCH_FILE".into(),
+            launch.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, _) = setup(&dir, options, "codex").await;
+    let count = || {
+        launches(&launch)
+            .iter()
+            .filter(|entry| entry["mode"] == "codex-feedback")
+            .count()
+    };
+    for (index, (marker, status, code)) in [
+        ("feedback-error", 502, "engine_unavailable"),
+        ("feedback-malformed", 500, "internal"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let marker = dir.path().join(marker);
+        std::fs::write(&marker, "").unwrap();
+        let (actual_status, body) = service.send("/api/engines/codex/feedback", json!({})).await;
+        assert_eq!(actual_status, status, "{body}");
+        assert_eq!(body["code"], code, "{body}");
+        assert!(body.get("thread_id").is_none(), "{body}");
+        if status == 500 {
+            assert!(
+                !body["message"].as_str().unwrap().contains("threadId"),
+                "{body}"
+            );
+        }
+        assert_eq!(count(), index + 1, "a failed request must not retry itself");
+        std::fs::remove_file(marker).unwrap();
+    }
+    let (code, body) = service.send("/api/engines/codex/feedback", json!({})).await;
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(count(), 3);
+    let sent = launches(&launch)
+        .into_iter()
+        .rfind(|entry| entry["mode"] == "codex-feedback")
+        .unwrap();
+    let params: Value = serde_json::from_str(sent["args"][0].as_str().unwrap()).unwrap();
+    assert_eq!(
+        params,
+        json!({"classification": "bug", "includeLogs": false})
+    );
+}
+
+#[tokio::test]
+async fn codex_feedback_routes_native_instances_and_rejects_unknown_engines() {
+    let dir = TempDir::new();
+    let launch = dir.path().join("launches");
+    let options = Options {
+        // The base cannot launch, so success proves the instance program was used.
+        env: vec![
+            (
+                "ORBYN_CODEX_BIN".into(),
+                dir.path().join("no-codex").to_string_lossy().into_owned(),
+            ),
+            (
+                "ORBYN_FAKE_LAUNCH_FILE".into(),
+                launch.to_string_lossy().into_owned(),
+            ),
+        ],
+        ..Options::default()
+    };
+    let service = Service::start(&dir.path().join("data"), options);
+    let (code, body) = set_instances(
+        &service,
+        json!([{
+            "id": "codex-feedback-instance", "driver": "codex", "name": "Feedback fixture",
+            "program": FAKE,
+        }]),
+    )
+    .await;
+    assert_eq!(code, 200, "{body}");
+    let (code, body) = service.send("/api/engines/codex-feedback-instance/feedback", json!({
+        "reason": "  instance report  ", "include_logs": true, "thread_id": " thread-fixture ",
+    })).await;
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body["thread_id"], "fake-feedback-1");
+    let uploads: Vec<_> = launches(&launch)
+        .into_iter()
+        .filter(|entry| entry["mode"] == "codex-feedback")
+        .collect();
+    assert_eq!(uploads.len(), 1);
+    let params: Value = serde_json::from_str(uploads[0]["args"][0].as_str().unwrap()).unwrap();
+    assert_eq!(
+        params,
+        json!({"classification": "bug", "includeLogs": true,
+        "reason": "instance report", "threadId": "thread-fixture"})
+    );
+    let before_rejections = launches(&launch);
+    for (engine, expected_status, expected_code) in [
+        ("unknown-feedback-engine", 404, "not_found"),
+        ("claude", 422, "unsupported"),
+    ] {
+        let (code, body) = service
+            .send(&format!("/api/engines/{engine}/feedback"), json!({}))
+            .await;
+        assert_eq!(code, expected_status, "{body}");
+        assert_eq!(body["code"], expected_code, "{body}");
+    }
+    let records = launches(&launch);
+    assert_eq!(
+        records, before_rejections,
+        "rejections must not launch an engine"
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|entry| entry["mode"] == "codex-feedback")
+            .count(),
+        1
+    );
+    assert!(
+        !records
+            .iter()
+            .any(|entry| entry["mode"] == "codex-thread" || entry["mode"] == "codex-turn")
+    );
+}

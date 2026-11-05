@@ -106,6 +106,26 @@ describe("codex feedback", () => {
     expect(screen.getByRole("dialog")).toBeVisible();
   });
 
+  it("blocks duplicate sends and closing while the report is pending", async () => {
+    const user = userEvent.setup();
+    mock.engines = [engine()];
+    let accept!: (receipt: { thread_id: string }) => void;
+    actions.sendFeedback.mockReturnValue(new Promise((resolve) => { accept = resolve; }));
+    render(<ProvidersSection />);
+    await user.click(await screen.findByRole("button", { name: "Send feedback" }));
+    const dialog = await screen.findByRole("dialog");
+    const send = within(dialog).getByRole("button", { name: "Send feedback" });
+    await user.click(send);
+    expect(send).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
+    await user.click(send);
+    expect(actions.sendFeedback).toHaveBeenCalledTimes(1);
+    accept({ thread_id: "pending-report" });
+    expect(await screen.findByRole("status")).toHaveTextContent("pending-report");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("offers the action only where the route exists", async () => {
     mock.engines = [engine({ id: "claude", name: "Claude" })];
     render(<ProvidersSection />);
