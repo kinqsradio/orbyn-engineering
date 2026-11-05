@@ -138,6 +138,7 @@ fn core_config(args: &ServeArgs, base_url: String) -> Result<CoreConfig, String>
         lookup_latest: !env_flag("ORBYN_OFFLINE"),
         update_timeout: defaults.update_timeout,
         known_engine_ids: known_engine_ids(std::env::var_os("ORBYN_KNOWN_ENGINE_IDS").as_deref())?,
+        cache_dir: None,
     };
     if let Ok(seconds) = std::env::var("ORBYN_APPROVAL_TIMEOUT_SECS") {
         let seconds: u64 = seconds

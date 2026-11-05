@@ -159,11 +159,13 @@ impl Core {
             .user_agent(concat!("orbyn/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| CoreError::Internal(error.to_string()))?;
+        let mut engine_config = config.engines.clone();
+        engine_config.cache_dir = Some(config.data_dir.join("model-cache"));
         let engines = Arc::new(EngineManager::new(
             store.clone(),
             terminals.clone(),
             http.clone(),
-            config.engines.clone(),
+            engine_config,
         ));
         let workspace = Arc::new(Workspace::new(
             store.clone(),
