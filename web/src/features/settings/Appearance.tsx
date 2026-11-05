@@ -5,6 +5,46 @@ import { applyTheme, useUi, type EnvironmentIdentification, type ThemeChoice, ty
 import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "./themes";
+import { api } from "../../api/client";
+import { fullTime } from "../../lib/format";
+import { useAsync } from "../../lib/useAsync";
+import { ENVIRONMENT_ICON_CHOICES } from "../../ui/EnvironmentIcon";
+import { PreferenceGroups } from "./PreferenceRows";
+
+/** What this environment publishes to every viewer, and when its theme was set. */
+function EnvironmentGroup() {
+  const themeChoices = [
+    { value: "", label: "None" },
+    ...choices.map((choice) => ({ value: choice.value, label: choice.label })),
+    ...THEME_PRESETS.map((preset) => ({ value: preset.id, label: preset.name })),
+  ];
+  const info = useAsync("appearance-environment", (signal) => api.info(signal));
+  const published = info.data?.environment_theme;
+  const setAt = published ? `Set ${fullTime(new Date(published.set_at).toISOString())}. ` : "";
+  return (
+    <PreferenceGroups
+      groups={[
+        {
+          title: "Environment",
+          rows: [
+            {
+              key: "default_theme",
+              title: settingsLabel("appearance-default-theme"),
+              description: `${setAt}Each device applies it once when it changes, then keeps its own choice.`,
+              options: themeChoices,
+            },
+            {
+              key: "environment_icon",
+              title: settingsLabel("appearance-environment-icon"),
+              description: "The kind of machine this environment shows as.",
+              options: ENVIRONMENT_ICON_CHOICES,
+            },
+          ],
+        },
+      ]}
+    />
+  );
+}
 
 const choices: { value: ThemeChoice; label: string }[] = [
   { value: "system", label: "System" },
@@ -203,6 +243,7 @@ export function AppearanceSection() {
           />
         </SettingRow>
       </SettingGroup>
+      <EnvironmentGroup />
       <ThemeEditor />
       <TypographyGroup />
       <SettingGroup title="Composer">

@@ -1070,6 +1070,11 @@ is recorded as applied and changes nothing. Remote environments publish nothing 
 marks it as the viewer chose: Dev or Nightly artwork (nothing for stable), a version
 pill, or none. That choice is viewer-local.
 
+Appearance edits `default_theme` and `environment_icon` as environment settings through
+the scoped preference writer, showing when the theme was set. `environment_icon` is one
+of `laptop`, `desktop`, `tower` or `server`, or empty for the plain monitor; `/api/info`
+publishes it and the settings environment label draws it.
+
 ## Message search
 
 A message is split over many events, so `thread_messages` keeps each one whole, written

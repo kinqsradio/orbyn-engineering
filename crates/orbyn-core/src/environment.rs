@@ -23,6 +23,15 @@ fn channel_of(named: Option<&str>, debug: bool) -> ReleaseChannel {
 }
 
 impl Core {
+    /// The machine kind chosen for this environment, if any.
+    pub fn environment_icon(&self) -> Result<Option<String>> {
+        let icon = self.preference("environment_icon", None)?;
+        Ok(icon
+            .as_str()
+            .filter(|icon| !icon.is_empty())
+            .map(str::to_owned))
+    }
+
     /// The published theme, or none while `default_theme` is empty.
     pub fn environment_theme(&self) -> Result<Option<EnvironmentTheme>> {
         let name = self.preference("default_theme", None)?;
@@ -79,6 +88,21 @@ mod tests {
             core.preference("default_theme_set_at", None).unwrap(),
             json!(0)
         );
+    }
+
+    #[test]
+    fn the_icon_is_a_known_machine_kind() {
+        let dir = TempDir::new();
+        let core = core(&dir);
+        assert_eq!(core.environment_icon().unwrap(), None);
+        let set = |value| {
+            core.set_preferences(None, &BTreeMap::from([("environment_icon".into(), value)]))
+        };
+        set(json!("laptop")).unwrap();
+        assert_eq!(core.environment_icon().unwrap().as_deref(), Some("laptop"));
+        assert!(set(json!("toaster")).is_err());
+        set(json!("")).unwrap();
+        assert_eq!(core.environment_icon().unwrap(), None);
     }
 
     #[test]

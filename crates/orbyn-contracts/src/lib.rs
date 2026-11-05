@@ -3208,6 +3208,10 @@ pub struct ServerInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub channel: Option<ReleaseChannel>,
+    /// `environment_icon`: `laptop`, `desktop`, `tower` or `server`; absent is the plain monitor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_icon: Option<String>,
 }
 }
 

@@ -513,5 +513,23 @@ async fn the_environment_theme_is_published_with_its_set_time() {
             .get("environment_theme")
             .is_none()
     );
+    let (code, _) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "environment_icon": "server" } }),
+    )
+    .await;
+    assert_eq!(code, 200);
+    assert_eq!(
+        service.json("/api/info").await["environment_icon"],
+        "server"
+    );
+    let (code, _) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "environment_icon": "toaster" } }),
+    )
+    .await;
+    assert_eq!(code, 400);
     service.stop().await;
 }

@@ -61,6 +61,8 @@ fn normalized(key: &str, value: Value) -> Value {
     }
     value
 }
+/// Machine kinds the local environment can be shown as; empty is the plain monitor.
+pub(crate) const ENVIRONMENT_ICONS: &[&str] = &["", "laptop", "desktop", "tower", "server"];
 const QUIT: &[&str] = &["direct", "hold", "double_press"];
 const NAMING: &[&str] = &["static", "semantic", "custom"];
 const ENV_MODE: &[&str] = &["local", "worktree"];
@@ -114,7 +116,7 @@ const DEFINITIONS: &[Definition] = defs![
     "provider_health_refresh_minutes" Kind::Number, 5, false;
     "default_theme" Kind::Text, "", false;
     "default_theme_set_at" Kind::Number, 0, false;
-    "environment_icon" Kind::Text, "", false;
+    "environment_icon" Kind::OneOf(ENVIRONMENT_ICONS), "", false;
     "observability" Kind::Object, {}, false;
     "storage_cleanup" Kind::Object, {}, true;
     "worktree_cleanup" Kind::Object, {}, true;

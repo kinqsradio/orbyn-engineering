@@ -11,4 +11,8 @@ environment_theme?: EnvironmentTheme,
  * `dev` for a debug build, `nightly` for a build made with
  * `ORBYN_CHANNEL=nightly`, otherwise `stable`.
  */
-channel?: ReleaseChannel, };
+channel?: ReleaseChannel, 
+/**
+ * `environment_icon`: `laptop`, `desktop`, `tower` or `server`; absent is the plain monitor.
+ */
+environment_icon?: string, };
