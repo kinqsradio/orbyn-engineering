@@ -32,6 +32,7 @@ import { LinkedPulls } from "./LinkedPulls";
 import { closeSideChat, openSideChat } from "./sideChat";
 import { SideChatPane } from "./SideChatPane";
 import { RIGHT_TABS } from "./tabs";
+import { pullsApi } from "../pulls/pullsApi";
 
 interface LauncherAction {
   id: ContextTab | "new-side";
@@ -159,6 +160,7 @@ export function SurfacePane({
   const width = useUi((state) => state.panelWidth);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const revealPull = useUi((state) => state.revealPull);
   const closeMenu = () => {
     setMenu(null);
     menuButton.current?.focus();
@@ -166,6 +168,9 @@ export function SurfacePane({
   const openSurface = (surface: ContextTab) => {
     if (surface === "terminal" ? !terminalOpen : tab !== surface) toggle(surface);
   };
+  // The thread's own pull request is a surface only when this thread links one.
+  const linked = useAsync(`surface-pulls:${thread.id}`, (signal) => pullsApi.linked(thread.id, signal));
+  const isLinked = (linked.data?.length ?? 0) > 0;
 
   return (
     <aside
@@ -204,7 +209,7 @@ export function SurfacePane({
               { label: "Terminal", onSelect: () => openSurface("terminal") },
               { label: "Files", onSelect: () => openSurface("files") },
               { label: "Diff", onSelect: () => openSurface("diff") },
-              { label: "Pull request", disabled: true },
+              { label: "Pull request", disabled: !isLinked, onSelect: () => revealPull(linked.data?.[0]?.number ?? null) },
               { label: "Linked pull requests", onSelect: () => openSurface("pulls") },
               { label: "Device", disabled: true },
               { label: "Side chat", onSelect: () => void openSideChat(thread, null) },

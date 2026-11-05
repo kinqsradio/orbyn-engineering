@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Thread } from "../../api/types";
@@ -13,10 +13,14 @@ vi.mock("./LinkedPulls", () => ({ LinkedPulls: () => <div>Linked pulls content</
 vi.mock("./SideChatPane", () => ({ SideChatPane: () => null }));
 vi.mock("./sideChat", () => ({ openSideChat: vi.fn(), closeSideChat: vi.fn() }));
 
+const linked = vi.fn(async () => [] as { number: number }[]);
+vi.mock("../pulls/pullsApi", () => ({ pullsApi: { linked: () => linked() } }));
+
 const thread = { id: "thread-1" } as Thread;
 
 beforeEach(() => {
-  useUi.setState({ panelOpen: true, panelTab: null, openSurfaces: [], terminalOpen: false });
+  linked.mockResolvedValue([]);
+  useUi.setState({ panelOpen: true, panelTab: null, openSurfaces: [], terminalOpen: false, pullReveal: null });
 });
 
 function pane() {
@@ -37,6 +41,32 @@ describe("surface menu", () => {
     expect(screen.getByText("Files content")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close Files" }));
     expect(screen.queryByRole("tab", { name: "Files" })).not.toBeInTheDocument();
+  });
+
+  it("opens the linked pull request from the menu", async () => {
+    const user = userEvent.setup();
+    linked.mockResolvedValue([{ number: 42 }]);
+    pane();
+    await user.click(screen.getByRole("button", { name: "New surface" }));
+    const item = screen.getByRole("menuitem", { name: "Pull request" });
+    await waitFor(() => expect(item).toBeEnabled());
+    await user.click(item);
+    expect(useUi.getState()).toMatchObject({ panelOpen: true, panelTab: "pulls", openSurfaces: ["pulls"], pullReveal: 42 });
+  });
+
+  it("keeps the entry disabled for a thread that links no pull request", async () => {
+    const user = userEvent.setup();
+    pane();
+    await user.click(screen.getByRole("button", { name: "New surface" }));
+    expect(screen.getByRole("menuitem", { name: "Pull request" })).toBeDisabled();
+  });
+
+  it("keeps the entry disabled when the linked read fails", async () => {
+    const user = userEvent.setup();
+    linked.mockRejectedValue(new Error("offline"));
+    pane();
+    await user.click(screen.getByRole("button", { name: "New surface" }));
+    expect(screen.getByRole("menuitem", { name: "Pull request" })).toBeDisabled();
   });
 
   it("supports keyboard dismissal and opens the terminal drawer", async () => {
