@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use orbyn_contracts::{Attachment, EngineTier, Mentions, SlashCommand, ThreadMention};
 
 use crate::app::Core;
+use crate::claude_skills::{self, ClaudeSkill};
 use crate::error::{CoreError, Result};
 use crate::git::git;
 use crate::util::{new_id, now};
@@ -139,12 +140,19 @@ impl Core {
             thread.skill_profile.as_deref(),
         );
         // A library still being set up has no skills, but files still resolve.
-        let skills = route
+        let mut skills: Vec<String> = route
             .map(|route| route.selection)
             .unwrap_or_default()
             .into_iter()
             .filter(|name| name.to_lowercase().contains(&needle))
             .collect();
+        if driver.family() == "claude" {
+            for skill in self.claude_skills(Path::new(&thread.cwd)) {
+                if skill.name.to_lowercase().contains(&needle) && !skills.contains(&skill.name) {
+                    skills.push(skill.name);
+                }
+            }
+        }
         let threads = self
             .store
             .list_threads(Some(&thread.project_id), false)?
@@ -223,8 +231,26 @@ impl Core {
             for name in route.map(|route| route.selection).unwrap_or_default() {
                 push(&name, "Library skill", "skill");
             }
+            if driver.family() == "claude" {
+                for skill in self.claude_skills(Path::new(&thread.cwd)) {
+                    push(&skill.name, &skill.description, "skill");
+                }
+            }
         }
         Ok(commands)
+    }
+
+    /// The Claude CLI's own skills for this thread: its config directory, the
+    /// start folder and the checkout. Discovery reads only; the CLI loads them.
+    fn claude_skills(&self, checkout: &Path) -> Vec<ClaudeSkill> {
+        let Ok(base) = self.workspace.root() else {
+            return Vec::new();
+        };
+        let Some(config) = claude_skills::config_dir(&base) else {
+            return Vec::new();
+        };
+        let plugin_cache = std::env::var_os(claude_skills::PLUGIN_CACHE_ENV).map(PathBuf::from);
+        claude_skills::discover(&config, &base, checkout, plugin_cache.as_deref())
     }
 }
 

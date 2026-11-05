@@ -1228,7 +1228,10 @@ Skills come from the workspace, in place. Nothing is copied, packed or signed.
   `--mcp-config`, `--permission-prompt-tool mcp__orbyn_engineering__approve` and
   `--add-dir <checkout>`. Its working directory is the library, so a relative path
   means the library, and the bootstrap tells it to use absolute paths and run
-  commands from the checkout.
+  commands from the checkout. The composer offers the same skill names the CLI
+  loads: `CLAUDE_CONFIG_DIR` (or `~/.claude`) `skills`, the start folder's and the
+  checkout's `.claude/skills`, and enabled plugins as `plugin:skill`. Discovery only
+  reads names and descriptions for the `$` menu; the CLI still loads and runs them.
 - Codex's process starts at the workspace root. `thread/start` and each `turn/start`
   use the selected checkout as `cwd`, with `sandboxPolicy.writableRoots` set to it,
   so the library stays read-only. Before the first `turn/start`, the driver awaits
