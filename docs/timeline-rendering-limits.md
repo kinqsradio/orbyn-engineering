@@ -74,6 +74,17 @@ took part. The live-provider question payload, and with it a real question into
 this rendering path, stays unobserved. C40 keeps its project-folder image
 evidence and stays partial.
 
+## C31 panel surfaces
+
+The add-tab menu's Device entry is disabled, and no Device surface exists: the
+only other Device control is the browser's viewport toolbar, and H20 (the device
+panel) is still open. The disabled entry is therefore correct and was not built
+here. The pre-existing `SurfacePane.menu.test.tsx` regression asserts it stays
+disabled. Browser mute stays
+refused: the preview is a stream of JPEG frames with no audio track, so there is
+nothing to mute. Native qualification was not run because no local desktop build
+exists.
+
 ## C4 real Codex outcome observation
 
 On 5 November 2026, one approved turn used the installed, unmodified Codex CLI
