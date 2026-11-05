@@ -387,6 +387,27 @@ by a restore to the start.
 
 ## Source control
 
+An explicitly confirmed Git action may leave its commit message, pull request
+title or description blank to generate that field from bounded local change
+context. Nonempty user text is kept unchanged. Opening, typing, cancelling and
+push-only actions never generate text. Every missing field is parsed and validated
+before staging, pushing or creating a pull request. Changed branch/base or working
+files, revoked project trust and an active run refuse the action after generation;
+existing phase receipts still describe any earlier completed effects. There is no
+automatic rollback of user work.
+
+Writing uses the selected thread engine and the configured text-generation model,
+or the thread's explicit model when that setting is empty. It never chooses another
+provider or guesses a smaller model. Only the guarded Claude one-shot path supports
+repository-derived text: an owned temporary folder, empty tools, strict empty MCP
+configuration, disabled hooks/cloud MCP/IDE connections and slash commands,
+`dontAsk`, and no session persistence. Rejected flags fail without a retry.
+Codex and unproven drivers return unsupported for generated writing; manual text
+continues to work. Existing title calls retain their separate model policy and
+Codex path; this change does not qualify that path as tool-free. No credential
+configuration or MCP server list is read to implement writing. Prompts and patches
+are not saved by the generation audit, which records purpose, engine and model.
+
 Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
 `glab`, `az` and `tea`. Orbyn holds no forge credential and reads none, so an unknown
 host is treated as GitHub Enterprise through `gh`, and a missing CLI is

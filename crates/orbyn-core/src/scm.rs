@@ -94,7 +94,7 @@ impl Core {
     }
 
     /// Git writes would race an engine in the same folder.
-    fn scm_idle(&self, id: &str) -> Result<Thread> {
+    pub(crate) fn scm_idle(&self, id: &str) -> Result<Thread> {
         let thread = self.scm_thread(id)?;
         if thread.active_run.is_some() {
             return Err(CoreError::ThreadBusy);
@@ -125,7 +125,20 @@ impl Core {
         actor: &str,
     ) -> Result<GitActionResult> {
         let thread = self.scm_idle(id)?;
+        let prepared = self.prepare_git_writing(&thread, action, actor).await?;
+        let fresh = self.scm_idle(id)?;
+        if fresh.cwd != thread.cwd
+            || fresh.engine != thread.engine
+            || fresh.project_id != thread.project_id
+            || fresh.model != thread.model
+        {
+            return Err(CoreError::Invalid(
+                "The thread changed. Review the action and try again.".into(),
+            ));
+        }
         let cwd = Path::new(&thread.cwd);
+        prepared.check(cwd).await?;
+        let action = &prepared.action;
         let mut phases = Vec::new();
         if let Some(message) = &action.commit_message {
             if message.trim().is_empty() {
@@ -133,7 +146,10 @@ impl Core {
             }
             self.scm_audit(actor, "git.commit", message, Some(id))?;
             let outcome = async {
+                self.scm_idle(id)?;
                 git_user(cwd, &["add", "-A"], FORGE_TIMEOUT).await?;
+                prepared.check(cwd).await?;
+                self.scm_idle(id)?;
                 git_user(cwd, &["commit", "-q", "-m", message], FORGE_TIMEOUT).await?;
                 Ok(None)
             }

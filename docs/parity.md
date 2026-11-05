@@ -325,7 +325,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [x] F15 Publish repository: create remote, push commits | packages/contracts/src/rpc.ts | w d s | M | server done | web done
 - [x] F16 Initialize Git: vcs init from project | packages/contracts/src/rpc.ts | w d s | S | server done | status: partial | remaining: the row records service completion without client evidence
 - [x] F17 Git actions: commit, push, create PR and combinations with phases | apps/web/src/components/GitActionsControl.tsx | w d m s | L | server done | web done
-- [ ] F18 AI commit and PR text: generated messages, titles, descriptions | apps/server/src/textGeneration/TextGeneration.ts | s | M
+- [x] F18 AI commit and PR text: generated messages, titles, descriptions | apps/server/src/textGeneration/TextGeneration.ts | s | M | server done | web done | status: partial | remaining: generation supports the guarded Claude one-shot path only; Codex and unproven drivers are refused because a strict tool-free boundary is unproven, with manual text retained; qualification uses synthetic executables, no live provider or packaged macOS writing observation
 - [ ] F19 Writing style: repo conventions or custom, follows templates | apps/web/src/components/settings/SourceControlWritingSettings.tsx | w d m s | M
 - [x] F20 Branch switcher and create: picker with ref listing | apps/web/src/components/BranchPicker.tsx | w d m s | M | server done | web done
 - [ ] F21 Environment mode selector: local vs new worktree, environment choice | apps/web/src/components/BranchToolbarEnvModeSelector.tsx | w d m | M | scope: mixed | local: local checkout versus new sibling worktree | excludes: remote environment choice
