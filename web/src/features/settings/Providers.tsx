@@ -28,6 +28,8 @@ const supportTone: Record<EngineStatus["support"], PillTone> = {
 function UpdateAction({ engine }: { engine: EngineStatus }) {
   const [confirming, setConfirming] = useState(false);
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
+  const advisory = engine.compatibility;
+  const recommended = advisory?.recommended_command ? (advisory.recommended_version ?? null) : null;
   if (engine.updating) {
     return (
       <span className="inline-status" role="status">
@@ -36,25 +38,44 @@ function UpdateAction({ engine }: { engine: EngineStatus }) {
       </span>
     );
   }
-  if (!engine.update_command) return null;
   const hasNewer = engine.latest !== null && engine.latest !== engine.version;
+  // A version the signed manifest pushes off is replaced by its recommendation.
+  const action = recommended
+    ? { label: `Install ${recommended}`, command: advisory?.recommended_command ?? "", install: true }
+    : engine.update_command
+      ? { label: hasNewer ? `Update to ${engine.latest}` : "Update", command: engine.update_command, install: false }
+      : null;
   return (
     <>
-      <Button small onClick={() => setConfirming(true)}>
-        {hasNewer ? `Update to ${engine.latest}` : "Update"}
-      </Button>
-      {confirming ? (
+      {advisory ? (
+        <p className="banner banner-warn" role="status">
+          {advisory.message}
+        </p>
+      ) : null}
+      {action ? (
+        <Button small onClick={() => setConfirming(true)}>
+          {action.label}
+        </Button>
+      ) : null}
+      {advisory?.recommended_version && !recommended ? (
+        <p className="muted">
+          Install {advisory.recommended_version} with the installer that owns this engine
+          {engine.manual_hint ? `. ${engine.manual_hint}` : "."}
+        </p>
+      ) : null}
+      {confirming && action ? (
         <ConfirmDialog
-          title={`Update ${engine.name}?`}
-          confirmLabel="Update"
+          title={action.install ? `Install ${recommended}?` : `Update ${engine.name}?`}
+          confirmLabel={action.install ? `Install ${recommended}` : "Update"}
           onClose={() => setConfirming(false)}
           onConfirm={async () => {
-            await api.updateEngine(engine.id);
+            if (action.install) await api.installRecommended(engine.id);
+            else await api.updateEngine(engine.id);
             await refreshEngines();
           }}
         >
           <p>Orbyn runs the installer that owns this binary:</p>
-          <CopyCommand command={engine.update_command} label="Copy update command" />
+          <CopyCommand command={action.command} label={action.install ? "Copy install command" : "Copy update command"} />
           <p className="muted">Updates are refused while this engine has an active run.</p>
         </ConfirmDialog>
       ) : null}
@@ -278,7 +299,7 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
           ) : null}
         </div>
       ) : null}
-      {!engine.update_command && engine.manual_hint ? <p className="muted">{engine.manual_hint}</p> : null}
+      {!engine.update_command && engine.manual_hint && !engine.compatibility ? <p className="muted">{engine.manual_hint}</p> : null}
       {removing ? (
         <ConfirmDialog
           title={`Remove ${engine.name}?`}

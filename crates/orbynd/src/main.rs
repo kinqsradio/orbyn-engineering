@@ -593,6 +593,10 @@ fn router(state: AppState) -> Router {
             axum::routing::delete(api::delete_custom_engine),
         )
         .route("/api/engines/{id}/update", post(api::update_engine))
+        .route(
+            "/api/engines/{id}/install-recommended",
+            post(api::install_recommended_engine),
+        )
         .route("/api/acp/registry", get(api::search_acp_registry))
         .route(
             "/api/acp/registry/{id}",

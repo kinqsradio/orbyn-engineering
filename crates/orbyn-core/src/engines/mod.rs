@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
-    AuthState, CustomEngine, EngineModels, EngineStatus, EngineTier, InstallerKind, ModelSelection,
-    ProviderInstance, VersionSupport,
+    AuthState, CustomEngine, EngineCompatibility, EngineModels, EngineStatus, EngineTier,
+    InstallerKind, ModelSelection, ProviderInstance, VersionSupport,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -477,6 +477,13 @@ impl EngineManager {
         } else {
             VersionSupport::Unknown
         };
+        let compatibility = if descriptor.tier == EngineTier::Native {
+            probe.version.as_deref().and_then(|installed| {
+                compatibility(&self.manifest, &family, installed, plan.as_ref())
+            })
+        } else {
+            None
+        };
         let manual_hint = if plan.is_none() {
             driver.manual_hint()
         } else {
@@ -504,6 +511,7 @@ impl EngineManager {
             installer,
             latest,
             support,
+            compatibility,
             update_command: plan.as_ref().map(UpdatePlan::display),
             manual_hint,
             sign_in_command: probe.sign_in_command,
@@ -534,6 +542,26 @@ impl EngineManager {
 
     /// Updates an engine through its owning installer, then verifies by probing.
     pub async fn update(&self, id: &str, actor: &str) -> Result<EngineStatus> {
+        self.update_to(id, actor, None).await
+    }
+
+    /// Installs the version the signed manifest recommends, through the installer
+    /// that owns the binary. Refused when the manifest recommends nothing, when
+    /// that installer cannot install one exact version, or while a run is active.
+    pub async fn install_recommended(&self, id: &str, actor: &str) -> Result<EngineStatus> {
+        let driver = self.driver(id)?;
+        let recommended = self.manifest.recommended(&driver.family()).ok_or_else(|| {
+            CoreError::UpdateUnavailable(format!("No recommended version is recorded for {id}."))
+        })?;
+        self.update_to(id, actor, Some(&recommended)).await
+    }
+
+    async fn update_to(
+        &self,
+        id: &str,
+        actor: &str,
+        version: Option<&str>,
+    ) -> Result<EngineStatus> {
         let driver = self.driver(id)?;
         let before = driver.probe().await;
         let plan = driver.update_plan(&before).await.ok_or_else(|| {
@@ -541,6 +569,26 @@ impl EngineManager {
                 "Orbyn cannot prove which installer owns this engine.".to_owned()
             }))
         })?;
+        let plan = match version {
+            None => plan,
+            Some(version) => {
+                if self.manifest.recommended(&driver.family()).as_deref() != Some(version) {
+                    return Err(CoreError::Invalid(format!(
+                        "{version} is not the recommended version for {id}."
+                    )));
+                }
+                if before.version.as_deref() == Some(version) {
+                    return Err(CoreError::UpdateUnavailable(format!(
+                        "{id} is already on {version}."
+                    )));
+                }
+                maintenance::pinned(&plan, version).ok_or_else(|| {
+                    CoreError::UpdateUnavailable(driver.manual_hint().unwrap_or_else(|| {
+                        "Orbyn cannot prove which installer owns this engine.".to_owned()
+                    }))
+                })?
+            }
+        };
         let _marker = self.begin_update(id)?;
         let installer_lock = {
             let mut locks = lock(&self.installer_locks);
@@ -647,6 +695,35 @@ impl EngineManager {
 
 fn refresh_can_replace(catalog: &ModelCatalog, error: &Option<String>) -> bool {
     error.is_none() && catalog.fallback.is_none() && !catalog.models.is_empty()
+}
+
+/// The signed manifest's warning about an installed version, with the version it
+/// recommends and whether the owning installer can install exactly that version.
+/// Only a signed manifest can produce one, and only for a version it mentions.
+fn compatibility(
+    manifest: &TestedManifest,
+    family: &str,
+    installed: &str,
+    plan: Option<&UpdatePlan>,
+) -> Option<EngineCompatibility> {
+    let (status, base) = manifest.problem(family, installed)?;
+    let recommended = manifest
+        .recommended(family)
+        .filter(|recommended| recommended != installed);
+    let message = match &recommended {
+        Some(recommended) => format!("{base} Use {recommended}."),
+        None => base,
+    };
+    let recommended_command = recommended
+        .as_deref()
+        .and_then(|version| plan.and_then(|plan| maintenance::pinned(plan, version)))
+        .map(|plan| plan.display());
+    Some(EngineCompatibility {
+        status,
+        message,
+        recommended_version: recommended,
+        recommended_command,
+    })
 }
 
 fn empty_catalog() -> ModelCatalog {
@@ -832,5 +909,43 @@ mod tests {
         ));
         drop(marker);
         assert!(engines.admit_with("claude-beta", || Ok(())).is_ok());
+    }
+
+    /// Only the signed manifest raises a warning, and only its own installer may
+    /// install the version it recommends.
+    #[test]
+    fn compatibility_comes_from_the_signed_manifest_alone() {
+        let manifest = TestedManifest::embedded();
+        let plan = UpdatePlan {
+            installer: InstallerKind::Npm,
+            program: "npm".into(),
+            args: ["install", "-g", "@openai/codex@latest"]
+                .iter()
+                .map(|arg| (*arg).to_string())
+                .collect(),
+            lock_key: "npm".into(),
+        };
+        let below = compatibility(&manifest, "codex", "0.160.0", Some(&plan)).unwrap();
+        assert_eq!(
+            below.status,
+            orbyn_contracts::CompatibilityStatus::Unsupported
+        );
+        assert_eq!(below.recommended_version.as_deref(), Some("0.166.0"));
+        assert_eq!(
+            below.recommended_command.as_deref(),
+            Some("npm install -g @openai/codex@0.166.0")
+        );
+        assert_eq!(
+            below.message,
+            "This engine version is outside the supported range for this Orbyn release. Use 0.166.0."
+        );
+        // Without an installer that can pin the version, the card keeps its manual route.
+        let manual = compatibility(&manifest, "codex", "0.160.0", None).unwrap();
+        assert_eq!(manual.recommended_command, None);
+        assert_eq!(manual.message, below.message);
+        // Supported, untested and unknown versions raise nothing at all.
+        assert!(compatibility(&manifest, "codex", "0.166.0", Some(&plan)).is_none());
+        assert!(compatibility(&manifest, "claude", "2.1.318", Some(&plan)).is_none());
+        assert!(compatibility(&manifest, "other", "1.0.0", Some(&plan)).is_none());
     }
 }

@@ -877,6 +877,24 @@ async fn an_updater_that_changed_nothing_is_a_failed_update() {
     }
 }
 
+/// The provider card's recommended-version action needs a signed recommendation.
+#[cfg(unix)]
+#[tokio::test]
+async fn install_recommended_needs_a_signed_recommendation() {
+    let f = fixture(finished()).await;
+    let refused = f.core.engines.install_recommended("script", "t").await;
+    assert!(
+        matches!(refused, Err(CoreError::UpdateUnavailable(_))),
+        "{refused:?}"
+    );
+    let audit = f.core.store.list_audit(None, 50).unwrap();
+    assert!(
+        audit
+            .iter()
+            .all(|row| !row.action.starts_with("engine.update"))
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn failed_update_keeps_its_output_and_clears_the_lock() {

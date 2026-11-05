@@ -139,14 +139,37 @@ dependency is authorization to send one sanitized report and observe the accepte
 response. Nothing was sent, no feedback UI or service route was added, and I9 stays
 open under #140.
 
-The signed `engines/tested-versions.json` contains only minimum and tested versions.
-It has no known-problem advisories or recommended replacement policy, and existing
-installer-owned update plans target latest rather than a recommended pinned
-version. An untested version is not evidence of a known problem. I51 therefore
-remains open: the next implementation needs a maintained advisory source and the
-owner's recommended-version policy, retaining manifest signature verification,
-proven installer ownership, manual instructions for unknown owners and active-run
-exclusion. This batch changes none of those trust or installer boundaries.
+## I51 implementation evidence — 5 November 2026
 
-Both decisions remain tracked by #140. The PR for this supported slice must link
-to that issue without closing it.
+The provider card warns only from the signed manifest. A version below an engine's
+signed `minimum` is `unsupported`; an optional signed `known_problems` entry can
+name a version `broken` or `graceful`, and an optional signed `recommended` pins
+the replacement. Without that field the newest signed `tested` version is the
+recommendation, so the owner changes the policy by signing the manifest, and a
+version the manifest does not mention raises nothing. An untested version is still
+not evidence of a known problem. The card shows the warning, offers
+`Install <version>`, and prints the exact installer command in its confirmation.
+
+That action runs through the installer that provably owns the binary, pinned to one
+version: package arguments for npm, pnpm, Bun, Yarn, Volta and Vite+, and winget's
+`--version`. Homebrew, an engine's own updater and mise cannot install one version,
+so the action stays off and the card keeps the manual hint. A version the service
+did not itself recommend is refused, and an active run or update still refuses any
+install before the installer starts.
+
+On macOS, real `orbynd` read a real `npm install -g @openai/codex@0.160.0` in a
+task-owned prefix as `below_minimum` with the warning and the pinned
+`npm install -g @openai/codex@0.166.0`. While a real run was active the install
+answered `409 engine_busy`; once it settled, it ran that pinned npm command into
+the task prefix (the audit names it, `changed 2 packages`, 0.160.0 to 0.166.0) and
+the engine then read `tested` with no warning. The same below-minimum binary
+outside the root npm reports kept the manual instructions and refused the install.
+No user-installed engine, credential or account state was touched.
+
+Both card states are component-tested. Not verified: the card in a browser against
+that warning, Windows, Homebrew, winget, pnpm, Bun, Yarn, Volta and Vite+ pinning
+beyond unit tests, and a signed `known_problems` entry or `recommended` pin, which
+only the owner's key can add. I51 stays partial under #140.
+
+Both rows remain tracked by #140. The PR for this supported slice must link to that
+issue without closing it.
