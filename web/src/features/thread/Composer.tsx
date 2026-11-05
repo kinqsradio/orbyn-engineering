@@ -43,6 +43,8 @@ import { QueuedMessages } from "./QueuedMessages";
 import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
 import { FILE_MENTION_TYPE, insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
+import { charactersOver, MAX_PROMPT_CHARS, NO_TERMINAL_CONTEXT, terminalContextPrompt } from "./terminalContext";
+import { TerminalContextChips } from "./TerminalContextChips";
 
 interface Suggestion {
   value: string;
@@ -62,11 +64,8 @@ interface ShownAttachment {
   failure: string | null;
 }
 
-/** The service refuses longer messages; here the draft stays and says so first. */
-const MAX_PROMPT_CHARS = 120_000;
 /** Past this a keystroke would lag behind the styling, so the text stays plain. */
 const STYLED_CHARS = 20_000;
-const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
 /** Commands go to the thread's own composer; a side chat's stays out of their way. */
 const useOwnCommand = (side: boolean, command: string, handler: () => boolean | void) =>
@@ -109,6 +108,8 @@ export function Composer({
 }) {
   const draft = useUi((state) => state.drafts[thread.id] ?? "");
   const setDraft = useUi((state) => state.setDraft);
+  const terminalContexts = useUi((state) => state.terminalContexts[thread.id] ?? NO_TERMINAL_CONTEXT);
+  const outbound = useMemo(() => terminalContextPrompt(draft, terminalContexts), [draft, terminalContexts]);
   const addPrompt = useThreadLogs((state) => state.addPrompt);
   const refreshThread = useWorkspace((state) => state.refreshThread);
   const layout = useLayoutWidth();
@@ -160,9 +161,9 @@ export function Composer({
   const branch = thread.worktree?.branch ?? projectBranch;
   const busy = thread.active_run !== null;
   const uploading = attachments.some((file) => file.id === null);
-  const overBy = charactersOver(draft);
+  const overBy = charactersOver(outbound);
   const styled = useMemo(() => (draft && draft.length <= STYLED_CHARS ? composerMarkup(draft) : null), [draft]);
-  const canSend = draft.trim() !== "" && !sending && !uploading && overBy === 0;
+  const canSend = outbound !== "" && !sending && !uploading && overBy === 0;
   const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
   const reloadQueue = queue.reload;
   const runId = thread.active_run?.id ?? null;
@@ -248,6 +249,10 @@ export function Composer({
   const runLocal = (text: string): boolean => {
     const command = localCommand(text);
     if (!command) return false;
+    if (terminalContexts.length > 0) {
+      setError(`Remove the terminal context before using /${command}. Your message stays here.`);
+      return true;
+    }
     setDraft(thread.id, "");
     if (command === "plan") void setPlanMode(true);
     if (command === "default") void setPlanMode(false);
@@ -257,9 +262,22 @@ export function Composer({
 
   const send = async (followUp: "default" | "opposite" = "default") => {
     if (!canSend) return false;
-    const prompt = draft;
-    if (runLocal(prompt)) return false;
-    const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
+    const typed = draft;
+    const excerpts = [...terminalContexts];
+    const prompt = terminalContextPrompt(typed, excerpts);
+    const serviceCommand = /^\/(compact|goal)(?:\s|$)/.exec(typed.trim());
+    if (excerpts.length > 0 && serviceCommand) {
+      setError(`Remove the terminal context before using /${serviceCommand[1]}. Your message stays here.`);
+      return false;
+    }
+    if (runLocal(typed)) return false;
+    const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(typed.trim());
+    if (excerpts.length > 0 && (sideChat || pendingHere.length > 0)) {
+      setError(sideChat
+        ? "Side chats take text only. Remove the terminal context, then send again."
+        : "Remove the terminal context before replying to an approval. Your message stays here.");
+      return false;
+    }
     if (sideChat) {
       setDraft(thread.id, "");
       void openSideChat(thread, sideChat[1]?.trim() || null);
@@ -287,10 +305,11 @@ export function Composer({
         if (steered.state === "queued") useUi.getState().pushToast("This engine reads it on its next turn");
       } else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
+      useUi.getState().removeTerminalContexts(thread.id, excerpts.map((excerpt) => excerpt.id));
       setRecall(null);
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
-      setDraft(thread.id, current === prompt ? "" : current);
+      setDraft(thread.id, current === typed ? "" : current);
       if (run) addPrompt(thread.id, { runId: run.id, text: prompt.trim() });
       if (busy) reloadQueue();
       void refreshThread(thread.id);
@@ -603,6 +622,7 @@ export function Composer({
   return (
     <form
       className="composer"
+      data-thread-composer={thread.id}
       onSubmit={(event) => {
         event.preventDefault();
         void send();
@@ -689,6 +709,7 @@ export function Composer({
             ))}
           </ul>
         ) : null}
+        <TerminalContextChips threadId={thread.id} excerpts={terminalContexts} />
         {overBy > 0 ? (
           <p className="composer-over" role="alert">
             {overBy.toLocaleString()} characters over the {MAX_PROMPT_CHARS.toLocaleString()} limit. Your message stays here.

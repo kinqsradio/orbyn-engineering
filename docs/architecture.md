@@ -157,6 +157,29 @@ starts, a run logs `CUSTOM user.attachments` with each record's id, name, media 
 and size, so a transcript shows what the message carried without asking the engine.
 `GET /api/attachments/:id/content` returns those bytes while the record lives.
 
+Terminal selections enter a draft only through **Add to chat** in the selection
+menu. The captured terminal label, one-based buffer row range and output stay in
+memory per thread; selecting output alone does not save a transcript. Capture
+normalizes CRLF and outer newlines, and a moving selection must still match when
+the action is chosen. Composer chips expose the captured plain text and removal.
+Reloading the page discards these unsent excerpts; switching threads preserves them.
+
+Existing plain-text run, queue and steer APIs receive a single prompt snapshot:
+typed text followed by labelled excerpts inside fences longer than any backticks
+they contain. The complete prompt uses the existing 120,000 Unicode-character
+limit. An acknowledgment removes only the submitted excerpt IDs and matching
+typed draft; failure retains them, and newer text or excerpts survive an older
+acknowledgment. Excerpts alone can be sent. Local composer controls, `/compact`,
+`/goal`, side-chat commands and approval replies refuse attached terminal context
+without consuming it; excerpt contents never dispatch composer commands.
+
+The selection action, terminal/range labels and preview follow reviewed T3 Code
+behavior at `67eebaca23f8f7bc46e8817434087fc9c5acf8e3` (MIT), independently implemented.
+The current textarea uses adjacent removable chips rather than T3's inline editor
+nodes, and serializes context client-side rather than adding structured wire records.
+These are explicit presentation/transport limits; no rich-text editor, Core,
+contract, provider or native-console behavior is added.
+
 ## Models
 
 `GET /api/engines/:id/models` comes from the engine itself. Claude answers the

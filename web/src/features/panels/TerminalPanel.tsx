@@ -8,6 +8,8 @@ import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
 import { linkProvider } from "./terminalLinks";
+import { Menu } from "../../ui/Menu";
+import { terminalSelection } from "../thread/terminalContext";
 
 type Connection = "connecting" | "open" | "closed";
 
@@ -34,10 +36,12 @@ const loadXterm = async () => {
 export function TerminalPanel({
   threadId,
   terminalId,
+  terminalLabel = "Terminal",
   observe = false,
 }: {
   threadId: string;
   terminalId?: string;
+  terminalLabel?: string;
   /** Shows the output and sends nothing, so it can sit beside a running script. */
   observe?: boolean;
 }) {
@@ -46,6 +50,9 @@ export function TerminalPanel({
   const [attempt, setAttempt] = useState(0);
   const theme = useUi((state) => state.theme);
   const applyThemeRef = useRef<() => void>(() => undefined);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null);
+  const readSelection = useRef<() => ReturnType<typeof terminalSelection>>(() => null);
+  const clearSelection = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     applyThemeRef.current();
@@ -56,6 +63,7 @@ export function TerminalPanel({
     if (!element) return;
     let disposed = false;
     let cleanup = () => {};
+    setSelectionMenu(null);
     setConnection("connecting");
 
     void loadXterm().then(({ Terminal, FitAddon }) => {
@@ -75,6 +83,35 @@ export function TerminalPanel({
       const fit = new FitAddon();
       terminal.loadAddon(fit);
       terminal.open(element);
+      readSelection.current = () => terminalSelection(terminal.getSelection(), terminal.getSelectionPosition());
+      clearSelection.current = () => terminal.clearSelection();
+      let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+      let selectionFrame = 0;
+      const dismissSelection = () => { clearTimeout(selectionTimer); cancelAnimationFrame(selectionFrame); setSelectionMenu(null); };
+      const dismissOnPointer = (event: PointerEvent) => {
+        if (!(event.target as Element | null)?.closest("[data-menu-root]")) dismissSelection();
+      };
+      const dismissOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") dismissSelection(); };
+      const offerSelection = (event: MouseEvent) => {
+        if (event.button !== 0 && event.type !== "contextmenu") return;
+        const { clientX: x, clientY: y, detail } = event;
+        if (event.type === "contextmenu" && readSelection.current()) event.preventDefault();
+        clearTimeout(selectionTimer);
+        selectionTimer = setTimeout(() => { selectionFrame = requestAnimationFrame(() => {
+          const selected = readSelection.current();
+          if (!disposed && selected) setSelectionMenu({ x, y, text: selected.text });
+        }); }, detail >= 2 ? 500 : 0);
+      };
+      element.addEventListener("mouseup", offerSelection);
+      element.addEventListener("contextmenu", offerSelection);
+      window.addEventListener("blur", dismissSelection);
+      window.addEventListener("resize", dismissSelection);
+      window.addEventListener("pointerdown", dismissOnPointer);
+      window.addEventListener("keydown", dismissOnEscape);
+      element.addEventListener("scroll", dismissSelection, true);
+      // xterm publishes the final selection asynchronously after mouseup. Hide a
+      // stale menu without cancelling that gesture's pending offer.
+      const selectionChange = terminal.onSelectionChange(() => setSelectionMenu(null));
       const links = terminal.registerLinkProvider(
         linkProvider(terminal, (link) => {
           if (link.kind === "url") {
@@ -131,6 +168,17 @@ export function TerminalPanel({
       observer.observe(element);
 
       cleanup = () => {
+        dismissSelection();
+        selectionChange.dispose();
+        element.removeEventListener("mouseup", offerSelection);
+        element.removeEventListener("contextmenu", offerSelection);
+        window.removeEventListener("blur", dismissSelection);
+        window.removeEventListener("resize", dismissSelection);
+        window.removeEventListener("pointerdown", dismissOnPointer);
+        window.removeEventListener("keydown", dismissOnEscape);
+        element.removeEventListener("scroll", dismissSelection, true);
+        readSelection.current = () => null;
+        clearSelection.current = () => undefined;
         cancelAnimationFrame(frame);
         observer.disconnect();
         input.dispose();
@@ -161,6 +209,26 @@ export function TerminalPanel({
         ) : null}
       </div>
       <div ref={host} className="terminal-host" role="group" aria-label="Terminal" />
+      {selectionMenu ? <Menu {...selectionMenu} label="Terminal selection" onClose={() => setSelectionMenu(null)} items={[
+        { label: "Add to chat", onSelect: () => {
+          const selected = readSelection.current();
+          if (!selected || selected.text !== selectionMenu.text) return;
+          const added = useUi.getState().addTerminalContext(threadId, {
+            id: crypto.randomUUID(), terminalId: terminalId ?? "main", terminalLabel, ...selected,
+          });
+          if (!added) {
+            useUi.getState().pushToast("Terminal excerpt exceeds the message limit. Select a smaller excerpt.");
+            return;
+          }
+          clearSelection.current();
+          // The terminal and the composer share the same thread surface.
+          requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(`[data-thread-composer="${CSS.escape(threadId)}"] textarea`)?.focus());
+        } },
+        { label: "Copy", onSelect: () => {
+          void navigator.clipboard.writeText(selectionMenu.text).catch((failure: unknown) =>
+            useUi.getState().pushToast(`Couldn't copy. ${toFailure(failure).message}`));
+        } },
+      ]} /> : null}
     </div>
   );
 }

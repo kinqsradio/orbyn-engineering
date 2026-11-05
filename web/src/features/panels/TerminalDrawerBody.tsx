@@ -151,6 +151,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
             <TerminalPanel
               key={`${terminal.id}:${terminal.created_at}`}
               threadId={threadId}
+              terminalLabel={terminal.title}
               observe={watching}
               {...(terminal.id === MAIN ? {} : { terminalId: terminal.id })}
             />

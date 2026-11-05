@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings/themes";
 import { readJson, writeJson } from "../lib/storage";
 import { useWorkspace } from "./workspace";
+import { charactersOver, terminalContextPrompt, type TerminalExcerpt } from "../features/thread/terminalContext";
 
 export type ThemeChoice = "system" | "light" | "dark";
 export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
@@ -216,6 +217,10 @@ interface UiState extends Prefs {
   terminalReveal: { threadId: string; group: string; nonce: number } | null;
   revealTerminal(threadId: string, group: string): void;
   drafts: Record<string, string>;
+  /** Explicitly selected output stays in memory, separate from persisted text drafts. */
+  terminalContexts: Record<string, readonly TerminalExcerpt[]>;
+  addTerminalContext(threadId: string, excerpt: TerminalExcerpt): boolean;
+  removeTerminalContexts(threadId: string, ids: readonly string[]): void;
   palette: PaletteStart | null;
   setPalette(palette: PaletteStart | null): void;
   lastThreadId: string | null;
@@ -393,6 +398,23 @@ export const useUi = create<UiState>((set, get) => {
       set((state) => ({ terminalOpen: true, terminalReveal: { threadId, group, nonce: (state.terminalReveal?.nonce ?? 0) + 1 } }));
     },
     drafts: readJson<Record<string, string>>(DRAFTS_KEY) ?? {},
+    terminalContexts: {},
+    addTerminalContext(threadId, excerpt) {
+      const state = get();
+      const next = [...(state.terminalContexts[threadId] ?? []), excerpt];
+      if (!excerpt.text.trim() || charactersOver(excerpt.text) > 0 || charactersOver(terminalContextPrompt(state.drafts[threadId] ?? "", next)) > 0) return false;
+      set({ terminalContexts: { ...state.terminalContexts, [threadId]: next } });
+      return true;
+    },
+    removeTerminalContexts(threadId, ids) {
+      set((state) => {
+        const next = (state.terminalContexts[threadId] ?? []).filter((excerpt) => !ids.includes(excerpt.id));
+        const contexts = { ...state.terminalContexts };
+        if (next.length) contexts[threadId] = next;
+        else delete contexts[threadId];
+        return { terminalContexts: contexts };
+      });
+    },
     palette: null,
     setPalette(palette) {
       set({ palette });

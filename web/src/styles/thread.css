@@ -939,6 +939,42 @@
 .composer-error {
   margin-bottom: 6px;
 }
+.terminal-context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px 0;
+  list-style: none;
+}
+.terminal-context-chips > li {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.terminal-context-chips .composer-control span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-context-preview {
+  position: fixed;
+  z-index: 20;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-raised);
+}
+.terminal-context-preview pre {
+  max-height: min(320px, 40vh);
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--font-mono);
+}
 .composer-box {
   position: relative;
   border-radius: var(--radius-xl);
