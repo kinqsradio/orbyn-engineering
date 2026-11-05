@@ -1657,8 +1657,30 @@ Typing, failed or denied actions emit no pointer cue; arbitrary page evaluation 
 interpreted as pointer input. The feed accepts no client-published cues and carries
 no typed text, selectors, page URLs or credentials. JPEG frame messages are unchanged.
 
-Recording keeps the changed frames as numbered JPEG files in
-`<data>/browser-artifacts`, with no video encoder. Agents can read their thread's
+Recording samples numbered JPEG files in `<data>/browser-artifacts`, including
+unchanged pages, at a requested maximum of 1, 2, 5 or 10 FPS (default 5), with no
+video encoder. `POST .../recording` accepts `PreviewRecordingOptions` as query
+parameters; omitted options retain the defaults. Mouse and key overlays default
+off. Successful mouse presses use the actual dispatched frame point. Key labels
+come only from the fixed Enter, Tab, Escape, arrow, Backspace and Delete vocabulary
+after successful human key dispatch. Printable text never becomes a label. A
+boolean focus check before dispatch and capture suppresses labels for text fields,
+passwords, OTP, frames, shadow hosts, BODY, editing mode and uncertain focus; this
+check does not restrict human input. Overlays are drawn into saved JPEG pixels,
+without injecting UI into the page or changing streamed JPEGs.
+
+Each recording owns its captured cues, writer, successful frame/byte counts and
+summary. Stop cancels new frames and waits for the actual blocking writer before
+returning the saved path and frame count; cancelling an awaiting caller cannot
+release the writer's global compositor permit early. Limits are five minutes,
+3,000 frames and 256 MiB including reserved summary space. Input JPEGs are capped
+at 16 MiB and 4,096 pixels per dimension. A limit or write failure stops capture
+and retains an error. Failed summary publication retains the stopped owner for a
+Finish retry and blocks replacement until publication succeeds. The Browser panel
+shows the server's successful count and folder after Stop, and a committed
+Start/Stop remains authoritative when its status refresh fails.
+
+Agents can read their thread's
 tabs with `orbyn_preview_snapshot` and `orbyn_preview_wait_for`, and drive them
 with `orbyn_preview_act` (click, append text, scroll) and `orbyn_preview_evaluate`
 (page JavaScript). The acting tools use the normal `tool` approval gate. Taking
@@ -2057,7 +2079,7 @@ because browsers cannot set headers on them.
 | `DELETE /api/threads/:id/previews/:tab` | Close the tab and its browser |
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
 | `POST .../previews/:tab/history`, `/resize` | `StepPreview`; `ResizePreview`, `400` outside 100 to 4096; both to `PreviewTab` |
-| `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
+| `POST, DELETE .../previews/:tab/recording` | Start with optional `PreviewRecordingOptions` query; stop, to `PreviewRecording` with successful frame count and optional error |
 | `POST .../previews/file` | `OpenPreviewFile` to `PreviewTab`, inside the checkout |
 | `POST .../previews/:tab/view`, `/reload`, `/clear`, `/pick` | `PreviewView`; `ReloadPreview`; `ClearPreview`; `PickPreview` to `PickedElement` |
 | `GET, POST /api/browser-profiles` | `BrowserProfile[]`; `CreateBrowserProfile` |

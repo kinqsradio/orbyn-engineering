@@ -2335,6 +2335,10 @@ pub struct PreviewTab {
     /// `human` while a person holds the page, `none` otherwise.
     pub control: String,
     pub recording: bool,
+    /// A recording stopped on a quota or write failure; starting again clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recording_error: Option<String>,
     pub viewers: usize,
     pub width: u32,
     pub height: u32,
@@ -2507,9 +2511,32 @@ pub struct PreviewInput {
 }
 
 wire! {
+/// Recording overlays are opt-in; FPS is a requested maximum, not a timing guarantee.
+#[serde(default)]
+pub struct PreviewRecordingOptions {
+    pub fps: u32,
+    pub show_key_presses: bool,
+    pub show_mouse_presses: bool,
+}
+}
+
+impl Default for PreviewRecordingOptions {
+    fn default() -> Self {
+        Self {
+            fps: 5,
+            show_key_presses: false,
+            show_mouse_presses: false,
+        }
+    }
+}
+
+wire! {
 pub struct PreviewRecording {
     pub path: String,
     pub frames: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
 }
 }
 

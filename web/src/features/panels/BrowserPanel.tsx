@@ -1,5 +1,5 @@
 import { serviceSocketUrl } from "../../api/origin";
-import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -21,6 +21,8 @@ import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { SiteIcon } from "./SiteIcon";
 import { AgentCursor } from "./AgentCursor";
+import { BrowserRecording } from "./BrowserRecording";
+import { PreviewRecordings } from "./previewRecording";
 import { useBrowserPanels } from "./browserPanels";
 import { inDesktopApp } from "../../api/shell";
 import {
@@ -531,6 +533,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recordings] = useState(() => new PreviewRecordings());
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const [isPrivate, setPrivate] = useState(false);
@@ -804,19 +807,6 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
               <Hand size={14} aria-hidden />
             </IconButton>
             <IconButton
-              label={active.recording ? "Stop recording" : "Record"}
-              pressed={active.recording}
-              onClick={() =>
-                void act(() =>
-                  active.recording
-                    ? request("DELETE", `${base}/${q(active.id)}/recording`)
-                    : request("POST", `${base}/${q(active.id)}/recording`),
-                )
-              }
-            >
-              {active.recording ? <Square size={14} aria-hidden /> : <Circle size={14} aria-hidden />}
-            </IconButton>
-            <IconButton
               label="More page actions"
               onClick={(event: MouseEvent<HTMLButtonElement>) => {
                 const box = event.currentTarget.getBoundingClientRect();
@@ -828,6 +818,16 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           </>
         ) : null}
       </div>
+      {active ? <BrowserRecording key={`${threadId}:${active.id}`} tab={active}
+        endpoint={`${base}/${q(active.id)}/recording`} actions={recordings} refresh={async () => {
+          // Recording writes need a rejecting read; useAsync.reload intentionally
+          // consumes read errors for the general panel polling flow.
+          const fresh = await request<PreviewTab[]>("GET", base);
+          const target = fresh.find((tab) => tab.id === active.id);
+          if (!target) throw new Error("The recorded tab closed before its status could be read.");
+          if (recordings.owns(`${base}/${q(active.id)}/recording`)) tabs.setData(fresh);
+          return target;
+        }} /> : null}
       {menu && active ? <Menu x={menu.x} y={menu.y} label="Page actions" items={moreItems(active)} onClose={() => setMenu(null)} /> : null}
       {toolbar && active ? (
         <div className="browser-devices" role="toolbar" aria-label="Device toolbar">
