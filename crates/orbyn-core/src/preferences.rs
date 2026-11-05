@@ -148,6 +148,9 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
     if fits && definition.key == "default_project_scripts" {
         crate::project_file::validate_scripts(value)?;
     }
+    if fits && definition.key == "source_control_writing_style" {
+        crate::scm_writing::validate_style(value)?;
+    }
     if fits {
         Ok(())
     } else {

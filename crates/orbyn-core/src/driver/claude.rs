@@ -26,7 +26,7 @@ use tokio_util::codec::{FramedRead, LinesCodec};
 use tokio_util::sync::CancellationToken;
 
 use super::pipes::{
-    EngineProcess, exit_message, lines, one_shot_cli, resolve_engine, spawn_engine,
+    EngineProcess, exit_message, lines, one_shot_at, one_shot_cli, resolve_engine, spawn_engine,
     spawn_engine_with,
 };
 use super::{
@@ -277,6 +277,44 @@ impl EngineDriver for ClaudeDriver {
             args.extend(["--model", model]);
         }
         one_shot_cli(&self.program, &args, prompt).await
+    }
+
+    async fn write_text(&self, prompt: &str, model: Option<&str>) -> Result<String> {
+        let dir = ProbeDir::new()?;
+        let mcp = dir.path().join("mcp.json");
+        let settings = dir.path().join("settings.json");
+        write_private(&mcp, br#"{"mcpServers":{}}"#)?;
+        write_private(&settings, br#"{"disableAllHooks":true}"#)?;
+        let mcp = mcp
+            .to_str()
+            .ok_or_else(|| CoreError::Invalid("Unsupported temporary path.".into()))?;
+        let settings = settings
+            .to_str()
+            .ok_or_else(|| CoreError::Invalid("Unsupported temporary path.".into()))?;
+        let mut args = vec![
+            "-p",
+            "--output-format",
+            "text",
+            "--tools",
+            "",
+            "--no-session-persistence",
+            "--strict-mcp-config",
+            "--mcp-config",
+            mcp,
+            "--settings",
+            settings,
+            "--disable-slash-commands",
+            "--permission-mode",
+            "dontAsk",
+        ];
+        if let Some(model) = model {
+            args.extend(["--model", model]);
+        }
+        one_shot_at(&self.program, &args, prompt, dir.path(), CAPABILITY_ENV).await
+    }
+
+    fn supports_writing(&self) -> bool {
+        true
     }
 
     async fn start_run(

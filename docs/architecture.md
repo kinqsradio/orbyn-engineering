@@ -405,6 +405,45 @@ by a restore to the start.
 
 ## Source control
 
+An explicitly confirmed Git action may leave its commit message, pull request
+title or description blank to generate that field from bounded local change
+context. Nonempty user text is kept unchanged. Opening, typing, cancelling and
+push-only actions never generate text. Every missing field is parsed and validated
+before staging, pushing or creating a pull request. Changed branch/base or working
+files, revoked project trust and an active run refuse the action after generation;
+existing phase receipts still describe any earlier completed effects. There is no
+automatic rollback of user work.
+
+Writing uses the selected thread engine and the configured text-generation model,
+or the thread's explicit model when that setting is empty. It never chooses another
+provider or guesses a smaller model. Only the guarded Claude one-shot path supports
+repository-derived text: an owned temporary folder, empty tools, strict empty MCP
+configuration, disabled hooks/cloud MCP/IDE connections and slash commands,
+`dontAsk`, and no session persistence. Rejected flags fail without a retry.
+The guarded path is a separate driver call (`write_text`); the shared one-shot used
+for thread titles keeps its original flags. Codex and unproven drivers never
+generate: blank fields keep manual behavior there (a blank pull request title falls
+back to the thread title, a blank description stays blank, a blank commit message is
+refused). With a writing engine, a typed pull request title is kept and only the
+blank description is generated. Pull request context diffs against the upstream
+remote's tracking ref (the branch's configured remote, else `origin`) when it
+exists, else the local base branch; the staleness check uses the same ref. The
+checked snapshot includes the symbolic branch name (a fixed marker on a detached
+HEAD), so switching branches at the same commit during generation is refused.
+Existing title calls retain their separate model policy and
+Codex path; this change does not qualify that path as tool-free. No credential
+configuration or MCP server list is read to implement writing. Prompts and patches
+are not saved by the generation audit, which records purpose, engine and model.
+
+The inherited `source_control_writing_style` preference selects repository
+conventions, Conventional Commits or custom instructions, and whether to follow
+change-request templates. The empty legacy object keeps repository conventions and
+templates enabled. Repository mode reads bounded recent subjects and checkout-root
+AGENTS.md; custom mode uses only the person's writing instructions. Templates come
+from a regular file in the selected base tree, never a remote fetch or a symlink.
+Oversized context, unsafe references and malformed settings fail with a manual
+path rather than silently omitting required writing context.
+
 Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
 `glab`, `az` and `tea`. Orbyn holds no forge credential and reads none, so an unknown
 host is treated as GitHub Enterprise through `gh`, and a missing CLI is

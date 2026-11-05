@@ -13,6 +13,11 @@ const SCRIPTED = resolve(WEB, "e2e/real/scripted-engine.mjs");
 
 /** The shell from `npm run test:e2e:install`, so the service's previews never open an installed browser. */
 function headlessShell(): string {
+  const explicit = process.env.ORBYN_E2E_HEADLESS_SHELL;
+  if (explicit) {
+    if (!existsSync(explicit)) throw new Error("The explicit test headless shell does not exist.");
+    return resolve(explicit);
+  }
   const root = resolve(WEB, "node_modules/playwright-core/.local-browsers");
   const dir = existsSync(root) ? readdirSync(root).find((name) => name.startsWith("chromium_headless_shell-")) : undefined;
   const build = dir && join(root, dir);
