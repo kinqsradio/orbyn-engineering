@@ -236,6 +236,13 @@ reported as `remembered`. A new thread takes the request's model, then the proje
 and effort and options carry only along with their model. A project's
 `default_permission_mode` also applies there.
 
+The new-thread draft resolves that physical project's effective model preferences
+before sending an implicit selection. A model picked in the draft wins over a
+late defaults response. A disabled or missing configured provider requires an
+explicit replacement; it never silently selects another provider. Draft effort
+and options remain attached to their project and model, without adding persisted
+effort or option defaults.
+
 Admission refuses a value the model does not offer with `422 unsupported_option`, and
 stores nothing. A model the engine did not list may be custom, so only engine-wide
 options are checked for it. `PATCH` does not check, because a model and its effort
