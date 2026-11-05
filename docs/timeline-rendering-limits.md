@@ -48,6 +48,26 @@ question payload came from a protocol double: this is real-service/browser
 evidence, not a live-provider question or an installed native desktop run. Those
 two observations remain open, and C40 remains partial.
 
+The same spec re-ran on macOS on 5 November 2026 against the already-built
+`target/debug/orbynd` and passed in 18.9 seconds with the three decoded checkout
+images, the 404, the 400 and no remote media request.
+
+## C40 live-provider question attempt
+
+One real Codex 0.166.0 turn was run through the real service on 5 November 2026
+from a fresh synthetic project, asking the agent to call `AskUserQuestion` once
+with a fixed header, body and two options. The turn completed in about twelve
+seconds and stored no question: `/api/questions` stayed empty and the run's only
+agent message was "I can't use AskUserQuestion here because it's unavailable in
+Default mode". The installed Codex app-server protocol does list
+`item/tool/requestUserInput`, so the driver's handler is reachable, but this CLI
+and sandbox mode would not make the model ask.
+
+That is a refusal by the engine, not by Orbyn: no Orbyn policy or service error
+took part. The live-provider question payload, and with it a real question into
+this rendering path, stays unobserved. C40 keeps its project-folder image
+evidence and stays partial.
+
 ## C4 real Codex outcome observation
 
 On 5 November 2026, one approved turn used the installed, unmodified Codex CLI
