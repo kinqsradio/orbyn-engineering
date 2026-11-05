@@ -38,3 +38,17 @@ child's exit; interrupts behave as the provider normally handles them. Ctrl-C
 may cancel a turn while leaving the session open. There is no forced descendant
 cleanup or parent-death guarantee. Session files remain for review; no automatic
 upload, source clone, report posting or deletion runs.
+
+## Hidden helper inventory
+
+`orbyn service run` is hidden from ordinary help because the service manager
+starts it. It runs sibling `orbynd`, applies the literal `service.env` in the
+selected data folder and waits for it. Optional `export`, quoting, multiline
+values and comments are supported without shell expansion. Missing files are
+ignored; malformed/unreadable files stop startup. Launcher PATH and selected
+data-directory ownership are retained. Keep this private environment file out
+of reports and version control.
+
+There are no registered `orbyn` ACP MCP bridge/call or Claude-history CLI helpers.
+Core's per-run HTTP MCP endpoint and usage-history readers are separate internal
+facilities, not aliases for those commands. SSH helpers remain out of scope.
