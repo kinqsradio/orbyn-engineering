@@ -1,7 +1,7 @@
 # Handoff
 
-Start here if you are picking this project up. Reconciled 4 November 2026 against
-`main` at `6c69b8d`; the dated sections below it are kept as evidence and are not
+Start here if you are picking this project up. Reconciled 5 November 2026 against
+`main` at `b3afa61`; the dated sections below it are kept as evidence and are not
 current. Trust the repository over this document where they differ,
 and update this file when its facts change. The JSON record pins the product
 revision, not the later documentation commit; reconcile any newer main before acting.
@@ -26,7 +26,7 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 | Skills library | Built in, with no setup step. `orbynd` provisions it from a snapshot bundled in the app, then upgrades to a clone in the background. |
 | Projects | Added in place from any path, as in T3. Nothing is cloned or moved. The engine starts from the library or is pointed at the project by path. Threads can start with no project. |
 | Worktrees | `<repo>-wt/<purpose>/` sibling of the primary clone. No custom location. |
-| Scope | Desktop and local web only. Out for now: login, Tailscale, tunnels, pairing, guest links, mobile, and anything needing T3's hosted services or engine credentials. |
+| Scope | Desktop and local web only. Out for now: login, Tailscale, tunnels, pairing, guest links, mobile, and hosted features that wait for Orbyn's own server. Engine credentials stay with the engine. |
 | Engine login | Engines keep their own login. Orbyn never reads or stores engine credentials. Run the unmodified CLI. |
 | Claude | CLI only, never the Agent SDK. Keep it on the MCP approval gate, because its native modes would bypass the write scope. Never use `--bare`, which ignores subscription login. |
 | Default mode | Supervised, where T3 defaults to Full access. All four modes are offered. |
@@ -35,10 +35,12 @@ Treat these as settled. Earlier ideas that contradict them are superseded.
 
 ## Section I work queue
 
-[Provider work without engine logins](provider-work-queue.md) records the decision
-for #129: queue I40's local discovery, I41 and I51; investigate I9's supported
-feedback route before adding it. Other open provider rows retain their access and
-protocol evidence dependencies. No provider row is completed by this decision.
+[Provider work without engine logins](provider-work-queue.md) recorded the decision
+for #129. It is delivered: #149 added the health banner and model refresh, #153 the
+discovery and version warnings, #156 the durable catalog and signed-out Claude
+discovery, and #158 the Codex feedback route. I9, I40 and I41 stay partial for
+Windows and packaged-app qualification; #140 records them and closes with this
+reconciliation.
 
 ## Rules that were broken, so read twice
 
@@ -59,46 +61,45 @@ protocol evidence dependencies. No provider row is completed by this decision.
 
 ## Where things stand now
 
-`main` is `651faf7`. `python3 scripts/count-parity.py` reports 709 rows with 398
-source checkboxes ticked, and 534 included rows: 356 declared checked, 49 partial,
-127 open, 2 not doable, 175 excluded, none with an unresolved scope. Those are
-checklist declarations, not a fresh runtime count.
+`main` is `3415cf4`. `python3 scripts/count-parity.py` reports 709 rows with 410
+source checkboxes ticked, and 534 included rows: 364 declared checked, 55 partial,
+112 open, 3 not doable, 175 excluded, none with an unresolved scope. Those are
+checklist declarations, not a fresh runtime count. #160 (docs) is open at this
+reconciliation and changes notes only.
 
-Merged since this file was last reconciled: rows **H36** (#114), **C19** (#115),
-**N9** (#116) and the whole of the files work — **D11, D18, D27, D29** (#131, one
-branch for the section with one commit per row) — plus the repository rules for
-titles, credit and unfinished work (#117), the Cargo worktree-isolation notes
-(#132), the provider work queue (#133), and a task-state fix (#119).
+Merged since this file was last reconciled: the timeline-rendering batch (#137,
+#151, #155, #157), the provider batch (#149, #153, #156), the agent-tool surface
+(#145), the preview surface (#146), the file viewer (#131), the Office-reader
+fixes (#139), remote message images (#135), HTML renders (#118), render
+verification (#134), the major dependency upgrades (#130), and the docs and
+template work (#117, #125, #132, #133, #141, #142, #152, #154).
 
 Open pull requests, each one branch with one commit per completed row:
 
 | Pull request | What | State |
 | --- | --- | --- |
-| #118 | C21+C22 renders, and N3 `orbyn_html_render` | every check green, waiting for review |
-| #139 | the ten Office-reader fixes from review, closing #136 | 10/10 green, waiting for review |
-| #137 | the scoped timeline rendering rows | open |
-| #134 | C23 render verification by headless screenshot | open |
-| #135 | proxying remote message images through the service | open |
-| #130 | the seven major dependency upgrades | open |
-| #125 | this document | open |
+| #160 | docs: the remaining C-row evidence gaps | checks running |
 
 ### Picking up work
 
 Unfinished work belongs in an issue, never in a session or a local note, and
-CONTRIBUTING says what such an issue must carry. What is open:
+CONTRIBUTING says what such an issue must carry. The queue for the remaining
+desktop and web rows is **#187**, which links one batch per surface. Rows still
+owned by an older issue:
 
 | Issue | What | Owner |
 | --- | --- | --- |
-| #120 | an ignored browser test that fails on `main` | @luannn010 |
-| #126 | finish the preview surface (H35 remainder, H41, H42; H38 waits on #122) | @luannn010 |
-| #127 | finish the agent tool surface (N6, N12, N19 remainder, N21) | @luannn010 |
-| #128 | the timeline rendering rows that are left | unassigned |
-| #138 | the resize component test flakes about one full run in three | unassigned |
-| #136 | the Office-reader findings | fixed by #139, closes when it merges |
+| #127 | finish the agent tool surface (N6, N12, N19, N21) | unassigned |
+| #128 | the timeline rendering rows, closing after #160 | unassigned |
+| #161 to #186 | the remaining section batches, linked from #187 | unassigned |
 
-Already answered, so they are not work: **#121** by #134, **#122** by #135 (the
-proxy, not a widened policy), **#123** by #132, **#129** by #133, and **#124** closed
-by #131.
+The provider batch #140 is delivered; its rows stay partial only for Windows and
+packaged-app qualification.
+
+Already answered, so they are not work: **#120** and **#138** (flaky tests, fixed),
+**#121** by #134, **#122** by #135, **#123** by #132, **#124** by #131, **#126**
+closed with H35 and H38 still partial and now in #172, and **#129** by the
+provider batch.
 
 Filter by `parity` for rows, `help wanted` for work deliberately left open, and the
 `area:` label for its owner. The rest of the roadmap is `docs/parity.md`: every row
