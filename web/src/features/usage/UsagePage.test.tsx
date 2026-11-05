@@ -1,0 +1,126 @@
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, it, vi } from "vitest";
+import { api, ApiFailure } from "../../api/client";
+import type { UsageReport } from "../../api/types";
+import { UsagePage } from "./UsagePage";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function report(tokens: number, model = "local-model"): UsageReport {
+  return {
+    host_id: "local", scanned_at: "2026-11-05T00:00:00Z",
+    engines: [{ engine: "claude", status: "scanned", files_scanned: 1, files_skipped: 0,
+      models: [{ model, input_tokens: tokens, output_tokens: 0, cache_read_tokens: 0,
+        cache_write_tokens: 0, estimated_cost: null }], days: [] }],
+  };
+}
+
+const row = () => screen.getByRole("row", { name: /local-model/ });
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, "usage").mockResolvedValue(report(101));
+});
+
+it("keeps the same period mounted and uses the refresh response without another read", async () => {
+  const refresh = deferred<UsageReport>();
+  vi.spyOn(api, "refreshUsage").mockReturnValue(refresh.promise);
+  render(<UsagePage onClose={() => undefined} />);
+  expect(await screen.findByRole("row", { name: /local-model/ })).toHaveTextContent("101");
+  const original = row();
+  await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
+  expect(row()).toBe(original);
+  expect(screen.getByRole("status")).toHaveTextContent("Refreshing usage");
+  await act(async () => refresh.resolve(report(202)));
+  expect(row()).toBe(original);
+  expect(row()).toHaveTextContent("202");
+  expect(api.usage).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Refresh usage" })).toBeEnabled();
+});
+
+it("retains unpriced figures on refresh failure and retries the refresh", async () => {
+  const refresh = deferred<UsageReport>();
+  vi.spyOn(api, "refreshUsage").mockReturnValueOnce(refresh.promise).mockResolvedValue(report(303));
+  render(<UsagePage onClose={() => undefined} />);
+  await screen.findByRole("row", { name: /local-model/ });
+  await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
+  await act(async () => refresh.reject(new ApiFailure("unavailable", "Local scan failed.", 503)));
+  expect(row()).toHaveTextContent("101");
+  expect(row()).toHaveTextContent("Unpriced");
+  expect(screen.getByRole("alert")).toHaveTextContent("Local scan failed.");
+  await userEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(row()).toHaveTextContent("303"));
+  expect(api.refreshUsage).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it.each(["success", "failure"])("rejects an old period refresh %s without clearing the new pending read", async (outcome) => {
+  const refresh = deferred<UsageReport>();
+  const week = deferred<UsageReport>();
+  vi.spyOn(api, "refreshUsage").mockReturnValue(refresh.promise);
+  vi.mocked(api.usage).mockImplementation((days) => days === 7 ? week.promise : Promise.resolve(report(101)));
+  render(<UsagePage onClose={() => undefined} />);
+  await screen.findByRole("row", { name: /local-model/ });
+  await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
+  await userEvent.click(screen.getByRole("radio", { name: "7 days" }));
+  expect(screen.queryByRole("row", { name: /local-model/ })).toBeNull();
+  await act(async () => {
+    if (outcome === "success") refresh.resolve(report(999));
+    else refresh.reject(new ApiFailure("unavailable", "Old period error.", 503));
+  });
+  expect(screen.queryByRole("row", { name: /local-model/ })).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("button", { name: "Refresh usage" })).toBeDisabled();
+  await act(async () => week.resolve(report(707)));
+  expect(row()).toHaveTextContent("707");
+  expect(screen.getByRole("button", { name: "Refresh usage" })).toBeEnabled();
+});
+
+it("retries an initial read without pretending a previous report exists", async () => {
+  vi.mocked(api.usage).mockRejectedValueOnce(new ApiFailure("unavailable", "History unavailable.", 503))
+    .mockResolvedValue(report(404));
+  render(<UsagePage onClose={() => undefined} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("History unavailable.");
+  expect(screen.queryByRole("table")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("row", { name: /local-model/ })).toHaveTextContent("404");
+});
+
+it("does not revive a refresh after leaving and returning to its period", async () => {
+  const old = deferred<UsageReport>();
+  vi.spyOn(api, "refreshUsage").mockReturnValue(old.promise);
+  vi.mocked(api.usage).mockResolvedValueOnce(report(101)).mockResolvedValueOnce(report(707))
+    .mockResolvedValueOnce(report(303));
+  render(<UsagePage onClose={() => undefined} />);
+  await screen.findByRole("row", { name: /local-model/ });
+  await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
+  await userEvent.click(screen.getByRole("radio", { name: "7 days" }));
+  await waitFor(() => expect(row()).toHaveTextContent("707"));
+  await userEvent.click(screen.getByRole("radio", { name: "30 days" }));
+  await waitFor(() => expect(row()).toHaveTextContent("303"));
+  await act(async () => old.resolve(report(999)));
+  expect(row()).toHaveTextContent("303");
+});
+
+it("keeps provider selection when the same-period report refreshes", async () => {
+  const both = (tokens: number): UsageReport => ({ ...report(tokens),
+    engines: [...report(tokens).engines, { ...report(888, "second-model").engines[0]!, engine: "codex" }],
+  });
+  vi.mocked(api.usage).mockResolvedValue(both(101));
+  vi.spyOn(api, "refreshUsage").mockResolvedValue(both(202));
+  render(<UsagePage onClose={() => undefined} />);
+  await screen.findByRole("row", { name: /local-model/ });
+  await userEvent.click(screen.getByRole("button", { name: "All providers" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "claude" }));
+  expect(screen.queryByRole("row", { name: /second-model/ })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
+  await waitFor(() => expect(row()).toHaveTextContent("202"));
+  expect(screen.queryByRole("row", { name: /second-model/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "claude" })).toBeVisible();
+});

@@ -12,6 +12,7 @@ import { Dialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
+import { useUsageReport } from "./useUsageReport";
 import {
   formatPercent,
   formatTokens,
@@ -411,7 +412,7 @@ export function UsagePage({ onClose }: { onClose(): void }) {
   const pushToast = useUi((state) => state.pushToast);
   const nameOf = (id: string) => engines?.find((engine) => engine.id === id)?.name ?? id;
 
-  const usage = useAsync(`usage:${days}:${nonce}`, (signal) => api.usage(days, signal));
+  const usage = useUsageReport(days);
   const limits = useAsync(`limits:${metric === "limits"}:${nonce}`, (signal) =>
     metric === "limits" ? api.limits(false, signal) : Promise.resolve(null),
   );
@@ -442,9 +443,13 @@ export function UsagePage({ onClose }: { onClose(): void }) {
   useCommand("usage.period.quarter", () => setDays(90));
 
   const refresh = async () => {
+    if (metric !== "limits") {
+      await usage.refresh();
+      return;
+    }
     setRefreshing(true);
     try {
-      await (metric === "limits" ? api.limits(true) : api.refreshUsage(days));
+      await api.limits(true);
       setNonce(nonce + 1);
     } catch (failure) {
       pushToast(`Couldn't refresh. ${toFailure(failure).message}`);
@@ -453,7 +458,8 @@ export function UsagePage({ onClose }: { onClose(): void }) {
     }
   };
 
-  const providers = usage.status === "ready" ? usage.data.engines : [];
+  const providers = usage.data?.engines ?? [];
+  const pending = metric === "limits" ? refreshing : usage.pending;
 
   return (
     <dialog
@@ -501,10 +507,10 @@ export function UsagePage({ onClose }: { onClose(): void }) {
           />
           <IconButton
             label={metric === "limits" ? "Refresh limits" : "Refresh usage"}
-            disabled={refreshing}
+            disabled={pending}
             onClick={() => void refresh()}
           >
-            <RefreshCw size={14} className={refreshing ? "spin" : undefined} aria-hidden />
+            <RefreshCw size={14} className={pending ? "spin" : undefined} aria-hidden />
           </IconButton>
           <IconButton label="Close usage" onClick={onClose}>
             <X size={16} aria-hidden />
@@ -522,13 +528,23 @@ export function UsagePage({ onClose }: { onClose(): void }) {
               <Loading label="Loading limits" rows={3} />
             </div>
           )
-        ) : usage.status === "error" ? (
-          <ErrorState title="Couldn't load usage" failure={usage.error} onRetry={usage.reload} />
-        ) : usage.status === "ready" ? (
-          <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => setNonce((value) => value + 1)} />
         ) : (
-          <div className="usage-body">
-            <Loading label="Loading usage" rows={4} />
+          <div className="usage-history" data-refreshing={usage.pending && usage.data ? true : undefined}>
+            {usage.pending && usage.data ? <p className="usage-refresh-status" role="status">Refreshing usage…</p> : null}
+            {usage.error ? (
+              <ErrorState
+                title={usage.data ? "Couldn't refresh usage" : "Couldn't load usage"}
+                failure={usage.error}
+                onRetry={usage.data ? usage.refresh : usage.reload}
+              />
+            ) : null}
+            <div aria-busy={usage.pending}>
+              {usage.data ? (
+                <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => void usage.reload()} />
+              ) : usage.pending ? (
+                <div className="usage-body"><Loading label="Loading usage" rows={4} /></div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>

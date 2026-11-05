@@ -336,7 +336,11 @@ under `~/.claude` (or `CLAUDE_CONFIG_DIR`) and `sessions/**/*.jsonl` under `~/.c
 credential file. Claude rewrites an entry as it streams, so each message counts once.
 Codex repeats its running total, so an unchanged total counts once. Costs come from
 configured `model_prices`, after `model_aliases`; a model with no price has an unknown
-cost and is never guessed. Unchanged files are served from memory. Subscription
+cost and is never guessed. Unchanged files are served from memory. The Usage page keeps
+the same period's figures and chart during an explicit local refresh, dimming them
+after 150 ms while the scan is pending. A failed refresh keeps those figures and
+offers Retry. Changing the period clears them, and an earlier response cannot
+replace the new period or clear its pending state. Subscription
 limits appear only where an engine reports them itself, as Codex does through
 `account/rateLimits/read`, cached for five minutes; `?force=true` reads again and
 spends no model usage. `/api/limits` also gives one number per window length across
@@ -1793,7 +1797,29 @@ takes its files and engine, refused during a run, and threads keep their history
 
 ## Command line
 
-`orbyn` is a client of a running service, with no rule of its own: `thread`, `project`,
+`orbyn triage [--agent claude|codex] [--model MODEL]` starts a fresh native
+support session in the selected data folder's `triage/<id>` directory. Core owns
+the provider choice, support files and literal launch arguments; the CLI owns
+foreground terminal I/O. The provider's own login and permissions apply: this is
+outside Orbyn governed runs, with no thread resume, project admission or MCP
+approval gate. It adds no generic resumed-engine console action. The files
+contain only CLI build/platform/time metadata and original support instructions;
+no service handle, logs, database, environment dump or credentials are collected.
+Server status is explicitly not checked. Additional investigation, repairs,
+network retrieval and publication require the person's approval.
+
+One available provider is selected automatically; two require both input and
+output to be terminals for the picker, or an explicit `--agent`. With neither,
+the files remain for manual use. Discovery resolves executables without a version
+or authentication probe. Existing executable overrides and recognized Windows
+shim resolution apply; unsupported wrappers are refused rather than evaluated by
+a shell. The child inherits terminal streams and the parent waits for its exit.
+Numeric child exits are passed to the OS unchanged, including full Windows
+32-bit statuses; exits without a code report failure. Native terminal interrupt behavior remains the provider's;
+there is no forced descendant-cleanup or parent-death guarantee. See
+[the CLI reference](cli.md).
+
+For normal workspace use, `orbyn` is a client of a running service: `thread`, `project`,
 `theme`, `status` and `doctor` go through the API the UI uses, and `serve` runs `orbynd`
 from beside it. It finds the service in `service.json` in the data folder (`--data-dir`,
 `ORBYN_DATA_DIR`), holding the URL, the launch token and the process id. That file is
