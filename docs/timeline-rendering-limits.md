@@ -111,6 +111,11 @@ desktop shell. Those live-bound paths retain their existing protocol-double and
 component evidence, and C37 remains partial. No second paid turn was run to
 manufacture a longer trace.
 
+The native desktop shell was not run. This checkout has no `desktop/node_modules`,
+no `tauri` CLI on `PATH` and no built desktop app under `target/`, and installing a
+desktop toolchain is outside this task. The live thirty-activity bound therefore
+stays with its protocol-double and component evidence.
+
 ## C10 Claude task tools
 
 Claude Code's older `TodoWrite` already reached the plan activity. Its modern
