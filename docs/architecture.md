@@ -1732,7 +1732,9 @@ the existing warning that the CLI will not find this service.
 Everything Orbyn spawns goes through `child_env`. Started inside a Claude Code session,
 `CLAUDECODE` and the rest of that host's `CLAUDE*` variables are removed, which matters
 because some put a child into a reduced mode. `CLAUDE_CONFIG_DIR`, the provider switches
-and `CLAUDE_CODE_OAUTH_TOKEN` are a person's own settings and stay. `CODEX_SANDBOX`-style
+and `CLAUDE_CODE_OAUTH_TOKEN` are a person's own settings and stay. Orbyn does not create,
+switch, copy or delete Claude config homes: one Claude login is used per instance, and a
+second account by config directory stays the CLI's own arrangement. `CODEX_SANDBOX`-style
 session markers go always, and an AppImage's variables and its mount's entries in
 library, data and `PATH` lists go when `APPIMAGE` and `APPDIR` are both set. The
 `prefer_saved_login` preference also drops API keys and endpoint overrides from engines
