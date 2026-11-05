@@ -207,6 +207,9 @@ has hidden a crash on startup before.
   ready. Fill in the template.
 - Say what you verified and what you did not. Mock data and the fake engines have
   hidden real bugs, so name any real engine or platform run.
+- Keep pull requests and issues short: bullets and fragments, under about 150 words
+  outside AI usage. Leave out repair rounds, retries and CI results, which GitHub
+  already shows. Link long logs instead of pasting them.
 - Merge with a merge commit. Do not squash the per-row commits.
 - Never include secrets, engine credentials, personal data or files from your own
   machine. The repository is public.

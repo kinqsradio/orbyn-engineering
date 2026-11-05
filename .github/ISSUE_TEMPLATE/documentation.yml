@@ -7,7 +7,7 @@ labels:
 body:
   - type: markdown
     attributes:
-      value: "Title as `docs(scope): what is wrong`."
+      value: "Title as `docs(scope): what is wrong`. Keep it short: quote only the wrong text."
   - type: input
     id: page
     attributes:
