@@ -984,7 +984,10 @@ A new worktree without an entered purpose gets a unique prompt-derived purpose. 
 a clean checkout on the remote's default branch every 30 minutes.
 
 `keybindings.json` lives in app data and holds only the person's changes over built-in
-defaults, so new defaults reach them. It allows comments and trailing commas, and a
+defaults, so new defaults reach them. `mod+w` is reserved: in the desktop app the page
+takes it even when no rule runs, so it never closes the window. A browser closes the tab
+before the page hears it, so outside the desktop app a `mod+w` rule also matches the same
+key with `alt` in place of `mod`; the editor says which applies. It allows comments and trailing commas, and a
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
