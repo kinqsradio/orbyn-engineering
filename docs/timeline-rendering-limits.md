@@ -128,3 +128,11 @@ refused with `Failed to authenticate: OAuth session expired and could not be
 refreshed`, so the live frames remain unobserved. The driver tests use recorded
 result shapes from the documented protocol, not a captured session. C10 stays
 partial on that live observation; the projection itself is covered by tests.
+
+The follow-up regression sends an explicit failed `TaskUpdate` result with no
+content. It could complete or delete the task despite the failure. The
+driver now consumes the matching pending call without changing the plan when
+`is_error` is true; the normal tool failure event is retained. Successful
+structured results and text-only create/update results retain their projection.
+These are offline fixtures. The text-only creation fixture has a null parent ID;
+it does not establish projection of actual nested subagent traffic.
