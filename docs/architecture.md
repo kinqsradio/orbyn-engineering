@@ -114,6 +114,12 @@ the first pass after a restart, and a held queue stays held until that run ends.
 
 ## Composer
 
+Above the message box, provider status follows the selected engine's service
+report: missing installation, a reported problem, signed-out state, or an update
+in progress. Unknown authentication alone produces no signed-out warning. The
+banner follows status changes after the existing explicit provider refresh;
+this adds no automatic engine polling or authenticated probe.
+
 A queued message becomes a run in one transaction, so it cannot start twice or
 vanish. A run ending in anything but success holds the queue until a resume, and
 new messages join a held queue; recovery holds it too. `send-now` puts one message
@@ -178,6 +184,12 @@ once a minute. Other lists are kept five minutes, a stand-in 30 seconds, and `?r
 true` always asks. A failure, a stand-in or an answer with no models never replaces a good list: the last
 one stays, with `error` saying why, and a read of Claude stops at 4 MiB. With no list
 yet, a failure is reported with the list empty rather than as an error.
+
+The provider card offers Refresh models even when discovery returned no models.
+It asks with `refresh=true`, keeps the available list while loading or after a
+transport failure, and shows a retryable discovery error. A later refresh owns
+its result: an older response or failure cannot overwrite it. These caches stay
+in process memory; this does not add a hosted manifest or a cache across restarts.
 
 A selection is a model, an effort and `options` by `ModelOption` id: `service_tier`
 (`default` is Standard), `fast_mode` (`on`, `off`), `mode` and `config:<id>` for ACP.

@@ -162,9 +162,11 @@ function EngineModelList({ engine }: { engine: EngineStatus }) {
   const order = useUi((state) => state.modelOrder);
   const setPrefs = useUi((state) => state.setPrefs);
   const listed = useEngineModels(engine.id);
+  const refreshing = useModelStore((state) => state.loading[engine.id] ?? false);
+  const error = useModelStore((state) => state.errors[engine.id] ?? null);
+  const reload = useModelStore((state) => state.reload);
   const [open, setOpen] = useState(false);
   const models = arrangeModels(engine.id, listed?.models ?? [], [], order);
-  if (models.length === 0) return null;
 
   const move = (at: number, step: number) => {
     const keys = models.map((model) => modelKey(engine.id, model.id));
@@ -179,6 +181,10 @@ function EngineModelList({ engine }: { engine: EngineStatus }) {
       <button type="button" className="text-action" aria-expanded={open} onClick={() => setOpen(!open)}>
         Models ({models.length})
       </button>
+      <Button small tone="quiet" busy={refreshing} onClick={() => void reload(engine.id)} aria-label={`Refresh ${engine.name} models`}>
+        Refresh models
+      </Button>
+      {error ? <p className="banner banner-warn" role="status">Couldn't refresh models. {error}{models.length > 0 ? " Showing the last available list." : " Try refreshing again."}</p> : null}
       {open ? (
         <ul className="model-settings">
           {models.map((model, at) => {

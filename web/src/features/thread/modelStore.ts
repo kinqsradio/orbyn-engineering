@@ -2,31 +2,47 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { api } from "../../api/client";
 import type { EngineModels, ModelInfo } from "../../api/types";
+import { toFailure } from "../../lib/useAsync";
 
 interface ModelState {
   byEngine: Record<string, EngineModels>;
-  load(engine: string): Promise<void>;
+  loading: Record<string, boolean>;
+  errors: Record<string, string | null>;
+  load(engine: string, refresh?: boolean): Promise<void>;
   /** Reads the list again, after something that changes it. */
   reload(engine: string): Promise<void>;
 }
 
 const started = new Set<string>();
+const generations = new Map<string, number>();
 
 /** Engine model lists. The service keeps a good answer for five minutes. */
 export const useModelStore = create<ModelState>((set, get) => ({
   byEngine: {},
+  loading: {},
+  errors: {},
   async reload(engine) {
-    started.delete(engine);
-    await get().load(engine);
+    await get().load(engine, true);
   },
-  async load(engine) {
-    if (started.has(engine)) return;
+  async load(engine, refresh = false) {
+    if (!refresh && started.has(engine)) return;
     started.add(engine);
+    const generation = (generations.get(engine) ?? 0) + 1;
+    generations.set(engine, generation);
+    set((state) => ({ loading: { ...state.loading, [engine]: true }, errors: { ...state.errors, [engine]: null } }));
     try {
-      const models = await api.models(engine);
-      set((state) => ({ byEngine: { ...state.byEngine, [engine]: models } }));
-    } catch {
+      const models = await api.models(engine, undefined, refresh);
+      if (generations.get(engine) !== generation) return;
+      set((state) => ({ byEngine: { ...state.byEngine, [engine]: models }, errors: { ...state.errors, [engine]: models.error } }));
+      if (models.error) started.delete(engine);
+    } catch (failure) {
+      if (generations.get(engine) !== generation) return;
       started.delete(engine);
+      set((state) => ({ errors: { ...state.errors, [engine]: toFailure(failure).message } }));
+    } finally {
+      if (generations.get(engine) === generation) {
+        set((state) => ({ loading: { ...state.loading, [engine]: false } }));
+      }
     }
   },
 }));
