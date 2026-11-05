@@ -1018,6 +1018,9 @@ impl StreamMapper {
             let Some((name, input)) = self.task_calls.remove(&id) else {
                 continue;
             };
+            if block.get("is_error").and_then(Value::as_bool) == Some(true) {
+                continue;
+            }
             let result = task_result(frame, block);
             changed |= self.apply_task(&name, &input, &result);
         }
@@ -1583,6 +1586,43 @@ mod tests {
         );
     }
 
+    #[test]
+    fn failed_task_updates_preserve_the_plan_and_failure_outcome() {
+        for status in ["completed", "deleted"] {
+            let mut mapper = StreamMapper::default();
+            mapper.on_frame(&tool_frame(
+                "create",
+                "TaskCreate",
+                json!({ "subject": "alpha" }),
+            ));
+            mapper.on_frame(&task_result(
+                "create",
+                json!({ "task": { "id": "1", "subject": "alpha" } }),
+            ));
+            mapper.on_frame(&tool_frame(
+                "update",
+                "TaskUpdate",
+                json!({ "taskId": "1", "status": status }),
+            ));
+            let events = agui(mapper.on_frame(&json!({
+                "type": "user",
+                "message": { "content": [{ "type": "tool_result", "tool_use_id": "update", "is_error": true }] },
+            })));
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, AgUiEvent::ActivitySnapshot { .. })),
+                "failed {status} changed the plan"
+            );
+            assert_eq!(
+                task_content(&mapper.tasks),
+                json!({ "steps": [{ "title": "alpha", "status": "pending" }] })
+            );
+            assert!(events.iter().any(|event| matches!(event, AgUiEvent::Custom { name, value } if name == "tool.outcome" && value == &json!({ "toolCallId": "update", "outcome": "failure" }))));
+            assert!(mapper.task_calls.is_empty());
+        }
+    }
+
     /// A subagent reports the created task as text, not as a structured result.
     #[test]
     fn a_text_only_task_create_still_becomes_a_step() {
@@ -1604,6 +1644,21 @@ mod tests {
         assert_eq!(
             steps["steps"],
             json!([{ "title": "gamma", "status": "pending" }])
+        );
+        mapper.on_frame(&tool_frame(
+            "u7",
+            "TaskUpdate",
+            json!({ "taskId": "7", "status": "completed" }),
+        ));
+        let updated = json!({
+            "type": "user",
+            "message": { "content": [{ "type": "tool_result", "tool_use_id": "u7",
+                "content": "Updated task #7 status" }] },
+        });
+        let steps = plan_snapshot(agui(mapper.on_frame(&updated)));
+        assert_eq!(
+            steps["steps"],
+            json!([{ "title": "gamma", "status": "completed" }])
         );
     }
 

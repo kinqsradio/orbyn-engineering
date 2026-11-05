@@ -140,7 +140,13 @@ Claude stays on `--permission-mode default` and the gate accepts for it, because
 `acceptEdits` trusts its cwd, which is the library, and `bypassPermissions` skips
 `mcp__orbyn_engineering__approve`, so either would defeat the write scope. A rule
 still wins, computer and browser actions still ask, and the write scope is checked
-first. Plan mode refuses file changes, runs Claude in `plan` and Codex read-only.
+first. Plan mode refuses file changes, runs Claude in `plan` and Codex with both
+the read-only sandbox and native `collaborationMode: plan`. Ordinary Codex turns
+explicitly select native `default` mode, including when resuming a plan session.
+Mode settings retain the selected model/effort or the effective settings returned
+by `thread/start` or `thread/resume`; a missing required model is an error rather
+than an invented default. Built-in mode instructions and Orbyn's separate thread
+context are both retained. The collaboration mode does not widen permissions.
 
 `response_streaming_mode` `turn` holds a reply's text until that message ends;
 `paragraph` is the default and writes it as it comes, merged over 33 ms. Reasoning and
