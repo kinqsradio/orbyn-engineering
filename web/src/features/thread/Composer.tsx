@@ -48,6 +48,8 @@ import { CODE_LANGUAGES, exitCodeBlock, indentCodeLines, openFenceAt, setFenceLa
 import { ComposerChipShelf, copyChips } from "./ComposerChips";
 import {
   CHIP_MIME,
+  MAX_PROMPT_CHARS,
+  charactersOver,
   chipsFromClipboard,
   fileExcerpt,
   languageForPath,
@@ -74,11 +76,8 @@ interface ShownAttachment {
   failure: string | null;
 }
 
-/** The service refuses longer messages; here the draft stays and says so first. */
-const MAX_PROMPT_CHARS = 120_000;
 /** Past this a keystroke would lag behind the styling, so the text stays plain. */
 const STYLED_CHARS = 20_000;
-const charactersOver = (text: string) => (text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0));
 
 /** Commands go to the thread's own composer; a side chat's stays out of their way. */
 const useOwnCommand = (side: boolean, command: string, handler: () => boolean | void) =>
@@ -177,10 +176,11 @@ export function Composer({
   const branch = thread.worktree?.branch ?? projectBranch;
   const busy = thread.active_run !== null;
   const uploading = attachments.some((file) => file.id === null);
-  const overBy = charactersOver(draft);
+  const outbound = useMemo(() => promptWithChips(draft, chips), [draft, chips]);
+  const overBy = charactersOver(outbound);
   const styled = useMemo(() => (draft && draft.length <= STYLED_CHARS ? composerMarkup(draft) : null), [draft]);
   const fence = openFenceAt(draft, caret);
-  const canSend = (draft.trim() !== "" || chips.length > 0) && !sending && !uploading && overBy === 0;
+  const canSend = outbound !== "" && !sending && !uploading && overBy === 0;
   const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
   const reloadQueue = queue.reload;
   const runId = thread.active_run?.id ?? null;
@@ -262,10 +262,17 @@ export function Composer({
     }
   };
 
+  /** A terminal selection is evidence, not a command; it is never consumed by one. */
+  const hasTerminalContext = chips.some((chip) => chip.kind === "terminal");
+
   /** Handles what the composer does itself; the agent never sees these. */
   const runLocal = (text: string): boolean => {
     const command = localCommand(text);
     if (!command) return false;
+    if (hasTerminalContext) {
+      setError(`Remove the terminal context before using /${command}. Your message stays here.`);
+      return true;
+    }
     setDraft(thread.id, "");
     if (command === "plan") void setPlanMode(true);
     if (command === "default") void setPlanMode(false);
@@ -277,8 +284,21 @@ export function Composer({
     if (!canSend) return false;
     const typed = draft;
     const prompt = promptWithChips(draft, chips);
+    const serviceCommand = /^\/(compact|goal)(?:\s|$)/.exec(typed.trim());
+    if (hasTerminalContext && serviceCommand) {
+      setError(`Remove the terminal context before using /${serviceCommand[1]}. Your message stays here.`);
+      return false;
+    }
     if (runLocal(typed)) return false;
     const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(typed.trim());
+    if (hasTerminalContext && (sideChat || pendingHere.length > 0)) {
+      setError(
+        sideChat
+          ? "Side chats take text only. Remove the terminal context, then send again."
+          : "Remove the terminal context before replying to an approval. Your message stays here.",
+      );
+      return false;
+    }
     if (sideChat) {
       setDraft(thread.id, "");
       void openSideChat(thread, sideChat[1]?.trim() || null);

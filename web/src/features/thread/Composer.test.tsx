@@ -1,11 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
 import type { Run, SlashCommand, Thread } from "../../api/types";
+import { useComposerChips } from "../../state/composerChips";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
+import { useWorkspace } from "../../state/workspace";
 import { Composer } from "./Composer";
+import { MAX_PROMPT_CHARS, type TerminalChip } from "./composerContext";
 
 const thread: Thread = {
   id: "t1",
@@ -25,6 +28,21 @@ const thread: Thread = {
 
 const run = { id: "r1" } as Run;
 const box = () => screen.getByRole("textbox");
+const terminalChip: TerminalChip = {
+  id: "t-chip",
+  kind: "terminal",
+  title: "Terminal selection",
+  output: "CONTEXT_SENTINEL",
+  lineStart: 4,
+  lineEnd: 5,
+};
+const withTerminalChip = () => useComposerChips.setState({ chips: { t1: [terminalChip] } });
+
+beforeEach(() => {
+  useComposerChips.setState({ chips: {} });
+  useUi.setState({ drafts: {} });
+  useWorkspace.setState({ approvals: { data: [], error: null, loading: false } });
+});
 
 function setup(over: Partial<Thread> = {}) {
   vi.spyOn(api, "thread").mockResolvedValue(thread);
@@ -33,6 +51,84 @@ function setup(over: Partial<Thread> = {}) {
 }
 
 describe("Composer", () => {
+  it("sends a terminal selection as labelled rows before the typed draft", async () => {
+    const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
+    withTerminalChip();
+    setup();
+    await userEvent.type(box(), "explain{Enter}");
+    await waitFor(() =>
+      expect(start).toHaveBeenCalledWith(
+        "t1",
+        "Terminal selection lines 4–5\n```\nCONTEXT_SENTINEL\n```\n\nexplain",
+        [],
+      ),
+    );
+    await waitFor(() => expect(useComposerChips.getState().chips.t1).toEqual([]));
+    start.mockRestore();
+  });
+
+  it.each(["/plan", "/compact", "/goal resume"])('refuses %s while a terminal selection is attached', async (command) => {
+    const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
+    const patch = vi.spyOn(api, "patchThread").mockResolvedValue(thread);
+    withTerminalChip();
+    setup();
+    await userEvent.type(box(), `${command}{Enter}`);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Remove the terminal context");
+    expect(box()).toHaveValue(command);
+    expect(useComposerChips.getState().chips.t1).toHaveLength(1);
+    expect(start).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+    start.mockRestore();
+    patch.mockRestore();
+  });
+
+  it("refuses a side chat while a terminal selection is attached", async () => {
+    withTerminalChip();
+    setup();
+    await userEvent.type(box(), "/side explain{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Side chats take text only");
+    expect(box()).toHaveValue("/side explain");
+    expect(useComposerChips.getState().chips.t1).toHaveLength(1);
+  });
+
+  it("refuses a terminal selection on an approval reply without deciding it", async () => {
+    const decide = vi.spyOn(api, "decideApproval");
+    useWorkspace.setState({
+      approvals: {
+        loading: false,
+        error: null,
+        data: [{
+          id: "approval",
+          thread_id: "t1",
+          run_id: "r1",
+          kind: "tool",
+          summary: "Allow?",
+          detail: {},
+          state: "pending",
+          decided_by: null,
+          decided_at: null,
+          created_at: "",
+        }],
+      },
+    });
+    withTerminalChip();
+    setup();
+    await userEvent.type(box(), "redirect{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("before replying to an approval");
+    expect(box()).toHaveValue("redirect");
+    expect(useComposerChips.getState().chips.t1).toHaveLength(1);
+    expect(decide).not.toHaveBeenCalled();
+    decide.mockRestore();
+  });
+
+  it("counts the chip block against the message limit", async () => {
+    withTerminalChip();
+    useUi.setState({ drafts: { t1: "x".repeat(MAX_PROMPT_CHARS) } });
+    setup();
+    expect(await screen.findByRole("alert")).toHaveTextContent("characters over the 120,000 limit");
+    expect(useComposerChips.getState().chips.t1).toHaveLength(1);
+  });
+
   it("sends on Enter, clears the draft and records the prompt", async () => {
     const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
     setup();

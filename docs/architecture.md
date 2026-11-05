@@ -177,6 +177,15 @@ Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
 paste into a composer restores the chips and refetches a file whose text was not
 carried. Ordinary text, broken JSON and half-known chips never become chips.
 
+A terminal selection also records the one-based buffer rows it covered, so its
+chip and prompt block name those lines instead of the whole terminal. Chips count
+as part of the message, not as text beside it: the 120,000-character limit covers
+the complete prompt, a selection that would push it over is refused rather than
+added, and while a terminal chip is attached the composer refuses every local
+command, `/compact`, `/goal`, side chats and approval replies, keeping both the
+draft and the chip instead of consuming either. Captured output is plain text and
+is never reread from a running terminal.
+
 After a Claude thread has sat idle past its prompt-cache window, returning to it
 offers one compact action before the next turn. It is not offered while a run is
 active, and no other engine has that cache, so none is offered it.

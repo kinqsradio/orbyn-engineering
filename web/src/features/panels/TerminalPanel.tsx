@@ -6,7 +6,7 @@ import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useComposerChips } from "../../state/composerChips";
-import { chipId } from "../thread/composerContext";
+import { charactersOver, chipId, promptWithChips, terminalSelection } from "../thread/composerContext";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
 import { linkProvider } from "./terminalLinks";
@@ -46,7 +46,7 @@ export function TerminalPanel({
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [attempt, setAttempt] = useState(0);
-  const [selection, setSelection] = useState("");
+  const [selection, setSelection] = useState<ReturnType<typeof terminalSelection>>(null);
   const theme = useUi((state) => state.theme);
   const applyThemeRef = useRef<() => void>(() => undefined);
 
@@ -125,7 +125,9 @@ export function TerminalPanel({
       const input = terminal.onData((data) => {
         if (!observe && socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
       });
-      const chosen = terminal.onSelectionChange(() => setSelection(terminal.getSelection()));
+      const chosen = terminal.onSelectionChange(() =>
+        setSelection(terminalSelection(terminal.getSelection(), terminal.getSelectionPosition())),
+      );
 
       let frame = 0;
       const observer = new ResizeObserver(() => {
@@ -168,14 +170,26 @@ export function TerminalPanel({
           <Button
             small
             tone="quiet"
-            disabled={selection.trim() === ""}
+            disabled={selection === null}
             onClick={() => {
-              useComposerChips.getState().add(threadId, {
+              if (!selection) return;
+              const chip = {
                 id: chipId(),
-                kind: "terminal",
+                kind: "terminal" as const,
                 title: "Terminal selection",
-                output: selection,
-              });
+                output: selection.output,
+                lineStart: selection.lineStart,
+                lineEnd: selection.lineEnd,
+              };
+              const chips = useComposerChips.getState().chips[threadId] ?? [];
+              const draft = useUi.getState().drafts[threadId] ?? "";
+              if (charactersOver(promptWithChips(draft, [...chips, chip])) > 0) {
+                useUi
+                  .getState()
+                  .pushToast("Terminal selection exceeds the message limit. Select a smaller excerpt.");
+                return;
+              }
+              useComposerChips.getState().add(threadId, chip);
               useUi.getState().pushToast("Selection added to your message");
             }}
           >
