@@ -94,6 +94,65 @@ async fn a_codex_turn_waits_for_its_tools_to_start() {
 }
 
 #[tokio::test]
+async fn codex_plan_mode_and_leaving_it_reach_native_collaboration() {
+    let dir = TempDir::new();
+    let file = dir.path().join("launches");
+    let options = Options {
+        env: vec![(
+            "ORBYN_FAKE_LAUNCH_FILE".into(),
+            file.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, thread) = setup(&dir, options, "codex").await;
+    service.patch(&thread, json!({ "plan_mode": true, "model": "fake-big", "effort": "xhigh", "options": { "service_tier": "priority" } })).await;
+    service.admit(&thread, "plan it").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    service.patch(&thread, json!({ "plan_mode": false })).await;
+    service.admit(&thread, "continue normally").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let entries: Vec<Value> = std::fs::read_to_string(file)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let turns: Vec<Value> = entries
+        .iter()
+        .filter(|entry| entry["mode"] == "codex-turn")
+        .map(|entry| serde_json::from_str(entry["args"][0].as_str().unwrap()).unwrap())
+        .collect();
+    assert_eq!(turns.len(), 2);
+    for (turn, mode) in turns.iter().zip(["plan", "default"]) {
+        assert_eq!(turn["collaborationMode"]["mode"], mode);
+        assert_eq!(turn["collaborationMode"]["settings"]["model"], "fake-big");
+        assert_eq!(
+            turn["collaborationMode"]["settings"]["reasoning_effort"],
+            "xhigh"
+        );
+        assert!(turn["collaborationMode"]["settings"]["developer_instructions"].is_null());
+        assert_eq!(turn["approvalPolicy"], "on-request");
+        assert_eq!(turn["serviceTier"], "priority");
+    }
+    assert_eq!(turns[0]["sandboxPolicy"]["type"], "readOnly");
+    assert_eq!(turns[1]["sandboxPolicy"]["type"], "workspaceWrite");
+    assert_eq!(turns[0]["threadId"], turns[1]["threadId"]);
+    let threads: Vec<Value> = entries
+        .iter()
+        .filter(|entry| entry["mode"] == "codex-thread")
+        .map(|entry| serde_json::from_str(entry["args"][0].as_str().unwrap()).unwrap())
+        .collect();
+    assert!(threads[0]["threadId"].is_null());
+    assert_eq!(threads[1]["threadId"], turns[0]["threadId"]);
+    let plan_context = threads[0]["developerInstructions"].as_str().unwrap();
+    let ordinary_context = threads[1]["developerInstructions"].as_str().unwrap();
+    let plan_instruction = "Plan mode: read and propose a plan. Change nothing.\n";
+    assert!(plan_context.contains(plan_instruction));
+    assert!(!ordinary_context.contains(plan_instruction));
+    assert!(ordinary_context.starts_with("<orbyn_context>\nCheckout:"));
+    assert_eq!(plan_context.replace(plan_instruction, ""), ordinary_context);
+}
+
+#[tokio::test]
 async fn codex_approval_round_trips_and_second_run_resumes() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, Options::default(), "codex").await;

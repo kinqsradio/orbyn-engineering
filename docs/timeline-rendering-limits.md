@@ -128,3 +128,50 @@ refused with `Failed to authenticate: OAuth session expired and could not be
 refreshed`, so the live frames remain unobserved. The driver tests use recorded
 result shapes from the documented protocol, not a captured session. C10 stays
 partial on that live observation; the projection itself is covered by tests.
+
+The follow-up regression sends an explicit failed `TaskUpdate` result with no
+content. It could complete or delete the task despite the failure. The
+driver now consumes the matching pending call without changing the plan when
+`is_error` is true; the normal tool failure event is retained. Successful
+structured results and text-only create/update results retain their projection.
+These are offline fixtures. The text-only creation fixture has a null parent ID;
+it does not establish projection of actual nested subagent traffic.
+
+## C31 surface menu qualification
+
+A real-service browser fixture with a stand-in forge opens the thread's linked
+pull through `New surface` → `Pull request`, selects it again without duplicating
+the tab, and closes the tab while retaining the link. An unlinked thread keeps
+the entry disabled; Escape closes the menu and returns focus to its trigger.
+The Windows fixture uses a Node command shim and the native PATH separator, so
+the stand-in runs instead of an installed `gh`. This is browser qualification with
+synthetic forge data, not a live forge or native-desktop observation. Device and
+mute exclusions remain unchanged, and native qualification remains open.
+
+## C40 native Codex Plan mapping
+
+Orbyn's Plan selection previously set only the read-only sandbox. Codex's native
+collaboration mode is a separate `turn/start` setting. The driver now sends
+`plan` for a Plan turn and explicitly sends `default` for an ordinary turn,
+including resumed sessions. Mode settings retain the selected model and effort,
+or use the effective thread response when no selection is supplied. Built-in
+mode instructions are selected without replacing Orbyn's separate thread context;
+the permission policy and service tier remain intact.
+
+The payload is checked against the locally generated Codex CLI 0.160.0 schema
+and the [official App Server documentation](https://learn.chatgpt.com/docs/app-server).
+Offline real-service protocol tests cover entering and leaving native Plan mode,
+the read-only sandbox, model, effort, context and service tier. They do not prove
+that a real provider emits a question. The earlier Default-mode refusal remains
+a failed observation; no retry with broader permissions was made. A live-provider
+question and native desktop qualification remain open.
+
+A later Windows observation attempt used the installed Codex CLI 0.160.0. A
+no-turn `model/list` check confirmed `gpt-6.1-sol`, low effort and Standard tier,
+but the probe's five-second HTTP admission deadline expired before a run was
+created. A read-only audit of the stopped, isolated profile found zero run and
+question records. No provider turn or question payload was observed, no retry was
+made, and both owned service and browser-server processes were confirmed stopped.
+This is a failed pre-admission observation, not evidence of a provider question
+failure or successful live qualification. The live and native requirements remain
+open.
