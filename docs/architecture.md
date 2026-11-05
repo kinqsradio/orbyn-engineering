@@ -654,6 +654,8 @@ together, fencing both preference revisions and the selected membership. Automat
 sets an empty pair; Inherit removes the selected project overrides. A conflict
 retains the choice and requires an explicit reload before retrying. Reset all
 removes only the captured project overrides and leaves environment defaults alone.
+Its model picker stays in the owning settings dialog's top layer. Escape closes
+the picker and returns focus to its trigger before another Escape closes Settings.
 
 `POST /api/settings/project-scopes` is a full-app read of registered local checkout
 groups and a typed selection. It accepts the client's `repository`, `repository_path`

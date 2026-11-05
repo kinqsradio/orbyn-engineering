@@ -396,7 +396,7 @@ function ProjectSelection() {
         </ProjectName>
         <ProjectModelDefaults query={scope.query} disabled={blocked} />
         <fieldset className="preference-control" disabled={blocked}>
-          <PreferenceGroups groups={[{ title: "New threads", rows: [{ key: "default_thread_env_mode", title: "Workspace", inheritance: true,
+          <PreferenceGroups groups={[{ title: "Workspace", rows: [{ key: "default_thread_env_mode", title: "Workspace", inheritance: true,
             description: "Where new threads in this project start.", render: (value, save, control) =>
               <select aria-label="Default workspace" disabled={control.disabled} value={control.mixed ? "__mixed__" : String(value ?? "")}
                 onChange={(event) => save(event.target.value)}>

@@ -8,6 +8,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
+import { useModelStore } from "../thread/modelStore";
 import { PreferenceInheritance } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { MODEL_DEFAULT_KEYS, modelDefaultChange, type DefaultModelChoice } from "./modelDefaultChange";
@@ -21,6 +22,7 @@ export function ProjectModelDefaults({ query, disabled = false }: { query: Proje
 function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
   const scope = useSettingsScope();
   const engines = useWorkspace((state) => state.engines.data) ?? [];
+  const modelsByEngine = useModelStore((state) => state.byEngine);
   const result = useAsync("project-model-defaults", (signal) => request<ScopedPreferencesResult>("POST",
     "/api/settings/preferences/query", { scope: query, keys: MODEL_DEFAULT_KEYS }, signal));
   const [draft, setDraft] = useState<Edit | null>(null);
@@ -63,6 +65,11 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
     model: typeof modelRow.value === "string" && modelRow.value ? modelRow.value : null,
   };
   const representative = engines.find((engine) => engine.id === selected.engine) ?? engines.find((engine) => engine.installed);
+  const missingProvider = selected.engine !== "" && !engines.some((engine) => engine.id === selected.engine);
+  const listedModel = representative && modelsByEngine[representative.id]?.models.some((model) => model.id === selected.model);
+  const triggerLabel = mixed && !draft ? "Mixed"
+    : missingProvider ? [selected.engine, selected.model].filter(Boolean).join(" / ")
+    : !selected.model ? "Automatic" : !listedModel ? selected.model : undefined;
   const overrides = [...new Set(rows.flatMap((row) => row?.overrides.map((entry) => entry.project_id) ?? []))];
   const hasOverride = rows.some((row) => row?.members.some((member) => member.view.source === "project"));
   return <SettingGroup title="New threads">
@@ -83,8 +90,8 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
       </div>
     }>
       <fieldset className="preference-control" disabled={blocked} aria-busy={saving || undefined}>
-        {mixed && !draft ? <span>Mixed</span> : !selected.engine && !selected.model ? <span>Automatic</span> : null}
         {representative ? <ModelPickerTrigger engines={engines} selected={{ engine: representative.id, model: selected.model }} disabled={blocked}
+          triggerLabel={triggerLabel}
           onPick={(choice) => { void commit(choice); }} /> : <span>No providers available</span>}
         {(selected.engine || selected.model || mixed) ? <Button small tone="quiet" disabled={blocked}
           onClick={() => { void commit({ engine: "", model: null }); }}>Automatic</Button> : null}

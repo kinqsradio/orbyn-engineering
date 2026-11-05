@@ -2,20 +2,21 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ApiFailure, request } from "../../api/client";
-import type { PreferenceView } from "../../api/types";
+import type { EngineModels, PreferenceView } from "../../api/types";
 import type { ScopedPreferencesChange } from "../../generated/ScopedPreferencesChange";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
 import { ProjectModelDefaults } from "./ProjectModelDefaults";
 import { scopedFixture } from "./scopedPreferenceFixture.test-support";
+import { useModelStore } from "../thread/modelStore";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 vi.mock("../../state/workspace", () => ({ useWorkspace: (select: (state: unknown) => unknown) =>
   select({ engines: { data: [{ id: "codex", name: "Codex", installed: true }] } }) }));
-vi.mock("../thread/ModelPicker", () => ({ ModelPickerTrigger: ({ selected, onPick, disabled }: {
-  selected: { engine: string; model: string | null }; onPick(choice: { engine: string; model: string }): void; disabled: boolean;
+vi.mock("../thread/ModelPicker", () => ({ ModelPickerTrigger: ({ selected, onPick, disabled, triggerLabel }: {
+  selected: { engine: string; model: string | null }; onPick(choice: { engine: string; model: string }): void; disabled: boolean; triggerLabel?: string;
 }) => <button disabled={disabled} onClick={() => onPick({ engine: "codex", model: "chosen" })}>
-  Choose model ({selected.engine}/{selected.model ?? "automatic"})</button> }));
+  {triggerLabel ?? `Choose model (${selected.engine}/${selected.model ?? "automatic"})`}</button> }));
 const mocked = vi.mocked(request);
 const checkout: ProjectScopesQuery = { selection: { kind: "checkout", group_key: "group-a", project_id: "a" } };
 const views = (engine = "codex", model = "old", source = "project"): PreferenceView[] =>
@@ -23,6 +24,9 @@ const views = (engine = "codex", model = "old", source = "project"): PreferenceV
     { key: "default_model", value: model, default: "", source, project_scoped: true }];
 let data: ScopedPreferencesResult, writes: ScopedPreferencesChange[], failure: boolean;
 beforeEach(() => {
+  useModelStore.setState({ byEngine: { codex: { engine: "codex", source: "engine", checked_at: "fixture", error: null, fallback: false,
+    models: ["old", "chosen", "b-model", "old-reply"].map((id) => ({ id, label: id, description: null, is_default: id === "old", custom: false, options: [] })),
+    options: [], agents: [], output_styles: [] } satisfies EngineModels } });
   data = scopedFixture(views(), views("", "", "default"), "a"); writes = []; failure = false;
   mocked.mockReset(); mocked.mockImplementation(async (method, _path, body) => {
     if (method === "POST") return data as never;
@@ -97,4 +101,18 @@ it("never applies a late old-scope save to a different mounted selection", async
   await act(async () => done(scopedFixture(views("codex", "old-reply"), undefined, "a")));
   expect(screen.getByRole("button", { name: /b-model/ })).toBeEnabled();
   expect(screen.queryByRole("button", { name: /old-reply/ })).not.toBeInTheDocument();
+});
+
+it("shows the saved unlisted model ID instead of substituting a catalog default label", async () => {
+  data = scopedFixture(views("codex", "saved-unlisted"), undefined, "a");
+  render(<ProjectModelDefaults query={checkout} />);
+  expect(await screen.findByRole("button", { name: "saved-unlisted" })).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
+
+it("names an unavailable saved provider instead of presenting the representative as the saved choice", async () => {
+  data = scopedFixture(views("removed-provider", "saved-model"), undefined, "a");
+  render(<ProjectModelDefaults query={checkout} />);
+  expect(await screen.findByRole("button", { name: "removed-provider / saved-model" })).toBeVisible();
+  expect(writes).toHaveLength(0);
 });
