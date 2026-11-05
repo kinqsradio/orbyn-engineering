@@ -27,6 +27,9 @@ export interface TerminalChip extends ChipBase {
   kind: "terminal";
   title: string;
   output: string;
+  /** One-based buffer rows the selection covered, when the terminal reported them. */
+  lineStart: number | null;
+  lineEnd: number | null;
 }
 
 export interface ReviewChip extends ChipBase {
@@ -57,6 +60,10 @@ export const CHIP_MIME = "application/x-orbyn-composer+json";
 export const CHIP_ATTRIBUTE = "data-orbyn-composer";
 /** The most a single chip adds to the prompt or the clipboard. */
 export const CHIP_EXCERPT_LIMIT = 4000;
+/** The service refuses longer messages; the composer says so before sending. */
+export const MAX_PROMPT_CHARS = 120_000;
+export const charactersOver = (text: string): number =>
+  text.length <= MAX_PROMPT_CHARS ? 0 : Math.max([...text].length - MAX_PROMPT_CHARS, 0);
 
 export const chipId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -77,12 +84,20 @@ const quote = (text: string) =>
     .map((line) => (line ? `> ${line}` : ">"))
     .join("\n");
 
+const terminalLabel = (chip: TerminalChip): string => {
+  const title = chip.title || "Terminal selection";
+  if (chip.lineStart === null || chip.lineEnd === null) return title;
+  return chip.lineStart === chip.lineEnd
+    ? `${title} line ${chip.lineStart}`
+    : `${title} lines ${chip.lineStart}–${chip.lineEnd}`;
+};
+
 export function chipLabel(chip: ComposerChip): string {
   switch (chip.kind) {
     case "file":
       return chip.line === null ? chip.path : `${chip.path}:${chip.line}`;
     case "terminal":
-      return chip.title || "Terminal selection";
+      return terminalLabel(chip);
     case "review":
       return chip.line === null ? chip.path : `${chip.path}:${chip.line}`;
     case "annotation":
@@ -105,7 +120,7 @@ export function chipPrompt(chip: ComposerChip): string {
       return `${where}\n\`\`\`${language}\n${fenceSafe(excerptOf(body))}\n\`\`\``;
     }
     case "terminal":
-      return `Terminal selection\n\`\`\`\n${fenceSafe(excerptOf(chip.output))}\n\`\`\``;
+      return `${terminalLabel(chip)}\n\`\`\`\n${fenceSafe(excerptOf(chip.output))}\n\`\`\``;
     case "review": {
       const where = chip.line === null ? `Review on \`${chip.path}\`` : `Review on \`${chip.path}:${chip.line}\``;
       const excerpt = chip.excerpt?.trim()
@@ -130,6 +145,23 @@ export function promptWithChips(draft: string, chips: readonly ComposerChip[]): 
   const typed = draft.trim();
   if (typed) blocks.push(typed);
   return blocks.join("\n\n");
+}
+
+/**
+ * What a terminal selection becomes: its text without outer newlines, and the
+ * one-based buffer rows it covered. Nothing is reread from a running terminal.
+ */
+export function terminalSelection(
+  selected: string,
+  position: { start: { y: number }; end: { y: number } } | null | undefined,
+): { output: string; lineStart: number; lineEnd: number } | null {
+  const output = selected.replace(/\r\n/g, "\n").replace(/^\n+/, "").replace(/\n+$/, "");
+  if (!output.trim() || !position) return null;
+  return {
+    output,
+    lineStart: Math.min(position.start.y, position.end.y) + 1,
+    lineEnd: Math.max(position.start.y, position.end.y) + 1,
+  };
 }
 
 const escapeHtml = (text: string) =>
@@ -177,7 +209,16 @@ export function asChip(value: unknown, id: string = chipId()): ComposerChip | nu
     case "terminal": {
       const output = text(chip.output);
       if (!output) return null;
-      return { id, kind: "terminal", title: text(chip.title, 200) ?? "Terminal selection", output };
+      const lineStart = number(chip.lineStart);
+      const lineEnd = number(chip.lineEnd);
+      return {
+        id,
+        kind: "terminal",
+        title: text(chip.title, 200) ?? "Terminal selection",
+        output,
+        lineStart,
+        lineEnd: lineStart !== null && lineEnd !== null && lineEnd >= lineStart ? lineEnd : lineStart,
+      };
     }
     case "review": {
       const path = text(chip.path, 4096);
