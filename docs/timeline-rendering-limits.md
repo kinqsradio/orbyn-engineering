@@ -52,6 +52,12 @@ The same spec re-ran on macOS on 5 November 2026 against the already-built
 `target/debug/orbynd` and passed in 18.9 seconds with the three decoded checkout
 images, the 404, the 400 and no remote media request.
 
+The pre-existing arbitrary HTML/SVG refusal is covered by `QuestionPanel.test.tsx`: a question
+containing `<script>` or `<svg onload>` keeps that text and mounts no script, SVG,
+image, video or iframe element. The live-provider question was attempted once and
+refused, recorded below, and was not retried. The native desktop shell was not run
+because no local desktop build exists.
+
 ## C40 live-provider question attempt
 
 One real Codex 0.166.0 turn was run through the real service on 5 November 2026
