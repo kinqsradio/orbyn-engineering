@@ -5,6 +5,8 @@ import { readingKey } from "./terminalKeys";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
+import { useComposerChips } from "../../state/composerChips";
+import { chipId } from "../thread/composerContext";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
 import { linkProvider } from "./terminalLinks";
@@ -44,6 +46,7 @@ export function TerminalPanel({
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [attempt, setAttempt] = useState(0);
+  const [selection, setSelection] = useState("");
   const theme = useUi((state) => state.theme);
   const applyThemeRef = useRef<() => void>(() => undefined);
 
@@ -122,6 +125,7 @@ export function TerminalPanel({
       const input = terminal.onData((data) => {
         if (!observe && socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
       });
+      const chosen = terminal.onSelectionChange(() => setSelection(terminal.getSelection()));
 
       let frame = 0;
       const observer = new ResizeObserver(() => {
@@ -134,6 +138,7 @@ export function TerminalPanel({
         cancelAnimationFrame(frame);
         observer.disconnect();
         input.dispose();
+        chosen.dispose();
         links.dispose();
         socket.onclose = null;
         socket.close();
@@ -159,6 +164,24 @@ export function TerminalPanel({
             Reconnect
           </Button>
         ) : null}
+        {observe ? null : (
+          <Button
+            small
+            tone="quiet"
+            disabled={selection.trim() === ""}
+            onClick={() => {
+              useComposerChips.getState().add(threadId, {
+                id: chipId(),
+                kind: "terminal",
+                title: "Terminal selection",
+                output: selection,
+              });
+              useUi.getState().pushToast("Selection added to your message");
+            }}
+          >
+            Add selection
+          </Button>
+        )}
       </div>
       <div ref={host} className="terminal-host" role="group" aria-label="Terminal" />
     </div>

@@ -1,5 +1,7 @@
 import { TriangleAlert, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { offerCompact } from "./compactOffer";
+import type { ThreadItem } from "./projection";
 import { api } from "../../api/client";
 import type { EngineLimits, EngineStatus, JsonValue } from "../../api/types";
 import { relativeTime } from "../../lib/format";
@@ -60,6 +62,56 @@ export function ContextMeter({ threadId, disabled }: { threadId: string; disable
     <button type="button" className="context-meter" aria-label={action} title={action} disabled={disabled} onClick={compact}>
       {ring}
     </button>
+  );
+}
+
+/**
+ * Offered when someone comes back to a Claude thread after its prompt cache
+ * expired: compacting first makes the next turn cheaper. It waits for the
+ * compact command to be available and goes away for this visit when dismissed.
+ */
+export function CompactOffer({
+  threadId,
+  engine,
+  active,
+  items,
+}: {
+  threadId: string;
+  engine: string;
+  active: boolean;
+  items: readonly Pick<ThreadItem, "ts">[];
+}) {
+  const [arrivedAt] = useState(() => Date.now());
+  const [dismissed, setDismissed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const commands = useAsync(`compact-commands:${threadId}`, (signal) => api.commands(threadId, signal));
+  if (dismissed || !offerCompact({ engine, activeRun: active, items, arrivedAt })) return null;
+  if (!commands.data?.some((command) => command.name === "compact")) return null;
+  const compact = () => {
+    setBusy(true);
+    setError(null);
+    api.startRun(threadId, "/compact").then(
+      () => {
+        setDismissed(true);
+        void useWorkspace.getState().refreshThread(threadId);
+      },
+      (failure: unknown) => {
+        setError(`Couldn't compact. ${toFailure(failure).message}`);
+        setBusy(false);
+      },
+    );
+  };
+  return (
+    <p className="compact-offer" role="status">
+      <span>{error ?? "This thread's prompt cache has expired. Compact it before the next turn?"}</span>
+      <Button small disabled={busy} onClick={compact}>
+        Compact
+      </Button>
+      <IconButton label="Dismiss compact offer" onClick={() => setDismissed(true)}>
+        <X size={14} aria-hidden />
+      </IconButton>
+    </p>
   );
 }
 

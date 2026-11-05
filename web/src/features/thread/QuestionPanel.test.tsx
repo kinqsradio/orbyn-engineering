@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { ApiFailure, request } from "../../api/client";
+import { ApiFailure, api, request } from "../../api/client";
 import type { QuestionRequest, Thread } from "../../api/types";
 import { useWorkspace } from "../../state/workspace";
 import { QuestionPanel } from "./QuestionPanel";
@@ -9,7 +9,7 @@ import { QuestionPanel } from "./QuestionPanel";
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 const prose = "### Approach\n\nUse **small** steps and `checks`.\n\n- First\n- Next\n\n```ts\nconst safe = true;\n```\n\n<script>unsafe()</script>";
 const baseAsk: QuestionRequest = { id: "request/1", thread_id: "t", run_id: "r", state: "pending", answers: null,
-  decided_by: null, decided_at: null, created_at: "", questions: [
+  attachments: null, decided_by: null, decided_at: null, created_at: "", questions: [
     { id: "choice", header: "Choice", question: prose, options: [{ label: "A", description: "First" }, { label: "B", description: "Second" }],
       multi_select: false, allow_other: false, secret: false },
     { id: "followup", header: "", question: "Choose **follow-up**.", options: [], multi_select: false, allow_other: true, secret: false },
@@ -198,4 +198,25 @@ it("keeps multiple offered choices but switches exclusively between them and cus
   expect(mock).toHaveBeenCalledWith("POST", "/api/questions/request%2F1/answer", {
     answers: { choice: ["A", "B"], followup: ["Keep this"] },
   });
+});
+
+it("uploads a file for a custom answer and keeps it with that question", async () => {
+  const upload = vi.spyOn(api, "uploadAttachment").mockResolvedValue({
+    id: "attachment/1", thread_id: "t", name: "trace.txt", mime: "text/plain", size: BigInt(5), created_at: "",
+  });
+  const user = userEvent.setup();
+  render(<QuestionPanel threadId="t" waiting />);
+  const choice = await screen.findByRole("group", { name: "Choice" });
+  await user.click(within(choice).getByRole("button", { name: /A\s*First/ }));
+  const followup = screen.getByRole("group", { name: "Choose **follow-up**." });
+  await user.type(within(followup).getByRole("textbox"), "See the trace");
+  const file = new File(["trace"], "trace.txt", { type: "text/plain" });
+  await user.upload(screen.getByLabelText("Attach a file to Choose **follow-up**."), file);
+  expect(await screen.findByText("trace.txt")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Submit answers" }));
+  expect(mock).toHaveBeenCalledWith("POST", "/api/questions/request%2F1/answer", {
+    answers: { choice: ["A"], followup: ["See the trace"] },
+    attachments: { followup: ["attachment/1"] },
+  });
+  expect(upload).toHaveBeenCalledWith("t", file);
 });

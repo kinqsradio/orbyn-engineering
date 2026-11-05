@@ -1022,3 +1022,52 @@ async fn a_custom_model_or_a_fallback_the_engine_lacks_changes_nothing() {
         "gone"
     );
 }
+
+async fn upload_answer_file(service: &Service, thread: &str, name: &str) -> Value {
+    let response = service
+        .client
+        .post(format!("{}/api/threads/{thread}/attachments", service.url))
+        .query(&[("name", name)])
+        .bearer_auth(&service.token)
+        .header("Content-Type", "text/plain")
+        .body(b"trace".to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 201);
+    response.json().await.unwrap()
+}
+
+#[tokio::test]
+async fn a_custom_answer_keeps_the_files_it_carried_and_refuses_another_threads_file() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(true, &dir.path().join("l")), "claude").await;
+    service.admit(&thread, "[question]").await;
+    let question = open_question(&service, &thread).await;
+    let id = question["id"].as_str().unwrap();
+    let file = upload_answer_file(&service, &thread, "trace.txt").await;
+    let file_id = file["id"].as_str().unwrap();
+    let (code, body) = service
+        .send(
+            &format!("/api/questions/{id}/answer"),
+            json!({
+                "answers": { "Which color?": ["Red", "Blue"] },
+                "attachments": { "Which color?": ["missing"] },
+            }),
+        )
+        .await;
+    assert_eq!(code, 400, "{body}");
+    let (code, body) = service
+        .send(
+            &format!("/api/questions/{id}/answer"),
+            json!({
+                "answers": { "Which color?": ["Red", "Blue"] },
+                "attachments": { "Which color?": [file_id] },
+            }),
+        )
+        .await;
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body["attachments"]["Which color?"][0], file_id);
+    service.finished(&thread).await;
+    service.stop().await;
+}

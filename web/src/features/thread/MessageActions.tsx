@@ -1,4 +1,4 @@
-import { Check, Copy, GitBranch, Pencil, Undo2 } from "lucide-react";
+import { Check, Copy, GitBranch, Pencil, Quote, Undo2 } from "lucide-react";
 import { createContext, useContext, useState } from "react";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
@@ -6,7 +6,9 @@ import { navigate, parseRoute } from "../../state/route";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
+import { useComposerChips } from "../../state/composerChips";
 import { IconButton } from "../../ui/controls";
+import { chipId } from "./composerContext";
 import { ConfirmDialog } from "../../ui/Dialog";
 
 /** The thread these messages belong to, when it isn't the one the page is on. */
@@ -34,6 +36,15 @@ export function MessageActions({ text, runId, role }: { text: string; runId: str
       setTimeout(() => setCopied(false), 1500);
     });
   };
+  /** A selection in this reply wins; otherwise the whole reply is cited. */
+  const cite = () => {
+    if (!threadId) return;
+    const selected = window.getSelection()?.toString().trim() ?? "";
+    const excerpt = (selected || text).trim().slice(0, 4000);
+    if (!excerpt) return;
+    useComposerChips.getState().add(threadId, { id: chipId(), kind: "citation", threadId, text: excerpt });
+    pushToast("Cited in your message");
+  };
   const fork = async () => {
     if (!threadId || !runId) return;
     try {
@@ -55,6 +66,11 @@ export function MessageActions({ text, runId, role }: { text: string; runId: str
       <IconButton label="Copy message" onClick={copy}>
         {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
       </IconButton>
+      {role === "assistant" && threadId ? (
+        <IconButton label="Cite in your message" onClick={cite}>
+          <Quote size={14} aria-hidden />
+        </IconButton>
+      ) : null}
       {role === "assistant" && runId ? (
         <IconButton label="Fork from this response" onClick={() => void fork()}>
           <GitBranch size={14} aria-hidden />

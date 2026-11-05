@@ -2649,6 +2649,9 @@ pub struct QuestionRequest {
     pub state: QuestionState,
     /// Keyed by question id. Secret answers read `[hidden]`.
     pub answers: Option<std::collections::BTreeMap<String, Vec<String>>>,
+    /// Files a custom answer carried, keyed by question id. They stay with the
+    /// question record; an engine's answer schema has no attachment field.
+    pub attachments: Option<std::collections::BTreeMap<String, Vec<String>>>,
     pub decided_by: Option<String>,
     pub decided_at: Option<String>,
     pub created_at: String,
@@ -2658,6 +2661,8 @@ pub struct QuestionRequest {
 wire! {
 pub struct AnswerQuestion {
     pub answers: std::collections::BTreeMap<String, Vec<String>>,
+    /// Files already uploaded to this thread, keyed by question id.
+    pub attachments: Option<std::collections::BTreeMap<String, Vec<String>>>,
 }
 }
 

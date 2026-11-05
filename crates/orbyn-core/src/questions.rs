@@ -48,16 +48,27 @@ impl QuestionDesk {
             Ok(Ok(answers)) => answers,
             _ => {
                 self.lock().remove(&id);
-                let _ =
-                    self.store
-                        .settle_question(&id, QuestionState::Expired, None, "system:timeout");
+                let _ = self.store.settle_question(
+                    &id,
+                    QuestionState::Expired,
+                    None,
+                    None,
+                    "system:timeout",
+                );
                 None
             }
         }
     }
 
-    pub fn answer(&self, id: &str, answers: Answers, actor: &str) -> Result<QuestionRequest> {
+    pub fn answer(
+        &self,
+        id: &str,
+        answers: Answers,
+        attachments: BTreeMap<String, Vec<String>>,
+        actor: &str,
+    ) -> Result<QuestionRequest> {
         let request = self.store.question(id)?;
+        let held = self.store.list_attachments(&request.thread_id)?;
         for (key, values) in &answers {
             let question = request
                 .questions
@@ -77,17 +88,35 @@ impl QuestionDesk {
         {
             return Err(CoreError::Invalid("Answer every question.".into()));
         }
-        let settled =
-            self.store
-                .settle_question(id, QuestionState::Answered, Some(&answers), actor)?;
+        for (key, files) in &attachments {
+            if !request.questions.iter().any(|question| question.id == *key) {
+                return Err(CoreError::Invalid(
+                    "That question is not part of this request.".into(),
+                ));
+            }
+            for file in files {
+                if !held.iter().any(|(attachment, _)| attachment.id == *file) {
+                    return Err(CoreError::Invalid(
+                        "That file is not part of this thread.".into(),
+                    ));
+                }
+            }
+        }
+        let settled = self.store.settle_question(
+            id,
+            QuestionState::Answered,
+            Some(&answers),
+            Some(&attachments),
+            actor,
+        )?;
         self.wake(id, Some(answers));
         Ok(settled)
     }
 
     pub fn dismiss(&self, id: &str, actor: &str) -> Result<QuestionRequest> {
-        let settled = self
-            .store
-            .settle_question(id, QuestionState::Dismissed, None, actor)?;
+        let settled =
+            self.store
+                .settle_question(id, QuestionState::Dismissed, None, None, actor)?;
         self.wake(id, None);
         Ok(settled)
     }
@@ -100,7 +129,7 @@ impl QuestionDesk {
         for request in open.into_iter().filter(|request| request.run_id == run_id) {
             match self
                 .store
-                .settle_question(&request.id, QuestionState::Expired, None, actor)
+                .settle_question(&request.id, QuestionState::Expired, None, None, actor)
             {
                 Ok(_) | Err(CoreError::QuestionClosed(_)) => self.wake(&request.id, None),
                 Err(error) => return Err(error),
