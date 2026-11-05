@@ -238,6 +238,73 @@ async fn every_missing_field_is_validated_before_a_combined_actions_first_effect
 }
 
 #[tokio::test]
+async fn project_style_overrides_global_and_reset_restores_inheritance() {
+    let (dir, service, thread, record) = fixture("claude").await;
+    let cwd = dir.path().join("project");
+    let project = service.json(&format!("/api/threads/{thread}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let put = |path: String, body: Value| {
+        service
+            .client
+            .put(format!("{}{path}", service.url))
+            .bearer_auth(&service.token)
+            .json(&body)
+            .send()
+    };
+    assert!(put("/api/preferences".into(), json!({"values":{"source_control_writing_style":{"mode":"custom","custom_instructions":"Global sentence"},"text_generation_model":"explicit-writer"}})).await.unwrap().status().is_success());
+    let path = format!("/api/projects/{project}/preferences");
+    assert!(put(path.clone(), json!({"values":{"source_control_writing_style":{"mode":"custom","custom_instructions":"Project sentence"}}})).await.unwrap().status().is_success());
+    std::fs::write(cwd.join("tracked.txt"), "[bad-scm-text]\n").unwrap();
+    let action = format!("/api/threads/{thread}/git/action");
+    assert_eq!(
+        service.send(&action, json!({"commit_message":""})).await.0,
+        400
+    );
+    let prompt = std::fs::read_to_string(&record).unwrap();
+    assert!(prompt.contains("Project sentence"));
+    assert!(!prompt.contains("Global sentence"));
+    assert!(
+        std::fs::read_to_string(record.with_extension("args"))
+            .unwrap()
+            .contains("explicit-writer")
+    );
+    assert!(
+        put(
+            path.clone(),
+            json!({"values":{"source_control_writing_style":null}})
+        )
+        .await
+        .unwrap()
+        .status()
+        .is_success()
+    );
+    assert_eq!(
+        service.send(&action, json!({"commit_message":""})).await.0,
+        400
+    );
+    assert!(
+        std::fs::read_to_string(&record)
+            .unwrap()
+            .contains("Global sentence")
+    );
+    assert_eq!(
+        put(
+            path,
+            json!({"values":{"source_control_writing_style":{"mode":"unknown"}}})
+        )
+        .await
+        .unwrap()
+        .status()
+        .as_u16(),
+        400
+    );
+    assert!(git(&cwd, &["diff", "--cached", "--name-only"]).is_empty());
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn disabling_the_engine_between_generations_prevents_the_second_call_and_all_effects() {
     let (dir, service, thread, _) = fixture("claude").await;
     let cwd = dir.path().join("project");

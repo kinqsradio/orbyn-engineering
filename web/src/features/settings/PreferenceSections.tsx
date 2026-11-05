@@ -16,6 +16,7 @@ import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
 import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
 import { WorktreeCleanup } from "./WorktreeCleanup";
+import { SourceControlWriting } from "./SourceControlWriting";
 
 const heading = (title: string) => (
   <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -395,6 +396,7 @@ export function SourceControlSection() {
   return (
     <>
       {heading("Source control")}
+      <SourceControlWriting />
       <PreferenceGroups groups={[{ title: "Repositories", rows: [{
         key: "auto_pull", title: settingsLabel("source-control-automatic-pull"),
         description: "Keeps the default branch current when the checkout has no local changes or commits.",

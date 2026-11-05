@@ -18,6 +18,12 @@ use crate::error::{CoreError, Result};
 use crate::process::ManagedChild;
 use crate::store::AuditRecord;
 
+mod style;
+
+pub(crate) fn validate_style(value: &serde_json::Value) -> Result<()> {
+    style::parse(value).map(|_| ())
+}
+
 const CONTEXT_BYTES: usize = 96 * 1024;
 const FILE_BYTES: u64 = 2 * 1024 * 1024;
 const REPLY_BYTES: usize = 32 * 1024;
@@ -523,6 +529,10 @@ impl Core {
         let cwd = Path::new(&thread.cwd);
         let root = utf8(read_git(cwd, &["rev-parse", "--show-toplevel"]).await?)?;
         let cwd = Path::new(root.trim_end_matches(['\r', '\n']));
+        let style = style::parse(
+            &self.preference("source_control_writing_style", Some(&thread.project_id))?,
+        )?;
+        let instructions = style.instructions(cwd).await?;
         let head = if pull {
             Some(utf8(
                 read_git(cwd, &["rev-parse", "--verify", "HEAD"]).await?,
@@ -537,6 +547,7 @@ impl Core {
         };
         let mut base_identity = None;
         let mut pull_context = String::new();
+        let mut template = String::new();
         if pull {
             let draft = action
                 .pull_request
@@ -573,6 +584,7 @@ impl Core {
                 .await?,
             )?;
             let merge = utf8(read_git(cwd, &["merge-base", "HEAD", oid.trim()]).await?)?;
+            template = style.template(cwd, oid.trim()).await?;
             let range = format!("{}..HEAD", merge.trim());
             pull_context.push_str(&utf8(
                 read_git(cwd, &["log", "--format=%s", "-40", &range, "--"]).await?,
@@ -621,12 +633,21 @@ impl Core {
                 )
             } else {
                 (
-                    "Return only JSON with string fields title (at most 72 characters) and body (Markdown with Summary and Testing sections).",
+                    "Return only JSON with string fields title (at most 72 characters) and body (Markdown).",
                     &pull_context,
                 )
             };
             let prompt = format!(
-                "{policy}\n{shape}\nChange data (JSON string):\n{}",
+                "{policy}\n{shape}\n{instructions}\n{}\nChange data (JSON string):\n{}",
+                if purpose == "pull_request" {
+                    if template.is_empty() {
+                        "Use Summary and Testing sections; use Not run for checks not established by the diff."
+                    } else {
+                        &template
+                    }
+                } else {
+                    ""
+                },
                 json!(context)
             );
             let fresh = self.scm_idle(&thread.id)?;

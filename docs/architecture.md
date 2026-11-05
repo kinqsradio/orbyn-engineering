@@ -408,6 +408,15 @@ Codex path; this change does not qualify that path as tool-free. No credential
 configuration or MCP server list is read to implement writing. Prompts and patches
 are not saved by the generation audit, which records purpose, engine and model.
 
+The inherited `source_control_writing_style` preference selects repository
+conventions, Conventional Commits or custom instructions, and whether to follow
+change-request templates. The empty legacy object keeps repository conventions and
+templates enabled. Repository mode reads bounded recent subjects and checkout-root
+AGENTS.md; custom mode uses only the person's writing instructions. Templates come
+from a regular file in the selected base tree, never a remote fetch or a symlink.
+Oversized context, unsafe references and malformed settings fail with a manual
+path rather than silently omitting required writing context.
+
 Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
 `glab`, `az` and `tea`. Orbyn holds no forge credential and reads none, so an unknown
 host is treated as GitHub Enterprise through `gh`, and a missing CLI is
