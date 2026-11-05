@@ -154,7 +154,8 @@ refused with `Failed to authenticate: OAuth session expired and could not be
 refreshed`, so the live frames remain unobserved. The driver tests use recorded
 result shapes from the documented protocol, not a captured session. C10 stays
 partial on that live observation; the projection itself is covered by tests.
-
+This follow-up did not log in, set a flag or fabricate frames, so the refusal
+stands and was not retried.
 The follow-up regression sends an explicit failed `TaskUpdate` result with no
 content. It could complete or delete the task despite the failure. The
 driver now consumes the matching pending call without changing the plan when
