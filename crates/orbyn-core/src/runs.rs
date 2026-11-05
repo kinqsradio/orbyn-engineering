@@ -864,18 +864,27 @@ impl RunManager {
         stops: Stops,
     ) {
         let lifecycle = thread.lifecycle.clone();
+        let driver = self.engines.driver(&thread.engine).ok();
+        let saved = lifecycle
+            .as_ref()
+            .map_or(PermissionMode::Supervised, |l| l.permission_mode);
         let scope = RunScope {
             run_id: run_id.clone(),
             thread_id: thread.id.clone(),
             engine: thread.engine.clone(),
-            family: self
-                .engines
-                .driver(&thread.engine)
-                .map_or_else(|_| thread.engine.clone(), |driver| driver.family()),
-            write_scope: Some(write_scope),
-            mode: lifecycle
+            family: driver
                 .as_ref()
-                .map_or(PermissionMode::Supervised, |l| l.permission_mode),
+                .map_or_else(|| thread.engine.clone(), |driver| driver.family()),
+            write_scope: Some(write_scope),
+            // A mode this engine does not offer runs Supervised, never looser.
+            mode: driver
+                .as_ref()
+                .map_or(PermissionMode::Supervised, |driver| {
+                    crate::permission_modes::effective(
+                        &driver.descriptor().capabilities.permission_modes,
+                        saved,
+                    )
+                }),
             plan: lifecycle.is_some_and(|l| l.plan_mode),
         };
         let run_dir = self.runs_dir.join(&run_id);

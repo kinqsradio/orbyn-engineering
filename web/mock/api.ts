@@ -725,6 +725,7 @@ export function createMockApi(options: MockOptions = {}) {
             streaming: tier !== "terminal",
             goal_control: false,
             decline_feedback: false,
+            permission_modes: ["supervised", "auto_edits", "auto", "full_access"],
             approvals: tier !== "terminal",
             resume: false,
             mcp: false,

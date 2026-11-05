@@ -35,7 +35,7 @@ import {
   recallStep,
   type RecallPosition,
 } from "./composerInput";
-import { ACCESS, EffortTrigger, useTraitsMenu } from "./ComposerTraits";
+import { ACCESS, EffortTrigger, offeredModes, shownAccess, useTraitsMenu } from "./ComposerTraits";
 import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
 import { effortOption, effortValue, resolveModel, useEngineModels } from "./modelStore";
@@ -602,7 +602,8 @@ export function Composer({
 
   const unmanaged = engine !== null && !engine.capabilities.managed;
   const planMode = thread.lifecycle?.plan_mode ?? false;
-  const access = thread.lifecycle?.permission_mode ?? "supervised";
+  // A saved mode this engine does not offer runs Supervised, so it shows that way.
+  const access = shownAccess(engine, thread.lifecycle?.permission_mode ?? "supervised");
   const AccessIcon = ACCESS[access].icon;
   const engineName = engine?.name ?? thread.engine;
   const allEngines = useWorkspace((state) => state.engines.data);
@@ -667,6 +668,7 @@ export function Composer({
     effort: thread.effort ?? null,
     extras: thread.options ?? {},
     access: unmanaged ? null : access,
+    modes: offeredModes(engine),
     onEffort: (value) => void setEffort(value),
     onOption: (option, value) => {
       setError(null);

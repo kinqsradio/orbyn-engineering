@@ -40,6 +40,7 @@ fn capabilities() -> EngineCapabilities {
         skill_delivery: vec![SkillDelivery::McpSkillServer],
         goal_control: false,
         decline_feedback: false,
+        permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
     }
 }
 
@@ -121,6 +122,23 @@ async fn fixture_with_start_failure(
     update_timeout: Duration,
     start_failure: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
 ) -> Fixture {
+    fixture_full(
+        script,
+        update,
+        update_timeout,
+        start_failure,
+        capabilities(),
+    )
+    .await
+}
+
+async fn fixture_full(
+    script: Script,
+    update: &str,
+    update_timeout: Duration,
+    start_failure: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
+    capabilities: EngineCapabilities,
+) -> Fixture {
     let dir = TempDir::new();
     let root = crate::testing::library(&dir.path().join("library"));
     let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
@@ -129,7 +147,7 @@ async fn fixture_with_start_failure(
     let core = Core::open(config).unwrap();
     core.engines.register(Arc::new(ScriptDriver {
         script,
-        capabilities: capabilities(),
+        capabilities,
         update_script: update.to_owned(),
         probes: Default::default(),
         start_failure,
@@ -226,6 +244,37 @@ fn finished() -> Script {
                 .await;
         })
     })
+}
+
+#[tokio::test]
+async fn a_saved_mode_the_engine_lacks_runs_supervised() {
+    use orbyn_contracts::PermissionMode::{Auto, FullAccess, Supervised};
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let record = seen.clone();
+    let script: Script = Arc::new(move |spec: RunSpec, events, _| {
+        record.lock().unwrap().push(spec.mode);
+        tokio::spawn(async move {
+            let _ = events
+                .send(EngineEvent::Finished(EngineOutcome::Completed))
+                .await;
+        })
+    });
+    let mut caps = capabilities();
+    caps.permission_modes = crate::permission_modes::offered("pi");
+    let f = fixture_full(script, "echo updated", Duration::from_secs(30), None, caps).await;
+    for (saved, ran) in [(Auto, Supervised), (FullAccess, FullAccess)] {
+        let patch = orbyn_contracts::UpdateThread {
+            permission_mode: Some(saved),
+            ..Default::default()
+        };
+        f.core.store.update_thread(&f.thread, &patch, "t").unwrap();
+        let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+        assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+        assert_eq!(seen.lock().unwrap().last(), Some(&ran));
+        // The thread keeps what was chosen; only the run is narrowed.
+        let thread = f.core.store.thread(&f.thread).unwrap();
+        assert_eq!(thread.lifecycle.unwrap().permission_mode, saved);
+    }
 }
 
 #[tokio::test]

@@ -188,6 +188,7 @@ impl EngineDriver for ClaudeDriver {
                 ],
                 goal_control: false,
                 decline_feedback: true,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }

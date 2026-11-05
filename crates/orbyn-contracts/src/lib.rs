@@ -423,6 +423,20 @@ pub enum PermissionMode {
 }
 }
 
+impl PermissionMode {
+    /// Every mode, loosest last.
+    pub const ALL: [PermissionMode; 4] = [
+        PermissionMode::Supervised,
+        PermissionMode::AutoEdits,
+        PermissionMode::Auto,
+        PermissionMode::FullAccess,
+    ];
+}
+
+fn every_permission_mode() -> Vec<PermissionMode> {
+    PermissionMode::ALL.to_vec()
+}
+
 wire! {
 pub struct QueuedMessage {
     pub id: String,
@@ -2747,6 +2761,10 @@ pub struct EngineCapabilities {
     /// A denied action can carry your words back to the engine.
     #[serde(default)]
     pub decline_feedback: bool,
+    /// The modes this engine offers. A thread's saved mode outside them runs
+    /// Supervised and is shown that way.
+    #[serde(default = "every_permission_mode")]
+    pub permission_modes: Vec<PermissionMode>,
 }
 }
 

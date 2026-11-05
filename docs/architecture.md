@@ -326,6 +326,15 @@ Mode is stated on every launch: Claude's `--permission-mode`, and Codex's approv
 and sandbox on `thread/start`, `thread/resume` and `turn/start`, because a saved session
 otherwise keeps the policy it last had.
 
+Each engine lists the modes it offers in `capabilities.permission_modes`, from
+`permission_modes::offered`: OpenCode offers Supervised, Auto-accept edits and Full access,
+since it has no classifier and its Auto would equal Supervised; fx would offer Supervised
+and Auto, Muse Supervised and Full access, and Pi Supervised, Auto-accept edits and Full
+access; every other engine offers all four. A thread keeps the mode it was given, but a
+run on an engine that does not offer it runs Supervised, never the nearest looser mode,
+and the composer shows and offers the same. Every run launches its own engine process
+with the mode stated, so a mode change takes effect from the next turn's process.
+
 Parsers are tested against recorded real frames in `driver/fixtures`, named by version.
 `cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
 with no prompt.

@@ -7,6 +7,7 @@ const healthy: EngineStatus = {
   id: "codex", name: "Codex", tier: "native", capabilities: {
     managed: true, streaming: true, approvals: true, resume: true,
     mcp: true, sandbox: true, skill_delivery: [], goal_control: true, decline_feedback: false,
+    permission_modes: ["supervised", "auto_edits", "auto", "full_access"],
   },
   installed: true, path: "/engine", version: "0.160.0", auth: "logged_in",
   installer: "unknown", latest: null, support: "unknown", update_command: null,
