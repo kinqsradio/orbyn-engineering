@@ -808,11 +808,26 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 
 ## R. RPC surface, grouped (`packages/contracts/src/rpc.ts`, plus `orchestrationV2.ts`)
 
-Orbyn has HTTP routes where T3 has RPC methods. A group is ticked only when every method
-it names has an equivalent route, and each open group says what it lacks. Reconciled
-against `docs/architecture.md`'s route table on 1 November 2026.
+Orbyn uses HTTP routes, SSE and WebSockets where T3 uses RPC methods. The lists below
+retain the reference operations; counts describe those names, not implemented routes.
+Audited against source at `d81489d` on 5 November 2026. Route registration is in
+`crates/orbynd/src/main.rs`; handlers forward authority to `crates/orbyn-core`.
+An equivalent transport can combine methods, but a nearby route alone does not prove
+all of a method's behavior. Each group names its owning feature rows, maintained
+coverage and remaining gaps; [#185](https://github.com/kinqsradio/orbyn-engineering/issues/185)
+tracks unresolved method mappings and evidence. Existing feature-row exclusions apply
+only to their named subsets, including mobile clients and hosted/remote services.
+Local pull requests and desktop emulator controls remain included. Secret requests
+remain excluded by the owner's decision recorded in N21 and #127, regardless of
+newer issue checklists.
 
-- [ ] R1 Projects (10): listEntries, listIgnoredFiles, readFile, searchContents, searchEntries, writeFile, mutate, ensureScratch, createNew, createFromThread | w d m s | L | server: all but `mutate`, which has no route: `files/content` only reads and saves
+This is a source audit, not a new real-service, browser, packaged-app, macOS or
+Windows run. Test paths identify maintained coverage inspected here, not tests run
+for this audit. No new group is checked. A group stays open while an included
+method or its evidence is incomplete; missing work is not a refusal. Existing
+platform and live-provider limits in the owning rows remain in force.
+
+- [ ] R1 Projects (10): listEntries, listIgnoredFiles, readFile, searchContents, searchEntries, writeFile, mutate, ensureScratch, createNew, createFromThread | w d m s | L | owners: project/scratch creation in A and B, file operations D1–D5 | source: `api.rs` file handlers delegate to Core `files.rs`; `/files`, `/files/ignored`, `/files/content` GET/PUT and `/files/search?content=` cover listing, ignored files, read/write and both search modes. `/api/threads` creates scratch-backed threads through Core `scratch.rs`; `/api/projects/create` and `/api/threads/{id}/adopt` cover new projects and scratch promotion | coverage: `crates/orbynd/tests/files.rs`, `web/e2e/real/drafts.spec.ts` | remaining: no general file `mutate` handler in the registered routes; save is not create/rename/delete parity. Exact `createFromThread` behavior beyond scratch promotion remains unqualified under [#185](https://github.com/kinqsradio/orbyn-engineering/issues/185); D19/D21/D26/D30 follow-ups belong to [#164](https://github.com/kinqsradio/orbyn-engineering/issues/164) | status: partial
 - [ ] R2 Shell, filesystem, sessions, assets (9): shell.openInEditor; filesystem.browse, getMetadata; agentSessions.scan, import; assets.createUrl, persistChatAttachments; attachments.createUploadUrl, delete | M | server: open in editor, `fs/browse` and attachments; no `getMetadata`, session scan or import (I33), or asset URLs, since `files/raw` serves bytes
 - [ ] R3 MCP Apps (4): callTool, toolInfo, readResource, updateModelContext | M | not built: C24 to C26
 - [ ] R4 Provider (15): uploadFeedback; auth start, complete, respond, cancel, logout, subscribe; consumeResetCredit; chatgpt reconnect-profile, import-profile, handoff.subscribe; install start, cancel, subscribe, remove | L | [auth-risk] | server: `/api/acp/registry` covers install and remove; feedback (I9) has its own route and the rest stays out under rule 1 | scope: mixed | local: provider feedback and local installation, progress and removal | excludes: authentication, accounts and credit redemption
