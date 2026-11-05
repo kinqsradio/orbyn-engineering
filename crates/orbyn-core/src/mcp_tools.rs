@@ -34,6 +34,17 @@ const DEFAULT_RENDER_HEIGHT: u64 = 480;
 const MIN_RENDER_HEIGHT: u64 = 120;
 const MAX_RENDER_HEIGHT: u64 = 2000;
 const MAX_RENDER_TITLE_CHARS: usize = 200;
+/// A review guide's bounds. The stored stops stay well under the 256 KiB reply cap,
+/// so reading a guide back always fits.
+const MAX_GUIDE_STOPS: usize = 30;
+const MAX_STOP_TITLE_CHARS: usize = 200;
+const MAX_STOP_SUMMARY_CHARS: usize = 4000;
+const MAX_STOP_FILES: usize = 50;
+const MAX_GUIDE_PATH_BYTES: usize = 1024;
+const MAX_FILE_NOTE_CHARS: usize = 1000;
+const MAX_STOP_QUESTIONS: usize = 10;
+const MAX_QUESTION_CHARS: usize = 500;
+const MAX_GUIDE_BYTES: usize = 128 * 1024;
 
 struct Tool {
     name: &'static str,
@@ -148,6 +159,12 @@ const TOOLS: &[Tool] = &[
         "Pull requests linked to this thread, and those it watches.",
         &[],
         &[],
+    ),
+    read(
+        "orbyn_pull_guide_read",
+        "This project's review guide for a pull request; guide is null when none was written.",
+        &[("number", "number")],
+        &["number"],
     ),
     read(
         "orbyn_schedule_list",
@@ -427,6 +444,19 @@ const TOOLS: &[Tool] = &[
         &["number"],
     ),
     act(
+        "orbyn_pull_guide_write",
+        "Write this project's review guide for a pull request, replacing any earlier one: \
+         up to 30 stops in reading order, each {title, summary, files: [{path, note}], \
+         questions: [text]}. head_sha names the commit it describes. Fails while review \
+         guides are off for this project.",
+        &[
+            ("number", "number"),
+            ("head_sha", "string"),
+            ("stops", "array"),
+        ],
+        &["number", "stops"],
+    ),
+    act(
         "orbyn_delegate_task",
         "Hand work to a child thread, which reports back when it ends.",
         &[
@@ -531,6 +561,134 @@ fn bounded_project_text<'a>(args: &'a Value, key: &str, max_bytes: usize) -> Res
         )));
     }
     Ok(value)
+}
+
+/// A pull request number as stored: positive and small enough for SQLite.
+fn pull_number(args: &Value) -> Result<u64> {
+    let value = number(args, "number")?;
+    if value == 0 || value > u64::from(u32::MAX) {
+        return Err(CoreError::Invalid(
+            "number must be a pull request number.".into(),
+        ));
+    }
+    Ok(value)
+}
+
+/// An optional commit id: 7 to 64 hexadecimal characters, lowercased.
+fn guide_head(args: &Value) -> Result<Option<String>> {
+    match args.get("head_sha") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(sha))
+            if (7..=64).contains(&sha.trim().len())
+                && sha.trim().chars().all(|c| c.is_ascii_hexdigit()) =>
+        {
+            Ok(Some(sha.trim().to_ascii_lowercase()))
+        }
+        Some(_) => Err(CoreError::Invalid(
+            "head_sha is a commit id of 7 to 64 hexadecimal characters.".into(),
+        )),
+    }
+}
+
+fn guide_text(
+    value: Option<&Value>,
+    what: &str,
+    max_chars: usize,
+    required: bool,
+) -> Result<String> {
+    let text = match value {
+        None | Some(Value::Null) if !required => "",
+        Some(Value::String(text)) => text.trim(),
+        _ => return Err(CoreError::Invalid(format!("{what} must be text."))),
+    };
+    if required && text.is_empty() {
+        return Err(CoreError::Invalid(format!("{what} is required.")));
+    }
+    if text.chars().count() > max_chars || text.contains('\0') {
+        return Err(CoreError::Invalid(format!(
+            "{what} is at most {max_chars} characters and cannot contain NUL."
+        )));
+    }
+    Ok(text.to_owned())
+}
+
+fn guide_list<'a>(value: Option<&'a Value>, what: &str, max: usize) -> Result<&'a [Value]> {
+    match value {
+        None | Some(Value::Null) => Ok(&[]),
+        Some(Value::Array(items)) if items.len() <= max => Ok(items),
+        Some(Value::Array(_)) => Err(CoreError::Invalid(format!("{what} holds at most {max}."))),
+        Some(_) => Err(CoreError::Invalid(format!("{what} must be a list."))),
+    }
+}
+
+/// `orbyn_pull_guide_write`'s stops, checked and rebuilt with only the known
+/// fields, so what is stored is exactly what the guide shape allows. A file path
+/// is display text for the reader; nothing opens it.
+/// Answers the stored JSON and the number of stops.
+fn guide_stops(args: &Value) -> Result<(String, usize)> {
+    let stops = match args.get("stops") {
+        Some(Value::Array(stops)) if !stops.is_empty() => stops,
+        _ => {
+            return Err(CoreError::Invalid(
+                "stops must list at least one stop.".into(),
+            ));
+        }
+    };
+    if stops.len() > MAX_GUIDE_STOPS {
+        return Err(CoreError::Invalid(format!(
+            "A guide holds at most {MAX_GUIDE_STOPS} stops."
+        )));
+    }
+    let mut built = Vec::with_capacity(stops.len());
+    for stop in stops {
+        if !stop.is_object() {
+            return Err(CoreError::Invalid("Each stop must be an object.".into()));
+        }
+        let mut files = Vec::new();
+        for file in guide_list(stop.get("files"), "files", MAX_STOP_FILES)? {
+            let path = guide_text(
+                file.get("path"),
+                "A file's path",
+                MAX_GUIDE_PATH_BYTES,
+                true,
+            )?;
+            if path.len() > MAX_GUIDE_PATH_BYTES {
+                return Err(CoreError::Invalid(format!(
+                    "A file's path is at most {MAX_GUIDE_PATH_BYTES} bytes."
+                )));
+            }
+            let note = guide_text(
+                file.get("note"),
+                "A file's note",
+                MAX_FILE_NOTE_CHARS,
+                false,
+            )?;
+            files.push(json!({ "path": path, "note": note }));
+        }
+        let mut questions = Vec::new();
+        for question in guide_list(stop.get("questions"), "questions", MAX_STOP_QUESTIONS)? {
+            questions.push(guide_text(
+                Some(question),
+                "A question",
+                MAX_QUESTION_CHARS,
+                true,
+            )?);
+        }
+        built.push(json!({
+            "title": guide_text(stop.get("title"), "A stop's title", MAX_STOP_TITLE_CHARS, true)?,
+            "summary": guide_text(stop.get("summary"), "A stop's summary", MAX_STOP_SUMMARY_CHARS, false)?,
+            "files": files,
+            "questions": questions,
+        }));
+    }
+    let count = built.len();
+    let stored = Value::Array(built).to_string();
+    if stored.len() > MAX_GUIDE_BYTES {
+        return Err(CoreError::Invalid(format!(
+            "A guide is at most {MAX_GUIDE_BYTES} bytes."
+        )));
+    }
+    Ok((stored, count))
 }
 
 /// `orbyn_preview_act`'s arguments, checked before the page is touched: one known
@@ -1276,6 +1434,37 @@ impl Core {
                 self.store.unwatch_pull(&own.id, number(args, "number")?)?;
                 json!({ "unwatched": true })
             }
+            "orbyn_pull_guide_read" => {
+                let number = pull_number(args)?;
+                json!({
+                    "number": number,
+                    "guide": self.store.pull_guide(&own.project_id, number)?,
+                })
+            }
+            "orbyn_pull_guide_write" => {
+                let number = pull_number(args)?;
+                let head_sha = guide_head(args)?;
+                let (stops, count) = guide_stops(args)?;
+                if self.preference("review_guides_enabled", Some(&own.project_id))? != json!(true) {
+                    return Err(CoreError::Invalid(
+                        "Review guides are off for this project.".into(),
+                    ));
+                }
+                let guide = crate::store::PullGuideWrite {
+                    head_sha: head_sha.as_deref(),
+                    stops: &stops,
+                    thread_id: &own.id,
+                };
+                let written_at = self
+                    .store
+                    .write_pull_guide(&own.project_id, number, &guide)?;
+                json!({
+                    "number": number,
+                    "head_sha": head_sha,
+                    "stops": count,
+                    "written_at": written_at,
+                })
+            }
             "orbyn_delegate_task" => {
                 let nested =
                     own.lifecycle.as_ref().and_then(|l| l.relation.as_deref()) == Some("subagent");
@@ -1360,6 +1549,109 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_guide_is_written_through_the_gate_and_read_without_it() {
+        let find = |name: &str| TOOLS.iter().find(|tool| tool.name == name).unwrap();
+        let write = find("orbyn_pull_guide_write");
+        assert!(write.effect);
+        assert_eq!(write.required, ["number", "stops"]);
+        let read = find("orbyn_pull_guide_read");
+        assert!(!read.effect);
+        assert_eq!(read.required, ["number"]);
+        assert!(pull_number(&json!({ "number": 0 })).is_err());
+        assert!(pull_number(&json!({ "number": -3 })).is_err());
+        assert!(pull_number(&json!({ "number": 5_000_000_000u64 })).is_err());
+        assert_eq!(pull_number(&json!({ "number": 42 })).unwrap(), 42);
+    }
+
+    #[test]
+    fn a_guide_head_is_a_commit_id_or_absent() {
+        assert_eq!(guide_head(&json!({})).unwrap(), None);
+        assert_eq!(
+            guide_head(&json!({ "head_sha": " ABCDEF1 " }))
+                .unwrap()
+                .as_deref(),
+            Some("abcdef1")
+        );
+        for bad in [
+            json!("abc"),
+            json!("not-a-sha!"),
+            json!("a".repeat(65)),
+            json!(7),
+        ] {
+            assert!(guide_head(&json!({ "head_sha": bad })).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn guide_stops_keep_only_the_known_shape_within_bounds() {
+        let (stored, count) = guide_stops(&json!({ "stops": [{
+            "title": "  Entry point ",
+            "summary": "Start here.",
+            "files": [{ "path": "src/main.rs", "note": "wires it", "extra": 1 }],
+            "questions": ["Why now?"],
+            "secret": "dropped",
+        }, { "title": "Tests" }]}))
+        .unwrap();
+        assert_eq!(count, 2);
+        let stops: Value = serde_json::from_str(&stored).unwrap();
+        assert_eq!(stops[0]["title"], "Entry point");
+        assert_eq!(
+            stops[0]["files"][0],
+            json!({ "path": "src/main.rs", "note": "wires it" })
+        );
+        assert!(stops[0].get("secret").is_none());
+        assert_eq!(
+            stops[1],
+            json!({ "title": "Tests", "summary": "", "files": [], "questions": [] })
+        );
+
+        let stop = |extra: Value| {
+            let mut stop = json!({ "title": "t" });
+            stop.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            guide_stops(&json!({ "stops": [stop] }))
+        };
+        assert!(guide_stops(&json!({})).is_err(), "stops are required");
+        assert!(guide_stops(&json!({ "stops": [] })).is_err());
+        assert!(guide_stops(&json!({ "stops": ["text"] })).is_err());
+        assert!(guide_stops(&json!({ "stops": [{ "title": " " }] })).is_err());
+        let many: Vec<Value> = (0..=MAX_GUIDE_STOPS)
+            .map(|_| json!({ "title": "t" }))
+            .collect();
+        assert!(guide_stops(&json!({ "stops": many })).is_err());
+        assert!(stop(json!({ "title": "x".repeat(MAX_STOP_TITLE_CHARS + 1) })).is_err());
+        assert!(stop(json!({ "summary": "x".repeat(MAX_STOP_SUMMARY_CHARS + 1) })).is_err());
+        assert!(stop(json!({ "summary": "a\0b" })).is_err());
+        assert!(stop(json!({ "files": [{ "note": "no path" }] })).is_err());
+        assert!(
+            stop(json!({ "files": [{ "path": "p".repeat(MAX_GUIDE_PATH_BYTES + 1) }] })).is_err()
+        );
+        assert!(
+            stop(json!({ "files": [{ "path": "é".repeat(MAX_GUIDE_PATH_BYTES / 2 + 1) }] }))
+                .is_err()
+        );
+        let files: Vec<Value> = (0..=MAX_STOP_FILES)
+            .map(|_| json!({ "path": "p" }))
+            .collect();
+        assert!(stop(json!({ "files": files })).is_err());
+        let asks: Vec<Value> = (0..=MAX_STOP_QUESTIONS).map(|_| json!("q")).collect();
+        assert!(stop(json!({ "questions": asks })).is_err());
+        assert!(stop(json!({ "questions": [""] })).is_err());
+
+        let big: Vec<Value> = (0..MAX_GUIDE_STOPS)
+            .map(|_| {
+                json!({ "title": "t", "summary": "s".repeat(MAX_STOP_SUMMARY_CHARS),
+                "files": [{ "path": "p", "note": "n".repeat(MAX_FILE_NOTE_CHARS) }] })
+            })
+            .collect();
+        assert!(
+            guide_stops(&json!({ "stops": big })).is_err(),
+            "the whole guide is capped"
+        );
+    }
 
     #[test]
     fn project_list_is_a_read_with_no_cross_project_selector() {

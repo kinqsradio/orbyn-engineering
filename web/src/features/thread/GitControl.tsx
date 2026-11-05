@@ -58,7 +58,7 @@ function Phase({ phase }: { phase: GitPhase }) {
 
 function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan; onClose(): void }) {
   const [message, setMessage] = useState("");
-  const [title, setTitle] = useState(thread.title);
+  const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [base, setBase] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,7 +66,6 @@ function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan
   const [result, setResult] = useState<GitActionResult | null>(null);
   const branches = useAsync(`git-bases:${thread.id}`, (signal) => api.branches(thread.id, signal));
   const bases = (branches.data ?? []).filter((branch) => !branch.remote && !branch.current);
-  const ready = (!plan.commit || message.trim() !== "") && (!plan.pull || title.trim() !== "");
   const run = async () => {
     setBusy(true);
     setError(null);
@@ -106,24 +105,25 @@ function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button tone="primary" busy={busy} disabled={!ready} onClick={() => void run()}>
+          <Button tone="primary" busy={busy} onClick={() => void run()}>
             {plan.title}
           </Button>
         </>
       }
     >
+      {plan.commit || plan.pull ? <p>Review and confirm your changes. Leave text blank to auto-generate it when your engine supports writing; this uses engine usage. Otherwise a blank PR title uses the thread title.</p> : null}
       {plan.commit ? (
         <Field label="Commit message">
-          {(props) => <textarea {...props} rows={3} value={message} autoFocus onChange={(event) => setMessage(event.target.value)} />}
+          {(props) => <textarea {...props} rows={3} value={message} placeholder="Leave empty to auto-generate" autoFocus onChange={(event) => setMessage(event.target.value)} />}
         </Field>
       ) : null}
       {plan.pull ? (
         <>
           <Field label="Pull request title">
-            {(props) => <input {...props} value={title} onChange={(event) => setTitle(event.target.value)} />}
+            {(props) => <input {...props} value={title} placeholder="Leave empty to auto-generate" onChange={(event) => setTitle(event.target.value)} />}
           </Field>
           <Field label="Description">
-            {(props) => <textarea {...props} rows={4} value={body} onChange={(event) => setBody(event.target.value)} />}
+            {(props) => <textarea {...props} rows={4} value={body} placeholder="Leave empty to auto-generate" onChange={(event) => setBody(event.target.value)} />}
           </Field>
           <Field label="Base branch">
             {(props) => (

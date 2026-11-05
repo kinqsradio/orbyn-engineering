@@ -208,12 +208,12 @@ async fn schema23_metadata_reopens_and_an_available_schema20_writer_is_refused()
     service.stop().await;
     let database = dir.path().join("data/orbyn.sqlite3");
     let conn = rusqlite::Connection::open(&database).unwrap();
-    assert_eq!(
-        conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r
-            .get::<_, i64>(0))
-            .unwrap(),
-        23
-    );
+    let applied: i64 = conn
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert!(applied >= 23, "the icon schema is applied: {applied}");
     drop(conn);
     // The archived executable is a local qualification input, not a CI artifact.
     for (key, old_version) in [("ORBYN_SCHEMA20_BIN", "20"), ("ORBYN_SCHEMA21_BIN", "21")] {

@@ -55,6 +55,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "worktrees-naming", "title": "Naming", "section": "worktrees"},
   {"id": "worktrees-branch-prefix", "title": "Branch prefix", "section": "worktrees"},
   {"id": "source-control-automatic-pull", "title": "Automatically pull", "section": "source-control"},
+  {"id": "source-control-writing-style", "title": "Writing style", "section": "source-control"},
   {"id": "source-control-check-again", "title": "Check again", "section": "source-control"},
   {"id": "labs-project-folders", "title": "Project folders", "section": "labs"},
   {"id": "labs-multiline-rows", "title": "Multiline rows", "section": "labs"},

@@ -42,6 +42,7 @@ pub mod remote_images;
 pub mod renders;
 pub mod runs;
 pub mod scm;
+mod scm_writing;
 pub mod scratch;
 pub mod search;
 pub mod selection;
