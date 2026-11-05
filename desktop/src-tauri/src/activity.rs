@@ -7,18 +7,29 @@ use tauri::{AppHandle, Manager};
 
 pub const TRAY: &str = "main";
 
-/// Text for the tray's tooltip.
+/// Text for the tray's tooltip. Windows has no badge count, so unread threads show here.
 pub fn summary(activity: Activity) -> String {
-    match (activity.running, activity.waiting) {
-        (0, _) => "Orbyn Engineering".to_owned(),
-        (running, 0) => format!("Orbyn Engineering: {running} running"),
-        (running, waiting) => format!("Orbyn Engineering: {running} running, {waiting} need you"),
+    let mut parts = Vec::new();
+    if activity.running > 0 {
+        parts.push(format!("{} running", activity.running));
+    }
+    if activity.waiting > 0 {
+        parts.push(format!("{} need you", activity.waiting));
+    }
+    if activity.unread > 0 {
+        parts.push(format!("{} unread", activity.unread));
+    }
+    if parts.is_empty() {
+        "Orbyn Engineering".to_owned()
+    } else {
+        format!("Orbyn Engineering: {}", parts.join(", "))
     }
 }
 
-/// What the Dock badge counts: only what is waiting on a person.
+/// What the Dock badge counts: unread threads and runs waiting on a person.
 pub fn badge(activity: Activity) -> Option<i64> {
-    (activity.waiting > 0).then_some(i64::from(activity.waiting))
+    let count = i64::from(activity.waiting) + i64::from(activity.unread);
+    (count > 0).then_some(count)
 }
 
 pub fn apply(app: &AppHandle, activity: Activity) {
@@ -117,15 +128,25 @@ mod tests {
         Activity {
             running,
             waiting,
+            unread: 0,
             keep_awake: running > 0,
         }
     }
 
     #[test]
-    fn the_badge_counts_only_what_waits_on_a_person() {
+    fn the_badge_counts_unread_threads_and_what_waits_on_a_person() {
         assert_eq!(badge(activity(0, 0)), None);
         assert_eq!(badge(activity(3, 0)), None);
         assert_eq!(badge(activity(3, 2)), Some(2));
+        let unread = Activity {
+            unread: 4,
+            ..activity(0, 1)
+        };
+        assert_eq!(badge(unread), Some(5));
+        assert_eq!(
+            summary(unread),
+            "Orbyn Engineering: 1 need you, 4 unread"
+        );
     }
 
     #[test]

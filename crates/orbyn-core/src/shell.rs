@@ -182,6 +182,8 @@ impl ShellBridge {
 pub struct Activity {
     pub running: usize,
     pub waiting: usize,
+    /// Threads flagged unread and not archived.
+    pub unread: usize,
     pub keep_awake: bool,
 }
 
@@ -191,6 +193,7 @@ impl Activity {
             "type": "activity",
             "running": self.running,
             "waiting": self.waiting,
+            "unread": self.unread,
             "keep_awake": self.keep_awake,
         })
     }
@@ -207,6 +210,7 @@ impl Core {
         Ok(Activity {
             running: runs.len(),
             waiting,
+            unread: self.store.unread_threads()?,
             keep_awake: allowed && !runs.is_empty(),
         })
     }

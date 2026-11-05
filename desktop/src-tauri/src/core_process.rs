@@ -36,6 +36,9 @@ pub enum ServiceMessage {
 pub struct Activity {
     pub running: u32,
     pub waiting: u32,
+    /// Absent from an older service, which counted no unread threads.
+    #[serde(default)]
+    pub unread: u32,
     pub keep_awake: bool,
 }
 

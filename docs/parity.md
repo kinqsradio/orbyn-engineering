@@ -565,7 +565,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [x] K22 Environment identification: artwork, pill, none | packages/contracts/src/settings.ts | w d | S | scope: mixed | local: Dev and Nightly artwork or version pill for the local environment | excludes: remote environment identity | web done | `channel` in `/api/info`; the artwork is a channel tag beside the brand, not a separate app icon
 - [ ] K23 Material You: Android dynamic colors and layout | docs/user/appearance.md | m | M | scope: excluded | reason: mobile client only
 - [x] K24 Notifications: off, notifications, sound, both; in-app | apps/web/src/components/settings/NotificationSettings.tsx | w d m | M | web done
-- [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S
+- [ ] K25 Dock badge: unread count | apps/web/src/components/ThreadNotificationCoordinator.tsx | d | S | server done | status: partial | remaining: service `activity` counts unread threads and the shell badge adds them to waiting runs (unit and real-service tests); the badge on a packaged macOS app was not observed
 - [x] K26 Background activity profiles: fetch and health cadence, pause rules | apps/web/src/components/settings/BackgroundActivitySettings.tsx | w d s | M | status: partial | remaining: profiles and cadence values are stored without runtime consumers; lock, battery and low-power pause behavior is not implemented
 - [ ] K27 Quit confirmation: direct, hold, double-click | apps/web/src/components/QuitHoldOverlay.tsx | d | S
 - [x] K28 Labs: opt-in beta toggles | apps/web/src/components/settings/LabsSettingsPanel.tsx | w d m | S | web done

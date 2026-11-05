@@ -1534,8 +1534,9 @@ that viewer. App-wide commands such as Settings still reveal and target the main
 
 The service owns the rule for running work and sends `activity` when it changes: the
 counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
-The shell applies it. The Dock badge counts only runs waiting on a person, the tray shows
-the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
+The shell applies it. `activity` also counts threads flagged unread and not archived. The
+Dock badge counts those unread threads plus runs waiting on a person; Windows has no badge
+count, so its tray tooltip names both. The tray shows the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
 `SetThreadExecutionState` on Windows. The display can still sleep and a closed lid still
 sleeps.
 

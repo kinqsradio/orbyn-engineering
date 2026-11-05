@@ -423,6 +423,16 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// Threads flagged unread that are still in the list: not archived.
+    pub fn unread_threads(&self) -> Result<usize> {
+        let count: i64 = self.reader().query_row(
+            "SELECT COUNT(*) FROM threads WHERE unread = 1 AND archived_at IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(usize::try_from(count).unwrap_or(0))
+    }
+
     pub fn active_runs_for_engine(&self, engine: &str) -> Result<i64> {
         Ok(self.reader().query_row(
             &format!(
