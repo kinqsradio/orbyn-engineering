@@ -57,6 +57,7 @@ pub mod triage;
 pub mod updates;
 pub mod usage;
 pub mod util;
+pub mod workflow_scripts;
 pub mod workspace;
 
 #[cfg(test)]

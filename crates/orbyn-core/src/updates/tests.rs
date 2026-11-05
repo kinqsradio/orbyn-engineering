@@ -89,6 +89,7 @@ impl EngineDriver for Fake {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

@@ -116,6 +116,7 @@ impl EngineDriver for TerminalDriver {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

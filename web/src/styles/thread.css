@@ -574,6 +574,36 @@
   align-self: flex-start;
   font-size: var(--text-caption);
 }
+.workflow-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 6px 22px;
+  min-width: 0;
+  font-size: var(--text-small);
+}
+.workflow-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.workflow-state {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.workflow-state[data-state="failed"] {
+  color: var(--color-danger);
+}
+.workflow-path {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  overflow-wrap: anywhere;
+}
+.workflow-error {
+  flex-basis: 100%;
+  color: var(--color-danger);
+  font-size: var(--text-caption);
+}
 .trace-body {
   display: flex;
   flex-direction: column;

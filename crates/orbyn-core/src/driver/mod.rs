@@ -240,6 +240,21 @@ pub struct RunHandle {
     pub task: JoinHandle<()>,
     /// Takes steering text while the run works, for engines that accept it.
     pub input: Option<mpsc::UnboundedSender<String>>,
+    /// Takes run controls other than text, for engines that accept them.
+    pub control: Option<mpsc::UnboundedSender<RunControl>>,
+}
+
+/// The item that keeps an engine workflow's handles next to the tool call that
+/// launched it.
+pub fn workflow_item_id(tool_call_id: &str) -> String {
+    format!("{tool_call_id}:workflow")
+}
+
+/// A request to a running engine that is not a message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RunControl {
+    /// Stop the engine's own workflow task that this tool call launched.
+    StopWorkflow { tool_call_id: String },
 }
 
 /// What this run asks of the engine.

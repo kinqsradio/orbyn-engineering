@@ -196,6 +196,7 @@ impl EngineDriver for AcpDriver {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

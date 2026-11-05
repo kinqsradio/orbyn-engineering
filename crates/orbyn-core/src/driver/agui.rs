@@ -96,6 +96,7 @@ impl EngineDriver for AguiDriver {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

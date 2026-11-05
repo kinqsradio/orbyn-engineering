@@ -262,6 +262,7 @@ impl EngineDriver for CodexDriver {
             cancel,
             task,
             input: Some(input),
+            control: None,
         })
     }
 }
