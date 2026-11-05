@@ -3196,6 +3196,20 @@ pub struct ServerInfo {
     pub remote: bool,
     pub platform: String,
     pub environment_label: String,
+    /// The theme this environment publishes, applied once by each viewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_theme: Option<EnvironmentTheme>,
+}
+}
+
+wire! {
+/// `default_theme` and when it was last set, in Unix milliseconds. A viewer applies
+/// it when `set_at` is newer than the one it last applied, then keeps its own choice.
+pub struct EnvironmentTheme {
+    pub name: String,
+    #[ts(type = "number")]
+    pub set_at: i64,
 }
 }
 

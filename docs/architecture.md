@@ -1051,6 +1051,17 @@ keeps uncommitted work. Candidates observed as owned by another live thread are
 kept. `?dry_run=true` only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
 
+## Environment identity
+
+The local environment publishes a theme in `GET /api/info` as `environment_theme`:
+the `default_theme` preference and `default_theme_set_at`, the Unix milliseconds when
+it was last written. Every write of `default_theme`, from settings or `orbyn theme`,
+stamps that time, and clearing the theme clears it; a client cannot write the time.
+A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
+theme once, when its `set_at` is newer than the one it last applied, at startup and
+when the window takes focus; after that the viewer's own choice stays. An unknown id
+is recorded as applied and changes nothing. Remote environments publish nothing here.
+
 ## Message search
 
 A message is split over many events, so `thread_messages` keeps each one whole, written

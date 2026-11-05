@@ -109,6 +109,8 @@ interface Prefs {
   workingSection: boolean;
   /** Provider updates already dismissed, as `engine:version`. */
   dismissedProviderUpdates: string[];
+  /** The environment theme's `set_at` this viewer last applied; 0 is never. */
+  environmentThemeAppliedAt: number;
 }
 
 export interface Typography {
@@ -217,6 +219,7 @@ const defaults: Prefs = {
   detailsHidden: ["usage"],
   workingSection: true,
   dismissedProviderUpdates: [],
+  environmentThemeAppliedAt: 0,
 };
 
 interface UiState extends Prefs {
@@ -374,6 +377,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
   dismissedProviderUpdates: state.dismissedProviderUpdates,
+  environmentThemeAppliedAt: state.environmentThemeAppliedAt,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */

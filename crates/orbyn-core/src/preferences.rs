@@ -111,6 +111,7 @@ const DEFINITIONS: &[Definition] = defs![
     "automatic_git_fetch_minutes" Kind::Number, 5, false;
     "provider_health_refresh_minutes" Kind::Number, 5, false;
     "default_theme" Kind::Text, "", false;
+    "default_theme_set_at" Kind::Number, 0, false;
     "environment_icon" Kind::Text, "", false;
     "observability" Kind::Object, {}, false;
     "storage_cleanup" Kind::Object, {}, true;
@@ -122,6 +123,31 @@ const DEFINITIONS: &[Definition] = defs![
     "disabled_engines" Kind::List, [], true;
     "provider_instances" Kind::List, [], false;
 ];
+
+/// Keys the service writes itself; a client edit names them only through their owner.
+const SERVICE_OWNED: &[&str] = &["default_theme_set_at"];
+
+/// A catalog key a client may write.
+fn writable(key: &str) -> Result<&'static Definition> {
+    if SERVICE_OWNED.contains(&key) {
+        return Err(CoreError::Invalid(format!("{key} is set by the service.")));
+    }
+    definition(key)
+}
+
+/// A theme name is a scheme or a preset id: short lowercase words joined by hyphens.
+fn theme_name(value: &Value) -> bool {
+    value.as_str().is_some_and(|name| {
+        name.is_empty()
+            || (name.len() <= 64
+                && name.split('-').all(|part| {
+                    !part.is_empty()
+                        && part
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+                }))
+    })
+}
 
 fn definition(key: &str) -> Result<&'static Definition> {
     DEFINITIONS
@@ -144,6 +170,11 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
     };
     if fits && definition.key == "worktree_cleanup" {
         worktree_cleanup::validate(value)?;
+    }
+    if fits && definition.key == "default_theme" && !theme_name(value) {
+        return Err(CoreError::Invalid(
+            "A theme is system, light, dark or a theme id.".into(),
+        ));
     }
     if fits && definition.key == "default_project_scripts" {
         crate::project_file::validate_scripts(value)?;
@@ -259,7 +290,7 @@ impl Core {
         values: &BTreeMap<String, Value>,
     ) -> Result<()> {
         for (key, value) in values {
-            let definition = definition(key)?;
+            let definition = writable(key)?;
             if project_id.is_some() && !definition.project {
                 return Err(CoreError::Invalid(format!("{key} is not set per project.")));
             }
