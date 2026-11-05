@@ -52,11 +52,12 @@ The same spec re-ran on macOS on 5 November 2026 against the already-built
 `target/debug/orbynd` and passed in 18.9 seconds with the three decoded checkout
 images, the 404, the 400 and no remote media request.
 
-The pre-existing arbitrary HTML/SVG refusal is covered by `QuestionPanel.test.tsx`: a question
-containing `<script>` or `<svg onload>` keeps that text and mounts no script, SVG,
-image, video or iframe element. The live-provider question was attempted once and
-refused, recorded below, and was not retried. The native desktop shell was not run
-because no local desktop build exists.
+The pre-existing arbitrary HTML/SVG refusal is covered by
+`QuestionPanel.test.tsx`: a question containing `<script>` or `<svg onload>` keeps
+that text and mounts no script, SVG, image, video or iframe element. The
+live-provider question was attempted once and refused, recorded below, and was
+not retried. The native desktop shell was not run because no local desktop build
+exists.
 
 ## C40 live-provider question attempt
 
@@ -80,10 +81,9 @@ The add-tab menu's Device entry is disabled, and no Device surface exists: the
 only other Device control is the browser's viewport toolbar, and H20 (the device
 panel) is still open. The disabled entry is therefore correct and was not built
 here. The pre-existing `SurfacePane.menu.test.tsx` regression asserts it stays
-disabled. Browser mute stays
-refused: the preview is a stream of JPEG frames with no audio track, so there is
-nothing to mute. Native qualification was not run because no local desktop build
-exists.
+disabled. Browser mute stays refused: the preview is a stream of JPEG frames with
+no audio track, so there is nothing to mute. Native qualification was not run
+because no local desktop build exists.
 
 ## C4 real Codex outcome observation
 
@@ -156,6 +156,7 @@ result shapes from the documented protocol, not a captured session. C10 stays
 partial on that live observation; the projection itself is covered by tests.
 This follow-up did not log in, set a flag or fabricate frames, so the refusal
 stands and was not retried.
+
 The follow-up regression sends an explicit failed `TaskUpdate` result with no
 content. It could complete or delete the task despite the failure. The
 driver now consumes the matching pending call without changing the plan when
