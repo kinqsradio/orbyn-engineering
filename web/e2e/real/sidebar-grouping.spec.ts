@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { libraryReady, startService, type Service } from "./service";
 
@@ -32,6 +32,12 @@ test.beforeAll(async () => {
 
 test.afterAll(() => service.stop());
 
+function fixtureFolders(page: Page) {
+  return page.locator(".folder-head").filter({
+    has: page.locator(".folder-name").filter({ hasText: /^(Owner\/Grouped|grouped-(one|two|three))$/ }),
+  });
+}
+
 test("project folders group one repository, split on Separate and honor a checkout override", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${service.page}#/settings/labs`);
@@ -40,8 +46,8 @@ test("project folders group one repository, split on Separate and honor a checko
   await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
   await page.goto(service.page);
 
-  await expect(page.locator(".folder-head")).toHaveCount(1);
-  await expect(page.locator(".folder-head").filter({ hasText: "Owner/Grouped" })).toHaveCount(1);
+  await expect(fixtureFolders(page)).toHaveCount(1);
+  await expect(fixtureFolders(page).filter({ hasText: "Owner/Grouped" })).toHaveCount(1);
   await expect(page.getByText("grouped-one thread", { exact: true })).toBeVisible();
   await expect(page.getByText("grouped-two thread", { exact: true })).toBeVisible();
   await expect(page.getByText("grouped-three thread", { exact: true })).toBeVisible();
@@ -49,21 +55,84 @@ test("project folders group one repository, split on Separate and honor a checko
   await page.goto(`${service.page}#/settings/general`);
   await page.getByRole("combobox", { name: "Project grouping" }).selectOption("separate");
   await page.goto(service.page);
-  await expect(page.locator(".folder-head")).toHaveCount(3);
-  await expect(page.locator(".folder-head").filter({ hasText: "grouped-one" })).toHaveCount(1);
-  await expect(page.locator(".folder-head").filter({ hasText: "grouped-two" })).toHaveCount(1);
-  await expect(page.locator(".folder-head").filter({ hasText: "grouped-three" })).toHaveCount(1);
+  await expect(fixtureFolders(page)).toHaveCount(3);
+  await expect(fixtureFolders(page).filter({ hasText: "grouped-one" })).toHaveCount(1);
+  await expect(fixtureFolders(page).filter({ hasText: "grouped-two" })).toHaveCount(1);
+  await expect(fixtureFolders(page).filter({ hasText: "grouped-three" })).toHaveCount(1);
 
   await page.goto(`${service.page}#/settings/general`);
   await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
   await page.goto(service.page);
-  await page.locator(".folder-head").filter({ hasText: "Owner/Grouped" }).click({ button: "right" });
+  await fixtureFolders(page).filter({ hasText: "Owner/Grouped" }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Grouping", exact: true }).hover();
   await page.getByRole("menuitem", { name: "grouped-two", exact: true }).hover();
   await page.getByRole("menuitem", { name: "Separate", exact: true }).click();
 
-  await expect(page.locator(".folder-head")).toHaveCount(2);
-  await expect(page.locator(".folder-head").filter({ hasText: "Owner/Grouped" })).toHaveCount(1);
-  await expect(page.locator(".folder-head").filter({ hasText: "grouped-two" })).toHaveCount(1);
-  await expect(page.locator(".folder-head").filter({ hasText: "grouped-one" })).toHaveCount(0);
+  await expect(fixtureFolders(page)).toHaveCount(2);
+  await expect(fixtureFolders(page).filter({ hasText: "Owner/Grouped" })).toHaveCount(1);
+  await expect(fixtureFolders(page).filter({ hasText: "grouped-two" })).toHaveCount(1);
+  await expect(fixtureFolders(page).filter({ hasText: "grouped-one" })).toHaveCount(0);
+});
+
+async function expectMembership(page: Page, expected: { label: string; threads: string[] }[]) {
+  await expect.poll(() => folderMembership(page)).toEqual(expected);
+  for (const name of ["grouped-one", "grouped-two", "grouped-three"]) {
+    await expect(page.getByText(`${name} thread`, { exact: true })).toHaveCount(1);
+    await expect(page.getByText(`${name} thread`, { exact: true })).toBeVisible();
+  }
+}
+
+async function folderMembership(page: Page) {
+  return fixtureFolders(page).evaluateAll((headers) =>
+    headers.map((header) => {
+      const threads: string[] = [];
+      let row = header.nextElementSibling;
+      while (row && !row.classList.contains("folder-head")) {
+        const title = row.querySelector(".thread-row-title")?.textContent;
+        if (title) threads.push(title);
+        row = row.nextElementSibling;
+      }
+      return { label: header.querySelector(".folder-name")?.textContent, threads: threads.sort() };
+    }).sort((a, b) => (a.label ?? "").localeCompare(b.label ?? "")),
+  );
+}
+
+test("Separate keeps explicit repository overrides and their thread membership after reload", async ({ page }) => {
+  await page.goto(`${service.page}#/settings/labs`);
+  await page.getByRole("switch", { name: "Project folders" }).check();
+  await page.goto(`${service.page}#/settings/general`);
+  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
+  await page.goto(service.page);
+  await expect(fixtureFolders(page)).toHaveCount(1);
+
+  for (const name of ["grouped-one", "grouped-two"]) {
+    await fixtureFolders(page).filter({ hasText: "Owner/Grouped" }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Grouping", exact: true }).hover();
+    await page.getByRole("menuitem", { name, exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Repository", exact: true }).click();
+  }
+
+  await page.goto(`${service.page}#/settings/general`);
+  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("separate");
+  await page.goto(service.page);
+
+  const expected = [
+    { label: "grouped-three", threads: ["grouped-three thread"] },
+    { label: "Owner/Grouped", threads: ["grouped-one thread", "grouped-two thread"] },
+  ];
+  await expectMembership(page, expected);
+  await page.reload();
+  await expectMembership(page, expected);
+
+  await page.route("**/api/settings/project-scopes", (route) => route.fulfill({ status: 503, body: "Unavailable" }));
+  const unavailable = page.waitForResponse((response) =>
+    response.url().endsWith("/api/settings/project-scopes") && response.status() === 503,
+  );
+  await page.reload();
+  await unavailable;
+  await expectMembership(page, [
+    { label: "grouped-one", threads: ["grouped-one thread"] },
+    { label: "grouped-three", threads: ["grouped-three thread"] },
+    { label: "grouped-two", threads: ["grouped-two thread"] },
+  ]);
 });

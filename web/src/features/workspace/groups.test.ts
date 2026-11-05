@@ -168,6 +168,22 @@ describe("folders", () => {
     expect(new Set(folders.flatMap((folder) => folder.threads.map((row) => row.id))).size).toBe(2);
   });
 
+  it("keys a one-checkout group by its project so saved open state survives", () => {
+    const projects = [project("one", "2026-01-01T00:00:00Z"), project("two", "2026-02-01T00:00:00Z")];
+    const rows = [thread("a", {}, { project_id: "one" }), thread("b", {}, { project_id: "two" })];
+    const keys = (grouping: Parameters<typeof foldersOf>[2]) =>
+      foldersOf(projects, rows, grouping, "updated_at", "updated_at").map((folder) => folder.key).sort();
+    const separate = [
+      { key: "hash-one", label: "one", projectIds: ["one"] },
+      { key: "hash-two", label: "two", projectIds: ["two"] },
+    ];
+    expect(keys(separate)).toEqual(keys(null));
+    expect(keys(separate)).toEqual(["one", "two"]);
+    // A shared group keeps its catalog key even when a filter hides a member.
+    expect(foldersOf([projects[0]!], rows, [{ key: "repo", label: "Owner/Repo", projectIds: ["one", "two"] }],
+      "updated_at", "updated_at").map((folder) => folder.key)).toEqual(["repo"]);
+  });
+
   it("sorts threads inside a group by the chosen field", () => {
     const folders = foldersOf(
       [project("one", "2026-01-01T00:00:00Z"), project("two", "2026-01-01T00:00:00Z")],
