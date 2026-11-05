@@ -25,6 +25,14 @@ describe("triggers", () => {
     expect(triggerAt("see /re", 7)).toBeNull();
   });
 
+  it("keeps a plugin's colon inside a skill token", () => {
+    expect(triggerAt("use $demo:re", 12)).toEqual({
+      char: "$",
+      start: 4,
+      query: "demo:re",
+    });
+  });
+
   it("replaces the query and places the caret after it", () => {
     const trigger = { char: "$", start: 4, query: "ar" } as const;
     expect(insertToken("use $ar now", 7, trigger, "architect")).toEqual({

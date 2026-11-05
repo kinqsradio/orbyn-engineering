@@ -3,6 +3,7 @@
 
 mod support;
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -379,6 +380,108 @@ async fn claude_gets_slash_commands_bare() {
     service.finished(&thread).await;
     let log = std::fs::read_to_string(&file).unwrap();
     assert!(log.contains(r#""args":["/compact"]"#), "{log}");
+}
+
+fn write_skill(root: &Path, name: &str, description: &str) {
+    let folder = root.join(name);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(
+        folder.join("SKILL.md"),
+        format!("---\nname: {name}\ndescription: {description}\n---\n"),
+    )
+    .unwrap();
+}
+
+/// The CLI loads its own skills; the composer offers their names without a run.
+#[tokio::test]
+async fn claude_skills_come_from_config_the_checkout_and_enabled_plugins() {
+    let dir = TempDir::new();
+    let config = dir.path().join("claude");
+    let options = Options {
+        env: vec![(
+            "CLAUDE_CONFIG_DIR".into(),
+            config.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, thread) = setup(&dir, options, "claude").await;
+
+    write_skill(
+        &config.join("skills"),
+        "config-skill",
+        "From the config dir",
+    );
+
+    let body = service.json(&format!("/api/threads/{thread}")).await;
+    let folder = PathBuf::from(body["cwd"].as_str().unwrap());
+    write_skill(
+        &folder.join(".claude/skills"),
+        "project-skill",
+        "From the checkout",
+    );
+
+    let plugin = config.join("plugins/cache/demo/1.0.0");
+    write_skill(&plugin.join("skills"), "plugin-skill", "From a plugin");
+    std::fs::create_dir_all(plugin.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        plugin.join(".claude-plugin/plugin.json"),
+        r#"{"name":"demo"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("plugins/installed_plugins.json"),
+        json!({ "plugins": { "demo@market": [
+            { "scope": "user", "installPath": plugin.to_string_lossy() }
+        ] } })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("settings.json"),
+        r#"{"enabledPlugins":{"demo@market":true}}"#,
+    )
+    .unwrap();
+
+    let mentions = service
+        .json(&format!("/api/threads/{thread}/mentions?q=skill"))
+        .await;
+    let names: Vec<&str> = mentions["skills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(
+        names,
+        ["config-skill", "demo:plugin-skill", "project-skill"],
+        "{mentions}"
+    );
+
+    let commands = service
+        .json(&format!("/api/threads/{thread}/commands?skills=true"))
+        .await;
+    let skills: Vec<(&str, &str)> = commands
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|command| command["source"] == "skill")
+        .map(|command| {
+            (
+                command["name"].as_str().unwrap(),
+                command["description"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        skills,
+        [
+            ("how", "Library skill"),
+            ("config-skill", "From the config dir"),
+            ("demo:plugin-skill", "From a plugin"),
+            ("project-skill", "From the checkout"),
+        ],
+        "{commands}"
+    );
 }
 
 async fn upload(

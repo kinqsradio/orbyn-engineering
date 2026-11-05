@@ -9,7 +9,7 @@ export interface Trigger {
 /** The token being typed at the caret. `/` counts only at the start of the prompt. */
 export function triggerAt(text: string, caret: number): Trigger | null {
   const before = text.slice(0, caret);
-  const match = /(?:^|\s)([$@/#])([\w./-]*)$/.exec(before);
+  const match = /(?:^|\s)([$@/#])([\w./:-]*)$/.exec(before);
   if (!match) return null;
   const char = match[1] as TriggerChar;
   const query = match[2] ?? "";

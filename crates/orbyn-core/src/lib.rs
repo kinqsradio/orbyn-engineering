@@ -7,6 +7,7 @@ pub mod approvals;
 pub mod automations;
 pub mod checkpoints;
 pub mod child_env;
+pub mod claude_skills;
 pub mod composer;
 pub mod computer;
 pub mod diagnostics;
