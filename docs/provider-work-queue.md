@@ -114,8 +114,10 @@ engine-status responses. It uses Settings → Providers → Check again → Clos
 settings to exercise problem, missing, signed-out, updating and recovered states
 in the same document, while preserving an unsent draft. A component test also
 covers state transitions and unknown authentication. These prove presentation
-and manual-refresh recovery, not an authenticated engine handshake. Packaged
-Windows/macOS webview qualification remains open under #140.
+and manual-refresh recovery, not an authenticated engine handshake. Both passed on
+`cabb8fe` on macOS: the browser test in 6.2 s and the component test in the web
+suite's 648 passing tests. Packaged Windows/macOS webview qualification remains
+open under #140.
 
 ## I9 and I51 remain open
 
