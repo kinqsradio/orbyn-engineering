@@ -516,7 +516,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [x] J1 Usage page: tokens, cache savings, estimated cost | apps/web/src/components/usage/UsagePage.tsx | w d m s | L
 - [ ] J2 Cost split: token type, speed, Premium, Other | docs/user/usage.md | w d | M
 - [x] J3 Provider history readers: per-provider native scans | packages/provider-opencode/src/usage.ts | s | L | server done
-- [ ] J4 Environment filter: scanning status, dims stale figures | docs/user/usage.md | w d m | M | scope: mixed | local: local history scan status and stale figures | excludes: remote environment filtering
+- [ ] J4 Environment filter: scanning status, dims stale figures | docs/user/usage.md | w d m | M | scope: mixed | local: local history scan status and stale figures | excludes: remote environment filtering | status: partial | remaining: local web keeps same-period figures during refresh, dims pending figures/chart after 150 ms and offers retry without accepting old-period replies; component and real-orbynd browser tests use synthetic history; native desktop/macOS qualification remains open
 - [ ] J5 Model breakdown: trend, cache hit, cost per million | apps/web/src/components/usage/UsageModelDialog.tsx | w d | M
 - [x] J6 Custom prices: per-model rates, Mixed, retry saves | apps/web/src/components/usage/UsagePriceOverrides.tsx | w d s | L | server done | web done
 - [x] J7 Model aliases: Map to another model | packages/contracts/src/settings.ts | w d s | S | server done | web done
