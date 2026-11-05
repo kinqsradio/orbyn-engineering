@@ -114,6 +114,10 @@ This qualifies this Codex success/failure path through the real service and web 
 Other live providers, unknown-outcome variants and native desktop observation
 remain unqualified. C4 stays partial; protocol items without an outcome stay unknown.
 
+No other live provider was run in this follow-up: the installed Claude Code is
+signed out, and no provider credentials or paid turns were used. The native
+desktop shell was not run because no local desktop build exists.
+
 ## C37 real Codex grouping observation
 
 The same single turn described above produced seven command calls in the web
