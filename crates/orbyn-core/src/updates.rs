@@ -177,6 +177,9 @@ impl UpdateCenter {
                     known.downloaded = message.get("downloaded").and_then(Value::as_u64);
                     known.total = message.get("total").and_then(Value::as_u64);
                 }
+                Some("app_update_check_failed") => {
+                    known.error = text("message");
+                }
                 Some("app_update_failed") => {
                     known.error = text("message");
                     known.downloaded = None;

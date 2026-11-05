@@ -1445,11 +1445,17 @@ change, for the UI's badge.
 
 With `--parent-stdin` a desktop shell owns app updates over newline JSON. It sends
 `app_update_available`, `app_update_none`, `app_update_unconfigured`,
-`app_update_progress` and `app_update_failed` on stdin; unknown or malformed lines
-are ignored, and EOF still means shut down. After the ready line `orbynd` sends
+`app_update_progress`, `app_update_check_failed` and `app_update_failed` on stdin;
+unknown or malformed lines are ignored, and EOF still means shut down. After the ready line `orbynd` sends
 `check_app_update` and `install_app_update` on stdout. Install first checks for
 active runs and then holds admission (`503 updating`) under the admission lock, until
-exit or until the shell reports failure.
+exit or until the shell reports an install failure.
+
+`app_update_check_failed` reports a check error without clearing install progress
+or releasing admission: a check may finish while an install is in progress.
+`app_update_failed` reports an install failure, clears its progress and releases
+admission. Both messages carry the error in `message`; check failures keep the
+last known release version and notes.
 
 With no shell, `--update-manifest` names a release manifest `{version, notes}` to
 compare with the running version; with none, the app reports `unconfigured`. A
