@@ -133,11 +133,13 @@ jobs:
         run: node scripts/smoke-app.mjs
       - name: Keep the bundle for packaged qualification
         shell: bash
-        run: tar -cf "$RUNNER_TEMP/bundle.tar" -C desktop/src-tauri/target/release bundle/${{ matrix.bundles == 'app' && 'macos' || 'nsis' }}
+        # Relative paths: Windows tar reads a drive letter as a remote host.
+        working-directory: desktop/src-tauri/target/release
+        run: tar -cf ../../../../bundle.tar bundle/${{ matrix.bundles == 'app' && 'macos' || 'nsis' }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bundle-${{ matrix.os }}
-          path: ${{ runner.temp }}/bundle.tar
+          path: bundle.tar
           retention-days: 1
 
   # Not required: it depends on a published Codex release. The installed app runs
@@ -169,7 +171,8 @@ jobs:
           path: ${{ runner.temp }}
       - name: Unpack the bundle
         shell: bash
-        run: mkdir -p "$RUNNER_TEMP/release" && tar -xf "$RUNNER_TEMP/bundle.tar" -C "$RUNNER_TEMP/release"
+        working-directory: ${{ runner.temp }}
+        run: mkdir -p release && tar -xf bundle.tar -C release
       - name: Install Codex without its install scripts
         shell: bash
         run: npm install --prefix "$RUNNER_TEMP/codex" --no-save --no-audit --no-fund --ignore-scripts "@openai/codex@$CODEX_VERSION"
