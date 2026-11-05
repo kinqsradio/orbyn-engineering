@@ -37,6 +37,20 @@ const chip = (over: Record<string, unknown> & Pick<ComposerChip, "kind">): Compo
   }) as unknown as ComposerChip;
 
 describe("composer context", () => {
+  it("carries review ranges through the clipboard and preserves legacy one-line comments", () => {
+    const ranged = asChip({ kind: "review", path: "a.ts", line: 2, endLine: 4, comment: "why?", excerpt: "captured",
+      sourceRevision: "r", sourceCwd: "/project" }, "r")!;
+    expect(chipLabel(ranged)).toBe("a.ts:2–4");
+    expect(chipPrompt(ranged)).toContain("Review on `a.ts:2–4`\nwhy?");
+    const clipboard = chipsClipboard([ranged])!;
+    expect(chipsFromClipboard({ json: clipboard.json, html: "" })?.[0]).toMatchObject({
+      line: 2, endLine: 4, excerpt: "captured", sourceRevision: "r", sourceCwd: "/project",
+    });
+    expect(asChip({ kind: "review", path: "a.ts", line: 2, comment: "old", excerpt: null })).toMatchObject({ line: 2 });
+    for (const endLine of [0, -1, 1, 2.2, "4"]) {
+      expect(asChip({ kind: "review", path: "a.ts", line: 2, endLine, comment: "bad" })).toBeNull();
+    }
+  });
   it("renders each kind as a readable prompt block", () => {
     expect(chipPrompt(chip({ kind: "file" }))).toBe("File `src/main.rs:12`\n```rust\nlet a = 1;\n```");
     expect(chipPrompt(chip({ kind: "terminal" }))).toContain("Terminal selection");
