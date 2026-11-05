@@ -147,3 +147,21 @@ The Windows fixture uses a Node command shim and the native PATH separator, so
 the stand-in runs instead of an installed `gh`. This is browser qualification with
 synthetic forge data, not a live forge or native-desktop observation. Device and
 mute exclusions remain unchanged, and native qualification remains open.
+
+## C40 native Codex Plan mapping
+
+Orbyn's Plan selection previously set only the read-only sandbox. Codex's native
+collaboration mode is a separate `turn/start` setting. The driver now sends
+`plan` for a Plan turn and explicitly sends `default` for an ordinary turn,
+including resumed sessions. Mode settings retain the selected model and effort,
+or use the effective thread response when no selection is supplied. Built-in
+mode instructions are selected without replacing Orbyn's separate thread context;
+the permission policy and service tier remain intact.
+
+The payload is checked against the locally generated Codex CLI 0.160.0 schema
+and the [official App Server documentation](https://learn.chatgpt.com/docs/app-server).
+Offline real-service protocol tests cover entering and leaving native Plan mode,
+the read-only sandbox, model, effort, context and service tier. They do not prove
+that a real provider emits a question. The earlier Default-mode refusal remains
+a failed observation; no retry with broader permissions was made. A live-provider
+question and native desktop qualification remain open.

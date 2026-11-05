@@ -660,6 +660,7 @@ async fn open_turn(
         "approvalPolicy": approval_policy(spec.mode),
         "model": spec.model,
         "effort": spec.effort,
+        "collaborationMode": collaboration_mode(spec, &thread)?,
     });
     if let Some(tier) = tier_param(spec) {
         params["serviceTier"] = tier;
@@ -670,6 +671,40 @@ async fn open_turn(
         .and_then(Value::as_str)
         .map(str::to_owned);
     Ok((session, turn_id))
+}
+
+/// Collaboration mode controls native planning/question behavior independently
+/// of the sandbox. State it on ordinary turns too, to leave a resumed plan.
+fn collaboration_mode(spec: &RunSpec, thread: &Value) -> Result<Value> {
+    let model = spec
+        .model
+        .as_deref()
+        .filter(|model| !model.is_empty())
+        .or_else(|| {
+            thread
+                .get("model")
+                .and_then(Value::as_str)
+                .filter(|model| !model.is_empty())
+        })
+        .ok_or_else(|| {
+            CoreError::EngineUnavailable(
+                "Codex returned no effective model for collaboration mode.".into(),
+            )
+        })?;
+    let effort = spec
+        .effort
+        .as_deref()
+        .or_else(|| thread.get("reasoningEffort").and_then(Value::as_str));
+    Ok(json!({
+        "mode": if spec.plan { "plan" } else { "default" },
+        "settings": {
+            "model": model,
+            "reasoning_effort": effort,
+            // Use Codex's built-in mode instructions. The thread's separate
+            // developerInstructions still carry Orbyn's run context.
+            "developer_instructions": null,
+        },
+    }))
 }
 
 /// The thread and each turn run in the selected checkout, the only writable root,
@@ -1801,6 +1836,34 @@ mod tests {
         assert_eq!(
             config["mcp_servers"]["orbyn_engineering"]["url"],
             "http://127.0.0.1:1/mcp/x"
+        );
+    }
+
+    #[test]
+    fn collaboration_uses_effective_settings_without_inventing_defaults() {
+        let mut spec = turn_spec();
+        spec.plan = true;
+        let thread = json!({ "model": "returned-model", "reasoningEffort": "medium" });
+        let mode = collaboration_mode(&spec, &thread).unwrap();
+        assert_eq!(
+            mode,
+            json!({ "mode": "plan", "settings": {
+                "model": "returned-model", "reasoning_effort": "medium", "developer_instructions": null,
+            }})
+        );
+        assert!(collaboration_mode(&spec, &json!({})).is_err());
+        assert!(collaboration_mode(&spec, &json!({ "model": "" })).is_err());
+        spec.model = Some("selected-model".into());
+        spec.effort = Some("high".into());
+        spec.plan = false;
+        let mode = collaboration_mode(&spec, &thread).unwrap();
+        assert_eq!(mode["mode"], "default");
+        assert_eq!(mode["settings"]["model"], "selected-model");
+        assert_eq!(mode["settings"]["reasoning_effort"], "high");
+        spec.effort = None;
+        assert!(
+            collaboration_mode(&spec, &json!({})).unwrap()["settings"]["reasoning_effort"]
+                .is_null()
         );
     }
 
