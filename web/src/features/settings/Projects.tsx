@@ -17,6 +17,7 @@ import { Button, Pill } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Loading } from "../../ui/states";
 import { ProjectIconSetting } from "./ProjectIconSetting";
+import { ProjectModelDefaults } from "./ProjectModelDefaults";
 
 const short = (revision: string | null) => revision?.slice(0, 8) ?? "Unknown";
 
@@ -387,11 +388,13 @@ function ProjectSelection() {
       (selection.reason === "checkout_missing" || selection.reason === "checkout_changed")
         ? "This checkout is no longer available in the selected project and environment."
         : "This project is no longer available."}</p> : !group ?
-      <p className="setting-line-desc">Choose a project to manage its name, icon, checkouts and actions.</p> : <>
+      <><p className="setting-line-desc">Choose a project to manage its name, icon, checkouts and actions.</p>
+        <ProjectModelDefaults query={scope.query} disabled={blocked} /></> : <>
         <p className="banner"><Info size={16} aria-hidden />Can't find a setting? Keep this project picked above and hop to any other settings page.</p>
         <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload}>
           <ProjectIconSetting query={scope.query} catalog={catalog} members={members} projectName={group.label} disabled={blocked} loading={scope.loading} reload={scope.reload} />
         </ProjectName>
+        <ProjectModelDefaults query={scope.query} disabled={blocked} />
         <fieldset className="preference-control" disabled={blocked}>
           <PreferenceGroups groups={[{ title: "New threads", rows: [{ key: "default_thread_env_mode", title: "Workspace", inheritance: true,
             description: "Where new threads in this project start.", render: (value, save, control) =>

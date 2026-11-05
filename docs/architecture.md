@@ -642,6 +642,12 @@ project. The catalog holds no secret: provider environments and tokens stay out 
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
 
+The project settings Model control writes `default_engine` and `default_model`
+together, fencing both preference revisions and the selected membership. Automatic
+sets an empty pair; Inherit removes the selected project overrides. A conflict
+retains the choice and requires an explicit reload before retrying. Reset all
+removes only the captured project overrides and leaves environment defaults alone.
+
 `POST /api/settings/project-scopes` is a full-app read of registered local checkout
 groups and a typed selection. It accepts the client's `repository`, `repository_path`
 or `separate` grouping recipe and per-physical-project overrides. Repository identity
