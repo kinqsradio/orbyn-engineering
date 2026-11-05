@@ -99,7 +99,40 @@ read with that copy moved away served the cached list with no error; a forced re
 reported the move while keeping the last good list; restoring the copy recovered the
 same list with no error. The macOS copy is task-owned, so it proves no installer
 ownership. Claude discovery is unobserved without its own login, and the model caches
-stay in process memory; both remain open under #140.
+were still in process memory at this point; the durable copy below closes that gap.
+
+## I40 durable copy — 5 November 2026
+
+The service now keeps each engine's last good model list in
+`<data-dir>/model-cache/catalog.json` and serves it after a restart when the engine
+cannot be asked and the stored catalog key still matches. The file is written only
+after a successful discovery, is replaced by an atomic rename, and holds at most 32
+engines, evicting the oldest `checked_at`. Every cache IO, parse and rename failure
+is ignored, so a bad cache cannot fail a model read. `EngineModels` is unchanged.
+
+On macOS, real `orbynd` used a task-owned copy of installed Codex 0.166.0 with a
+fresh `CODEX_HOME` and data directory. Forced discovery returned nine models and
+wrote `catalog.json` with `version: 1`. After stopping the service and moving only
+that copy away, a plain read against a new service process returned the same nine
+models with the stored `checked_at` and the error `<path> was not found on this
+machine.`; a forced refresh did the same. Restoring the copy and forcing a refresh
+discovered nine models again with no error and a new `checked_at`, and rewrote the
+file. No turn, login or installed-user-state change was involved.
+
+Claude's discovery was then observed through the same service on macOS with
+installed Claude Code 2.1.318, a task-owned `CLAUDE_CONFIG_DIR` and data directory.
+The engine reported signed out (`tokenSource: none`) and forced discovery returned
+its five models from the engine, `source: engine` with no fallback, and wrote the
+`claude` entry to `catalog.json`. Its catalog key includes the CLI version and login
+state, so a missing binary or a different login is treated as a different engine
+rather than answered from the stored list. Claude discovery on Windows is still
+unobserved.
+
+`cargo fmt --all --check`, `cargo clippy -p orbyn-core --all-targets -- -D warnings`,
+`cargo test -p orbyn-core engines::` (39 passed) and
+`cargo test -p orbyn-core catalog_cache` (5 passed) were clean. The unit tests cover
+round trip, a changed key not being served, corrupt JSON, an unusable directory, the
+32-engine cap, and a successful empty answer not being replaced by the stored list.
 
 ## I41 implementation evidence — 5 November 2026
 

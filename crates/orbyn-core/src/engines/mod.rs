@@ -1,6 +1,7 @@
 //! Engine registry, status and updates. Updates run only through the installer
 //! that provably owns the binary, and never while a run is active.
 
+pub mod catalog_cache;
 pub mod instances;
 pub mod known;
 pub mod maintenance;
@@ -8,6 +9,7 @@ pub mod manifest;
 pub mod probe;
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -30,6 +32,7 @@ use crate::process::{ManagedChild, engine_command, resolve};
 use crate::store::{AuditRecord, Store};
 use crate::terminal::TerminalManager;
 use crate::util::tail;
+use catalog_cache::{CatalogCache, Entry};
 use known::{KNOWN_ENGINES, known_engine};
 use manifest::TestedManifest;
 
@@ -51,6 +54,8 @@ pub struct EngineConfig {
     pub update_timeout: Duration,
     /// Automatic known-provider discovery; explicit registrations remain available.
     pub known_engine_ids: Option<Vec<String>>,
+    /// Where the last good model lists are kept. `None` keeps them in memory only.
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl Default for EngineConfig {
@@ -62,6 +67,7 @@ impl Default for EngineConfig {
             lookup_latest: true,
             update_timeout: UPDATE_TIMEOUT,
             known_engine_ids: None,
+            cache_dir: None,
         }
     }
 }
@@ -84,6 +90,8 @@ pub struct EngineManager {
     models: tokio::sync::Mutex<HashMap<String, CachedModels>>,
     /// The last good list of each engine, for checks that cannot wait for an engine.
     known_models: Mutex<HashMap<String, EngineModels>>,
+    /// The same lists on disk, so a restart keeps what the engine last said.
+    catalog: CatalogCache,
 }
 
 struct CachedModels {
@@ -107,6 +115,7 @@ impl EngineManager {
             )),
         ];
         Self {
+            catalog: CatalogCache::new(config.cache_dir.clone()),
             store,
             terminals,
             http,
@@ -403,12 +412,29 @@ impl EngineManager {
         };
         // An answer that lost every model says less than the list already held, so it
         // cannot replace it. Nor can a stand-in or a failure.
-        if !refresh_can_replace(&catalog, &error)
-            && let Some(known) = lock(&self.known_models).get(id)
-        {
-            let mut kept = known.clone();
-            kept.error = catalog.fallback.or(error);
-            return Ok(kept);
+        if !refresh_can_replace(&catalog, &error) {
+            let failure = catalog.fallback.clone().or_else(|| error.clone());
+            let mut known = lock(&self.known_models);
+            if let Some(stored) = known.get(id) {
+                let mut kept = stored.clone();
+                kept.error = failure;
+                return Ok(kept);
+            }
+            // A list from another key belongs to a binary or login that is no longer
+            // there, so it cannot answer for this one. Only a failed or stand-in
+            // read may fall back: a good empty answer means the engine really has
+            // no models, and an old list would hide that.
+            if failure.is_some()
+                && let Some(entry) = self
+                    .catalog
+                    .load(id)
+                    .filter(|entry| entry.key.as_ref() == key.as_ref())
+            {
+                let mut kept = entry.models;
+                kept.error = failure;
+                known.insert(id.to_owned(), kept.clone());
+                return Ok(kept);
+            }
         }
         let fallback = catalog.fallback.is_some();
         let models = EngineModels {
@@ -430,6 +456,17 @@ impl EngineManager {
             }
             self.store.set_engine_agents(id, &models.agents)?;
             lock(&self.known_models).insert(id.to_owned(), models.clone());
+            // An empty answer is not a list worth restoring, so it does not replace
+            // the last non-empty one a later failure would fall back to.
+            if !models.models.is_empty() {
+                self.catalog.save(
+                    id,
+                    &Entry {
+                        key: key.clone(),
+                        models: models.clone(),
+                    },
+                );
+            }
         }
         if models.error.is_none() || fallback {
             let cached = CachedModels {
@@ -909,6 +946,155 @@ mod tests {
         ));
         drop(marker);
         assert!(engines.admit_with("claude-beta", || Ok(())).is_ok());
+    }
+
+    struct KeyedDriver {
+        key: Option<String>,
+        failing: bool,
+        empty: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl EngineDriver for KeyedDriver {
+        fn descriptor(&self) -> crate::driver::EngineDescriptor {
+            crate::driver::EngineDescriptor {
+                id: "keyed".into(),
+                name: "Keyed".into(),
+                tier: orbyn_contracts::EngineTier::Terminal,
+                capabilities: orbyn_contracts::EngineCapabilities {
+                    streaming: false,
+                    approvals: false,
+                    resume: false,
+                    mcp: false,
+                    sandbox: false,
+                    managed: true,
+                    skill_delivery: Vec::new(),
+                    goal_control: false,
+                    decline_feedback: false,
+                },
+            }
+        }
+
+        async fn probe(&self) -> crate::driver::EngineProbe {
+            crate::driver::EngineProbe::default()
+        }
+
+        async fn start_run(
+            &self,
+            _spec: crate::driver::RunSpec,
+            _events: tokio::sync::mpsc::Sender<crate::driver::EngineEvent>,
+        ) -> Result<crate::driver::RunHandle> {
+            Err(CoreError::Unsupported("no run".into()))
+        }
+
+        async fn models(&self) -> Result<Option<ModelCatalog>> {
+            if self.failing {
+                return Err(CoreError::EngineUnavailable("the engine is gone".into()));
+            }
+            if self.empty {
+                return Ok(Some(ModelCatalog::engine(Vec::new())));
+            }
+            Ok(Some(ModelCatalog::engine(vec![
+                orbyn_contracts::ModelInfo {
+                    id: "keyed-model".into(),
+                    label: "Keyed Model".into(),
+                    description: None,
+                    is_default: true,
+                    custom: false,
+                    options: Vec::new(),
+                    input_modalities: Vec::new(),
+                    upgrade: None,
+                },
+            ])))
+        }
+
+        async fn catalog_key(&self) -> Option<String> {
+            self.key.clone()
+        }
+    }
+
+    fn keyed_manager(
+        dir: &TempDir,
+        key: Option<&str>,
+        failing: bool,
+        empty: bool,
+    ) -> EngineManager {
+        let config = EngineConfig {
+            cache_dir: Some(dir.path().join("model-cache")),
+            ..EngineConfig::default()
+        };
+        let engines = EngineManager::new(
+            Arc::new(Store::open(&dir.path().join("store.sqlite3"), "test").unwrap()),
+            Arc::new(TerminalManager::default()),
+            reqwest::Client::new(),
+            config,
+        );
+        engines.register(Arc::new(KeyedDriver {
+            key: key.map(str::to_owned),
+            failing,
+            empty,
+        }));
+        engines
+    }
+
+    /// A restart has no memory, so the disk copy answers only for its own key.
+    #[tokio::test]
+    async fn a_stored_catalog_is_served_only_under_its_own_key() {
+        let dir = TempDir::new();
+        let good = keyed_manager(&dir, Some("one"), false, false)
+            .models("keyed", true)
+            .await
+            .unwrap();
+        assert!(good.error.is_none());
+
+        let changed = keyed_manager(&dir, Some("two"), true, false)
+            .models("keyed", true)
+            .await
+            .unwrap();
+        assert!(changed.models.is_empty(), "{changed:?}");
+        assert!(changed.error.is_some());
+
+        let remembered = keyed_manager(&dir, Some("one"), true, false)
+            .models("keyed", true)
+            .await
+            .unwrap();
+        assert_eq!(remembered.models, good.models);
+        assert_eq!(remembered.checked_at, good.checked_at);
+        assert!(remembered.error.unwrap().contains("engine is gone"));
+    }
+
+    /// A failing first read leaves nothing behind for the next start to trust.
+    #[tokio::test]
+    async fn a_failure_is_not_saved() {
+        let dir = TempDir::new();
+        let failed = keyed_manager(&dir, None, true, false)
+            .models("keyed", true)
+            .await
+            .unwrap();
+        assert!(failed.models.is_empty());
+        assert!(!dir.path().join("model-cache/catalog.json").exists());
+    }
+
+    /// A good answer with no models means the engine has none, so a remembered
+    /// list must not stand in for it and look freshly reported.
+    #[tokio::test]
+    async fn an_empty_answer_is_not_replaced_by_the_stored_catalog() {
+        let dir = TempDir::new();
+        let good = keyed_manager(&dir, Some("one"), false, false)
+            .models("keyed", true)
+            .await
+            .unwrap();
+        assert!(!good.models.is_empty());
+
+        let empty = keyed_manager(&dir, Some("one"), false, true)
+            .models("keyed", true)
+            .await
+            .unwrap();
+        assert!(empty.models.is_empty(), "{empty:?}");
+        assert!(empty.error.is_none(), "{empty:?}");
+
+        let stored = std::fs::read_to_string(dir.path().join("model-cache/catalog.json")).unwrap();
+        assert!(stored.contains("keyed-model"));
     }
 
     /// Only the signed manifest raises a warning, and only its own installer may
