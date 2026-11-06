@@ -156,11 +156,17 @@ const MAX_LAYOUTS = 200;
 
 export type PaletteStart = "root" | "add-project" | "files" | "search";
 
-export const DEFAULT_SIDEBAR_WIDTH = 208;
+export const DEFAULT_SIDEBAR_WIDTH = 224;
 const TOAST_MS = 4000;
 let toastCounter = 0;
 
 const PREFS_KEY = "orbyn.prefs.v1";
+/** Own key, so a stale tab from an older build that rewrites the prefs cannot undo the migration. */
+const MIGRATED_KEY = "orbyn.prefs.migrated";
+const OLD_SIDEBAR_WIDTH = 208;
+
+/** Set when this load's migration turned project folders on; the notice offers to undo it. */
+let foldersMigrated = false;
 const DRAFTS_KEY = "orbyn.drafts.v1";
 
 const defaults: Prefs = {
@@ -180,7 +186,7 @@ const defaults: Prefs = {
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   groups: {},
   projectFilter: [],
-  projectFolders: false,
+  projectFolders: true,
   projectGrouping: "separate",
   projectGroupingOverrides: {},
   multilineRows: false,
@@ -251,6 +257,10 @@ interface UiState extends Prefs {
   /** The open welcome step, or null; not saved, so it lasts while the app runs. */
   welcomeStep: number | null;
   setWelcomeStep(step: number | null): void;
+  /** True once, when the migration turned project folders on; not saved. */
+  foldersNotice: boolean;
+  /** Closes the notice; with `undo`, also turns project folders back off. */
+  closeFoldersNotice(undo: boolean): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   /** A file the Files surface should open next, with the line to reveal. */
@@ -402,9 +412,38 @@ const prefsOf = (state: Prefs): Prefs => ({
   welcomeDone: state.welcomeDone,
 });
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The frame's one-time migration: the previous default sidebar width (exactly 208) becomes
+ * 224 and project folders turn on. It records itself under its own key, and only after the
+ * migrated prefs were saved: a failed write leaves it to run again, without a notice.
+ */
+function migratePrefs(saved: Partial<Prefs>): Partial<Prefs> {
+  try {
+    if (localStorage.getItem(MIGRATED_KEY) === "1") return saved;
+  } catch {
+    return saved;
+  }
+  const existing = Object.keys(saved).length > 0;
+  const next: Partial<Prefs> = { ...saved, projectFolders: true };
+  if (saved.sidebarWidth === OLD_SIDEBAR_WIDTH) next.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    localStorage.setItem(MIGRATED_KEY, "1");
+  } catch {
+    return saved;
+  }
+  // A first run starts on the new defaults; only someone with saved prefs is told.
+  foldersMigrated = existing && saved.projectFolders !== true;
+  return next;
+}
+
 /** Saved preferences may predate a field or carry a removed value. */
 function savedPrefs(): Partial<Prefs> {
-  const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
+  const stored = readJson<unknown>(PREFS_KEY);
+  const saved = migratePrefs(isPlainObject(stored) ? (stored as Partial<Prefs>) : {});
   const panelTab =
     saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls" || saved.panelTab === "side"
       ? saved.panelTab
@@ -434,6 +473,11 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    foldersNotice: foldersMigrated,
+    closeFoldersNotice(undo) {
+      set({ foldersNotice: false });
+      if (undo) get().setPrefs({ projectFolders: false });
+    },
     welcomeStep: null,
     setWelcomeStep(welcomeStep) {
       set({ welcomeStep });
@@ -668,8 +712,11 @@ export function applyTheme(choice: ThemeChoice): void {
   const { lightPreset, darkPreset, customColors, typography, contrast, fontSmoothing, workspaceLayout } = useUi.getState();
   root.dataset.workspace = LAYOUT_CHOICES.includes(workspaceLayout) ? workspaceLayout : "console";
   const preset = presetById(scheme === "dark" ? darkPreset : lightPreset);
+  if (preset) root.dataset.preset = preset.id;
+  else delete root.dataset.preset;
   for (const [token] of THEME_TOKENS) {
-    const value = customColors[token] ?? preset?.colors[token];
+    // A preset with a full token set in tokens.css is styled there; only custom colours override it.
+    const value = customColors[token] ?? (preset?.tokens ? undefined : preset?.colors[token]);
     if (value) root.style.setProperty(token, value);
     else root.style.removeProperty(token);
   }

@@ -3,12 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockApi } from "../../mock/api";
 import { installMockFetch } from "../test-support";
+import { useUi } from "../state/ui";
 import { App } from "./App";
 
 let mock: MockApi;
 
 beforeEach(() => {
   mock = installMockFetch();
+  useUi.setState({ projectFolders: true });
 });
 
 const go = (hash: string) => {
@@ -69,7 +71,7 @@ describe("App against the mock API", () => {
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "Workspace" });
     await within(nav).findByText("Upgrade tokio and fix the fallout");
-    await user.click(within(nav).getByRole("button", { name: "Search" }));
+    await user.click(within(nav).getByRole("button", { name: "Search threads" }));
     await user.type(within(nav).getByRole("searchbox", { name: "Search threads" }), "tokio");
     expect(within(nav).queryByText("Explain how the event log resumes")).toBeNull();
     expect(within(nav).getByText("Upgrade tokio and fix the fallout")).toBeInTheDocument();

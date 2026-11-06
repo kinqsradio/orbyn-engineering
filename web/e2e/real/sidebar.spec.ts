@@ -80,6 +80,13 @@ test("the menu pins, snoozes through Custom and wakes", async ({ page }) => {
 });
 
 test("dragging reorders, pins and settles with an action badge", async ({ page }) => {
+  // Reordering is for the flat list: project folders sort by activity, so they have nothing to reorder.
+  await page.evaluate(() => {
+    const key = "orbyn.prefs.v1";
+    localStorage.setItem(key, JSON.stringify({ ...JSON.parse(localStorage.getItem(key) ?? "{}"), projectFolders: false }));
+  });
+  await page.reload();
+  await expect(row(page, "Alpha")).toBeVisible();
   const list = page.locator("li[data-section=active]");
   await expect(list).toHaveCount(4);
   const titles = await list.locator(".thread-row-title").allInnerTexts();

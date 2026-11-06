@@ -75,6 +75,30 @@ export function attentionRank(thread: Thread): number {
   return 2;
 }
 
+export type LedgerKey = "needs" | "failed" | "running" | "done";
+const LEDGER_ORDER: LedgerKey[] = ["needs", "failed", "running", "done"];
+
+/** The Ledger section a thread sits in. */
+export function ledgerKey(thread: Thread): LedgerKey {
+  const rank = attentionRank(thread);
+  return rank === 0 ? "needs" : rank === 1 ? "failed" : thread.active_run ? "running" : "done";
+}
+
+const LEDGER_SECTIONS: { key: LedgerKey; label: string; tone: "warn" | "danger" | "ink" }[] = [
+  { key: "needs", label: "Needs you", tone: "warn" },
+  { key: "failed", label: "Failed", tone: "danger" },
+  { key: "running", label: "Running", tone: "ink" },
+  { key: "done", label: "Done today", tone: "ink" },
+];
+
+/** Ledger's sections, in the order they are drawn. */
+export function ledgerGroupsOf(active: readonly Thread[]) {
+  return LEDGER_SECTIONS.map((section) => ({
+    ...section,
+    rows: active.filter((thread) => ledgerKey(thread) === section.key),
+  }));
+}
+
 export function arrangeThreads(
   threads: readonly Thread[],
   now: number,
@@ -89,7 +113,12 @@ export function arrangeThreads(
     if (section) sections[section].push(thread);
   }
   sections.pinned.sort(savedOrder);
-  sections.active.sort(needsYouFirst ? (a, b) => attentionRank(a) - attentionRank(b) || savedOrder(a, b) : savedOrder);
+  // Ledger draws its sections in this order, so a drop position in `active` is a position on screen.
+  sections.active.sort(
+    needsYouFirst
+      ? (a, b) => LEDGER_ORDER.indexOf(ledgerKey(a)) - LEDGER_ORDER.indexOf(ledgerKey(b)) || savedOrder(a, b)
+      : savedOrder,
+  );
   sections.working.sort(newest);
   sections.snoozed.sort((a, b) =>
     (a.lifecycle?.snoozed_until ?? "").localeCompare(b.lifecycle?.snoozed_until ?? ""),
@@ -233,4 +262,39 @@ export function foldersOf(
   return folders.sort(
     (a, b) => activity(b).localeCompare(activity(a)) || a.label.localeCompare(b.label),
   );
+}
+
+/**
+ * The threads in the order the sidebar draws them: what keyboard jumps, Shift-click ranges
+ * and sweeps must follow. `folders` is null outside the folder view; a collapsed folder or
+ * closed group draws nothing.
+ */
+export function drawnOrder(input: {
+  sections: ThreadSections;
+  ledger: boolean;
+  folders: readonly ProjectFolder[] | null;
+  strays: readonly Thread[];
+  folderOpen(folder: ProjectFolder): boolean;
+  groupOpen(id: "working" | "snoozed" | "settled"): boolean;
+  settled: readonly Thread[];
+}): Thread[] {
+  const { sections } = input;
+  const active = input.ledger
+    ? ledgerGroupsOf(sections.active).flatMap((group) => group.rows)
+    : input.folders
+      ? [
+          ...input.folders.flatMap((folder) => (input.folderOpen(folder) ? folder.threads : [])),
+          ...input.strays,
+        ]
+      : sections.active;
+  const shelf = input.groupOpen("working") ? sections.working : [];
+  // The folder view draws the Working shelf above everything; the other views draw it below.
+  return [
+    ...(input.folders ? shelf : []),
+    ...sections.pinned,
+    ...active,
+    ...(input.folders ? [] : shelf),
+    ...(input.groupOpen("snoozed") ? sections.snoozed : []),
+    ...(input.groupOpen("settled") ? input.settled : []),
+  ];
 }

@@ -1,8 +1,8 @@
 import {
   Brain,
+  GitBranch,
   CircleCheck,
   PanelBottom,
-  PanelLeft,
   PanelRight,
   Rows3,
   ShieldAlert,
@@ -24,7 +24,6 @@ import { GitActions } from "./GitControl";
 import { LedgerPin } from "./LedgerPin";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
-import { ProjectBadge } from "../../ui/badges";
 import { Button, IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading, NarrowBack } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
@@ -59,36 +58,36 @@ function TopBar({
   onTogglePane(): void;
 }) {
   const layout = useLayoutWidth();
-  const collapsed = useUi((state) => state.sidebarCollapsed);
-  const toggleSidebar = useUi((state) => state.toggleSidebar);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const togglePanel = useUi((state) => state.togglePanel);
+  const projectBranch = useWorkspace(
+    (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
+  );
+  const branch = thread.worktree?.branch ?? projectBranch;
+  const state = threadRunState(thread);
   const narrow = layout === "narrow";
 
   return (
     <header className="topbar">
-      {narrow ? (
-        <NarrowBack />
-      ) : collapsed ? (
-        <IconButton label="Expand sidebar" onClick={toggleSidebar}>
-          <PanelLeft size={16} aria-hidden />
-        </IconButton>
-      ) : null}
+      {narrow ? <NarrowBack /> : null}
       <div className="crumbs">
-        {project ? (
-          <>
-            <ProjectBadge name={project.name} project={project} />
-            <span className="crumb-project" title={project.path}>
-              {project.name}
-            </span>
-            <span className="crumb-slash" aria-hidden>
-              /
-            </span>
-          </>
-        ) : null}
         <h1 tabIndex={-1} data-page-title title={thread.title}>
           {thread.title}
         </h1>
+        <span className="page-sub">
+          {branch ? (
+            <span className="page-sub-item">
+              <GitBranch size={13} aria-hidden />
+              {branch}
+            </span>
+          ) : null}
+          {project ? (
+            <span className="page-sub-item" title={project.path}>
+              {project.name}
+            </span>
+          ) : null}
+          {thread.active_run && state ? <span className="page-sub-item">{runStateLabels[state]}</span> : null}
+        </span>
       </div>
       <RelatedThreads thread={thread} />
       <GitActions thread={thread} />
@@ -332,6 +331,7 @@ export function ThreadView({ id }: { id: string }) {
   const chatWidth = useUi((state) => state.chatWidth);
   const layout = useLayoutWidth();
   const wide = isWide(layout);
+  const reading = useUi((state) => state.workspaceLayout === "reading");
   const [detailsOverlay, setDetailsOverlay] = useState(false);
   const [finding, setFinding] = useState(false);
   useCommand("chat.find", () => setFinding(true));
@@ -394,7 +394,9 @@ export function ThreadView({ id }: { id: string }) {
   const swapped = panelOpen && (!wide || maximized);
   const terminalTakesOver = terminalOpen && layout === "narrow";
   const detailsFit = layout === "xwide" || !panelOpen;
-  const detailsShown = wide ? detailsPref && detailsFit : detailsOverlay;
+  // Reading keeps the column clear: the details card opens on request, over the thread.
+  const cardDocked = wide && !reading;
+  const detailsShown = cardDocked ? detailsPref && detailsFit : detailsOverlay;
 
   const beforeSend = async () => {
     if (!hero) return;
@@ -410,7 +412,7 @@ export function ThreadView({ id }: { id: string }) {
         className="thread-main"
         hidden={swapped}
         aria-label={thread.title}
-        data-details={wide && detailsShown ? "reserved" : undefined}
+        data-details={cardDocked && detailsShown ? "reserved" : undefined}
         data-chat-width={chatWidth}
       >
         <TopBar
@@ -418,7 +420,7 @@ export function ThreadView({ id }: { id: string }) {
           project={project}
           detailsShown={detailsShown}
           paneShown={panelOpen && wide}
-          onToggleDetails={() => (wide ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
+          onToggleDetails={() => (cardDocked ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
           onTogglePane={() => setPanelOpen(true)}
         />
         {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
@@ -476,7 +478,7 @@ export function ThreadView({ id }: { id: string }) {
           <DetailsCard
             thread={thread}
             engine={engine}
-            compact={!wide}
+            compact={!cardDocked}
             onClose={() => setDetailsOverlay(false)}
           />
         ) : null}

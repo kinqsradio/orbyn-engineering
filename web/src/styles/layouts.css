@@ -4,7 +4,7 @@
 
 /* Ledger: threads that need you sort first (groups.ts); rows are denser. */
 :root[data-workspace="ledger"] .thread-row {
-  min-height: 28px;
+  min-height: 26px;
 }
 
 /* Ledger pins what the thread waits on above the transcript (LedgerPin.tsx). */
@@ -47,12 +47,33 @@
   outline-offset: 2px;
 }
 
-/* Reading: one calm column with larger line spacing. */
-:root[data-workspace="reading"] .thread-main[data-chat-width="comfortable"] {
+/* Reading: one calm column of about 680px with larger line spacing. */
+:root[data-workspace="reading"] .thread-main,
+:root[data-workspace="reading"] .thread-main[data-chat-width] {
   --reading-w: 680px;
+}
+:root[data-workspace="reading"] .thread-stage {
+  --details-reserve: 0px;
 }
 :root[data-workspace="reading"] .transcript-inner {
   line-height: 1.7;
+}
+/* The sidebar folds away; the title bar toggle opens it (data-reading-nav). */
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) > .sidebar {
+  display: none;
+}
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) > .main {
+  grid-area: 2 / 1;
+  border-top: 0;
+  border-left: 0;
+  border-top-left-radius: 0;
+}
+/* The docked details card has no place in the column. When asked for, it floats over the thread. */
+:root[data-workspace="reading"] .thread-main[data-details="reserved"] > .details {
+  display: none;
 }
 /* On a wide window the side panel floats over the thread as a drawer instead of
    taking a column; on medium and narrow windows it already replaces the thread. */
@@ -61,12 +82,78 @@
 }
 :root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  bottom: 8px;
+  top: 14px;
+  right: 14px;
+  bottom: 14px;
   z-index: 15;
   border: 1px solid var(--color-borderStrong);
   border-radius: var(--radius-xl);
   box-shadow: 0 16px 48px var(--color-shadow);
   overflow: hidden;
+}
+
+/* Frame overrides per layout. */
+/* Ledger: a 300px details rail in place of the floating card. */
+:root[data-workspace="ledger"] {
+  --details-w: var(--rail-w);
+  --details-gap: 0px;
+}
+:root[data-workspace="ledger"] .details {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  max-height: none;
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-background);
+}
+:root[data-workspace="ledger"] .thread-main[data-details="reserved"] .topbar {
+  padding-right: calc(var(--details-w) + 28px);
+}
+/* Reading: no sidebar column; the thread is one column and the panel a drawer. */
+:root[data-workspace="reading"] .topbar,
+:root[data-workspace="reading"] .composer-lane {
+  box-sizing: border-box;
+}
+:root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
+  width: var(--drawer-w);
+}
+/* Reading sets the title as the column's own 26px heading, on the column. */
+:root[data-workspace="reading"] .thread-main > .topbar {
+  box-sizing: border-box;
+  width: min(calc(var(--reading-w) + 32px), 100%);
+  height: auto;
+  min-height: var(--topbar-h);
+  margin: 0 auto;
+  padding-inline: 16px;
+}
+/* The meta line (branch, status) and the actions share the first row; the title sits alone
+   below it at the column's full width and wraps rather than truncating. */
+:root[data-workspace="reading"] .thread-main > .topbar {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 6px;
+}
+:root[data-workspace="reading"] .thread-main > .topbar .crumbs {
+  display: contents;
+}
+:root[data-workspace="reading"] .thread-main > .topbar > .icon-btn {
+  order: 0;
+}
+:root[data-workspace="reading"] .thread-main > .topbar .page-sub {
+  order: 1;
+  flex: 1 1 0;
+  min-width: 0;
+}
+:root[data-workspace="reading"] .thread-main > .topbar > :not(.crumbs):not(.icon-btn) {
+  order: 2;
+}
+:root[data-workspace="reading"] .thread-main > .topbar .crumbs h1 {
+  order: 3;
+  flex: 0 0 100%;
+  overflow: visible;
+  font-size: var(--text-display);
+  line-height: 1.2;
+  text-overflow: clip;
+  white-space: normal;
 }
