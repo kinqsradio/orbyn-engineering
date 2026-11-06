@@ -476,3 +476,60 @@ async fn concurrent_keybinding_edits_preserve_each_unrelated_command() {
     assert!(view["issues"].as_array().unwrap().is_empty());
     service.stop().await;
 }
+
+#[tokio::test]
+async fn the_environment_theme_is_published_with_its_set_time() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let info = service.json("/api/info").await;
+    assert!(info.get("environment_theme").is_none(), "{info}");
+    let (code, _) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "default_theme": "paper" } }),
+    )
+    .await;
+    assert_eq!(code, 200);
+    let info = service.json("/api/info").await;
+    assert_eq!(info["environment_theme"]["name"], "paper");
+    assert!(info["environment_theme"]["set_at"].as_i64().unwrap() > 0);
+    let (code, _) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "default_theme_set_at": 1 } }),
+    )
+    .await;
+    assert_eq!(code, 400, "the set time belongs to the service");
+    put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "default_theme": null } }),
+    )
+    .await;
+    assert!(
+        service
+            .json("/api/info")
+            .await
+            .get("environment_theme")
+            .is_none()
+    );
+    let (code, _) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "environment_icon": "server" } }),
+    )
+    .await;
+    assert_eq!(code, 200);
+    assert_eq!(
+        service.json("/api/info").await["environment_icon"],
+        "server"
+    );
+    let (code, _) = put(
+        &service,
+        "/api/preferences",
+        json!({ "values": { "environment_icon": "toaster" } }),
+    )
+    .await;
+    assert_eq!(code, 400);
+    service.stop().await;
+}

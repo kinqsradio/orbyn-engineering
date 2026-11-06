@@ -39,7 +39,7 @@ use crate::util::{new_id, now};
 
 pub use approvals::{NewApproval, RememberRule};
 pub use hub::EventHub;
-pub use queue::{WatchRow, WatchUpdate};
+pub use queue::{PullGuide, PullGuideWrite, WatchRow, WatchUpdate};
 pub use runs::{Admission, Recovery};
 pub(crate) use setup::{NewSetup, SetupState};
 use threads::thread_family;

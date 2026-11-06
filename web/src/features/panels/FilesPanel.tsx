@@ -18,22 +18,9 @@ import { formatBytes } from "./zipArchive";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 import { primaryEditor } from "../thread/editorPreferences";
 import { useWorkspace } from "../../state/workspace";
+import { FileComments } from "./FileComments";
 
 const q = encodeURIComponent;
-
-function Source({ text, line }: { text: string; line: number | null }) {
-  return (
-    <pre tabIndex={0} className="file-source" ref={scrollToMarkedLine}>
-      {text.split("\n").map((row, at) => (
-        <span key={at} data-line={at + 1 === line || undefined}>
-          <i>{at + 1}</i>
-          {row}
-          {"\n"}
-        </span>
-      ))}
-    </pre>
-  );
-}
 
 /** Reads a file by what it holds, with the source a click away and edits saved safely. */
 function FileBody({
@@ -41,12 +28,14 @@ function FileBody({
   path,
   file,
   line,
+  cwd,
   onSaved,
 }: {
   threadId: string;
   path: string;
   file: FileContent;
   line: number | null;
+  cwd: string;
   onSaved(): void;
 }) {
   const kind = previewKind(path);
@@ -88,7 +77,8 @@ function FileBody({
         </button>
       </div>
       {mode === "preview" && kind ? <FilePreview kind={kind} text={file.content} /> : null}
-      {mode === "source" ? <Source text={file.content} line={line} /> : null}
+      {mode === "source" ? <FileComments key={`${threadId}:${cwd}:${path}:${file.revision}`} threadId={threadId} cwd={cwd}
+        path={path} revision={file.revision} text={file.content} revealedLine={line} /> : null}
       {mode === "edit" ? (
         <div className="file-editor">
           <textarea aria-label={`Edit ${path}`} value={text} spellCheck={false} onChange={(event) => setText(event.target.value)} />
@@ -106,23 +96,22 @@ function FileBody({
   );
 }
 
-const scrollToMarkedLine = (element: HTMLPreElement | null) => {
-  element?.querySelector("[data-line]")?.scrollIntoView({ block: "center" });
-};
-
 /** Exported so the panel bar's own controls can be tested from one file. */
 export function Viewer({ threadId, path, line, onBack }: { threadId: string; path: string; line: number | null; onBack(): void }) {
+  const cwd = useWorkspace((state) => state.threads[threadId]?.cwd ?? "");
   const media = mediaKind(path);
   // An archive is read as a folder list rather than as bytes, so it never
   // reaches the hex view even though the service calls the file binary.
   const zip = isZipPath(path);
   // A Word document is read the same way: its own bytes, through the worker.
   const office = officeKind(path);
-  const file = useAsync(`file:${threadId}:${media ? "" : path}`, (signal) =>
-    media
-      ? Promise.resolve(null)
-      : request<FileContent>("GET", `/api/threads/${q(threadId)}/files/content?path=${q(path)}`, undefined, signal),
-  );
+  const read = useAsync(`file:${JSON.stringify([threadId, cwd, media ? "" : path])}`, async (signal) => {
+    const content = media ? null : await request<FileContent>("GET", `/api/threads/${q(threadId)}/files/content?path=${q(path)}`, undefined, signal);
+    if ((useWorkspace.getState().threads[threadId]?.cwd ?? "") !== cwd) throw new DOMException("Checkout changed", "AbortError");
+    return { cwd, path, content };
+  });
+  // Key changes are cleared by an effect; never expose old bytes in that render.
+  const file = { ...read, data: read.data?.cwd === cwd && read.data.path === path ? read.data.content : null };
   const preferred = useUi((state) => state.preferredEditor);
   const pushToast = useUi((state) => state.pushToast);
   const [copying, setCopying] = useState(false);
@@ -166,7 +155,7 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
     }
   };
   return (
-    <div className="files-viewer">
+    <div className="files-viewer" data-thread-id={threadId}>
       <div className="panel-bar">
         <Button small tone="quiet" onClick={onBack}>
           Files
@@ -220,7 +209,7 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
       ) : file.data.truncated ? (
         <FileBytes threadId={threadId} path={path} size={file.data.size} as="text" />
       ) : (
-        <FileBody threadId={threadId} path={path} file={file.data} line={line} onSaved={file.reload} />
+        <FileBody threadId={threadId} cwd={cwd} path={path} file={file.data} line={line} onSaved={file.reload} />
       )}
     </div>
   );

@@ -102,11 +102,32 @@ pub fn on_action(app: &AppHandle, action: ShellAction) {
         | ShellAction::RemoveCli
         | ShellAction::OpenAccessibilitySettings
         | ShellAction::OpenScreenRecordingSettings => crate::system::on_action(app, action),
+        ShellAction::Quit => app.exit(0),
+    }
+}
+
+/// The app menu's Quit item, whose `Cmd+Q` follows the quit confirmation setting.
+#[derive(Default)]
+pub struct QuitItem(pub Mutex<Option<MenuItem<tauri::Wry>>>);
+
+pub fn set_quit_confirmation(app: &AppHandle, mode: crate::core_process::QuitConfirmation) {
+    if let Some(item) = app
+        .state::<QuitItem>()
+        .0
+        .lock()
+        .expect("quit item")
+        .as_ref()
+    {
+        let _ = item.set_accelerator(mode.accelerator());
     }
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
+    if id == "quit" {
+        app.exit(0);
+        return;
+    }
     let focused = focused_window(app);
     let window = match window_actions::target(id, focused.as_ref().map(|window| window.label())) {
         Target::MainCommand(command) => {
@@ -172,6 +193,11 @@ fn app_submenu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
         version: Some(app.package_info().version.to_string()),
         ..AboutMetadata::default()
     };
+    // Its own item rather than the predefined one, so `Cmd+Q` can move to the page.
+    let quit = item(app, "quit", "Quit Orbyn Engineering", Some("Cmd+Q"))?;
+    if let Some(slot) = app.try_state::<QuitItem>() {
+        *slot.0.lock().expect("quit item") = Some(quit.clone());
+    }
     SubmenuBuilder::new(app, "Orbyn Engineering")
         .about(Some(about))
         .item(&item(app, "check-updates", "Check for Updates...", None)?)
@@ -184,7 +210,7 @@ fn app_submenu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
         .hide_others()
         .show_all()
         .separator()
-        .quit()
+        .item(&quit)
         .build()
 }
 

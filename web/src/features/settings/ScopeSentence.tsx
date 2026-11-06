@@ -3,6 +3,7 @@ import { useAsync } from "../../lib/useAsync";
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/controls";
+import { EnvironmentIcon } from "../../ui/EnvironmentIcon";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 interface Choice { key: string; label: string; path?: string; }
@@ -111,7 +112,7 @@ function ScopePicker({ axis, label, value, options, allLabel, disabled, onSelect
 function LocalEnvironmentLabel() {
   const info = useAsync("settings-environment-label", (signal) => api.info(signal));
   if (info.error) return <span role="alert">{info.error.message} <Button small onClick={info.reload}>Retry</Button></span>;
-  return <span>{info.data?.environment_label ?? "Loading…"}</span>;
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{info.data ? <EnvironmentIcon icon={info.data.environment_icon} /> : null}{info.data?.environment_label ?? "Loading…"}</span>;
 }
 
 /** The local project/checkouts axis; remote environment choices are outside this app's scope. */

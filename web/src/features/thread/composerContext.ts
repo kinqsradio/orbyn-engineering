@@ -36,6 +36,11 @@ export interface ReviewChip extends ChipBase {
   kind: "review";
   path: string;
   line: number | null;
+  /** Optional for older one-line diff comments. */
+  endLine?: number;
+  /** File annotations belong to the displayed source snapshot, not a later read. */
+  sourceRevision?: string;
+  sourceCwd?: string;
   comment: string;
   excerpt: string | null;
 }
@@ -99,7 +104,7 @@ export function chipLabel(chip: ComposerChip): string {
     case "terminal":
       return terminalLabel(chip);
     case "review":
-      return chip.line === null ? chip.path : `${chip.path}:${chip.line}`;
+      return chip.line === null ? chip.path : `${chip.path}:${chip.line}${chip.endLine && chip.endLine !== chip.line ? `–${chip.endLine}` : ""}`;
     case "annotation":
       return chip.selector || chip.url;
     case "citation": {
@@ -122,7 +127,7 @@ export function chipPrompt(chip: ComposerChip): string {
     case "terminal":
       return `${terminalLabel(chip)}\n\`\`\`\n${fenceSafe(excerptOf(chip.output))}\n\`\`\``;
     case "review": {
-      const where = chip.line === null ? `Review on \`${chip.path}\`` : `Review on \`${chip.path}:${chip.line}\``;
+      const where = `Review on \`${chipLabel(chip)}\``;
       const excerpt = chip.excerpt?.trim()
         ? `\n\`\`\`\n${fenceSafe(excerptOf(chip.excerpt))}\n\`\`\``
         : "";
@@ -224,7 +229,15 @@ export function asChip(value: unknown, id: string = chipId()): ComposerChip | nu
       const path = text(chip.path, 4096);
       const comment = text(chip.comment, 20000);
       if (!path || comment === null) return null;
-      return { id, kind: "review", path, line: number(chip.line), comment, excerpt: text(chip.excerpt) };
+      const line = number(chip.line);
+      const endLine = number(chip.endLine);
+      if (chip.endLine !== undefined && (line === null || endLine === null || endLine < line)) return null;
+      return {
+        id, kind: "review", path, line, comment, excerpt: text(chip.excerpt),
+        ...(endLine === null ? {} : { endLine }),
+        ...(typeof chip.sourceRevision === "string" ? { sourceRevision: text(chip.sourceRevision, 256) ?? undefined } : {}),
+        ...(typeof chip.sourceCwd === "string" ? { sourceCwd: text(chip.sourceCwd, 4096) ?? undefined } : {}),
+      };
     }
     case "annotation": {
       const url = text(chip.url, 8192);

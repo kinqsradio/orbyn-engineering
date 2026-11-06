@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiFailure, api, setUnauthorizedHandler } from "../api/client";
 import { followShell, readShellStatus } from "../api/shell";
 import { SignIn } from "../features/onboarding/SignIn";
+import { adoptEnvironmentTheme } from "../lib/environmentTheme";
 import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
@@ -32,7 +33,10 @@ export function App() {
     const abort = new AbortController();
     setBoot({ state: "loading" });
     api.info(abort.signal).then(
-      () => setBoot({ state: "ready" }),
+      (info) => {
+        adoptEnvironmentTheme(info.environment_theme);
+        setBoot({ state: "ready" });
+      },
       (error: unknown) => {
         if (abort.signal.aborted) return;
         const failure = toFailure(error);
@@ -48,6 +52,13 @@ export function App() {
   }, [start]);
 
   const ready = boot.state === "ready";
+  useEffect(() => {
+    if (!ready) return;
+    // A theme set from the command line reaches an open window when it next takes focus.
+    const recheck = () => void api.info().then((info) => adoptEnvironmentTheme(info.environment_theme), () => undefined);
+    window.addEventListener("focus", recheck);
+    return () => window.removeEventListener("focus", recheck);
+  }, [ready]);
   useEffect(() => {
     if (!ready) return;
     void readShellStatus().catch(() => undefined);

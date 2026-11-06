@@ -1,3 +1,4 @@
+import { EnvironmentIdentity } from "./EnvironmentIdentity";
 import {
   ChartColumn,
   ChevronRight,
@@ -902,6 +903,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           <OrbynMark />
           Orbyn Engineering
         </a>
+        <EnvironmentIdentity />
       </div>
       <div className="sidebar-search">
         {searching ? (

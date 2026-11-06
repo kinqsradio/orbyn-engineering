@@ -166,10 +166,48 @@ fn read_history(reply: &Value) -> HistoryState {
     }
 }
 
+/// Tracks real main-document lifecycle, including same-URL reloads.
+#[derive(Default)]
+struct Document {
+    frame: String,
+    generation: u64,
+}
+
+impl Document {
+    fn note(&mut self, event: &Value) -> bool {
+        let method = event
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let params = &event["params"];
+        let changed =
+            if method == "Page.frameNavigated" && params["frame"].get("parentId").is_none() {
+                if let Some(id) = params["frame"]["id"].as_str() {
+                    self.frame = id.to_owned();
+                }
+                true
+            } else {
+                matches!(
+                    method,
+                    "Page.frameStartedLoading"
+                        | "Page.frameStartedNavigating"
+                        | "Page.navigatedWithinDocument"
+                ) && !self.frame.is_empty()
+                    && params["frameId"].as_str() == Some(self.frame.as_str())
+            };
+        if changed {
+            self.generation = self.generation.saturating_add(1);
+        }
+        changed
+    }
+}
+
 pub struct BrowserSession {
     socket: Socket,
     session_id: String,
     next_id: u64,
+    document: Document,
+    on_document_change: Option<Box<dyn Fn() + Send + Sync>>,
     _child: Option<ManagedChild>,
 }
 
@@ -209,6 +247,8 @@ impl BrowserSession {
             socket,
             session_id: String::new(),
             next_id: 0,
+            document: Document::default(),
+            on_document_change: None,
             _child: child,
         };
         let targets = session.browser_call("Target.getTargets", json!({})).await?;
@@ -243,7 +283,28 @@ impl BrowserSession {
             .ok_or_else(|| failed("no page session"))?
             .to_owned();
         session.call("Page.enable", json!({})).await?;
+        let tree = session.call("Page.getFrameTree", json!({})).await?;
+        if let Some(id) = tree.pointer("/frameTree/frame/id").and_then(Value::as_str) {
+            session.document.frame = id.to_owned();
+        }
         Ok(session)
+    }
+
+    pub fn document_generation(&self) -> u64 {
+        self.document.generation
+    }
+
+    pub fn on_document_change(&mut self, notify: impl Fn() + Send + Sync + 'static) {
+        self.on_document_change = Some(Box::new(notify));
+    }
+
+    fn note_document(&mut self, event: &Value) {
+        if event.get("sessionId").and_then(Value::as_str) == Some(self.session_id.as_str())
+            && self.document.note(event)
+            && let Some(notify) = &self.on_document_change
+        {
+            notify();
+        }
     }
 
     async fn browser_call(&mut self, method: &str, params: Value) -> Result<Value> {
@@ -283,6 +344,7 @@ impl BrowserSession {
                 let Ok(reply) = serde_json::from_str::<Value>(text) else {
                     continue;
                 };
+                self.note_document(&reply);
                 if reply.get("id").and_then(Value::as_u64) != Some(id) {
                     continue;
                 }
@@ -344,12 +406,14 @@ impl BrowserSession {
         let _ = tokio::time::timeout(limit, async {
             while let Some(Ok(frame)) = self.socket.next().await {
                 let Ok(text) = frame.to_text() else { continue };
-                if let Ok(event) = serde_json::from_str::<Value>(text)
-                    && matches!(
-                        event.get("method").and_then(Value::as_str),
-                        Some("Page.loadEventFired" | "Page.navigatedWithinDocument")
-                    )
-                {
+                let Ok(event) = serde_json::from_str::<Value>(text) else {
+                    continue;
+                };
+                self.note_document(&event);
+                if matches!(
+                    event.get("method").and_then(Value::as_str),
+                    Some("Page.loadEventFired" | "Page.navigatedWithinDocument")
+                ) {
                     return;
                 }
             }
@@ -505,6 +569,12 @@ impl BrowserSession {
 
     /// Clicks through input events, so the page sees a trusted click.
     pub async fn click(&mut self, selector: &str) -> Result<Value> {
+        self.click_point(selector).await?;
+        Ok(json!({ "clicked": selector }))
+    }
+
+    /// The point actually dispatched, used by the preview's content-free cue.
+    pub async fn click_point(&mut self, selector: &str) -> Result<(f64, f64)> {
         let locate = format!(
             "(() => {{ const el = document.querySelector({}); if (!el) return null; \
              el.scrollIntoView({{block: 'center'}}); const box = el.getBoundingClientRect(); \
@@ -525,7 +595,7 @@ impl BrowserSession {
             )
             .await?;
         }
-        Ok(json!({ "clicked": selector }))
+        Ok((x, y))
     }
 }
 
@@ -546,6 +616,89 @@ async fn read_port_file(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn navigation_during_dispatch_and_capture_is_seen_before_the_reply() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            while let Some(Ok(frame)) = socket.next().await {
+                let Ok(text) = frame.to_text() else { continue };
+                let request: Value = serde_json::from_str(text).unwrap();
+                let method = request["method"].as_str().unwrap();
+                let result = match method {
+                    "Target.getTargets" => {
+                        json!({ "targetInfos": [{ "type": "page", "targetId": "target" }] })
+                    }
+                    "Target.attachToTarget" => json!({ "sessionId": "session" }),
+                    "Page.getFrameTree" => json!({ "frameTree": { "frame": { "id": "main" } } }),
+                    "Runtime.evaluate" => json!({ "result": { "value": { "x": 10, "y": 20 } } }),
+                    "Page.captureScreenshot" => {
+                        socket.send(Message::text(json!({ "sessionId": "session", "method": "Page.frameNavigated", "params": { "frame": { "id": "main", "url": "http://same/" } } }).to_string())).await.unwrap();
+                        json!({ "data": "frame" })
+                    }
+                    "Input.dispatchMouseEvent" if request["params"]["type"] == "mousePressed" => {
+                        socket.send(Message::text(json!({ "sessionId": "session", "method": "Page.frameStartedLoading", "params": { "frameId": "main" } }).to_string())).await.unwrap();
+                        json!({})
+                    }
+                    _ => json!({}),
+                };
+                socket
+                    .send(Message::text(
+                        json!({ "id": request["id"], "result": result }).to_string(),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        });
+        let mut session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let events = observed.clone();
+        session.on_document_change(move || events.lock().unwrap().push("clear"));
+        let before = session.document_generation();
+        assert_eq!(session.click_point("button").await.unwrap(), (10.0, 20.0));
+        assert!(
+            session.document_generation() > before,
+            "input caller must fence the changed document"
+        );
+        assert_eq!(*observed.lock().unwrap(), ["clear"]);
+        assert_eq!(session.frame(60).await.unwrap(), "frame");
+        observed.lock().unwrap().push("frame");
+        assert_eq!(*observed.lock().unwrap(), ["clear", "clear", "frame"]);
+        drop(session);
+        server.await.unwrap();
+    }
+
+    #[test]
+    fn main_document_events_fence_links_and_same_url_reload_but_not_subframes() {
+        let mut document = Document {
+            frame: "main".into(),
+            generation: 0,
+        };
+        assert!(!document.note(
+            &json!({ "method": "Page.frameStartedLoading", "params": { "frameId": "child" } })
+        ));
+        assert!(document.note(
+            &json!({ "method": "Page.frameStartedLoading", "params": { "frameId": "main" } })
+        ));
+        assert_eq!(document.generation, 1);
+        let committed = json!({ "method": "Page.frameNavigated", "params": { "frame": { "id": "main", "url": "http://fixture/" } } });
+        assert!(document.note(&committed));
+        assert!(
+            document.note(&committed),
+            "same URL still commits a new document"
+        );
+        assert_eq!(document.generation, 3);
+        assert!(!document.note(&json!({ "method": "Page.frameNavigated", "params": { "frame": { "id": "child", "parentId": "main" } } })));
+        assert!(document.note(
+            &json!({ "method": "Page.navigatedWithinDocument", "params": { "frameId": "main" } })
+        ));
+        assert_eq!(document.generation, 4);
+    }
 
     #[test]
     fn only_the_headless_shell_gets_the_gpu_switch() {
