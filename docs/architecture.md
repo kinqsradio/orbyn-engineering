@@ -1852,6 +1852,16 @@ engine with a signed warning is left to its recommended install, and each goes t
 single-engine update, so a busy engine or a failed installer is reported by name while the
 rest still run. Settings offers Update all when two or more engines qualify.
 
+`GET /api/engines/update-events` sends each step of an engine update while it runs:
+`started` with the installer's command, an `output` for each line it prints (stdout and
+stderr, a carriage return ending a line, colour codes dropped, 500 characters at most), then
+one `finished` with the new version or the error, even when the update is dropped. Nothing is
+replayed to a late listener, and a listener that falls behind is disconnected, because it may have
+missed a `finished`. Settings → Providers shows the latest line. An update runs to the end and
+cannot be cancelled from Orbyn, because stopping an installer partway could leave a half-written
+engine: the service keeps it running when the client that asked goes away, and only the update
+timeout stops one that hangs.
+
 ## Desktop shell
 
 The native product UI loads from the stable bundled asset origin (`tauri://localhost`
@@ -2563,6 +2573,7 @@ because browsers cannot set headers on them.
 | `GET, POST /api/threads/:id/scripts` | `ProjectFileView`; `RunScript` to `TerminalInfo` |
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
+| `GET /api/engines/update-events` | SSE `EngineUpdateProgress` while an engine update runs |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
 | `GET /api/acp/registry?q=` | `AcpRegistryEntry[]`, with how this machine can install each; `502` if unreachable |
 | `POST, DELETE /api/acp/registry/:id` | `InstallAcpAgent` to `EngineStatus`, `422` if refused; remove, `409 engine_busy` |

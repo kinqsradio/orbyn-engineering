@@ -84,6 +84,15 @@ export function mockApi(): Plugin {
           return;
         }
 
+        if (url.startsWith("/api/engines/update-events")) {
+          // No engine update runs in the mock, so the stream stays open and quiet.
+          res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+          res.write(": connected\n\n");
+          streams.add(res);
+          req.on("close", () => streams.delete(res));
+          return;
+        }
+
         const events = /^\/api\/threads\/([^/?]+)\/events/.exec(url);
         if (events) {
           const failed = mock.handle("GET", "/api/info");

@@ -664,6 +664,10 @@ fn router(state: AppState) -> Router {
             axum::routing::delete(api::delete_custom_engine),
         )
         .route("/api/engines/update-all", post(api::update_all_engines))
+        .route(
+            "/api/engines/update-events",
+            get(stream::engine_update_events),
+        )
         .route("/api/engines/{id}/update", post(api::update_engine))
         .route(
             "/api/engines/{id}/install-recommended",

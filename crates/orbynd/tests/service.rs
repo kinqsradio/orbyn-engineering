@@ -1012,6 +1012,20 @@ async fn update_all_skips_an_engine_no_installer_owns() {
     assert_eq!(body, json!([]));
 }
 
+#[tokio::test]
+async fn engine_update_progress_is_an_event_stream() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let response = service
+        .get("/api/engines/update-events")
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "text/event-stream");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn desktop_action_passes_through_the_sidecar_envelope() {
