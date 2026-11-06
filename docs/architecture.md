@@ -1847,7 +1847,8 @@ second account by config directory stays the CLI's own arrangement. `CODEX_SANDB
 session markers go always, and an AppImage's variables and its mount's entries in
 library, data and `PATH` lists go when `APPIMAGE` and `APPDIR` are both set. The
 `prefer_saved_login` preference also drops API keys and endpoint overrides from engines
-only, so they use their own login. `EngineStatus` reports inherited credentials by
+only, so they use their own login. Engine consoles and terminal engines count as
+engines; a plain shell terminal does not. `EngineStatus` reports inherited credentials by
 variable name and an endpoint by origin, never a value. No value is read for any other
 purpose, which keeps this inside rule 1.
 

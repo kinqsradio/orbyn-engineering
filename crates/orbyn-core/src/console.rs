@@ -135,6 +135,7 @@ impl Core {
                     cwd: console.cwd.clone(),
                     cols,
                     rows,
+                    engine: true,
                 },
             )
         })

@@ -157,6 +157,46 @@ async fn claude_console_resumes_the_thread_session_and_holds_runs() {
 }
 
 #[tokio::test]
+async fn console_keeps_to_the_saved_login_when_asked() {
+    let dir = TempDir::new();
+    let file = dir.path().join("launches");
+    let mut options = options(&file);
+    for (name, value) in [
+        ("ANTHROPIC_API_KEY", "not-a-real-key"),
+        ("CLAUDE_CODE_OAUTH_TOKEN", "not-a-real-token"),
+        ("ANTHROPIC_BASE_URL", "https://proxy.test"),
+    ] {
+        options.env.push((name.to_owned(), value.to_owned()));
+    }
+    let (service, thread) = setup(&dir, options, "claude").await;
+    let response = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": { "prefer_saved_login": true } }))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    service.admit(&thread, "hello").await;
+    service.finished(&thread).await;
+    let (code, body) = service
+        .send(&format!("/api/threads/{thread}/console"), json!({}))
+        .await;
+    assert_eq!(code, 201, "{body}");
+    assert!(until_seen(&service, &thread, "fake console on claude-session-1").await);
+    let seen = consoles(&file)[0]["env"].to_string();
+    for name in [
+        "ANTHROPIC_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+    ] {
+        assert!(!seen.contains(name), "{name} reached the console: {seen}");
+    }
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn codex_console_resumes_in_the_checkout() {
     let dir = TempDir::new();
     let file = dir.path().join("launches");

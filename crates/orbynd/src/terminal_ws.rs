@@ -67,6 +67,7 @@ pub async fn terminal(
                     cwd: thread.cwd.clone().into(),
                     cols: 120,
                     rows: 32,
+                    engine: false,
                 },
             )?
         }
@@ -162,6 +163,7 @@ pub async fn open(
             cwd: thread.cwd.into(),
             cols: body.cols.unwrap_or(120),
             rows: body.rows.unwrap_or(32),
+            engine: false,
         },
     )?;
     Ok((StatusCode::CREATED, Json(info)))
