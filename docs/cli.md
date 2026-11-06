@@ -175,6 +175,36 @@ ignored; malformed/unreadable files stop startup. Launcher PATH and selected
 data-directory ownership are retained. Keep this private environment file out
 of reports and version control.
 
-There are no registered `orbyn` ACP MCP bridge/call or Claude-history CLI helpers.
-Core's per-run HTTP MCP endpoint and usage-history readers are separate internal
-facilities, not aliases for those commands. SSH helpers remain out of scope.
+`orbyn acp-mcp-bridge` is hidden because an ACP agent starts it, never a person.
+Orbyn offers it as the agent's stdio MCP server when the agent does not report
+HTTP MCP support. It reads newline JSON-RPC on stdin, posts each message to the
+run's endpoint in `ORBYN_ACP_MCP_ENDPOINT` and writes each reply as one line on
+stdout. The handshake runs in order and later requests run side by side, since a
+tool can wait on a person. A line that is not JSON gets a parse error, and a
+request the endpoint cannot answer gets an error reply with its id. It exits
+when stdin closes and the replies still on their way are written.
+
+`orbyn acp-mcp-call <tool> <arguments-json>` is the terminal fallback for an
+agent that accepts `mcpServers` but never shows those tools to its model. It
+opens a session on the same endpoint, calls one tool and prints the result as
+one JSON line. A text part that only repeats `structuredContent` is dropped.
+
+Both read the endpoint only from the environment, because it carries the run's
+token, and both exit with code 2 when it is unset or the arguments are not a JSON
+object. A run's token dies with the run, so neither works outside it.
+
+`orbyn __claude-history getSessionMessages <session-id> [options-json]` prints
+one Claude session's user and assistant messages, in file order, as a JSON array.
+It reads `CLAUDE_CONFIG_DIR`, else `~/.claude`, then
+`projects/<folder>/<session-id>.jsonl`. It needs no sign-in and writes nothing.
+The options are `dir` (the session's working folder, so only that project is
+read; Claude names the folder by turning every character other than an ASCII
+letter or digit into `-`, so `C:\work\app` is `C--work-app`),
+`includeSystemMessages` and `upToMessageId` (stop after that message).
+Subagent side-chain entries are left out. A session id is letters, digits, `-`
+and `_` only, so it cannot name a path. A missing session is exit 1, and bad
+options are exit 2. `forkSession` is refused with exit 2, because forking writes
+into Claude's own history, which Orbyn only reads. Use
+`claude --resume <session-id> --fork-session` instead.
+
+The SSH helper stays out of scope.

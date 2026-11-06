@@ -121,6 +121,22 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Relay an ACP agent's stdio MCP to the run endpoint in `ORBYN_ACP_MCP_ENDPOINT`.
+    #[command(name = "acp-mcp-bridge", hide = true)]
+    AcpMcpBridge,
+    /// Call one of the run's MCP tools from an ACP agent's terminal.
+    #[command(name = "acp-mcp-call", hide = true)]
+    AcpMcpCall {
+        tool: String,
+        arguments_json: String,
+    },
+    /// Read one Claude session's messages from Claude's own history folder.
+    #[command(name = "__claude-history", hide = true)]
+    ClaudeHistory {
+        method: String,
+        session_id: String,
+        options: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1218,6 +1234,16 @@ async fn run(cli: Cli) -> Outcome<()> {
             return update(&cli, &wanted).await;
         }
         Command::Uninstall { dry_run } => return uninstall(&cli, *dry_run).await,
+        Command::AcpMcpBridge => return acp_mcp_bridge().await,
+        Command::AcpMcpCall {
+            tool,
+            arguments_json,
+        } => return acp_mcp_call(tool, arguments_json).await,
+        Command::ClaudeHistory {
+            method,
+            session_id,
+            options,
+        } => return claude_history(method, session_id, options.as_deref()),
         _ => {}
     }
     let service = Service::find(&data_dir(&cli)?)?;
@@ -1257,6 +1283,71 @@ fn main() -> ExitCode {
             ExitCode::from(failure.code)
         }
     }
+}
+
+fn usage(message: impl Into<String>) -> Failure {
+    Failure {
+        message: message.into(),
+        code: 2,
+        api_error: None,
+    }
+}
+
+fn bridge_endpoint(command: &str) -> Outcome<String> {
+    use orbyn_core::acp_mcp_bridge::ENDPOINT_ENV;
+    std::env::var(ENDPOINT_ENV)
+        .ok()
+        .filter(|endpoint| !endpoint.is_empty())
+        .ok_or_else(|| {
+            usage(format!(
+                "{command} needs {ENDPOINT_ENV}, which an Orbyn run sets."
+            ))
+        })
+}
+
+async fn acp_mcp_bridge() -> Outcome<()> {
+    let endpoint = bridge_endpoint("acp-mcp-bridge")?;
+    let input = tokio::io::BufReader::new(tokio::io::stdin());
+    orbyn_core::acp_mcp_bridge::run_bridge(&endpoint, input, tokio::io::stdout())
+        .await
+        .map_err(|error| Failure::new(error.to_string()))
+}
+
+async fn acp_mcp_call(tool: &str, arguments_json: &str) -> Outcome<()> {
+    let endpoint = bridge_endpoint("acp-mcp-call")?;
+    let arguments: Value = serde_json::from_str(arguments_json)
+        .map_err(|_| usage("acp-mcp-call arguments must be valid JSON."))?;
+    if !arguments.is_object() {
+        return Err(usage("acp-mcp-call arguments must be a JSON object."));
+    }
+    let result = orbyn_core::acp_mcp_bridge::call_tool(&endpoint, tool, arguments)
+        .await
+        .map_err(|error| Failure::new(error.to_string()))?;
+    println!("{result}");
+    Ok(())
+}
+
+fn claude_history(method: &str, session: &str, options: Option<&str>) -> Outcome<()> {
+    use orbyn_core::claude_history::{HistoryOptions, session_messages};
+    match method {
+        "getSessionMessages" => {}
+        "forkSession" => {
+            return Err(usage(
+                "Forking writes into Claude's own history, which Orbyn only reads. \
+                 Use `claude --resume <session-id> --fork-session` instead.",
+            ));
+        }
+        other => return Err(usage(format!("Unknown Claude history method {other}."))),
+    }
+    let options: HistoryOptions = match options {
+        Some(text) => serde_json::from_str(text)
+            .map_err(|error| usage(format!("Claude history options are not valid: {error}")))?,
+        None => HistoryOptions::default(),
+    };
+    let messages =
+        session_messages(session, &options).map_err(|error| Failure::new(error.to_string()))?;
+    println!("{}", Value::from(messages));
+    Ok(())
 }
 
 #[tokio::main]
