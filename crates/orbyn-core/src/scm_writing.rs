@@ -106,15 +106,26 @@ async fn read_git_bounded(cwd: &Path, args: &[&str], attributes: Option<&str>) -
         let mut error = Vec::new();
         let mut stdout = stdout.take((CONTEXT_BYTES + 1) as u64);
         let mut stderr = stderr.take(2049);
+        // Either stream over its cap ends the read at once: Git would otherwise
+        // block on the unread rest of the pipe until the deadline.
+        let too_large =
+            || invalid("This change is too large to generate text. Enter text manually.");
         tokio::try_join!(
-            stdout.read_to_end(&mut output),
-            stderr.read_to_end(&mut error)
+            async {
+                stdout.read_to_end(&mut output).await?;
+                if output.len() > CONTEXT_BYTES {
+                    return Err(too_large());
+                }
+                Ok(())
+            },
+            async {
+                stderr.read_to_end(&mut error).await?;
+                if error.len() > 2048 {
+                    return Err(too_large());
+                }
+                Ok::<_, CoreError>(())
+            }
         )?;
-        if output.len() > CONTEXT_BYTES || error.len() > 2048 {
-            return Err(invalid(
-                "This change is too large to generate text. Enter text manually.",
-            ));
-        }
         if !child.wait().await?.success() {
             return Err(CoreError::Git(
                 String::from_utf8_lossy(&error).trim().into(),
@@ -132,7 +143,7 @@ fn utf8(bytes: Vec<u8>) -> Result<String> {
         .map_err(|_| invalid("This change contains unsupported text. Enter text manually."))
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct Candidate {
     identity: Vec<u8>,
     context: String,
@@ -487,6 +498,8 @@ pub(crate) struct PreparedWriting {
     base: Option<(String, String)>,
     head: Option<String>,
     branch: Option<Vec<u8>>,
+    /// Why generated text was replaced by the fallback, for the person to see.
+    pub notice: Option<String>,
 }
 
 impl PreparedWriting {
@@ -551,6 +564,7 @@ impl Core {
                 base: None,
                 head: None,
                 branch: None,
+                notice: None,
             });
         }
         let commit = action
@@ -568,9 +582,40 @@ impl Core {
                 base: None,
                 head: None,
                 branch: None,
+                notice: None,
             });
         }
         self.check_engine_enabled(&thread.engine, &thread.project_id)?;
+        let mut prepared = PreparedWriting {
+            action,
+            candidate: None,
+            base: None,
+            head: None,
+            branch: None,
+            notice: None,
+        };
+        match self
+            .generate_writing(thread, &mut prepared, commit, pull, actor)
+            .await
+        {
+            Ok(()) => Ok(prepared),
+            Err(error) if stops_the_action(&error) => Err(error),
+            // Generation is a convenience: its failure never stops the action.
+            Err(error) => Ok(fallback(thread, prepared, &error)),
+        }
+    }
+
+    /// Fills each blank field it generates into `prepared`, with the state that
+    /// text was read from; a failure leaves the fields generated before it.
+    async fn generate_writing(
+        &self,
+        thread: &Thread,
+        prepared: &mut PreparedWriting,
+        commit: bool,
+        pull: bool,
+        actor: &str,
+    ) -> Result<()> {
+        let mut action = prepared.action.clone();
         let configured = self.preference("text_generation_model", Some(&thread.project_id))?;
         let model = configured
             .as_str()
@@ -719,9 +764,7 @@ impl Core {
                 || fresh.model != thread.model
                 || fresh.project_id != thread.project_id
             {
-                return Err(invalid(
-                    "The thread changed. Review the action and try again.",
-                ));
+                return Err(invalid(THREAD_CHANGED));
             }
             self.check_engine_enabled(&thread.engine, &thread.project_id)?;
             self.store.append_audit(&AuditRecord {
@@ -737,6 +780,8 @@ impl Core {
             let reply = driver.write_text(&prompt, Some(&model)).await?;
             if purpose == "commit" {
                 action.commit_message = Some(commit_reply(&reply)?);
+                prepared.action.commit_message = action.commit_message.clone();
+                prepared.candidate = snapshot.clone();
             } else {
                 let text = pull_reply(&reply)?;
                 let draft = action.pull_request.as_mut().expect("pull requested");
@@ -746,16 +791,65 @@ impl Core {
                 if draft.body.trim().is_empty() {
                     draft.body = text.body;
                 }
+                prepared.action.pull_request = action.pull_request.clone();
+                prepared.candidate = snapshot.clone();
+                prepared.base = base_identity.clone();
+                prepared.head = head.clone();
+                prepared.branch = branch.clone();
             }
         }
-        Ok(PreparedWriting {
-            action,
-            candidate: snapshot,
-            base: base_identity,
-            head,
-            branch,
-        })
+        Ok(())
     }
+}
+
+const THREAD_CHANGED: &str = "The thread changed. Review the action and try again.";
+
+/// What still stops the action when generation fails: the thread is busy,
+/// archived, untrusted or changed, or the person turned the engine off. Anything about the change, the
+/// model or its reply only means the text is not generated.
+fn stops_the_action(error: &CoreError) -> bool {
+    match error {
+        CoreError::ThreadBusy
+        | CoreError::ThreadArchived
+        | CoreError::FolderUntrusted
+        | CoreError::ConsoleOpen
+        | CoreError::NotFound(_) => true,
+        CoreError::Invalid(message) => {
+            message == THREAD_CHANGED || message.contains("is turned off")
+        }
+        _ => false,
+    }
+}
+
+/// What a blank field gets when generation failed, as before generation
+/// existed: the thread title for a commit message or pull request title, and an
+/// empty description. Fields generated before the failure stay. The notice says
+/// why, so the person can amend the text.
+fn fallback(thread: &Thread, mut prepared: PreparedWriting, error: &CoreError) -> PreparedWriting {
+    let title = if thread.title.trim().is_empty() {
+        "Update files".to_owned()
+    } else {
+        thread.title.trim().to_owned()
+    };
+    if let Some(message) = prepared.action.commit_message.as_mut()
+        && message.trim().is_empty()
+    {
+        *message = title.clone();
+    }
+    if let Some(draft) = prepared.action.pull_request.as_mut()
+        && draft.title.trim().is_empty()
+    {
+        draft.title = title;
+    }
+    let reason = error.to_string();
+    let reason = reason
+        .trim()
+        .trim_end_matches("Enter text manually.")
+        .trim();
+    prepared.notice = Some(format!(
+        "Text was not generated, so the thread title was used. {reason}"
+    ));
+    prepared
 }
 
 #[cfg(test)]
@@ -799,6 +893,31 @@ mod tests {
         assert_eq!(pull.title, "Add fences");
         assert_eq!(pull.body, "## Summary\n\n```rust\nfn x() {}\n```");
         assert!(commit_reply(&"x".repeat(REPLY_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn only_a_busy_changed_or_turned_off_thread_stops_the_action() {
+        for error in [
+            CoreError::ThreadBusy,
+            CoreError::ThreadArchived,
+            CoreError::FolderUntrusted,
+            invalid(THREAD_CHANGED),
+            invalid("claude is turned off for this project."),
+            invalid("claude is turned off."),
+        ] {
+            assert!(stops_the_action(&error), "{error}");
+        }
+        for error in [
+            invalid("Choose a text generation or thread model, or enter text manually."),
+            invalid("This change is too large to generate text. Enter text manually."),
+            invalid("Reading this change timed out. Enter text manually."),
+            invalid("A writing reference is a symlink. Enter text manually."),
+            invalid("The engine returned invalid commit text. Enter text manually."),
+            CoreError::EngineUnavailable("claude is not installed".into()),
+            CoreError::Git("fatal: bad object".into()),
+        ] {
+            assert!(!stops_the_action(&error), "{error}");
+        }
     }
 
     #[tokio::test]

@@ -836,6 +836,9 @@ wire! {
 pub struct GitActionResult {
     /// Phases that ran. A failed phase is the last one.
     pub phases: Vec<GitPhase>,
+    /// Why blank text was not generated and the fallback was used instead.
+    #[serde(default)]
+    pub notice: Option<String>,
 }
 }
 

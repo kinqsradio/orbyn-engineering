@@ -5,4 +5,8 @@ export type GitActionResult = {
 /**
  * Phases that ran. A failed phase is the last one.
  */
-phases: Array<GitPhase>, };
+phases: Array<GitPhase>, 
+/**
+ * Why blank text was not generated and the fallback was used instead.
+ */
+notice: string | null, };
