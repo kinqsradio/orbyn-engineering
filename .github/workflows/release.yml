@@ -79,11 +79,14 @@ jobs:
         run: |
           echo "Azure Trusted Signing must be configured before this job can pass." >&2
           test -n "$AZURE_CODESIGN_ENDPOINT"
+      - name: Pack the command for install.sh and install.ps1
+        shell: bash
+        run: node scripts/pack-cli.mjs ${{ matrix.target }} "desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
       - name: Write checksums and inventory
         shell: bash
         run: |
           bundle="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
-          find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.tar.gz' -o -name '*.sig' \) -print0 > assets
+          find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.tar.gz' -o -name '*.sig' -o -name 'orbyn-cli-*.sha256' \) -print0 > assets
           xargs -0 node scripts/release-evidence.mjs release-evidence < assets
           xargs -0 -I{} cp {} release-evidence/ < assets
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

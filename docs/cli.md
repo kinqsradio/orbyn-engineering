@@ -8,6 +8,20 @@ the CLI; starting a service also needs the built sibling `orbynd` and UI assets.
 This is a source/bundle workflow, not an npm distribution. There is currently no
 documented `npx orbyn` try-without-install command.
 
+## Installing without the app
+
+`scripts/install.sh` (macOS) and `scripts/install.ps1` (Windows) install the command
+from a GitHub release: `orbyn`, `orbynd`, the UI and the library snapshot go to
+`~/.local/share/orbyn/cli`, and a launcher to `~/.local/bin/orbyn` (`orbyn.cmd` on
+Windows). `ORBYN_VERSION` pins an exact release (`v` optional), `ORBYN_CHANNEL=nightly`
+takes the `nightly` release, and `ORBYN_INSTALL_DIR` and `ORBYN_HOME` move the two
+folders. The archive must match its `.sha256`, or nothing changes; an earlier install
+stays until the new one is unpacked. Neither script edits `PATH`; each says when
+`~/.local/bin` is missing from it. The release workflow packs
+`orbyn-cli-<target>.tar.gz` with `scripts/pack-cli.mjs`. No release has published
+these assets yet, and the macOS binaries in the archive carry no Developer ID
+signature of their own.
+
 ## Shared options and service discovery
 
 - `--data-dir DIR` selects the service's data folder. `ORBYN_DATA_DIR` is the
