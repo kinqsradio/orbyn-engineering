@@ -566,6 +566,24 @@ fn router(state: AppState) -> Router {
             post(preview_routes::input),
         )
         .route(
+            "/api/threads/{id}/previews/{tab}/copy",
+            post(preview_routes::copy),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/uploads",
+            post(preview_routes::upload).layer(DefaultBodyLimit::max(
+                orbyn_core::preview_bridge::MAX_UPLOAD_BYTES + 1024,
+            )),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/chooser",
+            post(preview_routes::answer_chooser),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/downloads/{download}",
+            get(preview_routes::download),
+        )
+        .route(
             "/api/threads/{id}/previews/{tab}/recording",
             post(preview_routes::start_recording).delete(preview_routes::stop_recording),
         )

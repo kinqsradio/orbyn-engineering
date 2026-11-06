@@ -31,6 +31,7 @@ pub mod permission_modes;
 pub mod policy;
 pub mod preferences;
 pub mod preview;
+pub mod preview_bridge;
 mod preview_recording;
 mod preview_trace;
 pub mod process;
