@@ -309,7 +309,8 @@ describe("App against the mock API", () => {
     go("#/threads/t-approval");
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "Workspace" });
-    expect(await within(nav).findByTitle(/approval-timeout/)).toBeInTheDocument();
+    const row = await within(nav).findByRole("link", { name: /Add approval timeout/ });
+    expect(row).toHaveAccessibleDescription(/approval-timeout/);
   });
 
   it("offers sign-in when the service asks for it, then opens", async () => {

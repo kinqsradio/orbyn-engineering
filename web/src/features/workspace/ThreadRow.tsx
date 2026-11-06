@@ -231,6 +231,8 @@ export function ThreadRow({
   ]
     .filter(Boolean)
     .join(" · ");
+  // Project, branch and engine left the visible row; screen readers and keyboard users get them here.
+  const detailsId = `thread-row-details-${thread.id}`;
   const stopHover = () => {
     clearTimeout(timer.current);
     setHover(null);
@@ -384,6 +386,7 @@ export function ThreadRow({
       <a
         className="thread-row"
         title={details}
+        aria-describedby={detailsId}
         data-unread={unread || undefined}
         data-multiline={multiline || undefined}
         href={routeHref({ name: "thread", id: thread.id })}
@@ -395,7 +398,13 @@ export function ThreadRow({
           stopHover();
           actions.onPressStart(event, thread, section);
         }}
-        onFocus={() => actions.onRowFocus(thread.id)}
+        onFocus={(event) => {
+          actions.onRowFocus(thread.id);
+          if (!event.currentTarget.matches(":focus-visible")) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          timer.current = setTimeout(() => setHover(rect), HOVER_DELAY_MS);
+        }}
+        onBlur={stopHover}
         onPointerEnter={(event) => {
           if (event.pointerType !== "mouse") return;
           const rect = event.currentTarget.getBoundingClientRect();
@@ -414,9 +423,14 @@ export function ThreadRow({
         {pinMark}
         {unmanaged ? (
           <span className="thread-row-project">Unmanaged</span>
+        ) : thread.scratch ? (
+          <span className="thread-row-project">{projectName}</span>
         ) : null}
         {trailing}
       </a>
+      <span id={detailsId} className="sr-only">
+        {details}
+      </span>
       {hover && !dragging ? (
         <ThreadHoverCard
           thread={thread}
