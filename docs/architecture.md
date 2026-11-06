@@ -186,6 +186,14 @@ Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
 paste into a composer restores the chips and refetches a file whose text was not
 carried. Ordinary text, broken JSON and half-known chips never become chips.
 
+File source annotations use review chips with a captured line range, source excerpt
+and comment. The chip opens its captured details for editing or removal; neither
+action changes the file. A successful send, queue or steer consumes only chips whose
+values still match the submitted snapshot, so editing a chip with the same ID while
+the request is in flight preserves that edit. New chips and newer draft text stay.
+Review comments, like terminal context, cannot be consumed by local commands,
+compact/goal commands, side chats or approval replies that do not carry context.
+
 A terminal selection also records the one-based buffer rows it covered, so its
 chip and prompt block name those lines instead of the whole terminal. Chips count
 as part of the message, not as text beside it: the 120,000-character limit covers
@@ -1163,6 +1171,13 @@ on every filesystem. A path is judged where it lands, so a link into `.git` or a
 different spelling of it on a case-insensitive disk is refused too. These saves are the
 user's own edits, audited, and differ from rule 4, which covers what Orbyn adds on its
 own.
+
+The source viewer offers comments on one line or a Shift-selected range. Comments
+capture at most 4,000 source characters and 20,000 comment characters, within the
+complete prompt limit. Their annotation positions belong to the displayed revision
+and checkout; a reload or edited revision never transfers those positions to new
+source. Submitted chips keep their captured context when the file changes, and
+only the ordinary send action passes that context to the engine.
 
 `GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
 byte range at a time; a form it does not serve gets the whole file. A checkout holds
