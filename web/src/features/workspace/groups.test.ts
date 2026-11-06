@@ -4,8 +4,10 @@ import {
   arrangeThreads,
   attentionRank,
   dropPatch,
+  drawnOrder,
   dropVerb,
   foldersOf,
+  ledgerGroupsOf,
   projectDrop,
   sectionOf,
   sweepIds,
@@ -231,5 +233,74 @@ describe("ledger order", () => {
     const threads = [thread("plain", { position: 0 }), thread("broke", { position: 1 }, failed), thread("asks", { position: 2 }, waiting)];
     expect(arrangeThreads(threads, now).active.map((t) => t.id)).toEqual(["plain", "broke", "asks"]);
     expect(arrangeThreads(threads, now, true, true).active.map((t) => t.id)).toEqual(["asks", "broke", "plain"]);
+  });
+});
+
+describe("drawn order", () => {
+  const waiting = { active_run: { id: "r", state: "awaiting_approval" } as Thread["active_run"] };
+  const failed = { last_run_state: "failed" } as Partial<Thread>;
+  const project = (id: string) => ({ id, name: id }) as never;
+  const open = () => true;
+  const base = { strays: [], folderOpen: open, groupOpen: open, settled: [] as Thread[] };
+
+  it("follows Ledger's groups, with running before done", () => {
+    const threads = [
+      thread("done1", { position: 0 }),
+      thread("run1", { position: 1 }, running),
+      thread("fail1", { position: 2 }, failed),
+      thread("ask1", { position: 3 }, waiting),
+      thread("done2", { position: 4 }),
+      thread("run2", { position: 5 }, running),
+    ];
+    const sections = arrangeThreads(threads, now, false, true);
+    // The saved order inside `active` is already the drawn order, so a drop index is a screen position.
+    expect(sections.active.map((t) => t.id)).toEqual(["ask1", "fail1", "run1", "run2", "done1", "done2"]);
+    expect(ledgerGroupsOf(sections.active).map((g) => [g.key, g.rows.map((t) => t.id)])).toEqual([
+      ["needs", ["ask1"]],
+      ["failed", ["fail1"]],
+      ["running", ["run1", "run2"]],
+      ["done", ["done1", "done2"]],
+    ]);
+    expect(drawnOrder({ ...base, sections, ledger: true, folders: null }).map((t) => t.id)).toEqual([
+      "ask1", "fail1", "run1", "run2", "done1", "done2",
+    ]);
+  });
+
+  it("follows the folders, then the stray list, and skips a collapsed folder", () => {
+    const a = thread("a1", { position: 0 }, { project_id: "pa" });
+    const b = thread("b1", { position: 1 }, { project_id: "pb" });
+    const b2 = thread("b2", { position: 2 }, { project_id: "pb" });
+    const lost = thread("lost", { position: 3 }, { project_id: "gone" });
+    const pinned = thread("pin", { pinned_at: "2026-10-30T00:00:00Z" });
+    const busy = thread("busy", { position: 4 }, { ...running, project_id: "pa" });
+    const sections = arrangeThreads([a, b, b2, lost, pinned, busy], now);
+    const folders = foldersOf([project("pa"), project("pb")], [a, b, b2], null, "created_at", "updated_at");
+    const names = (rows: Thread[]) => rows.map((t) => t.id);
+    const input = { ...base, sections, ledger: false, folders, strays: [lost] };
+    const order = names(drawnOrder(input));
+    // The Working shelf is drawn above the folders, and its threads are in no folder.
+    expect(order.slice(0, 2)).toEqual(["busy", "pin"]);
+    expect(order.slice(2)).toEqual([...folders.flatMap((f) => names(f.threads)), "lost"]);
+    const collapsed = names(drawnOrder({ ...input, folderOpen: (f) => f.key !== "pa" }));
+    expect(collapsed).not.toContain("a1");
+    expect(collapsed).toContain("b1");
+  });
+
+  it("leaves a closed Working shelf out of the folder view, and a bare project draws no threads", () => {
+    const busy = thread("busy", { position: 0 }, { ...running, project_id: "pa" });
+    const sections = arrangeThreads([busy, thread("a1", { position: 1 }, { project_id: "pa" })], now);
+    const folders = foldersOf([project("pa"), project("empty")], sections.active, null, "created_at", "updated_at");
+    const closed = { ...base, sections, ledger: false, folders, groupOpen: (id: string) => id !== "working" };
+    expect(drawnOrder(closed).map((t) => t.id)).toEqual(["a1"]);
+    expect(drawnOrder({ ...closed, groupOpen: open }).map((t) => t.id)).toEqual(["busy", "a1"]);
+    expect(folders.find((folder) => folder.project.id === "empty")?.threads).toEqual([]);
+  });
+
+  it("includes an open Settled group only when it is shown", () => {
+    const settled = thread("old", { settled_at: "2026-10-29T00:00:00Z" });
+    const sections = arrangeThreads([thread("x"), settled], now);
+    const input = { ...base, sections, ledger: false, folders: null, settled: sections.settled };
+    expect(drawnOrder({ ...input, groupOpen: (id) => id !== "settled" }).map((t) => t.id)).toEqual(["x"]);
+    expect(drawnOrder(input).map((t) => t.id)).toEqual(["x", "old"]);
   });
 });

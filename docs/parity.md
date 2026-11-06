@@ -81,7 +81,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [x] A11 Pin and unpin: keeps thread above active work, scroll stays put | apps/web/src/components/Sidebar.tsx | w d m s | S
 - [x] A12 Undo notices: 5-second undo for unpin, settle, snooze, archive, draft discard | apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx | w d m | M
 - [x] A13 Drop files on a thread row: opens thread with files attached | docs/user/thread-sidebar.md | w d | S | web done
-- [x] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L
+- [x] A14 Drag between sections: pin, unpin, settle, unsettle, wake with action badge | apps/web/src/components/Sidebar.drag.ts | w d | L | web: manual drag order applies in the flat arrangement; project folders sort by activity with pins on top
 - [x] A15 Server-saved ordering: pinned and active order syncs across devices | packages/contracts/src/orchestrationV2.ts | w d m s | M
 - [ ] A16 Arrange threads sheet: mobile drag handles, plus move up/down | apps/mobile/src/features/threads/ThreadArrangementSheet.tsx | m | M | scope: excluded | reason: mobile client only
 - [x] A17 Regenerate title: new title from the conversation | docs/user/thread-sidebar.md | w d m s | S
