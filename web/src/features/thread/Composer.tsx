@@ -151,6 +151,8 @@ export function Composer({
     return () => observer.disconnect();
   }, []);
   const caretAfterEdit = useRef<number | null>(null);
+  /** Where a kept selection ends after an edit; null collapses it to the caret. */
+  const selectionEndAfterEdit = useRef<number | null>(null);
   const mirror = useRef<HTMLDivElement>(null);
   const followUpBehavior = useUi((state) => state.followUpBehavior);
   const sendShortcut = useUi((state) => state.sendShortcut);
@@ -239,8 +241,11 @@ export function Composer({
     const limit = window.innerHeight * MAX_HEIGHT_RATIO;
     element.style.height = `${Math.min(element.scrollHeight + 2, limit)}px`;
     // Before the next paint, so a key pressed right after lands at the caret.
-    if (caretAfterEdit.current !== null) element.setSelectionRange(caretAfterEdit.current, caretAfterEdit.current);
+    if (caretAfterEdit.current !== null) {
+      element.setSelectionRange(caretAfterEdit.current, selectionEndAfterEdit.current ?? caretAfterEdit.current);
+    }
     caretAfterEdit.current = null;
+    selectionEndAfterEdit.current = null;
     if (mirror.current) mirror.current.scrollTop = element.scrollTop;
   }, [draft]);
 
@@ -399,6 +404,8 @@ export function Composer({
         event.preventDefault();
         setDraft(thread.id, code.text);
         caretAfterEdit.current = code.start;
+        // A multi-line selection stays selected, so Tab and Shift+Tab can repeat over it.
+        selectionEndAfterEdit.current = code.end;
         return;
       }
       const next = indentListLine(draft, element.selectionStart, event.shiftKey);

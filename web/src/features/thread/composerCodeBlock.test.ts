@@ -31,6 +31,15 @@ describe("composer code blocks", () => {
     expect(lifted?.text).toBe(text);
   });
 
+  it("keeps a multi-line selection on the same text through Tab and Shift+Tab", () => {
+    const text = "```ts\none\ntwo\n```";
+    const nested = indentCodeLines(text, 7, 12, false);
+    expect(nested?.text.slice(nested.start, nested.end)).toBe("ne\n  tw");
+    const lifted = indentCodeLines(nested?.text ?? "", nested?.start ?? 0, nested?.end ?? 0, true);
+    expect(lifted).toMatchObject({ start: 7, end: 12 });
+    expect(lifted?.text.slice(lifted.start, lifted.end)).toBe("ne\ntw");
+  });
+
   it("leaves Tab outside a code block to the list and focus rules", () => {
     expect(indentCodeLines("plain\nlines", 2, 2, false)).toBeNull();
     expect(indentCodeLines("```\ncode\n```", 8, 8, true)).toBeNull();
