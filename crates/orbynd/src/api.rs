@@ -1317,6 +1317,19 @@ pub async fn import_native_session(
     Ok(Json(state.core.import_native_session(&id, &body).await?))
 }
 
+pub async fn triage_playbook() -> Json<orbyn_contracts::TriagePlaybook> {
+    let channel = match orbyn_core::environment::release_channel() {
+        orbyn_contracts::ReleaseChannel::Stable => "stable",
+        orbyn_contracts::ReleaseChannel::Nightly => "nightly",
+        orbyn_contracts::ReleaseChannel::Dev => "dev",
+    };
+    Json(orbyn_core::triage::service_playbook(
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        channel,
+    ))
+}
+
 /// Reads the engines' history folders off the async runtime.
 pub async fn history_sessions(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let core = state.core.clone();

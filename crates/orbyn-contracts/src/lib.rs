@@ -3234,6 +3234,17 @@ pub struct ApiError {
 }
 
 wire! {
+/// The opening message for a triage thread, built by the running service.
+pub struct TriagePlaybook {
+    pub prompt: String,
+    /// The source tree for this build, for reading, never fetched by Orbyn.
+    pub source_url: String,
+    /// False when the build named no revision and the link is the main branch.
+    pub source_exact: bool,
+}
+}
+
+wire! {
 /// One saved conversation an engine keeps in its own history folder.
 pub struct HistorySession {
     /// `claude` or `codex`.

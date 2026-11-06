@@ -1979,6 +1979,13 @@ no service handle, logs, database, environment dump or credentials are collected
 Server status is explicitly not checked. Additional investigation, repairs,
 network retrieval and publication require the person's approval.
 
+In the app, `GET /api/triage/playbook` returns the opening message for a triage
+thread: the running service's version, channel and platform, a link to its source
+(the build's `ORBYN_SOURCE_REVISION`, or the main branch, marked as possibly different)
+and the same limits as the command line's prompt. About puts it in a new draft without
+a project; the person picks the agent and sends it, and the thread is an ordinary
+governed run. Orbyn fetches no source and reads no logs for it.
+
 One available provider is selected automatically; two require both input and
 output to be terminals for the picker, or an explicit `--agent`. With neither,
 the files remain for manual use. Discovery resolves executables without a version

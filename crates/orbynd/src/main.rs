@@ -419,6 +419,7 @@ fn router(state: AppState) -> Router {
             post(api::delete_native_session),
         )
         .route("/api/history/sessions", get(api::history_sessions))
+        .route("/api/triage/playbook", get(api::triage_playbook))
         .route("/api/history/import", post(api::import_history_session))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
