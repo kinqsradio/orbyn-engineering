@@ -662,7 +662,12 @@ hooks use this same resolver. The scripts response keeps the actual file content
 the file. Opening a script terminal preserves its selected tab while the terminal
 list refreshes. Malformed files block execution, and script lists require unique nonempty
 names and nonempty commands. The action editor preserves a named script's
-role and options when editing its command. Both manual script menus open a new
+role and options when editing its command. Every saved action list, for the
+environment or a checkout, writes a `project.actions.save` audit row in the same
+transaction and before the write: the scope (`all_projects` or the project id),
+whether it reverts to Inherit, and each action's id and name. Commands are not copied
+into the audit log. Running an action is audited as `script.run` and opening a file in
+an editor or file manager as `file.open`, each before the effect. Both manual script menus open a new
 Browser tab after successful command launch when `auto_open_preview` is enabled
 and `preview_url` is set. The existing preview API validates the URL and owns its
 browser process. The new tab is selected without replacing another page; preview
@@ -1544,7 +1549,11 @@ Activity types are `approval` (content is the `Approval`), `plan`
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
 `engine.retrying`, `engine.selection`, `engine.sign_in_required`,
-`engine.session_lost` and `run.force_stopped`. The prompt is logged as a `user` text message whose id ends in
+`engine.session_lost`, `run.force_stopped` and `permission.updated`. A run copies its
+permission mode when it starts, so a mode changed while a run is starting, running or
+waiting on an approval applies from the next run; the change then logs
+`permission.updated` (`{mode, applies: "next_run"}`) and the web shows a toast for one
+that arrives while the thread is open. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -2174,7 +2183,11 @@ sandbox remain separate and receive no remote-fetch permission from this route.
 
 SQLite in WAL mode in the OS app-data directory. Migrations are ordered and
 forward-only, applied in a transaction at startup, and recorded in
-`schema_migrations`. A database from a newer version is refused, not opened.
+`schema_migrations`. A database from a newer version is refused, not opened. A start
+that moves an existing database forward reports `database_upgrade: {from, to}` in
+`/api/info`, and the web shows one toast per upgrade; a database this start created
+reports nothing. Orbyn has no older thread database to import (A54), so this forward
+upgrade is the only migration event.
 
 Secret files are created with mode `0600` on Unix. Windows has no mode bits: they
 inherit the ACL of the per-user `%LOCALAPPDATA%` directory, which excludes other

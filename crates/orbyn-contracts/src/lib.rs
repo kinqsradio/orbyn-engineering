@@ -3549,6 +3549,20 @@ pub struct ServerInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub environment_icon: Option<String>,
+    /// Set when this service start moved an existing database to a newer schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub database_upgrade: Option<DatabaseUpgrade>,
+}
+}
+
+wire! {
+/// The schema versions a service start moved the database between.
+pub struct DatabaseUpgrade {
+    #[ts(type = "number")]
+    pub from: i64,
+    #[ts(type = "number")]
+    pub to: i64,
 }
 }
 

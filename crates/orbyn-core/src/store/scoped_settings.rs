@@ -96,6 +96,52 @@ fn change_server_field(server: &mut Value, field: ServerSettingField, value: Val
     Ok(())
 }
 
+/// The preference that holds project actions, by its project and global keys.
+const ACTIONS_KEY: &str = "default_project_scripts";
+
+/// One audit row for a write of the project-action list. It names the scope and
+/// each action by ID and name; commands are not copied into the audit log.
+fn action_audit(write: &SettingWrite) -> Option<AuditRecord> {
+    let (scope, project_id, value) = match write {
+        SettingWrite::Project {
+            project_id,
+            key,
+            value,
+        } if key == ACTIONS_KEY => (project_id.as_str(), Some(project_id.clone()), value),
+        SettingWrite::Global { key, value } if key.strip_prefix("pref:") == Some(ACTIONS_KEY) => {
+            ("all_projects", None, value)
+        }
+        _ => return None,
+    };
+    let actions: Vec<Value> = value
+        .as_deref()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .and_then(|list| list.as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .map(|action| {
+            serde_json::json!({
+                "id": action.get("id").cloned().unwrap_or(Value::Null),
+                "name": action.get("name").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .collect();
+    Some(AuditRecord {
+        actor: "user".into(),
+        action: "project.actions.save".into(),
+        target: scope.into(),
+        decision: None,
+        source: "user".into(),
+        thread_id: None,
+        run_id: None,
+        detail: serde_json::json!({
+            "project_id": project_id,
+            "inherit": value.is_none(),
+            "actions": actions,
+        }),
+    })
+}
+
 impl Store {
     /// All tables are read from one SQLite read transaction, not separate views.
     pub(crate) fn settings_snapshot(&self) -> Result<SettingsSnapshot> {
@@ -129,6 +175,13 @@ impl Store {
                         return Err(CoreError::NotFound("project settings scope".into()));
                     }
                     _ => {}
+                }
+            }
+            // Project actions are commands Orbyn will run, so every saved list is
+            // audited before it is written, in the same transaction.
+            for write in &writes {
+                if let Some(record) = action_audit(write) {
+                    insert_audit(tx, &record)?;
                 }
             }
             // Merge only requested fields into the current JSON, preserving forward

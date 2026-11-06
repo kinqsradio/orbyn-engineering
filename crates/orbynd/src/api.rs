@@ -169,6 +169,7 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
         environment_theme: state.core.environment_theme().ok().flatten(),
         channel: Some(orbyn_core::environment::release_channel()),
         environment_icon: state.core.environment_icon().ok().flatten(),
+        database_upgrade: state.core.store.upgrade(),
     })
 }
 

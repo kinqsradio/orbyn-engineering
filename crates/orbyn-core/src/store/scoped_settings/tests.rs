@@ -235,3 +235,72 @@ fn concurrent_commit_does_not_mix_snapshot_tables_or_reuse_a_stale_read() {
     assert_eq!(after.globals["pref:auto_pull"], "true");
     assert_eq!(after.overrides[&a]["auto_settle_after_days"], "7");
 }
+
+#[test]
+fn project_action_edits_are_audited_before_they_are_written_without_commands() {
+    let (_dir, store, a, _) = fixture();
+    let actions = json!([
+        { "id": "a1", "name": "Dev", "command": "npm run dev -- --marker=command-text-one" },
+        { "id": "a2", "name": "Test", "command": "npm test" },
+    ]);
+    store
+        .change_settings(|_| {
+            Ok((
+                (),
+                vec![
+                    SettingWrite::Project {
+                        project_id: a.clone(),
+                        key: "default_project_scripts".into(),
+                        value: Some(actions.to_string()),
+                    },
+                    SettingWrite::Global {
+                        key: "pref:default_project_scripts".into(),
+                        value: None,
+                    },
+                    global("true"),
+                ],
+            ))
+        })
+        .unwrap();
+    let audit = store.list_audit(None, 20).unwrap();
+    let saved: Vec<_> = audit
+        .iter()
+        .filter(|row| row.action == "project.actions.save")
+        .collect();
+    assert_eq!(
+        saved.len(),
+        2,
+        "one row per scope written, none for other keys"
+    );
+    let project_row = saved.iter().find(|row| row.target == a).unwrap();
+    assert_eq!(project_row.actor, "user");
+    assert_eq!(project_row.detail["inherit"], false);
+    assert_eq!(
+        project_row.detail["actions"],
+        json!([{ "id": "a1", "name": "Dev" }, { "id": "a2", "name": "Test" }])
+    );
+    assert!(!project_row.detail.to_string().contains("command-text-one"));
+    let global_row = saved
+        .iter()
+        .find(|row| row.target == "all_projects")
+        .unwrap();
+    assert_eq!(global_row.detail["inherit"], true);
+    assert_eq!(global_row.detail["actions"], json!([]));
+}
+
+#[test]
+fn a_refused_action_write_leaves_no_audit_row() {
+    let (_dir, store, _, _) = fixture();
+    let result = store.change_settings(|_| {
+        Ok((
+            (),
+            vec![SettingWrite::Project {
+                project_id: "missing".into(),
+                key: "default_project_scripts".into(),
+                value: Some("[]".into()),
+            }],
+        ))
+    });
+    assert!(result.is_err());
+    assert!(store.list_audit(None, 20).unwrap().is_empty());
+}

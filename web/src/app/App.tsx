@@ -7,6 +7,7 @@ import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
 import { onShellEvent, Shell } from "./Shell";
+import { upgradeToast } from "./healthToasts";
 import { PreviewWindow } from "../features/panels/PreviewWindow";
 import { previewWindowRoute } from "../features/panels/browserPanels";
 
@@ -35,6 +36,8 @@ export function App() {
     api.info(abort.signal).then(
       (info) => {
         adoptEnvironmentTheme(info.environment_theme);
+        const upgraded = upgradeToast(info);
+        if (upgraded) useUi.getState().pushToast(upgraded);
         setBoot({ state: "ready" });
       },
       (error: unknown) => {
