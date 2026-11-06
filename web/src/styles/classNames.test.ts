@@ -48,7 +48,11 @@ export function classTokens(source: string): string[] {
 
 const files = walk(ROOT);
 const sources = files.filter((file) => /\.tsx?$/.test(file) && !/\.test\./.test(file));
-/** Stylesheets some module imports. One nothing imports never reaches the page. */
+/**
+ * Stylesheets some module imports. One nothing imports never reaches the page. Only a
+ * relative side-effect `import "./x.css"` counts, so a `?inline` import or an `@import`
+ * chain would be reported as unimported: the app loads styles only one way.
+ */
 const imported = new Set(
   sources.flatMap((file) =>
     [...readFileSync(file, "utf8").matchAll(/import\s+["'](\.{1,2}\/[^"']+\.css)["']/g)].map((match) =>
