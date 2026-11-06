@@ -426,11 +426,33 @@ fn subject(value: &str) -> Result<()> {
     Ok(())
 }
 
+/// The JSON inside a reply. Claude often wraps it in one Markdown fence, with
+/// or without a `json` tag. Only a fence around the whole reply is unwrapped;
+/// text around it, or a second block, leaves what JSON parsing then refuses. A
+/// fence inside a JSON string, such as a code block in a description, stays.
+fn unfenced(reply: &str) -> &str {
+    let trimmed = reply.trim();
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return trimmed;
+    };
+    let Some((tag, body)) = rest.split_once('\n') else {
+        return trimmed;
+    };
+    let tag = tag.trim();
+    if !(tag.is_empty() || tag.eq_ignore_ascii_case("json")) {
+        return trimmed;
+    }
+    let Some(body) = body.trim_end().strip_suffix("```") else {
+        return trimmed;
+    };
+    body.trim()
+}
+
 fn commit_reply(reply: &str) -> Result<String> {
     if reply.len() > REPLY_BYTES {
         return Err(invalid("The engine returned too much text."));
     }
-    let text: CommitText = serde_json::from_str(reply)
+    let text: CommitText = serde_json::from_str(unfenced(reply))
         .map_err(|_| invalid("The engine returned invalid commit text. Enter text manually."))?;
     subject(&text.subject)?;
     if text.body.contains('\0') {
@@ -447,7 +469,7 @@ fn pull_reply(reply: &str) -> Result<PullText> {
     if reply.len() > REPLY_BYTES {
         return Err(invalid("The engine returned too much text."));
     }
-    let text: PullText = serde_json::from_str(reply).map_err(|_| {
+    let text: PullText = serde_json::from_str(unfenced(reply)).map_err(|_| {
         invalid("The engine returned invalid pull request text. Enter text manually.")
     })?;
     subject(&text.title)?;
@@ -750,12 +772,32 @@ mod tests {
         for value in [
             "",
             "```json\n{}\n```",
+            "Here it is:\n```json\n{\"subject\":\"fix: x\",\"body\":\"\"}\n```",
+            "```json\n{\"subject\":\"fix: x\",\"body\":\"\"}\n```\n```json\n{}\n```",
+            "```yaml\nsubject: fix\n```",
             r#"{"subject":"bad\nsubject","body":""}"#,
             r#"{"subject":"","body":"x"}"#,
         ] {
             assert!(commit_reply(value).is_err());
         }
         assert!(pull_reply(r#"{"title":"Valid","body":""}"#).is_err());
+        // Claude's usual reply: one fenced block, tagged or not, with blank lines around.
+        assert_eq!(
+            commit_reply("```json\n{\"subject\":\"fix: keep fences\",\"body\":\"Why\"}\n```\n")
+                .unwrap(),
+            "fix: keep fences\n\nWhy"
+        );
+        assert_eq!(
+            commit_reply("\n```\n{\"subject\":\"fix: bare fence\",\"body\":\"\"}\n```").unwrap(),
+            "fix: bare fence"
+        );
+        // A code block inside the description is part of the JSON string.
+        let pull = pull_reply(
+            "```JSON\n{\"title\":\"Add fences\",\"body\":\"## Summary\\n\\n```rust\\nfn x() {}\\n```\"}\n```",
+        )
+        .unwrap();
+        assert_eq!(pull.title, "Add fences");
+        assert_eq!(pull.body, "## Summary\n\n```rust\nfn x() {}\n```");
         assert!(commit_reply(&"x".repeat(REPLY_BYTES + 1)).is_err());
     }
 

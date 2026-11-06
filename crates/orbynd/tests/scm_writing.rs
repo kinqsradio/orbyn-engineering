@@ -129,6 +129,31 @@ async fn explicit_blank_uses_strict_selected_provider_and_real_diff() {
 }
 
 #[tokio::test]
+async fn a_fenced_json_reply_is_accepted_for_commit_and_pull_request_text() {
+    let (dir, service, thread, _) = fixture("claude").await;
+    let cwd = dir.path().join("project");
+    run_git(&cwd, &["switch", "-qc", "feature"]);
+    std::fs::write(cwd.join("tracked.txt"), "[fenced-scm-text]\n").unwrap();
+    let (status, result) = service
+        .send(
+            &format!("/api/threads/{thread}/git/action"),
+            json!({"commit_message":"","pull_request":{"title":"","body":"","base":"main"}}),
+        )
+        .await;
+    assert_eq!(status, 200, "{result}");
+    assert_eq!(result["phases"][0]["ok"], true, "{result}");
+    assert_eq!(
+        git(&cwd, &["log", "-1", "--format=%B"]).trim(),
+        "feat(git): fenced reply\n\nInside a fence"
+    );
+    assert_eq!(
+        pull_titles(&service, &thread).await,
+        ["feat(git): fenced reply"]
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn malformed_generation_never_stages_or_commits_and_manual_text_still_works() {
     let (dir, service, thread, record) = fixture("claude").await;
     let cwd = dir.path().join("project");
