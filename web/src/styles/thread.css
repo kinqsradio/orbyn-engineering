@@ -1180,7 +1180,7 @@
   transform: scale(1.05);
 }
 .stop-btn {
-  background: var(--color-danger);
+  background: var(--color-primary);
   color: var(--color-onAccent);
 }
 .queue {
