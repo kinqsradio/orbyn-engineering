@@ -48,6 +48,7 @@ export function Transcript({
   threadId,
   active,
   activeRunId,
+  header,
   footer,
   readUpTo,
 }: {
@@ -57,6 +58,8 @@ export function Transcript({
   /** Rows after this time are new to you, and a line marks where they start. */
   readUpTo?: string | null;
   /** The run status line, which sits at the end of the conversation. */
+  /** Pinned at the top of the column while the transcript scrolls. */
+  header?: ReactNode;
   footer?: ReactNode;
 }) {
   const log = useThreadLogs((state) => state.logs[threadId]);
@@ -166,6 +169,7 @@ export function Transcript({
         aria-busy={active || undefined}
       >
         <div ref={inner} className="transcript-inner">
+          {header}
           {empty && status === "failed" && stream?.failure ? (
             <ErrorState title="Couldn't load this thread" failure={stream.failure} />
           ) : empty && (status === "connecting" || status === "reconnecting") ? (

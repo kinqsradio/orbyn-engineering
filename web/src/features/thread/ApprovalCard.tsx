@@ -59,7 +59,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
 
   const decided = approval.state === "pending" ? null : outcome[approval.state];
   return (
-    <article className="approval" data-pending={decided ? undefined : ""} aria-label={approval.summary}>
+    <article className="approval" data-pending={decided ? undefined : ""} aria-label={approval.summary} tabIndex={decided ? undefined : -1}>
       {decided ? null : (
         <p className="ask-label">
           <span className="status-dot" aria-hidden />
