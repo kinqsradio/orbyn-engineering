@@ -331,12 +331,34 @@ export function ChatSection() {
   );
 }
 
+/** The same stored layout the diff panel's own switch uses. */
+function DiffViewRow() {
+  const layout = useUi((state) => state.diffLayout);
+  const setPrefs = useUi((state) => state.setPrefs);
+  return (
+    <SettingRow title={settingsLabel("diffs-diff-view")}>
+      <Segmented
+        label="Diff view"
+        value={layout}
+        options={[
+          { value: "stacked", label: "Unified" },
+          { value: "split", label: "Split" },
+        ]}
+        onChange={(next) => setPrefs({ diffLayout: next })}
+      />
+    </SettingRow>
+  );
+}
+
 export function DiffsSection() {
   const inApp = useUi((state) => state.pullLinksInApp);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
       {heading("Diffs & pull requests")}
+      <SettingGroup title="Display">
+        <DiffViewRow />
+      </SettingGroup>
       <SettingGroup title="Links">
         <Toggle
           title={settingsLabel("diffs-open-pull-request-links-here")}

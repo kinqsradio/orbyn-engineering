@@ -51,11 +51,11 @@ for (const row of ROWS) {
   });
 }
 
-test("default permissions and response streaming are set per project on the Threads page", async ({ page }) => {
+test("default permissions and show answers are set per project on the Threads page", async ({ page }) => {
   await page.goto(await projectSettingsUrl(service, projectId, "threads"));
   for (const [key, title, value] of [
     ["default_permission_mode", "Default permissions", "auto"],
-    ["response_streaming_mode", "Response streaming", "turn"],
+    ["response_streaming_mode", "Show answers", "turn"],
   ] as const) {
     const environment = await pref(key);
     const group = page.getByRole("radiogroup", { name: title, exact: true });
