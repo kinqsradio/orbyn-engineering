@@ -10,8 +10,41 @@ import { charactersOver, chipId, promptWithChips, terminalSelection } from "../t
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";
 import { linkProvider } from "./terminalLinks";
+import { ShellMarks, type Position, type ShellCommand } from "./shellMarks";
+import type { Terminal as XTerm } from "@xterm/xterm";
 
 type Connection = "connecting" | "open" | "closed";
+
+/** The text typed after a prompt, from a mark's column up to the row output began on. */
+function typedText(terminal: XTerm, fromLine: number, fromCol: number, toLine: number): string {
+  const buffer = terminal.buffer.active;
+  let text = "";
+  for (let row = fromLine; row < toLine; row += 1) {
+    const line = buffer.getLine(row);
+    if (!line) break;
+    if (row > fromLine && !line.isWrapped) text += "\n";
+    text += line.translateToString(true, row === fromLine ? fromCol : 0);
+  }
+  return text;
+}
+
+/** The cursor as a row that follows scrolling. */
+function cursorPosition(terminal: XTerm): Position {
+  const buffer = terminal.buffer.active;
+  const marker = terminal.registerMarker(0);
+  return { row: marker ?? { line: buffer.baseY + buffer.cursorY }, col: buffer.cursorX };
+}
+
+/** What a selection inside one marked command's output adds to its chip. */
+const commandFields = (shell: ShellCommand | null): { command?: string; exitCode?: number | null } => {
+  if (!shell) return {};
+  const fields: { command?: string; exitCode?: number | null } = shell.command === null ? {} : { command: shell.command };
+  // Still running reads as null; a command that ended unmarked carries no code at all.
+  if (shell.end === null || shell.exitCode !== null) fields.exitCode = shell.exitCode;
+  return fields;
+};
+
+type Selection = NonNullable<ReturnType<typeof terminalSelection>> & ReturnType<typeof commandFields>;
 
 const cssVar = (name: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -46,7 +79,7 @@ export function TerminalPanel({
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [attempt, setAttempt] = useState(0);
-  const [selection, setSelection] = useState<ReturnType<typeof terminalSelection>>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
   const theme = useUi((state) => state.theme);
   const applyThemeRef = useRef<() => void>(() => undefined);
 
@@ -78,6 +111,13 @@ export function TerminalPanel({
       const fit = new FitAddon();
       terminal.loadAddon(fit);
       terminal.open(element);
+      const marks = new ShellMarks((fromLine, fromCol, toLine) => typedText(terminal, fromLine, fromCol, toLine));
+      const oscs = [133, 633].map((ident) =>
+        terminal.parser.registerOscHandler(ident, (data) => {
+          marks.mark(ident, data, () => cursorPosition(terminal));
+          return true;
+        }),
+      );
       const links = terminal.registerLinkProvider(
         linkProvider(terminal, (link) => {
           if (link.kind === "url") {
@@ -125,9 +165,14 @@ export function TerminalPanel({
       const input = terminal.onData((data) => {
         if (!observe && socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
       });
-      const chosen = terminal.onSelectionChange(() =>
-        setSelection(terminalSelection(terminal.getSelection(), terminal.getSelectionPosition())),
-      );
+      const chosen = terminal.onSelectionChange(() => {
+        const position = terminal.getSelectionPosition();
+        const picked = terminalSelection(terminal.getSelection(), position);
+        const shell = picked && position
+          ? marks.commandAt(Math.min(position.start.y, position.end.y), Math.max(position.start.y, position.end.y))
+          : null;
+        setSelection(picked ? { ...picked, ...commandFields(shell) } : null);
+      });
 
       let frame = 0;
       const observer = new ResizeObserver(() => {
@@ -141,6 +186,7 @@ export function TerminalPanel({
         observer.disconnect();
         input.dispose();
         chosen.dispose();
+        for (const osc of oscs) osc.dispose();
         links.dispose();
         socket.onclose = null;
         socket.close();
@@ -180,6 +226,8 @@ export function TerminalPanel({
                 output: selection.output,
                 lineStart: selection.lineStart,
                 lineEnd: selection.lineEnd,
+                ...(selection.command === undefined ? {} : { command: selection.command }),
+                ...(selection.exitCode === undefined ? {} : { exitCode: selection.exitCode }),
               };
               const chips = useComposerChips.getState().chips[threadId] ?? [];
               const draft = useUi.getState().drafts[threadId] ?? "";

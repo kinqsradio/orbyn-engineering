@@ -85,8 +85,15 @@ export function CompactOffer({
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Codex streams its usage into the log; Claude's is kept on the thread, so it is read once a turn.
+  const logged = useThreadLogs((state) => state.logs[threadId]?.usage);
+  const lastTs = items.at(-1)?.ts ?? "";
+  const kept = useAsync(`compact-usage:${threadId}:${lastTs}`, (signal) => api.threadUsage(threadId, signal));
+  const usage = logged ?? kept.data ?? null;
   const commands = useAsync(`compact-commands:${threadId}`, (signal) => api.commands(threadId, signal));
-  if (dismissed || !offerCompact({ engine, activeRun: active, items, arrivedAt })) return null;
+  if (dismissed || !offerCompact({ engine, activeRun: active, items, arrivedAt, usage })) return null;
+  // The lifetime decides the window, so nothing is offered before the kept report has been read.
+  if (!logged && kept.status === "loading") return null;
   if (!commands.data?.some((command) => command.name === "compact")) return null;
   const compact = () => {
     setBusy(true);

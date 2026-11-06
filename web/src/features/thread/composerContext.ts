@@ -30,6 +30,10 @@ export interface TerminalChip extends ChipBase {
   /** One-based buffer rows the selection covered, when the terminal reported them. */
   lineStart: number | null;
   lineEnd: number | null;
+  /** The command whose output was selected, when the shell marked it (OSC 133/633). */
+  command?: string;
+  /** Its exit code: null while it still ran; absent when the shell marked none. */
+  exitCode?: number | null;
 }
 
 export interface ReviewChip extends ChipBase {
@@ -97,12 +101,33 @@ const terminalLabel = (chip: TerminalChip): string => {
     : `${title} lines ${chip.lineStart}–${chip.lineEnd}`;
 };
 
+/** Inline code that survives backticks in the text it holds. */
+const inlineCode = (text: string): string => {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(longest + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+};
+
+/** The command line and exit a shell marked for a terminal selection, if any. */
+const terminalCommand = (chip: TerminalChip): string | null => {
+  const exit =
+    chip.exitCode === undefined ? "" : chip.exitCode === null ? "still running" : `exit code ${chip.exitCode}`;
+  if (chip.command === undefined) return exit ? `${exit[0]?.toUpperCase()}${exit.slice(1)}` : null;
+  const command = chip.command.includes("\n")
+    ? `Command:\n\`\`\`sh\n${fenceSafe(chip.command)}\n\`\`\``
+    : `Command: ${inlineCode(chip.command)}`;
+  return exit ? `${command}${chip.command.includes("\n") ? "\n" : " "}(${exit})` : command;
+};
+
 export function chipLabel(chip: ComposerChip): string {
   switch (chip.kind) {
     case "file":
       return chip.line === null ? chip.path : `${chip.path}:${chip.line}`;
     case "terminal":
-      return terminalLabel(chip);
+      return chip.exitCode === undefined || chip.exitCode === null
+        ? terminalLabel(chip)
+        : `${terminalLabel(chip)} · exit ${chip.exitCode}`;
     case "review":
       return chip.line === null ? chip.path : `${chip.path}:${chip.line}${chip.endLine && chip.endLine !== chip.line ? `–${chip.endLine}` : ""}`;
     case "annotation":
@@ -124,8 +149,10 @@ export function chipPrompt(chip: ComposerChip): string {
       const language = chip.language ?? "";
       return `${where}\n\`\`\`${language}\n${fenceSafe(excerptOf(body))}\n\`\`\``;
     }
-    case "terminal":
-      return `${terminalLabel(chip)}\n\`\`\`\n${fenceSafe(excerptOf(chip.output))}\n\`\`\``;
+    case "terminal": {
+      const command = terminalCommand(chip);
+      return `${terminalLabel(chip)}${command ? `\n${command}` : ""}\n\`\`\`\n${fenceSafe(excerptOf(chip.output))}\n\`\`\``;
+    }
     case "review": {
       const where = `Review on \`${chipLabel(chip)}\``;
       const excerpt = chip.excerpt?.trim()
@@ -223,6 +250,10 @@ export function asChip(value: unknown, id: string = chipId()): ComposerChip | nu
         output,
         lineStart,
         lineEnd: lineStart !== null && lineEnd !== null && lineEnd >= lineStart ? lineEnd : lineStart,
+        ...(typeof chip.command === "string" && chip.command.length <= 4096 ? { command: chip.command } : {}),
+        ...(chip.exitCode === null || (typeof chip.exitCode === "number" && Number.isInteger(chip.exitCode))
+          ? { exitCode: chip.exitCode }
+          : {}),
       };
     }
     case "review": {

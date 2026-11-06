@@ -198,6 +198,10 @@ Context can sit above the draft as a chip: a cited reply, a terminal selection, 
 review comment on a diff line or range, a picked page element, or the open file at
 its revealed line. A chip is not engine protocol; when the message is sent, each
 chip becomes a readable block at the top of the prompt and the typed draft follows.
+A terminal selection inside one command's output also carries that command line and
+exit code when the shell marks its commands with OSC 133 or 633 shell-integration
+sequences. Orbyn installs no shell integration, so a shell that emits no marks gives
+the selection alone.
 Copying one chip, or all of them, writes Orbyn's JSON inside an HTML form plus
 plain prompt blocks, so a paste into a composer restores the chips and refetches a
 file whose text was not carried. Ordinary text, broken JSON and half-known chips never become chips.
@@ -220,8 +224,10 @@ draft and the chip instead of consuming either. Captured output is plain text an
 is never reread from a running terminal.
 
 After a Claude thread has sat idle past its prompt-cache window, returning to it
-offers one compact action before the next turn. It is not offered while a run is
-active, and no other engine has that cache, so none is offered it.
+offers one compact action before the next turn. The window is the lifetime Claude's
+last usage report says its cache write used: an hour when `cache_creation` counts
+one-hour tokens, otherwise Anthropic's documented five minutes. It is not offered
+while a run is active, and no other engine has that cache, so none is offered it.
 
 ## Models
 
@@ -337,9 +343,11 @@ reaches Codex as an empty answer set and Claude as a denial. Questions are logge
 `ACTIVITY_SNAPSHOT` with `activityType: "question"`, whose content isthe `QuestionRequest`. A secret answer goes to the engine and is stored only as
 `[hidden]`, so it never reaches the database or the event log. A custom answer may
 carry files already uploaded to its thread, keyed by question; they stay with the
-settled question record and are refused when they belong to another thread. An
-engine's answer payload has no attachment field, so the typed answer reaches the
-engine and the files stay in the record.
+settled question record and are refused when they belong to another thread. No
+engine's answer has a place for files: Codex takes a list of strings per question
+id, Claude's `AskUserQuestion` takes one string per question, and an ACP agent asks
+no questions, only permissions answered with an option. So the typed answer reaches
+the engine and the files stay in the record.
 
 Question Markdown uses a question-only remote-image link policy: a remote media
 URL becomes an ordinary link without mounting an image or video. General message
