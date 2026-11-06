@@ -519,6 +519,9 @@ gate like any other tool effect. Starting one is refused while the project's
 are appended to that message, and the thread runs on the asked model, else the
 project's `review_guide_model`, else the engine's default. A guide naming an older head commit than
 the pull request is shown as not covering the newer commits; nothing else checks it.
+Asking about one stop opens a new thread in the project root and hands the stop back
+as that thread's composer draft; nothing is sent until the person adds a question
+and sends it.
 
 A background clone is a job kept in memory until the service stops. Its staging
 folder removes itself when the job is cancelled. An SSH URL the server refuses is

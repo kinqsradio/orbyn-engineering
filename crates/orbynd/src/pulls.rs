@@ -7,9 +7,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use orbyn_contracts::{
-    AddPullComment, BulkClosePulls, CheckoutPull, EditPullComment, GeneratePullGuide, MergePull,
-    PullAction, ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople, StackAction,
-    SubmitReview, UpdatePull, WorkOnPull,
+    AddPullComment, AskAboutStop, BulkClosePulls, CheckoutPull, EditPullComment, GeneratePullGuide,
+    MergePull, PullAction, ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople,
+    StackAction, SubmitReview, UpdatePull, WorkOnPull,
 };
 use orbyn_core::forge::PullFilter;
 
@@ -325,6 +325,18 @@ pub async fn generate_guide(
     Ok((
         StatusCode::CREATED,
         Json(state.core.generate_pull_guide(&id, number, &body).await?),
+    ))
+}
+
+/// A new thread about one guide stop; the stop comes back as its draft.
+pub async fn ask_about_stop(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+    ApiJson(body): ApiJson<AskAboutStop>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.ask_about_stop(&id, number, &body).await?),
     ))
 }
 

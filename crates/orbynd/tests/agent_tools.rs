@@ -1249,5 +1249,33 @@ async fn a_review_guide_is_written_through_the_gate_and_read_inside_its_project(
         .json(&format!("/api/projects/{other}/pulls/7/guide"))
         .await;
     assert_eq!(none, json!({ "enabled": false, "guide": null }));
+
+    // Asking about a stop opens a thread with the stop as its draft; nothing is sent.
+    let ask = format!("/api/projects/{project}/pulls/7/guide/ask");
+    let (code, asked) = service
+        .send(&ask, json!({ "engine": "codex", "stop": 0 }))
+        .await;
+    assert_eq!(code, 201, "{asked}");
+    assert_eq!(asked["thread"]["title"], "#7: Only stop");
+    assert_eq!(asked["thread"]["project_id"], project.as_str());
+    let draft = asked["draft"].as_str().unwrap();
+    assert!(draft.starts_with("About stop 1 of the review guide for pull request #7: Only stop"));
+    assert!(draft.ends_with("My question: "));
+    let asked_thread = asked["thread"]["id"].as_str().unwrap();
+    assert!(
+        service.json(&format!("/api/threads/{asked_thread}")).await["last_run_state"].is_null(),
+        "the question is the person's to send"
+    );
+    let (code, _) = service
+        .send(&ask, json!({ "engine": "codex", "stop": 1 }))
+        .await;
+    assert_eq!(code, 404, "a stop past the end");
+    let (code, _) = service
+        .send(
+            &format!("/api/projects/{other}/pulls/7/guide/ask"),
+            json!({ "engine": "codex", "stop": 0 }),
+        )
+        .await;
+    assert_eq!(code, 404, "another project has no guide");
     service.stop().await;
 }

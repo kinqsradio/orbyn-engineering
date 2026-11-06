@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EngineStatus, PullGuideState } from "../../api/types";
+import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { PullGuide, guideIsStale } from "./PullGuide";
 import { pullsApi } from "./pullsApi";
@@ -69,5 +70,18 @@ describe("PullGuide", () => {
     render(<PullGuide projectId="p" number={7} />);
     expect(await screen.findByText(/Review guides are off for this project/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("opens a thread about one stop with the stop as its draft", async () => {
+    vi.spyOn(pullsApi, "guide").mockResolvedValue({ enabled: true, guide });
+    const thread = { id: "t-ask" };
+    const ask = vi
+      .spyOn(pullsApi, "askAboutStop")
+      .mockResolvedValue({ thread, draft: "About stop 2: Tests\n\nMy question: " } as Awaited<ReturnType<typeof pullsApi.askAboutStop>>);
+    render(<PullGuide projectId="p" number={7} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Ask about Tests" }));
+    expect(ask).toHaveBeenCalledWith("p", 7, "codex", 1);
+    expect(useUi.getState().drafts["t-ask"]).toBe("About stop 2: Tests\n\nMy question: ");
+    expect(navigateTo).toHaveBeenCalledWith({ name: "thread", id: "t-ask" });
   });
 });

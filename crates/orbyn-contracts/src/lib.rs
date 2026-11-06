@@ -1246,6 +1246,25 @@ pub struct GeneratePullGuide {
 }
 
 wire! {
+/// Opens a thread about one guide stop, counted from zero.
+pub struct AskAboutStop {
+    pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    pub stop: u32,
+}
+}
+
+wire! {
+/// The new thread and the composer draft that carries the stop.
+pub struct AskedAboutStop {
+    pub thread: Thread,
+    pub draft: String,
+}
+}
+
+wire! {
 pub struct ForgeStatus {
     /// `github`, `gitlab`, `azure`, `forgejo` or `bitbucket`.
     pub id: String,

@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { MessageSquare, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { PullGuide as Guide } from "../../api/types";
 import { relativeTime } from "../../lib/format";
@@ -21,6 +21,7 @@ export function PullGuide({ projectId, number, headSha }: { projectId: string; n
   const engines = useWorkspace((store) => store.engines.data);
   const refreshAll = useWorkspace((store) => store.refreshAll);
   const pushToast = useUi((store) => store.pushToast);
+  const setDraft = useUi((store) => store.setDraft);
   const [busy, setBusy] = useState(false);
   const engine = engines?.find((entry) => entry.installed)?.id;
 
@@ -44,6 +45,20 @@ export function PullGuide({ projectId, number, headSha }: { projectId: string; n
       pushToast(`Couldn't start the guide. ${toFailure(failure).message}`);
     } finally {
       setBusy(false);
+    }
+  };
+  const ask = async (stop: number) => {
+    if (!engine) {
+      pushToast("Install an engine first.");
+      return;
+    }
+    try {
+      const asked = await pullsApi.askAboutStop(projectId, number, engine, stop);
+      setDraft(asked.thread.id, asked.draft);
+      await refreshAll();
+      navigate({ name: "thread", id: asked.thread.id });
+    } catch (failure) {
+      pushToast(`Couldn't open a thread. ${toFailure(failure).message}`);
     }
   };
   const writeButton = enabled ? (
@@ -100,6 +115,16 @@ export function PullGuide({ projectId, number, headSha }: { projectId: string; n
                 ))}
               </ul>
             ) : null}
+            <div className="pull-guide-stop-actions">
+              <Button
+                small
+                icon={<MessageSquare size={14} aria-hidden />}
+                aria-label={`Ask about ${stop.title}`}
+                onClick={() => void ask(index)}
+              >
+                Ask about this stop
+              </Button>
+            </div>
           </li>
         ))}
       </ol>

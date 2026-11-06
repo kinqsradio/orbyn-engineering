@@ -1,11 +1,15 @@
 //! Review guides: an agent's stop-by-stop reading order for one pull request.
 //! The guide itself is written by the agent through `orbyn_pull_guide_write`;
-//! this module shows it and starts the thread that writes it. A guide is this
+//! this module shows it, starts the thread that writes it and opens a thread
+//! about one stop. A guide is this
 //! service's own and never reaches the forge.
 
 use std::path::Path;
 
-use orbyn_contracts::{CreateThread, GeneratePullGuide, PullGuideState, Thread};
+use orbyn_contracts::{
+    AskAboutStop, AskedAboutStop, CreateThread, GeneratePullGuide, PullGuideState, PullGuideStop,
+    Thread,
+};
 use serde_json::{Value, json};
 
 use crate::Core;
@@ -15,6 +19,8 @@ use crate::forge;
 const ENABLED: &str = "review_guides_enabled";
 const INSTRUCTIONS: &str = "review_guide_instructions";
 const MODEL: &str = "review_guide_model";
+/// Longest thread title made from a stop's title.
+const TITLE_CHARS: usize = 80;
 
 fn text_preference(value: Value) -> Option<String> {
     value
@@ -90,6 +96,46 @@ impl Core {
         self.runs.enqueue(&thread.id, &prompt, &[])?;
         self.store.thread(&thread.id)
     }
+
+    /// A new thread about one stop. Nothing is sent: the stop comes back as a
+    /// draft for the person to add their question to.
+    pub async fn ask_about_stop(
+        &self,
+        project_id: &str,
+        number: u64,
+        request: &AskAboutStop,
+    ) -> Result<AskedAboutStop> {
+        let guide = self
+            .store
+            .pull_guide(project_id, number)?
+            .ok_or_else(|| CoreError::NotFound("review guide".into()))?;
+        let index = request.stop as usize;
+        let stop = guide
+            .stops
+            .get(index)
+            .ok_or_else(|| CoreError::NotFound("guide stop".into()))?;
+        let title: String = stop.title.chars().take(TITLE_CHARS).collect();
+        let thread = self
+            .create_thread(CreateThread {
+                project_id: Some(project_id.to_owned()),
+                engine: request.engine.clone(),
+                model: request
+                    .model
+                    .clone()
+                    .filter(|model| !model.trim().is_empty()),
+                title: Some(format!("#{number}: {title}")),
+                worktree: None,
+                skill_profile: None,
+                base_branch: None,
+                effort: None,
+                options: Default::default(),
+            })
+            .await?;
+        Ok(AskedAboutStop {
+            thread,
+            draft: stop_draft(number, index, guide.head_sha.as_deref(), stop),
+        })
+    }
 }
 
 fn guide_prompt(
@@ -117,9 +163,43 @@ fn guide_prompt(
     prompt
 }
 
+/// The composer text for a question about one stop.
+fn stop_draft(number: u64, index: usize, head_sha: Option<&str>, stop: &PullGuideStop) -> String {
+    let head = head_sha.map_or_else(String::new, |sha| format!(" at {sha}"));
+    let mut draft = format!(
+        "About stop {} of the review guide for pull request #{number}{head}: {}\n",
+        index + 1,
+        stop.title
+    );
+    if !stop.summary.is_empty() {
+        draft.push('\n');
+        draft.push_str(&stop.summary);
+        draft.push('\n');
+    }
+    if !stop.files.is_empty() {
+        draft.push_str("\nFiles:\n");
+        for file in &stop.files {
+            if file.note.is_empty() {
+                draft.push_str(&format!("- `{}`\n", file.path));
+            } else {
+                draft.push_str(&format!("- `{}`: {}\n", file.path, file.note));
+            }
+        }
+    }
+    if !stop.questions.is_empty() {
+        draft.push_str("\nGuide questions:\n");
+        for question in &stop.questions {
+            draft.push_str(&format!("- {question}\n"));
+        }
+    }
+    draft.push_str("\nMy question: ");
+    draft
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orbyn_contracts::PullGuideFile;
 
     #[test]
     fn the_prompt_names_the_tool_the_head_and_the_instructions() {
@@ -133,5 +213,34 @@ mod tests {
         let bare = guide_prompt(7, "Add X", None, "gh", None);
         assert!(!bare.contains("head_sha"));
         assert!(!bare.contains("instructions:"));
+    }
+
+    #[test]
+    fn a_stop_draft_carries_the_stop_and_leaves_room_for_the_question() {
+        let stop = PullGuideStop {
+            title: "Entry".into(),
+            summary: "Start here.".into(),
+            files: vec![
+                PullGuideFile {
+                    path: "a.rs".into(),
+                    note: "route".into(),
+                },
+                PullGuideFile {
+                    path: "b.rs".into(),
+                    note: String::new(),
+                },
+            ],
+            questions: vec!["Why?".into()],
+        };
+        let draft = stop_draft(7, 1, Some("abc"), &stop);
+        assert!(
+            draft.starts_with(
+                "About stop 2 of the review guide for pull request #7 at abc: Entry\n"
+            )
+        );
+        assert!(draft.contains("\nStart here.\n"));
+        assert!(draft.contains("- `a.rs`: route\n- `b.rs`\n"));
+        assert!(draft.contains("Guide questions:\n- Why?\n"));
+        assert!(draft.ends_with("My question: "));
     }
 }
