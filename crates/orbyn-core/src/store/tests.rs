@@ -1172,3 +1172,77 @@ fn automatic_continuations_run_out_and_your_message_resets_them() {
     f.store.finish_run(&run, RunState::Completed, None).unwrap();
     assert!(f.store.take_resume_try(&f.thread, 3).unwrap());
 }
+
+fn permission_updates(store: &Store, thread: &str) -> Vec<serde_json::Value> {
+    store
+        .events_after(thread, 0, 500)
+        .unwrap()
+        .into_iter()
+        .filter_map(|event| match event.event {
+            AgUiEvent::Custom { name, value } if name == "permission.updated" => Some(value),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_mode_change_during_a_live_run_says_it_applies_next_run() {
+    let f = fixture();
+    let mut change = patch();
+    change.permission_mode = Some(orbyn_contracts::PermissionMode::Auto);
+    // No run: the change simply applies, so nothing is announced.
+    f.store.update_thread(&f.thread, &change, "t").unwrap();
+    assert!(permission_updates(&f.store, &f.thread).is_empty());
+    // A run that has not started yet is not announced.
+    let queued = admit(&f.store, &f.thread).unwrap();
+    f.store.update_thread(&f.thread, &change, "t").unwrap();
+    assert!(permission_updates(&f.store, &f.thread).is_empty());
+    f.store.mark_starting(&queued.id).unwrap();
+    f.store.mark_running(&queued.id).unwrap();
+    change.permission_mode = Some(orbyn_contracts::PermissionMode::FullAccess);
+    f.store.update_thread(&f.thread, &change, "t").unwrap();
+    assert_eq!(
+        permission_updates(&f.store, &f.thread),
+        vec![json!({ "mode": "full_access", "applies": "next_run" })]
+    );
+}
+
+#[test]
+fn only_an_upgraded_database_reports_its_upgrade() {
+    let dir = TempDir::new();
+    let fresh = Store::open(&dir.path().join("fresh.db"), "a").unwrap();
+    assert!(
+        fresh.upgrade().is_none(),
+        "a new database is created, not upgraded"
+    );
+    let path = dir.path().join("old.db");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
+    )
+    .unwrap();
+    for (version, sql) in super::migrations::MIGRATIONS
+        .iter()
+        .filter(|(version, _)| *version <= 18)
+    {
+        conn.execute_batch(sql).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations VALUES (?1, 'fixture')",
+            [version],
+        )
+        .unwrap();
+    }
+    drop(conn);
+    let latest = super::migrations::MIGRATIONS.last().unwrap().0;
+    let store = Store::open(&path, "b").unwrap();
+    assert_eq!(
+        store.upgrade(),
+        Some(orbyn_contracts::DatabaseUpgrade {
+            from: 18,
+            to: latest,
+        })
+    );
+    drop(store);
+    // The next start finds nothing to do.
+    assert!(Store::open(&path, "c").unwrap().upgrade().is_none());
+}

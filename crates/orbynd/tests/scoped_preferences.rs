@@ -768,6 +768,14 @@ async fn an_action_edit_is_audited_by_name_without_its_command() {
     const KEY: &str = "default_project_scripts";
     let dir = TempDir::new();
     let (service, projects, scope) = fixture(&dir).await;
+    // A fresh database is created, not upgraded, so there is nothing to announce.
+    assert!(
+        service
+            .json("/api/info")
+            .await
+            .get("database_upgrade")
+            .is_none()
+    );
     let environment = query(&service, json!({}), &[KEY]).await;
     let add = edit_body(
         &environment,

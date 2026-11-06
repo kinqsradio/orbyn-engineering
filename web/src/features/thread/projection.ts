@@ -263,6 +263,7 @@ const LIFECYCLE_NOTES: Record<string, string> = {
   "context.compacted": "Context compacted.",
   "thread.rewound": "Rewound to an earlier point.",
   "steer.failed": "The engine refused a message mid-turn, so it moved to the queue.",
+  "permission.updated": "Permission mode changed; it applies from the next turn.",
 };
 
 function put(fold: Fold, item: ThreadItem): void {

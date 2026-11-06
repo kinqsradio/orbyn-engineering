@@ -1462,7 +1462,11 @@ Activity types are `approval` (content is the `Approval`), `plan`
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
 `engine.retrying`, `engine.selection`, `engine.sign_in_required`,
-`engine.session_lost` and `run.force_stopped`. The prompt is logged as a `user` text message whose id ends in
+`engine.session_lost`, `run.force_stopped` and `permission.updated`. A run copies its
+permission mode when it starts, so a mode changed while a run is starting, running or
+waiting on an approval applies from the next run; the change then logs
+`permission.updated` (`{mode, applies: "next_run"}`) and the web shows a toast for one
+that arrives while the thread is open. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -2092,7 +2096,11 @@ sandbox remain separate and receive no remote-fetch permission from this route.
 
 SQLite in WAL mode in the OS app-data directory. Migrations are ordered and
 forward-only, applied in a transaction at startup, and recorded in
-`schema_migrations`. A database from a newer version is refused, not opened.
+`schema_migrations`. A database from a newer version is refused, not opened. A start
+that moves an existing database forward reports `database_upgrade: {from, to}` in
+`/api/info`, and the web shows one toast per upgrade; a database this start created
+reports nothing. Orbyn has no older thread database to import (A54), so this forward
+upgrade is the only migration event.
 
 Secret files are created with mode `0600` on Unix. Windows has no mode bits: they
 inherit the ACL of the per-user `%LOCALAPPDATA%` directory, which excludes other
