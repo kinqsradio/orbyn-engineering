@@ -44,13 +44,21 @@ pub(super) fn initialize_params() -> Value {
         "clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false}})
 }
 
+/// Orbyn offers ACP 1, the only version it speaks. An agent answers with the version it
+/// will use: 1, or its own newest. Some shipped agents answer 2 in version 1's shape,
+/// with `agentInfo` and `agentCapabilities`, and those run as version 1. A reply in
+/// version 2's own shape, with `info`, is refused rather than misread.
 pub(super) fn check_version(init: &Value) -> Result<()> {
-    if init.get("protocolVersion").and_then(Value::as_u64) != Some(1) {
-        return Err(CoreError::Unsupported(
+    match init.get("protocolVersion").and_then(Value::as_u64) {
+        Some(1) => Ok(()),
+        Some(2) if init.get("info").is_none() => Ok(()),
+        Some(2) => Err(CoreError::Unsupported(
+            "This agent speaks only ACP version 2, which Orbyn does not run yet.".into(),
+        )),
+        _ => Err(CoreError::Unsupported(
             "This agent does not speak ACP version 1.".into(),
-        ));
+        )),
     }
-    Ok(())
 }
 
 fn bounded(value: &str, max: usize) -> bool {

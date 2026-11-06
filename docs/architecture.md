@@ -1387,6 +1387,11 @@ OpenCode with `{"permission":{"*":"ask"}}`, since either can otherwise act witho
 DeepSeek cannot ask before an edit, so it is labelled unmanaged under rule 8. Each keeps its
 own login, and only the launch has been tested, with the fake agent under those names.
 
+The ACP driver offers protocol version 1, the only one it speaks. An agent that answers 2
+in version 1's shape (`agentInfo`, `agentCapabilities`), as some shipped agents do, runs as
+version 1; a reply in version 2's own shape (`info`) is refused with a message saying so,
+not misread.
+
 Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
 - Claude starts at the workspace root and discovers `.claude/skills` and the
