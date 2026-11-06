@@ -183,6 +183,8 @@ export const api = {
       prompt,
       attachment_ids: attachmentIds,
     }),
+  jjStatus: (threadId: string, signal?: AbortSignal) =>
+    request<import("../generated/JjStatus").JjStatus | null>("GET", `/api/threads/${q(threadId)}/jj`, undefined, signal),
   threadSetup: (threadId: string, signal?: AbortSignal) =>
     request<import("../generated/ThreadSetup").ThreadSetup | null>("GET", `/api/threads/${q(threadId)}/setup`, undefined, signal),
   cancelSetup: (threadId: string) =>

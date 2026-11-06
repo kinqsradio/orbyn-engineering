@@ -1716,6 +1716,22 @@ pub struct RetryPreparation {
 }
 }
 
+wire! {
+/// The working-copy change of a Jujutsu checkout that is not colocated with Git,
+/// as the installed `jj` reports it.
+pub struct JjStatus {
+    pub change_id: String,
+    pub commit_id: String,
+    pub bookmarks: Vec<String>,
+    /// The first line of the change's description; empty when undescribed.
+    pub description: String,
+    pub conflict: bool,
+    pub changed_files: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+}
+
 wire_enum! {
 /// Where a worktree's setup action stands. `stopped` means it ended without an
 /// exit code: cancelled, or cut off by a service restart.

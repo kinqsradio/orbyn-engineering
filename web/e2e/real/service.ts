@@ -134,6 +134,8 @@ export interface ServiceOptions {
   registry?: string;
   /** A folder holding the protocol double's saved ACP sessions (`sessions.json`). */
   nativeSessions?: string;
+  /** Folders put first on the service's PATH, for stand-in tools such as `jj`. */
+  path?: string[];
 }
 
 /** A port nothing holds, so two checkouts or specs can never answer for each other. */
@@ -187,7 +189,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
   for (const path of Object.values(profile)) mkdirSync(path, { recursive: true, mode: 0o700 });
   const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
     // A home of its own, so no real engine history or login is read.
-    env: { ...inherited, ...profile, ...engines, ORBYN_KNOWN_ENGINE_IDS: options.discoverKnownEngines ? undefined : "[]", ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}${delimiter}` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
+    env: { ...inherited, ...profile, ...engines, ORBYN_KNOWN_ENGINE_IDS: options.discoverKnownEngines ? undefined : "[]", ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${(options.path ?? []).map((dir) => `${dir}${delimiter}`).join("")}${forge ? `${forge.bin}${delimiter}` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const ready = await new Promise<{ url: string; token: string }>((done, fail) => {

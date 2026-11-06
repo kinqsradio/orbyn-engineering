@@ -1038,6 +1038,14 @@ pub async fn put_settings(
     Ok(Json(settings))
 }
 
+/// The Jujutsu working-copy change of the thread's checkout, or `null`.
+pub async fn thread_jj_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_jj_status(&id).await?))
+}
+
 /// The thread's worktree setup action and where it stands, or `null`.
 pub async fn thread_setup(
     State(state): State<AppState>,
