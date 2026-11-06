@@ -1,6 +1,8 @@
 import { ArrowLeft, Check, CircleDashed, EllipsisVertical, ExternalLink, GitMerge, Layers, MessageSquare, Pencil, Plus, X } from "lucide-react";
 import "./pulls.css";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLayoutWidth } from "../../lib/useLayout";
+import { usePageLabel } from "../../state/pageLabel";
 import type { PullCheck, PullRequestDetail } from "../../api/types";
 import { relativeTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -360,6 +362,14 @@ export function PullDetail({
   const pushToast = useUi((state) => state.pushToast);
   const refreshAll = useWorkspace((state) => state.refreshAll);
   const engines = useWorkspace((state) => state.engines.data);
+  const layoutWidth = useLayoutWidth();
+  const setPageLabel = usePageLabel((state) => state.set);
+  const shownTitle = detail.status === "ready" ? detail.data.pull.title : null;
+  useEffect(() => {
+    if (layout !== "page" || shownTitle === null) return;
+    setPageLabel(shownTitle);
+    return () => setPageLabel(null);
+  }, [layout, shownTitle, setPageLabel]);
 
   const page = layout === "page";
   const back = page ? (
@@ -617,39 +627,49 @@ export function PullDetail({
     );
   }
 
+  const inHeading = layoutWidth === "narrow" || tab !== "summary";
+  const forgeLink = (
+    <a className="icon-btn" href={pull.url} target="_blank" rel="noreferrer" aria-label="Open on the forge" title="Open on the forge">
+      <ExternalLink size={14} aria-hidden />
+    </a>
+  );
+  const actionButtons = (
+    <>
+      <Button small icon={<MessageSquare size={14} aria-hidden />} onClick={() => void work()}>
+        Work on this
+      </Button>
+      {open ? (
+        <>
+          <Button small onClick={() => void act("close", "Closed")}>
+            Close
+          </Button>
+          <Button
+            small
+            tone="primary"
+            icon={<GitMerge size={14} aria-hidden />}
+            disabled={mergeable === "conflicting"}
+            onClick={() => setMerging(true)}
+          >
+            Merge
+          </Button>
+        </>
+      ) : pull.state === "closed" ? (
+        <Button small onClick={() => void act("reopen", "Reopened")}>
+          Reopen
+        </Button>
+      ) : null}
+    </>
+  );
+
   return (
     <article className="pull-page" aria-label={pull.title}>
       {back}
       <PageBar
         actions={
           <>
-            <Button small icon={<MessageSquare size={14} aria-hidden />} onClick={() => void work()}>
-              Work on this
-            </Button>
-            {open ? (
-              <>
-                <Button small onClick={() => void act("close", "Closed")}>
-                  Close
-                </Button>
-                <Button
-                  small
-                  tone="primary"
-                  icon={<GitMerge size={14} aria-hidden />}
-                  disabled={mergeable === "conflicting"}
-                  onClick={() => setMerging(true)}
-                >
-                  Merge
-                </Button>
-              </>
-            ) : pull.state === "closed" ? (
-              <Button small onClick={() => void act("reopen", "Reopened")}>
-                Reopen
-              </Button>
-            ) : null}
+            {inHeading ? actionButtons : null}
             {moreActions}
-            <a className="icon-btn" href={pull.url} target="_blank" rel="noreferrer" aria-label="Open on the forge" title="Open on the forge">
-              <ExternalLink size={14} aria-hidden />
-            </a>
+            {forgeLink}
           </>
         }
       >
@@ -688,6 +708,27 @@ export function PullDetail({
               <PullConversation projectId={projectId} number={number} />
             </div>
             <div className="pull-side">
+              <div className="pull-card pull-status">
+                <div className="pull-kv">
+                  <span>Status</span>
+                  <b>{pull.draft ? "Draft" : pull.state}</b>
+                </div>
+                <div className="pull-kv">
+                  <span>Branch</span>
+                  <b className="pull-mono">
+                    {pull.head} → {pull.base}
+                  </b>
+                </div>
+                {additions !== null ? (
+                  <div className="pull-kv">
+                    <span>Changes</span>
+                    <b>
+                      +{additions} -{deletions ?? 0}, {files ?? 0} files
+                    </b>
+                  </div>
+                ) : null}
+              </div>
+              {inHeading ? null : <div className="pull-actions">{actionButtons}</div>}
               <Checks projectId={projectId} number={number} />
               {reviewers}
               {labels}

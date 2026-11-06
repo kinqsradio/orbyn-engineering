@@ -7,6 +7,7 @@ import { EnvironmentIdentity } from "../features/workspace/EnvironmentIdentity";
 import { useAsync } from "../lib/useAsync";
 import { labels } from "../features/settings/SettingsPage";
 import { routeHref, type Route } from "../state/route";
+import { usePageLabel } from "../state/pageLabel";
 import { useReadingNav } from "./readingNav";
 import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
@@ -56,12 +57,13 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
   const ledger = useUi((state) => state.workspaceLayout === "ledger");
   const title = useWorkspace((state) => (route.name === "thread" ? state.threads[route.id]?.title : undefined));
   const waiting = useWaitingCount();
+  const pageLabel = usePageLabel((state) => state.label);
 
   const page =
     route.name === "thread"
       ? (title ?? "")
       : route.name === "pulls"
-        ? "Pull requests"
+        ? (pageLabel ?? "Pull requests")
         : route.name === "usage"
           ? "Usage"
           : route.name === "tasks"

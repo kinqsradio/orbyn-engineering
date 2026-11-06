@@ -362,3 +362,30 @@
     padding-inline: 16px;
   }
 }
+
+/* The status card and the actions under it, beside the description */
+.pull-page .pull-status {
+  gap: 2px;
+}
+.pull-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 26px;
+  color: var(--color-muted);
+}
+.pull-kv b {
+  color: var(--color-text);
+  font-weight: 400;
+  text-align: right;
+}
+.pull-kv .pull-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+.pull-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
