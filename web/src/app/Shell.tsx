@@ -461,41 +461,40 @@ function useGlobalKeys(route: Route) {
 
 /**
  * Keeps the toast stack clear of the composer: `--toast-lift` is how far its top edge stands
- * above the window's bottom, so the stack sits just above it.
+ * above the window's bottom, so the stack sits just above it. Only the composer is watched,
+ * so a streaming reply costs nothing here.
  */
-function useToastClearance(routeKey: string) {
+function useToastClearance(key: string) {
   useEffect(() => {
     const root = document.documentElement;
-    let observed: Element | null = null;
+    let composer: Element | null = null;
     let frame = 0;
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => schedule());
-    const measure = () => {
-      frame = 0;
-      const composer = document.querySelector(".composer");
-      if (composer !== observed) {
-        if (observed) observer?.unobserve(observed);
-        observed = composer;
-        if (composer) observer?.observe(composer);
-      }
+    const apply = () => {
       const rect = composer?.getBoundingClientRect();
       const lift = rect && rect.height > 0 ? Math.max(0, window.innerHeight - rect.top + 8) : 0;
       root.style.setProperty("--toast-lift", `${lift}px`);
     };
-    function schedule() {
-      if (!frame) frame = requestAnimationFrame(measure);
-    }
-    measure();
-    const mutations = new MutationObserver(schedule);
-    mutations.observe(document.getElementById("main") ?? document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", schedule);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    // A screen's composer mounts a little after the route changes; look for it for a second.
+    let tries = 0;
+    const find = () => {
+      composer = document.querySelector(".composer");
+      if (composer) observer?.observe(composer);
+      apply();
+      if (!composer && ++tries < 60) frame = requestAnimationFrame(find);
+    };
+    find();
+    // The composer glides to the bottom when a first message is sent; its size need not change.
+    window.addEventListener("resize", apply);
+    window.addEventListener("transitionend", apply, true);
     return () => {
       cancelAnimationFrame(frame);
       observer?.disconnect();
-      mutations.disconnect();
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("transitionend", apply, true);
       root.style.removeProperty("--toast-lift");
     };
-  }, [routeKey]);
+  }, [key]);
 }
 
 /** Moves focus into the new screen, so keyboard and screen reader users follow it. */
@@ -557,7 +556,7 @@ export function Shell() {
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);
-  useToastClearance(routeKey);
+  useToastClearance(`${routeKey}:${threadReady}`);
 
   useEffect(() => {
     void loadAll();

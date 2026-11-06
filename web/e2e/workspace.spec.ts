@@ -297,13 +297,14 @@ test("Reading folds the sidebar away on a wide window, but a narrow home is stil
   const reading = () =>
     page.addInitScript(() => {
       localStorage.setItem("orbyn.prefs.migrated", "1");
-      localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ workspaceLayout: "reading", sidebarCollapsed: true }));
+      localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ workspaceLayout: "reading" }));
     });
   await reading();
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/#/");
   // The mock scenario already loaded the app at this address, so the init script needs a fresh load.
   await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-workspace", "reading");
   const nav = page.getByRole("navigation", { name: "Workspace" });
   await expect(nav).toBeVisible();
   await expect(nav.getByRole("link", { name: "New thread", exact: true })).toBeVisible();
