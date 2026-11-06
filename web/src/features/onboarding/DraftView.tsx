@@ -224,8 +224,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       {
         ...(picked && pickedEffort ? { effort: pickedEffort } : {}),
         ...(picked && Object.keys(extras).length > 0 ? { options: extras } : {}),
-        // Each engine narrows the chosen mode itself, so a fan-out keeps it for the ones that offer it.
-        ...(chosenAccess === "supervised" ? {} : { permission_mode: chosenAccess }),
+        // The draft's engine saves what it shows; another engine in a fan-out narrows the choice itself.
+        ...((choice.engine === engine?.id ? access : chosenAccess) === "supervised"
+          ? {}
+          : { permission_mode: choice.engine === engine?.id ? access : chosenAccess }),
       },
     );
     addPrompt(thread.id, { runId: run.id, text });
