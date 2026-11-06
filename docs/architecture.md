@@ -487,7 +487,9 @@ timeout, no model, an unparsable reply), each field still blank falls back: the
 thread title for a commit message or pull request title, and an empty description.
 Fields generated before the failure stay. The result carries a notice that says
 why. A busy, archived, untrusted or changed thread and an engine turned off still
-refuse the action. A reply may be bare JSON or one Markdown fence around it.
+refuse the action. A reply may be bare JSON or one Markdown fence around it. Generation
+needs Git 2.40 or later, which honours `GIT_ATTR_SOURCE`; older Git could apply
+the working tree's clean filters while the diff is read, so it falls back instead.
 
 Writing uses the selected thread engine and the configured text-generation model,
 or the thread's explicit model when that setting is empty. It never chooses another

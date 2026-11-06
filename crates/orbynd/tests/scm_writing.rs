@@ -614,3 +614,85 @@ async fn thread_title(service: &Service, thread: &str) -> String {
         .unwrap()
         .to_owned()
 }
+
+/// Git older than 2.40 ignores `GIT_ATTR_SOURCE`, so generation is refused and
+/// the commit falls back. A stand-in `git` reports an old version and passes
+/// everything else to the real one.
+#[cfg(unix)]
+#[tokio::test]
+async fn git_older_than_2_40_never_reads_the_change_for_generation() {
+    use std::os::unix::fs::PermissionsExt;
+    let real = String::from_utf8(
+        std::process::Command::new("sh")
+            .args(["-c", "command -v git"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let dir = TempDir::new();
+    let bin = dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let stand_in = bin.join("git");
+    std::fs::write(
+        &stand_in,
+        format!(
+            "#!/bin/sh\nfor arg in \"$@\"; do [ \"$arg\" = version ] && {{ echo 'git version 2.39.5'; exit 0; }}; done\nexec {} \"$@\"\n",
+            real.trim()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&stand_in, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let record = dir.path().join("one-shot.txt");
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let options = Options {
+        env: vec![
+            ("PATH".into(), path),
+            (
+                "ORBYN_FAKE_ONE_SHOT_FILE".into(),
+                record.to_str().unwrap().into(),
+            ),
+            ("HOME".into(), dir.path().to_str().unwrap().into()),
+        ],
+        ..Default::default()
+    };
+    let cwd = dir.path().join("project");
+    std::fs::create_dir_all(&cwd).unwrap();
+    run_git(&cwd, &["init", "-q", "-b", "main"]);
+    run_git(&cwd, &["config", "user.name", "Test"]);
+    run_git(&cwd, &["config", "user.email", "test@example.com"]);
+    std::fs::write(cwd.join("tracked.txt"), "initial\n").unwrap();
+    run_git(&cwd, &["add", "."]);
+    run_git(&cwd, &["commit", "-qm", "initial"]);
+    let service = Service::start(&dir.path().join("data"), options);
+    let project = service.project(&cwd, true).await;
+    let thread = service.thread(&project, "claude").await;
+    assert_eq!(
+        service
+            .patch(&thread, json!({"model":"chosen-model"}))
+            .await
+            .0,
+        200
+    );
+    std::fs::write(cwd.join("tracked.txt"), "changed\n").unwrap();
+    let (status, result) = service
+        .send(
+            &format!("/api/threads/{thread}/git/action"),
+            json!({"commit_message":""}),
+        )
+        .await;
+    assert_eq!(status, 200, "{result}");
+    assert_eq!(result["phases"][0]["ok"], true, "{result}");
+    assert!(
+        result["notice"]
+            .as_str()
+            .is_some_and(|notice| notice.contains("Git 2.40 or later")),
+        "{result}"
+    );
+    assert!(!record.exists(), "no change was sent to the engine");
+    assert_eq!(
+        git(&cwd, &["log", "-1", "--format=%s"]).trim(),
+        thread_title(&service, &thread).await
+    );
+    service.stop().await;
+}

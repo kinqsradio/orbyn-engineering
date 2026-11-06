@@ -138,6 +138,27 @@ async fn read_git_bounded(cwd: &Path, args: &[&str], attributes: Option<&str>) -
         .map_err(|_| invalid("Reading this change timed out. Enter text manually."))?
 }
 
+/// The major and minor version in `git version` output, such as
+/// `git version 2.39.3 (Apple Git-146)` or `git version 2.45.1.windows.1`.
+fn git_version(output: &str) -> Option<(u32, u32)> {
+    let version = output.trim().strip_prefix("git version ")?;
+    let mut parts = version.split(|c: char| !c.is_ascii_digit());
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
+}
+
+/// `GIT_ATTR_SOURCE` arrived in Git 2.40. Older Git ignores it, so the working
+/// tree's `.gitattributes` could still apply clean filters from local config
+/// while the diff is read; generation is refused there instead.
+async fn require_attr_source(cwd: &Path) -> Result<()> {
+    let output = utf8(read_git_bounded(cwd, &["version"], None).await?)?;
+    match git_version(&output) {
+        Some(version) if version >= (2, 40) => Ok(()),
+        _ => Err(invalid(
+            "Generating text needs Git 2.40 or later. Enter text manually.",
+        )),
+    }
+}
+
 fn utf8(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes)
         .map_err(|_| invalid("This change contains unsupported text. Enter text manually."))
@@ -635,6 +656,7 @@ impl Core {
         )?;
         let driver = self.engines.driver(&thread.engine)?;
         let cwd = Path::new(&thread.cwd);
+        require_attr_source(cwd).await?;
         let root = utf8(read_git(cwd, &["rev-parse", "--show-toplevel"]).await?)?;
         let cwd = Path::new(root.trim_end_matches(['\r', '\n']));
         let style = style::parse(
@@ -893,6 +915,20 @@ mod tests {
         assert_eq!(pull.title, "Add fences");
         assert_eq!(pull.body, "## Summary\n\n```rust\nfn x() {}\n```");
         assert!(commit_reply(&"x".repeat(REPLY_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn generation_needs_git_that_reads_attributes_from_a_tree() {
+        for (output, version) in [
+            ("git version 2.39.3 (Apple Git-146)\n", Some((2, 39))),
+            ("git version 2.40.0\n", Some((2, 40))),
+            ("git version 2.45.1.windows.1\r\n", Some((2, 45))),
+            ("git version 3.0.0", Some((3, 0))),
+            ("not git", None),
+        ] {
+            assert_eq!(git_version(output), version, "{output}");
+        }
+        assert!(git_version("git version 2.39.9").unwrap() < (2, 40));
     }
 
     #[test]
