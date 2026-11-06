@@ -29,7 +29,7 @@ import {
 } from "./usageModel";
 
 const PREFS_KEY = "orbyn.usage.v1";
-const CHART_COLORS = ["var(--color-text)", "var(--color-warn)", "var(--color-info)", "var(--color-success)"];
+const CHART_COLORS = ["var(--color-text)", "var(--color-textSoft)", "var(--color-muted)", "var(--color-faint)"];
 
 const METRICS: { id: UsageMetric; label: string }[] = [
   { id: "cost", label: "Cost" },
