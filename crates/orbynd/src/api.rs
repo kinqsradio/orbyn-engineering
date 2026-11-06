@@ -1607,6 +1607,11 @@ pub async fn refresh_engines(State(state): State<AppState>) -> ApiResult<impl In
     Ok(Json(state.core.engines.statuses(true).await?))
 }
 
+/// Updates every engine with a newer version, through the installer that owns each.
+pub async fn update_all_engines(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.engines.update_all(LOCAL_USER).await?))
+}
+
 pub async fn update_engine(
     State(state): State<AppState>,
     Path(id): Path<String>,

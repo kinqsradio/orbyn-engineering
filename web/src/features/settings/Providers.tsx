@@ -1,3 +1,4 @@
+import type { EngineUpdateOutcome } from "../../generated/EngineUpdateOutcome";
 import { RefreshCw, Trash2, ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, request } from "../../api/client";
@@ -392,12 +393,21 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
   );
 }
 
+/** An engine the service's update-all takes: owned, newer, not an instance, no signed warning. */
+function wantsUpdate(engine: EngineStatus) {
+  return !engine.instance_of && !!engine.update_command && !engine.compatibility
+    && engine.latest !== null && engine.latest !== engine.version;
+}
+
 export function ProvidersSection() {
   const engines = useWorkspace((state) => state.engines);
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updating = engines.data?.some((engine) => engine.updating) ?? false;
+  const updatable = (engines.data ?? []).filter(wantsUpdate);
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [outcomes, setOutcomes] = useState<EngineUpdateOutcome[] | null>(null);
 
   useEffect(() => {
     if (!updating) return;
@@ -424,10 +434,39 @@ export function ProvidersSection() {
         <h1 className="sr-only" tabIndex={-1} data-page-title>
           Providers
         </h1>
+        {updatable.length > 1 && !updating ? (
+          <Button small onClick={() => setConfirmingAll(true)}>
+            Update all
+          </Button>
+        ) : null}
         <Button small busy={refreshing} onClick={() => void recheck()}>
           Check again
         </Button>
       </div>
+      {confirmingAll ? (
+        <ConfirmDialog
+          title={`Update ${updatable.length} providers?`}
+          confirmLabel="Update all"
+          onClose={() => setConfirmingAll(false)}
+          onConfirm={async () => {
+            setOutcomes(await api.updateAllEngines());
+            await refreshEngines();
+          }}
+        >
+          <p>Orbyn runs the installer that owns each binary, one at a time:</p>
+          {updatable.map((engine) => (
+            <CopyCommand key={engine.id} command={engine.update_command ?? ""} label={`Copy ${engine.name} update command`} />
+          ))}
+          <p className="muted">A provider with an active run is skipped and reported.</p>
+        </ConfirmDialog>
+      ) : null}
+      {outcomes?.some((outcome) => outcome.error) ? (
+        <ul className="field-error" role="alert">
+          {outcomes.filter((outcome) => outcome.error).map((outcome) => (
+            <li key={outcome.id}>{outcome.name}: {outcome.error}</li>
+          ))}
+        </ul>
+      ) : null}
       {error ? (
         <p className="field-error" role="alert">
           {error}

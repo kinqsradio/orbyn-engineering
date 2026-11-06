@@ -660,6 +660,45 @@ impl EngineManager {
         self.update_to(id, actor, None).await
     }
 
+    /// Updates, one at a time, every engine reporting a newer version that an owning
+    /// installer can update. Instances and engines sharing one binary update once, and
+    /// an engine with a signed warning is left to its recommended install. Each one
+    /// goes through `update`, so a busy engine or a failed installer is reported and
+    /// the rest still run.
+    pub async fn update_all(
+        &self,
+        actor: &str,
+    ) -> Result<Vec<orbyn_contracts::EngineUpdateOutcome>> {
+        let mut binaries = std::collections::HashSet::new();
+        let mut outcomes = Vec::new();
+        for status in self.statuses(true).await? {
+            if !wants_update(&status) {
+                continue;
+            }
+            if let Some(path) = &status.path
+                && !binaries.insert(path.clone())
+            {
+                continue;
+            }
+            let outcome = match self.update(&status.id, actor).await {
+                Ok(after) => orbyn_contracts::EngineUpdateOutcome {
+                    id: status.id,
+                    name: status.name,
+                    version: after.version,
+                    error: None,
+                },
+                Err(error) => orbyn_contracts::EngineUpdateOutcome {
+                    id: status.id,
+                    name: status.name,
+                    version: None,
+                    error: Some(error.to_string()),
+                },
+            };
+            outcomes.push(outcome);
+        }
+        Ok(outcomes)
+    }
+
     /// Installs the version the signed manifest recommends, through the installer
     /// that owns the binary. Refused when the manifest recommends nothing, when
     /// that installer cannot install one exact version, or while a run is active.
@@ -909,8 +948,53 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// An engine `update_all` takes: not an instance, with an update an owning installer
+/// can run, a newer version than the installed one, and no signed warning.
+fn wants_update(status: &EngineStatus) -> bool {
+    status.instance_of.is_none()
+        && status.update_command.is_some()
+        && status.compatibility.is_none()
+        && status
+            .latest
+            .as_deref()
+            .is_some_and(|latest| status.version.as_deref() != Some(latest))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_all_takes_only_an_owned_newer_engine_that_is_not_an_instance() {
+        let base = serde_json::json!({
+            "id": "codex", "name": "Codex", "tier": "native",
+            "capabilities": {"streaming": true, "approvals": true, "resume": true, "mcp": true,
+                "sandbox": true, "managed": true, "skill_delivery": [], "goal_control": false,
+                "decline_feedback": false, "permission_modes": []},
+            "installed": true, "path": "/bin/codex", "version": "0.166.0", "auth": "unknown",
+            "installer": "npm", "latest": "0.167.0", "support": "unknown",
+            "update_command": "npm install -g @openai/codex@latest", "manual_hint": null,
+            "sign_in_command": null, "updating": false, "problem": null
+        });
+        let status = |change: serde_json::Value| -> EngineStatus {
+            let mut value = base.clone();
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(change.as_object().unwrap().clone());
+            serde_json::from_value(value).unwrap()
+        };
+        assert!(wants_update(&status(serde_json::json!({}))));
+        assert!(!wants_update(&status(
+            serde_json::json!({"latest": "0.166.0"})
+        )));
+        assert!(!wants_update(&status(serde_json::json!({"latest": null}))));
+        assert!(!wants_update(&status(
+            serde_json::json!({"update_command": null})
+        )));
+        assert!(!wants_update(&status(
+            serde_json::json!({"instance_of": "codex"})
+        )));
+    }
+
     use super::*;
     use crate::store::{Admission, NewProject, NewThread};
     use crate::testing::TempDir;

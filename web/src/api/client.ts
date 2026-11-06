@@ -1,6 +1,7 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { EngineUpdateOutcome } from "../generated/EngineUpdateOutcome";
 import type { WorkflowScript } from "../generated/WorkflowScript";
 import type { WorkflowStop } from "../generated/WorkflowStop";
 import type { RenameSelectedProjects } from "../generated/RenameSelectedProjects";
@@ -350,6 +351,7 @@ export const api = {
     request<Thread>("POST", `/api/threads/${q(threadId)}/switch-engine`, { engine, model }),
   refreshEngines: () => request<EngineStatus[]>("POST", "/api/engines/refresh"),
   updateEngine: (id: string) => request<void>("POST", `/api/engines/${q(id)}/update`),
+  updateAllEngines: () => request<EngineUpdateOutcome[]>("POST", "/api/engines/update-all"),
   installRecommended: (id: string) => request<void>("POST", `/api/engines/${q(id)}/install-recommended`),
   addCustomEngine: (body: CustomEngine) =>
     request<EngineStatus>("POST", "/api/engines/custom", body),
