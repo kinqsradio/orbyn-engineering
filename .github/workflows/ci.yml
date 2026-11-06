@@ -245,7 +245,7 @@ jobs:
       - name: Release script tests
         if: env.RUN == 'true'
         shell: bash
-        run: node --test scripts/release-evidence.test.mjs scripts/smoke-service.test.mjs scripts/smoke-app-diagnostics.test.mjs scripts/smoke-app-environment.test.mjs scripts/smoke-app-providers.test.mjs scripts/verify-macos-release.test.mjs scripts/install.test.mjs
+        run: node --test scripts/release-evidence.test.mjs scripts/smoke-service.test.mjs scripts/smoke-app-diagnostics.test.mjs scripts/smoke-app-environment.test.mjs scripts/smoke-app-providers.test.mjs scripts/smoke-app-usage.test.mjs scripts/verify-macos-release.test.mjs scripts/install.test.mjs
       - name: Load the packaged service
         if: env.RUN == 'true'
         shell: bash
