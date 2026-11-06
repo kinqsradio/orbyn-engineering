@@ -18,6 +18,7 @@ const engine = (patch: Partial<EngineStatus>) => ({
 
 beforeEach(() => {
   useUi.getState().setPrefs({ welcomeDone: false });
+  useUi.getState().setWelcomeStep(0);
 });
 
 it("names what each engine still needs", () => {
@@ -34,10 +35,13 @@ it("walks agents then projects and remembers it was finished", async () => {
   expect(screen.getByText("Ready")).toBeInTheDocument();
   expect(screen.getByText("Sign in needed")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Next" }));
-  expect(screen.getByRole("button", { name: "Add project" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Add project" }));
+  expect(onClose).not.toHaveBeenCalled();
+  expect(useUi.getState().palette).toBe("add-project");
   await user.click(screen.getByRole("button", { name: "Find conversations" }));
   expect(await screen.findByText("No saved conversations found.")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Done" }));
   expect(onClose).toHaveBeenCalled();
   expect(useUi.getState().welcomeDone).toBe(true);
+  expect(useUi.getState().welcomeStep).toBeNull();
 });

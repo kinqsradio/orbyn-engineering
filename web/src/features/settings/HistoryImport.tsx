@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { request } from "../../api/client";
+import { api, request } from "../../api/client";
 import type { HistoryScan } from "../../generated/HistoryScan";
 import type { HistorySession } from "../../generated/HistorySession";
 import type { HistorySessionImported } from "../../generated/HistorySessionImported";
@@ -8,7 +8,7 @@ import { toFailure } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { Button, Pill } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { settingsLabel } from "./settingsSearch";
 
@@ -46,6 +46,20 @@ export function HistoryImport() {
     }
   };
 
+  // A folder added by path starts untrusted; the row then offers the trust page.
+  const addFolder = async (session: HistorySession) => {
+    setBusy(`${session.engine}:${session.session_id}`);
+    try {
+      await api.addProject(session.cwd);
+      await useWorkspace.getState().refreshAll();
+      setScan(await request<HistoryScan>("GET", "/api/history/sessions"));
+    } catch (failure) {
+      pushToast(`Couldn't add the folder: ${toFailure(failure).message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <SettingGroup title="Agent history">
       <SettingRow
@@ -73,10 +87,14 @@ export function HistoryImport() {
               <Button small disabled={busy !== null} onClick={() => void importSession(session)}>
                 {busy === key ? "Importing…" : "Import"}
               </Button>
+            ) : session.project_id ? (
+              <Button small tone="quiet" onClick={() => navigate({ name: "trust", projectId: session.project_id ?? "", threadId: null })}>
+                Trust folder
+              </Button>
             ) : (
-              <Pill tone="warn" title="Add and trust this folder as a project to import it.">
-                {session.project_id ? "Untrusted project" : "No project"}
-              </Pill>
+              <Button small tone="quiet" disabled={busy !== null} onClick={() => void addFolder(session)}>
+                {busy === key ? "Adding…" : "Add folder"}
+              </Button>
             )}
           </SettingRow>
         );

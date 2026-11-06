@@ -57,7 +57,9 @@ fn history_files(engine: Engine, root: &Path) -> (Vec<Found>, bool) {
             };
             let path = entry.path();
             // Symlinks are not followed, so the scan stays inside the history folder.
-            if kind.is_dir() {
+            // Claude keeps a session's subagent transcripts under `<session>/subagents`,
+            // with the parent's id; they are not conversations of their own.
+            if kind.is_dir() && entry.file_name() != "subagents" {
                 pending.push(path);
             } else if kind.is_file() && path.extension().is_some_and(|ext| ext == "jsonl") {
                 let modified = entry
@@ -116,6 +118,9 @@ fn read_head(engine: Engine, path: &Path) -> Option<Head> {
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
+        if value.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+            return None;
+        }
         let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
         match engine {
             Engine::Claude => {
@@ -200,6 +205,8 @@ impl Core {
         let mut sessions = Vec::new();
         let mut truncated = false;
         let mut folders: HashMap<String, Option<&orbyn_contracts::Project>> = HashMap::new();
+        // Files are newest first, so the first of a session's files is the one kept.
+        let mut seen = std::collections::HashSet::new();
         for (engine, root) in roots {
             let Some(root) = root.as_ref().filter(|root| root.is_dir()) else {
                 continue;
@@ -216,6 +223,9 @@ impl Core {
                         .find(|project| !project.scratch && same_folder(&project.path, &head.cwd))
                 });
                 let name = engine_name(found.engine);
+                if !seen.insert((name, head.session_id.clone())) {
+                    continue;
+                }
                 let thread_id = match project {
                     Some(project) => {
                         self.store
@@ -345,9 +355,32 @@ mod tests {
             &claude.join("bad").join("b.jsonl"),
             &[json!({"sessionId": "../x", "cwd": cwd})],
         );
+        let subagent = json!({"type": "user", "sessionId": "c1", "cwd": cwd, "isSidechain": true,
+            "message": {"role": "user", "content": "Subagent brief"}});
+        write(
+            &claude
+                .join("-work")
+                .join("c1")
+                .join("subagents")
+                .join("agent-1.jsonl"),
+            &[subagent.clone()],
+        );
+        write(&claude.join("-work").join("side.jsonl"), &[subagent]);
+        // A second file of the same session lists once.
+        write(
+            &claude.join("-copy").join("c1.jsonl"),
+            &[
+                json!({"type": "user", "sessionId": "c1", "cwd": cwd, "message": {"content": "Fix the login bug"}}),
+            ],
+        );
         let roots = [(Engine::Claude, Some(claude)), (Engine::Codex, Some(codex))];
         let scan = core.scan_history_in(&roots).unwrap();
-        assert_eq!(scan.sessions.len(), 2, "an unsafe id is skipped");
+        assert_eq!(
+            scan.sessions.len(),
+            2,
+            "unsafe ids, subagents and repeats are skipped"
+        );
+        assert!(!format!("{scan:?}").contains("Subagent brief"));
         let by_id = |id: &str| {
             scan.sessions
                 .iter()

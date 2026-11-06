@@ -1,5 +1,4 @@
 import { Plus } from "lucide-react";
-import { useState } from "react";
 import type { EngineStatus } from "../../api/types";
 import { HistoryImport } from "../settings/HistoryImport";
 import { navigate } from "../../state/route";
@@ -41,7 +40,7 @@ function AgentsStep() {
   );
 }
 
-function ProjectsStep({ onDone }: { onDone(): void }) {
+function ProjectsStep() {
   const setPalette = useUi((state) => state.setPalette);
   return (
     <>
@@ -51,10 +50,7 @@ function ProjectsStep({ onDone }: { onDone(): void }) {
             small
             tone="primary"
             icon={<Plus size={16} aria-hidden />}
-            onClick={() => {
-              onDone();
-              setPalette("add-project");
-            }}
+            onClick={() => setPalette("add-project")}
           >
             Add project
           </Button>
@@ -69,9 +65,11 @@ const STEPS = ["Agents", "Projects"] as const;
 
 /** First-run steps on the empty home, inline so the page stays usable: which agents are ready, then projects and past conversations. */
 export function WelcomeWizard({ onClose }: { onClose(): void }) {
-  const [step, setStep] = useState(0);
+  const step = useUi((state) => state.welcomeStep) ?? 0;
+  const setStep = useUi((state) => state.setWelcomeStep);
   const finish = () => {
     useUi.getState().setPrefs({ welcomeDone: true });
+    setStep(null);
     onClose();
   };
   const last = step === STEPS.length - 1;
@@ -81,7 +79,7 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
       <p className="setting-line-desc" aria-live="polite">
         Step {step + 1} of {STEPS.length}
       </p>
-      {step === 0 ? <AgentsStep /> : <ProjectsStep onDone={finish} />}
+      {step === 0 ? <AgentsStep /> : <ProjectsStep />}
       <div className="welcome-wizard-actions">
         <Button small tone="quiet" onClick={step === 0 ? finish : () => setStep(step - 1)}>
           {step === 0 ? "Skip" : "Back"}
@@ -102,4 +100,13 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
       </div>
     </section>
   );
+}
+
+/**
+ * Keeps the welcome steps open across the empty home, a new project's draft and the
+ * trust page's return, so adding and trusting a folder doesn't end them.
+ */
+export function WelcomeHost() {
+  const step = useUi((state) => state.welcomeStep);
+  return step === null ? null : <WelcomeWizard onClose={() => undefined} />;
 }

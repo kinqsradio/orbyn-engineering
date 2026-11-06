@@ -1137,7 +1137,10 @@ project at exactly its folder and whether that project is trusted.
 and finds the file itself. It needs the session's project registered and trusted and
 the engine enabled there, then creates a thread whose engine session is that id, with
 no copied messages, so the next run resumes the engine's own conversation. A second
-import returns the same thread. Pi is not an engine Orbyn runs, so its history is not
+import returns the same thread. Claude's `subagents` folders and `isSidechain`
+transcripts are skipped, and a session listed by several files appears once, from its
+newest file. A session whose folder is not a project offers Add folder, which registers
+it untrusted through the ordinary add path; trusting it is the ordinary trust page. Pi is not an engine Orbyn runs, so its history is not
 scanned.
 
 ## Message search

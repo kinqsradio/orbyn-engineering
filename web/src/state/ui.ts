@@ -240,6 +240,9 @@ interface UiState extends Prefs {
   toasts: { id: number; text: string }[];
   pushToast(text: string): void;
   dismissToast(id: number): void;
+  /** The open welcome step, or null; not saved, so it lasts while the app runs. */
+  welcomeStep: number | null;
+  setWelcomeStep(step: number | null): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   /** A file the Files surface should open next, with the line to reveal. */
@@ -421,6 +424,10 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    welcomeStep: null,
+    setWelcomeStep(welcomeStep) {
+      set({ welcomeStep });
+    },
     terminalReveal: null,
     revealTerminal(threadId, group) {
       set((state) => ({ terminalOpen: true, terminalReveal: { threadId, group, nonce: (state.terminalReveal?.nonce ?? 0) + 1 } }));
