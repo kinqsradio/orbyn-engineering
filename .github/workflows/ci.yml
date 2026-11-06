@@ -83,7 +83,15 @@ jobs:
       - if: env.RUN == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
       - if: env.RUN == 'true'
-        run: cargo test --workspace --no-fail-fast
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-nextest
+      # nextest runs the 51 test programs in parallel; cargo test ran them one at
+      # a time, which took over 20 minutes on Windows.
+      - if: env.RUN == 'true'
+        run: cargo nextest run --workspace --no-fail-fast
+      - if: env.RUN == 'true'
+        run: cargo test --workspace --doc
       - name: Generated wire types are committed
         if: env.RUN == 'true'
         shell: bash
