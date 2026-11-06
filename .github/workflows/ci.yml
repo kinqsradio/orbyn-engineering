@@ -120,7 +120,7 @@ jobs:
         working-directory: desktop
       - name: Release script tests
         shell: bash
-        run: node --test scripts/release-evidence.test.mjs scripts/smoke-service.test.mjs scripts/smoke-app-diagnostics.test.mjs scripts/smoke-app-environment.test.mjs
+        run: node --test scripts/release-evidence.test.mjs scripts/smoke-service.test.mjs scripts/smoke-app-diagnostics.test.mjs scripts/smoke-app-environment.test.mjs scripts/smoke-app-providers.test.mjs scripts/verify-macos-release.test.mjs scripts/install.test.mjs
       - name: Load the packaged service
         shell: bash
         run: node scripts/smoke-package.mjs
@@ -131,3 +131,53 @@ jobs:
       - name: Install and start the app
         shell: bash
         run: node scripts/smoke-app.mjs
+      - name: Keep the bundle for packaged qualification
+        shell: bash
+        # Relative paths: Windows tar reads a drive letter as a remote host.
+        working-directory: desktop/src-tauri/target/release
+        run: tar -cf ../../../../bundle.tar bundle/${{ matrix.bundles == 'app' && 'macos' || 'nsis' }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle-${{ matrix.os }}
+          path: bundle.tar
+          retention-days: 1
+
+  # Not required: it depends on a published Codex release. The installed app runs
+  # against that real Codex, signed out, under the same private profile.
+  packaged:
+    name: Packaged app with signed-out Codex (${{ matrix.os }})
+    needs: desktop
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            codex: codex
+          - os: windows-2022
+            codex: codex.cmd
+    env:
+      CODEX_VERSION: 0.166.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle-${{ matrix.os }}
+          path: ${{ runner.temp }}
+      - name: Unpack the bundle
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: mkdir -p release && tar -xf bundle.tar -C release
+      - name: Install Codex without its install scripts
+        shell: bash
+        run: npm install --prefix "$RUNNER_TEMP/codex" --no-save --no-audit --no-fund --ignore-scripts "@openai/codex@$CODEX_VERSION"
+      - name: Install and start the app with a signed-out Codex
+        shell: bash
+        env:
+          ORBYN_SMOKE_CODEX_BIN: ${{ runner.temp }}/codex/node_modules/.bin/${{ matrix.codex }}
+        run: node scripts/smoke-app.mjs "$RUNNER_TEMP/release/bundle"

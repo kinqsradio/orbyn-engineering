@@ -40,6 +40,7 @@ function engine(overrides: Partial<EngineStatus> = {}): EngineStatus {
     capabilities: {
       managed: true, streaming: true, approvals: true, resume: true, mcp: true,
       sandbox: true, skill_delivery: [], goal_control: true, decline_feedback: false,
+    permission_modes: ["supervised", "auto_edits", "auto", "full_access"],
     },
     installed: true,
     path: "/engine",

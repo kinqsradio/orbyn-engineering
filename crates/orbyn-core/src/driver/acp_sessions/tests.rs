@@ -78,7 +78,9 @@ impl Fixture {
         let handle = self.driver.start_run(spec, tx).await.unwrap();
         let mut events = Vec::new();
         loop {
-            let event = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+            // A hang guard only: each event normally arrives at once, but a loaded
+            // Windows runner has taken longer than 10 seconds for one (#215).
+            let event = tokio::time::timeout(Duration::from_secs(30), rx.recv())
                 .await
                 .unwrap()
                 .unwrap();
@@ -315,7 +317,8 @@ fn capability_shapes_and_page_bounds_are_independent() {
 async fn child_gone(pid: u32) {
     let pid = sysinfo::Pid::from_u32(pid);
     let mut system = sysinfo::System::new();
-    tokio::time::timeout(Duration::from_secs(5), async {
+    // The child must exit; how fast depends on the runner's load (#215).
+    tokio::time::timeout(Duration::from_secs(20), async {
         loop {
             system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
             if system.process(pid).is_none() {

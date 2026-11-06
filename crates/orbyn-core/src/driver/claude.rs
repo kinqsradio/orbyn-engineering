@@ -4,8 +4,10 @@
 //! MCP `approve` tool, not through this process's stdio.
 
 mod usage;
+mod workflows;
 
 use usage::parse_usage_report;
+use workflows::Workflows;
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -31,8 +33,8 @@ use super::pipes::{
 };
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
-    ItemRecord, MCP_SERVER_NAME, ModelCatalog, ProbeDir, RunHandle, RunKind, RunSpec, UpdatePlan,
-    effort_option, proposed_plan_events,
+    ItemRecord, MCP_SERVER_NAME, ModelCatalog, ProbeDir, RunControl, RunHandle, RunKind, RunSpec,
+    UpdatePlan, WarmProcess, effort_option, proposed_plan_events,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -41,6 +43,9 @@ use crate::selection::FAST_MODE;
 use crate::util::{new_id, write_private};
 
 const EXIT_GRACE: Duration = Duration::from_secs(3);
+/// How long a run held open for a workflow waits, once the last one ends, for the
+/// follow-up turn the CLI starts after a finished workflow. A stopped one starts none.
+const HOLD_GRACE: Duration = Duration::from_secs(5);
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 const INITIALIZE_ID: &str = "orbyn-capabilities";
 const USAGE_ID: &str = "orbyn-usage";
@@ -188,6 +193,7 @@ impl EngineDriver for ClaudeDriver {
                 ],
                 goal_control: false,
                 decline_feedback: true,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -322,35 +328,117 @@ impl EngineDriver for ClaudeDriver {
         spec: RunSpec,
         events: mpsc::Sender<EngineEvent>,
     ) -> Result<RunHandle> {
+        let process = self.launch(&spec)?;
+        Ok(handle_for(process, spec, events, None))
+    }
+
+    fn can_warm(&self) -> bool {
+        true
+    }
+
+    fn warm_key(&self, spec: &RunSpec) -> Option<String> {
+        let command = resolve_engine(&self.program).ok()?;
+        // A reinstall at the same path is a different program.
+        let installed = std::fs::metadata(&command.program).ok()?;
+        let modified = installed
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        // The run's own folder differs per run; what goes in it is compared instead.
+        let mut neutral = spec.clone();
+        neutral.run_dir = std::path::PathBuf::from("run");
+        let args: Vec<String> = run_args(
+            &neutral,
+            Path::new("run/mcp.json"),
+            self.auto_compact_window,
+        )
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+        Some(
+            json!({
+                "program": command.program,
+                "prefix": command.prefix.iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>(),
+                "size": installed.len(),
+                "modified": modified.as_nanos().to_string(),
+                "args": args,
+                "cwd": spec.cwd,
+                "mcp": spec.mcp_url,
+                "settings": run_settings(spec, self.auto_compact_window),
+                "mode": spec.mode,
+                "saved_login": crate::child_env::prefers_saved_login(),
+            })
+            .to_string(),
+        )
+    }
+
+    async fn start_warm(&self, mut spec: RunSpec) -> Result<Option<WarmProcess>> {
+        let Some(key) = self.warm_key(&spec) else {
+            return Ok(None);
+        };
+        let dir = ProbeDir::new()?;
+        spec.run_dir = dir.path().to_path_buf();
+        let process = self.launch(&spec)?;
+        Ok(Some(WarmProcess { key, process, dir }))
+    }
+
+    async fn adopt_run(
+        &self,
+        spec: RunSpec,
+        events: mpsc::Sender<EngineEvent>,
+        warm: WarmProcess,
+    ) -> Result<RunHandle> {
+        let WarmProcess { process, dir, .. } = warm;
+        Ok(handle_for(process, spec, events, Some(dir)))
+    }
+}
+
+/// Starts `run_protocol` on a process. A warm process's folder lives as long as it.
+fn handle_for(
+    process: EngineProcess,
+    spec: RunSpec,
+    events: mpsc::Sender<EngineEvent>,
+    dir: Option<ProbeDir>,
+) -> RunHandle {
+    let cancel = CancellationToken::new();
+    let (input, steering) = mpsc::unbounded_channel();
+    let (control, controls) = mpsc::unbounded_channel();
+    let protocol = run_protocol(
+        process,
+        spec,
+        events,
+        Inputs { steering, controls },
+        cancel.clone(),
+    );
+    let task = tokio::spawn(async move {
+        let _dir = dir;
+        protocol.await;
+    });
+    RunHandle {
+        cancel,
+        task,
+        input: Some(input),
+        control: Some(control),
+    }
+}
+
+impl ClaudeDriver {
+    /// Writes a run's files into its folder and starts the CLI on them.
+    fn launch(&self, spec: &RunSpec) -> Result<EngineProcess> {
         let command = resolve_engine(&self.program)?;
         let mcp_config = spec.run_dir.join("mcp.json");
         let config = json!({
             "mcpServers": { (MCP_SERVER_NAME): { "type": "http", "url": spec.mcp_url } }
         });
         write_private(&mcp_config, config.to_string().as_bytes())?;
-        if let Some(settings) = run_settings(&spec, self.auto_compact_window) {
-            write_private(&run_settings_path(&spec), settings.to_string().as_bytes())?;
+        if let Some(settings) = run_settings(spec, self.auto_compact_window) {
+            write_private(&run_settings_path(spec), settings.to_string().as_bytes())?;
         }
-        let args = run_args(&spec, &mcp_config, self.auto_compact_window);
-        let process = spawn_engine(&command, &args, &spec.cwd)?;
-        let cancel = CancellationToken::new();
-        let (input, steering) = mpsc::unbounded_channel();
-        let task = tokio::spawn(run_protocol(
-            process,
-            spec,
-            events,
-            steering,
-            cancel.clone(),
-        ));
-        Ok(RunHandle {
-            cancel,
-            task,
-            input: Some(input),
-        })
+        let args = run_args(spec, &mcp_config, self.auto_compact_window);
+        spawn_engine(&command, &args, &spec.cwd)
     }
-}
 
-impl ClaudeDriver {
     /// Reads the CLI's `initialize` response from a process that never gets a
     /// prompt, in an empty folder of its own.
     async fn initialize(&self) -> Result<Value> {
@@ -599,13 +687,30 @@ fn documented_catalog(reason: String) -> ModelCatalog {
     }
 }
 
+/// What a run takes while it works: steering text and controls.
+struct Inputs {
+    steering: mpsc::UnboundedReceiver<String>,
+    controls: mpsc::UnboundedReceiver<RunControl>,
+}
+
+async fn sleep_until(due: Option<tokio::time::Instant>) {
+    match due {
+        Some(due) => tokio::time::sleep_until(due).await,
+        None => std::future::pending().await,
+    }
+}
+
 async fn run_protocol(
     mut process: EngineProcess,
     spec: RunSpec,
     events: mpsc::Sender<EngineEvent>,
-    mut steering: mpsc::UnboundedReceiver<String>,
+    inputs: Inputs,
     cancel: CancellationToken,
 ) {
+    let Inputs {
+        mut steering,
+        mut controls,
+    } = inputs;
     // The prompt goes over stdin, never argv: it can exceed ARG_MAX and argv is
     // visible to other processes.
     let prompt = user_message(&spec);
@@ -622,10 +727,26 @@ async fn run_protocol(
     let mut mapper = StreamMapper::default();
     let mut stream = lines(process.stdout);
     let mut outcome = None;
+    let mut grace = None;
     let stream_ended = loop {
         tokio::select! {
             biased;
             () = cancel.cancelled() => break false,
+            () = sleep_until(grace) => {
+                outcome = mapper.held.take();
+                break false;
+            }
+            Some(control) = controls.recv() => {
+                let RunControl::StopWorkflow { tool_call_id } = control;
+                if let Some(frame) = mapper.workflows.stop_request(&tool_call_id) {
+                    if let Err(error) = stdin.write_all(format!("{frame}\n").as_bytes()).await {
+                        tracing::debug!(%error, "could not ask Claude to stop a workflow");
+                    }
+                    let _ = stdin.flush().await;
+                } else if events.send(Workflows::already_ended(&tool_call_id)).await.is_err() {
+                    return;
+                }
+            }
             Some(text) = steering.recv() => {
                 // The CLI folds a message sent mid-turn into the running turn.
                 let frame = format!("{}\n", user_frame(&text));
@@ -650,12 +771,22 @@ async fn run_protocol(
                     outcome = Some(result);
                     break false;
                 }
+                if mapper.waiting_on_hold() {
+                    grace.get_or_insert_with(|| tokio::time::Instant::now() + HOLD_GRACE);
+                } else {
+                    grace = None;
+                }
             }
         }
     };
+    // The turn finished before the CLI went away; a workflow it held for is gone.
+    let outcome = outcome.or_else(|| mapper.held.take());
     // Closing stdin is the CLI's signal to exit.
     drop(stdin);
     for event in mapper.close_open_blocks() {
+        let _ = events.send(event).await;
+    }
+    for event in mapper.workflows.end_all() {
         let _ = events.send(event).await;
     }
     let cancelled = cancel.is_cancelled();
@@ -731,6 +862,12 @@ struct StreamMapper {
     tasks: Vec<TaskStep>,
     /// Task tool calls held until their result reports the new state.
     task_calls: HashMap<String, (String, Value)>,
+    /// Background workflows this run launched that still run.
+    workflows: Workflows,
+    /// A finished turn's outcome, held while a workflow it launched still runs.
+    held: Option<EngineOutcome>,
+    /// A follow-up turn started after the outcome was held.
+    resumed: bool,
 }
 
 /// One row of the plan activity fed by Claude's TaskCreate/TaskUpdate/TaskList.
@@ -741,12 +878,36 @@ struct TaskStep {
 }
 
 impl StreamMapper {
+    /// The turn is done and its workflows have ended, and no follow-up turn has
+    /// started yet.
+    fn waiting_on_hold(&self) -> bool {
+        self.held.is_some() && self.workflows.is_empty() && !self.resumed
+    }
+
     fn on_frame(&mut self, frame: &Value) -> Vec<EngineEvent> {
         // Subagent traffic carries a parent; the run shows its top-level turn.
         let nested = frame
             .get("parent_tool_use_id")
             .is_some_and(|parent| !parent.is_null());
-        match frame.get("type").and_then(Value::as_str) {
+        let kind = frame.get("type").and_then(Value::as_str);
+        if self.held.is_some()
+            && !nested
+            && (matches!(kind, Some("assistant" | "stream_event"))
+                || (kind == Some("system")
+                    && frame.get("subtype").and_then(Value::as_str) == Some("init")))
+        {
+            self.resumed = true;
+        }
+        match kind {
+            Some("control_response") => Workflows::control_response(frame),
+            Some("system")
+                if matches!(
+                    frame.get("subtype").and_then(Value::as_str),
+                    Some("task_notification" | "task_updated")
+                ) =>
+            {
+                self.workflows.system(frame)
+            }
             Some("system") if frame.get("subtype").and_then(Value::as_str) == Some("init") => {
                 let mut events = session(frame);
                 events.extend(init_commands(frame));
@@ -760,6 +921,7 @@ impl StreamMapper {
                 let mut events = self.writes_finished(frame);
                 events.extend(self.tasks_finished(frame));
                 events.extend(on_user(frame));
+                events.extend(self.workflows.launched(frame));
                 events
             }
             Some("assistant") => vec![
@@ -782,7 +944,16 @@ impl StreamMapper {
                 ]
             }
             Some("result") => {
-                self.outcome = Some(result_outcome(frame));
+                let outcome = result_outcome(frame);
+                // The CLI keeps a workflow running past the turn that launched it, and
+                // closing its input would end the workflow with it.
+                if outcome == EngineOutcome::Completed && !self.workflows.is_empty() {
+                    self.held = Some(outcome);
+                    self.resumed = false;
+                } else {
+                    self.held = None;
+                    self.outcome = Some(outcome);
+                }
                 let mut events = session(frame);
                 events.extend(frame.get("usage").map(usage_event));
                 events
@@ -1374,6 +1545,57 @@ fn result_outcome(frame: &Value) -> EngineOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn launch_frame() -> Value {
+        json!({
+            "type": "user",
+            "message": { "content": [{ "type": "tool_result", "tool_use_id": "wf" }] },
+            "tool_use_result": { "status": "async_launched", "taskId": "t1",
+                "taskType": "local_workflow", "workflowName": "probe" },
+        })
+    }
+
+    #[test]
+    fn a_workflow_holds_a_completed_turn_but_not_a_failed_one() {
+        let mut mapper = StreamMapper::default();
+        mapper.on_frame(&launch_frame());
+        assert!(
+            mapper
+                .workflows
+                .stop_request("wf")
+                .unwrap()
+                .contains("\"task_id\":\"t1\"")
+        );
+        mapper.on_frame(&json!({ "type": "result", "subtype": "success" }));
+        assert!(mapper.outcome.is_none());
+        assert!(!mapper.waiting_on_hold());
+        mapper.on_frame(&json!({ "type": "system", "subtype": "task_notification",
+            "task_id": "t1", "status": "stopped" }));
+        assert!(mapper.waiting_on_hold());
+        assert!(mapper.workflows.stop_request("wf").is_none());
+
+        let mut failed = StreamMapper::default();
+        failed.on_frame(&launch_frame());
+        failed.on_frame(
+            &json!({ "type": "result", "subtype": "error_during_execution",
+            "is_error": true, "errors": ["boom"] }),
+        );
+        assert_eq!(failed.outcome, Some(EngineOutcome::Failed("boom".into())));
+    }
+
+    #[test]
+    fn a_refused_stop_is_shown_and_other_replies_are_not() {
+        let refused = json!({ "type": "control_response", "response": {
+            "subtype": "error", "request_id": "orbyn-stop-wf", "error": "no" } });
+        let events = StreamMapper::default().on_frame(&refused);
+        assert!(
+            matches!(&events[..], [EngineEvent::Agui(AgUiEvent::Custom { name, .. })]
+            if name == "workflow.stop_failed")
+        );
+        let other = json!({ "type": "control_response", "response": {
+            "subtype": "error", "request_id": "orbyn-usage" } });
+        assert!(StreamMapper::default().on_frame(&other).is_empty());
+    }
 
     #[test]
     fn tool_result_outcomes_preserve_unknown_flags() {
