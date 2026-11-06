@@ -113,8 +113,7 @@ export interface Service {
   /** A small Git repository outside the library. */
   repo: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
-  /** Stops the service and removes its files, or with `keepData` leaves them for a later `dataDir` start. */
-  stop(keepData?: boolean): Promise<void>;
+  stop(): Promise<void>;
   /** What the stand-in `gh` was asked, oldest first. */
   ghCalls(): string[][];
   /** What the stand-in holds for one pull request now. */
@@ -142,8 +141,6 @@ export interface ServiceOptions {
   nativeSessions?: string;
   /** Folders put first on the service's PATH, for stand-in tools such as `jj`. */
   path?: string[];
-  /** Start on a data directory a stopped service left behind (see `stop(true)`), instead of a new one. */
-  dataDir?: string;
 }
 
 /** A port nothing holds, so two checkouts or specs can never answer for each other. */
@@ -199,7 +196,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
   for (const path of Object.values(profile)) mkdirSync(path, { recursive: true, mode: 0o700 });
   const ui = options.builtUi ? resolve(WEB, "dist") : null;
   if (ui && !existsSync(join(ui, "index.html"))) throw new Error("Build this checkout's production UI first: npm run build");
-  const service = spawn(BIN, ["serve", "--data-dir", options.dataDir ?? join(dir, "data"), "--workspace-url", makeLibrary(dir), ...(ui ? ["--ui-dir", ui] : [])], {
+  const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir), ...(ui ? ["--ui-dir", ui] : [])], {
     // A home of its own, so no real engine history or login is read.
     env: { ...inherited, ...profile, ...engines, ORBYN_KNOWN_ENGINE_IDS: options.discoverKnownEngines ? undefined : "[]", ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${(options.path ?? []).map((dir) => `${dir}${delimiter}`).join("")}${forge ? `${forge.bin}${delimiter}` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
@@ -233,7 +230,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
   }
   return {
     url: ready.url,
-    dataDir: options.dataDir ?? join(dir, "data"),
+    dataDir: join(dir, "data"),
     binDir: join(dir, "bin"),
     folder,
     repo,
@@ -261,13 +258,12 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
       const text = await response.text();
       return (text ? JSON.parse(text) : undefined) as T;
     },
-    async stop(keepData = false) {
+    async stop() {
       const children = [service, ...(vite ? [vite] : [])];
       const gone = children.filter((child) => child.exitCode === null).map((child) => once(child, "exit"));
       service.kill();
       vite?.kill();
       await Promise.all(gone);
-      if (keepData) return;
       // An engine or preview the service just stopped can still be closing its files.
       rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     },

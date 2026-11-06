@@ -1,49 +1,31 @@
 import { expect, test } from "@playwright/test";
-import { DatabaseSync } from "node:sqlite";
-import { rmSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { startProject, startService, type Service } from "./service";
+import { startProject, startService } from "./service";
 
-/** The two health toasts through the real service: a database upgrade, and a permission change during a live run. */
+/**
+ * The two health toasts through the real service. That a start which upgrades a database
+ * reports it is proved in Core's store tests; this proves what the browser does with it.
+ */
 
 interface Info {
   database_upgrade?: { from: number; to: number } | null;
 }
 
-test("an upgraded database is announced once and not after a reload", async ({ page }) => {
-  const first = await startService();
-  const home = dirname(first.dataDir);
-  let second: Service | undefined;
+test("a reported database upgrade is announced once and not after a reload", async ({ page }) => {
+  const service = await startService();
   try {
-    expect((await first.api<Info>("GET", "/api/info")).database_upgrade ?? null).toBeNull();
-    await first.stop(true);
-    // The newest migration only creates a table, so removing it leaves a database one version behind.
-    const db = new DatabaseSync(join(first.dataDir, "orbyn.sqlite3"));
-    try {
-      const { latest } = db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get() as { latest: number };
-      expect(latest, "the migration this fixture rolls back changed; pick the newest one that only creates a table").toBe(24);
-      db.exec("DROP TABLE pull_guides");
-      db.prepare("DELETE FROM schema_migrations WHERE version = ?").run(latest);
-    } finally {
-      db.close();
-    }
-
-    second = await startService({ dataDir: first.dataDir });
-    expect((await second.api<Info>("GET", "/api/info")).database_upgrade).toEqual({ from: 23, to: 24 });
-
-    await page.goto(second.page);
-    const toast = page.getByText("Orbyn updated its database (version 23 to 24). Your threads and settings were kept.");
+    // The real response, with the upgrade a start from the previous schema would add.
+    const info = await service.api<Info>("GET", "/api/info");
+    await page.route("**/api/info", (route) => route.fulfill({ json: { ...info, database_upgrade: { from: 41, to: 42 } } }));
+    await page.goto(service.page);
+    const toast = page.getByText("Orbyn updated its database (version 41 to 42). Your threads and settings were kept.");
     await expect(toast).toHaveCount(1);
     await expect(toast).toBeHidden({ timeout: 10_000 });
 
     await page.reload();
     await expect(page.getByRole("navigation").first()).toBeVisible();
     await expect(page.getByText(/Orbyn updated its database/)).toHaveCount(0);
-    // The service reports the same upgrade until its next start; the page keeps it quiet.
-    expect((await second.api<Info>("GET", "/api/info")).database_upgrade).toEqual({ from: 23, to: 24 });
   } finally {
-    await second?.stop();
-    rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    await service.stop();
   }
 });
 
