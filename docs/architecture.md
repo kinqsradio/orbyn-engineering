@@ -509,6 +509,15 @@ or reviews; the viewer's own comments are not news. It ends at a merge or close,
 unlink, or when the thread settles or archives. A subagent thread cannot watch.
 Viewed-file marks are this service's own, per project, and never reach the forge.
 
+A review guide is an agent's stop-by-stop reading order for one pull request, also
+this service's own. Orbyn does not generate it itself: writing a guide starts an
+ordinary thread in the project root, linked to the pull request, whose first message
+asks the agent to read the change through the forge CLI, change nothing, and call
+`orbyn_pull_guide_write` with the head commit. The write goes through the approval
+gate like any other tool effect. Starting one is refused while the project's
+`review_guides_enabled` preference is off. A guide naming an older head commit than
+the pull request is shown as not covering the newer commits; nothing else checks it.
+
 A background clone is a job kept in memory until the service stops. Its staging
 folder removes itself when the job is cancelled. An SSH URL the server refuses is
 tried once over HTTPS, and the job says so.

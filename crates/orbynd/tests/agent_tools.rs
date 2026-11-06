@@ -1232,5 +1232,22 @@ async fn a_review_guide_is_written_through_the_gate_and_read_inside_its_project(
         Value::Null,
         "a guide belongs to its own project"
     );
+
+    // The guide tab reads the same guide over HTTP, typed.
+    let project = service.json(&format!("/api/threads/{t}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let shown = service
+        .json(&format!("/api/projects/{project}/pulls/7/guide"))
+        .await;
+    assert_eq!(shown["enabled"], true);
+    assert_eq!(shown["guide"]["number"], 7);
+    assert_eq!(shown["guide"]["stops"][0]["title"], "Only stop");
+    assert_eq!(shown["guide"]["stops"][0]["files"], json!([]));
+    let none = service
+        .json(&format!("/api/projects/{other}/pulls/7/guide"))
+        .await;
+    assert_eq!(none, json!({ "enabled": false, "guide": null }));
     service.stop().await;
 }

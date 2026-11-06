@@ -388,6 +388,10 @@ fn router(state: AppState) -> Router {
             "/api/projects/{id}/pulls/{number}/work",
             post(pulls::work_on),
         )
+        .route(
+            "/api/projects/{id}/pulls/{number}/guide",
+            get(pulls::guide).post(pulls::generate_guide),
+        )
         .route("/api/threads/{id}/watches", get(pulls::watches))
         .route("/api/watches/check", post(pulls::check_watches))
         .route(

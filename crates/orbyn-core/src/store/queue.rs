@@ -4,7 +4,8 @@
 use std::collections::HashSet;
 
 use orbyn_contracts::{
-    AgUiEvent, Attachment, ModelSelection, PullRequest, PullWatch, QueuedMessage, Run, RunState,
+    AgUiEvent, Attachment, ModelSelection, PullGuide, PullRequest, PullWatch, QueuedMessage, Run,
+    RunState,
 };
 use rusqlite::{OptionalExtension, Row, Transaction, params};
 
@@ -19,16 +20,6 @@ pub struct PullGuideWrite<'a> {
     pub head_sha: Option<&'a str>,
     pub stops: &'a str,
     pub thread_id: &'a str,
-}
-
-/// A stored review guide, as the guide tools answer it.
-#[derive(Debug, serde::Serialize)]
-pub struct PullGuide {
-    pub number: u64,
-    pub head_sha: Option<String>,
-    pub stops: serde_json::Value,
-    pub thread_id: Option<String>,
-    pub written_at: String,
 }
 
 fn queued_row(row: &Row<'_>) -> rusqlite::Result<QueuedMessage> {
