@@ -608,6 +608,14 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/force-stop", post(api::force_stop))
+        .route(
+            "/api/threads/{id}/workflows/{item}/script",
+            get(api::workflow_script),
+        )
+        .route(
+            "/api/threads/{id}/workflows/{item}/stop",
+            post(api::stop_workflow),
+        )
         .route("/api/search/messages", get(api::search_messages))
         .route("/api/threads/{id}/events", get(stream::thread_events))
         .route("/api/approvals", get(api::list_approvals))
