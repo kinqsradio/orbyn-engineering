@@ -100,6 +100,27 @@ enum Command {
     /// Inspect the local server trace file.
     #[command(subcommand)]
     Trace(TraceCommand),
+    /// Check for a new release, and install the latest through the desktop app.
+    Update {
+        /// Only report what is available. Change nothing.
+        #[arg(long)]
+        check: bool,
+        /// Install this exact release. Only the latest release can be installed.
+        #[arg(long, value_name = "VERSION")]
+        version: Option<String>,
+        /// A release channel. Only the channel this build was made for is accepted.
+        #[arg(long, value_name = "CHANNEL")]
+        channel: Option<String>,
+        /// Go back to an older release. Refused: the installer only moves forward.
+        #[arg(long)]
+        downgrade: bool,
+    },
+    /// Remove the background service, and say how to remove the app. Data stays.
+    Uninstall {
+        /// Show what would change and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -610,6 +631,106 @@ async fn doctor(cli: &Cli, fix: bool) -> Outcome<()> {
     })
 }
 
+/// What `orbyn update` was asked for.
+struct Wanted<'a> {
+    check: bool,
+    version: Option<&'a str>,
+    channel: Option<&'a str>,
+    downgrade: bool,
+}
+
+/// Why a version request cannot be met, before anything is asked of the service.
+/// The installer that owns the app only installs the latest signed release.
+fn refused_request(wanted: &Wanted) -> Option<String> {
+    const MANUAL: &str = "To run another release, install that release's desktop \
+                          bundle yourself; threads and settings stay in the data folder.";
+    if wanted.downgrade {
+        return Some(format!(
+            "Downgrading is not supported: the app's installer only moves to the latest \
+             release. {MANUAL}"
+        ));
+    }
+    None
+}
+
+/// A build follows the channel it was compiled for; the installer cannot switch it.
+fn refused_channel(wanted: &str, built: &str) -> Option<String> {
+    (wanted != built).then(|| {
+        format!(
+            "This build follows the `{built}` channel and cannot switch to `{wanted}`. \
+             To change channels, install a `{wanted}` build yourself; threads and settings \
+             stay in the data folder."
+        )
+    })
+}
+
+/// Checks through the running service and, unless only checking, asks it to have the
+/// desktop shell install the latest release. A version that is not the latest is
+/// refused: the installer only offers the latest.
+async fn update(cli: &Cli, wanted: &Wanted<'_>) -> Outcome<()> {
+    if let Some(message) = refused_request(wanted) {
+        return Err(Failure::new(message));
+    }
+    let service = Service::find(&data_dir(cli)?)?;
+    if let Some(channel) = wanted.channel {
+        let info = service.get("/api/info").await?;
+        if let Some(message) = refused_channel(channel, text_of(&info, "channel")) {
+            return Err(Failure::new(message));
+        }
+    }
+    let checked = service.post("/api/updates/check", json!({})).await?;
+    let app = checked["app"].clone();
+    let current = text_of(&app, "current").to_owned();
+    let latest = app["latest"].as_str().map(str::to_owned);
+    let newer = latest
+        .as_deref()
+        .is_some_and(|latest| orbyn_core::engines::manifest::is_newer(latest, &current));
+    if let Some(version) = wanted.version {
+        let version = version.trim_start_matches('v');
+        if version == current {
+            return show(cli.json, &app, |_| {
+                println!("Orbyn {current} is already installed.")
+            });
+        }
+        if latest.as_deref() != Some(version) {
+            let offered = latest.as_deref().unwrap_or("no release");
+            let older = orbyn_core::engines::manifest::is_newer(&current, version);
+            return Err(Failure::new(if older {
+                format!(
+                    "{version} is older than {current}, and downgrading is not supported. \
+                     The update channel offers {offered}."
+                )
+            } else {
+                format!(
+                    "{version} is not available: the update channel offers {offered}, \
+                     and only the latest release can be installed."
+                )
+            }));
+        }
+    }
+    let reason = text_of(&app, "blocked_reason").to_owned();
+    if wanted.check || !newer {
+        return show(cli.json, &app, |_| match (&latest, newer) {
+            (Some(latest), true) => println!("Orbyn {latest} is available (running {current})."),
+            _ if app["unconfigured"] == true => println!("{reason}"),
+            _ => println!("Orbyn {current} is up to date."),
+        });
+    }
+    if app["can_apply"] != true {
+        return Err(Failure::new(format!(
+            "Orbyn {} is available but cannot be installed from here: {reason}",
+            latest.unwrap_or_default()
+        )));
+    }
+    service.post("/api/updates/app/apply", json!({})).await?;
+    show(cli.json, &app, |_| {
+        println!(
+            "Installing Orbyn {} through the desktop app. It restarts when done.",
+            latest.unwrap_or_default()
+        );
+    })
+}
+
 /// `orbynd` sits beside this program in every install.
 fn orbynd_path() -> Outcome<PathBuf> {
     let name = if cfg!(windows) {
@@ -858,20 +979,23 @@ fn run_step(step: &cli_service::Step) -> Outcome<std::process::Output> {
     )))
 }
 
+fn plan_json(plan: &cli_service::Plan) -> Value {
+    let steps: Vec<Value> = plan
+        .steps
+        .iter()
+        .map(|step| json!({ "program": step.program, "args": step.args }))
+        .collect();
+    json!({
+        "file": plan.file.as_ref().map(|(path, _)| path),
+        "text": plan.file.as_ref().map(|(_, text)| text),
+        "remove": plan.remove,
+        "steps": steps,
+    })
+}
+
 fn show_plan(plan: &cli_service::Plan, json_output: bool) {
     if json_output {
-        let steps: Vec<Value> = plan
-            .steps
-            .iter()
-            .map(|step| json!({ "program": step.program, "args": step.args }))
-            .collect();
-        let report = json!({
-            "file": plan.file.as_ref().map(|(path, _)| path),
-            "text": plan.file.as_ref().map(|(_, text)| text),
-            "remove": plan.remove,
-            "steps": steps,
-        });
-        println!("{report}");
+        println!("{}", plan_json(plan));
         return;
     }
     if let Some((path, text)) = &plan.file {
@@ -934,6 +1058,75 @@ fn run_as_service(data: &Path) -> Outcome<()> {
     let mut command = service_process(&args)?;
     command.arg("--data-dir").arg(data).envs(values);
     wait_for(command)
+}
+
+/// How to remove the app itself. The installer that put it there owns it, and a
+/// running program cannot reliably delete its own bundle, so this only says how.
+fn app_removal(program: &Path) -> String {
+    if cfg!(windows) {
+        return "Remove Orbyn Engineering in Settings > Apps > Installed apps.".to_owned();
+    }
+    match program
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|extension| extension == "app"))
+    {
+        Some(bundle) => format!("Quit Orbyn, then move {} to the Trash.", bundle.display()),
+        None => format!(
+            "This `orbyn` runs from {}, outside an installed app. Remove that folder yourself.",
+            program.parent().unwrap_or(program).display()
+        ),
+    }
+}
+
+/// Removes what Orbyn registered with the OS: the background service. The app has
+/// no separate launcher on PATH and keeps no side-by-side versions, so the rest is
+/// the installer's to remove, and the data folder stays unless the user deletes it.
+async fn uninstall(cli: &Cli, dry_run: bool) -> Outcome<()> {
+    let data = data_dir(cli)?;
+    let home = home_dir()?;
+    let program = std::env::current_exe()
+        .map_err(|error| Failure::new(format!("This program's path: {error}")))?;
+    let plan = cli_service::Os::current().ok().map(|os| {
+        cli_service::Install {
+            os,
+            home: &home,
+            program: &program,
+            data: &data,
+            uid: user_id(&home),
+        }
+        .uninstall()
+    });
+    let running = live_service(&data).await.map(|service| service.url);
+    let removal = app_removal(&program);
+    let kept = format!(
+        "Threads and settings stay in {}. Delete that folder yourself to remove them.",
+        data.display()
+    );
+    if !dry_run && let Some(plan) = &plan {
+        apply_plan(plan)?;
+    }
+    let report = json!({
+        "dry_run": dry_run,
+        "service": plan.as_ref().map(plan_json),
+        "running": running,
+        "launcher": null,
+        "versions": [],
+        "app": removal,
+        "data": data,
+    });
+    show(cli.json, &report, |_| {
+        match (&plan, dry_run) {
+            (Some(plan), true) => show_plan(plan, false),
+            (Some(_), false) => println!("Removed the background service."),
+            (None, _) => println!("No background service is registered on this system."),
+        }
+        if let Some(url) = &running {
+            println!("A service is still running at {url}. Quit Orbyn to stop it.");
+        }
+        println!("There is no separate launcher or older version to remove.");
+        println!("{removal}");
+        println!("{kept}");
+    })
 }
 
 fn service_command(cli: &Cli, command: &ServiceCommand) -> Outcome<()> {
@@ -1010,6 +1203,21 @@ async fn run(cli: Cli) -> Outcome<()> {
         Command::Serve { args } => return run_service(args, cli.data_dir.as_deref()),
         Command::Status => return status(&cli).await,
         Command::Doctor { fix, .. } => return doctor(&cli, *fix).await,
+        Command::Update {
+            check,
+            version,
+            channel,
+            downgrade,
+        } => {
+            let wanted = Wanted {
+                check: *check,
+                version: version.as_deref(),
+                channel: channel.as_deref(),
+                downgrade: *downgrade,
+            };
+            return update(&cli, &wanted).await;
+        }
+        Command::Uninstall { dry_run } => return uninstall(&cli, *dry_run).await,
         _ => {}
     }
     let service = Service::find(&data_dir(&cli)?)?;

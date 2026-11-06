@@ -18,6 +18,7 @@ pub(crate) struct SetupRecord {
     pub name: String,
     pub wait_for_exit: bool,
     pub state: SetupState,
+    pub terminal_id: Option<String>,
 }
 
 pub(crate) enum SetupState {
@@ -237,6 +238,7 @@ impl Store {
         ).optional()?;
         row.map(
             |(owner, name, wait_for_exit, status, terminal_id, exit_code, run_id)| {
+                let terminal = terminal_id.clone();
                 let state = match (status.as_str(), terminal_id, exit_code) {
                     ("preparing", None, None) => SetupState::Preparing,
                     ("running", Some(terminal_id), None) => SetupState::Running { terminal_id },
@@ -252,6 +254,7 @@ impl Store {
                     name,
                     wait_for_exit,
                     state,
+                    terminal_id: terminal,
                 })
             },
         )

@@ -21,7 +21,7 @@ use orbyn_contracts::{
     RenameProject, ReorderThreads, ResolveThreadPath, RestoreChanges, RestoreWorkspace,
     RetryPreparation, RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile,
     StartRun, SteerResult, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled,
-    UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
+    UpdateThread, UpsertTask, WorkflowStop, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -165,6 +165,10 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
         remote: state.remote,
         platform: std::env::consts::OS.to_owned(),
         environment_label: state.core.environment_label(),
+        // A storage error leaves the theme unpublished rather than failing /api/info.
+        environment_theme: state.core.environment_theme().ok().flatten(),
+        channel: Some(orbyn_core::environment::release_channel()),
+        environment_icon: state.core.environment_icon().ok().flatten(),
     })
 }
 
@@ -482,6 +486,10 @@ pub async fn shell_action(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<orbyn_contracts::ShellRequest>,
 ) -> ApiResult<StatusCode> {
+    // A remote viewer must not stop the desktop app and its runs.
+    if state.remote && body.action == orbyn_contracts::ShellAction::Quit {
+        return Err(CoreError::Invalid("Quit the app from the computer it runs on.".into()).into());
+    }
     state.core.shell.request(body.action)?;
     Ok(StatusCode::ACCEPTED)
 }
@@ -1038,6 +1046,31 @@ pub async fn put_settings(
     Ok(Json(settings))
 }
 
+/// The Jujutsu working-copy change of the thread's checkout, or `null`.
+pub async fn thread_jj_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_jj_status(&id).await?))
+}
+
+/// The thread's worktree setup action and where it stands, or `null`.
+pub async fn thread_setup(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_setup(&id)?))
+}
+
+/// Stops the thread's setup action. A setup that already ended is not an error;
+/// a thread whose checkout ran no setup is `404`.
+pub async fn cancel_setup(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.cancel_setup(&id, LOCAL_USER)?))
+}
+
 pub async fn preparation_retry(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -1412,6 +1445,21 @@ pub async fn force_stop(
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.runs.force_stop(&id, LOCAL_USER).await?))
+}
+
+pub async fn workflow_script(
+    State(state): State<AppState>,
+    Path((id, item)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.workflow_script(&id, &item)?))
+}
+
+pub async fn stop_workflow(
+    State(state): State<AppState>,
+    Path((id, item)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.runs.stop_workflow(&id, &item, LOCAL_USER)?;
+    Ok((StatusCode::ACCEPTED, Json(WorkflowStop { requested: true })))
 }
 
 #[derive(Deserialize)]

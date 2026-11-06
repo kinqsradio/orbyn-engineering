@@ -54,6 +54,7 @@ impl EngineDriver for AguiDriver {
                 skill_delivery: vec![SkillDelivery::PromptBootstrap],
                 goal_control: false,
                 decline_feedback: false,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -96,6 +97,7 @@ impl EngineDriver for AguiDriver {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

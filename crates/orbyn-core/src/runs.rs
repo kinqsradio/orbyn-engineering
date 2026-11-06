@@ -23,8 +23,8 @@ use crate::checkpoints::checkpoint_ref;
 use crate::composer::check_prompt;
 use crate::driver::diagnostics;
 use crate::driver::{
-    EngineDriver, EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunHandle, RunKind,
-    RunSpec,
+    EngineDriver, EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunControl, RunHandle,
+    RunKind, RunSpec,
 };
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
@@ -50,6 +50,8 @@ const FORCE_POLL: Duration = Duration::from_millis(20);
 /// A delegated run this quiet is stuck: twice the longest a tool may take.
 const SILENCE_LIMIT: Duration = Duration::from_secs(2 * 240);
 const EVENT_BUFFER: usize = 1024;
+/// How long a process started for a thread's next turn waits to be adopted.
+const WARM_IDLE: Duration = Duration::from_secs(5 * 60);
 
 /// Where a thread's run may write: its checkout, and on a library thread never
 /// the nested projects. `engine_cwd` is where the engine's relative paths land.
@@ -251,6 +253,7 @@ struct ActiveRun {
     stops: Stops,
     task: Option<JoinHandle<()>>,
     input: Option<mpsc::UnboundedSender<String>>,
+    control: Option<mpsc::UnboundedSender<RunControl>>,
 }
 
 async fn sleep_until_due(due: Option<tokio::time::Instant>) {
@@ -465,6 +468,7 @@ impl RunManager {
                 stops: stops.clone(),
                 task: None,
                 input: None,
+                control: None,
             },
         );
         if !preparation_retry {
@@ -686,6 +690,71 @@ impl RunManager {
         Ok(SteerState::Delivered)
     }
 
+    /// Asks the running engine to stop the workflow one of its tool calls launched.
+    /// Acceptance is not the end: the engine reports that as the workflow's state.
+    pub fn stop_workflow(&self, thread_id: &str, tool_call_id: &str, actor: &str) -> Result<()> {
+        let workflow = self
+            .store
+            .item(thread_id, &crate::driver::workflow_item_id(tool_call_id))
+            .map_err(|_| CoreError::NotFound("workflow".into()))?;
+        if workflow.raw.get("state").and_then(Value::as_str) != Some("running") {
+            return Err(CoreError::Invalid(
+                "This workflow is no longer running.".into(),
+            ));
+        }
+        let run = self.store.thread(thread_id)?.active_run;
+        let Some(run) = run.filter(|run| workflow.run_id.as_deref() == Some(run.id.as_str()))
+        else {
+            return Err(CoreError::Invalid(
+                "This workflow is no longer running.".into(),
+            ));
+        };
+        let control = self
+            .lock()
+            .get(&run.id)
+            .and_then(|active| active.control.clone())
+            .ok_or_else(|| CoreError::Invalid("This engine cannot stop a workflow.".into()))?;
+        self.store.append_audit(&AuditRecord {
+            actor: actor.to_owned(),
+            action: "workflow.stop".into(),
+            target: tool_call_id.to_owned(),
+            decision: None,
+            source: "user".into(),
+            thread_id: Some(thread_id.to_owned()),
+            run_id: Some(run.id.clone()),
+            detail: Value::Null,
+        })?;
+        let sent = control.send(RunControl::StopWorkflow {
+            tool_call_id: tool_call_id.to_owned(),
+        });
+        if sent.is_err() {
+            // The audit row came first, as every effect's does; this one records that
+            // the stop never reached the engine.
+            self.store.append_audit(&AuditRecord {
+                actor: actor.to_owned(),
+                action: "workflow.stop_failed".into(),
+                target: tool_call_id.to_owned(),
+                decision: None,
+                source: "system".into(),
+                thread_id: Some(thread_id.to_owned()),
+                run_id: Some(run.id.clone()),
+                detail: Value::Null,
+            })?;
+            return Err(CoreError::RunClosed);
+        }
+        Ok(())
+    }
+
+    /// A workflow this run launched still runs, as its driver last reported.
+    fn workflow_running(&self, thread_id: &str, run_id: &str) -> bool {
+        self.store.run_items(thread_id, run_id).is_ok_and(|items| {
+            items.iter().any(|item| {
+                item.kind == "workflow"
+                    && item.raw.get("state").and_then(Value::as_str) == Some("running")
+            })
+        })
+    }
+
     /// The engine refused a message it was handed mid-turn, so it goes in the queue.
     fn requeue_steer(&self, scope: &RunScope, prompt: &str) {
         let queued = self
@@ -845,6 +914,7 @@ impl RunManager {
 
     /// Stops every run and waits for their cleanup.
     pub async fn shutdown(&self) {
+        self.engines.end_warm();
         let tasks: Vec<JoinHandle<()>> = {
             let mut active = self.lock();
             active
@@ -880,18 +950,27 @@ impl RunManager {
         stops: Stops,
     ) {
         let lifecycle = thread.lifecycle.clone();
+        let driver = self.engines.driver(&thread.engine).ok();
+        let saved = lifecycle
+            .as_ref()
+            .map_or(PermissionMode::Supervised, |l| l.permission_mode);
         let scope = RunScope {
             run_id: run_id.clone(),
             thread_id: thread.id.clone(),
             engine: thread.engine.clone(),
-            family: self
-                .engines
-                .driver(&thread.engine)
-                .map_or_else(|_| thread.engine.clone(), |driver| driver.family()),
-            write_scope: Some(write_scope),
-            mode: lifecycle
+            family: driver
                 .as_ref()
-                .map_or(PermissionMode::Supervised, |l| l.permission_mode),
+                .map_or_else(|| thread.engine.clone(), |driver| driver.family()),
+            write_scope: Some(write_scope),
+            // A mode this engine does not offer runs Supervised, never looser.
+            mode: driver
+                .as_ref()
+                .map_or(PermissionMode::Supervised, |driver| {
+                    crate::permission_modes::effective(
+                        &driver.descriptor().capabilities.permission_modes,
+                        saved,
+                    )
+                }),
             plan: lifecycle.is_some_and(|l| l.plan_mode),
         };
         let run_dir = self.runs_dir.join(&run_id);
@@ -953,6 +1032,7 @@ impl RunManager {
             EngineOutcome::Failed(message) => {
                 let sign_in = self.engines.driver(&scope.engine).ok();
                 let sign_in = sign_in.as_ref().and_then(|driver| driver.sign_in_command());
+                let sign_in = sign_in.as_deref();
                 if diagnostics::is_sign_in_failure(&message) {
                     sign_in_note = Some(json!({ "command": sign_in }));
                 }
@@ -969,11 +1049,142 @@ impl RunManager {
         };
         self.limit_signals().remove(&run_id);
         let closed = self.close_run(&run_id, state, message.as_deref(), sign_in_note.as_ref());
+        let completed = closed
+            .as_ref()
+            .is_some_and(|run| run.state == RunState::Completed);
         if closed.is_some_and(|run| run.state == RunState::Failed)
             && let Some((message, resets_at)) = limit
         {
             self.record_limit(&scope.thread_id, message, resets_at);
         }
+        if completed {
+            tokio::spawn(self.warm_next(scope.thread_id.clone(), run_id));
+        }
+    }
+
+    /// Starts the process `thread`'s next turn would launch, so that turn need not
+    /// wait for it. It is adopted only if every launch input still matches, and only
+    /// by the run right after `after_run`; otherwise it is ended unused.
+    async fn warm_next(self: Arc<Self>, thread_id: String, after_run: String) {
+        if let Err(error) = self.try_warm_next(&thread_id, after_run).await {
+            tracing::debug!(%error, "could not start the next turn's process early");
+        }
+    }
+
+    async fn try_warm_next(self: &Arc<Self>, thread_id: &str, after_run: String) -> Result<()> {
+        // Off unless asked for: Claude runs SessionStart hooks and starts MCP servers
+        // as soon as it launches, so a process never adopted would run them for nothing.
+        let wanted = crate::preferences::stored_preference(&self.store, "warm_next_turn", None)?;
+        if wanted != json!(true) {
+            return Ok(());
+        }
+        let thread = self.store.thread(thread_id)?;
+        let driver = self.engines.driver(&thread.engine)?;
+        let lifecycle = thread.lifecycle.as_ref();
+        if !driver.can_warm()
+            || thread.active_run.is_some()
+            || lifecycle.is_some_and(|l| l.archived_at.is_some())
+        {
+            return Ok(());
+        }
+        let descriptor = driver.descriptor();
+        if !descriptor.capabilities.mcp {
+            return Ok(());
+        }
+        let root = self.workspace.root()?;
+        let checkout = if Path::new(&thread.cwd) == root {
+            root.clone()
+        } else {
+            check_target(&root, Path::new(&thread.cwd)).await?
+        };
+        let route = self.skills.route(
+            &descriptor.capabilities.skill_delivery,
+            thread.skill_profile.as_deref(),
+        )?;
+        let saved = lifecycle.map_or(PermissionMode::Supervised, |l| l.permission_mode);
+        let mode =
+            crate::permission_modes::effective(&descriptor.capabilities.permission_modes, saved);
+        let plan = lifecycle.is_some_and(|l| l.plan_mode);
+        let scope = RunScope {
+            run_id: format!("warm-{}", new_id()),
+            thread_id: thread.id.clone(),
+            engine: thread.engine.clone(),
+            family: driver.family(),
+            // The same limit the thread's runs get, while this token is live unadopted.
+            write_scope: Some(write_scope(
+                &root,
+                Path::new(&thread.cwd),
+                driver.resolves_from_checkout(),
+            )),
+            mode,
+            plan,
+        };
+        let token = self.mcp.register(McpBinding {
+            scope,
+            permission_prompt: driver.family() == "claude",
+            skills: route.selection.clone(),
+        })?;
+        let url = format!("{}/mcp/{token}", self.base_url);
+        let chosen = selection::of_thread(&thread);
+        let spec = RunSpec {
+            run_id: String::new(),
+            thread_id: thread.id.clone(),
+            cwd: if descriptor.tier == EngineTier::Native {
+                root
+            } else {
+                checkout.clone()
+            },
+            checkout,
+            prompt: String::new(),
+            user_prompt: String::new(),
+            context: String::new(),
+            kind: RunKind::Turn,
+            mode,
+            plan,
+            model: chosen.model,
+            effort: chosen.effort,
+            options: chosen.options,
+            resume: self.store.engine_session(&thread.id)?,
+            mcp_url: Some(url.clone()),
+            run_dir: PathBuf::new(),
+        };
+        // No update may begin while this process starts and is parked: it would hold
+        // the binary being replaced, which Windows refuses.
+        let Some(_starting) = self.engines.begin_warm() else {
+            self.mcp.revoke(&token);
+            return Ok(());
+        };
+        let started = driver.start_warm(spec).await;
+        let process = match started {
+            Ok(Some(process)) => process,
+            other => {
+                self.mcp.revoke(&token);
+                return other.map(|_| ());
+            }
+        };
+        let mcp = self.mcp.clone();
+        let revoked = token.clone();
+        let entry = crate::engines::warm::WarmEntry::new(
+            thread.engine.clone(),
+            after_run,
+            (token, url),
+            process,
+            Box::new(move || mcp.revoke(&revoked)),
+        );
+        let id = entry.id.clone();
+        // A run may have been admitted meanwhile; it would not have seen this one.
+        if self.store.thread(thread_id)?.active_run.is_some() {
+            return Ok(());
+        }
+        if self.engines.park_warm(thread_id, entry) {
+            let engines = self.engines.clone();
+            let thread_id = thread_id.to_owned();
+            tokio::spawn(async move {
+                tokio::time::sleep(WARM_IDLE).await;
+                engines.expire_warm(&thread_id, &id);
+            });
+        }
+        Ok(())
     }
 
     /// A limit the engine signalled, or one its failure text names.
@@ -1154,18 +1365,39 @@ impl RunManager {
         if let Some(token) = token.take() {
             self.mcp.revoke(&token);
         }
+        // Only the turn right after the one that started it may take a warm process.
+        let previous = self.store.previous_run(&thread.id, &scope.run_id)?;
+        let mut warm = self.engines.take_warm(&thread.id).filter(|entry| {
+            entry.engine == thread.engine && previous.as_deref() == Some(entry.after_run.as_str())
+        });
         let mcp_url = if descriptor.capabilities.mcp {
-            let issued = self.mcp.register(McpBinding {
+            let binding = McpBinding {
                 scope: scope.clone(),
                 permission_prompt: driver.family() == "claude",
                 skills: route.selection.clone(),
-            })?;
-            let url = format!("{}/mcp/{issued}", self.base_url);
+            };
+            // A warm process already holds its token, which now answers for this run.
+            let reused = warm
+                .as_ref()
+                .filter(|entry| self.mcp.rebind(&entry.token, binding.clone()))
+                .map(|entry| (entry.token.clone(), entry.url.clone()));
+            let (issued, url) = match reused {
+                Some(pair) => pair,
+                None => {
+                    warm = None;
+                    let issued = self.mcp.register(binding)?;
+                    let url = format!("{}/mcp/{issued}", self.base_url);
+                    (issued, url)
+                }
+            };
             *token = Some(issued);
             Some(url)
         } else {
+            warm = None;
             None
         };
+        // From here the run's token is its own, whether or not the process is adopted.
+        let warm = warm.map(crate::engines::warm::WarmEntry::adopt);
         if cancel.is_cancelled() {
             return Ok(None);
         }
@@ -1225,11 +1457,30 @@ impl RunManager {
             run_dir: run_dir.to_path_buf(),
         };
         let (sender, receiver) = mpsc::channel(EVENT_BUFFER);
-        let handle = driver.start_run(spec, sender).await?;
+        let mut warm = warm;
+        let key = warm.as_ref().and(driver.warm_key(&spec));
+        let matches = warm.as_mut().is_some_and(|process| {
+            key.as_deref() == Some(process.key.as_str()) && process.is_alive()
+        });
+        let handle = match warm {
+            Some(process) if matches => {
+                self.store.note_thread_event(
+                    &thread.id,
+                    "engine.warm",
+                    json!({ "adopted": true }),
+                )?;
+                driver.adopt_run(spec, sender, process).await?
+            }
+            unused => {
+                drop(unused);
+                driver.start_run(spec, sender).await?
+            }
+        };
         self.store
             .note_thread_event(&thread.id, "engine.selection", json!(chosen))?;
         if let Some(active) = self.lock().get_mut(&scope.run_id) {
             active.input.clone_from(&handle.input);
+            active.control.clone_from(&handle.control);
         }
         if let Err(error) = self.store.mark_running(&scope.run_id) {
             handle.cancel.cancel();
@@ -1367,9 +1618,10 @@ impl RunManager {
                 () = &mut stop_deadline, if cancelling => break EngineOutcome::Cancelled,
                 () = &mut silence, if delegated && !cancelling => {
                     // Waiting on a person is not silence.
+                    // A turn held open for a quiet workflow is waiting, not stuck.
                     let waiting = self.store.run(&scope.run_id).is_ok_and(|run| {
                         run.state == RunState::AwaitingApproval
-                    });
+                    }) || self.workflow_running(&thread.id, &scope.run_id);
                     silence.as_mut().reset(tokio::time::Instant::now() + SILENCE_LIMIT);
                     if !waiting {
                         break EngineOutcome::Failed(

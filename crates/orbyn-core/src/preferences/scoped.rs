@@ -10,7 +10,7 @@ use orbyn_contracts::{
 };
 use serde_json::{Value, json};
 
-use super::{DEFINITIONS, Kind, check, definition, normalized, setting_key};
+use super::{DEFINITIONS, Kind, check, definition, normalized, setting_key, writable};
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::store::scoped_settings::{ServerSettingField, SettingWrite, SettingsSnapshot};
@@ -181,6 +181,17 @@ pub(super) fn prepare_write(
         writes.push(SettingWrite::Global {
             key: setting_key(key),
             value: value.map(Value::to_string),
+        });
+    }
+    // The environment theme is applied once by each viewer, so every write of it
+    // records when it was set; clearing it clears the time too.
+    if key == "default_theme" {
+        let named = value
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.is_empty());
+        writes.push(SettingWrite::Global {
+            key: setting_key("default_theme_set_at"),
+            value: named.then(|| crate::util::unix_now_ms().to_string()),
         });
     }
 }
@@ -463,7 +474,7 @@ impl Core {
         let root = self.workspace.root()?;
         // Provider configuration validation is outside SQLite and precedes all writes.
         for (key, edit) in &change.edits {
-            let definition = definition(key)?;
+            let definition = writable(key)?;
             if !ids.is_empty() && !definition.project {
                 return Err(CoreError::Invalid(format!("{key} is not set per project.")));
             }

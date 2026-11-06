@@ -7,6 +7,7 @@ pub mod known;
 pub mod maintenance;
 pub mod manifest;
 pub mod probe;
+pub mod warm;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -93,6 +94,20 @@ pub struct EngineManager {
     known_models: Mutex<HashMap<String, EngineModels>>,
     /// The same lists on disk, so a restart keeps what the engine last said.
     catalog: CatalogCache,
+    /// Processes started ahead of each thread's next turn, by thread.
+    warm: Mutex<HashMap<String, warm::WarmEntry>>,
+    /// Warm processes being started. An update cannot begin while any is.
+    warming: Arc<Mutex<usize>>,
+}
+
+/// A warm process being started; updates wait until it is dropped.
+pub struct WarmStart(Arc<Mutex<usize>>);
+
+impl Drop for WarmStart {
+    fn drop(&mut self) {
+        let mut count = lock(&self.0);
+        *count = count.saturating_sub(1);
+    }
 }
 
 struct CachedModels {
@@ -126,6 +141,8 @@ impl EngineManager {
             updating: Mutex::new(HashSet::new()),
             native_operations: Arc::default(),
             installer_locks: Mutex::new(HashMap::new()),
+            warm: Mutex::new(HashMap::new()),
+            warming: Arc::new(Mutex::new(0)),
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
             known_models: Mutex::new(HashMap::new()),
@@ -302,6 +319,54 @@ impl EngineManager {
         Ok(drivers)
     }
 
+    /// Holds off every engine update while a warm process starts, or refuses while
+    /// one is running.
+    pub fn begin_warm(&self) -> Option<WarmStart> {
+        let updating = lock(&self.updating);
+        if !updating.is_empty() {
+            return None;
+        }
+        *lock(&self.warming) += 1;
+        Some(WarmStart(self.warming.clone()))
+    }
+
+    /// True while `thread` has a process waiting for its next turn.
+    pub fn has_warm(&self, thread: &str) -> bool {
+        lock(&self.warm).contains_key(thread)
+    }
+
+    /// Keeps a process for `thread`'s next turn, replacing any earlier one. Refused
+    /// while an engine updates, since it would hold the binary being replaced.
+    pub fn park_warm(&self, thread: &str, entry: warm::WarmEntry) -> bool {
+        let updating = lock(&self.updating);
+        if !updating.is_empty() {
+            return false;
+        }
+        lock(&self.warm).insert(thread.to_owned(), entry);
+        true
+    }
+
+    /// The process kept for `thread`, which is no longer kept either way.
+    pub fn take_warm(&self, thread: &str) -> Option<warm::WarmEntry> {
+        lock(&self.warm).remove(thread)
+    }
+
+    /// Ends `thread`'s warm process if it is still the one named `id`.
+    pub fn expire_warm(&self, thread: &str, id: &str) {
+        let mut warm = lock(&self.warm);
+        if warm.get(thread).is_some_and(|entry| entry.id == id) {
+            let entry = warm.remove(thread);
+            drop(warm);
+            drop(entry);
+        }
+    }
+
+    /// Ends every warm process, as the service stops.
+    pub fn end_warm(&self) {
+        let warm = std::mem::take(&mut *lock(&self.warm));
+        drop(warm);
+    }
+
     /// Instances may share a binary, so no run starts during any engine update.
     pub fn admit_with<T>(&self, engine: &str, admit: impl FnOnce() -> Result<T>) -> Result<T> {
         let updating = lock(&self.updating);
@@ -363,6 +428,9 @@ impl EngineManager {
         let updating = lock(&self.updating);
         for status in &mut statuses {
             status.updating = updating.contains(&status.id);
+            if status.tier == EngineTier::Acp {
+                status.sign_in_command = crate::driver::acp::known_sign_in(&status.id);
+            }
         }
         Ok(statuses)
     }
@@ -692,11 +760,17 @@ impl EngineManager {
     fn begin_update(&self, id: &str) -> Result<UpdateMarker<'_>> {
         let mut updating = lock(&self.updating);
         let operations = lock(&self.native_operations);
-        if updating.contains(id) || !operations.is_empty() || !self.store.active_runs()?.is_empty()
+        if updating.contains(id)
+            || !operations.is_empty()
+            || *lock(&self.warming) > 0
+            || !self.store.active_runs()?.is_empty()
         {
             return Err(CoreError::EngineBusy(id.to_owned()));
         }
         updating.insert(id.to_owned());
+        // Instances can share the binary, and Windows cannot replace a running one.
+        let warm = std::mem::take(&mut *lock(&self.warm));
+        drop(warm);
         Ok(UpdateMarker {
             set: &self.updating,
             id: id.to_owned(),
@@ -981,6 +1055,7 @@ mod tests {
                     skill_delivery: Vec::new(),
                     goal_control: false,
                     decline_feedback: false,
+                    permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
                 },
             }
         }

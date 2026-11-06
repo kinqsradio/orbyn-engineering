@@ -41,6 +41,7 @@ impl EngineDriver for Fake {
                 skill_delivery: Vec::new(),
                 goal_control: false,
                 decline_feedback: false,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -89,6 +90,7 @@ impl EngineDriver for Fake {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

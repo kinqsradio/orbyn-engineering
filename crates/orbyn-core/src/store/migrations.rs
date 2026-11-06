@@ -25,7 +25,22 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (21, PROJECT_ICONS),
     (22, PROJECT_IMAGE_HISTORY),
     (23, QUESTION_ATTACHMENTS),
+    (24, PULL_GUIDES),
 ];
+
+// A review guide is this service's own, per project and pull request number, like
+// viewed-file marks. It never reaches the forge. The writer thread may be deleted.
+const PULL_GUIDES: &str = r#"
+CREATE TABLE pull_guides (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK(number >= 1),
+    head_sha TEXT,
+    stops TEXT NOT NULL,
+    thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL,
+    written_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, number)
+) WITHOUT ROWID;
+"#;
 
 // A custom answer may carry files. They are kept beside the answer it belongs
 // to and are never sent to an engine that has no attachment field for them.

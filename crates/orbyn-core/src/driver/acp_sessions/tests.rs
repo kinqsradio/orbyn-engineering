@@ -78,7 +78,9 @@ impl Fixture {
         let handle = self.driver.start_run(spec, tx).await.unwrap();
         let mut events = Vec::new();
         loop {
-            let event = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+            // A hang guard only: each event normally arrives at once, but a loaded
+            // Windows runner has taken longer than 10 seconds for one (#215).
+            let event = tokio::time::timeout(Duration::from_secs(30), rx.recv())
                 .await
                 .unwrap()
                 .unwrap();
@@ -315,7 +317,8 @@ fn capability_shapes_and_page_bounds_are_independent() {
 async fn child_gone(pid: u32) {
     let pid = sysinfo::Pid::from_u32(pid);
     let mut system = sysinfo::System::new();
-    tokio::time::timeout(Duration::from_secs(5), async {
+    // The child must exit; how fast depends on the runner's load (#215).
+    tokio::time::timeout(Duration::from_secs(20), async {
         loop {
             system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
             if system.process(pid).is_none() {
@@ -433,4 +436,25 @@ async fn live_session_ids_are_bounded_before_prompt_or_persistence() {
         Some(EngineEvent::Finished(EngineOutcome::Failed(_)))
     ));
     assert!(f.methods().is_empty());
+}
+
+#[test]
+fn version_one_runs_a_v1_shaped_two_falls_back_and_a_v2_reply_is_refused() {
+    assert!(check_version(&json!({"protocolVersion": 1, "agentCapabilities": {}})).is_ok());
+    // Version 2 in version 1's shape, as some shipped agents answer.
+    let labelled =
+        json!({"protocolVersion": 2, "agentInfo": {"name": "a"}, "agentCapabilities": {}});
+    assert!(check_version(&labelled).is_ok());
+    let v2 = json!({"protocolVersion": 2, "info": {"name": "a"}, "capabilities": {}});
+    let error = check_version(&v2).unwrap_err().to_string();
+    assert!(error.contains("only ACP version 2"), "{error}");
+    for reply in [
+        json!({"protocolVersion": 3}),
+        json!({}),
+        json!({"protocolVersion": "1"}),
+    ] {
+        let error = check_version(&reply).unwrap_err().to_string();
+        assert!(error.contains("does not speak ACP version 1"), "{error}");
+    }
+    assert_eq!(initialize_params()["protocolVersion"], 1);
 }

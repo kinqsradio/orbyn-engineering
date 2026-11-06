@@ -2,7 +2,7 @@
 //! protocol version 1. The client advertises no file or terminal methods, so an
 //! agent cannot act through Orbyn without asking.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::time::Duration;
 
@@ -35,20 +35,113 @@ const CANCEL_GRACE: Duration = Duration::from_secs(5);
 const METHOD_NOT_FOUND: i64 = -32601;
 /// Prefix of a `ModelOption` id that names one of the agent's config options.
 const CONFIG_PREFIX: &str = "config:";
+/// Bounds on a terminal sign-in an agent names: arguments, and characters in each.
+const MAX_SIGN_IN_ARGS: usize = 16;
+const MAX_SIGN_IN_WORD: usize = 256;
+
+/// The terminal sign-in each ACP engine last named in its handshake, by engine id.
+/// Orbyn only shows it for the person to run; it never runs it or `authenticate`.
+static SIGN_IN: std::sync::LazyLock<std::sync::Mutex<HashMap<String, String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// The sign-in command an ACP engine named, if one has run its handshake here.
+pub fn known_sign_in(id: &str) -> Option<String> {
+    SIGN_IN.lock().ok()?.get(id).cloned()
+}
+
+/// Which engine a handshake belongs to and the command that launched it.
+#[derive(Clone)]
+struct SignInSlot {
+    id: String,
+    launch: Vec<String>,
+}
+
+impl SignInSlot {
+    fn record(&self, init: &Value) {
+        let Ok(mut known) = SIGN_IN.lock() else {
+            return;
+        };
+        match terminal_sign_in(&self.launch, init) {
+            Some(command) => known.insert(self.id.clone(), command),
+            None => known.remove(&self.id),
+        };
+    }
+}
+
+/// The first `terminal` auth method an agent offers, as one command line: the launch
+/// command followed by the method's arguments. A method that sets environment
+/// variables, or a word that would need shell-specific quoting, gives none, because
+/// the line has to mean the same in a Windows and a Unix terminal.
+fn terminal_sign_in(launch: &[String], init: &Value) -> Option<String> {
+    let method = init
+        .get("authMethods")?
+        .as_array()?
+        .iter()
+        .take(MAX_SIGN_IN_ARGS)
+        .find(|method| method.get("type").and_then(Value::as_str) == Some("terminal"))?;
+    match method.get("env") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(env)) if env.is_empty() => {}
+        Some(_) => return None,
+    }
+    let args: Vec<&str> = match method.get("args") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(args)) if args.len() <= MAX_SIGN_IN_ARGS => {
+            args.iter().map(Value::as_str).collect::<Option<_>>()?
+        }
+        Some(_) => return None,
+    };
+    let words = launch
+        .iter()
+        .map(String::as_str)
+        .chain(args)
+        .map(shell_word)
+        .collect::<Option<Vec<_>>>()?;
+    (!words.is_empty()).then(|| words.join(" "))
+}
+
+/// One word of a command line, quoted when it holds spaces, or none when it holds a
+/// character a Windows or Unix shell would read differently.
+fn shell_word(word: &str) -> Option<String> {
+    if word.is_empty()
+        || word.chars().count() > MAX_SIGN_IN_WORD
+        || word
+            .chars()
+            .any(|c| c.is_control() || "\"'`$%!^&|<>;(){}[]*?~#".contains(c))
+    {
+        return None;
+    }
+    Some(if word.contains(' ') {
+        format!("\"{word}\"")
+    } else {
+        word.to_owned()
+    })
+}
 
 pub struct AcpDriver {
     engine: CustomEngine,
     env: &'static [(&'static str, &'static str)],
     /// False for an agent that cannot ask before it edits.
     asks: bool,
+    modes: Vec<orbyn_contracts::PermissionMode>,
 }
 
 impl AcpDriver {
+    fn sign_in_slot(&self) -> SignInSlot {
+        SignInSlot {
+            id: self.engine.id.clone(),
+            launch: std::iter::once(self.engine.target.clone())
+                .chain(self.engine.args.iter().cloned())
+                .collect(),
+        }
+    }
+
     pub fn new(engine: CustomEngine) -> Self {
         Self {
             engine,
             env: &[],
             asks: true,
+            modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
         }
     }
 
@@ -58,6 +151,7 @@ impl AcpDriver {
             engine,
             env: known.env,
             asks: known.asks,
+            modes: crate::permission_modes::offered(known.id),
         }
     }
 }
@@ -79,6 +173,7 @@ impl EngineDriver for AcpDriver {
                 skill_delivery: vec![SkillDelivery::McpSkillServer],
                 goal_control: false,
                 decline_feedback: false,
+                permission_modes: self.modes.clone(),
             },
         }
     }
@@ -156,8 +251,13 @@ impl EngineDriver for AcpDriver {
         EngineProbe {
             path: crate::process::resolve(&self.engine.target).map(|command| command.path),
             auth: Some(AuthState::NotApplicable),
+            sign_in_command: known_sign_in(&self.engine.id),
             ..EngineProbe::default()
         }
+    }
+
+    fn sign_in_command(&self) -> Option<String> {
+        known_sign_in(&self.engine.id)
     }
 
     /// ACP has no listing call, so this opens a session in a temp folder, reads
@@ -168,7 +268,7 @@ impl EngineDriver for AcpDriver {
         let dir = ProbeDir::new()?;
         let process = spawn_engine_with(&command, &args, dir.path(), self.env)?;
         let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, true);
-        let (id, session, init) = open_raw(&rpc, dir.path(), None).await?;
+        let (id, session, init) = open_raw(&rpc, dir.path(), None, &self.sign_in_slot()).await?;
         let options = parse_session_options(&session);
         let mut models = parse_models(&session);
         let probing = probe_model_options(&rpc, &id, &session, &options, &mut models);
@@ -191,11 +291,13 @@ impl EngineDriver for AcpDriver {
         let args: Vec<OsString> = self.engine.args.iter().map(OsString::from).collect();
         let process = spawn_engine_with(&command, &args, &spec.cwd, self.env)?;
         let cancel = CancellationToken::new();
-        let task = tokio::spawn(run_protocol(process, spec, events, cancel.clone()));
+        let slot = self.sign_in_slot();
+        let task = tokio::spawn(run_protocol(process, spec, events, cancel.clone(), slot));
         Ok(RunHandle {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }
@@ -205,12 +307,13 @@ async fn run_protocol(
     spec: RunSpec,
     events: mpsc::Sender<EngineEvent>,
     cancel: CancellationToken,
+    slot: SignInSlot,
 ) {
     let (rpc, mut inbound) = RpcClient::start(process.stdin, process.stdout, true);
     let opened = tokio::select! {
         biased;
         () = cancel.cancelled() => Err(CoreError::RunClosed),
-        result = open_session(&rpc, &mut inbound, &spec) => result,
+        result = open_session(&rpc, &mut inbound, &spec, &slot) => result,
     };
     let session = match opened {
         Ok((session, persistent)) => {
@@ -313,6 +416,7 @@ async fn open_session(
     rpc: &RpcClient,
     inbound: &mut mpsc::UnboundedReceiver<Inbound>,
     spec: &RunSpec,
+    slot: &SignInSlot,
 ) -> Result<(String, bool)> {
     if spec
         .resume
@@ -322,6 +426,7 @@ async fn open_session(
         return Err(CoreError::Invalid("Invalid ACP session identity.".into()));
     }
     let init = initialize(rpc).await?;
+    slot.record(&init);
     let caps = super::acp_sessions::capabilities(&init);
     let persistent = caps.can_load || caps.can_resume;
     let (id, mut session) = if let Some(id) = &spec.resume {
@@ -530,8 +635,10 @@ async fn open_raw(
     rpc: &RpcClient,
     cwd: &std::path::Path,
     mcp_url: Option<&str>,
+    slot: &SignInSlot,
 ) -> Result<(String, Value, Value)> {
     let init = initialize(rpc).await?;
+    slot.record(&init);
     let servers = mcp_servers(&init, mcp_url);
     let session = rpc
         .call(
@@ -1320,5 +1427,54 @@ mod tests {
         let (kind, target, _) = classify(&params);
         assert_eq!(kind, ActionKind::Command);
         assert_eq!(target, "ls -a");
+    }
+
+    #[test]
+    fn a_terminal_method_becomes_the_launch_plus_its_arguments() {
+        let launch = ["opencode".to_owned(), "acp".to_owned()];
+        // OpenCode 2.2.5's reply to a client that can show a terminal sign-in.
+        let init = json!({"authMethods": [{"id": "opencode-login", "name": "Login with opencode",
+            "type": "terminal", "args": ["--login"]}]});
+        assert_eq!(
+            terminal_sign_in(&launch, &init).as_deref(),
+            Some("opencode acp --login")
+        );
+        let spaced = ["C:/Program Files/agent.exe".to_owned()];
+        let bare = json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal"}]});
+        assert_eq!(
+            terminal_sign_in(&spaced, &bare).as_deref(),
+            Some("\"C:/Program Files/agent.exe\"")
+        );
+    }
+
+    #[test]
+    fn only_a_plain_terminal_method_is_offered() {
+        let launch = ["agent".to_owned()];
+        for init in [
+            json!({}),
+            json!({"authMethods": [{"id": "a", "name": "Browser"}]}),
+            json!({"authMethods": [{"id": "a", "name": "Key", "type": "env_var", "vars": [{"name": "KEY"}]}]}),
+            json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal", "env": {"MODE": "1"}}]}),
+            json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal", "args": ["$(id)"]}]}),
+            json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal", "args": ["a;b"]}]}),
+            json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal", "args": [1]}]}),
+            json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal", "args": "--login"}]}),
+            json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal",
+                "args": vec!["x"; MAX_SIGN_IN_ARGS + 1]}]}),
+        ] {
+            assert_eq!(terminal_sign_in(&launch, &init), None, "{init}");
+        }
+    }
+
+    #[test]
+    fn a_handshake_records_and_clears_the_engine_sign_in() {
+        let slot = SignInSlot {
+            id: "sign-in-slot-test".into(),
+            launch: vec!["agent".into()],
+        };
+        slot.record(&json!({"authMethods": [{"id": "a", "name": "a", "type": "terminal"}]}));
+        assert_eq!(known_sign_in("sign-in-slot-test").as_deref(), Some("agent"));
+        slot.record(&json!({"authMethods": []}));
+        assert_eq!(known_sign_in("sign-in-slot-test"), None);
     }
 }

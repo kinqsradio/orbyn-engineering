@@ -566,16 +566,41 @@ fn router(state: AppState) -> Router {
             post(preview_routes::input),
         )
         .route(
+            "/api/threads/{id}/previews/{tab}/copy",
+            post(preview_routes::copy),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/uploads",
+            post(preview_routes::upload).layer(DefaultBodyLimit::max(
+                orbyn_core::preview_bridge::MAX_UPLOAD_BYTES + 1024,
+            )),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/chooser",
+            post(preview_routes::answer_chooser),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/downloads/{download}",
+            get(preview_routes::download),
+        )
+        .route(
             "/api/threads/{id}/previews/{tab}/recording",
             post(preview_routes::start_recording).delete(preview_routes::stop_recording),
         )
         .route("/ws/preview/{id}/{tab}", get(preview_routes::stream))
+        .route(
+            "/ws/preview/{id}/{tab}/pointer",
+            get(preview_routes::pointers),
+        )
         .route("/api/threads/{id}/servers", get(preview_routes::servers))
         .route(
             "/api/threads/{id}/servers/{pid}/stop",
             post(preview_routes::stop_server),
         )
         .route("/api/threads/{id}/runs", post(api::start_run))
+        .route("/api/threads/{id}/jj", get(api::thread_jj_status))
+        .route("/api/threads/{id}/setup", get(api::thread_setup))
+        .route("/api/threads/{id}/setup/cancel", post(api::cancel_setup))
         .route("/api/threads/{id}/preparation", get(api::preparation_retry))
         .route(
             "/api/threads/{id}/preparation/retry",
@@ -583,6 +608,14 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/force-stop", post(api::force_stop))
+        .route(
+            "/api/threads/{id}/workflows/{item}/script",
+            get(api::workflow_script),
+        )
+        .route(
+            "/api/threads/{id}/workflows/{item}/stop",
+            post(api::stop_workflow),
+        )
         .route("/api/search/messages", get(api::search_messages))
         .route("/api/threads/{id}/events", get(stream::thread_events))
         .route("/api/approvals", get(api::list_approvals))

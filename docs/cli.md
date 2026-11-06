@@ -8,6 +8,20 @@ the CLI; starting a service also needs the built sibling `orbynd` and UI assets.
 This is a source/bundle workflow, not an npm distribution. There is currently no
 documented `npx orbyn` try-without-install command.
 
+## Installing without the app
+
+`scripts/install.sh` (macOS) and `scripts/install.ps1` (Windows) install the command
+from a GitHub release: `orbyn`, `orbynd`, the UI and the library snapshot go to
+`~/.local/share/orbyn/cli`, and a launcher to `~/.local/bin/orbyn` (`orbyn.cmd` on
+Windows). `ORBYN_VERSION` pins an exact release (`v` optional), `ORBYN_CHANNEL=nightly`
+takes the `nightly` release, and `ORBYN_INSTALL_DIR` and `ORBYN_HOME` move the two
+folders. The archive must match its `.sha256`, or nothing changes; an earlier install
+stays until the new one is unpacked. Neither script edits `PATH`; each says when
+`~/.local/bin` is missing from it. The release workflow packs
+`orbyn-cli-<target>.tar.gz` with `scripts/pack-cli.mjs`. No release has published
+these assets yet, and the macOS binaries in the archive carry no Developer ID
+signature of their own.
+
 ## Shared options and service discovery
 
 - `--data-dir DIR` selects the service's data folder. `ORBYN_DATA_DIR` is the
@@ -44,8 +58,27 @@ private. A detached service writes `service.log` in its data folder.
 `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`, `--update-manifest` and
 `--parent-stdin`; the last is the desktop's ownership channel, not an interactive
 session. `ORBYN_LIBRARY_BUNDLE` selects a bundled library and
-`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check. There is no
-CLI command here for exact-version update, channel switching or downgrade.
+`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check.
+
+## Updating
+
+| Command | Behavior |
+| --- | --- |
+| `orbyn update --check` | Ask the running service to check, and report the current and latest release. Changes nothing. |
+| `orbyn update` | Check, then ask the desktop app's installer to install the latest release. |
+| `orbyn update --version VERSION` | The same, only when `VERSION` (with or without a leading `v`) is the latest release; the running version reports that it is installed. |
+| `orbyn update --channel NAME` | Accepted only when `NAME` is the build's own channel (`/api/info` `channel`); switching is refused with exit 1. |
+| `orbyn update --downgrade` | Refused with exit 1 before any service is contacted. |
+
+The app updates only through the installer that owns it: the desktop shell's
+signed updater, which offers the latest release of the channel the build was
+compiled for. There is no version index, channel switch or downgrade path, so an
+older or unlisted version or another channel is refused and the message says to
+install that build manually. A service with no
+desktop shell cannot replace itself: `orbyn update` reports its blocked reason
+and an unconfigured manifest, and exits 1 when a newer release exists that it
+cannot install. Install is refused while runs are active, as in the UI. Engines and
+the skills library update from the UI's update center, not this command.
 
 ## Threads, projects and preferences
 
@@ -61,7 +94,7 @@ These commands use the same service APIs and rules as the UI.
 | `orbyn project add PATH` | Register an existing folder, initially untrusted. |
 | `orbyn project remove PROJECT` | Unregister and remove its threads; keep the folder. |
 | `orbyn project rename PROJECT NAME` | Change the displayed name; keep the folder. |
-| `orbyn theme show`, `set NAME`, `clear` | Read/change/reset the stored `default_theme` preference. Running UI consumption remains a parity gap. |
+| `orbyn theme show`, `set NAME`, `clear` | Read/change/reset the stored `default_theme` preference. Each viewer applies a newly set theme once, at start or when its window takes focus. |
 
 ## Local maintenance
 
@@ -80,8 +113,20 @@ The background registration uses launchd on macOS. Windows background setup is
 unsupported; desktop startup and direct `service run` remain available. No
 administrator rights or PATH changes are requested. Dry runs print a plan without
 running a manager or modifying its files. Linux/systemd support in shared service
-planning is outside this product's macOS/Windows scope. There is no top-level
-uninstall or OOM-protection command.
+planning is outside this product's macOS/Windows scope. There is no
+OOM-protection command: the reference supports it only on Linux with systemd.
+
+## Uninstalling
+
+`orbyn uninstall [--dry-run]` removes what Orbyn registered with the operating
+system: the background service, exactly as `orbyn service uninstall`. Orbyn puts
+no launcher on PATH and keeps no side-by-side versions, so there is nothing else
+for it to remove. It then says how to remove the app through the installer that
+owns it (move the `.app` bundle to the Trash on macOS; Settings > Apps > Installed
+apps on Windows, which has no background service) and names a service that is
+still running. The data folder with threads and settings is kept and named; delete
+it yourself to remove them. `--dry-run` prints the plan and changes nothing; with
+`--json` it reports `service`, `running`, `launcher`, `versions`, `app` and `data`.
 
 ## Triage in a native terminal
 

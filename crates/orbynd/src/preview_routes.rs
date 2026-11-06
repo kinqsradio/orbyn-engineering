@@ -3,16 +3,21 @@
 //! through `POST .../input`, and only after taking the page.
 
 use axum::Json;
+use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{Path, State, WebSocketUpgrade};
+use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
+use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
-    ClearPreview, CreateBrowserProfile, NavigatePreview, OpenPreview, OpenPreviewFile, PickPreview,
-    PreviewControl, PreviewInput, PreviewView, ReloadPreview, ResizePreview, StepPreview,
+    AnswerFileChooser, ClearPreview, CreateBrowserProfile, NavigatePreview, OpenPreview,
+    OpenPreviewFile, PickPreview, PreviewControl, PreviewCopy, PreviewInput,
+    PreviewRecordingOptions, PreviewUpload, PreviewView, ReloadPreview, ResizePreview, StepPreview,
 };
 use orbyn_core::preview::OpenHow;
+use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
+use tokio_util::io::ReaderStream;
 
 use crate::api::{ApiJson, ApiResult, AppState, LOCAL_USER};
 
@@ -191,11 +196,91 @@ pub async fn input(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// The text a person selected in the page they hold, for their own clipboard.
+pub async fn copy(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let text = state.core.copy_from_preview(&id, &tab).await?;
+    Ok(Json(PreviewCopy { text }))
+}
+
+#[derive(Deserialize)]
+pub struct UploadName {
+    #[serde(default)]
+    name: String,
+}
+
+/// One file a person chose for the page's open file chooser, as the raw body.
+pub async fn upload(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    Query(query): Query<UploadName>,
+    body: axum::body::Bytes,
+) -> ApiResult<impl IntoResponse> {
+    let upload = state
+        .core
+        .stage_preview_upload(&id, &tab, &query.name, &body)?;
+    Ok((StatusCode::CREATED, Json(PreviewUpload { id: upload })))
+}
+
+pub async fn answer_chooser(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    ApiJson(body): ApiJson<AnswerFileChooser>,
+) -> ApiResult<StatusCode> {
+    state
+        .core
+        .answer_preview_files(&id, &tab, &body.files, LOCAL_USER)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A finished download's bytes, always as an attachment, so nothing the page made
+/// runs in this origin.
+pub async fn download(
+    State(state): State<AppState>,
+    Path((id, tab, download)): Path<(String, String, String)>,
+) -> ApiResult<Response> {
+    let (path, name) = state
+        .core
+        .preview_download(&id, &tab, &download, LOCAL_USER)?;
+    let file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|_| orbyn_core::CoreError::NotFound("download".into()))?;
+    let disposition = format!(
+        "attachment; filename*=UTF-8''{}",
+        crate::raw_files::encoded_name(&name)
+    );
+    let mut response = Body::from_stream(ReaderStream::new(file)).into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&disposition)
+            .map_err(|_| orbyn_core::CoreError::Invalid("That name cannot be sent.".into()))?,
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(crate::raw_files::SANDBOX),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
 pub async fn start_recording(
     State(state): State<AppState>,
     Path((id, tab)): Path<(String, String)>,
+    Query(options): Query<PreviewRecordingOptions>,
 ) -> ApiResult<StatusCode> {
-    state.core.start_preview_recording(&id, &tab)?;
+    state.core.start_preview_recording(&id, &tab, options)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -203,7 +288,7 @@ pub async fn stop_recording(
     State(state): State<AppState>,
     Path((id, tab)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.previews.stop_recording(&id, &tab)?))
+    Ok(Json(state.core.previews.stop_recording(&id, &tab).await?))
 }
 
 pub async fn close(
@@ -261,4 +346,30 @@ pub async fn stop_server(
 ) -> ApiResult<StatusCode> {
     state.core.stop_server(&id, pid, LOCAL_USER).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Server-produced cues only; client messages never publish input events.
+pub async fn pointers(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    upgrade: WebSocketUpgrade,
+) -> ApiResult<Response> {
+    let mut events = state.core.previews.subscribe_pointers(&id, &tab)?;
+    Ok(upgrade.on_upgrade(move |mut socket| async move {
+        loop {
+            tokio::select! {
+                event = events.recv() => match event {
+                    Ok(event) => {
+                        let Ok(text) = serde_json::to_string(&event) else { return };
+                        if socket.send(Message::Text(text.into())).await.is_err() { return; }
+                    },
+                    Err(RecvError::Lagged(_)) => {},
+                    Err(RecvError::Closed) => return,
+                },
+                message = socket.recv() => {
+                    if !matches!(message, Some(Ok(_))) { return; }
+                }
+            }
+        }
+    }))
 }
