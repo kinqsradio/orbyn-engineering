@@ -46,5 +46,6 @@ Browser tests are in `e2e/`, against the mock API (`mock/`) or a real service
   import is a candidate for moving the shared piece to its real owner.
 - `src/lib` still holds project image and identity helpers used by both `ui` and
   `settings`.
-- ESLint enforces the inward direction for shared folders only. Imports between
-  features are not checked, and tests are exempt.
+- ESLint enforces the inward direction for shared folders only, and only for
+  static `import` and `export … from`. Dynamic `import()`, type queries, imports
+  between features and tests are not checked.
