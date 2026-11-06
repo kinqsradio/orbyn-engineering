@@ -84,7 +84,7 @@ describe("App against the mock API", () => {
       for (const thread of mock.threads) thread.active_run = null;
     };
     const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
-      await user.click(await screen.findByRole("button", { name: "3 updates available" }));
+      await user.click(await screen.findByRole("button", { name: "Updates available · 3" }));
       return screen.findByRole("dialog", { name: "Update everything" });
     };
 
@@ -138,7 +138,7 @@ describe("App against the mock API", () => {
       });
       const user = userEvent.setup();
       render(<App />);
-      await user.click(await screen.findByRole("button", { name: "2 updates available" }));
+      await user.click(await screen.findByRole("button", { name: "Updates available · 2" }));
       const dialog = await screen.findByRole("dialog", { name: "Update everything" });
       expect(within(dialog).getByText(/Replace the orbynd binary/)).toBeInTheDocument();
       expect(within(dialog).queryByRole("button", { name: "Update app" })).toBeNull();

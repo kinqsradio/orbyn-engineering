@@ -4,6 +4,7 @@ import { api, request } from "../../api/client";
 import { inDesktopApp, readShellStatus } from "../../api/shell";
 import type { PreferenceView } from "../../api/types";
 import { useUi } from "../../state/ui";
+import { useWorkspace } from "../../state/workspace";
 import { HOLD_MS, isQuitKey, quitTracker, type QuitMode, type QuitState } from "./quitTracker";
 
 const MODES: readonly QuitMode[] = ["direct", "hold", "double_press"];
@@ -17,6 +18,8 @@ export function QuitConfirmation() {
   const [state, setState] = useState<QuitState>({ prompt: null });
   const mode = useRef<QuitMode>("direct");
   const pushToast = useUi((ui) => ui.pushToast);
+  // Counted from the threads the sidebar has loaded; there is no separate running-agent feed.
+  const working = useWorkspace((state) => Object.values(state.threads).filter((thread) => thread.active_run).length);
   // Settings saves the mode in this window; read it again at once rather than on focus.
   useCommand("quitConfirmation.reload", () => {
     window.dispatchEvent(new Event(RELOAD_EVENT));
@@ -68,15 +71,24 @@ export function QuitConfirmation() {
   }, [pushToast]);
 
   if (!state.prompt) return null;
+  const note =
+    working > 0
+      ? `${working} ${working === 1 ? "agent is" : "agents are"} working.`
+      : null;
   return (
     <div className="quit-overlay" role="status" aria-live="assertive">
+      <kbd className="quit-key">⌘ Q</kbd>
       {state.prompt === "hold" ? (
         <>
-          Hold ⌘Q to quit
+          <b>Hold to quit</b>
+          <span className="quit-note">{[note, "Or press ⌘Q again."].filter(Boolean).join(" ")}</span>
           <span className="quit-progress" style={{ animationDuration: `${HOLD_MS}ms` }} aria-hidden />
         </>
       ) : (
-        "Press ⌘Q again to quit"
+        <>
+          <b>Press ⌘Q again to quit</b>
+          {note ? <span className="quit-note">{note}</span> : null}
+        </>
       )}
     </div>
   );
