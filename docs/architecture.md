@@ -1110,7 +1110,8 @@ stamps that time, and clearing the theme clears it; a client cannot write the ti
 A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
 theme once, when its `set_at` is newer than the one it last applied, at startup and
 when the window takes focus; after that the viewer's own choice stays. An unknown id
-is recorded as applied and changes nothing. Remote environments publish nothing here.
+is recorded as applied and changes nothing. A theme saved before set times existed is
+published with `set_at` 1, so each viewer applies it once. Remote environments publish nothing here.
 
 `/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
 `stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
@@ -1591,7 +1592,10 @@ run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. 
 the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
 service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
 quits through the `quit` shell action after the key is held for one second, or pressed
-again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+again within 1.5 seconds. WebKit may send no keyup while Cmd stays down, so a hold counts
+only while key repeats keep arriving; a stop in repeats, lifting the key, blur or a late
+press starts over. The page reads the mode again as soon as Settings saves it. A service
+in remote mode refuses the `quit` action, so a remote viewer cannot stop the app. Clicking
 Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
