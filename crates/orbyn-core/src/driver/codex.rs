@@ -291,6 +291,42 @@ impl EngineDriver for CodexDriver {
             .await
     }
 
+    /// Codex 0.166.0's `thread/revert` keeps the turns before `before_turn` as the
+    /// thread's durable history and leaves files alone. It answers only for a thread
+    /// it has loaded, so a short-lived app-server in the checkout resumes it first.
+    async fn revert_session(
+        &self,
+        cwd: &std::path::Path,
+        session: &str,
+        before_turn: &str,
+    ) -> Result<()> {
+        let short = self.short_session_in(cwd).await?;
+        match short
+            .rpc
+            .call(
+                "thread/resume",
+                json!({ "threadId": session, "cwd": cwd }),
+                CALL_TIMEOUT,
+            )
+            .await
+        {
+            Ok(_) => {}
+            Err(error) if is_missing_thread(&error.to_string()) => {
+                return Err(CoreError::SessionLost);
+            }
+            Err(error) => return Err(error),
+        }
+        short
+            .rpc
+            .call(
+                "thread/revert",
+                json!({ "threadId": session, "beforeTurnId": before_turn }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+        Ok(())
+    }
+
     async fn start_run(
         &self,
         spec: RunSpec,
@@ -525,6 +561,9 @@ async fn run_protocol(
             return;
         }
     };
+    if let Some(turn) = &turn_id {
+        let _ = events.send(EngineEvent::Turn(turn.clone())).await;
+    }
     let mut mapper = TurnMapper::new(session.clone());
     let mut interrupted_at: Option<tokio::time::Instant> = None;
     let outcome = loop {
@@ -571,9 +610,13 @@ async fn run_protocol(
                 match message {
                     Inbound::Notification { method, params } => {
                         if method == "turn/started"
+                            && turn_id.is_none()
                             && let Some(id) = params.pointer("/turn/id").and_then(Value::as_str)
                         {
-                            turn_id.get_or_insert_with(|| id.to_owned());
+                            turn_id = Some(id.to_owned());
+                            if events.send(EngineEvent::Turn(id.to_owned())).await.is_err() {
+                                return;
+                            }
                         }
                         let step = mapper.on_notification(&method, &params);
                         for event in step.events {

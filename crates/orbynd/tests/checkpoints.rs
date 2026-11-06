@@ -243,6 +243,8 @@ async fn rewind_drops_the_session_and_hands_the_earlier_conversation_on_once() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
     seed(&dir);
+    // Codex refuses its own rollback here, so the rewind falls back to a handoff.
+    std::fs::write(dir.path().join("revert-refused"), "").unwrap();
     run(&service, &thread, "remember the first thing").await;
     let second = run(&service, &thread, "[write:one.txt] second thing").await;
     let (code, body) = service
@@ -277,6 +279,58 @@ async fn rewind_drops_the_session_and_hands_the_earlier_conversation_on_once() {
     );
     let events = service.all_events(&thread).await;
     assert!(!events.is_empty());
+}
+
+#[tokio::test]
+async fn a_codex_rewind_reverts_its_own_session_and_keeps_it() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
+    seed(&dir);
+    run(&service, &thread, "remember the first thing").await;
+    let second = run(&service, &thread, "[write:one.txt] second thing").await;
+    run(&service, &thread, "third thing").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/rewind"),
+            json!({ "run_id": second, "restore_files": true }),
+        )
+        .await;
+    assert_eq!(code, 204, "{body}");
+    assert!(!dir.path().join("library/repo/project/one.txt").exists());
+    run(&service, &thread, "fourth thing").await;
+
+    let log = std::fs::read_to_string(dir.path().join("launches")).unwrap();
+    let entries = |mode: &str| -> Vec<Value> {
+        log.lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|entry| entry["mode"] == mode)
+            .map(|entry| {
+                serde_json::from_str(entry["args"][0].as_str().unwrap())
+                    .unwrap_or(entry["args"][0].clone())
+            })
+            .collect()
+    };
+    let turns = entries("codex-turn-id");
+    let reverts = entries("codex-revert");
+    assert_eq!(reverts.len(), 1, "{log}");
+    // The second run's turn and every later one leave the same Codex thread.
+    assert_eq!(reverts[0]["threadId"], "codex-thread-1");
+    assert_eq!(reverts[0]["beforeTurnId"], turns[1]);
+    assert_eq!(entries("codex-load").len(), 1, "loaded before the revert");
+    let threads = entries("codex-thread");
+    let fourth = threads.last().unwrap();
+    assert_eq!(fourth["threadId"], "codex-thread-1", "the session goes on");
+    assert!(
+        !fourth.to_string().contains("remember the first thing"),
+        "no handoff: {fourth}"
+    );
+    let events = service
+        .events_until(&thread, None, |event| {
+            event.to_string().contains("thread.rewound")
+        })
+        .await;
+    let rewound = events.last().unwrap().to_string();
+    assert!(rewound.contains(r#""native":true"#), "{rewound}");
 }
 
 #[tokio::test]
@@ -316,6 +370,7 @@ async fn a_handoff_survives_a_failed_run_and_goes_only_with_a_finished_one() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, options(&dir, true), "codex").await;
     seed(&dir);
+    std::fs::write(dir.path().join("revert-refused"), "").unwrap();
     run(&service, &thread, "remember the first thing").await;
     let second = run(&service, &thread, "second thing").await;
     let (code, body) = service

@@ -1,6 +1,7 @@
 //! Diffs over checkpoints, and moving a thread back: restoring files, rewinding
 //! the conversation, forking it and switching engines. An engine session cannot
-//! follow any of these, so each one leaves a budgeted handoff for the next run.
+//! follow a fork or a switch, so each leaves a budgeted handoff for the next run; a
+//! rewind keeps the session when the engine can roll it back natively.
 
 use std::path::Path;
 
@@ -190,6 +191,7 @@ impl Core {
         actor: &str,
     ) -> Result<()> {
         self.idle_thread(thread_id)?;
+        let _hold = self.runs.hold_for_rewind(thread_id)?;
         let through = self.store.seq_before_run(thread_id, &request.run_id)?;
         if request.restore_files {
             let restore = RestoreWorkspace {
@@ -197,6 +199,20 @@ impl Core {
                 point: RestorePoint::Start,
             };
             self.restore_workspace(thread_id, &restore, actor).await?;
+        }
+        if self.revert_natively(thread_id, &request.run_id).await {
+            self.audit_thread(
+                actor,
+                "thread.rewind",
+                thread_id,
+                json!({ "through": through, "native": true }),
+            )?;
+            self.store.forget_messages_after(thread_id, through)?;
+            return self.store.note_thread_event(
+                thread_id,
+                "thread.rewound",
+                json!({ "through": through, "native": true }),
+            );
         }
         let handoff = self.store.handoff_text(thread_id, through)?;
         self.audit_thread(
@@ -209,6 +225,32 @@ impl Core {
         self.store.forget_messages_after(thread_id, through)?;
         self.store
             .note_thread_event(thread_id, "thread.rewound", json!({ "through": through }))
+    }
+
+    /// Asks the engine to drop `run_id`'s turn and every later one from the session
+    /// the thread still speaks in, which then carries on. False when the engine has
+    /// no native rollback, the run's turn or session is not the thread's, or the
+    /// engine refused; the rewind then leaves a handoff as before.
+    async fn revert_natively(&self, thread_id: &str, run_id: &str) -> bool {
+        let Ok(Some((session, turn))) = self.store.native_revert_point(thread_id, run_id) else {
+            return false;
+        };
+        let Ok(thread) = self.store.thread(thread_id) else {
+            return false;
+        };
+        let Ok(driver) = self.engines.driver(&thread.engine) else {
+            return false;
+        };
+        match driver
+            .revert_session(Path::new(&thread.cwd), &session, &turn)
+            .await
+        {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::info!(%error, "native rollback refused; the rewind leaves a handoff");
+                false
+            }
+        }
     }
 
     pub fn fork_thread(&self, id: &str, request: &ForkThread, actor: &str) -> Result<Thread> {

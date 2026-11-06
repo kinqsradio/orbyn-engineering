@@ -442,14 +442,23 @@ reaches a working file or a push.
 
 Restoring takes a safety snapshot first, then makes the files match, leaving HEAD,
 the index and ignored files alone. It refuses while another live thread shares the
-folder. A rewind, a fork and an engine switch cannot carry an engine session, so each
-ends it and leaves a handoff of up to 16,000 characters, oldest text dropped first,
-for the next run. Dropping the session and writing the handoff share a transaction. It
+folder. A fork and an engine switch cannot carry an engine session, so each ends it
+and leaves a handoff of up to 16,000 characters, oldest text dropped first, for the
+next run. A rewind does the same unless the engine rolls its own session back. Dropping the session and writing the handoff share a transaction. It
 stays until a run that carried it completes, so a failed start, a stop or a restart
 leaves it pending, and until then `/compact` and `/goal`, which reach an engine bare, are
 `422 unsupported`. The log stays whole; a rewind is logged as `CUSTOM
-thread.rewound` for clients to hide what follows. Native rollback (`thread/revert`)
-is not used.
+thread.rewound` for clients to hide what follows.
+
+Each run keeps the engine session and the first turn id it spoke in. No run is admitted
+while a rewind is under way. Rewinding a Codex thread before a run whose session is
+still the thread's, with no handoff waiting and an earlier run in that same session (a
+session's first run may have carried a handoff), loads
+that thread in a short-lived app-server and sends `thread/revert` with that run's turn,
+which keeps only the earlier turns. The session then goes on, nothing is handed off,
+and the event and audit carry `native: true`. Files are restored only by the rewind's
+own checkpoint step. Any refusal, a missing turn id or another engine falls back to the
+handoff above.
 
 ## What a run changed
 

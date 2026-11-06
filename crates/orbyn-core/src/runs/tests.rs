@@ -1197,3 +1197,20 @@ async fn resume_passes_the_stored_session() {
         [None, Some("session-1".to_owned())]
     );
 }
+
+#[tokio::test]
+async fn no_run_starts_while_its_thread_is_rewound() {
+    let f = fixture(finished()).await;
+    let hold = f.core.runs.hold_for_rewind(&f.thread).unwrap();
+    assert!(matches!(
+        f.core.runs.admit(&f.thread, "go", "t"),
+        Err(CoreError::ThreadBusy)
+    ));
+    assert!(matches!(
+        f.core.runs.hold_for_rewind(&f.thread),
+        Err(CoreError::ThreadBusy)
+    ));
+    drop(hold);
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    until_terminal(&f.core, &run.id).await;
+}

@@ -661,6 +661,9 @@ struct CodexState {
     mcp_url: Option<String>,
     thread: String,
     tools_ready: bool,
+    /// Each turn gets its own id, as Codex's are, so a revert can name one.
+    turn: String,
+    loaded: bool,
 }
 
 fn codex() {
@@ -670,6 +673,8 @@ fn codex() {
         mcp_url: None,
         thread: "codex-thread-1".to_owned(),
         tools_ready: true,
+        turn: "turn-1".to_owned(),
+        loaded: false,
     };
     while let Some(message) = lines.next() {
         let method = message["method"].as_str().unwrap_or_default().to_owned();
@@ -699,10 +704,17 @@ fn codex() {
             }
             "thread/start" | "thread/resume" => {
                 let params = &message["params"];
-                record_launch("codex-thread", &[params.to_string()]);
+                // A run states its policy; a bare resume only loads the thread.
+                let mode = if params.get("approvalPolicy").is_some() {
+                    "codex-thread"
+                } else {
+                    "codex-load"
+                };
+                record_launch(mode, &[params.to_string()]);
                 if let Some(thread) = params["threadId"].as_str() {
                     state.thread = thread.to_owned();
                 }
+                state.loaded = true;
                 state.mcp_url = params["config"]["mcp_servers"]["orbyn_engineering"]["url"]
                     .as_str()
                     .map(str::to_owned);
@@ -747,13 +759,20 @@ fn codex() {
                     .as_str()
                     .unwrap_or_default()
                     .to_owned();
+                state.turn = format!(
+                    "turn-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |since| since.as_nanos())
+                );
+                record_launch("codex-turn-id", std::slice::from_ref(&state.turn));
                 // A notification ahead of its reply is a legal ordering.
                 send(&json!({ "method": "turn/started", "params": {
                     "threadId": state.thread,
-                    "turn": { "id": "turn-1", "items": [], "status": "inProgress" },
+                    "turn": { "id": state.turn, "items": [], "status": "inProgress" },
                 }}));
                 send(&json!({ "id": id, "result": {
-                    "turn": { "id": "turn-1", "items": [], "status": "inProgress" },
+                    "turn": { "id": state.turn, "items": [], "status": "inProgress" },
                 }}));
                 codex_turn(&state, &mut lines);
             }
@@ -829,6 +848,29 @@ fn codex() {
                     "service_tier": std::env::var("ORBYN_FAKE_CODEX_TIER").ok(),
                 }, "origins": {} }}));
             }
+            // As Codex 0.166.0 answered: an unloaded thread is not found, and a
+            // test can make it refuse.
+            "thread/revert" => {
+                let params = &message["params"];
+                record_launch("codex-revert", &[params.to_string()]);
+                if !state.loaded || params["threadId"].as_str() != Some(state.thread.as_str()) {
+                    send(&json!({ "id": id, "error": {
+                        "code": -32600, "message": format!("thread not found: {}", params["threadId"]),
+                    }}));
+                } else if sibling_exists("revert-refused") {
+                    send(&json!({ "id": id, "error": {
+                        "code": -32600, "message": format!("turn not found: {}", params["beforeTurnId"]),
+                    }}));
+                } else {
+                    send(&json!({ "id": id, "result": {
+                        "thread": { "id": state.thread, "turns": [] },
+                        "turnsBackwardsCursor": null, "itemsBackwardsCursor": null,
+                    }}));
+                    send(
+                        &json!({ "method": "thread/reverted", "params": { "threadId": state.thread } }),
+                    );
+                }
+            }
             "thread/compact/start" => {
                 record_launch("codex-compact", &[]);
                 send(&json!({ "id": id, "result": {} }));
@@ -864,7 +906,7 @@ fn codex() {
 
 fn codex_note(state: &CodexState, method: &str, mut params: Value) {
     params["threadId"] = json!(state.thread);
-    params["turnId"] = json!("turn-1");
+    params["turnId"] = json!(state.turn);
     send(&json!({ "method": method, "params": params }));
 }
 
@@ -872,7 +914,7 @@ fn codex_finish(state: &CodexState, status: &str) {
     let error = (status == "failed").then(|| json!({ "message": "fake failure" }));
     send(&json!({ "method": "turn/completed", "params": {
         "threadId": state.thread,
-        "turn": { "id": "turn-1", "items": [], "status": status, "error": error },
+        "turn": { "id": state.turn, "items": [], "status": status, "error": error },
     }}));
 }
 
@@ -965,7 +1007,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         let reply = codex_request(
             "item/fileChange/requestApproval",
             json!({
-                "itemId": "fc1", "threadId": state.thread, "turnId": "turn-1", "startedAtMs": 3,
+                "itemId": "fc1", "threadId": state.thread, "turnId": state.turn, "startedAtMs": 3,
             }),
             lines,
         );
@@ -1056,7 +1098,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         let reply = codex_request(
             "item/tool/requestUserInput",
             json!({
-                "threadId": state.thread, "turnId": "turn-1", "itemId": "ask1",
+                "threadId": state.thread, "turnId": state.turn, "itemId": "ask1",
                 "questions": [{
                     "id": "q1", "header": "Token", "question": "Paste it", "isOther": true,
                     "isSecret": true, "options": null,
@@ -1081,7 +1123,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         if has(prompt, "crash-in-approval") {
             send(
                 &json!({ "id": 901, "method": "item/commandExecution/requestApproval", "params": {
-                    "itemId": "cmd1", "threadId": state.thread, "turnId": "turn-1",
+                    "itemId": "cmd1", "threadId": state.thread, "turnId": state.turn,
                     "startedAtMs": 3, "command": "ls",
                 }}),
             );
@@ -1091,7 +1133,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         let reply = codex_request(
             "item/commandExecution/requestApproval",
             json!({
-                "itemId": "cmd1", "threadId": state.thread, "turnId": "turn-1",
+                "itemId": "cmd1", "threadId": state.thread, "turnId": state.turn,
                 "startedAtMs": 3, "command": "ls",
             }),
             lines,
@@ -1136,7 +1178,7 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
                 return;
             }
             if message["method"] == "turn/steer" {
-                send(&json!({ "id": message["id"], "result": { "turnId": "turn-1" } }));
+                send(&json!({ "id": message["id"], "result": { "turnId": state.turn } }));
                 answer = format!(
                     "steered: {}",
                     message["params"]["input"][0]["text"]
