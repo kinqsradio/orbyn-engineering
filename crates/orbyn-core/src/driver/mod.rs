@@ -411,7 +411,7 @@ pub trait EngineDriver: Send + Sync {
     }
 
     /// The vendor's own sign-in command, to name when a run fails for want of a login.
-    fn sign_in_command(&self) -> Option<&str> {
+    fn sign_in_command(&self) -> Option<String> {
         None
     }
 

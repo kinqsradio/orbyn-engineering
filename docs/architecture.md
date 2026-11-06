@@ -1392,6 +1392,13 @@ in version 1's shape (`agentInfo`, `agentCapabilities`), as some shipped agents 
 version 1; a reply in version 2's own shape (`info`) is refused with a message saying so,
 not misread.
 
+The handshake tells an agent Orbyn can show a terminal sign-in (`auth.terminal`). The first
+`terminal` method an agent names becomes its sign-in command: the launch command followed by
+the method's arguments. The provider card shows it to copy, and a run that fails for want of a
+login names it. Orbyn never runs it, never calls `authenticate` or `logout`, and offers no
+`env_var` method, since that means collecting a key. A method that sets variables, or a word
+a Windows or Unix shell would read differently, gives no command.
+
 Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
 - Claude starts at the workspace root and discovers `.claude/skills` and the

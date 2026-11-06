@@ -124,8 +124,8 @@ impl EngineDriver for CodexDriver {
         maintenance::plan_update(probe, &maintenance::CODEX).await
     }
 
-    fn sign_in_command(&self) -> Option<&str> {
-        Some("codex login")
+    fn sign_in_command(&self) -> Option<String> {
+        Some("codex login".into())
     }
 
     fn manual_hint(&self) -> Option<String> {

@@ -41,7 +41,8 @@ pub(super) fn capabilities(init: &Value) -> AcpSessionCapabilities {
 
 pub(super) fn initialize_params() -> Value {
     json!({"protocolVersion":1,"clientInfo":{"name":"orbyn","version":env!("CARGO_PKG_VERSION")},
-        "clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false}})
+        "clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false,
+            "auth":{"terminal":true}}})
 }
 
 /// Orbyn offers ACP 1, the only version it speaks. An agent answers with the version it
