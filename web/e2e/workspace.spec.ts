@@ -238,7 +238,7 @@ test("usage opens from the sidebar as a page", async ({ page }) => {
   await page.getByRole("link", { name: "Usage" }).click();
   const usage = page.getByRole("region", { name: "Usage" });
   await expect(usage.getByRole("heading", { name: "Daily processed tokens" })).toBeVisible();
-  await usage.getByRole("radio", { name: "Limits" }).click();
+  await usage.getByRole("tab", { name: "Limits" }).click();
   await expect(usage.getByText("No engine reports limits.")).toBeVisible();
   await page.keyboard.press("t");
   await expect(page).toHaveURL(/#\/usage/);

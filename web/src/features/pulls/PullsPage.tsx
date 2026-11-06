@@ -28,7 +28,7 @@ const STATES = [
   { value: "all", label: "All" },
 ];
 
-const CHECKS = { pass: "All passed", fail: "Failing", pending: "Running", none: "No checks" } as const;
+const CHECKS = { pass: "Passing", fail: "Failing", pending: "Running", none: "No checks" } as const;
 const REVIEWS: Record<string, string> = {
   approved: "Approved",
   changes_requested: "Changes requested",
@@ -139,28 +139,16 @@ export function PullsPage() {
   const count = (test: (pull: PullListEntry["pull"]) => boolean) => all.filter(({ pull }) => test(pull)).length;
   const quickFilters: { label: string; n: number; on: boolean; set(): void }[] = [
     {
-      label: "All",
-      n: all.length,
-      on: filters.draft === "all" && filters.review === "all" && filters.checks === "all",
-      set: () => setFilters({ ...filters, draft: "all", review: "all", checks: "all" }),
+      label: "Open",
+      n: count((pull) => pull.state === "open"),
+      on: filters.draft !== "only",
+      set: () => setFilters({ ...filters, draft: "all" }),
     },
     {
       label: "Drafts",
       n: count((pull) => pull.draft),
       on: filters.draft === "only",
-      set: () => setFilters({ ...filters, draft: filters.draft === "only" ? "all" : "only" }),
-    },
-    {
-      label: "Changes requested",
-      n: count((pull) => pull.review_state === "changes_requested"),
-      on: filters.review === "changes_requested",
-      set: () => setFilters({ ...filters, review: filters.review === "changes_requested" ? "all" : "changes_requested" }),
-    },
-    {
-      label: "Failing checks",
-      n: count((pull) => checksOf(pull.checks_state) === "fail"),
-      on: filters.checks === "failing",
-      set: () => setFilters({ ...filters, checks: filters.checks === "failing" ? "all" : "failing" }),
+      set: () => setFilters({ ...filters, draft: "only" }),
     },
   ];
 

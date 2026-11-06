@@ -157,7 +157,7 @@ test("usage reads the real report and limits", async ({ page }) => {
   await expect(usage.getByRole("radio", { name: "30 days" })).toBeChecked();
   await usage.getByRole("radio", { name: "7 days" }).click();
   await usage.getByRole("button", { name: "Refresh usage" }).click();
-  await usage.getByRole("radio", { name: "Limits" }).click();
+  await usage.getByRole("tab", { name: "Limits" }).click();
   await expect(usage.getByText(/reports limits|left|:/).first()).toBeVisible({ timeout: 15_000 });
 });
 

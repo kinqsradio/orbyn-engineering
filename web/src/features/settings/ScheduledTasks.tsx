@@ -14,6 +14,7 @@ import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Field, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { PageBar } from "../../ui/PageBar";
+import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 
 const listTasks = (signal?: AbortSignal) => request<ScheduledTask[]>("GET", "/api/tasks", undefined, signal);
@@ -419,7 +420,6 @@ function TasksView({ page }: { page: boolean }) {
   const [deliveries, setDeliveries] = useState<ScheduledTask | null>(null);
   const pushToast = useUi((state) => state.pushToast);
   const projects = useVisibleProjects();
-  const engines = useWorkspace((state) => state.engines.data);
   const route = useRoute();
   const linkedId = route.name === "settings" ? route.task : undefined;
   const [openedLink, setOpenedLink] = useState<string | undefined>(undefined);
@@ -473,8 +473,47 @@ function TasksView({ page }: { page: boolean }) {
           <ErrorState title="Couldn't load tasks" failure={tasks.error} onRetry={tasks.reload} />
         ) : tasks.data.length === 0 ? (
           <Empty title="No scheduled tasks" />
+        ) : !page ? (
+                <SettingGroup title="Tasks">
+                  {tasks.data.map((task) => (
+                    <SettingRow
+                      key={task.id}
+                      title={task.name}
+                      description={task.next_run_at ? `Next run ${new Date(task.next_run_at).toLocaleString()}` : task.last_status}
+                    >
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        aria-label={`Enable ${task.name}`}
+                        checked={task.enabled}
+                        onChange={(event) =>
+                          void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/enabled`, { enabled: event.target.checked }))
+                        }
+                      />
+                      <IconButton label={`Run ${task.name}`} onClick={() => void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/run`))}>
+                        <Play size={14} aria-hidden />
+                      </IconButton>
+                      {task.schedule.kind === "webhook" ? (
+                        <>
+                          <IconButton label={`Webhook address for ${task.name}`} onClick={() => setWebhook(task)}>
+                            <Webhook size={14} aria-hidden />
+                          </IconButton>
+                          <IconButton label={`Deliveries for ${task.name}`} onClick={() => setDeliveries(task)}>
+                            <ScrollText size={14} aria-hidden />
+                          </IconButton>
+                        </>
+                      ) : null}
+                      <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
+                        <Pencil size={14} aria-hidden />
+                      </IconButton>
+                      <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
+                        <Trash2 size={14} aria-hidden />
+                      </IconButton>
+                    </SettingRow>
+                  ))}
+                </SettingGroup>
         ) : (
-          <div className={page ? "task-table" : "task-table task-table-compact"} role="table" aria-label="Tasks">
+          <div className="task-table" role="table" aria-label="Tasks">
             <div className="task-row task-head" role="row">
               <span role="columnheader">Task</span>
               <span role="columnheader">When</span>
@@ -486,12 +525,11 @@ function TasksView({ page }: { page: boolean }) {
             </div>
             {tasks.data.map((task) => {
               const project = projects?.find((entry) => entry.id === task.project_id)?.name;
-              const engine = engines?.find((entry) => entry.id === task.engine)?.name ?? task.engine;
               return (
                 <div className="task-row" role="row" key={task.id} data-paused={task.enabled ? undefined : true}>
                   <span role="cell" className="task-name">
                     <b>{task.name}</b>
-                    <small>{[project, engine].filter(Boolean).join(" · ")}</small>
+                    <small>{project}</small>
                   </span>
                   <span role="cell" className="task-when">
                     {scheduleLabel(task.schedule)}

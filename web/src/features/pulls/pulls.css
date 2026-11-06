@@ -389,3 +389,8 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+.pull-actions select {
+  width: auto;
+  min-height: var(--button-h-sm);
+  font-size: var(--control-fs-sm);
+}

@@ -49,7 +49,7 @@ test("a model takes a price, follows another model and refreshes; keys move the 
   await page.keyboard.press("t");
   await expect(usage.getByRole("radio", { name: "Tokens" })).toBeChecked();
   await page.keyboard.press("l");
-  await expect(usage.getByRole("radio", { name: "Limits" })).toBeChecked();
+  await expect(usage.getByRole("tab", { name: "Limits" })).toHaveAttribute("aria-selected", "true");
   await expect(usage.getByRole("heading", { name: "Pooled" })).toBeVisible();
   await expect(usage.locator(".limit-reset").first()).toBeVisible();
   await expect(usage.locator(".usage-plan").first()).toBeVisible();

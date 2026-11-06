@@ -19,6 +19,9 @@ import { PullCode } from "./PullCode";
 import { PullConversation } from "./PullConversation";
 import { PullGuide } from "./PullGuide";
 import { pullsApi } from "../../api/pulls";
+import { checksOf } from "./pullModel";
+
+const CHECK_WORDS = { pass: "Passing", fail: "Failing", pending: "Running", none: "No checks" } as const;
 
 type Tab = "summary" | "guide" | "timeline" | "code";
 
@@ -203,14 +206,16 @@ function MergeDialog({
   detail,
   onClose,
   onMerged,
+  initialMethod,
 }: {
   projectId: string;
   detail: PullRequestDetail;
   onClose(): void;
   onMerged(): void;
+  initialMethod: string;
 }) {
   const { number } = detail.pull;
-  const [method, setMethod] = useState("squash");
+  const [method, setMethod] = useState(initialMethod);
   const [auto, setAuto] = useState(false);
   const [deleteBranch, setDeleteBranch] = useState(true);
   const [strip, setStrip] = useState(false);
@@ -357,6 +362,7 @@ export function PullDetail({
   const detail = useAsync(`pull:${projectId}:${number}`, (signal) => pullsApi.detail(projectId, number, signal));
   const [tab, setTab] = useState<Tab>("summary");
   const [merging, setMerging] = useState(false);
+  const [mergeMethod, setMergeMethod] = useState("squash");
   const [editing, setEditing] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const pushToast = useUi((state) => state.pushToast);
@@ -539,7 +545,7 @@ export function PullDetail({
     );
   const dialogs = (
     <>
-      {merging ? <MergeDialog projectId={projectId} detail={detail.data} onClose={() => setMerging(false)} onMerged={detail.reload} /> : null}
+      {merging ? <MergeDialog projectId={projectId} initialMethod={mergeMethod} detail={detail.data} onClose={() => setMerging(false)} onMerged={detail.reload} /> : null}
       {menu ? <Menu x={menu.x} y={menu.y} label="Pull request actions" items={items} onClose={() => setMenu(null)} /> : null}
     </>
   );
@@ -719,6 +725,10 @@ export function PullDetail({
                     {pull.head} → {pull.base}
                   </b>
                 </div>
+                <div className="pull-kv">
+                  <span>Checks</span>
+                  <b>{CHECK_WORDS[checksOf(pull.checks_state)]}</b>
+                </div>
                 {additions !== null ? (
                   <div className="pull-kv">
                     <span>Changes</span>
@@ -728,7 +738,18 @@ export function PullDetail({
                   </div>
                 ) : null}
               </div>
-              {inHeading ? null : <div className="pull-actions">{actionButtons}</div>}
+              {inHeading ? null : (
+                <div className="pull-actions">
+                  {open ? (
+                    <select aria-label="Merge method to start from" value={mergeMethod} onChange={(event) => setMergeMethod(event.target.value)}>
+                      <option value="squash">Squash and merge</option>
+                      <option value="merge">Create a merge commit</option>
+                      <option value="rebase">Rebase and merge</option>
+                    </select>
+                  ) : null}
+                  {actionButtons}
+                </div>
+              )}
               <Checks projectId={projectId} number={number} />
               {reviewers}
               {labels}

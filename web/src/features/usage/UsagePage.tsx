@@ -1,6 +1,6 @@
 import { ChevronDown, RefreshCw } from "lucide-react";
 import "./usage.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
 import type { EngineLimits, LimitsOverview, ModelUsage, UsageReport } from "../../api/types";
@@ -33,10 +33,9 @@ import {
 const PREFS_KEY = "orbyn.usage.v1";
 const CHART_COLORS = ["var(--color-text)", "var(--color-textSoft)", "var(--color-muted)", "var(--color-faint)"];
 
-const METRICS: { id: UsageMetric; label: string }[] = [
+const METRICS: { id: "cost" | "tokens"; label: string }[] = [
   { id: "cost", label: "Cost" },
   { id: "tokens", label: "Tokens" },
-  { id: "limits", label: "Limits" },
 ];
 
 function Segment<T extends string | number>({
@@ -272,18 +271,14 @@ function UsageView({
   return (
     <div className="usage-body">
       <section className="usage-tiles" aria-label="Totals">
-        {(metric === "cost"
-          ? [costTile, tokensTile]
-          : [tokensTile, costTile]
-        ).map((tile) => (
-          <Stat key={tile.label} {...tile} />
-        ))}
+        <Stat {...tokensTile} />
+        <Stat {...costTile} />
         <Stat label="Cache hits" value={cachedShare === null ? "—" : formatPercent(cachedShare)} />
-        <Stat label="Output" value={formatTokens(totals.output)} />
-        <Stat label="Cached input" value={formatTokens(totals.cached)} />
-        <Stat label="Uncached input" value={formatTokens(totals.input)} />
       </section>
-      <section className={chart ? "usage-cols" : undefined}>
+      <p className="usage-note usage-detail">
+        Output {formatTokens(totals.output)} · Cached input {formatTokens(totals.cached)} · Uncached input {formatTokens(totals.input)}
+      </p>
+      <section className="usage-cols">
         {chart ? (
           <div className="usage-plot">
             <h2>{metric === "cost" ? "Daily estimated cost" : "Daily processed tokens"}</h2>
@@ -559,6 +554,7 @@ export function UsagePage() {
   const [days, setDays] = useState<UsageDays>(saved?.days ?? 30);
   const [metric, setMetric] = useState<UsageMetric>(saved?.metric ?? "tokens");
   const [only, setOnly] = useState<string | null>(null);
+  const lastMetric = useRef<"cost" | "tokens">(saved?.metric && saved.metric !== "limits" ? saved.metric : "tokens");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [nonce, setNonce] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -571,7 +567,10 @@ export function UsagePage() {
     metric === "limits" ? api.limits(false, signal) : Promise.resolve(null),
   );
 
-  useEffect(() => writeJson(PREFS_KEY, { days, metric }), [days, metric]);
+  useEffect(() => {
+    if (metric !== "limits") lastMetric.current = metric;
+    writeJson(PREFS_KEY, { days, metric });
+  }, [days, metric]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -625,34 +624,47 @@ export function UsagePage() {
           Usage
         </h1>
       </PageBar>
-      <div className="usage-filters">
-        {metric === "limits" ? null : (
+      <div className="usage-tabs" role="tablist" aria-label="Usage view">
+        {(["usage", "limits"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={(metric === "limits") === (tab === "limits")}
+            onClick={() => setMetric(tab === "limits" ? "limits" : lastMetric.current)}
+          >
+            {tab === "limits" ? "Limits" : "Usage"}
+          </button>
+        ))}
+      </div>
+      {metric === "limits" ? null : (
+        <div className="usage-filters">
           <Segment
             label="Usage period"
             value={days}
             options={USAGE_PERIODS.map((period) => ({ value: period.days, label: period.label }))}
             onChange={setDays}
           />
-        )}
-        <button
-          type="button"
-          className="usage-picker"
-          aria-haspopup="menu"
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            setMenu({ x: rect.left, y: rect.bottom + 4 });
-          }}
-        >
-          {only ? nameOf(only) : "All providers"}
-          <ChevronDown size={14} aria-hidden />
-        </button>
-        <Segment
-          label="Usage metric"
-          value={metric}
-          options={METRICS.map((entry) => ({ value: entry.id, label: entry.label }))}
-          onChange={setMetric}
-        />
-      </div>
+          <button
+            type="button"
+            className="usage-picker"
+            aria-haspopup="menu"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setMenu({ x: rect.left, y: rect.bottom + 4 });
+            }}
+          >
+            {only ? nameOf(only) : "All providers"}
+            <ChevronDown size={14} aria-hidden />
+          </button>
+          <Segment
+            label="Usage metric"
+            value={metric}
+            options={METRICS.map((entry) => ({ value: entry.id, label: entry.label }))}
+            onChange={setMetric}
+          />
+        </div>
+      )}
       <div className="usage-scroll">
         {metric === "limits" ? (
           limits.status === "error" ? (
