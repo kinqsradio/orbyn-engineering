@@ -50,12 +50,14 @@ export function FloatingPanel({
   anchor,
   label,
   className,
+  container,
   onClose,
   children,
 }: {
   anchor: DOMRect;
   label: string;
   className: string;
+  container?: HTMLElement | null;
   onClose(): void;
   children: ReactNode;
 }) {
@@ -89,7 +91,7 @@ export function FloatingPanel({
     <div ref={ref} className={className} role="dialog" aria-label={label}>
       {children}
     </div>,
-    document.body,
+    container ?? document.body,
   );
 }
 
@@ -196,6 +198,7 @@ function ModelPopover({
   selected,
   extra,
   anchor,
+  portalContainer,
   disabledReason,
   onPick,
   onToggleExtra,
@@ -205,6 +208,7 @@ function ModelPopover({
   selected: Selection;
   extra: readonly Selection[];
   anchor: DOMRect;
+  portalContainer?: HTMLElement | null;
   disabledReason?(engine: EngineStatus): string | null;
   onPick(selection: Selection): void;
   /** Shift-click adds a model, for starting one thread on each. */
@@ -269,6 +273,7 @@ function ModelPopover({
   const onKey = (event: React.KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
     if (event.key === "Escape") {
+      event.preventDefault();
       event.stopPropagation();
       onClose();
     } else if (mod && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
@@ -318,8 +323,9 @@ function ModelPopover({
   const listed = tab === FAVORITES || searching || byEngine[tab] !== undefined;
 
   return (
-    <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" onClose={onClose}>
-      <div ref={rail} className="model-rail" role="toolbar" aria-label="Providers">
+    <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" container={portalContainer} onClose={onClose}>
+      <div ref={rail} className="model-rail" role="toolbar" aria-label="Providers"
+        onKeyDown={(event) => { if (event.key === "Escape") onKey(event); }}>
         {tabButton(FAVORITES, "Favorites", <Star size={20} fill="currentColor" aria-hidden />, false)}
         <hr />
         {engines.map((engine) => {
@@ -389,6 +395,7 @@ export function ModelPickerTrigger({
   extra = [],
   disabled,
   disabledReason,
+  triggerLabel,
   onPick,
   onToggleExtra,
 }: {
@@ -398,6 +405,7 @@ export function ModelPickerTrigger({
   extra?: readonly Selection[];
   disabled?: boolean;
   disabledReason?(engine: EngineStatus): string | null;
+  triggerLabel?: string;
   onPick(selection: Selection): void;
   onToggleExtra?(selection: Selection): void;
 }) {
@@ -410,7 +418,7 @@ export function ModelPickerTrigger({
     setAnchor(null);
     button.current?.focus();
   }, []);
-  const name = model ? shortModelName(model.label) : (selected.model ?? engine?.name ?? "No engine");
+  const name = triggerLabel ?? (model ? shortModelName(model.label) : (selected.model ?? engine?.name ?? "No engine"));
 
   useCommand("modelPicker.toggle", () => {
     if (button.current?.disabled || button.current?.closest("[data-side-chat]")) return false;
@@ -423,7 +431,7 @@ export function ModelPickerTrigger({
         ref={button}
         type="button"
         className="composer-control"
-        aria-label={model?.label ?? name}
+        aria-label={triggerLabel ?? model?.label ?? name}
         aria-haspopup="dialog"
         aria-expanded={anchor !== null}
         disabled={disabled}
@@ -441,6 +449,7 @@ export function ModelPickerTrigger({
           selected={{ engine: selected.engine, model: model?.id ?? selected.model }}
           extra={extra}
           anchor={anchor}
+          portalContainer={button.current?.closest("dialog")}
           disabledReason={disabledReason}
           onPick={onPick}
           onToggleExtra={onToggleExtra}

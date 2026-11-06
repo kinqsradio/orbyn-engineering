@@ -269,6 +269,16 @@ reported as `remembered`. A new thread takes the request's model, then the proje
 and effort and options carry only along with their model. A project's
 `default_permission_mode` also applies there.
 
+The new-thread draft resolves that physical project's effective model preferences
+before sending an implicit selection. A model picked in the draft wins over a
+late defaults response. A disabled or missing configured provider requires an
+explicit replacement; it never silently selects another provider. Draft effort
+and options remain attached to their project and model, without adding persisted
+effort or option defaults. Settings opens over the
+still-mounted draft, so every successful preference save bumps a session-only
+revision that makes the draft read its defaults again; an explicit draft choice
+stays.
+
 Admission refuses a value the model does not offer with `422 unsupported_option`, and
 stores nothing. A model the engine did not list may be custom, so only engine-wide
 options are checked for it. `PATCH` does not check, because a model and its effort
@@ -800,6 +810,14 @@ then environment, then the actual project file where supported, then default, an
 project. The catalog holds no secret: provider environments and tokens stay out under
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
+
+The project settings Model control writes `default_engine` and `default_model`
+together, fencing both preference revisions and the selected membership. Automatic
+sets an empty pair; Inherit removes the selected project overrides. A conflict
+retains the choice and requires an explicit reload before retrying. Reset all
+removes only the captured project overrides and leaves environment defaults alone.
+Its model picker stays in the owning settings dialog's top layer. Escape closes
+the picker and returns focus to its trigger before another Escape closes Settings.
 
 `POST /api/settings/project-scopes` is a full-app read of registered local checkout
 groups and a typed selection. It accepts the client's `repository`, `repository_path`
