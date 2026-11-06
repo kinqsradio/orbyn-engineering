@@ -31,6 +31,7 @@ test("script menus and execution follow project, environment and actual checkout
       return terminal ? (await service.api<{ text: string }>("GET", `${base}/terminals/${terminal.id}/scrollback`)).text : "";
     }).toContain("project-script-result");
     await expect(page.getByRole("tab", { name: "Project script", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".terminal-drawer-body .xterm-rows")).toContainText("project-script-result");
     await save(true, null);
     expect((await scripts()).scripts[0]?.name).toBe("Environment script");
     await save(false, []);

@@ -39,7 +39,18 @@ pub(crate) fn imported_name(hint: &str) -> Option<&str> {
 fn looks_like(extension: &str, bytes: &[u8]) -> bool {
     let at = |offset: usize, magic: &[u8]| bytes.get(offset..offset + magic.len()) == Some(magic);
     match extension {
-        "png" => at(0, b"\x89PNG\r\n\x1a\n"),
+        "png" => {
+            let mut reader = image::ImageReader::with_format(
+                std::io::Cursor::new(bytes),
+                image::ImageFormat::Png,
+            );
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(8192);
+            limits.max_image_height = Some(8192);
+            limits.max_alloc = Some(64 * 1024 * 1024);
+            reader.limits(limits);
+            reader.decode().is_ok()
+        }
         "jpg" | "jpeg" => at(0, &[0xff, 0xd8, 0xff]),
         "gif" => at(0, b"GIF87a") || at(0, b"GIF89a"),
         "webp" => at(0, b"RIFF") && at(8, b"WEBP"),
@@ -162,7 +173,7 @@ pub(crate) fn open(
 mod tests {
     use super::*;
 
-    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+    const PNG: &[u8] = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0d\x49\x44\x41\x54\x78\x9c\x63\x60\x68\xf8\xff\x1f\x00\x04\x82\x02\x7f\xe7\xd8\x5a\x6c\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
 
     struct Dir(PathBuf);
     impl Drop for Dir {
@@ -231,6 +242,25 @@ mod tests {
             !data.0.join(DIRECTORY).exists()
                 || std::fs::read_dir(data.0.join(DIRECTORY)).unwrap().count() == 0
         );
+    }
+
+    #[test]
+    fn a_png_must_fully_decode_within_the_dimension_budget_before_copying() {
+        let (data, outside) = (dir(), dir());
+        let source = outside.0.join("fragment.png");
+        for end in [8, 33, PNG.len() - 10] {
+            std::fs::write(&source, &PNG[..end]).unwrap();
+            assert!(import(&data.0, &source).is_err(), "truncated at {end}");
+        }
+        let mut wide = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(8193, 1, image::Rgba([0, 128, 255, 255]))
+            .write_to(&mut wide, image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(&source, wide.into_inner()).unwrap();
+        assert!(import(&data.0, &source).is_err());
+        assert!(!data.0.join(DIRECTORY).exists());
+        std::fs::write(&source, PNG).unwrap();
+        assert!(import(&data.0, &source).is_ok());
     }
 
     #[test]
