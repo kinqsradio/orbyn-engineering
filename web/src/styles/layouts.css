@@ -118,12 +118,42 @@
 :root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
   width: var(--drawer-w);
 }
-/* Reading sets the title as the column's own 26px heading. */
+/* Reading sets the title as the column's own 26px heading, on the column. */
 :root[data-workspace="reading"] .thread-main > .topbar {
+  box-sizing: border-box;
+  width: min(calc(var(--reading-w) + 32px), 100%);
   height: auto;
   min-height: var(--topbar-h);
+  margin: 0 auto;
+  padding-inline: 16px;
+}
+/* The meta line (branch, status) and the actions share the first row; the title sits alone
+   below it at the column's full width and wraps rather than truncating. */
+:root[data-workspace="reading"] .thread-main > .topbar {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 6px;
+}
+:root[data-workspace="reading"] .thread-main > .topbar .crumbs {
+  display: contents;
+}
+:root[data-workspace="reading"] .thread-main > .topbar > .icon-btn {
+  order: 0;
+}
+:root[data-workspace="reading"] .thread-main > .topbar .page-sub {
+  order: 1;
+  flex: 1 1 0;
+  min-width: 0;
+}
+:root[data-workspace="reading"] .thread-main > .topbar > :not(.crumbs):not(.icon-btn) {
+  order: 2;
 }
 :root[data-workspace="reading"] .thread-main > .topbar .crumbs h1 {
+  order: 3;
+  flex: 0 0 100%;
+  overflow: visible;
   font-size: var(--text-display);
   line-height: 1.2;
+  text-overflow: clip;
+  white-space: normal;
 }

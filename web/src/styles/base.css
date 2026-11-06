@@ -826,12 +826,18 @@ input[type="radio"] {
   flex-direction: column;
   gap: 8px;
 }
-/* A page with a composer keeps the stack clear of the send button: below the heading, top right. */
+/* A page with a composer keeps the stack off the composer and the details card: at the sheet's
+   left edge, above the composer's top edge (--toast-lift, measured by the shell). */
 .shell[data-page="thread"] .toasts,
 .shell[data-page="new"] .toasts,
 .shell[data-page="home"] .toasts {
-  top: calc(var(--titlebar-h) + var(--topbar-h) + 8px);
-  bottom: auto;
+  right: auto;
+  bottom: calc(var(--toast-lift, 0px) + 16px);
+  left: calc(var(--sidebar-w) + 16px);
+}
+.shell[data-nav="hidden"][data-page] .toasts,
+.shell[data-layout="narrow"][data-page] .toasts {
+  left: 16px;
 }
 .toast {
   display: flex;

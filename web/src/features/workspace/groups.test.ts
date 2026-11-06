@@ -286,6 +286,16 @@ describe("drawn order", () => {
     expect(collapsed).toContain("b1");
   });
 
+  it("leaves a closed Working shelf out of the folder view, and a bare project draws no threads", () => {
+    const busy = thread("busy", { position: 0 }, { ...running, project_id: "pa" });
+    const sections = arrangeThreads([busy, thread("a1", { position: 1 }, { project_id: "pa" })], now);
+    const folders = foldersOf([project("pa"), project("empty")], sections.active, null, "created_at", "updated_at");
+    const closed = { ...base, sections, ledger: false, folders, groupOpen: (id: string) => id !== "working" };
+    expect(drawnOrder(closed).map((t) => t.id)).toEqual(["a1"]);
+    expect(drawnOrder({ ...closed, groupOpen: open }).map((t) => t.id)).toEqual(["busy", "a1"]);
+    expect(folders.find((folder) => folder.project.id === "empty")?.threads).toEqual([]);
+  });
+
   it("includes an open Settled group only when it is shown", () => {
     const settled = thread("old", { settled_at: "2026-10-29T00:00:00Z" });
     const sections = arrangeThreads([thread("x"), settled], now);
