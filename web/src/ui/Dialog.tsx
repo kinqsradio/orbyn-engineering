@@ -24,6 +24,7 @@ export function Dialog({ title, onClose, busy, className, children, footer }: Di
     if (!dialog) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.showModal();
+    dialog.querySelector<HTMLElement>("[data-dialog-focus]")?.focus();
     return () => {
       if (dialog.open) dialog.close();
       const target =
@@ -64,6 +65,8 @@ interface ConfirmProps {
   confirmDisabled?: boolean;
   /** `onConfirm` decides when to close, as a multi-step confirm does. */
   keepOpen?: boolean;
+  /** Cancel takes focus, for a confirm that should not be one keystroke from done. */
+  cancelFocus?: boolean;
   onConfirm(): Promise<void>;
   onClose(): void;
 }
@@ -75,6 +78,7 @@ export function ConfirmDialog({
   tone = "primary",
   confirmDisabled,
   keepOpen,
+  cancelFocus,
   onConfirm,
   onClose,
 }: ConfirmProps) {
@@ -99,7 +103,7 @@ export function ConfirmDialog({
       busy={busy}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button onClick={onClose} disabled={busy} data-dialog-focus={cancelFocus || undefined}>
             Cancel
           </Button>
           <Button tone={tone} busy={busy} disabled={confirmDisabled} onClick={() => void confirm()}>

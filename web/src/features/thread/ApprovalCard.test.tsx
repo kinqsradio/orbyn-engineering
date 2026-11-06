@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
@@ -40,11 +40,20 @@ describe("ApprovalCard", () => {
     decide.mockRestore();
   });
 
-  it("offers always allow as its own button", async () => {
+  it("asks once before always allowing, and Cancel sends nothing", async () => {
     const decide = vi.spyOn(api, "decideApproval").mockResolvedValue({ ...approval, state: "allowed" });
     render(<ApprovalCard approval={approval} />);
-    await userEvent.click(screen.getByRole("button", { name: "Always allow" }));
-    expect(decide).toHaveBeenCalledExactlyOnceWith("a1", true, true);
+    const always = screen.getByRole("button", { name: "Always allow this command" });
+    expect(always).toHaveAccessibleDescription(/Allow cargo test for .* in every project from now on/);
+    await userEvent.click(always);
+    const dialog = await screen.findByRole("dialog", { name: "Always allow cargo test?" });
+    expect(dialog).toHaveTextContent("Applies in every project.");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(decide).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Always allow this command" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Always allow" }));
+    await waitFor(() => expect(decide).toHaveBeenCalledExactlyOnceWith("a1", true, true));
     decide.mockRestore();
   });
 

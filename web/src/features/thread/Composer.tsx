@@ -543,6 +543,9 @@ export function Composer({
     field.current?.focus();
   };
 
+  useOwnCommand(side, "composer.focus", () => {
+    field.current?.focus();
+  });
   useOwnCommand(side, "composer.stash", () => {
     stash();
   });

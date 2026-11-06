@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import type { Approval, JsonValue } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
+import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
 import { touchesOf } from "./approvalDetail";
 import { approvalFromContent } from "./projection";
@@ -19,10 +20,11 @@ const kindIcon = (kind: Approval["kind"]) =>
 
 const kindLabel: Partial<Record<Approval["kind"], string>> = { command: "command", file_change: "file change" };
 
-/** An approval as a work row: what it would do, then More, Deny, Always allow and Allow. */
+/** An approval as a work row: what it would do, then More, Always allow this command, Deny and Allow. */
 export function ApprovalCard({ approval, minimapKey }: { approval: Approval; minimapKey?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
   const putReceipt = useWorkspace((state) => state.putReceipt);
   const refreshApprovals = useWorkspace((state) => state.refreshApprovals);
@@ -30,6 +32,9 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
     .filter((touch) => touch.label !== "Address" && touch.label !== "Folder")
     .flatMap((touch) => touch.values);
   const targets = touches.length > 0 ? touches : [approval.summary];
+  const commandText = targets[0] ?? approval.summary;
+  const engine = useWorkspace((state) => state.threads[approval.thread_id]?.engine ?? "this engine");
+  const foreverText = `Allow ${commandText} for ${engine} in every project from now on`;
   const Icon = kindIcon(approval.kind);
 
   const decide = async (allow: boolean, remember: boolean) => {
@@ -109,7 +114,6 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
         <div className="approval-line">
           <button
             type="button"
-            className="approval-more"
             aria-haspopup="menu"
             disabled={busy}
             onClick={(event) => {
@@ -119,17 +123,35 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
           >
             More
           </button>
+          <button
+            type="button"
+            className="approval-always"
+            disabled={busy}
+            title={foreverText}
+            aria-description={foreverText}
+            onClick={() => setConfirming(true)}
+          >
+            Always allow this command
+          </button>
           <button type="button" disabled={busy} onClick={() => void decide(false, false)}>
             Deny
-          </button>
-          <button type="button" disabled={busy} onClick={() => void decide(true, true)}>
-            Always allow
           </button>
           <button type="button" className="approval-primary" disabled={busy} onClick={() => void decide(true, false)}>
             Allow
           </button>
         </div>
       )}
+      {confirming ? (
+        <ConfirmDialog
+          title={`Always allow ${commandText}?`}
+          confirmLabel="Always allow"
+          cancelFocus
+          onConfirm={() => decide(true, true)}
+          onClose={() => setConfirming(false)}
+        >
+          <p>Applies in every project.</p>
+        </ConfirmDialog>
+      ) : null}
       {more ? (
         <Menu
           {...more}

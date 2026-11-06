@@ -581,10 +581,7 @@
 }
 .trace-output {
   flex: none;
-  color: var(--color-textSoft);
-  text-decoration: underline;
-  text-decoration-color: var(--color-borderStrong);
-  text-underline-offset: 3px;
+  color: var(--color-faint);
 }
 .work-fold {
   display: flex;
@@ -752,8 +749,10 @@
 .approval-top {
   margin-bottom: 4px;
 }
-.approval[data-pending] .approval-more {
+.approval[data-pending] .approval-line .approval-always {
   margin-right: auto;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-borderStrong);
 }
 .approval[data-pending] .approval-line button {
   height: var(--button-h-sm);

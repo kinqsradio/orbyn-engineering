@@ -145,9 +145,11 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
     <section
       className="question-panel"
       aria-label="Question from the agent"
+      tabIndex={-1}
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
-        if (target.closest("input, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
+        if (target.closest("select, textarea, input:not([type=radio]):not([type=checkbox])")) return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
         if (/^[1-9]$/.test(event.key)) {
           const group = target.closest("fieldset") ?? event.currentTarget.querySelector("fieldset");
           const option = group?.querySelector<HTMLButtonElement>(`button[data-option="${event.key}"]`);
@@ -155,7 +157,15 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
             event.preventDefault();
             option.click();
           }
-        } else if (event.key === "Enter" && target.tagName !== "BUTTON" && complete && !busy && uploading === null) {
+          return;
+        }
+        // Enter submits only from the panel itself, its fieldset or a radio or checkbox option;
+        // on a link, button or select it keeps its own meaning.
+        const own =
+          target === event.currentTarget ||
+          target.tagName === "FIELDSET" ||
+          (target instanceof HTMLInputElement && (target.type === "radio" || target.type === "checkbox"));
+        if (event.key === "Enter" && own && complete && !busy && uploading === null) {
           event.preventDefault();
           void finish("answer", {
             answers,

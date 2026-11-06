@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
-import { useCommand } from "../../app/shortcuts";
+import { runHandlers, useCommand } from "../../app/shortcuts";
 import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
@@ -225,7 +225,7 @@ function PlanBanner({ thread }: { thread: Thread }) {
       <Button
         small
         tone="quiet"
-        onClick={() => document.querySelector<HTMLTextAreaElement>("form.composer textarea")?.focus()}
+        onClick={() => runHandlers("composer.focus")}
       >
         Suggest changes
       </Button>
