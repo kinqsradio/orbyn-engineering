@@ -530,6 +530,20 @@ or reviews; the viewer's own comments are not news. It ends at a merge or close,
 unlink, or when the thread settles or archives. A subagent thread cannot watch.
 Viewed-file marks are this service's own, per project, and never reach the forge.
 
+A review guide is an agent's stop-by-stop reading order for one pull request, also
+this service's own. Orbyn does not generate it itself: writing a guide starts an
+ordinary thread in the project root, linked to the pull request, whose first message
+asks the agent to read the change through the forge CLI, change nothing, and call
+`orbyn_pull_guide_write` with the head commit. The write goes through the approval
+gate like any other tool effect. Starting one is refused while the project's
+`review_guides_enabled` preference is off. The project's `review_guide_instructions`
+are appended to that message, and the thread runs on the asked model, else the
+project's `review_guide_model`, else the engine's default. A guide naming an older head commit than
+the pull request is shown as not covering the newer commits; nothing else checks it.
+Asking about one stop opens a new thread in the project root and hands the stop back
+as that thread's composer draft; nothing is sent until the person adds a question
+and sends it.
+
 A Jujutsu checkout that is not colocated with Git (a `.jj` folder with no `.git`
 beside it, found from the thread's folder upwards but never above the project
 folder, so a project inside a larger jj repository is not read as it) is a non-Git project, read

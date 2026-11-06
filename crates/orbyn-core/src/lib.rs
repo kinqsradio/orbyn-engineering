@@ -43,6 +43,7 @@ pub mod project_image_picker;
 pub mod project_scopes;
 mod project_setup;
 pub mod projects;
+pub mod pull_guides;
 pub mod questions;
 pub mod remote_images;
 pub mod renders;

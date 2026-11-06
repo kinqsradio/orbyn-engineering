@@ -1194,6 +1194,77 @@ pub struct WorkOnPull {
 }
 
 wire! {
+/// One file a guide stop covers, with what to look for in it.
+pub struct PullGuideFile {
+    pub path: String,
+    pub note: String,
+}
+}
+
+wire! {
+/// One stop of a review guide, in reading order.
+pub struct PullGuideStop {
+    pub title: String,
+    pub summary: String,
+    pub files: Vec<PullGuideFile>,
+    pub questions: Vec<String>,
+}
+}
+
+wire! {
+/// A review guide an agent wrote for one pull request. It is this service's own
+/// and never reaches the forge.
+pub struct PullGuide {
+    pub number: u64,
+    /// The commit the writing agent says it described.
+    pub head_sha: Option<String>,
+    pub stops: Vec<PullGuideStop>,
+    /// The thread that wrote it.
+    pub thread_id: Option<String>,
+    pub written_at: String,
+}
+}
+
+wire! {
+/// What the guide tab shows: whether guides are on for the project, and the
+/// stored guide if there is one.
+pub struct PullGuideState {
+    pub enabled: bool,
+    pub guide: Option<PullGuide>,
+}
+}
+
+wire! {
+/// Starts a thread that writes the guide. An absent model uses the project's
+/// review guide model, then the engine's default.
+pub struct GeneratePullGuide {
+    pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+}
+
+wire! {
+/// Opens a thread about one guide stop, counted from zero.
+pub struct AskAboutStop {
+    pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    pub stop: u32,
+}
+}
+
+wire! {
+/// The new thread and the composer draft that carries the stop.
+pub struct AskedAboutStop {
+    pub thread: Thread,
+    pub draft: String,
+}
+}
+
+wire! {
 pub struct ForgeStatus {
     /// `github`, `gitlab`, `azure`, `forgejo` or `bitbucket`.
     pub id: String,

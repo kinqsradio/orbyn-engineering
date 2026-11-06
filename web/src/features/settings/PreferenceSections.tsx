@@ -359,6 +359,27 @@ export function DiffsSection() {
               { key: "remove_agent_credits_on_merge", title: settingsLabel("diffs-remove-agent-credits-on-merge") },
             ],
           },
+          {
+            title: "Review guides",
+            rows: [
+              {
+                key: "review_guides_enabled",
+                title: settingsLabel("diffs-review-guides"),
+                description: "An agent writes a stop-by-stop guide for a pull request. The guide stays in Orbyn.",
+              },
+              {
+                key: "review_guide_instructions",
+                title: settingsLabel("diffs-guide-instructions"),
+                description: "Added to the request that asks the agent for a guide.",
+                multiline: true,
+              },
+              {
+                key: "review_guide_model",
+                title: settingsLabel("diffs-guide-model"),
+                description: "A model ID for the guide thread. Empty uses the engine's default.",
+              },
+            ],
+          },
         ]}
       />
     </>

@@ -1265,6 +1265,44 @@ kbd {
   min-height: 72px;
   font-size: var(--text-small);
 }
+.pull-guide {
+  display: flex;
+  flex-direction: column;
+}
+.pull-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+.pull-guide-stale {
+  margin-top: 8px;
+  color: var(--color-warn);
+}
+.pull-guide-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding-left: 20px;
+}
+.pull-guide-stop h3 {
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+.pull-guide-files,
+.pull-guide-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 16px;
+  list-style: disc;
+}
+.pull-guide-stop-actions {
+  margin-top: 6px;
+}
 .pull-checks li {
   display: flex;
   align-items: center;

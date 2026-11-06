@@ -107,6 +107,7 @@ const DEFINITIONS: &[Definition] = defs![
     "source_control_writing_style" Kind::Object, {}, true;
     "review_guides_enabled" Kind::Bool, false, true;
     "review_guide_instructions" Kind::Text, "", true;
+    "review_guide_model" Kind::Text, "", true;
     "pull_request_merge_method" Kind::OneOf(MERGE), "", true;
     "compact_idle_threads" Kind::Bool, false, false;
     "idle_compaction" Kind::OneOf(IDLE), "never", false;
