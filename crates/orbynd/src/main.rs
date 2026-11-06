@@ -264,6 +264,14 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/mcp-apps/{render_id}/message",
             post(mcp_apps::message),
         )
+        .route(
+            "/api/threads/{id}/mcp-apps/{render_id}/context",
+            axum::routing::put(mcp_apps::context),
+        )
+        .route(
+            "/api/threads/{id}/mcp-app-context",
+            axum::routing::delete(mcp_apps::clear_context),
+        )
         .route("/api/threads/{id}/renders", post(renders::publish))
         .route("/api/threads/{id}/renders/{render_id}", get(renders::page))
         .route(

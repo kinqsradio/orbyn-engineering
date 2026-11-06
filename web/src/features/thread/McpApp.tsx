@@ -46,6 +46,8 @@ export function McpApp({ item, threadId }: { item: ToolItem; threadId: string | 
   const [height, setHeight] = useState(DEFAULT_APP_HEIGHT);
   const [display, setDisplay] = useState<McpAppDisplayMode>("inline");
   const [ask, setAsk] = useState<Ask | null>(null);
+  /** The note this page left for the next turn, while it is unsent as far as this card knows. */
+  const [note, setNote] = useState<string | null>(null);
   const app = item.app;
   const host = useRef<AppHost | null>(null);
 
@@ -74,6 +76,8 @@ export function McpApp({ item, threadId }: { item: ToolItem; threadId: string | 
             confirm(`${app.server} wants to send a message`, "Send", text, () =>
               api.mcpAppMessage(threadId, app.renderId, text),
             ).then(() => undefined),
+          updateContext: (text) =>
+            api.mcpAppContext(threadId, app.renderId, text).then(() => setNote(text || null)),
           requestDisplayMode: (mode) => {
             setDisplay(mode);
             return mode;
@@ -148,6 +152,18 @@ export function McpApp({ item, threadId }: { item: ToolItem; threadId: string | 
           style={{ colorScheme: theme, width: "100%", height }}
         />
       </div>
+      {note ? (
+        <p className="mcp-app-note">
+          <span>Your next message carries a note from {app.server}.</span>
+          <Button
+            small
+            tone="quiet"
+            onClick={() => void api.clearMcpAppContext(threadId).then(() => setNote(null))}
+          >
+            Remove
+          </Button>
+        </p>
+      ) : null}
       {ask ? (
         <ConfirmDialog
           title={ask.title}

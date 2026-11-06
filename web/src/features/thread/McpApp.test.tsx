@@ -113,6 +113,15 @@ describe("MCP App bridge", () => {
     }
   });
 
+  it("keeps a note from text and structured content and refuses other blocks", async () => {
+    const updateContext = vi.fn().mockResolvedValue(undefined);
+    const note = (params: Record<string, unknown>) => answerApp({ id: 8, method: "ui/update-model-context", params }, host({ updateContext }));
+    expect(await note({ content: [{ type: "text", text: "picked blue" }], structuredContent: { color: "blue" } })).toEqual({ result: {} });
+    expect(await note({})).toEqual({ result: {} });
+    expect(updateContext.mock.calls).toEqual([['picked blue\n{"color":"blue"}'], [""]]);
+    expect(await note({ content: [{ type: "image", data: "x" }] })).toMatchObject({ error: { code: -32602 } });
+  });
+
   it("switches display mode only between the two it knows", async () => {
     const requestDisplayMode = vi.fn((mode: string) => mode as "inline" | "fullscreen");
     const ask = (mode: unknown) => answerApp({ id: 7, method: "ui/request-display-mode", params: { mode } }, host({ requestDisplayMode }));
@@ -245,6 +254,36 @@ describe("MCP App frame", () => {
     expect(screen.getByTitle("demo show_widget")).toBe(frame);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(container.querySelector("figure")?.getAttribute("data-display")).toBe("inline");
+  });
+
+  it("shows a sent note in the timeline", () => {
+    const log = applyEvents(THREAD, emptyLog, [wire(1, { type: "CUSTOM", name: "mcp_app.context", value: { server: "demo", text: "x" } })]);
+    expect(log.items[0]).toMatchObject({ kind: "notice", text: "Sent demo's app note with this message" });
+  });
+
+  it("says when the next message carries the page's note and can drop it", async () => {
+    const put = vi.spyOn(api, "mcpAppContext").mockResolvedValue(undefined);
+    const clear = vi.spyOn(api, "clearMcpAppContext").mockResolvedValue(undefined);
+    render(<McpApp item={appRow()} threadId={THREAD} />);
+    const own = (screen.getByTitle("demo show_widget") as HTMLIFrameElement).contentWindow as Window;
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { jsonrpc: "2.0", id: 11, method: "ui/update-model-context", params: { content: [{ type: "text", text: "blue" }] } },
+          source: own,
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(put).toHaveBeenCalledWith(THREAD, RENDER, "blue");
+    expect(screen.getByText("Your next message carries a note from demo.")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+      await Promise.resolve();
+    });
+    expect(clear).toHaveBeenCalledWith(THREAD);
+    expect(screen.queryByText("Your next message carries a note from demo.")).toBeNull();
   });
 
   it("shows nothing for an ordinary tool row", () => {

@@ -96,6 +96,8 @@ export interface AppHost {
   callTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
   /** Sends text as the person's next message, once a person has confirmed it. */
   sendMessage?(text: string): Promise<void>;
+  /** Keeps the page's latest note for the model's next turn. */
+  updateContext?(text: string): Promise<void>;
   /** Switches between the inline card and the full-screen view; answers the mode now shown. */
   requestDisplayMode?(mode: McpAppDisplayMode): McpAppDisplayMode;
 }
@@ -121,7 +123,20 @@ export function hostCapabilities(host: AppHost): Record<string, unknown> {
   return {
     ...(host.callTool ? { serverTools: {} } : {}),
     ...(host.sendMessage ? { message: { text: {} } } : {}),
+    ...(host.updateContext ? { updateModelContext: { text: {}, structuredContent: {} } } : {}),
   };
+}
+
+/** A note's text: its text blocks, then its structured content as JSON. Empty clears it. */
+export function noteText(params: Record<string, unknown>): string | null {
+  const blocks = params.content === undefined ? [] : Array.isArray(params.content) ? params.content : [params.content];
+  const texts = blocks.map((block) => (isRecord(block) && block.type === "text" && typeof block.text === "string" ? block.text : null));
+  if (texts.includes(null)) return null;
+  const parts = texts.filter((text): text is string => !!text && text.trim() !== "");
+  if (params.structuredContent !== undefined && params.structuredContent !== null) {
+    parts.push(JSON.stringify(params.structuredContent));
+  }
+  return parts.join("\n").trim();
 }
 
 /** A refusal or failure the page sees as a JSON-RPC error, with the reason. */
@@ -168,6 +183,12 @@ export async function answerApp(message: AppMessage, host: AppHost): Promise<App
       const text = messageText(message.params);
       if (text === null) return refuse(INVALID_PARAMS, "Only non-empty text from the user role can be sent.");
       return host.sendMessage(text).then(() => ({ result: {} }), failed);
+    }
+    case "ui/update-model-context": {
+      if (!host.updateContext) break;
+      const text = noteText(message.params);
+      if (text === null) return refuse(INVALID_PARAMS, "A note is text blocks and structured content only.");
+      return host.updateContext(text).then(() => ({ result: {} }), failed);
     }
     case "ui/request-display-mode": {
       if (!host.requestDisplayMode) break;

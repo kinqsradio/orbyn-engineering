@@ -192,6 +192,10 @@ export const api = {
       text,
       confirmed: true,
     }),
+  /** An MCP App's latest note for the model, sent with the thread's next turn. */
+  mcpAppContext: (threadId: string, renderId: string, text: string) =>
+    request<void>("PUT", `/api/threads/${q(threadId)}/mcp-apps/${q(renderId)}/context`, { text }),
+  clearMcpAppContext: (threadId: string) => request<void>("DELETE", `/api/threads/${q(threadId)}/mcp-app-context`),
   queue: (threadId: string, signal?: AbortSignal) =>
     request<QueuedMessage[]>("GET", `/api/threads/${q(threadId)}/queue`, undefined, signal),
   enqueue: (threadId: string, prompt: string, attachmentIds: string[]) =>

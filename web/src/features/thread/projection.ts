@@ -498,6 +498,12 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         if (typeof body?.toolCallId === "string" && (outcome === "success" || outcome === "failure")) {
           patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({ ...item, outcome }));
         }
+      } else if (event.name === "mcp_app.context") {
+        const body = record(event.value);
+        const server = typeof body?.server === "string" ? body.server : "An app";
+        const text = `Sent ${server}'s app note with this message`;
+        put(fold, { ...base, key: `notice:${wire.seq}`, kind: "notice", tone: "neutral", text, code: null });
+        log(text, null);
       } else if (event.name === "mcp_app") {
         const marker = readMcpAppMarker(event.value);
         if (marker) {

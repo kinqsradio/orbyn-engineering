@@ -58,3 +58,29 @@ pub async fn message(
             .mcp_app_message(&id, &render_id, &body.text, body.confirmed, LOCAL_USER)?;
     Ok(Json(queued))
 }
+
+#[derive(Deserialize)]
+pub struct Context {
+    text: String,
+}
+
+/// The page's latest note for the model, sent with the thread's next turn.
+pub async fn context(
+    State(state): State<AppState>,
+    Path((id, render_id)): Path<(String, String)>,
+    ApiJson(body): ApiJson<Context>,
+) -> ApiResult<impl IntoResponse> {
+    state
+        .core
+        .mcp_app_context(&id, &render_id, &body.text, LOCAL_USER)?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Drops the thread's unsent app note.
+pub async fn clear_context(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.clear_mcp_app_context(&id)?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}

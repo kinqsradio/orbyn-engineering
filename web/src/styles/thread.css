@@ -2998,6 +2998,19 @@ button.detail-row:hover {
 .mcp-app[data-display="fullscreen"] .render-frame {
   height: 100% !important;
 }
+.mcp-app-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 6px 4px 10px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.mcp-app-note span {
+  flex: 1;
+}
 .mcp-app-ask pre {
   max-height: 240px;
   overflow: auto;

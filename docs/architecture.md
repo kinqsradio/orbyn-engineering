@@ -1448,6 +1448,21 @@ result is audited and held to 256 KiB. A message is queued as the person's own n
 same frame so the page keeps its state; Escape or the card's control returns it inline, and
 the page hears the mode through `host-context-changed`.
 
+`ui/update-model-context` leaves a note for the model: its text blocks, then its structured
+content as JSON, at most 8000 characters. The web sends it with
+`PUT /api/threads/:id/mcp-apps/:render_id/context`; the latest note replaces any earlier
+one, empty text clears it, and a deny rule on `mcp_app:<server>:context` refuses it. Codex
+has no request for model context, so the service keeps the note for the thread's next
+ordinary turn (not `/compact` or `/goal`) and appends it to that turn's context in an
+`<mcp-app-context server="…">` block that says it is the app's text, not the person's; a
+closing tag inside the note is broken; Codex takes it with the rest of the run's context as
+the thread's `developerInstructions`. A `CUSTOM mcp_app.context` event recording the server
+and text opens that turn's timeline, ahead of anything the engine reports, and the timeline
+shows that the note was sent. The card
+says while a note is waiting and can drop it (`DELETE /api/threads/:id/mcp-app-context`). The
+note is held in memory, so a service restart forgets an unsent one. Setting a note needs no
+confirmation: it changes nothing until the person's next message, which shows it was sent.
+
 ## Approval lifecycle
 
 ```text
@@ -2350,6 +2365,8 @@ because browsers cannot set headers on them.
 | `POST /api/threads/:id/queue/resume` | Release a held queue |
 | `POST /api/threads/:id/mcp-apps/:render_id/tool-call` | An MCP App's confirmed tool call on its own server |
 | `POST /api/threads/:id/mcp-apps/:render_id/message` | An MCP App's confirmed message, queued |
+| `PUT /api/threads/:id/mcp-apps/:render_id/context` | An MCP App's note for the next turn |
+| `DELETE /api/threads/:id/mcp-app-context` | Drop the unsent app note |
 | `PATCH, DELETE /api/queue/:id` | Edit or remove a queued message |
 | `POST /api/queue/:id/send-now` | Send next, stopping a running turn for it |
 | `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported); a selection applies from the next turn |
