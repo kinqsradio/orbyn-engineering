@@ -244,17 +244,21 @@ async fn a_claude_instance_passes_its_auto_compact_window_to_each_run() {
     let thread = service.thread(&project, "claude-wide").await;
     service.admit(&thread, "hello").await;
     assert_eq!(service.finished(&thread).await, "completed");
-    assert_eq!(
-        settings(&launches(&launch)),
-        [json!({ "autoCompactWindow": 300000 })]
+    // The completed turn may already have started the next one's process, with the
+    // same settings.
+    let wide = json!({ "autoCompactWindow": 300000 });
+    let sent = settings(&launches(&launch));
+    assert!(
+        !sent.is_empty() && sent.iter().all(|one| *one == wide),
+        "{sent:?}"
     );
     let thread = service.thread(&project, "claude-plain").await;
     service.admit(&thread, "hello").await;
     assert_eq!(service.finished(&thread).await, "completed");
-    assert_eq!(
-        settings(&launches(&launch)).len(),
-        1,
-        "an instance without a window passes no settings"
+    let sent = settings(&launches(&launch));
+    assert!(
+        sent.iter().all(|one| *one == wide),
+        "an instance without a window passes no settings: {sent:?}"
     );
     // Out-of-range, malformed and non-Claude values never reach a launch.
     for bad in [

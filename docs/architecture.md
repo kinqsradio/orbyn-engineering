@@ -334,9 +334,37 @@ Mode is stated on every launch: Claude's `--permission-mode`, and Codex's approv
 and sandbox on `thread/start`, `thread/resume` and `turn/start`, because a saved session
 otherwise keeps the policy it last had.
 
+Each engine lists the modes it offers in `capabilities.permission_modes`, from
+`permission_modes::offered`: OpenCode offers Supervised, Auto-accept edits and Full access,
+since it has no classifier and its Auto would equal Supervised; fx would offer Supervised
+and Auto, Muse Supervised and Full access, and Pi Supervised, Auto-accept edits and Full
+access; every other engine offers all four. A thread keeps the mode it was given, but a
+run on an engine that does not offer it runs Supervised, never the nearest looser mode,
+and the composer shows and offers the same. Every run launches its own engine process
+with the mode stated, so a mode change takes effect from the next turn's process.
+
 Parsers are tested against recorded real frames in `driver/fixtures`, named by version.
 `cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
 with no prompt.
+
+## Warm next turn
+
+With `warm_next_turn` on (off by default, with no control of its own), a completed
+Claude turn starts the process the thread's next turn would launch, with the same
+arguments, folder, MCP URL, settings and mode, and leaves it idle on its input. No
+prompt is sent, but the CLI still does its launch work at once: Claude Code 2.1.318
+ran a `SessionStart` hook before any input, and it starts the person's MCP servers the
+same way, so a process that is never adopted runs them for nothing. That is why it
+is off unless asked for. The next run on that
+thread adopts it only when it is the run right after the one that started it, the
+process is still alive, and every launch input gives the same key, which also names
+the CLI's path, size and modified time and the `prefer_saved_login` state. Anything
+else ends it unused and launches as usual. Its MCP token carries the thread's write scope
+but no run until a run adopts it, and is revoked whenever the process goes unadopted:
+after five idle minutes, at shutdown, or when any engine update begins, since
+instances can share the binary and Windows cannot replace a running one. An update
+cannot begin while a warm process is being started, and none starts during an update. A run that adopts logs `CUSTOM
+engine.warm`. Other engines launch per run as before.
 
 ## Session recovery
 
