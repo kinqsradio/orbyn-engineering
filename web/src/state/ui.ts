@@ -5,6 +5,9 @@ import { readJson, writeJson } from "../lib/storage";
 import { useWorkspace } from "./workspace";
 
 export type ThemeChoice = "system" | "light" | "dark";
+/** How the workspace is arranged: by project, by what needs you, or as one reading column. */
+export type LayoutChoice = "console" | "ledger" | "reading";
+export const LAYOUT_CHOICES: readonly LayoutChoice[] = ["console", "ledger", "reading"];
 export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
 export type ContextTab = RightTab | "terminal";
 export interface ThreadNavigationOrigin { threadId: string; cwd: string }
@@ -55,6 +58,7 @@ interface Prefs {
   /** TeX in rendered Markdown, off unless asked for. */
   mathRendering: boolean;
   chatWidth: "comfortable" | "wide" | "full";
+  workspaceLayout: LayoutChoice;
   /** Wraps long lines in code and diffs. */
   wordWrap: boolean;
   timestampFormat: "locale" | "12-hour" | "24-hour";
@@ -189,6 +193,7 @@ const defaults: Prefs = {
   preferredEditor: null,
   mathRendering: false,
   chatWidth: "comfortable",
+  workspaceLayout: "console",
   wordWrap: false,
   timestampFormat: "locale",
   sendShortcut: "enter",
@@ -355,6 +360,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   preferredEditor: state.preferredEditor,
   mathRendering: state.mathRendering,
   chatWidth: state.chatWidth,
+  workspaceLayout: state.workspaceLayout,
   wordWrap: state.wordWrap,
   timestampFormat: state.timestampFormat,
   sendShortcut: state.sendShortcut,
@@ -413,7 +419,8 @@ function savedPrefs(): Partial<Prefs> {
       ([, mode]) => mode === "repository" || mode === "repository_path" || mode === "separate",
     ),
   );
-  return { ...saved, panelTab, layouts: saved.layouts ?? {}, projectGrouping, projectGroupingOverrides };
+  const workspaceLayout = LAYOUT_CHOICES.includes(saved.workspaceLayout as LayoutChoice) ? saved.workspaceLayout : defaults.workspaceLayout;
+  return { ...saved, panelTab, layouts: saved.layouts ?? {}, projectGrouping, projectGroupingOverrides, workspaceLayout };
 }
 
 export const useUi = create<UiState>((set, get) => {
@@ -658,7 +665,8 @@ export function applyTheme(choice: ThemeChoice): void {
   const scheme = resolveTheme(choice);
   const root = document.documentElement;
   root.dataset.theme = scheme;
-  const { lightPreset, darkPreset, customColors, typography, contrast, fontSmoothing } = useUi.getState();
+  const { lightPreset, darkPreset, customColors, typography, contrast, fontSmoothing, workspaceLayout } = useUi.getState();
+  root.dataset.workspace = LAYOUT_CHOICES.includes(workspaceLayout) ? workspaceLayout : "console";
   const preset = presetById(scheme === "dark" ? darkPreset : lightPreset);
   for (const [token] of THEME_TOKENS) {
     const value = customColors[token] ?? preset?.colors[token];
