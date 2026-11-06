@@ -972,11 +972,14 @@ details[open] > summary > .chev {
 .update-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
 }
 .update-group h3 {
-  color: var(--color-muted);
+  color: var(--color-faint);
   font-size: var(--text-meta);
   font-weight: 500;
 }
@@ -1006,6 +1009,9 @@ details[open] > summary > .chev {
   flex-direction: column;
   gap: 4px;
   margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
   font-size: var(--text-small);
 }
 .update-steps li {
@@ -1183,20 +1189,23 @@ li[data-file-over] .thread-row {
   align-items: center;
   gap: 10px;
   min-width: 200px;
-  padding: 14px 20px;
+  padding: 20px 22px;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-raised);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
   color: var(--color-text);
-  box-shadow: 0 10px 30px var(--color-shadow);
-  font-weight: 600;
+  box-shadow:
+    0 16px 48px var(--color-shadow),
+    0 0 0 1px var(--color-borderStrong);
+  font-size: 16px;
+  font-weight: 500;
 }
 .quit-progress {
   width: 100%;
   height: 3px;
   border-radius: var(--radius-xs);
-  background: var(--color-primary);
+  background: var(--color-danger);
   transform-origin: left;
   animation: quit-hold linear forwards;
 }
