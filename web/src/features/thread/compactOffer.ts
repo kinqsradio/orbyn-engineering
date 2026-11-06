@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../api/types";
-import type { ThreadItem } from "./projection";
+import type { ThreadItem } from "../../state/thread/projection";
 
 /** Anthropic's documented default: a prompt cache stays warm five minutes after its last use. */
 export const PROMPT_CACHE_MS = 5 * 60 * 1000;

@@ -1,13 +1,13 @@
 import { ArrowDown } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useThreadLogs, type LocalPrompt } from "./threadLogs";
+import { useThreadLogs, type LocalPrompt } from "../../state/thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { TimelineRow, TimelineThread } from "./items";
 import { Minimap } from "./Minimap";
-import type { MessageItem, ThreadItem } from "./projection";
+import type { MessageItem, ThreadItem } from "../../state/thread/projection";
 import { arrangeTimeline, entryForMessage, entryIndexOf, firstUnread, runningTools } from "./timeline";
 
 const NEAR_BOTTOM = 80;

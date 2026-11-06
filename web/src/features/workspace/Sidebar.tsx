@@ -57,7 +57,7 @@ import {
   type ProjectFolder,
   type SidebarSection,
   type ThreadSections,
-} from "./groups";
+} from "../../state/threads/groups";
 import { trackPress } from "./pressGesture";
 import { ProjectFilter } from "./ProjectFilter";
 import {
@@ -69,10 +69,10 @@ import {
   unpinThreads,
   unsettleThreads,
   wakeThreads,
-} from "./threadActions";
+} from "../../state/threads/threadActions";
 import { bulkMenuItems, CustomSnoozeDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
 import { ThreadRow, type RowActions } from "./ThreadRow";
-import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
+import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "../../state/threads/threadUndo";
 import { ProviderUpdatePill, UpdatePill } from "./Updates";
 
 const SETTLED_PAGE = 10;

@@ -1,4 +1,4 @@
-import type { EngineStatus } from "../../api/types";
+import type { EngineStatus } from "../api/types";
 
 /** Managed engines first, then in the service's order. */
 const byManaged = (engines: readonly EngineStatus[]) => [

@@ -6,7 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
-import { launchableEditors, primaryEditor } from "./editorPreferences";
+import { launchableEditors, primaryEditor } from "../../lib/editorPreferences";
 
 /** Opens the thread's checkout, or a file at a line, in a detected editor. */
 export function OpenInEditor({ threadId }: { threadId: string }) {

@@ -16,8 +16,8 @@ import type { BrowserProfile, LocalServer, PickedElement, PreviewTab } from "../
 import { useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
-import { useComposerChips } from "../thread/composerChipStore";
-import { chipId } from "../thread/composerContext";
+import { useComposerChips } from "../../state/composer/composerChipStore";
+import { chipId } from "../../state/composer/composerContext";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { SiteIcon } from "./SiteIcon";

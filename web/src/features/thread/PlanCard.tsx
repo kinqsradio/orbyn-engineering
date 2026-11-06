@@ -7,7 +7,7 @@ import { Dialog } from "../../ui/Dialog";
 import { Button, IconButton, Pill } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { TimelineThread } from "./items";
-import { Markdown } from "./Markdown";
+import { Markdown } from "../../ui/markdown/Markdown";
 import { planFilename, planTitle, stripPlanTitle } from "./proposedPlan";
 
 const COLLAPSE_CHARS = 900;

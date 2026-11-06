@@ -1,5 +1,5 @@
 import { serviceUrl } from "../../api/origin";
-import { chooseDraftEngine } from "../onboarding/draftEngine";
+import { chooseDraftEngine } from "../../lib/draftEngine";
 import { Pencil, Play, Plus, ScrollText, Trash2, Webhook, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { request } from "../../api/client";

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { EditorInfo } from "../../api/types";
+import type { EditorInfo } from "../api/types";
 import { launchableEditors, primaryEditor } from "./editorPreferences";
 
 const editor = (id: string, name: string, file_manager = false): EditorInfo => ({

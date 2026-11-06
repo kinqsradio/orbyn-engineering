@@ -43,7 +43,7 @@ import {
   unpinThreads,
   unsettleThreads,
   wakeThreads,
-} from "./threadActions";
+} from "../../state/threads/threadActions";
 
 const icon = (Glyph: typeof Pin) => <Glyph size={14} aria-hidden />;
 

@@ -1,9 +1,9 @@
 import { ArrowUp, Folder, GitBranch } from "lucide-react";
 import { useState } from "react";
-import { api } from "../../api/client";
-import { useAsync } from "../../lib/useAsync";
-import { Button } from "../../ui/controls";
-import { Empty, ErrorState, Loading } from "../../ui/states";
+import { api } from "../api/client";
+import { useAsync } from "../lib/useAsync";
+import { Button } from "./controls";
+import { Empty, ErrorState, Loading } from "./states";
 
 export function FolderBrowser({
   actionLabel,

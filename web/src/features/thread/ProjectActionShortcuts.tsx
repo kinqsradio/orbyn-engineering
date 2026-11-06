@@ -6,7 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { parseRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { actionCommand, actionIdFromCommand } from "../../lib/actionCommand";
-import { runProjectAction } from "./runProjectAction";
+import { runProjectAction } from "../../lib/projectActions/runProjectAction";
 
 function useActionRunner(threadId: string) {
   const pending = useRef(new Set<string>());

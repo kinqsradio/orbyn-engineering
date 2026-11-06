@@ -1,5 +1,5 @@
 import { clockTime, fullTime } from "../../lib/format";
-import { useThreadLogs } from "../thread/threadLogs";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { Empty } from "../../ui/states";
 
 export function ActivityPanel({ threadId }: { threadId: string }) {

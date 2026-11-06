@@ -8,9 +8,9 @@ import {
   Unplug,
   type LucideIcon,
 } from "lucide-react";
-import type { RunState, Thread } from "../../api/types";
-import { runStateLabels } from "../../lib/format";
-import { Pill, type PillTone } from "../../ui/controls";
+import type { RunState, Thread } from "../api/types";
+import { runStateLabels } from "../lib/format";
+import { Pill, type PillTone } from "./controls";
 
 const presentation: Record<RunState, { icon: LucideIcon; tone: PillTone; spin?: boolean }> = {
   admitted: { icon: CircleDashed, tone: "neutral" },

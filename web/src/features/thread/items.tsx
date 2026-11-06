@@ -32,11 +32,11 @@ import { useUi } from "../../state/ui";
 import { Button, Pill } from "../../ui/controls";
 import { outputSpans } from "./ansi";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
-import { CodeBlock } from "./CodeBlock";
+import { CodeBlock } from "../../ui/markdown/CodeBlock";
 import { HtmlRender } from "./HtmlRender";
 import { McpApp } from "./McpApp";
 import { SurfacedWorkflows, WorkflowCards } from "./WorkflowControls";
-import { Markdown } from "./Markdown";
+import { Markdown } from "../../ui/markdown/Markdown";
 import { PlanCard } from "./PlanCard";
 import { proposedPlanIn, textAroundPlan } from "./proposedPlan";
 import { SentFiles } from "./SentFiles";
@@ -58,7 +58,7 @@ import type {
   PlanItem,
   ReasoningItem,
   ToolItem,
-} from "./projection";
+} from "../../state/thread/projection";
 
 /** Which thread the timeline below it belongs to. */
 export const TimelineThread = createContext<string | null>(null);

@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
-import { useThreadLogs } from "./features/thread/threadLogs";
+import { useThreadLogs } from "./state/thread/threadLogs";
 import { useUi } from "./state/ui";
 import { useWorkspace } from "./state/workspace";
 

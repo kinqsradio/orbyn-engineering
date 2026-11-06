@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { applyEvents, emptyLog } from "./projection";
+import { applyEvents, emptyLog } from "../../state/thread/projection";
 import type { AgUiEvent, WireThreadEvent } from "../../api/types";
 import { summarizeWork } from "./toolTrace";
 

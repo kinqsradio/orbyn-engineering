@@ -9,7 +9,7 @@ import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { TerminalPanel } from "./TerminalPanel";
 import type { ProjectScript } from "../../generated/ProjectScript";
-import { runProjectAction } from "../thread/runProjectAction";
+import { runProjectAction } from "../../lib/projectActions/runProjectAction";
 import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 const MAIN = "main";

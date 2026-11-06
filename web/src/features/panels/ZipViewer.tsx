@@ -5,7 +5,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
-import { BytesFallback, rawUrl } from "./FileMedia";
+import { BytesFallback, rawUrl } from "../../ui/FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
 import {
   ZipError,

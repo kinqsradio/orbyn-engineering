@@ -3,16 +3,16 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
-import { useThreadStream } from "../thread/threadLogs";
+import { useThreadStream } from "../../state/thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Empty } from "../../ui/states";
-import { Composer } from "../thread/Composer";
-import { ThreadScope } from "../thread/MessageActions";
-import { Transcript } from "../thread/Transcript";
-import { closeSideChat, openSideChat } from "./sideChat";
+import { Composer } from "../thread/public";
+import { ThreadScope } from "../thread/public";
+import { Transcript } from "../thread/public";
+import { closeSideChat, openSideChat } from "../../state/sideChat";
 
 function SideChat({ side, parent }: { side: Thread; parent: Thread }) {
   useThreadStream(side.id);

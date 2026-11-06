@@ -8,7 +8,7 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
-import { Markdown } from "../thread/Markdown";
+import { Markdown } from "../../ui/markdown/Markdown";
 import { pullsApi } from "../../api/pulls";
 
 /** The guide names a commit, and the pull request has moved past it. */

@@ -4,8 +4,8 @@ import { ApiFailure, request } from "../../api/client";
 import type { PullRequest } from "../../api/types";
 import { threads } from "../../../mock/fixtures";
 import { useWorkspace } from "../../state/workspace";
-import { pullChecks, pullPreviewPlacement, pullReview, pullState } from "../pulls/PullLinkPreview";
-import { pullNumberOf, pullRepositoryLabel, samePullRequest } from "../pulls/pullLink";
+import { pullChecks, pullPreviewPlacement, pullReview, pullState } from "../pullLink/PullLinkPreview";
+import { pullNumberOf, pullRepositoryLabel, samePullRequest } from "../pullLink/pullLink";
 import { Markdown } from "./Markdown";
 import { previewProjectId } from "./MarkdownLink";
 

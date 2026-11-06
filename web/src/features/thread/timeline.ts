@@ -1,4 +1,4 @@
-import type { ReasoningItem, RunSpan, ThreadItem, ToolItem } from "./projection";
+import type { ReasoningItem, RunSpan, ThreadItem, ToolItem } from "../../state/thread/projection";
 import { summarizeWork, workDuration } from "./toolTrace";
 
 export type WorkItem = ReasoningItem | ToolItem;

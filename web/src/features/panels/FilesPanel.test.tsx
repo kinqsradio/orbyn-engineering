@@ -6,7 +6,7 @@ import { useUi } from "../../state/ui";
 import { buildZipArchive } from "./zipArchive.test-support";
 import { formatBytes } from "./zipArchive";
 import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
-import { useComposerChips } from "../thread/composerChipStore";
+import { useComposerChips } from "../../state/composer/composerChipStore";
 import { FileComments } from "./FileComments";
 import { useWorkspace } from "../../state/workspace";
 

@@ -5,7 +5,7 @@ import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { FolderBrowser } from "../onboarding/FolderBrowser";
+import { FolderBrowser } from "../../ui/FolderBrowser";
 import { Advanced } from "./PreferenceRows";
 
 /** A way back when skills are unavailable, and the choice of a library of your own. */

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { ToolItem } from "./projection";
+import type { ToolItem } from "../../state/thread/projection";
 import { summarizeWork } from "./toolTrace";
 import { arrangeTimeline } from "./timeline";
 

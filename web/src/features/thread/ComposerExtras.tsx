@@ -1,12 +1,12 @@
 import { TriangleAlert, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { offerCompact } from "./compactOffer";
-import type { ThreadItem } from "./projection";
+import type { ThreadItem } from "../../state/thread/projection";
 import { api } from "../../api/client";
 import type { EngineLimits, EngineStatus, JsonValue } from "../../api/types";
 import { relativeTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { useThreadLogs } from "./threadLogs";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { useWorkspace } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
 import type { StashedPrompt } from "../../state/ui";

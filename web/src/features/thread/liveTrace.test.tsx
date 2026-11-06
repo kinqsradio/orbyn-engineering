@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
 import { TimelineRow } from "./items";
-import type { ToolItem } from "./projection";
+import type { ToolItem } from "../../state/thread/projection";
 import { arrangeTimeline } from "./timeline";
 
 const calls: ToolItem[] = Array.from({ length: 44 }, (_, n) => ({ kind: "tool", key: `tool:${n}`, callId: `${n}`, seq: n,

@@ -11,7 +11,7 @@ vi.mock("./FilesPanel", () => ({ FilesPanel: () => <div>Files content</div> }));
 vi.mock("./ActivityPanel", () => ({ ActivityPanel: () => null }));
 vi.mock("./LinkedPulls", () => ({ LinkedPulls: () => <div>Linked pulls content</div> }));
 vi.mock("./SideChatPane", () => ({ SideChatPane: () => null }));
-vi.mock("./sideChat", () => ({ openSideChat: vi.fn(), closeSideChat: vi.fn() }));
+vi.mock("../../state/sideChat", () => ({ openSideChat: vi.fn(), closeSideChat: vi.fn() }));
 
 const linked = vi.fn(async () => [] as { number: number }[]);
 vi.mock("../../api/pulls", () => ({ pullsApi: { linked: () => linked() } }));

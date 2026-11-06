@@ -4,9 +4,9 @@ import type { ApiFailure } from "../../api/client";
 import { followThread, type StreamStatus } from "../../api/sse";
 import type { WireThreadEvent } from "../../api/types";
 import { applyEvents, emptyLog, type ThreadLog } from "./projection";
-import { useWorkspace } from "../../state/workspace";
-import { useUi } from "../../state/ui";
-import { permissionToasts } from "../../state/healthToasts";
+import { useWorkspace } from "../workspace";
+import { useUi } from "../ui";
+import { permissionToasts } from "../healthToasts";
 
 export interface LocalPrompt {
   runId: string;

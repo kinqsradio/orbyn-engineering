@@ -1,8 +1,8 @@
-import { serviceUrl } from "../../api/origin";
+import { serviceUrl } from "../api/origin";
 import { useEffect, useMemo, useState } from "react";
-import { readToken } from "../../api/token";
-import { toFailure } from "../../lib/useAsync";
-import { Button } from "../../ui/controls";
+import { readToken } from "../api/token";
+import { toFailure } from "../lib/useAsync";
+import { Button } from "./controls";
 
 export type MediaKind = "image" | "video" | "audio" | "pdf" | "font";
 

@@ -1,7 +1,7 @@
 import { request } from "../../api/client";
 import type { PreviewTab } from "../../api/types";
 import type { ProjectScript } from "../../generated/ProjectScript";
-import { toFailure } from "../../lib/useAsync";
+import { toFailure } from "../useAsync";
 import { useUi } from "../../state/ui";
 import { parseRoute } from "../../state/route";
 

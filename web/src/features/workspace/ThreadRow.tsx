@@ -7,9 +7,9 @@ import { useNow } from "../../lib/useNow";
 import { routeHref } from "../../state/route";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { EngineGlyph, ProjectBadge } from "../../ui/badges";
-import type { DropVerb, SidebarSection } from "./groups";
-import { threadRunState } from "./RunState";
-import { renameThread } from "./threadActions";
+import type { DropVerb, SidebarSection } from "../../state/threads/groups";
+import { threadRunState } from "../../ui/RunState";
+import { renameThread } from "../../state/threads/threadActions";
 
 const DONE_WINDOW_MS = 5 * 60_000;
 const HOVER_DELAY_MS = 150;
