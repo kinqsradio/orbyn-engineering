@@ -218,7 +218,7 @@ export function SurfacePane({
           />
         ) : null}
         <div className="tabs" role="tablist" aria-label="Context">
-          {RIGHT_TABS.filter(({ id }) => surfaces.includes(id)).map(({ id, label }) => (
+          {RIGHT_TABS.filter(({ id }) => surfaces.includes(id)).map(({ id, label, icon: TabIcon }) => (
             <span key={id} className="surface-tab" data-selected={tab === id || undefined}>
               <button
                 type="button"
@@ -230,6 +230,7 @@ export function SurfacePane({
                   if (tab !== id) toggle(id);
                 }}
               >
+                <TabIcon size={14} aria-hidden />
                 {label}
               </button>
               <button type="button" aria-label={`Close ${label}`} className="surface-close" onClick={() => (id === "side" ? closeSideChat() : closeSurface(id))}>

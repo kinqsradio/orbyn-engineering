@@ -36,7 +36,7 @@ export function BrowserRecording({ tab, endpoint, actions, refresh }: {
           onChange={(event) => setShowMousePresses(event.target.checked)} /> Show clicks</label>
         <label title="Navigation keys only, on focused buttons and links."><input type="checkbox" checked={showKeyPresses} disabled={locked}
           onChange={(event) => setShowKeyPresses(event.target.checked)} /> Show navigation keys</label></> : null}
-        {active ? <span role="status">Recording…</span> : null}
+        {active ? <span role="status"><i className="rec-dot" aria-hidden />Recording…</span> : null}
       </div>
       {state.result ? <div className="browser-recording-result" role="status">
         <span>Saved {state.result.frames} {state.result.frames === 1 ? "frame" : "frames"}.</span>
