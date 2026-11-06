@@ -123,6 +123,25 @@ describe("composer context", () => {
     });
   });
 
+  it("names the marked command and its exit code, and keeps them through a paste", () => {
+    const marked = chip({ kind: "terminal", command: "cargo test", exitCode: 101 });
+    expect(chipLabel(marked)).toBe("Terminal selection lines 2–3 · exit 101");
+    expect(chipPrompt(marked)).toBe("Terminal selection lines 2–3\nCommand: `cargo test` (exit code 101)\n```\ncargo test\nok\n```");
+    expect(chipPrompt(chip({ kind: "terminal", command: "sleep 9", exitCode: null }))).toContain("Command: `sleep 9` (still running)\n");
+    expect(chipPrompt(chip({ kind: "terminal", exitCode: 0 }))).toContain("lines 2–3\nExit code 0\n```");
+    expect(chipPrompt(chip({ kind: "terminal", command: "echo `a`" }))).toContain("Command: `` echo `a` ``\n```");
+    expect(chipPrompt(chip({ kind: "terminal", command: "for x in a\ndo echo $x; done", exitCode: 0 }))).toContain(
+      "Command:\n```sh\nfor x in a\ndo echo $x; done\n```\n(exit code 0)\n```",
+    );
+    const payload = chipsClipboard([marked]);
+    expect(chipsFromClipboard({ json: payload?.json })?.[0]).toMatchObject({ command: "cargo test", exitCode: 101 });
+    // A malformed code or overlong command is dropped, not the chip.
+    const kept = asChip({ kind: "terminal", output: "ok", command: "x".repeat(4097), exitCode: 1.5 });
+    expect(kept).toMatchObject({ kind: "terminal", output: "ok" });
+    expect(kept).not.toHaveProperty("command");
+    expect(kept).not.toHaveProperty("exitCode");
+  });
+
   it("captures a terminal selection as plain text with its buffer rows", () => {
     expect(terminalSelection("\r\n  hello\r\n世界\r\n", { start: { y: 1 }, end: { y: 2 } })).toEqual({
       output: "  hello\n世界",

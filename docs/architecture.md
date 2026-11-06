@@ -198,6 +198,10 @@ Context can sit above the draft as a chip: a cited reply, a terminal selection, 
 review comment on a diff line or range, a picked page element, or the open file at
 its revealed line. A chip is not engine protocol; when the message is sent, each
 chip becomes a readable block at the top of the prompt and the typed draft follows.
+A terminal selection inside one command's output also carries that command line and
+exit code when the shell marks its commands with OSC 133 or 633 shell-integration
+sequences. Orbyn installs no shell integration, so a shell that emits no marks gives
+the selection alone.
 Copying one chip, or all of them, writes Orbyn's JSON inside an HTML form plus
 plain prompt blocks, so a paste into a composer restores the chips and refetches a
 file whose text was not carried. Ordinary text, broken JSON and half-known chips never become chips.
