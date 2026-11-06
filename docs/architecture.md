@@ -481,6 +481,16 @@ files, revoked project trust and an active run refuse the action after generatio
 existing phase receipts still describe any earlier completed effects. There is no
 automatic rollback of user work.
 
+Generation never blocks the action. When it fails for any reason about the change,
+the model or its reply (too large, unsupported text, a symlinked reference, a
+timeout, no model, an unparsable reply), each field still blank falls back: the
+thread title for a commit message or pull request title, and an empty description.
+Fields generated before the failure stay. The result carries a notice that says
+why. A busy, archived, untrusted or changed thread and an engine turned off still
+refuse the action. A reply may be bare JSON or one Markdown fence around it. Generation
+needs Git 2.40 or later, which honours `GIT_ATTR_SOURCE`; older Git could apply
+the working tree's clean filters while the diff is read, so it falls back instead.
+
 Writing uses the selected thread engine and the configured text-generation model,
 or the thread's explicit model when that setting is empty. It never chooses another
 provider or guesses a smaller model. Only the guarded Claude one-shot path supports

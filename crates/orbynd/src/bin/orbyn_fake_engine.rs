@@ -238,6 +238,17 @@ fn one_shot() {
             || (prompt.contains("[bad-pr-text]") && !prompt.contains("string fields subject"))
         {
             println!("invalid structured text");
+        } else if prompt.contains("[fenced-scm-text]") {
+            // Claude's usual shape: the JSON inside one tagged Markdown fence.
+            let fields = if prompt.contains("string fields subject") {
+                serde_json::json!({"subject":"feat(git): fenced reply","body":"Inside a fence"})
+            } else {
+                serde_json::json!({"title":"feat(git): fenced reply","body":"## Summary\n\n```sh\nnpm test\n```"})
+            };
+            println!(
+                "```json\n{}\n```",
+                serde_json::to_string_pretty(&fields).unwrap()
+            );
         } else if prompt.contains("string fields subject") {
             println!(
                 "{}",
