@@ -2,6 +2,11 @@ import js from "@eslint/js";
 import hooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
+const everywhere = [
+  { group: ["@tauri-apps/*"], message: "web must not import Tauri." },
+  { group: ["**/mock/*", "**/mock"], message: "The mock API is dev-only." },
+];
+
 export default tseslint.config(
   { ignores: ["dist", "src/generated", "test-results", "playwright-report"] },
   js.configs.recommended,
@@ -12,16 +17,25 @@ export default tseslint.config(
     rules: {
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
+      "no-restricted-imports": ["error", { patterns: everywhere }],
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+  {
+    files: ["src/{ui,state,lib,api,styles}/**/*.{ts,tsx}"],
+    rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
-            { group: ["@tauri-apps/*"], message: "web must not import Tauri." },
-            { group: ["**/mock/*", "**/mock"], message: "The mock API is dev-only." },
+            ...everywhere,
+            {
+              group: ["**/features/**", "**/app/**"],
+              message: "Shared folders never import a feature or app. Move the code to its owner (web/README.md).",
+            },
           ],
         },
       ],
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
   {

@@ -31,7 +31,8 @@ enforces that.
 
 Imports point inward: `app` may use features, and features may use the shared
 folders (`api`, `state`, `ui`, `lib`, `styles`, `generated`). Shared folders never
-import a feature or `app`. A file used by one feature lives in that feature.
+import a feature or `app`, and ESLint fails the change that tries. A file used by
+one feature lives in that feature.
 
 ## Tests
 
@@ -45,4 +46,5 @@ Browser tests are in `e2e/`, against the mock API (`mock/`) or a real service
   import is a candidate for moving the shared piece to its real owner.
 - `src/lib` still holds project image and identity helpers used by both `ui` and
   `settings`.
-- The inward direction above is a review rule; ESLint does not check it yet.
+- ESLint enforces the inward direction for shared folders only. Imports between
+  features are not checked, and tests are exempt.
