@@ -29,6 +29,8 @@ pub mod network;
 pub mod policy;
 pub mod preferences;
 pub mod preview;
+mod preview_recording;
+mod preview_trace;
 pub mod process;
 pub mod project_file;
 pub mod project_icon_override;

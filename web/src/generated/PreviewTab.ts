@@ -4,7 +4,11 @@ export type PreviewTab = { id: string, thread_id: string, url: string,
 /**
  * `human` while a person holds the page, `none` otherwise.
  */
-control: string, recording: boolean, viewers: number, width: number, height: number, can_go_back: boolean, can_go_forward: boolean, title: string, 
+control: string, recording: boolean, 
+/**
+ * A recording stopped on a quota or write failure; starting again clears it.
+ */
+recording_error?: string, viewers: number, width: number, height: number, can_go_back: boolean, can_go_forward: boolean, title: string, 
 /**
  * Page-declared icon; bytes must go through the bounded image proxy.
  */
