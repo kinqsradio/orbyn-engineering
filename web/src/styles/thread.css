@@ -3965,6 +3965,7 @@ div.browser-bridge-row {
 /* Holds the branch's place until the workspace status names it. */
 .composer-branch-pending {
   visibility: hidden;
+}
 
 .outside-badge {
   display: inline-flex;
