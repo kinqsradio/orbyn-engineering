@@ -171,6 +171,10 @@ fn read_history(reply: &Value) -> HistoryState {
 struct Document {
     frame: String,
     generation: u64,
+    /// An `alert`, `confirm` or `prompt` holds the page; its scripts wait on it.
+    dialog: bool,
+    /// The isolated world made for the document of this generation.
+    world: Option<(u64, i64)>,
 }
 
 impl Document {
@@ -180,11 +184,17 @@ impl Document {
             .and_then(Value::as_str)
             .unwrap_or_default();
         let params = &event["params"];
+        match method {
+            "Page.javascriptDialogOpening" => self.dialog = true,
+            "Page.javascriptDialogClosed" => self.dialog = false,
+            _ => {}
+        }
         let changed =
             if method == "Page.frameNavigated" && params["frame"].get("parentId").is_none() {
                 if let Some(id) = params["frame"]["id"].as_str() {
                     self.frame = id.to_owned();
                 }
+                self.dialog = false;
                 true
             } else {
                 matches!(
@@ -340,12 +350,21 @@ impl BrowserSession {
     }
 
     async fn browser_call(&mut self, method: &str, params: Value) -> Result<Value> {
-        self.send(method, params, None).await
+        self.send(method, params, None, false).await
     }
 
     async fn call(&mut self, method: &str, params: Value) -> Result<Value> {
         let session = self.session_id.clone();
-        self.send(method, params, Some(session)).await
+        self.send(method, params, Some(session), false).await
+    }
+
+    /// Gives up as soon as the page opens a dialog, which would hold the reply.
+    async fn call_unless_dialog(&mut self, method: &str, params: Value) -> Result<Value> {
+        if self.document.dialog {
+            return Err(failed("a dialog is open"));
+        }
+        let session = self.session_id.clone();
+        self.send(method, params, Some(session), true).await
     }
 
     async fn send(
@@ -353,6 +372,7 @@ impl BrowserSession {
         method: &str,
         params: Value,
         session: Option<String>,
+        unless_dialog: bool,
     ) -> Result<Value> {
         self.next_id += 1;
         let id = self.next_id;
@@ -377,6 +397,10 @@ impl BrowserSession {
                     continue;
                 };
                 self.note_document(&reply);
+                if unless_dialog && self.document.dialog {
+                    // Its late reply is dropped like any other unmatched one.
+                    return Err(failed("a dialog is open"));
+                }
                 if reply.get("id").and_then(Value::as_u64) != Some(id) {
                     keep_event(&mut self.kept, reply);
                     continue;
@@ -596,6 +620,45 @@ impl BrowserSession {
         self.evaluate(expression).await
     }
 
+    /// Runs a read in a world of its own, which shares the page's DOM but not its
+    /// scripts, so the page cannot replace what the read calls. Fails at once
+    /// while a dialog holds the page rather than wait behind it.
+    pub async fn isolated_read(&mut self, expression: &str) -> Result<Value> {
+        let generation = self.document.generation;
+        let context = match self.document.world {
+            Some((made, context)) if made == generation => context,
+            _ => {
+                let frame = self.document.frame.clone();
+                let world = self
+                    .call_unless_dialog(
+                        "Page.createIsolatedWorld",
+                        json!({ "frameId": frame, "worldName": "orbyn-read" }),
+                    )
+                    .await?;
+                let context = world
+                    .get("executionContextId")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(|| failed("no isolated world"))?;
+                self.document.world = Some((generation, context));
+                context
+            }
+        };
+        let reply = self
+            .call_unless_dialog(
+                "Runtime.evaluate",
+                json!({ "expression": expression, "returnByValue": true, "contextId": context }),
+            )
+            .await
+            .inspect_err(|_| self.document.world = None)?;
+        if reply.get("exceptionDetails").is_some() {
+            return Err(failed("the page raised an error"));
+        }
+        Ok(reply
+            .pointer("/result/value")
+            .cloned()
+            .unwrap_or(Value::Null))
+    }
+
     /// The bridge events seen since the last look, oldest first.
     pub fn take_events(&mut self) -> Vec<Value> {
         std::mem::take(&mut self.kept)
@@ -721,7 +784,7 @@ mod tests {
     fn main_document_events_fence_links_and_same_url_reload_but_not_subframes() {
         let mut document = Document {
             frame: "main".into(),
-            generation: 0,
+            ..Document::default()
         };
         assert!(!document.note(
             &json!({ "method": "Page.frameStartedLoading", "params": { "frameId": "child" } })

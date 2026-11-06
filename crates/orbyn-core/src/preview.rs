@@ -36,6 +36,7 @@ const FRAME_EVERY: Duration = Duration::from_millis(200);
 const FRAME_QUALITY: u32 = 60;
 // Key overlays never inspect or retain a field value. Body and editing surfaces
 // cannot establish safe focus (including a closed shadow root hosted by body).
+// It runs in an isolated world, so the page cannot replace what it calls.
 const RECORDING_SAFE_FOCUS: &str = r"(() => {
   const el = document.activeElement;
   return Boolean(el && document.hasFocus() && document.designMode === 'off' &&
@@ -698,7 +699,7 @@ async fn pump(tab: Arc<Tab>) {
             {
                 if recording.keys_enabled() {
                     let safe = session
-                        .read(RECORDING_SAFE_FOCUS)
+                        .isolated_read(RECORDING_SAFE_FOCUS)
                         .await
                         .is_ok_and(|value| value == json!(true));
                     if !safe {
@@ -942,7 +943,7 @@ impl PreviewManager {
                 .is_some_and(|recording| recording.keys_enabled())
         {
             session
-                .read(RECORDING_SAFE_FOCUS)
+                .isolated_read(RECORDING_SAFE_FOCUS)
                 .await
                 .is_ok_and(|value| value == json!(true))
         } else {
@@ -1772,6 +1773,7 @@ mod tests {
                     }
                     "Target.attachToTarget" => json!({ "sessionId": "session" }),
                     "Page.getFrameTree" => json!({ "frameTree": { "frame": { "id": "main" } } }),
+                    "Page.createIsolatedWorld" => json!({ "executionContextId": 7 }),
                     "Runtime.evaluate" => json!({ "result": { "value": safe_focus } }),
                     _ => json!({}),
                 };
@@ -1846,6 +1848,128 @@ mod tests {
             .map(|request| request["params"]["type"].as_str().unwrap())
             .collect();
         assert_eq!(dispatched, ["keyDown", "keyUp"]);
+        let world = requests
+            .iter()
+            .find(|request| request["method"] == "Page.createIsolatedWorld")
+            .expect("the focus check makes its own world");
+        assert_eq!(world["params"]["frameId"], "main");
+        let focus = requests
+            .iter()
+            .find(|request| request["method"] == "Runtime.evaluate")
+            .unwrap();
+        assert_eq!(
+            focus["params"]["contextId"], 7,
+            "the page's own scripts never see the focus check"
+        );
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[tokio::test]
+    async fn a_dialog_never_waits_behind_the_per_frame_focus_check() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (checking, checked) = tokio::sync::oneshot::channel();
+        let mut checking = Some(checking);
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            let mut evaluated = 0;
+            while let Some(Ok(frame)) = socket.next().await {
+                let Ok(text) = frame.to_text() else { continue };
+                let request: Value = serde_json::from_str(text).unwrap();
+                let event = |method: &str| {
+                    Message::text(
+                        json!({ "method": method, "sessionId": "session", "params": {} })
+                            .to_string(),
+                    )
+                };
+                let result = match request["method"].as_str().unwrap() {
+                    "Target.getTargets" => {
+                        json!({ "targetInfos": [{ "type": "page", "targetId": "target" }] })
+                    }
+                    "Target.attachToTarget" => json!({ "sessionId": "session" }),
+                    "Page.getFrameTree" => json!({ "frameTree": { "frame": { "id": "main" } } }),
+                    "Page.captureScreenshot" => json!({ "data": "" }),
+                    "Page.createIsolatedWorld" => json!({ "executionContextId": 7 }),
+                    "Runtime.evaluate" => {
+                        evaluated += 1;
+                        if evaluated == 1 {
+                            // The page opens an alert; a page script never answers now.
+                            socket
+                                .send(event("Page.javascriptDialogOpening"))
+                                .await
+                                .unwrap();
+                            if let Some(checking) = checking.take() {
+                                let _ = checking.send(());
+                            }
+                            continue;
+                        }
+                        json!({ "result": { "value": true } })
+                    }
+                    "Page.handleJavaScriptDialog" => {
+                        socket
+                            .send(event("Page.javascriptDialogClosed"))
+                            .await
+                            .unwrap();
+                        json!({})
+                    }
+                    _ => json!({}),
+                };
+                if socket
+                    .send(Message::text(
+                        json!({ "id": request["id"], "result": result }).to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        let session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        let tab = fixture_tab(session, "human");
+        let manager = PreviewManager::default();
+        lock(&manager.tabs).insert("tab".into(), tab.clone());
+        let folder = std::env::temp_dir().join(format!("recording-dialog-{}", new_id()));
+        manager
+            .start_recording(
+                "thread",
+                "tab",
+                folder.clone(),
+                PreviewRecordingOptions {
+                    show_key_presses: true,
+                    ..PreviewRecordingOptions::default()
+                },
+            )
+            .unwrap();
+        let pumping = tokio::spawn(pump(tab.clone()));
+        // The pump is in its focus check, which the open alert would hold.
+        tokio::time::timeout(Duration::from_secs(3), checked)
+            .await
+            .unwrap()
+            .unwrap();
+        let answered = tokio::time::timeout(
+            Duration::from_secs(3),
+            manager.answer_dialog("thread", "tab", true, None),
+        )
+        .await;
+        pumping.abort();
+        let _ = pumping.await;
+        let _ = manager.stop_recording("thread", "tab").await;
+        drop(tab);
+        drop(manager);
+        server.abort();
+        let _ = std::fs::remove_dir_all(folder);
+        assert!(
+            answered.is_ok(),
+            "answering the dialog waited behind the focus check"
+        );
+        assert!(answered.unwrap().unwrap());
     }
 
     #[tokio::test]
@@ -1906,6 +2030,7 @@ mod tests {
         drop(tab);
         drop(manager);
         server.await.unwrap();
+        let _ = std::fs::remove_dir_all(folder);
     }
 
     #[tokio::test]
