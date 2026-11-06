@@ -17,6 +17,7 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { ProviderInstances } from "./ProviderInstances";
 import { HistoryImport } from "./HistoryImport";
 import { NativeSessions } from "./NativeSessions";
+import { ProjectProviders } from "./ProjectProviders";
 import { followEngineUpdates, UpdateProgressLine, useEngineUpdates } from "./engineUpdates";
 
 const POLL_WHILE_UPDATING_MS = 1500;
@@ -488,13 +489,14 @@ export function ProvidersSection() {
         <ErrorState title="Couldn't load providers" failure={engines.error} onRetry={() => void refreshEngines()} />
       ) : !engines.data ? (
         <Loading label="Loading providers" />
-      ) : (
+      ) : (<>
+        <ProjectProviders engines={engines.data} />
         <ProviderInstances engines={engines.data} renderBase={(engine) => <NativeSessions engine={engine} />} renderDriver={(engine) => <EngineRow engine={engine} />} renderStatus={(engine) => <>
           {engine.installed ? <Pill tone={supportTone[engine.support]}>{supportLabels[engine.support]}</Pill> : <Pill tone="warn">Not installed</Pill>}
           <dl className="facts"><div><dt>Version</dt><dd>{engine.version ?? "Unknown"}</dd></div><div><dt>Location</dt><dd><code>{engine.path ?? "Not found"}</code></dd></div></dl>
           <UpdateAction engine={engine} />
         </>} renderInstance={(engine) => engine.installed ? <><EngineModelList engine={engine} /><NativeSessions engine={engine} /></> : null} />
-      )}
+      </>)}
       <HistoryImport />
       <AcpRegistry />
     </>

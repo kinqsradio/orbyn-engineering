@@ -271,21 +271,30 @@ impl Core {
             .map_or_else(|| project.path.clone(), |worktree| worktree.path.clone());
         let project_id = project.id.clone();
         let remembered = self.store.remembered_selection(&request.engine)?;
+        let default = self.project_default_selection(&request.engine, &project_id)?;
         let model = request
             .model
             .clone()
-            .or(self.project_default_model(&request.engine, &project_id)?)
+            .or(default.as_ref().and_then(|default| default.model.clone()))
             .or(remembered.model.clone());
-        // Effort and options belong to a model, so they carry only with that model.
+        // Effort and options belong to a model, so they carry only with that model:
+        // the project's default effort and options with its default model, else what
+        // was last chosen with the same model.
+        let defaulted = default.filter(|default| default.model == model);
         let carried = (model == remembered.model).then_some(remembered);
         let effort = request
             .effort
             .clone()
+            .or(defaulted
+                .as_ref()
+                .and_then(|default| default.effort.clone()))
             .or(carried.as_ref().and_then(|last| last.effort.clone()));
-        let options = if request.options.is_empty() {
-            carried.map(|last| last.options).unwrap_or_default()
-        } else {
+        let options = if !request.options.is_empty() {
             request.options.clone()
+        } else if let Some(default) = defaulted.filter(|default| !default.options.is_empty()) {
+            default.options
+        } else {
+            carried.map(|last| last.options).unwrap_or_default()
         };
         let setup_script = if worktree.is_some() {
             self.project_file_at(&project_id, Path::new(&cwd))?

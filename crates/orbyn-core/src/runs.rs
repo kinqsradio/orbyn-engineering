@@ -1658,7 +1658,11 @@ impl RunManager {
         let Some(model) = chosen.model.clone() else {
             return Ok(chosen);
         };
-        let fallback = crate::preferences::stored_preference(&self.store, "fallback_model", None)?;
+        let fallback = crate::preferences::stored_preference(
+            &self.store,
+            "fallback_model",
+            Some(&thread.project_id),
+        )?;
         let fallback = fallback.as_str().unwrap_or_default();
         let listed = |id: &str| catalog.models.iter().any(|known| known.id == id);
         let trusted = !catalog.fallback && catalog.error.is_none();
