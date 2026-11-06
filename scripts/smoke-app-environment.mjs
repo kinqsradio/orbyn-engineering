@@ -1,8 +1,13 @@
 import { posix, win32 } from "node:path";
 
-/** Builds the packaged smoke profile without reading host configuration. */
-export function smokeAppEnvironment(parent, sandbox, platform = process.platform) {
-  const { join } = platform === "win32" ? win32 : posix;
+/**
+ * Builds the packaged smoke profile without reading host configuration.
+ * `codexBin` names a Codex the caller installed on purpose; the parent's own
+ * provider overrides are never taken.
+ */
+export function smokeAppEnvironment(parent, sandbox, platform = process.platform, { codexBin } = {}) {
+  const { join, isAbsolute } = platform === "win32" ? win32 : posix;
+  if (codexBin !== undefined && !isAbsolute(codexBin)) throw new Error("The smoke's Codex must be an absolute path.");
   const home = join(sandbox, "home");
   const kept = ["PATH", "SystemRoot", "SystemDrive", "WINDIR", "ComSpec", "PATHEXT", "LANG"];
   const inherited = {};
@@ -36,7 +41,7 @@ export function smokeAppEnvironment(parent, sandbox, platform = process.platform
     // Built-in providers are registered even when optional discovery is empty.
     // Explicit missing overrides prevent them from resolving the host PATH.
     ORBYN_CLAUDE_BIN: join(sandbox, "absent-providers", "claude"),
-    ORBYN_CODEX_BIN: join(sandbox, "absent-providers", "codex"),
+    ORBYN_CODEX_BIN: codexBin ?? join(sandbox, "absent-providers", "codex"),
     // Offline stops update lookups, not discovery of installed provider CLIs.
     ORBYN_KNOWN_ENGINE_IDS: "[]",
     ORBYN_OFFLINE: "1",

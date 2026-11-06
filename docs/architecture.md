@@ -334,9 +334,37 @@ Mode is stated on every launch: Claude's `--permission-mode`, and Codex's approv
 and sandbox on `thread/start`, `thread/resume` and `turn/start`, because a saved session
 otherwise keeps the policy it last had.
 
+Each engine lists the modes it offers in `capabilities.permission_modes`, from
+`permission_modes::offered`: OpenCode offers Supervised, Auto-accept edits and Full access,
+since it has no classifier and its Auto would equal Supervised; fx would offer Supervised
+and Auto, Muse Supervised and Full access, and Pi Supervised, Auto-accept edits and Full
+access; every other engine offers all four. A thread keeps the mode it was given, but a
+run on an engine that does not offer it runs Supervised, never the nearest looser mode,
+and the composer shows and offers the same. Every run launches its own engine process
+with the mode stated, so a mode change takes effect from the next turn's process.
+
 Parsers are tested against recorded real frames in `driver/fixtures`, named by version.
 `cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
 with no prompt.
+
+## Warm next turn
+
+With `warm_next_turn` on (off by default, with no control of its own), a completed
+Claude turn starts the process the thread's next turn would launch, with the same
+arguments, folder, MCP URL, settings and mode, and leaves it idle on its input. No
+prompt is sent, but the CLI still does its launch work at once: Claude Code 2.1.318
+ran a `SessionStart` hook before any input, and it starts the person's MCP servers the
+same way, so a process that is never adopted runs them for nothing. That is why it
+is off unless asked for. The next run on that
+thread adopts it only when it is the run right after the one that started it, the
+process is still alive, and every launch input gives the same key, which also names
+the CLI's path, size and modified time and the `prefer_saved_login` state. Anything
+else ends it unused and launches as usual. Its MCP token carries the thread's write scope
+but no run until a run adopts it, and is revoked whenever the process goes unadopted:
+after five idle minutes, at shutdown, or when any engine update begins, since
+instances can share the binary and Windows cannot replace a running one. An update
+cannot begin while a warm process is being started, and none starts during an update. A run that adopts logs `CUSTOM
+engine.warm`. Other engines launch per run as before.
 
 ## Session recovery
 
@@ -1133,7 +1161,8 @@ stamps that time, and clearing the theme clears it; a client cannot write the ti
 A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
 theme once, when its `set_at` is newer than the one it last applied, at startup and
 when the window takes focus; after that the viewer's own choice stays. An unknown id
-is recorded as applied and changes nothing. Remote environments publish nothing here.
+is recorded as applied and changes nothing. A theme saved before set times existed is
+published with `set_at` 1, so each viewer applies it once. Remote environments publish nothing here.
 
 `/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
 `stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
@@ -1615,7 +1644,10 @@ run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. 
 the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
 service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
 quits through the `quit` shell action after the key is held for one second, or pressed
-again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+again within 1.5 seconds. WebKit may send no keyup while Cmd stays down, so a hold counts
+only while key repeats keep arriving; a stop in repeats, lifting the key, blur or a late
+press starts over. The page reads the mode again as soon as Settings saves it. A service
+in remote mode refuses the `quit` action, so a remote viewer cannot stop the app. Clicking
 Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
@@ -1844,6 +1876,22 @@ person to read before sending. A browser that dies is started again on the same 
 page, up to three times in 30 seconds after 1, 2 and 4 seconds, and then the tab reports
 `crashed`. This only runs while someone watches. `enable_agent_browser_access`, off
 globally or for a project, refuses every `orbyn_preview_*` tool.
+
+A previewed page is untrusted, so what crosses between it and the person waits for
+the person's own action and stays inside the tab's folder, `<data>/preview-files/<tab>`,
+which ends with the tab. Copy (Cmd or Ctrl+C on the page a person holds) reads the
+selection in the focused field, or else the page's, and nothing from a password field,
+into the person's own clipboard; a page's own clipboard writes stay in its browser.
+Paste is the person's paste event, typed into the page as text. A file chooser the
+page opens is held, not failed: the panel asks the person, who picks files through
+their own system picker; each, at most 50 MiB and 256 MiB a tab, is uploaded to the
+tab's folder and handed only to the input that asked, and Cancel hands nothing.
+Downloads save to the tab's folder under the browser's own id, never the page's name
+or path; a download past 1 GiB is stopped, and a tab keeps 20, dropping the oldest
+finished one. Saving one serves its bytes as an `application/octet-stream`
+attachment, `nosniff` and sandboxed, under the page's name made safe for Windows and
+macOS, and the person's browser chooses where it goes. Handing files to a page and
+saving a download are audited.
 
 Back and forward step through web pages only, so the blank page a browser starts on
 and anything else not `http` or `https` is passed over, and at either end nothing

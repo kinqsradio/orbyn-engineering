@@ -26,6 +26,7 @@ use crate::computer::cdp::{
     BrowserSession, HistoryState, LaunchOptions, find_browser, normalize_url,
 };
 use crate::error::{CoreError, Result};
+use crate::preview_bridge::{self, Bridge};
 use crate::preview_recording::{MAX_JPEG, Recording};
 use crate::store::AuditRecord;
 use crate::util::new_id;
@@ -408,9 +409,9 @@ fn snapshot_expression(limit: usize) -> String {
         .replace("__MAX_TEXT__", &MAX_SNAPSHOT_TEXT.to_string())
 }
 
-struct Tab {
-    info: Mutex<PreviewTab>,
-    session: tokio::sync::Mutex<BrowserSession>,
+pub(crate) struct Tab {
+    pub(crate) info: Mutex<PreviewTab>,
+    pub(crate) session: tokio::sync::Mutex<BrowserSession>,
     frames: broadcast::Sender<Arc<str>>,
     pointers: broadcast::Sender<PreviewPointer>,
     trace: Mutex<crate::preview_trace::Trace>,
@@ -421,6 +422,10 @@ struct Tab {
     keep_profile: bool,
     browser: PathBuf,
     options: LaunchOptions,
+    /// Clipboard, file chooser and downloads; see `preview_bridge`.
+    pub(crate) bridge: Mutex<Bridge>,
+    /// The tab's own folder for chosen and downloaded files, gone with the tab.
+    pub(crate) files: PathBuf,
 }
 
 #[derive(Default)]
@@ -468,6 +473,9 @@ impl Tab {
             .as_ref()
             .is_some_and(|recording| recording.active());
         info.recording_error = recording.as_ref().and_then(|recording| recording.error());
+        let bridge = lock(&self.bridge);
+        info.file_chooser = bridge.chooser();
+        info.downloads = bridge.downloads();
         info
     }
 
@@ -604,6 +612,7 @@ async fn bring_back(tab: &Arc<Tab>, crashes: &mut Crashes) {
             .set_view(view.width, view.height, view.zoom, view.mobile)
             .await?;
         session.set_appearance(&view.appearance).await?;
+        preview_bridge::enable(&mut session, &tab.files).await?;
         session.navigate(&view.url).await?;
         Ok::<_, CoreError>(session)
     };
@@ -641,9 +650,11 @@ async fn pump(tab: Arc<Tab>) {
                     tracing::warn!(%error, "could not finalize a closed tab's recording");
                 }
                 let (profile, keep) = (tab.profile.clone(), tab.keep_profile);
+                let files = tab.files.clone();
                 drop(tab);
                 tokio::time::sleep(PROFILE_GRACE).await;
                 if !keep { let _ = std::fs::remove_dir_all(profile); }
+                let _ = std::fs::remove_dir_all(files);
                 return;
             }
             _ = ticks.tick() => {}
@@ -711,6 +722,7 @@ async fn pump(tab: Arc<Tab>) {
             }
             continue;
         };
+        preview_bridge::settle(&tab.bridge, &mut *tab.session.lock().await, &tab.files).await;
         if record_due && let Some(recording) = &recording {
             if let Some(captured) = captured {
                 // Hand over without waiting: live viewers never stall on encoding.
@@ -733,7 +745,18 @@ async fn pump(tab: Arc<Tab>) {
 }
 
 impl PreviewManager {
-    fn tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
+    /// A tab a person holds, for crossings that must be theirs.
+    pub(crate) fn held_tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
+        let tab = self.tab(thread_id, id)?;
+        if lock(&tab.info).control != "human" {
+            return Err(CoreError::Invalid(
+                "Take control of this page first.".into(),
+            ));
+        }
+        Ok(tab)
+    }
+
+    pub(crate) fn tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
         lock(&self.tabs)
             .get(id)
             .filter(|tab| lock(&tab.info).thread_id == thread_id)
@@ -1302,9 +1325,11 @@ impl Core {
             headless: true,
             in_process_gpu: self.config.browser_in_process_gpu,
         };
+        let files = self.config.data_dir.join("preview-files").join(&id);
         let mut session = BrowserSession::launch(&browser, &profile, options).await?;
         session.set_view(width, height, zoom, false).await?;
         session.set_appearance(&appearance).await?;
+        preview_bridge::enable(&mut session, &files).await?;
         session.navigate(&url).await?;
         let title = session.title().await.unwrap_or_default();
         let favicon_url = session
@@ -1340,6 +1365,8 @@ impl Core {
                     "person".to_owned()
                 },
                 crashed: false,
+                file_chooser: None,
+                downloads: Vec::new(),
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
@@ -1351,6 +1378,8 @@ impl Core {
             keep_profile: how.profile.is_some(),
             browser,
             options,
+            bridge: Mutex::new(Bridge::default()),
+            files,
         });
         watch_document(&mut *tab.session.lock().await, &tab);
         lock(&self.previews.tabs).insert(id, tab.clone());
@@ -1717,6 +1746,8 @@ mod tests {
             keep_profile: true,
             browser: PathBuf::new(),
             options: LaunchOptions::default(),
+            bridge: Mutex::new(Bridge::default()),
+            files: PathBuf::new(),
         })
     }
 

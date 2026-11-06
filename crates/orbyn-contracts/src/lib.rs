@@ -423,6 +423,20 @@ pub enum PermissionMode {
 }
 }
 
+impl PermissionMode {
+    /// Every mode, loosest last.
+    pub const ALL: [PermissionMode; 4] = [
+        PermissionMode::Supervised,
+        PermissionMode::AutoEdits,
+        PermissionMode::Auto,
+        PermissionMode::FullAccess,
+    ];
+}
+
+fn every_permission_mode() -> Vec<PermissionMode> {
+    PermissionMode::ALL.to_vec()
+}
+
 wire! {
 pub struct QueuedMessage {
     pub id: String,
@@ -2405,6 +2419,49 @@ pub struct PreviewTab {
     pub opened_by: String,
     /// True once the page has crashed too often to bring back.
     pub crashed: bool,
+    /// `one` or `many` while the page waits for files a person chooses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub file_chooser: Option<String>,
+    /// What the page downloaded, oldest first, kept while the tab lives.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PreviewDownload>>", optional)]
+    pub downloads: Vec<PreviewDownload>,
+}
+}
+
+wire! {
+/// A file the page downloaded into the tab's own folder.
+pub struct PreviewDownload {
+    pub id: String,
+    /// The name the page suggested, made safe to save under.
+    pub name: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// `downloading`, `done` or `stopped`.
+    pub state: String,
+}
+}
+
+wire! {
+/// Text a person copied out of the page they hold.
+pub struct PreviewCopy {
+    pub text: String,
+}
+}
+
+wire! {
+/// A file a person chose for the page, waiting in the tab's own folder.
+pub struct PreviewUpload {
+    pub id: String,
+}
+}
+
+wire! {
+/// Answers the page's file chooser with uploaded files; none cancels it.
+pub struct AnswerFileChooser {
+    #[serde(default)]
+    pub files: Vec<String>,
 }
 }
 
@@ -2832,6 +2889,10 @@ pub struct EngineCapabilities {
     /// A denied action can carry your words back to the engine.
     #[serde(default)]
     pub decline_feedback: bool,
+    /// The modes this engine offers. A thread's saved mode outside them runs
+    /// Supervised and is shown that way.
+    #[serde(default = "every_permission_mode")]
+    pub permission_modes: Vec<PermissionMode>,
 }
 }
 

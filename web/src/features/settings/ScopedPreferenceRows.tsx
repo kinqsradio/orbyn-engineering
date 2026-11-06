@@ -44,6 +44,7 @@ export function ScopedRows({ groups, query }: {
       });
       if (mounted.current) list.reload();
       if (row.key === "default_project_scripts") runHandlers("projectActions.reload");
+      if (row.key === "quit_confirmation") runHandlers("quitConfirmation.reload");
       return { saved: true, row: changed.rows.find((value) => value.key === row.key) };
     } catch (failure) {
       const message = toFailure(failure).message;

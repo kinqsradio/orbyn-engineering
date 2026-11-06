@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useCommand } from "../../app/shortcuts";
 import { api, request } from "../../api/client";
 import { inDesktopApp, readShellStatus } from "../../api/shell";
 import type { PreferenceView } from "../../api/types";
@@ -6,6 +7,7 @@ import { useUi } from "../../state/ui";
 import { HOLD_MS, isQuitKey, quitTracker, type QuitMode, type QuitState } from "./quitTracker";
 
 const MODES: readonly QuitMode[] = ["direct", "hold", "double_press"];
+const RELOAD_EVENT = "orbyn:quit-confirmation";
 
 /**
  * In the macOS desktop app, `Cmd+Q` is the page's when quitting needs a hold or a
@@ -15,6 +17,10 @@ export function QuitConfirmation() {
   const [state, setState] = useState<QuitState>({ prompt: null });
   const mode = useRef<QuitMode>("direct");
   const pushToast = useUi((ui) => ui.pushToast);
+  // Settings saves the mode in this window; read it again at once rather than on focus.
+  useCommand("quitConfirmation.reload", () => {
+    window.dispatchEvent(new Event(RELOAD_EVENT));
+  });
 
   useEffect(() => {
     let live = true;
@@ -49,7 +55,9 @@ export function QuitConfirmation() {
     window.addEventListener("keyup", up, true);
     window.addEventListener("blur", tracker.stop);
     window.addEventListener("focus", refresh);
+    window.addEventListener(RELOAD_EVENT, refresh);
     return () => {
+      window.removeEventListener(RELOAD_EVENT, refresh);
       live = false;
       tracker.stop();
       window.removeEventListener("keydown", down, true);

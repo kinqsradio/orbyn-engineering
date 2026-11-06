@@ -39,10 +39,13 @@ impl Core {
         if name.is_empty() {
             return Ok(None);
         }
+        // A theme saved before set times existed has none; 1 is older than any real
+        // time yet newer than a viewer that never applied one, so it applies once.
         let set_at = self
             .preference("default_theme_set_at", None)?
             .as_i64()
-            .unwrap_or(0);
+            .filter(|time| *time > 0)
+            .unwrap_or(1);
         Ok(Some(EnvironmentTheme {
             name: name.to_owned(),
             set_at,
@@ -113,6 +116,24 @@ mod tests {
         assert_eq!(channel_of(Some("stable"), true), ReleaseChannel::Stable);
         assert_eq!(channel_of(None, true), ReleaseChannel::Dev);
         assert_eq!(channel_of(Some("other"), false), ReleaseChannel::Stable);
+    }
+
+    #[test]
+    fn a_theme_saved_without_a_time_is_still_published_newer_than_never() {
+        let dir = TempDir::new();
+        let core = core(&dir);
+        core.store
+            .change_settings(|_| {
+                Ok((
+                    (),
+                    vec![crate::store::scoped_settings::SettingWrite::Global {
+                        key: "pref:default_theme".into(),
+                        value: Some("\"dark\"".into()),
+                    }],
+                ))
+            })
+            .unwrap();
+        assert_eq!(core.environment_theme().unwrap().unwrap().set_at, 1);
     }
 
     #[test]

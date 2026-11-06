@@ -20,7 +20,7 @@ import { ProjectBadge } from "../../ui/badges";
 import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
 import { Loading } from "../../ui/states";
-import { ACCESS, EffortTrigger, useTraitsMenu } from "../thread/ComposerTraits";
+import { ACCESS, EffortTrigger, offeredModes, shownAccess, useTraitsMenu } from "../thread/ComposerTraits";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
 import { resolveModel, useEngineModels } from "../thread/modelStore";
 import { DraftProjectPicker } from "./DraftProjectPicker";
@@ -79,7 +79,8 @@ function DraftModelControls({
 }) {
   const models = useEngineModels(engine);
   const resolved = resolveModel(models, model);
-  const traits = useTraitsMenu({ model: resolved, effort, extras, access, onEffort, onOption, onAccess });
+  const modes = offeredModes(engines.find((entry) => entry.id === engine) ?? null);
+  const traits = useTraitsMenu({ model: resolved, effort, extras, access, modes, onEffort, onOption, onAccess });
   const openAt = useRef(traits.openAt);
   openAt.current = traits.openAt;
   useEffect(() => {
@@ -120,7 +121,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const setPrefs = useUi((state) => state.setPrefs);
   const [choice, setChoice] = useState(lastModel);
   const [pickedHere, setPickedHere] = useState(false);
-  const [access, setAccess] = useState<PermissionMode>("supervised");
+  const [chosenAccess, setAccess] = useState<PermissionMode>("supervised");
   const [extras, setExtras] = useState<Record<string, string>>({});
   const prompt = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
   const setDraft = useUi((state) => state.setDraft);
@@ -171,6 +172,8 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const installed = engines.filter((e) => e.installed);
   const engine = chooseDraftEngine(installed, choice?.engine ?? null, pickedHere);
   const unmanaged = engine !== null && !engine.capabilities.managed;
+  // A mode the chosen engine does not offer would run Supervised, so it starts that way.
+  const access = shownAccess(engine, chosenAccess);
 
   if (!project && !scratch) return <NoProjects />;
 
@@ -221,7 +224,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       {
         ...(picked && pickedEffort ? { effort: pickedEffort } : {}),
         ...(picked && Object.keys(extras).length > 0 ? { options: extras } : {}),
-        ...(access === "supervised" ? {} : { permission_mode: access }),
+        // The draft's engine saves what it shows; another engine in a fan-out narrows the choice itself.
+        ...((choice.engine === engine?.id ? access : chosenAccess) === "supervised"
+          ? {}
+          : { permission_mode: choice.engine === engine?.id ? access : chosenAccess }),
       },
     );
     addPrompt(thread.id, { runId: run.id, text });

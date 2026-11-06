@@ -55,6 +55,11 @@ pub fn set_prefer_saved_login(prefer: bool) {
     PREFER_SAVED_LOGIN.store(prefer, Ordering::Relaxed);
 }
 
+/// The current `prefer_saved_login` value, which changes what an engine inherits.
+pub fn prefers_saved_login() -> bool {
+    PREFER_SAVED_LOGIN.load(Ordering::Relaxed)
+}
+
 /// Changes to apply to an inherited environment.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct EnvPlan {

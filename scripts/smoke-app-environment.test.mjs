@@ -115,3 +115,17 @@ test("macOS preserves exact runtime names without promoting unrelated case varia
   assert.equal(Object.hasOwn(environment, "Path"), false);
   assert.equal(Object.hasOwn(environment, "lang"), false);
 });
+
+for (const [platform, sandbox, codexBin] of [
+  ["darwin", "/synthetic/smoke", "/synthetic/install/node_modules/.bin/codex"],
+  ["win32", "C:\\synthetic\\smoke", "C:\\synthetic\\install\\node_modules\\.bin\\codex.cmd"],
+]) {
+  test(`${platform} takes only an explicit Codex, never the parent's`, () => {
+    const parent = { PATH: "/synthetic/tools", ORBYN_CODEX_BIN: "/synthetic/host-codex", CODEX_HOME: "/synthetic/owner-codex" };
+    const { environment } = smokeAppEnvironment(parent, sandbox, platform, { codexBin });
+    assert.equal(environment.ORBYN_CODEX_BIN, codexBin);
+    assert.notEqual(environment.CODEX_HOME, parent.CODEX_HOME);
+    assert.ok(environment.ORBYN_CLAUDE_BIN.includes("absent-providers"));
+    assert.throws(() => smokeAppEnvironment(parent, sandbox, platform, { codexBin: "codex" }), /absolute/);
+  });
+}

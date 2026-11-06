@@ -486,6 +486,10 @@ pub async fn shell_action(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<orbyn_contracts::ShellRequest>,
 ) -> ApiResult<StatusCode> {
+    // A remote viewer must not stop the desktop app and its runs.
+    if state.remote && body.action == orbyn_contracts::ShellAction::Quit {
+        return Err(CoreError::Invalid("Quit the app from the computer it runs on.".into()).into());
+    }
     state.core.shell.request(body.action)?;
     Ok(StatusCode::ACCEPTED)
 }

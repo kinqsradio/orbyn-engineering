@@ -3786,6 +3786,52 @@ button.context-meter:hover:not(:disabled) {
   flex: 1 1 120px;
   min-width: 120px;
 }
+.browser-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+.browser-bridge-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-bridge-row > span,
+.browser-bridge-row li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+div.browser-bridge-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.browser-bridge-row li > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-bridge-row li > span:nth-child(2) {
+  color: var(--color-muted);
+}
+.browser-bridge button {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
 
 /* Agent input remains a viewer cue; it cannot intercept a person's page input. */
 .browser-agent-cursor {
