@@ -6,7 +6,7 @@ import type { EngineModels, EngineStatus } from "../../api/types";
 import { ProvidersSection } from "./Providers";
 
 const mock = vi.hoisted(() => ({ refresh: vi.fn(), engines: [] as EngineStatus[] }));
-const actions = vi.hoisted(() => ({ sendFeedback: vi.fn(), models: vi.fn() }));
+const actions = vi.hoisted(() => ({ sendFeedback: vi.fn(), models: vi.fn(), updateAllEngines: vi.fn() }));
 vi.mock("../../api/client", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../api/client")>();
   return { ...original, api: { ...original.api, ...actions } };
@@ -133,5 +133,40 @@ describe("codex feedback", () => {
 
     expect(await screen.findByRole("heading", { name: "Claude" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Send feedback" })).toBeNull();
+  });
+});
+
+describe("update all", () => {
+  const owned = { update_command: "npm install -g x@latest", latest: "2.0.0", version: "1.0.0" };
+
+  it("offers update all for two owned engines with newer versions and reports a failure", async () => {
+    const user = userEvent.setup();
+    mock.engines = [
+      engine({ ...owned, id: "codex", name: "Codex" }),
+      engine({ ...owned, id: "claude", name: "Claude", update_command: "npm install -g y@latest" }),
+      engine({ ...owned, id: "work", name: "Work", instance_of: "codex" }),
+    ];
+    actions.updateAllEngines.mockResolvedValue([
+      { id: "codex", name: "Codex", version: "2.0.0" },
+      { id: "claude", name: "Claude", error: "Claude is busy." },
+    ]);
+    render(<ProvidersSection />);
+
+    await user.click(await screen.findByRole("button", { name: "Update all" }));
+    const dialog = await screen.findByRole("dialog", { name: "Update 2 providers?" });
+    expect(within(dialog).getByText("npm install -g x@latest")).toBeVisible();
+    expect(within(dialog).getByText("npm install -g y@latest")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Update all" }));
+
+    expect(actions.updateAllEngines).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Claude: Claude is busy.")).toBeVisible();
+    await waitFor(() => expect(mock.refresh).toHaveBeenCalled());
+  });
+
+  it("does not offer update all for a single engine or one already current", async () => {
+    mock.engines = [engine({ ...owned }), engine({ ...owned, id: "claude", name: "Claude", latest: "1.0.0" })];
+    render(<ProvidersSection />);
+    expect(await screen.findByRole("button", { name: "Check again" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Update all" })).toBeNull();
   });
 });

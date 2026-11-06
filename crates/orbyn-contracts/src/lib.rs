@@ -2988,6 +2988,21 @@ pub struct EngineStatus {
 }
 
 wire! {
+/// One engine's outcome in an update of every engine with a newer version.
+pub struct EngineUpdateOutcome {
+    pub id: String,
+    pub name: String,
+    /// The version it reports afterwards, when the update worked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
+}
+}
+
+wire! {
 /// A named setup of an engine, which threads pick like any engine. It holds what
 /// launches and nothing about an account: no environment, no credential, no config
 /// folder.

@@ -1588,6 +1588,12 @@ compare with the running version; with none, the app reports `unconfigured`. A
 server cannot replace itself, so `can_apply` stays false and `blocked_reason` says
 what to do.
 
+`POST /api/engines/update-all` updates, one at a time, every engine reporting a newer version
+that an owning installer can update. Instances and engines sharing one binary update once, an
+engine with a signed warning is left to its recommended install, and each goes through the
+single-engine update, so a busy engine or a failed installer is reported by name while the
+rest still run. Settings offers Update all when two or more engines qualify.
+
 ## Desktop shell
 
 The native product UI loads from the stable bundled asset origin (`tauri://localhost`
