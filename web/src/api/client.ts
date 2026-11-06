@@ -1,6 +1,9 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { EngineUpdateOutcome } from "../generated/EngineUpdateOutcome";
+import type { WorkflowScript } from "../generated/WorkflowScript";
+import type { WorkflowStop } from "../generated/WorkflowStop";
 import type { RenameSelectedProjects } from "../generated/RenameSelectedProjects";
 import type { ChangeProjectIcon } from "../generated/ChangeProjectIcon";
 import type { ChangeProjectImage } from "../generated/ChangeProjectImage";
@@ -183,6 +186,12 @@ export const api = {
       prompt,
       attachment_ids: attachmentIds,
     }),
+  jjStatus: (threadId: string, signal?: AbortSignal) =>
+    request<import("../generated/JjStatus").JjStatus | null>("GET", `/api/threads/${q(threadId)}/jj`, undefined, signal),
+  threadSetup: (threadId: string, signal?: AbortSignal) =>
+    request<import("../generated/ThreadSetup").ThreadSetup | null>("GET", `/api/threads/${q(threadId)}/setup`, undefined, signal),
+  cancelSetup: (threadId: string) =>
+    request<import("../generated/ThreadSetup").ThreadSetup | null>("POST", `/api/threads/${q(threadId)}/setup/cancel`, {}),
   preparationRetry: (threadId: string, signal?: AbortSignal) => request<import("../generated/RetryPreparation").RetryPreparation | null>("GET", `/api/threads/${q(threadId)}/preparation`, undefined, signal),
   retryPreparation: (threadId: string, runId: string) => request<Run>("POST", `/api/threads/${q(threadId)}/preparation/retry`, { run_id: runId } satisfies import("../generated/RetryPreparation").RetryPreparation),
   resumeQueue: (threadId: string) => request<void>("POST", `/api/threads/${q(threadId)}/queue/resume`),
@@ -304,6 +313,10 @@ export const api = {
     request<MessageSearch>("GET", `/api/search/messages?q=${q(query)}&limit=20`, undefined, signal),
   cancelRun: (runId: string) => request<void>("POST", `/api/runs/${q(runId)}/cancel`),
   forceStop: (threadId: string) => request<unknown>("POST", `/api/threads/${q(threadId)}/force-stop`, {}),
+  workflowScript: (threadId: string, callId: string, signal?: AbortSignal) =>
+    request<WorkflowScript>("GET", `/api/threads/${q(threadId)}/workflows/${q(callId)}/script`, undefined, signal),
+  stopWorkflow: (threadId: string, callId: string) =>
+    request<WorkflowStop>("POST", `/api/threads/${q(threadId)}/workflows/${q(callId)}/stop`, {}),
   diff: (threadId: string, signal?: AbortSignal, scope?: string) =>
     request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff${scope ? `?scope=${scope}` : ""}`, undefined, signal),
   resolveThreadPath: (threadId: string, body: ResolveThreadPath, signal?: AbortSignal) =>
@@ -338,6 +351,7 @@ export const api = {
     request<Thread>("POST", `/api/threads/${q(threadId)}/switch-engine`, { engine, model }),
   refreshEngines: () => request<EngineStatus[]>("POST", "/api/engines/refresh"),
   updateEngine: (id: string) => request<void>("POST", `/api/engines/${q(id)}/update`),
+  updateAllEngines: () => request<EngineUpdateOutcome[]>("POST", "/api/engines/update-all"),
   installRecommended: (id: string) => request<void>("POST", `/api/engines/${q(id)}/install-recommended`),
   addCustomEngine: (body: CustomEngine) =>
     request<EngineStatus>("POST", "/api/engines/custom", body),

@@ -182,7 +182,11 @@ impl ShellBridge {
 pub struct Activity {
     pub running: usize,
     pub waiting: usize,
+    /// Threads flagged unread and not archived.
+    pub unread: usize,
     pub keep_awake: bool,
+    /// `quit_confirmation`: the shell keeps `Cmd+Q` on its menu only for `direct`.
+    pub quit_confirmation: &'static str,
 }
 
 impl Activity {
@@ -191,7 +195,9 @@ impl Activity {
             "type": "activity",
             "running": self.running,
             "waiting": self.waiting,
+            "unread": self.unread,
             "keep_awake": self.keep_awake,
+            "quit_confirmation": self.quit_confirmation,
         })
     }
 }
@@ -204,10 +210,18 @@ impl Core {
             .filter(|run| run.state == RunState::AwaitingApproval)
             .count();
         let allowed = self.preference("keep_awake_during_runs", None)? != json!(false);
+        let quit = self.preference("quit_confirmation", None)?;
+        let quit_confirmation = match quit.as_str() {
+            Some("hold") => "hold",
+            Some("double_press") => "double_press",
+            _ => "direct",
+        };
         Ok(Activity {
             running: runs.len(),
             waiting,
+            unread: self.store.unread_threads()?,
             keep_awake: allowed && !runs.is_empty(),
+            quit_confirmation,
         })
     }
 

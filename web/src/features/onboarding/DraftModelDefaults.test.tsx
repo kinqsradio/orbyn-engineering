@@ -19,6 +19,8 @@ vi.mock("../thread/modelStore", () => ({ useEngineModels: () => null, resolveMod
 vi.mock("../thread/ComposerTraits", () => ({
   ACCESS: { supervised: { label: "Supervised", icon: () => null } },
   EffortTrigger: () => null,
+  offeredModes: () => ["supervised"],
+  shownAccess: (_engine: unknown, saved: string) => saved,
   useTraitsMenu: () => ({ menu: null, openAt: () => undefined }),
 }));
 vi.mock("../thread/ModelPicker", () => ({ ModelPickerTrigger: ({ selected, onPick }: {

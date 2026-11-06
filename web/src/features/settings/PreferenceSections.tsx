@@ -17,6 +17,10 @@ import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
 import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
 import { WorktreeCleanup } from "./WorktreeCleanup";
+import { SourceControlWriting } from "./SourceControlWriting";
+import type { TriagePlaybook } from "../../generated/TriagePlaybook";
+import { navigate } from "../../state/route";
+import { DRAFT_KEY, SCRATCH } from "../onboarding/draftStore";
 
 const heading = (title: string) => (
   <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -162,6 +166,21 @@ export function GeneralSection() {
                 key: "keep_awake_during_runs",
                 title: settingsLabel("general-keep-the-computer-awake-during-runs"),
                 description: "In the desktop app. The screen can still sleep.",
+              },
+            ],
+          },
+          {
+            title: "Quitting",
+            rows: [
+              {
+                key: "quit_confirmation",
+                title: settingsLabel("general-quit-confirmation"),
+                description: "How ⌘Q quits the desktop app on macOS. The Quit menu item always quits.",
+                options: [
+                  { value: "direct", label: "Quit at once" },
+                  { value: "hold", label: "Hold ⌘Q" },
+                  { value: "double_press", label: "Press ⌘Q twice" },
+                ],
               },
             ],
           },
@@ -343,6 +362,27 @@ export function DiffsSection() {
               { key: "remove_agent_credits_on_merge", title: settingsLabel("diffs-remove-agent-credits-on-merge") },
             ],
           },
+          {
+            title: "Review guides",
+            rows: [
+              {
+                key: "review_guides_enabled",
+                title: settingsLabel("diffs-review-guides"),
+                description: "An agent writes a stop-by-stop guide for a pull request. The guide stays in Orbyn.",
+              },
+              {
+                key: "review_guide_instructions",
+                title: settingsLabel("diffs-guide-instructions"),
+                description: "Added to the request that asks the agent for a guide.",
+                multiline: true,
+              },
+              {
+                key: "review_guide_model",
+                title: settingsLabel("diffs-guide-model"),
+                description: "A model ID for the guide thread. Empty uses the engine's default.",
+              },
+            ],
+          },
         ]}
       />
     </>
@@ -411,6 +451,7 @@ export function SourceControlSection() {
   return (
     <>
       {heading("Source control")}
+      <SourceControlWriting />
       <PreferenceGroups groups={[{ title: "Repositories", rows: [{
         key: "auto_pull", title: settingsLabel("source-control-automatic-pull"),
         description: "Keeps the default branch current when the checkout has no local changes or commits.",
@@ -502,6 +543,27 @@ function OpenSourceLicenses() {
   );
 }
 
+/** Opens a draft holding the service's triage playbook; the person picks an agent and sends it. */
+function TriageRow() {
+  const pushToast = useUi((state) => state.pushToast);
+  const start = async () => {
+    try {
+      const playbook = await request<TriagePlaybook>("GET", "/api/triage/playbook");
+      useUi.getState().setDraft(DRAFT_KEY, playbook.prompt);
+      navigate({ name: "new", projectId: SCRATCH });
+    } catch (failure) {
+      pushToast(`Couldn't start triage: ${toFailure(failure).message}`);
+    }
+  };
+  return (
+    <SettingRow title={settingsLabel("about-triage")} description="Starts a thread with a support playbook for this version. Nothing is sent until you send it.">
+      <Button small onClick={() => void start()}>
+        Start triage
+      </Button>
+    </SettingRow>
+  );
+}
+
 export function AboutSection() {
   const info = useAsync("about-info", (signal) => api.info(signal));
   return (
@@ -510,6 +572,7 @@ export function AboutSection() {
       <SettingGroup title="Orbyn Engineering">
         <SettingRow title="Version">{info.data?.version ?? "Unknown"}</SettingRow>
         <SettingRow title="Platform">{info.data?.platform ?? "Unknown"}</SettingRow>
+        <TriageRow />
       </SettingGroup>
       <OpenSourceLicenses />
     </>

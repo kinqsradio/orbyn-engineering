@@ -240,6 +240,21 @@ pub struct RunHandle {
     pub task: JoinHandle<()>,
     /// Takes steering text while the run works, for engines that accept it.
     pub input: Option<mpsc::UnboundedSender<String>>,
+    /// Takes run controls other than text, for engines that accept them.
+    pub control: Option<mpsc::UnboundedSender<RunControl>>,
+}
+
+/// The item that keeps an engine workflow's handles next to the tool call that
+/// launched it.
+pub fn workflow_item_id(tool_call_id: &str) -> String {
+    format!("{tool_call_id}:workflow")
+}
+
+/// A request to a running engine that is not a message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RunControl {
+    /// Stop the engine's own workflow task that this tool call launched.
+    StopWorkflow { tool_call_id: String },
 }
 
 /// What this run asks of the engine.
@@ -395,8 +410,17 @@ pub trait EngineDriver: Send + Sync {
         None
     }
 
+    /// The engine's own interactive console resumed on `console.session`, when its
+    /// CLI has one. Orbyn starts it unmodified in a terminal and reads nothing from it.
+    fn console(
+        &self,
+        _console: &crate::console::ConsoleSpec<'_>,
+    ) -> Option<crate::console::ConsoleCommand> {
+        None
+    }
+
     /// The vendor's own sign-in command, to name when a run fails for want of a login.
-    fn sign_in_command(&self) -> Option<&str> {
+    fn sign_in_command(&self) -> Option<String> {
         None
     }
 
@@ -406,12 +430,54 @@ pub trait EngineDriver: Send + Sync {
         false
     }
 
+    /// True for an engine that can start the next turn's process ahead of time.
+    fn can_warm(&self) -> bool {
+        false
+    }
+
+    /// Every input this engine's run process is launched with, for an engine that can
+    /// start the next turn's process ahead of time. `None` means it cannot.
+    fn warm_key(&self, _spec: &RunSpec) -> Option<String> {
+        None
+    }
+
+    /// Starts the process `spec` would launch, idle until a run adopts it. Nothing
+    /// is sent to it, so it spends no usage.
+    async fn start_warm(&self, _spec: RunSpec) -> Result<Option<WarmProcess>> {
+        Ok(None)
+    }
+
+    /// Runs `spec` on a process started ahead of time, whose key the caller checked.
+    async fn adopt_run(
+        &self,
+        spec: RunSpec,
+        events: mpsc::Sender<EngineEvent>,
+        warm: WarmProcess,
+    ) -> Result<RunHandle> {
+        drop(warm);
+        self.start_run(spec, events).await
+    }
+
+    /// Whether repository-derived text may enter this driver's strict tool-free
+    /// one-shot path. Unsupported drivers retain manual source control text.
+    fn supports_writing(&self) -> bool {
+        false
+    }
+
     /// One prompt, one reply, no tools and no session. This spends the user's
     /// engine usage, so a caller that does so unasked needs a setting and a row in
     /// the network list.
     async fn one_shot(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
         Err(crate::error::CoreError::Unsupported(
             "This engine cannot answer a one-off request.".into(),
+        ))
+    }
+
+    /// A hardened one-shot for repository-derived text, used only when
+    /// `supports_writing` is true. Title generation keeps `one_shot`.
+    async fn write_text(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot safely generate source control text. Enter text manually.".into(),
         ))
     }
 }
@@ -448,6 +514,36 @@ fn effort_label(id: &str) -> String {
     }
 }
 
+/// An engine process started ahead of the turn it is for, idle on its input. Its
+/// files live in `dir`. Dropping it ends the process and removes the folder.
+pub struct WarmProcess {
+    /// Every launch input the process was started with. A run adopts it only when
+    /// its own inputs give the same key.
+    pub key: String,
+    pub(crate) process: pipes::EngineProcess,
+    pub(crate) dir: ProbeDir,
+}
+
+/// A long-lived stand-in process, for tests of what happens to a warm one.
+#[cfg(all(test, unix))]
+pub(crate) fn stand_in_warm(key: &str) -> Result<WarmProcess> {
+    let command = crate::process::resolve("sh")
+        .ok_or_else(|| crate::error::CoreError::Internal("no sh".into()))?;
+    let args = [std::ffi::OsString::from("-c"), "sleep 60".into()];
+    Ok(WarmProcess {
+        key: key.to_owned(),
+        process: pipes::spawn_engine(&command, &args, &std::env::temp_dir())?,
+        dir: ProbeDir::new()?,
+    })
+}
+
+impl WarmProcess {
+    /// False once the process has ended on its own.
+    pub fn is_alive(&mut self) -> bool {
+        matches!(self.process.child.child_mut().try_wait(), Ok(None))
+    }
+}
+
 /// A private empty folder for asking an engine what it offers, so no project's
 /// config applies. It goes when the probe is done.
 pub(crate) struct ProbeDir(PathBuf);
@@ -455,7 +551,15 @@ pub(crate) struct ProbeDir(PathBuf);
 impl ProbeDir {
     pub(crate) fn new() -> Result<Self> {
         let path = std::env::temp_dir().join(format!("orbyn-probe-{}", crate::util::new_id()));
-        std::fs::create_dir_all(&path)?;
+        let builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        let builder = {
+            use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
+            builder.mode(0o700);
+            builder
+        };
+        builder.create(&path)?;
         Ok(Self(path))
     }
 

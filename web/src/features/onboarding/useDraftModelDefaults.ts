@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { request } from "../../api/client";
 import type { EngineStatus, PreferenceView } from "../../api/types";
+import { useUi } from "../../state/ui";
 import { toFailure } from "../../lib/useAsync";
 import { chooseDraftEngine } from "./draftEngine";
 
@@ -24,6 +25,8 @@ export function useDraftModelDefaults(projectId: string | null, engines: EngineS
   const [loaded, setLoaded] = useState<{ scope: string | null; defaults: Defaults | null; error: string | null } | null>(null);
   const [picked, setPicked] = useState<{ scope: string | null; choice: Choice } | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Settings stays open over a mounted draft, so a saved default must be read again.
+  const revision = useUi((state) => state.preferencesRevision);
   useEffect(() => {
     const controller = new AbortController();
     setLoaded(null);
@@ -35,7 +38,7 @@ export function useDraftModelDefaults(projectId: string | null, engines: EngineS
         error: error instanceof Error && !("code" in error) ? error.message : toFailure(error).message });
     });
     return () => controller.abort();
-  }, [projectId, attempt]);
+  }, [projectId, attempt, revision]);
   const current = loaded?.scope === projectId ? loaded : null;
   const defaults = current?.defaults;
   const explicit = picked?.scope === projectId ? picked.choice : null;

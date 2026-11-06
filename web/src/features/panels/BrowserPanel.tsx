@@ -1,9 +1,10 @@
 import { serviceSocketUrl } from "../../api/origin";
-import { ArrowLeft, ArrowRight, Circle, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
 import {
   useEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -20,6 +21,10 @@ import { chipId } from "../thread/composerContext";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { SiteIcon } from "./SiteIcon";
+import { AgentCursor } from "./AgentCursor";
+import { BrowserRecording } from "./BrowserRecording";
+import { PreviewRecordings } from "./previewRecording";
+import { PageBridge, copyFromPage } from "./PageBridge";
 import { useBrowserPanels } from "./browserPanels";
 import { inDesktopApp } from "../../api/shell";
 import {
@@ -310,19 +315,41 @@ export function PageView({
       pushToast(`Couldn't reach the page. ${toFailure(failure).message}`),
     );
   };
+  // The size the page has, or was last asked to take. The tab list only catches up
+  // on its next poll, and a click mapped from the old size lands somewhere else.
+  const sized = useRef({ width: tab.width, height: tab.height });
+  useEffect(() => {
+    sized.current = { width: tab.width, height: tab.height };
+  }, [tab.width, tab.height]);
   const point = (event: MouseEvent) => {
     const box = stage.current?.getBoundingClientRect();
     if (!box) return { x: 0, y: 0 };
     return {
-      x: ((event.clientX - box.left) / box.width) * tab.width,
-      y: ((event.clientY - box.top) / box.height) * tab.height,
+      x: ((event.clientX - box.left) / box.width) * sized.current.width,
+      y: ((event.clientY - box.top) / box.height) * sized.current.height,
     };
   };
   const onKey = (event: KeyboardEvent) => {
     if (!human) return;
+    const shortcut = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+    const letter = event.key.toLowerCase();
+    // Pasting arrives as its own event, with the text the person chose to paste.
+    if (shortcut && letter === "v") return;
     event.preventDefault();
+    if (shortcut && letter === "c") {
+      copyFromPage(threadId, tab.id).catch((failure: unknown) =>
+        pushToast(`Couldn't copy from the page. ${toFailure(failure).message}`),
+      );
+      return;
+    }
     if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) send({ kind: "text", text: event.key });
     else send({ kind: "key", text: event.key });
+  };
+  const onPaste = (event: ClipboardEvent) => {
+    if (!human) return;
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    if (text) send({ kind: "text", text });
   };
   const onWheel = (event: WheelEvent) => send({ kind: "scroll", ...point(event), delta_y: event.deltaY });
   const fitted = useRef({ width: tab.width, height: tab.height });
@@ -336,10 +363,14 @@ export function PageView({
       timer = setTimeout(() => {
         const size = pageSize(entry.contentRect.width, entry.contentRect.height);
         if (Math.abs(size.width - fitted.current.width) + Math.abs(size.height - fitted.current.height) < RESIZE_SLACK) return;
+        const before = sized.current;
         fitted.current = size;
-        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) =>
-          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`),
-        );
+        // Input sent from now on reaches the page after this resize, so it maps to the new size.
+        sized.current = size;
+        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) => {
+          if (sized.current === size) sized.current = before;
+          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`);
+        });
       }, RESIZE_DELAY_MS);
     });
     observer.observe(element);
@@ -386,6 +417,7 @@ export function PageView({
       src={`data:image/jpeg;base64,${frame}`}
       onClick={click}
       onKeyDown={onKey}
+      onPaste={onPaste}
       onWheel={onWheel}
     />
   ) : null;
@@ -394,6 +426,7 @@ export function PageView({
       {picture && resize ? (
         <div className="browser-box" style={{ width: box.width, height: box.height }}>
           {picture}
+          <AgentCursor key={`${threadId}:${tab.id}:${tab.url}:${tab.width}:${tab.height}:${tab.zoom}`} threadId={threadId} tabId={tab.id} image={stage} />
           {resize.handles ? (
             <ResizeHandles
               page={page}
@@ -405,7 +438,7 @@ export function PageView({
           ) : null}
         </div>
       ) : picture ? (
-        picture
+        <>{picture}<AgentCursor key={`${threadId}:${tab.id}:${tab.url}:${tab.width}:${tab.height}:${tab.zoom}`} threadId={threadId} tabId={tab.id} image={stage} /></>
       ) : (
         <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>
       )}
@@ -529,6 +562,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recordings] = useState(() => new PreviewRecordings());
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const [isPrivate, setPrivate] = useState(false);
@@ -802,19 +836,6 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
               <Hand size={14} aria-hidden />
             </IconButton>
             <IconButton
-              label={active.recording ? "Stop recording" : "Record"}
-              pressed={active.recording}
-              onClick={() =>
-                void act(() =>
-                  active.recording
-                    ? request("DELETE", `${base}/${q(active.id)}/recording`)
-                    : request("POST", `${base}/${q(active.id)}/recording`),
-                )
-              }
-            >
-              {active.recording ? <Square size={14} aria-hidden /> : <Circle size={14} aria-hidden />}
-            </IconButton>
-            <IconButton
               label="More page actions"
               onClick={(event: MouseEvent<HTMLButtonElement>) => {
                 const box = event.currentTarget.getBoundingClientRect();
@@ -826,6 +847,16 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           </>
         ) : null}
       </div>
+      {active ? <BrowserRecording key={`${threadId}:${active.id}`} tab={active}
+        endpoint={`${base}/${q(active.id)}/recording`} actions={recordings} refresh={async () => {
+          // Recording writes need a rejecting read; useAsync.reload intentionally
+          // consumes read errors for the general panel polling flow.
+          const fresh = await request<PreviewTab[]>("GET", base);
+          const target = fresh.find((tab) => tab.id === active.id);
+          if (!target) throw new Error("The recorded tab closed before its status could be read.");
+          if (recordings.owns(`${base}/${q(active.id)}/recording`)) tabs.setData(fresh);
+          return target;
+        }} /> : null}
       {menu && active ? <Menu x={menu.x} y={menu.y} label="Page actions" items={moreItems(active)} onClose={() => setMenu(null)} /> : null}
       {toolbar && active ? (
         <div className="browser-devices" role="toolbar" aria-label="Device toolbar">
@@ -852,6 +883,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           {error}
         </p>
       ) : null}
+      {active ? <PageBridge threadId={threadId} tab={active} onChanged={reload} /> : null}
       {active ? (
         <PageView
           threadId={threadId}

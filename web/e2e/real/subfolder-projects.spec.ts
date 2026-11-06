@@ -110,6 +110,11 @@ test("a moved thread rejects a file-link lookup captured at its old cwd", async 
   try {
     const target = await f.service.api<{ id: string }>("POST", "/api/projects/add", { path: join(f.service.repo, "packages/api") });
     await f.service.api("POST", `/api/projects/${target.id}/trust`);
+    const reads: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/files/content")) reads.push(url.searchParams.get("path") ?? "");
+    });
     await page.setViewportSize({ width: 1500, height: 900 });
     await page.goto(`${f.service.page}#/threads/${f.thread.id}`);
     await page.getByRole("button", { name: "Surfaces", exact: true }).click();
@@ -132,7 +137,11 @@ test("a moved thread rejects a file-link lookup captured at its old cwd", async 
     expect((await reply).status()).toBe(409);
     await expect.poll(() => pending).toBe(0);
     await expect(page.locator(".file-source")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "move link", exact: true })).toBeVisible();
+    expect(reads).not.toContain("kept.txt");
+    // The open view follows the thread to its new checkout, which has no links.md,
+    // so it says so instead of keeping the old checkout's text on screen.
+    await expect(page.getByText("This file isn't in this checkout.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "move link", exact: true })).toHaveCount(0);
   } finally {
     for (const release of releases.splice(0)) release();
     await f.service.stop();

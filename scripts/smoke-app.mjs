@@ -1,7 +1,10 @@
 // Installs the built package, starts it with a private profile and no secrets, and
 // checks what only a real launch shows: the shell starts the service, the UI runs in
-// the window, a second launch hands over and exits, and the service ends with the app.
+// the window, its providers are discovered and refreshed, a second launch hands over
+// and exits, and the service ends with the app.
 // Usage: node scripts/smoke-app.mjs [bundle-root]
+// ORBYN_SMOKE_CODEX_BIN names a Codex installed for this run, expected signed out;
+// without it both built-in providers are absent.
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +12,8 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { startupDiagnostics } from "./smoke-app-diagnostics.mjs";
+import { smokeAppEnvironment } from "./smoke-app-environment.mjs";
+import { checkProviders } from "./smoke-app-providers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const windows = process.platform === "win32";
@@ -20,26 +25,12 @@ const STOP_LIMIT_MS = 20_000;
 // Real path: Tauri refuses to find its resources through a symlink, and macOS's
 // temp folder is reached through one.
 const sandbox = mkdtempSync(join(realpathSync(tmpdir()), "orbyn-app-smoke-"));
-const home = join(sandbox, "home");
-const data = join(sandbox, "data");
-for (const dir of [home, data, join(home, "AppData/Local"), join(home, "AppData/Roaming")]) {
+const codexBin = process.env.ORBYN_SMOKE_CODEX_BIN || undefined;
+const { environment, directories } = smokeAppEnvironment(process.env, sandbox, process.platform, { codexBin });
+const data = environment.ORBYN_DATA_DIR;
+for (const dir of directories) {
   mkdirSync(dir, { recursive: true });
 }
-
-/** Names copied from this process; everything else, secrets included, stays behind. */
-const KEPT = ["PATH", "Path", "SystemRoot", "SystemDrive", "WINDIR", "ComSpec", "PATHEXT", "TEMP", "TMP", "TMPDIR", "LANG"];
-
-const environment = {
-  ...Object.fromEntries(KEPT.filter((name) => process.env[name]).map((name) => [name, process.env[name]])),
-  HOME: home,
-  CFFIXED_USER_HOME: home,
-  USERPROFILE: home,
-  LOCALAPPDATA: join(home, "AppData/Local"),
-  APPDATA: join(home, "AppData/Roaming"),
-  ORBYN_DATA_DIR: data,
-  ORBYN_OFFLINE: "1",
-  ORBYN_STARTUP_DIAGNOSTICS: "1",
-};
 
 function find(folder, test) {
   if (!existsSync(folder)) return [];
@@ -133,12 +124,29 @@ async function main() {
       if (!app.running) throw new Error(`The app exited during startup.\n${app.tail()}`);
       return existsSync(handle) ? JSON.parse(readFileSync(handle, "utf8")) : null;
     });
-    const get = async (path) => {
+    const api = async (method, path, body) => {
       const response = await fetch(new URL(path, service.url), {
-        headers: { Authorization: `Bearer ${service.token}` },
+        method,
+        headers: {
+          Authorization: `Bearer ${service.token}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(START_LIMIT_MS),
       });
-      if (!response.ok) throw new Error(`${path}: ${response.status}`);
-      return response.json();
+      const text = await response.text();
+      let parsed = text;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // Kept as text for the failure message.
+      }
+      return { status: response.status, body: parsed };
+    };
+    const get = async (path) => {
+      const { status, body } = await api("GET", path);
+      if (status !== 200) throw new Error(`${path}: ${status}`);
+      return body;
     };
     console.log("Service:", await get("/api/info"));
     await until(START_LIMIT_MS, "the UI never ran in the window", async () => {
@@ -148,6 +156,9 @@ async function main() {
       return shell.windows > 0;
     });
     console.log("The UI is running in the window.");
+
+    const providers = await checkProviders(api, { codex: codexBin ? "signed-out" : "absent" });
+    console.log("Providers:", JSON.stringify(providers));
 
     await delay(STAY_ALIVE_MS);
     if (!app.running) throw new Error(`The app died after starting.\n${app.tail()}`);

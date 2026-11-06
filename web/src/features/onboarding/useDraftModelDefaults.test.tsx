@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { ApiFailure, request } from "../../api/client";
 import type { EngineStatus, PreferenceView } from "../../api/types";
 import { useDraftModelDefaults } from "./useDraftModelDefaults";
+import { useUi } from "../../state/ui";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 const mocked = vi.mocked(request);
@@ -74,4 +75,21 @@ it("keeps read errors visible and recovers only through an explicit retry", asyn
   act(() => result.current.reload());
   await waitFor(() => expect(result.current.model).toBe("recovered"));
   expect(result.current.error).toBeNull();
+});
+
+it("reads the saved default again when settings bumps the preferences revision, keeping an explicit choice", async () => {
+  mocked.mockResolvedValue(views("codex", "old") as never);
+  const { result } = renderHook(() => useDraftModelDefaults("a", engines, remembered));
+  await waitFor(() => expect(result.current.model).toBe("old"));
+  mocked.mockResolvedValue(views("other", "saved") as never);
+  act(() => useUi.getState().bumpPreferencesRevision());
+  await waitFor(() => expect(result.current.model).toBe("saved"));
+  expect(result.current.engine?.id).toBe("other");
+  expect(mocked).toHaveBeenCalledTimes(2);
+  act(() => result.current.choose({ engine: "codex", model: "picked", effort: null }));
+  mocked.mockResolvedValue(views("other", "newer") as never);
+  act(() => useUi.getState().bumpPreferencesRevision());
+  await waitFor(() => expect(mocked).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.model).toBe("picked"); expect(result.current.engine?.id).toBe("codex");
 });

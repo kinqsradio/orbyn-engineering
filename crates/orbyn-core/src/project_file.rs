@@ -309,6 +309,7 @@ impl Core {
                 cwd: cwd.into(),
                 cols: 120,
                 rows: 32,
+                engine: false,
             },
         )
     }

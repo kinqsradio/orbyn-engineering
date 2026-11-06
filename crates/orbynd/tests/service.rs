@@ -1003,6 +1003,15 @@ async fn update_without_provable_ownership_is_refused() {
     assert_eq!(body["code"], "update_unavailable");
 }
 
+#[tokio::test]
+async fn update_all_skips_an_engine_no_installer_owns() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let (status, body) = service.send("/api/engines/update-all", json!({})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body, json!([]));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn desktop_action_passes_through_the_sidecar_envelope() {

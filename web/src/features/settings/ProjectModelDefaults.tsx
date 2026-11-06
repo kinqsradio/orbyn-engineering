@@ -3,6 +3,7 @@ import { request } from "../../api/client";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
@@ -44,6 +45,7 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
     try {
       const changed = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences",
         modelDefaultChange(data, query, edit));
+      useUi.getState().bumpPreferencesRevision();
       if (mounted.current) { result.setData(changed); setDraft(null); }
     } catch (failure) {
       if (mounted.current) {

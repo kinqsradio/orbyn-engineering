@@ -7,13 +7,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
-    BrowserProfile, LocalServer, PickedElement, PreviewInput, PreviewRecording, PreviewTab,
-    PreviewView,
+    BrowserProfile, LocalServer, PickedElement, PreviewInput, PreviewPointer, PreviewRecording,
+    PreviewRecordingOptions, PreviewTab, PreviewView,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -27,12 +26,23 @@ use crate::computer::cdp::{
     BrowserSession, HistoryState, LaunchOptions, find_browser, normalize_url,
 };
 use crate::error::{CoreError, Result};
+use crate::preview_bridge::{self, Bridge};
+use crate::preview_recording::{MAX_JPEG, Recording};
 use crate::store::AuditRecord;
 use crate::util::new_id;
 
 const MAX_TABS: usize = 4;
 const FRAME_EVERY: Duration = Duration::from_millis(200);
 const FRAME_QUALITY: u32 = 60;
+// Key overlays never inspect or retain a field value. Body and editing surfaces
+// cannot establish safe focus (including a closed shadow root hosted by body).
+const RECORDING_SAFE_FOCUS: &str = r"(() => {
+  const el = document.activeElement;
+  return Boolean(el && document.hasFocus() && document.designMode === 'off' &&
+    !el.closest('[contenteditable], [autocomplete=one-time-code]') &&
+    ['BUTTON', 'A'].includes(el.tagName));
+})()";
+
 const DEFAULT_SIZE: (u32, u32) = (1280, 800);
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
 const PROFILE_GRACE: Duration = Duration::from_millis(500);
@@ -399,22 +409,23 @@ fn snapshot_expression(limit: usize) -> String {
         .replace("__MAX_TEXT__", &MAX_SNAPSHOT_TEXT.to_string())
 }
 
-struct Recording {
-    folder: PathBuf,
-    frames: Arc<AtomicU64>,
-}
-
-struct Tab {
-    info: Mutex<PreviewTab>,
-    session: tokio::sync::Mutex<BrowserSession>,
+pub(crate) struct Tab {
+    pub(crate) info: Mutex<PreviewTab>,
+    pub(crate) session: tokio::sync::Mutex<BrowserSession>,
     frames: broadcast::Sender<Arc<str>>,
-    recording: Mutex<Option<Recording>>,
+    pointers: broadcast::Sender<PreviewPointer>,
+    trace: Mutex<crate::preview_trace::Trace>,
+    recording: Mutex<Option<Arc<Recording>>>,
     stop: CancellationToken,
     profile: PathBuf,
     /// A named profile stays when the tab ends.
     keep_profile: bool,
     browser: PathBuf,
     options: LaunchOptions,
+    /// Clipboard, file chooser and downloads; see `preview_bridge`.
+    pub(crate) bridge: Mutex<Bridge>,
+    /// The tab's own folder for chosen and downloaded files, gone with the tab.
+    pub(crate) files: PathBuf,
 }
 
 #[derive(Default)]
@@ -429,10 +440,42 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Tab {
+    fn pointer(&self, phase: &str, x: f64, y: f64) {
+        if self.stop.is_cancelled() {
+            return;
+        }
+        let info = lock(&self.info);
+        lock(&self.trace).emit(
+            &self.pointers,
+            phase,
+            (x * info.zoom, y * info.zoom),
+            (info.width, info.height),
+        );
+        if phase == "click"
+            && let Some(recording) = lock(&self.recording).as_ref()
+        {
+            recording.mouse(x * info.zoom, y * info.zoom);
+        }
+    }
+
+    fn clear_pointer(&self) {
+        self.pointer("clear", 0.0, 0.0);
+        if let Some(recording) = lock(&self.recording).as_ref() {
+            recording.clear_input();
+        }
+    }
+
     fn view(&self) -> PreviewTab {
         let mut info = lock(&self.info).clone();
         info.viewers = self.frames.receiver_count();
-        info.recording = lock(&self.recording).is_some();
+        let recording = lock(&self.recording);
+        info.recording = recording
+            .as_ref()
+            .is_some_and(|recording| recording.active());
+        info.recording_error = recording.as_ref().and_then(|recording| recording.error());
+        let bridge = lock(&self.bridge);
+        info.file_chooser = bridge.chooser();
+        info.downloads = bridge.downloads();
         info
     }
 
@@ -440,6 +483,12 @@ impl Tab {
         let mut info = lock(&self.info);
         if !history.url.is_empty() {
             if info.url != history.url {
+                lock(&self.trace).emit(
+                    &self.pointers,
+                    "clear",
+                    (0.0, 0.0),
+                    (info.width, info.height),
+                );
                 info.favicon_url = None;
             }
             history.url.clone_into(&mut info.url);
@@ -544,7 +593,12 @@ impl Crashes {
 }
 
 /// Starts the browser again on the same profile and page.
-async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
+async fn bring_back(tab: &Arc<Tab>, crashes: &mut Crashes) {
+    tab.clear_pointer();
+    let recording = { lock(&tab.recording).clone() };
+    if let Some(recording) = recording {
+        recording.fail("The browser stopped while recording.").await;
+    }
     let Some(delay) = crashes.next_delay(Instant::now()) else {
         lock(&tab.info).crashed = true;
         return;
@@ -553,10 +607,12 @@ async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
     let view = lock(&tab.info).clone();
     let started = async {
         let mut session = BrowserSession::launch(&tab.browser, &tab.profile, tab.options).await?;
+        watch_document(&mut session, tab);
         session
             .set_view(view.width, view.height, view.zoom, view.mobile)
             .await?;
         session.set_appearance(&view.appearance).await?;
+        preview_bridge::enable(&mut session, &tab.files).await?;
         session.navigate(&view.url).await?;
         Ok::<_, CoreError>(session)
     };
@@ -566,45 +622,59 @@ async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
     }
 }
 
+fn watch_document(session: &mut BrowserSession, tab: &Arc<Tab>) {
+    let tab = Arc::downgrade(tab);
+    session.on_document_change(move || {
+        if let Some(tab) = tab.upgrade() {
+            tab.clear_pointer();
+        }
+    });
+}
+
 /// Polls frames while anyone wants them. A page that did not change sends nothing,
 /// and a tab that stops answering just skips that frame.
 async fn pump(tab: Arc<Tab>) {
     let mut last = Vec::new();
-    let mut ticks = tokio::time::interval(FRAME_EVERY);
-    let mut since_history = 0;
+    let mut ticks = tokio::time::interval(Duration::from_millis(100));
+    let mut since_history = Instant::now();
+    let mut last_view = Instant::now() - FRAME_EVERY;
     let mut crashes = Crashes::default();
     let mut watching = 0;
     loop {
         tokio::select! {
             () = tab.stop.cancelled() => {
-                // Dropping the last handle ends the browser; only then is its
-                // profile finished with.
+                let recording = { lock(&tab.recording).take() };
+                if let Some(recording) = recording
+                    && let Err(error) = recording.finish(Some("The tab closed while recording.")).await
+                {
+                    tracing::warn!(%error, "could not finalize a closed tab's recording");
+                }
                 let (profile, keep) = (tab.profile.clone(), tab.keep_profile);
+                let files = tab.files.clone();
                 drop(tab);
                 tokio::time::sleep(PROFILE_GRACE).await;
-                if !keep {
-                    let _ = std::fs::remove_dir_all(profile);
-                }
+                if !keep { let _ = std::fs::remove_dir_all(profile); }
+                let _ = std::fs::remove_dir_all(files);
                 return;
             }
             _ = ticks.tick() => {}
         }
-        let recording = lock(&tab.recording)
-            .as_ref()
-            .map(|rec| (rec.folder.clone(), rec.frames.clone()));
+        let recording = { lock(&tab.recording).clone() };
+        let record_due = match &recording {
+            Some(recording) => recording.due().await,
+            None => false,
+        };
         let viewers = tab.frames.receiver_count();
-        if viewers == 0 && recording.is_none() {
-            watching = 0;
-            continue;
-        }
-        // A viewer who just joined has no frame yet, even if the page hasn't changed.
         if viewers > watching {
             last.clear();
         }
         watching = viewers;
-        since_history += 1;
-        if since_history >= HISTORY_TICKS {
-            since_history = 0;
+        let view_due = viewers > 0 && last_view.elapsed() >= FRAME_EVERY;
+        if !view_due && !record_due {
+            continue;
+        }
+        if since_history.elapsed() >= FRAME_EVERY * HISTORY_TICKS {
+            since_history = Instant::now();
             let mut session = tab.session.lock().await;
             let history = session.history().await;
             let title = session.title().await;
@@ -619,32 +689,74 @@ async fn pump(tab: Arc<Tab>) {
                 let mut info = lock(&tab.info);
                 info.favicon_url = favicon_url(&icon, &info.url);
             }
-            drop(session);
         }
-        let Ok(frame) = tab.session.lock().await.frame(FRAME_QUALITY).await else {
+        // The screenshot and its input cue snapshot share the page-session owner.
+        let (frame, captured) = {
+            let mut session = tab.session.lock().await;
+            let frame = session.frame(FRAME_QUALITY).await;
+            let captured = if record_due && let (Ok(frame), Some(recording)) = (&frame, &recording)
+            {
+                if recording.keys_enabled() {
+                    let safe = session
+                        .read(RECORDING_SAFE_FOCUS)
+                        .await
+                        .is_ok_and(|value| value == json!(true));
+                    if !safe {
+                        recording.key("", false);
+                    }
+                }
+                // Reject the encoded size before allocating the decoded byte vector.
+                if frame.len() > (MAX_JPEG / 3 + 1) * 4 {
+                    None
+                } else {
+                    Some(recording.capture(decode_base64(frame)))
+                }
+            } else {
+                None
+            };
+            (frame, captured)
+        };
+        let Ok(frame) = frame else {
             if !tab.session.lock().await.is_alive().await {
                 bring_back(&tab, &mut crashes).await;
             }
             continue;
         };
-        let digest = Sha256::digest(frame.as_bytes()).to_vec();
-        if digest == last {
-            continue;
-        }
-        last = digest;
-        if let Some((folder, count)) = recording {
-            let index = count.fetch_add(1, Ordering::Relaxed);
-            let path = folder.join(format!("{index:06}.jpg"));
-            if let Err(error) = std::fs::write(path, decode_base64(&frame)) {
-                tracing::warn!(%error, "could not keep a recorded frame");
+        preview_bridge::settle(&tab.bridge, &mut *tab.session.lock().await, &tab.files).await;
+        if record_due && let Some(recording) = &recording {
+            if let Some(captured) = captured {
+                // Hand over without waiting: live viewers never stall on encoding.
+                recording.submit(captured);
+            } else {
+                recording
+                    .fail("Recorded frame exceeds the JPEG size limit.")
+                    .await;
             }
         }
-        let _ = tab.frames.send(Arc::from(frame));
+        if view_due {
+            last_view = Instant::now();
+            let digest = Sha256::digest(frame.as_bytes()).to_vec();
+            if digest != last {
+                last = digest;
+                let _ = tab.frames.send(Arc::from(frame));
+            }
+        }
     }
 }
 
 impl PreviewManager {
-    fn tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
+    /// A tab a person holds, for crossings that must be theirs.
+    pub(crate) fn held_tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
+        let tab = self.tab(thread_id, id)?;
+        if lock(&tab.info).control != "human" {
+            return Err(CoreError::Invalid(
+                "Take control of this page first.".into(),
+            ));
+        }
+        Ok(tab)
+    }
+
+    pub(crate) fn tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
         lock(&self.tabs)
             .get(id)
             .filter(|tab| lock(&tab.info).thread_id == thread_id)
@@ -665,6 +777,15 @@ impl PreviewManager {
         Ok(self.tab(thread_id, id)?.frames.subscribe())
     }
 
+    /// A separate event feed keeps legacy JPEG viewers compatible.
+    pub fn subscribe_pointers(
+        &self,
+        thread_id: &str,
+        id: &str,
+    ) -> Result<broadcast::Receiver<PreviewPointer>> {
+        Ok(self.tab(thread_id, id)?.pointers.subscribe())
+    }
+
     /// Takes the page or hands it back.
     pub fn set_control(&self, thread_id: &str, id: &str, human: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
@@ -677,6 +798,7 @@ impl PreviewManager {
         let url = normalize_url(url)?;
         let tab = self.tab(thread_id, id)?;
         let mut session = tab.session.lock().await;
+        tab.clear_pointer();
         session.navigate(&url).await?;
         let history = session.history().await?;
         drop(session);
@@ -692,7 +814,9 @@ impl PreviewManager {
     /// One page back or forward. At either end this changes nothing.
     pub async fn step(&self, thread_id: &str, id: &str, back: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
-        let history = tab.session.lock().await.step_history(back).await?;
+        let mut session = tab.session.lock().await;
+        tab.clear_pointer();
+        let history = session.step_history(back).await?;
         tab.note_history(&history);
         Ok(tab.view())
     }
@@ -712,12 +836,13 @@ impl PreviewManager {
         };
         let mut session = tab.session.lock().await;
         session.set_view(width, height, zoom, mobile).await?;
-        drop(session);
+        tab.clear_pointer();
         {
             let mut info = lock(&tab.info);
             info.width = width;
             info.height = height;
         }
+        drop(session);
         Ok(tab.view())
     }
 
@@ -750,13 +875,14 @@ impl PreviewManager {
             .set_view(current.width, current.height, zoom, mobile)
             .await?;
         session.set_appearance(&appearance).await?;
-        drop(session);
+        tab.clear_pointer();
         {
             let mut info = lock(&tab.info);
             info.zoom = zoom;
             info.mobile = mobile;
             info.appearance = appearance;
         }
+        drop(session);
         Ok(tab.view())
     }
 
@@ -775,7 +901,9 @@ impl PreviewManager {
 
     pub async fn reload(&self, thread_id: &str, id: &str, hard: bool) -> Result<PreviewTab> {
         let tab = self.tab(thread_id, id)?;
-        tab.session.lock().await.reload(hard).await?;
+        let mut session = tab.session.lock().await;
+        tab.clear_pointer();
+        session.reload(hard).await?;
         Ok(tab.view())
     }
 
@@ -806,6 +934,20 @@ impl PreviewManager {
             ));
         }
         let mut session = tab.session.lock().await;
+        let document = session.document_generation();
+        let recording = { lock(&tab.recording).clone() };
+        let safe_key = if input.kind == "key"
+            && recording
+                .as_ref()
+                .is_some_and(|recording| recording.keys_enabled())
+        {
+            session
+                .read(RECORDING_SAFE_FOCUS)
+                .await
+                .is_ok_and(|value| value == json!(true))
+        } else {
+            false
+        };
         let mouse = |kind: &str, buttons: u32, count: u32| {
             json!({
                 "type": kind, "x": input.x, "y": input.y, "button": "left",
@@ -824,7 +966,14 @@ impl PreviewManager {
                     .await?;
                 session
                     .input("Input.dispatchMouseEvent", mouse("mouseReleased", 0, 1))
-                    .await
+                    .await?;
+                if document == session.document_generation()
+                    && let Some(recording) = &recording
+                {
+                    let zoom = lock(&tab.info).zoom;
+                    recording.mouse(input.x * zoom, input.y * zoom);
+                }
+                Ok(())
             }
             "scroll" => {
                 session
@@ -838,6 +987,9 @@ impl PreviewManager {
                     .await
             }
             "text" => {
+                if let Some(recording) = &recording {
+                    recording.key("", false);
+                }
                 session
                     .input("Input.insertText", json!({ "text": input.text }))
                     .await
@@ -850,6 +1002,12 @@ impl PreviewManager {
                             json!({ "type": kind, "key": input.text, "code": input.text }),
                         )
                         .await?;
+                }
+                if let Some(recording) = &recording {
+                    recording.key(
+                        &input.text,
+                        safe_key && document == session.document_generation(),
+                    );
                 }
                 Ok(())
             }
@@ -886,11 +1044,15 @@ impl PreviewManager {
         }
         let tab = self.tab(thread_id, id)?;
         let mut session = tab.session.lock().await;
+        let document = session.document_generation();
         match step.action {
             PreviewAction::Click => {
-                session
-                    .click(step.selector.as_deref().unwrap_or_default())
-                    .await
+                let selector = step.selector.as_deref().unwrap_or_default();
+                let (x, y) = session.click_point(selector).await?;
+                if document == session.document_generation() {
+                    tab.pointer("click", x, y);
+                }
+                Ok(json!({ "clicked": selector }))
             }
             PreviewAction::Type => {
                 let selector = step.selector.as_deref().unwrap_or_default();
@@ -900,6 +1062,9 @@ impl PreviewManager {
                     )));
                 }
                 let typed = step.text.as_deref().unwrap_or_default();
+                if let Some(recording) = lock(&tab.recording).as_ref() {
+                    recording.key("", false);
+                }
                 session
                     .input("Input.insertText", json!({ "text": typed }))
                     .await?;
@@ -925,6 +1090,9 @@ impl PreviewManager {
                         }),
                     )
                     .await?;
+                if document == session.document_generation() {
+                    tab.pointer("move", x, y);
+                }
                 Ok(json!({ "scrolled": step.dy }))
             }
         }
@@ -992,29 +1160,43 @@ impl PreviewManager {
         outcome.unwrap_or_else(|_| Ok(json!({ "found": false, "waited_ms": waited() })))
     }
 
-    pub fn start_recording(&self, thread_id: &str, id: &str, folder: PathBuf) -> Result<()> {
+    pub fn start_recording(
+        &self,
+        thread_id: &str,
+        id: &str,
+        folder: PathBuf,
+        options: PreviewRecordingOptions,
+    ) -> Result<()> {
         let tab = self.tab(thread_id, id)?;
         let mut recording = lock(&tab.recording);
-        if recording.is_some() {
-            return Err(CoreError::Invalid("This page is already recording.".into()));
+        if let Some(previous) = recording.as_ref() {
+            if previous.active() {
+                return Err(CoreError::Invalid("This page is already recording.".into()));
+            }
+            if !previous.published() {
+                return Err(CoreError::Invalid(
+                    "Finish the previous recording to save its summary first.".into(),
+                ));
+            }
         }
-        std::fs::create_dir_all(&folder)?;
-        *recording = Some(Recording {
-            folder,
-            frames: Arc::default(),
-        });
+        *recording = Some(Recording::start(folder, options)?);
         Ok(())
     }
 
-    pub fn stop_recording(&self, thread_id: &str, id: &str) -> Result<PreviewRecording> {
+    pub async fn stop_recording(&self, thread_id: &str, id: &str) -> Result<PreviewRecording> {
         let tab = self.tab(thread_id, id)?;
-        let finished = lock(&tab.recording)
-            .take()
+        let finished = { lock(&tab.recording).clone() }
             .ok_or_else(|| CoreError::Invalid("This page is not recording.".into()))?;
-        Ok(PreviewRecording {
-            path: finished.folder.to_string_lossy().into_owned(),
-            frames: finished.frames.load(Ordering::Relaxed),
-        })
+        let result = finished.finish(None).await;
+        let mut current = lock(&tab.recording);
+        if result.is_ok()
+            && current
+                .as_ref()
+                .is_some_and(|recording| Arc::ptr_eq(recording, &finished))
+        {
+            current.take();
+        }
+        result
     }
 
     /// Ends a tab, its browser and its profile.
@@ -1046,6 +1228,9 @@ impl PreviewManager {
 
 /// Stops the pump, which holds the last handle and clears up after the browser.
 fn forget(tab: &Tab) {
+    if let Some(recording) = lock(&tab.recording).as_ref() {
+        recording.cancel();
+    }
     tab.stop.cancel();
 }
 
@@ -1140,9 +1325,11 @@ impl Core {
             headless: true,
             in_process_gpu: self.config.browser_in_process_gpu,
         };
+        let files = self.config.data_dir.join("preview-files").join(&id);
         let mut session = BrowserSession::launch(&browser, &profile, options).await?;
         session.set_view(width, height, zoom, false).await?;
         session.set_appearance(&appearance).await?;
+        preview_bridge::enable(&mut session, &files).await?;
         session.navigate(&url).await?;
         let title = session.title().await.unwrap_or_default();
         let favicon_url = session
@@ -1151,6 +1338,7 @@ impl Core {
             .ok()
             .and_then(|value| favicon_url(&value, &url));
         let (frames, _) = broadcast::channel(8);
+        let (pointers, _) = broadcast::channel(16);
         let tab = Arc::new(Tab {
             info: Mutex::new(PreviewTab {
                 id: id.clone(),
@@ -1158,6 +1346,7 @@ impl Core {
                 url,
                 control: "none".to_owned(),
                 recording: false,
+                recording_error: None,
                 viewers: 0,
                 width,
                 height,
@@ -1176,16 +1365,23 @@ impl Core {
                     "person".to_owned()
                 },
                 crashed: false,
+                file_chooser: None,
+                downloads: Vec::new(),
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
+            pointers,
+            trace: Mutex::new(crate::preview_trace::Trace::default()),
             recording: Mutex::new(None),
             stop: CancellationToken::new(),
             profile,
             keep_profile: how.profile.is_some(),
             browser,
             options,
+            bridge: Mutex::new(Bridge::default()),
+            files,
         });
+        watch_document(&mut *tab.session.lock().await, &tab);
         lock(&self.previews.tabs).insert(id, tab.clone());
         let view = tab.view();
         tokio::spawn(pump(tab));
@@ -1296,13 +1492,17 @@ impl Core {
         self.save_profiles(&profiles)
     }
 
-    pub fn start_preview_recording(&self, thread_id: &str, id: &str) -> Result<()> {
-        let folder = self
-            .config
-            .data_dir
-            .join("browser-artifacts")
-            .join(format!("{id}-{}", new_id()));
-        self.previews.start_recording(thread_id, id, folder)
+    pub fn start_preview_recording(
+        &self,
+        thread_id: &str,
+        id: &str,
+        options: PreviewRecordingOptions,
+    ) -> Result<()> {
+        let root = self.config.data_dir.join("browser-artifacts");
+        crate::preview_recording::ensure_room(&root, crate::preview_recording::TOTAL_BUDGET)?;
+        let folder = root.join(format!("{id}-{}", new_id()));
+        self.previews
+            .start_recording(thread_id, id, folder, options)
     }
 
     /// Servers listening from this thread's checkout. Where a process's folder
@@ -1519,6 +1719,262 @@ async fn listeners(checkout: &Path) -> Vec<LocalServer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture_tab(session: BrowserSession, control: &str) -> Arc<Tab> {
+        let (frames, _) = broadcast::channel(8);
+        let (pointers, _) = broadcast::channel(16);
+        Arc::new(Tab {
+            info: Mutex::new(
+                serde_json::from_value(json!({
+                    "id": "tab", "thread_id": "thread", "url": "http://fixture/",
+                    "control": control, "recording": false, "viewers": 0,
+                    "width": 100, "height": 100, "can_go_back": false,
+                    "can_go_forward": false, "title": "", "zoom": 1.0,
+                    "appearance": "system", "mobile": false, "private": false,
+                    "profile": null, "opened_by": "person", "crashed": false
+                }))
+                .unwrap(),
+            ),
+            session: tokio::sync::Mutex::new(session),
+            frames,
+            pointers,
+            trace: Mutex::new(crate::preview_trace::Trace::default()),
+            recording: Mutex::new(None),
+            stop: CancellationToken::new(),
+            // No real browser or profile exists in this protocol fixture.
+            profile: PathBuf::new(),
+            keep_profile: true,
+            browser: PathBuf::new(),
+            options: LaunchOptions::default(),
+            bridge: Mutex::new(Bridge::default()),
+            files: PathBuf::new(),
+        })
+    }
+
+    async fn fixture_session(
+        safe_focus: bool,
+    ) -> (BrowserSession, tokio::task::JoinHandle<Vec<Value>>) {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            let mut requests = Vec::new();
+            while let Some(Ok(frame)) = socket.next().await {
+                let Ok(text) = frame.to_text() else { continue };
+                let request: Value = serde_json::from_str(text).unwrap();
+                let result = match request["method"].as_str().unwrap() {
+                    "Target.getTargets" => {
+                        json!({ "targetInfos": [{ "type": "page", "targetId": "target" }] })
+                    }
+                    "Target.attachToTarget" => json!({ "sessionId": "session" }),
+                    "Page.getFrameTree" => json!({ "frameTree": { "frame": { "id": "main" } } }),
+                    "Runtime.evaluate" => json!({ "result": { "value": safe_focus } }),
+                    _ => json!({}),
+                };
+                requests.push(request.clone());
+                if socket
+                    .send(Message::text(
+                        json!({ "id": request["id"], "result": result }).to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            requests
+        });
+        let session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        (session, server)
+    }
+
+    #[tokio::test]
+    async fn unsafe_focus_suppresses_saved_labels_without_suppressing_human_dispatch() {
+        let (session, server) = fixture_session(false).await;
+        let tab = fixture_tab(session, "human");
+        let manager = PreviewManager::default();
+        lock(&manager.tabs).insert("tab".into(), tab.clone());
+        let folder = std::env::temp_dir().join(format!("recording-unsafe-{}", new_id()));
+        manager
+            .start_recording(
+                "thread",
+                "tab",
+                folder.clone(),
+                PreviewRecordingOptions {
+                    show_key_presses: true,
+                    ..PreviewRecordingOptions::default()
+                },
+            )
+            .unwrap();
+        let owner = lock(&tab.recording).clone().unwrap();
+        let input = serde_json::from_value(json!({ "kind": "key", "text": "Backspace" })).unwrap();
+        manager.input("thread", "tab", &input).await.unwrap();
+        let mut jpeg = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(200, 100)
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+            .unwrap();
+        owner.frame(owner.capture(jpeg.into_inner())).await;
+        let done = manager.stop_recording("thread", "tab").await.unwrap();
+        assert_eq!(done.frames, 1);
+        let pixels = image::load_from_memory_with_format(
+            &std::fs::read(folder.join("000000.jpg")).unwrap(),
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap()
+        .to_rgb8();
+        for y in 62..92 {
+            for x in 8..178 {
+                assert!(
+                    pixels.get_pixel(x, y)[0] < 70,
+                    "unsafe focus must not produce key-badge pixels"
+                );
+            }
+        }
+        drop(owner);
+        drop(tab);
+        drop(manager);
+        let requests = server.await.unwrap();
+        let dispatched: Vec<_> = requests
+            .iter()
+            .filter(|request| request["method"] == "Input.dispatchKeyEvent")
+            .map(|request| request["params"]["type"].as_str().unwrap())
+            .collect();
+        assert_eq!(dispatched, ["keyDown", "keyUp"]);
+    }
+
+    #[tokio::test]
+    async fn failed_summary_publication_keeps_the_manager_owner_for_retry() {
+        let (session, server) = fixture_session(false).await;
+        let tab = fixture_tab(session, "human");
+        let manager = PreviewManager::default();
+        lock(&manager.tabs).insert("tab".into(), tab.clone());
+        let folder = std::env::temp_dir().join(format!("recording-retry-{}", new_id()));
+        manager
+            .start_recording(
+                "thread",
+                "tab",
+                folder.clone(),
+                PreviewRecordingOptions::default(),
+            )
+            .unwrap();
+        let owner = lock(&tab.recording).clone().unwrap();
+        let mut jpeg = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(200, 100)
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+            .unwrap();
+        owner.frame(owner.capture(jpeg.into_inner())).await;
+        // A directory at the final manifest path forces rename failure on both OSes.
+        std::fs::create_dir(folder.join("recording.json")).unwrap();
+        assert!(manager.stop_recording("thread", "tab").await.is_err());
+        let retained = lock(&tab.recording).clone().unwrap();
+        assert!(Arc::ptr_eq(&retained, &owner));
+        assert!(!retained.active());
+        assert!(tab.view().recording_error.unwrap().contains("publish"));
+        assert!(
+            manager
+                .start_recording(
+                    "thread",
+                    "tab",
+                    folder.with_extension("replacement"),
+                    PreviewRecordingOptions::default()
+                )
+                .is_err()
+        );
+        // Move only the synthetic obstacle within this test's unique artifact folder.
+        std::fs::rename(
+            folder.join("recording.json"),
+            folder.join("publication-obstacle"),
+        )
+        .unwrap();
+        let done = manager.stop_recording("thread", "tab").await.unwrap();
+        assert_eq!(done.frames, 1);
+        assert_eq!(PathBuf::from(done.path), folder);
+        assert!(lock(&tab.recording).is_none());
+        let summary: Value =
+            serde_json::from_slice(&std::fs::read(folder.join("recording.json")).unwrap()).unwrap();
+        assert_eq!(summary["frames"], 1);
+        assert!(folder.join("000000.jpg").is_file());
+        assert!(!folder.join("000001.jpg").exists());
+        drop(retained);
+        drop(owner);
+        drop(tab);
+        drop(manager);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn screenshot_error_releases_the_session_for_health_check_and_next_frame() {
+        use futures_util::{SinkExt, StreamExt};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let shots = Arc::new(AtomicUsize::new(0));
+        let checks = Arc::new(AtomicUsize::new(0));
+        let (frames_seen, health_seen) = (shots.clone(), checks.clone());
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            while let Some(Ok(frame)) = socket.next().await {
+                let Ok(text) = frame.to_text() else { continue };
+                let request: Value = serde_json::from_str(text).unwrap();
+                let method = request["method"].as_str().unwrap();
+                let result = match method {
+                    "Target.getTargets" => {
+                        json!({ "targetInfos": [{ "type": "page", "targetId": "target" }] })
+                    }
+                    "Target.attachToTarget" => json!({ "sessionId": "session" }),
+                    "Page.getFrameTree" => json!({ "frameTree": { "frame": { "id": "main" } } }),
+                    "Page.captureScreenshot" => {
+                        if frames_seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                            socket.send(Message::text(json!({ "id": request["id"], "error": { "message": "synthetic screenshot refusal" } }).to_string())).await.unwrap();
+                            continue;
+                        }
+                        json!({ "data": "synthetic-frame" })
+                    }
+                    "Runtime.evaluate" => {
+                        health_seen.fetch_add(1, Ordering::SeqCst);
+                        json!({ "result": { "value": true } })
+                    }
+                    _ => json!({}),
+                };
+                socket
+                    .send(Message::text(
+                        json!({ "id": request["id"], "result": result }).to_string(),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        });
+        let session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        let tab = fixture_tab(session, "none");
+        let mut viewer = tab.frames.subscribe();
+        let pumping = tokio::spawn(pump(tab.clone()));
+        let next = tokio::time::timeout(Duration::from_secs(2), viewer.recv()).await;
+        // Reap the synthetic tasks even when the regression fails on the old path.
+        pumping.abort();
+        let _ = pumping.await;
+        drop(tab);
+        server.await.unwrap();
+        assert!(
+            next.is_ok(),
+            "first screenshot refusal must recover, not keep its session lock: shots={}, health={}",
+            shots.load(Ordering::SeqCst),
+            checks.load(Ordering::SeqCst)
+        );
+        assert_eq!(next.unwrap().unwrap().as_ref(), "synthetic-frame");
+        assert_eq!(shots.load(Ordering::SeqCst), 2);
+        assert_eq!(checks.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn favicon_discovery_never_widens_the_image_proxy_url_envelope() {

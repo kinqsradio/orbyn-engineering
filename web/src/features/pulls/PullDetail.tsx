@@ -13,9 +13,12 @@ import { ErrorState, Loading } from "../../ui/states";
 import { Markdown } from "../thread/Markdown";
 import { PullCode } from "./PullCode";
 import { PullConversation } from "./PullConversation";
+import { PullGuide } from "./PullGuide";
 import { pullsApi } from "./pullsApi";
 
-type Tab = "summary" | "timeline" | "code";
+type Tab = "summary" | "guide" | "timeline" | "code";
+
+const TAB_LABELS: Record<Tab, string> = { summary: "Summary", guide: "Guide", timeline: "Timeline", code: "Code" };
 
 const checkIcon = (check: PullCheck) =>
   check.state === "pass" ? (
@@ -327,7 +330,7 @@ function Stack({ projectId, number, onOpen }: { projectId: string; number: numbe
   );
 }
 
-/** One pull request: Summary, Timeline and Code, with merge and review. */
+/** One pull request: Summary, Guide, Timeline and Code, with merge and review. */
 export function PullDetail({
   projectId,
   number,
@@ -489,7 +492,7 @@ export function PullDetail({
       </header>
       <Stack projectId={projectId} number={number} onOpen={onOpen} />
       <div className="pull-tabs segment" role="tablist" aria-label="Pull request">
-        {(["summary", "timeline", "code"] as const).map((entry) => (
+        {(["summary", "guide", "timeline", "code"] as const).map((entry) => (
           <button
             key={entry}
             type="button"
@@ -498,7 +501,7 @@ export function PullDetail({
             aria-selected={tab === entry}
             onClick={() => setTab(entry)}
           >
-            {entry === "summary" ? "Summary" : entry === "timeline" ? "Timeline" : "Code"}
+            {TAB_LABELS[entry]}
           </button>
         ))}
       </div>
@@ -521,6 +524,8 @@ export function PullDetail({
             <Checks projectId={projectId} number={number} />
             <PullConversation projectId={projectId} number={number} />
           </>
+        ) : tab === "guide" ? (
+          <PullGuide projectId={projectId} number={number} headSha={detail.data.head_sha} />
         ) : tab === "timeline" ? (
           <Timeline projectId={projectId} number={number} />
         ) : (

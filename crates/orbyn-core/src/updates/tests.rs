@@ -41,6 +41,7 @@ impl EngineDriver for Fake {
                 skill_delivery: Vec::new(),
                 goal_control: false,
                 decline_feedback: false,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -89,6 +90,7 @@ impl EngineDriver for Fake {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }
@@ -328,6 +330,71 @@ async fn shell_lines_drive_app_state_and_junk_is_ignored() {
     assert!(!updates.status().await.app.can_apply);
     updates.on_shell_line(r#"{"type":"app_update_unconfigured"}"#);
     assert!(updates.status().await.app.unconfigured);
+}
+
+#[tokio::test]
+async fn a_check_failure_during_install_preserves_admission_and_progress() {
+    let f = fixture("exit 0").await;
+    let updates = &f.core.updates;
+    let mut lines = updates.attach_shell();
+    updates.on_shell_line(r#"{"type":"app_update_available","version":"99.0.0","notes":"new"}"#);
+    updates.apply_app("t").await.unwrap();
+    assert_eq!(lines.recv().await.unwrap()["type"], "install_app_update");
+    updates.on_shell_line(r#"{"type":"app_update_progress","downloaded":5,"total":10}"#);
+
+    updates.on_shell_line(r#"{"type":"app_update_check_failed","message":"check unavailable"}"#);
+    let status = updates.status().await;
+    assert_eq!(status.error.as_deref(), Some("check unavailable"));
+    let admission = f.core.runs.admit(&f.thread, "go", "t");
+    let held = matches!(&admission, Err(CoreError::Updating));
+    if let Ok(run) = admission {
+        f.core.runs.cancel(&run.id).unwrap();
+        wait_stopped(&f.core, &run.id).await;
+    }
+
+    assert!(
+        held,
+        "a check failure must not release an active install hold"
+    );
+    assert_eq!(status.app.downloaded, Some(5));
+    assert_eq!(status.app.total, Some(10));
+    assert_eq!(status.app.latest.as_deref(), Some("99.0.0"));
+    assert_eq!(status.app.notes.as_deref(), Some("new"));
+
+    updates.on_shell_line(r#"{"type":"app_update_failed","message":"install failed"}"#);
+    let status = updates.status().await;
+    assert_eq!(status.error.as_deref(), Some("install failed"));
+    assert_eq!(status.app.downloaded, None);
+    assert_eq!(status.app.total, None);
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    f.core.runs.cancel(&run.id).unwrap();
+    wait_stopped(&f.core, &run.id).await;
+}
+
+#[tokio::test]
+async fn a_check_failure_without_an_install_does_not_hold_admission() {
+    let f = fixture("exit 0").await;
+    let updates = &f.core.updates;
+    let lines = updates.attach_shell();
+    updates.on_shell_line(r#"{"type":"app_update_check_failed","message":"check unavailable"}"#);
+    assert_eq!(
+        updates.status().await.error.as_deref(),
+        Some("check unavailable")
+    );
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    f.core.runs.cancel(&run.id).unwrap();
+    wait_stopped(&f.core, &run.id).await;
+
+    // A disconnected shell must retain its existing refusal-and-release behavior.
+    drop(lines);
+    updates.on_shell_line(r#"{"type":"app_update_available","version":"99.0.0"}"#);
+    assert!(matches!(
+        updates.apply_app("t").await,
+        Err(CoreError::UpdateFailed(_))
+    ));
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    f.core.runs.cancel(&run.id).unwrap();
+    wait_stopped(&f.core, &run.id).await;
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineUsage } from "../../api/types";
-import { axisTicks, formatTokens, periodDates, usageTotals } from "./usageModel";
+import { axisTicks, cacheHit, engineShares, costBreakdown, costPerMillion, formatTokens, modelTrend, periodDates, usageTotals } from "./usageModel";
 
 const engine = (over: Partial<EngineUsage>): EngineUsage => ({
   engine: "codex",
@@ -19,6 +19,10 @@ const model = (name: string, tokens: number, cost: number | null) => ({
   cache_read_tokens: 0,
   cache_write_tokens: 0,
   estimated_cost: cost,
+  cost_split: cost === null ? null : { input: cost, output: 0, cache_read: 0, cache_write: 0 },
+  tiers: [{ tier: "standard", tokens, estimated_cost: cost }],
+  unpriced_tokens: cost === null ? tokens : 0,
+  days: [] as { date: string; tokens: number; estimated_cost: number | null }[],
 });
 
 describe("usage totals", () => {
@@ -60,5 +64,63 @@ describe("usage formatting", () => {
   it("steps the axis past the largest value", () => {
     expect(axisTicks(1_800)).toEqual([0, 500, 1000, 1500, 2000]);
     expect(axisTicks(0)).toEqual([0]);
+  });
+});
+
+describe("cost split", () => {
+  it("adds token-type costs and keeps an unpriced tier unknown", () => {
+    const fast = {
+      ...model("f", 30, 6),
+      cost_split: { input: 4, output: 2, cache_read: 0, cache_write: 0 },
+      tiers: [
+        { tier: "standard", tokens: 10, estimated_cost: 1 },
+        { tier: "fast", tokens: 20, estimated_cost: 5 },
+        { tier: "priority", tokens: 7, estimated_cost: null },
+      ],
+      unpriced_tokens: 7,
+    };
+    const { split, tiers } = costBreakdown([model("a", 100, 2), fast]);
+    expect(split).toEqual({ input: 6, output: 2, cache_read: 0, cache_write: 0 });
+    expect(tiers).toEqual([
+      { tier: "standard", tokens: 110, cost: 3, unpricedTokens: 0 },
+      { tier: "fast", tokens: 20, cost: 5, unpricedTokens: 0 },
+      { tier: "priority", tokens: 7, cost: null, unpricedTokens: 7 },
+    ]);
+    expect(costBreakdown([model("b", 5, null)]).split).toBeNull();
+  });
+});
+
+describe("model breakdown", () => {
+  it("reads cache hit, cost per priced million and a zero-filled trend", () => {
+    const row = {
+      ...model("m", 1_000_000, 4),
+      input_tokens: 250_000,
+      output_tokens: 250_000,
+      cache_read_tokens: 500_000,
+      unpriced_tokens: 200_000,
+      days: [{ date: "2026-11-02", tokens: 9, estimated_cost: null }],
+    };
+    expect(cacheHit(row)).toBeCloseTo(500_000 / 750_000);
+    expect(costPerMillion(row)).toBe(5);
+    expect(costPerMillion(model("x", 10, null))).toBeNull();
+    expect(cacheHit({ ...model("y", 0, null), output_tokens: 3 })).toBeNull();
+    expect(modelTrend(row, ["2026-11-01", "2026-11-02"])).toEqual([0, 9]);
+  });
+});
+
+describe("provider shares", () => {
+  it("shares tokens across engines and drops an unpriced engine from a cost share", () => {
+    const totals = usageTotals(
+      [
+        engine({ models: [model("a", 300, 3)], days: [{ date: "2026-11-01", tokens: 300, estimated_cost: 3 }] }),
+        engine({ engine: "claude", models: [model("c", 100, null)], days: [{ date: "2026-11-01", tokens: 100, estimated_cost: null }] }),
+      ],
+      7,
+      new Date("2026-11-02T00:00:00Z"),
+    );
+    expect(engineShares(totals.engines, "tokens").map((entry) => entry.share)).toEqual([0.75, 0.25]);
+    expect(engineShares(totals.engines, "cost")).toEqual([{ engine: "codex", value: 3, share: 1 }]);
+    expect(totals.engines[0]?.dailyCost.get("2026-11-01")).toBe(3);
+    expect(totals.engines[1]?.dailyCost.size).toBe(0);
   });
 });

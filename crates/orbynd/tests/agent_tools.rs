@@ -1044,3 +1044,238 @@ async fn a_page_is_published_from_a_thread_and_its_frame_token_serves_it() {
     assert_eq!(elsewhere.status(), 401);
     service.stop().await;
 }
+
+/// Runs one tool in its own turn and returns the run's text, whatever it answered.
+async fn tool_turn(
+    service: &Service,
+    thread: &str,
+    seen: &mut Option<i64>,
+    name: &str,
+    args: Value,
+) -> String {
+    service.admit(thread, &call(name, args)).await;
+    let events = service
+        .events_until(thread, *seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED"
+        })
+        .await;
+    *seen = events.last().unwrap()["seq"].as_i64();
+    assert_eq!(service.finished(thread).await, "completed");
+    text_of(&events)
+}
+
+fn reply_of(text: &str) -> Value {
+    serde_json::from_str(text.rsplit("tool error=false ").next().unwrap().trim()).unwrap()
+}
+
+#[tokio::test]
+async fn a_review_guide_is_written_through_the_gate_and_read_inside_its_project() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    let mut seen = None;
+    let s = &service;
+    let t = thread.as_str();
+    let guide = json!({
+        "number": 7,
+        "head_sha": "ABCDEF1234567",
+        "stops": [
+            {
+                "title": "Entry point",
+                "summary": "Start with the route.",
+                "files": [{ "path": "src/main.rs", "note": "wires the route" }],
+                "questions": ["Is the timeout right?"],
+                "ignored": true,
+            },
+            { "title": "Tests" },
+        ],
+    });
+
+    let empty = tool(
+        s,
+        t,
+        &mut seen,
+        "orbyn_pull_guide_read",
+        json!({ "number": 7 }),
+    )
+    .await;
+    assert_eq!(reply_of(&empty)["guide"], Value::Null, "{empty}");
+
+    let run = service
+        .admit(t, &call("orbyn_pull_guide_write", guide.clone()))
+        .await;
+    let approval = service.pending().await;
+    assert_eq!(approval["kind"], "tool");
+    assert!(
+        approval["summary"]
+            .as_str()
+            .unwrap()
+            .contains("orbyn_pull_guide_write")
+    );
+    assert!(
+        service
+            .decide(approval["id"].as_str().unwrap(), false)
+            .await
+            .0
+            < 300
+    );
+    let events = service
+        .events_until(t, seen, |event| {
+            event["event"]["type"] == "RUN_FINISHED" && event["event"]["runId"] == run
+        })
+        .await;
+    seen = events.last().unwrap()["seq"].as_i64();
+    assert_eq!(service.finished(t).await, "completed");
+    assert!(text_of(&events).contains("tool error=true"));
+    let denied = tool(
+        s,
+        t,
+        &mut seen,
+        "orbyn_pull_guide_read",
+        json!({ "number": 7 }),
+    )
+    .await;
+    assert_eq!(
+        reply_of(&denied)["guide"],
+        Value::Null,
+        "a denial stores nothing"
+    );
+
+    full_access(s, t).await;
+    let off = tool_turn(s, t, &mut seen, "orbyn_pull_guide_write", guide.clone()).await;
+    assert!(off.contains("tool error=true"), "{off}");
+    assert!(off.contains("Review guides are off"), "{off}");
+
+    tool(
+        s,
+        t,
+        &mut seen,
+        "orbyn_environment_preferences_update",
+        json!({ "values": { "review_guides_enabled": true } }),
+    )
+    .await;
+    let bad = tool_turn(
+        s,
+        t,
+        &mut seen,
+        "orbyn_pull_guide_write",
+        json!({ "number": 7, "stops": [{ "title": "x".repeat(201) }] }),
+    )
+    .await;
+    assert!(bad.contains("tool error=true"), "{bad}");
+
+    let written = tool(s, t, &mut seen, "orbyn_pull_guide_write", guide).await;
+    let written = reply_of(&written);
+    assert_eq!(written["number"], 7);
+    assert_eq!(written["stops"], 2);
+    assert_eq!(written["head_sha"], "abcdef1234567");
+
+    let read = tool(
+        s,
+        t,
+        &mut seen,
+        "orbyn_pull_guide_read",
+        json!({ "number": 7 }),
+    )
+    .await;
+    let read = reply_of(&read)["guide"].clone();
+    assert_eq!(read["head_sha"], "abcdef1234567");
+    assert_eq!(read["thread_id"], t);
+    assert_eq!(read["stops"].as_array().unwrap().len(), 2);
+    assert_eq!(read["stops"][0]["title"], "Entry point");
+    assert_eq!(read["stops"][0]["files"][0]["path"], "src/main.rs");
+    assert!(read["stops"][0].get("ignored").is_none());
+    assert_eq!(read["stops"][1]["questions"], json!([]));
+
+    let replaced = tool(
+        s,
+        t,
+        &mut seen,
+        "orbyn_pull_guide_write",
+        json!({ "number": 7, "stops": [{ "title": "Only stop" }] }),
+    )
+    .await;
+    assert_eq!(reply_of(&replaced)["head_sha"], Value::Null);
+    let read = tool(
+        s,
+        t,
+        &mut seen,
+        "orbyn_pull_guide_read",
+        json!({ "number": 7 }),
+    )
+    .await;
+    let read = reply_of(&read)["guide"].clone();
+    assert_eq!(read["stops"].as_array().unwrap().len(), 1);
+    assert_eq!(read["head_sha"], Value::Null);
+
+    let audit = service.audit(t).await;
+    assert!(
+        audit
+            .iter()
+            .any(|row| row["action"] == "tool.call" && row["target"] == "orbyn_pull_guide_write")
+    );
+
+    let other_folder = dir.path().join("other");
+    std::fs::create_dir_all(&other_folder).unwrap();
+    let other = service.project(&other_folder, true).await;
+    let foreign = service.thread(&other, "codex").await;
+    let mut foreign_seen = None;
+    let elsewhere = tool(
+        s,
+        &foreign,
+        &mut foreign_seen,
+        "orbyn_pull_guide_read",
+        json!({ "number": 7 }),
+    )
+    .await;
+    assert_eq!(
+        reply_of(&elsewhere)["guide"],
+        Value::Null,
+        "a guide belongs to its own project"
+    );
+
+    // The guide tab reads the same guide over HTTP, typed.
+    let project = service.json(&format!("/api/threads/{t}")).await["project_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let shown = service
+        .json(&format!("/api/projects/{project}/pulls/7/guide"))
+        .await;
+    assert_eq!(shown["enabled"], true);
+    assert_eq!(shown["guide"]["number"], 7);
+    assert_eq!(shown["guide"]["stops"][0]["title"], "Only stop");
+    assert_eq!(shown["guide"]["stops"][0]["files"], json!([]));
+    let none = service
+        .json(&format!("/api/projects/{other}/pulls/7/guide"))
+        .await;
+    assert_eq!(none, json!({ "enabled": false, "guide": null }));
+
+    // Asking about a stop opens a thread with the stop as its draft; nothing is sent.
+    let ask = format!("/api/projects/{project}/pulls/7/guide/ask");
+    let (code, asked) = service
+        .send(&ask, json!({ "engine": "codex", "stop": 0 }))
+        .await;
+    assert_eq!(code, 201, "{asked}");
+    assert_eq!(asked["thread"]["title"], "#7: Only stop");
+    assert_eq!(asked["thread"]["project_id"], project.as_str());
+    let draft = asked["draft"].as_str().unwrap();
+    assert!(draft.starts_with("About stop 1 of the review guide for pull request #7: Only stop"));
+    assert!(draft.ends_with("My question: "));
+    let asked_thread = asked["thread"]["id"].as_str().unwrap();
+    assert!(
+        service.json(&format!("/api/threads/{asked_thread}")).await["last_run_state"].is_null(),
+        "the question is the person's to send"
+    );
+    let (code, _) = service
+        .send(&ask, json!({ "engine": "codex", "stop": 1 }))
+        .await;
+    assert_eq!(code, 404, "a stop past the end");
+    let (code, _) = service
+        .send(
+            &format!("/api/projects/{other}/pulls/7/guide/ask"),
+            json!({ "engine": "codex", "stop": 0 }),
+        )
+        .await;
+    assert_eq!(code, 404, "another project has no guide");
+    service.stop().await;
+}

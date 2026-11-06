@@ -1,5 +1,6 @@
 import { request } from "../../api/client";
 import type {
+  AskedAboutStop,
   ForgeStatus,
   MergePull,
   PullBulkResult,
@@ -8,6 +9,7 @@ import type {
   PullCheckout,
   PullConversation,
   PullFile,
+  PullGuideState,
   PullList,
   PullRequest,
   PullRequestDetail,
@@ -58,6 +60,12 @@ export const pullsApi = {
     request<void>("POST", `${base(projectId, number)}/action`, { action }),
   work: (projectId: string, number: number, engine: string) =>
     request<{ id: string }>("POST", `${base(projectId, number)}/work`, { engine }),
+  guide: (projectId: string, number: number, signal?: AbortSignal) =>
+    request<PullGuideState>("GET", `${base(projectId, number)}/guide`, undefined, signal),
+  writeGuide: (projectId: string, number: number, engine: string) =>
+    request<{ id: string }>("POST", `${base(projectId, number)}/guide`, { engine }),
+  askAboutStop: (projectId: string, number: number, engine: string, stop: number) =>
+    request<AskedAboutStop>("POST", `${base(projectId, number)}/guide/ask`, { engine, stop }),
   checkout: (projectId: string, number: number, worktree: boolean) =>
     request<PullCheckout>("POST", `${base(projectId, number)}/checkout`, { worktree }),
   setViewed: (projectId: string, number: number, paths: string[], viewed: boolean) =>

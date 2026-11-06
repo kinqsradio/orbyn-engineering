@@ -1,3 +1,4 @@
+import { EnvironmentIdentity } from "./EnvironmentIdentity";
 import {
   ChartColumn,
   ChevronRight,
@@ -498,7 +499,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   );
 
   useEffect(() => {
-    if (!projectFolders || projectGrouping === "separate") {
+    if (!projectFolders) {
       setGroupingCatalog(null);
       return;
     }
@@ -820,13 +821,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     ? foldersOf(
         projectFilter.length > 0 ? list.filter((p) => projectFilter.includes(p.id)) : list,
         [...shown.active, ...shown.working],
-        projectGrouping === "separate"
-          ? null
-          : groupingCatalog?.groups.map((group) => ({
-              key: group.key,
-              label: group.label,
-              projectIds: group.members.map((member) => member.project_id),
-            })) ?? null,
+        groupingCatalog?.groups.map((group) => ({
+          key: group.key,
+          label: group.label,
+          projectIds: group.members.map((member) => member.project_id),
+        })) ?? null,
         projectSort,
         threadSort,
       )
@@ -904,6 +903,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           <OrbynMark />
           Orbyn Engineering
         </a>
+        <EnvironmentIdentity />
       </div>
       <div className="sidebar-search">
         {searching ? (

@@ -61,10 +61,26 @@ fn main() {
         }
         "agui" => agui(&args),
         "pty" => pty(),
+        "--resume" => console("claude-console", &args),
+        "resume" => console("codex-console", &args),
         other => {
             eprintln!("unknown mode {other}");
             std::process::exit(2);
         }
+    }
+}
+
+/// An interactive console on a session: says which, then echoes lines until input ends.
+fn console(mode: &str, args: &[String]) {
+    record_launch(mode, args);
+    println!("fake console on {}", args.get(1).map_or("", String::as_str));
+    let mut line = String::new();
+    while std::io::stdin()
+        .read_line(&mut line)
+        .is_ok_and(|read| read > 0)
+    {
+        println!("console heard {}", line.trim());
+        line.clear();
     }
 }
 
@@ -174,11 +190,66 @@ fn mcp_call(url: &str, id: u64, method: &str, params: Value) -> (u16, Value) {
 fn one_shot() {
     let mut prompt = String::new();
     std::io::stdin().read_to_string(&mut prompt).expect("stdin");
+    let scm = prompt.contains("Return only JSON with string fields");
     if let Ok(path) = std::env::var("ORBYN_FAKE_ONE_SHOT_FILE") {
         std::fs::write(&path, &prompt).expect("record");
         let args: Vec<String> = std::env::args().skip(1).collect();
         let args_path = std::path::Path::new(&path).with_extension("args");
         std::fs::write(args_path, args.join(" ")).expect("record args");
+        if scm {
+            let after = |flag: &str| {
+                args.iter()
+                    .position(|arg| arg == flag)
+                    .and_then(|index| args.get(index + 1))
+            };
+            let config =
+                |flag| after(flag).map(|path| std::fs::read_to_string(path).expect("owned config"));
+            std::fs::write(
+                std::path::Path::new(&path).with_extension("writing.json"),
+                serde_json::json!({
+                    "args":args,"cwd":std::env::current_dir().unwrap(),
+                    "mcp":config("--mcp-config"),"settings":config("--settings"),
+                    "cloud_mcp":std::env::var("ENABLE_CLAUDEAI_MCP_SERVERS").ok(),
+                    "ide":std::env::var("CLAUDE_CODE_AUTO_CONNECT_IDE").ok(),
+                })
+                .to_string(),
+            )
+            .expect("record writing boundary");
+        }
+    }
+    if scm {
+        if let Ok(path) = std::env::var("ORBYN_FAKE_SCM_BARRIER") {
+            let ready = std::path::Path::new(&path).with_extension("ready");
+            let release = std::path::Path::new(&path).with_extension("release");
+            std::fs::write(ready, "synthetic request admitted").expect("barrier ready");
+            let started = std::time::Instant::now();
+            while !release.exists() {
+                assert!(
+                    started.elapsed() < std::time::Duration::from_secs(10),
+                    "synthetic barrier was not released"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        if prompt.contains("[slow-scm-text]") {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        }
+        if prompt.contains("[bad-scm-text]")
+            || (prompt.contains("[bad-pr-text]") && !prompt.contains("string fields subject"))
+        {
+            println!("invalid structured text");
+        } else if prompt.contains("string fields subject") {
+            println!(
+                "{}",
+                serde_json::json!({"subject":"feat(git): describe the change","body":"Describe the actual diff"})
+            );
+        } else {
+            println!(
+                "{}",
+                serde_json::json!({"title":"feat(git): describe the change","body":"## Summary\n- Describe the actual diff\n\n## Testing\n- Not run"})
+            );
+        }
+        return;
     }
     if prompt.contains("[slow-title]") {
         std::thread::sleep(std::time::Duration::from_millis(600));
@@ -472,6 +543,43 @@ fn claude(args: &[String]) {
             None => return,
         }
     }
+    let workflow = has(&prompt, "workflow") || has(&prompt, "workflow-finish");
+    if workflow {
+        // Claude Code 2.1.318's Workflow tool: an inline script, launched in the
+        // background, with the task's handles in the structured tool result.
+        let input = json!({ "script": WORKFLOW_SCRIPT });
+        block(
+            1,
+            json!({ "type": "tool_use", "id": "toolu_wf", "name": "Workflow" }),
+        );
+        delta(
+            1,
+            json!({ "type": "input_json_delta", "partial_json": input.to_string() }),
+        );
+        stop(1);
+        send(&json!({
+            "type": "assistant", "parent_tool_use_id": null,
+            "message": { "content": [{
+                "type": "tool_use", "id": "toolu_wf", "name": "Workflow", "input": input,
+            }]},
+        }));
+        send(&json!({
+            "type": "system", "subtype": "task_started", "task_id": "wtask1",
+            "tool_use_id": "toolu_wf", "task_type": "local_workflow", "workflow_name": "probe",
+        }));
+        send(&json!({
+            "type": "user", "parent_tool_use_id": null,
+            "message": { "role": "user", "content": [{
+                "type": "tool_result", "tool_use_id": "toolu_wf",
+                "content": "Workflow launched in background. Task ID: wtask1",
+            }]},
+            "tool_use_result": {
+                "status": "async_launched", "taskId": "wtask1", "taskType": "local_workflow",
+                "workflowName": "probe", "runId": "wf_1", "summary": "probe",
+            },
+        }));
+        answer = "launched".to_owned();
+    }
     record_launch("claude-prompt", std::slice::from_ref(&prompt));
     block(2, json!({ "type": "text", "text": "" }));
     delta(2, json!({ "type": "text_delta", "text": answer }));
@@ -491,8 +599,49 @@ fn claude(args: &[String]) {
         block(3, json!({ "type": "text", "text": "" }));
         delta(3, json!({ "type": "text_delta", "text": "too late" }));
     }
+    if has(&prompt, "workflow-finish") {
+        // A finished workflow notifies the session, which starts a follow-up turn.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        send(&json!({
+            "type": "system", "subtype": "task_notification", "task_id": "wtask1",
+            "tool_use_id": "toolu_wf", "status": "completed", "output_file": "", "summary": "probe",
+        }));
+        send(&json!({
+            "type": "system", "subtype": "init", "session_id": session, "model": "fake",
+            "slash_commands": [],
+        }));
+        block(4, json!({ "type": "text", "text": "" }));
+        delta(
+            4,
+            json!({ "type": "text_delta", "text": " workflow finished" }),
+        );
+        stop(4);
+        send(&json!({
+            "type": "result", "subtype": "success", "is_error": false,
+            "result": "workflow finished", "session_id": session,
+        }));
+    } else if workflow {
+        // Runs until stopped, as the CLI does; a stop starts no follow-up turn.
+        for frame in lines.by_ref() {
+            if frame["type"] == "control_request" && frame["request"]["subtype"] == "stop_task" {
+                record_launch("claude-stop-task", &[frame.to_string()]);
+                send(&json!({
+                    "type": "system", "subtype": "task_notification",
+                    "task_id": frame["request"]["task_id"], "tool_use_id": "toolu_wf",
+                    "status": "stopped", "output_file": "", "summary": "probe",
+                }));
+                send(&json!({ "type": "control_response", "response": {
+                    "subtype": "success", "request_id": frame["request_id"], "response": {},
+                }}));
+            }
+        }
+        return;
+    }
     for _ in lines {}
 }
+
+const WORKFLOW_SCRIPT: &str =
+    "export const meta = { name: 'probe', description: 'probe' }\nawait agent('look')\n";
 
 // Codex app-server: JSONL without a `jsonrpc` header.
 
@@ -586,10 +735,14 @@ fn codex() {
                 codex_finish(&state, "interrupted");
             }
             "account/rateLimits/read" => {
-                send(&json!({ "id": id, "result": { "rateLimits": {
-                    "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1800000000 },
-                    "secondary": { "usedPercent": 40, "windowDurationMins": 10080 },
-                }}}));
+                send(&json!({ "id": id, "result": {
+                    "accountId": "acct-SECRET-MARKER",
+                    "rateLimitUpsell": { "text": "SECRET-MARKER upsell" },
+                    "rateLimits": {
+                        "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1800000000 },
+                        "secondary": { "usedPercent": 40, "windowDurationMins": 10080 },
+                    },
+                }}));
             }
             "account/read" => {
                 send(&json!({ "id": id, "result": {

@@ -284,7 +284,9 @@ fn check_for_update(app: &AppHandle) {
                 message
             }
             Ok(None) => serde_json::json!({ "type": "app_update_none" }),
-            Err(message) => serde_json::json!({ "type": "app_update_failed", "message": message }),
+            Err(message) => {
+                serde_json::json!({ "type": "app_update_check_failed", "message": message })
+            }
         };
         tell_core(&app, message);
     });
@@ -381,6 +383,7 @@ fn main() {
         .manage(ServicePort::default())
         .manage(Zoom::default())
         .manage(activity::KeepAwake::default())
+        .manage(menu::QuitItem::default())
         .menu(menu::build)
         .on_menu_event(menu::on_event)
         .invoke_handler(tauri::generate_handler![restart_core])

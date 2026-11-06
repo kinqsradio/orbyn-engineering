@@ -61,6 +61,9 @@ fn normalized(key: &str, value: Value) -> Value {
     }
     value
 }
+/// Machine kinds the local environment can be shown as; empty is the plain monitor.
+pub(crate) const ENVIRONMENT_ICONS: &[&str] = &["", "laptop", "desktop", "tower", "server"];
+const QUIT: &[&str] = &["direct", "hold", "double_press"];
 const NAMING: &[&str] = &["static", "semantic", "custom"];
 const ENV_MODE: &[&str] = &["local", "worktree"];
 const MERGE: &[&str] = &["", "merge", "squash", "rebase"];
@@ -83,8 +86,10 @@ const DEFINITIONS: &[Definition] = defs![
     "default_project_scripts" Kind::List, [], true;
     "default_model" Kind::Text, "", true;
     "prefer_saved_login" Kind::Bool, false, false;
+    "warm_next_turn" Kind::Bool, false, false;
     "app_update_mode" Kind::OneOf(&["automatic", "notify", "off"]), "notify", false;
     "keep_awake_during_runs" Kind::Bool, true, false;
+    "quit_confirmation" Kind::OneOf(QUIT), "direct", false;
     "default_engine" Kind::Text, "", true;
     "fallback_model" Kind::Text, "", false;
     "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;
@@ -102,6 +107,7 @@ const DEFINITIONS: &[Definition] = defs![
     "source_control_writing_style" Kind::Object, {}, true;
     "review_guides_enabled" Kind::Bool, false, true;
     "review_guide_instructions" Kind::Text, "", true;
+    "review_guide_model" Kind::Text, "", true;
     "pull_request_merge_method" Kind::OneOf(MERGE), "", true;
     "compact_idle_threads" Kind::Bool, false, false;
     "idle_compaction" Kind::OneOf(IDLE), "never", false;
@@ -111,7 +117,8 @@ const DEFINITIONS: &[Definition] = defs![
     "automatic_git_fetch_minutes" Kind::Number, 5, false;
     "provider_health_refresh_minutes" Kind::Number, 5, false;
     "default_theme" Kind::Text, "", false;
-    "environment_icon" Kind::Text, "", false;
+    "default_theme_set_at" Kind::Number, 0, false;
+    "environment_icon" Kind::OneOf(ENVIRONMENT_ICONS), "", false;
     "observability" Kind::Object, {}, false;
     "storage_cleanup" Kind::Object, {}, true;
     "worktree_cleanup" Kind::Object, {}, true;
@@ -122,6 +129,31 @@ const DEFINITIONS: &[Definition] = defs![
     "disabled_engines" Kind::List, [], true;
     "provider_instances" Kind::List, [], false;
 ];
+
+/// Keys the service writes itself; a client edit names them only through their owner.
+const SERVICE_OWNED: &[&str] = &["default_theme_set_at"];
+
+/// A catalog key a client may write.
+fn writable(key: &str) -> Result<&'static Definition> {
+    if SERVICE_OWNED.contains(&key) {
+        return Err(CoreError::Invalid(format!("{key} is set by the service.")));
+    }
+    definition(key)
+}
+
+/// A theme name is a scheme or a preset id: short lowercase words joined by hyphens.
+fn theme_name(value: &Value) -> bool {
+    value.as_str().is_some_and(|name| {
+        name.is_empty()
+            || (name.len() <= 64
+                && name.split('-').all(|part| {
+                    !part.is_empty()
+                        && part
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+                }))
+    })
+}
 
 fn definition(key: &str) -> Result<&'static Definition> {
     DEFINITIONS
@@ -145,8 +177,16 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
     if fits && definition.key == "worktree_cleanup" {
         worktree_cleanup::validate(value)?;
     }
+    if fits && definition.key == "default_theme" && !theme_name(value) {
+        return Err(CoreError::Invalid(
+            "A theme is system, light, dark or a theme id.".into(),
+        ));
+    }
     if fits && definition.key == "default_project_scripts" {
         crate::project_file::validate_scripts(value)?;
+    }
+    if fits && definition.key == "source_control_writing_style" {
+        crate::scm_writing::validate_style(value)?;
     }
     if fits {
         Ok(())
@@ -259,7 +299,7 @@ impl Core {
         values: &BTreeMap<String, Value>,
     ) -> Result<()> {
         for (key, value) in values {
-            let definition = definition(key)?;
+            let definition = writable(key)?;
             if project_id.is_some() && !definition.project {
                 return Err(CoreError::Invalid(format!("{key} is not set per project.")));
             }

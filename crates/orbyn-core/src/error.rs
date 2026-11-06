@@ -15,6 +15,8 @@ pub enum CoreError {
     SettingsScopeUnavailable,
     #[error("this thread already has an active run")]
     ThreadBusy,
+    #[error("Close this thread's engine console first. It is using the same session.")]
+    ConsoleOpen,
     #[error("trust this folder before starting an engine in it")]
     FolderUntrusted,
     #[error("this approval was already decided")]
@@ -102,6 +104,7 @@ impl CoreError {
             Self::SettingsConflict => "settings_conflict",
             Self::SettingsScopeUnavailable => "settings_scope_unavailable",
             Self::ThreadBusy => "thread_busy",
+            Self::ConsoleOpen => "console_open",
             Self::FolderUntrusted => "folder_untrusted",
             Self::AlreadyDecided(_) | Self::QuestionClosed(_) => "already_decided",
             Self::EngineBusy(_) => "engine_busy",
@@ -146,6 +149,7 @@ impl CoreError {
             Self::SettingsConflict
             | Self::SettingsScopeUnavailable
             | Self::ThreadBusy
+            | Self::ConsoleOpen
             | Self::AlreadyDecided(_)
             | Self::QuestionClosed(_)
             | Self::ProjectExists(_)

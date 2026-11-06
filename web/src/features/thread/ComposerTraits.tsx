@@ -1,6 +1,6 @@
 import { Lock, PenLine, ShieldOff, Sparkles, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ModelInfo, ModelOption, PermissionMode } from "../../api/types";
+import type { EngineStatus, ModelInfo, ModelOption, PermissionMode } from "../../api/types";
 import { FloatingPanel } from "./ModelPicker";
 import { effortOption, effortValue } from "./modelStore";
 import { EffortGlyph } from "./EffortGlyph";
@@ -23,11 +23,23 @@ export const ACCESS: Record<PermissionMode, { label: string; description: string
 
 const MODES = Object.keys(ACCESS) as PermissionMode[];
 
+/** The modes an engine offers, in menu order. An older service that does not say offers all. */
+export function offeredModes(engine: Pick<EngineStatus, "capabilities"> | null): PermissionMode[] {
+  const offered = engine?.capabilities.permission_modes;
+  return offered ? MODES.filter((mode) => offered.includes(mode)) : MODES;
+}
+
+/** What a saved mode runs as: one the engine does not offer runs, and shows, Supervised. */
+export function shownAccess(engine: Pick<EngineStatus, "capabilities"> | null, saved: PermissionMode): PermissionMode {
+  return offeredModes(engine).includes(saved) ? saved : "supervised";
+}
+
 function TraitsMenu({
   model,
   effort,
   extras,
   access,
+  modes,
   anchor,
   toAccess,
   onEffort,
@@ -39,6 +51,7 @@ function TraitsMenu({
   effort: string | null;
   extras: Record<string, string | undefined>;
   access: PermissionMode | null;
+  modes: PermissionMode[];
   anchor: DOMRect;
   toAccess: boolean;
   onEffort(value: string): void;
@@ -102,7 +115,7 @@ function TraitsMenu({
           <div ref={section} data-composer-permissions>
             <div className="traits-label">Permissions</div>
             <div className="access-segment" role="group" aria-label="Permissions">
-              {MODES.map((mode) => {
+              {modes.map((mode) => {
                 const Icon = ACCESS[mode].icon;
                 return (
                   <button
@@ -139,6 +152,8 @@ export function useTraitsMenu(input: {
   /** Choices beyond effort, by the model's option id. */
   extras: Record<string, string | undefined>;
   access: PermissionMode | null;
+  /** The modes to offer; every mode when not given. */
+  modes?: PermissionMode[];
   onEffort(value: string): void;
   onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
@@ -148,7 +163,7 @@ export function useTraitsMenu(input: {
   const openAt = (element: HTMLElement, toAccess: boolean) =>
     setOpen(open ? null : { anchor: element.getBoundingClientRect(), toAccess });
   const menu = open ? (
-    <TraitsMenu {...input} anchor={open.anchor} toAccess={open.toAccess} onClose={close} />
+    <TraitsMenu {...input} modes={input.modes ?? MODES} anchor={open.anchor} toAccess={open.toAccess} onClose={close} />
   ) : null;
   return { openAt, menu };
 }

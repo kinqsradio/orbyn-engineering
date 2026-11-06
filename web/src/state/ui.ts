@@ -109,7 +109,15 @@ interface Prefs {
   workingSection: boolean;
   /** Provider updates already dismissed, as `engine:version`. */
   dismissedProviderUpdates: string[];
+  /** The environment theme's `set_at` this viewer last applied; 0 is never. */
+  environmentThemeAppliedAt: number;
+  /** How the sidebar marks this environment's build: channel artwork, a version pill or nothing. */
+  environmentIdentification: EnvironmentIdentification;
+  /** The welcome steps were finished or skipped on this device. */
+  welcomeDone: boolean;
 }
+
+export type EnvironmentIdentification = "artwork" | "pill" | "none";
 
 export interface Typography {
   uiFont: string;
@@ -217,9 +225,15 @@ const defaults: Prefs = {
   detailsHidden: ["usage"],
   workingSection: true,
   dismissedProviderUpdates: [],
+  environmentThemeAppliedAt: 0,
+  environmentIdentification: "artwork",
+  welcomeDone: false,
 };
 
 interface UiState extends Prefs {
+  /** Counts saved server preferences, so a mounted reader can read them again. Never persisted. */
+  preferencesRevision: number;
+  bumpPreferencesRevision(): void;
   terminalReveal: { threadId: string; group: string; nonce: number } | null;
   revealTerminal(threadId: string, group: string): void;
   drafts: Record<string, string>;
@@ -229,6 +243,9 @@ interface UiState extends Prefs {
   toasts: { id: number; text: string }[];
   pushToast(text: string): void;
   dismissToast(id: number): void;
+  /** The open welcome step, or null; not saved, so it lasts while the app runs. */
+  welcomeStep: number | null;
+  setWelcomeStep(step: number | null): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   /** A file the Files surface should open next, with the line to reveal. */
@@ -374,6 +391,9 @@ const prefsOf = (state: Prefs): Prefs => ({
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
   dismissedProviderUpdates: state.dismissedProviderUpdates,
+  environmentThemeAppliedAt: state.environmentThemeAppliedAt,
+  environmentIdentification: state.environmentIdentification,
+  welcomeDone: state.welcomeDone,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
@@ -407,6 +427,10 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    welcomeStep: null,
+    setWelcomeStep(welcomeStep) {
+      set({ welcomeStep });
+    },
     terminalReveal: null,
     revealTerminal(threadId, group) {
       set((state) => ({ terminalOpen: true, terminalReveal: { threadId, group, nonce: (state.terminalReveal?.nonce ?? 0) + 1 } }));
@@ -575,6 +599,10 @@ export const useUi = create<UiState>((set, get) => {
       const { [DRAFT_LAYOUT]: _draft, ...others } = state.layouts;
       set({ layouts: others, layoutKey: threadId });
       savePrefs();
+    },
+    preferencesRevision: 0,
+    bumpPreferencesRevision() {
+      set((state) => ({ preferencesRevision: state.preferencesRevision + 1 }));
     },
     toggleSidebar() {
       set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));

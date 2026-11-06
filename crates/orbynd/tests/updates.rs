@@ -83,6 +83,77 @@ async fn shell_channel_survives_junk_and_install_holds_admission() {
 }
 
 #[tokio::test]
+async fn a_check_failure_cannot_release_an_install_through_the_shell_channel() {
+    let dir = TempDir::new();
+    let (mut service, thread) = setup(&dir, desktop(), "codex").await;
+    say(
+        &mut service,
+        r#"{"type":"app_update_check_failed","message":"initial check unavailable"}"#,
+    );
+    wait_update_error(&service, "initial check unavailable").await;
+    let run = service.admit(&thread, "[hang]").await;
+    service
+        .send(&format!("/api/runs/{run}/cancel"), json!({}))
+        .await;
+    service.finished(&thread).await;
+    say(
+        &mut service,
+        r#"{"type":"app_update_available","version":"99.0.0","notes":"new"}"#,
+    );
+    until_can_apply(&service).await;
+    let (code, _) = service.send("/api/updates/app/apply", json!({})).await;
+    assert_eq!(code, 202);
+    say(
+        &mut service,
+        r#"{"type":"app_update_progress","downloaded":5,"total":10}"#,
+    );
+    say(
+        &mut service,
+        r#"{"type":"app_update_check_failed","message":"check unavailable"}"#,
+    );
+    let status = wait_update_error(&service, "check unavailable").await;
+    let (code, body) = service
+        .send(
+            &format!("/api/threads/{thread}/runs"),
+            json!({ "prompt": "[hang]" }),
+        )
+        .await;
+    assert_eq!(code, 503);
+    assert_eq!(body["code"], "updating");
+    assert_eq!(status["app"]["downloaded"], 5);
+    assert_eq!(status["app"]["total"], 10);
+    assert_eq!(status["app"]["latest"], "99.0.0");
+    assert_eq!(status["app"]["notes"], "new");
+
+    say(
+        &mut service,
+        r#"{"type":"app_update_failed","message":"install failed"}"#,
+    );
+    let status = wait_update_error(&service, "install failed").await;
+    assert!(status["app"]["downloaded"].is_null());
+    assert!(status["app"]["total"].is_null());
+    let run = service.admit(&thread, "[hang]").await;
+    service
+        .send(&format!("/api/runs/{run}/cancel"), json!({}))
+        .await;
+    service.finished(&thread).await;
+}
+
+async fn wait_update_error(service: &Service, error: &str) -> Value {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let status = service.json("/api/updates").await;
+            if status["error"] == error {
+                return status;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the shell's update failure never arrived")
+}
+
+#[tokio::test]
 async fn server_compares_a_release_manifest_and_keeps_it_when_it_disappears() {
     let dir = TempDir::new();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -255,4 +326,29 @@ async fn the_shell_hears_when_work_starts_and_ends() {
     service.finished(&thread).await;
     let seen = activity(&mut service, 0).await;
     assert_eq!(seen["keep_awake"], false);
+    assert_eq!(seen["unread"], 0);
+
+    // A thread marked unread reaches the Dock badge's count.
+    let code = service
+        .client
+        .patch(format!("{}/api/threads/{thread}", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "unread": true }))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert!(code.is_success(), "{code}");
+    let mut line = String::new();
+    loop {
+        line.clear();
+        service.stdout.read_line(&mut line).unwrap();
+        assert!(!line.is_empty(), "stdout closed");
+        if let Ok(value) = serde_json::from_str::<Value>(&line)
+            && value["type"] == "activity"
+            && value["unread"] == 1
+        {
+            break;
+        }
+    }
 }

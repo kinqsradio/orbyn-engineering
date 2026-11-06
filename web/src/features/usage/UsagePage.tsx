@@ -2,7 +2,7 @@ import { ChevronDown, RefreshCw, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
-import type { EngineLimits, LimitsOverview, UsageReport } from "../../api/types";
+import type { EngineLimits, LimitsOverview, ModelUsage, UsageReport } from "../../api/types";
 import { readJson, writeJson } from "../../lib/storage";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -14,9 +14,14 @@ import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
 import { useUsageReport } from "./useUsageReport";
 import {
+  cacheHit,
+  costPerMillion,
+  engineShares,
   formatPercent,
   formatTokens,
   formatUsd,
+  modelTrend,
+  TIER_LABELS,
   USAGE_PERIODS,
   usageTotals,
   type UsageDays,
@@ -66,6 +71,75 @@ function Stat({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+/** A model's daily tokens across the period, scaled to its own busiest day. */
+function Sparkline({ values, label }: { values: readonly number[]; label: string }) {
+  const width = 72;
+  const height = 18;
+  const max = Math.max(1, ...values);
+  const step = values.length > 1 ? width / (values.length - 1) : 0;
+  const points = values.map((value, at) => `${(at * step).toFixed(1)},${(height - 1 - (value / max) * (height - 2)).toFixed(1)}`);
+  return (
+    <svg className="usage-spark" width={width} height={height} role="img" aria-label={label}>
+      <polyline points={points.join(" ")} fill="none" stroke="currentColor" strokeWidth={1.25} />
+    </svg>
+  );
+}
+
+const perMillion = (model: ModelUsage) => {
+  const rate = costPerMillion(model);
+  return rate === null ? "—" : `${formatUsd(rate)}/M`;
+};
+
+const hitText = (model: ModelUsage) => {
+  const hit = cacheHit(model);
+  return hit === null ? "—" : formatPercent(hit);
+};
+
+/** Each provider's part of the period, in one bar. */
+function ShareBar({
+  engines,
+  metric,
+  colorOf,
+  nameOf,
+}: {
+  engines: Parameters<typeof engineShares>[0];
+  metric: "cost" | "tokens";
+  colorOf(engine: string): string;
+  nameOf(engine: string): string;
+}) {
+  const shares = engineShares(engines, metric);
+  if (shares.length === 0) return null;
+  const label = metric === "cost" ? "Share of priced cost" : "Share of tokens";
+  return (
+    <div className="usage-sharebar" role="group" aria-label={label}>
+      {shares.map((entry) => (
+        <span
+          key={entry.engine}
+          title={`${nameOf(entry.engine)} ${formatPercent(entry.share)}`}
+          aria-label={`${nameOf(entry.engine)} ${formatPercent(entry.share)}`}
+          style={{ width: `${entry.share * 100}%`, background: colorOf(entry.engine) }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** What the last local scan read, so a short or empty period can be explained. */
+function ScanStatus({ report, nameOf }: { report: UsageReport; nameOf(engine: string): string }) {
+  const at = new Date(report.scanned_at);
+  const when = Number.isNaN(at.getTime()) ? report.scanned_at : at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const parts = report.engines.map((engine) => {
+    if (engine.status === "no_history") return `${nameOf(engine.engine)}: no local history`;
+    const skipped = engine.files_skipped > 0 ? `, ${engine.files_skipped} unreadable` : "";
+    return `${nameOf(engine.engine)}: ${engine.files_scanned} ${engine.files_scanned === 1 ? "file" : "files"}${skipped}`;
+  });
+  return (
+    <p className="usage-note usage-scan" aria-label="Scan status">
+      Local history scanned at {when}. {parts.join(" · ")}
+    </p>
   );
 }
 
@@ -197,6 +271,9 @@ function UsageView({
               </span>
             ) : null}
           </div>
+          {totals.engines.length > 1 ? (
+            <ShareBar engines={totals.engines} metric={metric} colorOf={colorOf} nameOf={nameOf} />
+          ) : null}
           {totals.engines.map((engine) => {
             const share = totals.tokens > 0 ? engine.tokens / totals.tokens : 0;
             return (
@@ -217,14 +294,15 @@ function UsageView({
             );
           })}
         </div>
-        {metric === "tokens" && days > 1 ? (
+        {days > 1 && (metric === "tokens" || totals.cost !== null) ? (
           <div className="usage-plot">
-            <h2>Daily processed tokens</h2>
+            <h2>{metric === "cost" ? "Daily estimated cost" : "Daily processed tokens"}</h2>
             <UsageChart
               engines={totals.engines}
               dates={totals.dates}
               colorOf={colorOf}
               nameOf={nameOf}
+              metric={metric}
             />
           </div>
         ) : null}
@@ -238,6 +316,40 @@ function UsageView({
           <Stat label="Output" value={formatTokens(totals.output)} />
         </div>
       </section>
+      {metric === "cost" ? (
+        <section className="usage-section" aria-label="Cost split">
+          <h2>Cost by token type</h2>
+          {totals.costSplit ? (
+            <div className="usage-stats">
+              <Stat label="Uncached input" value={formatUsd(totals.costSplit.input)} />
+              <Stat label="Output" value={formatUsd(totals.costSplit.output)} />
+              <Stat label="Cached input" value={formatUsd(totals.costSplit.cache_read)} />
+              <Stat label="Cache write" value={formatUsd(totals.costSplit.cache_write)} />
+            </div>
+          ) : (
+            <p className="usage-note">No model in this period has a price.</p>
+          )}
+          <h2>Cost by tier</h2>
+          {totals.tiers.some((tier) => tier.tier !== "standard" && tier.unpricedTokens > 0) ? (
+            <p className="usage-note" role="note">
+              A price without a tier now covers the standard tier only. Set a price for each other tier from its model.
+            </p>
+          ) : null}
+          <div className="usage-stats">
+            {totals.tiers.map((tier) => (
+              <Stat
+                key={tier.tier}
+                label={`${TIER_LABELS[tier.tier] ?? tier.tier} · ${formatTokens(tier.tokens)} tokens`}
+                value={
+                  tier.cost === null
+                    ? "Unpriced"
+                    : `${formatUsd(tier.cost)}${tier.unpricedTokens > 0 ? ` + ${formatTokens(tier.unpricedTokens)} unpriced` : ""}`
+                }
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section className="usage-section">
         <div className="usage-section-head">
           <h2>Breakdown</h2>
@@ -258,6 +370,9 @@ function UsageView({
                 <tr>
                   <th>Model</th>
                   <th>Cost</th>
+                  <th>Per million</th>
+                  <th>Cache hit</th>
+                  <th>Trend</th>
                   <th>Share</th>
                   <th>Tokens</th>
                 </tr>
@@ -271,6 +386,11 @@ function UsageView({
                       </button>
                     </td>
                     <td>{cost(model.estimated_cost)}</td>
+                    <td>{perMillion(model)}</td>
+                    <td>{hitText(model)}</td>
+                    <td>
+                      <Sparkline values={modelTrend(model, totals.dates)} label={`${model.model} daily tokens`} />
+                    </td>
                     <td>{formatPercent(totals.tokens > 0 ? model.tokens / totals.tokens : 0)}</td>
                     <td>{formatTokens(model.tokens)}</td>
                   </tr>
@@ -317,10 +437,14 @@ const RATES = [
   { key: "cache_write", label: "Cache write" },
 ] as const;
 
-/** A model's rates per million tokens, or another model it counts as. */
+const PRICE_TIERS = ["standard", "fast", "priority", "batch", "flex", "other"] as const;
+const sameTier = (tier: string | undefined, wanted: string) => (tier ?? "standard") === wanted;
+
+/** A model's rates per million tokens for one tier, or another model it counts as. */
 function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(): void; onSaved(): void }) {
   const settings = useAsync("usage-settings", (signal) => api.settings(signal));
-  const current = settings.data?.model_prices?.find((price) => price.model === model);
+  const [tier, setTier] = useState<string>("standard");
+  const current = settings.data?.model_prices?.find((price) => price.model === model && sameTier(price.tier, tier));
   const alias = settings.data?.model_aliases?.find((entry) => entry.model === model);
   const [rates, setRates] = useState<Record<string, string>>({});
   const [countsAs, setCountsAs] = useState<string | null>(null);
@@ -338,9 +462,16 @@ function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(
       await api.putSettings({
         ...settings.data,
         model_prices: [
-          ...(settings.data.model_prices ?? []).filter((price) => price.model !== model),
+          ...(settings.data.model_prices ?? []).filter((price) => price.model !== model || !sameTier(price.tier, tier)),
           ...(priced
-            ? [{ model, input: number("input"), output: number("output"), cache_read: number("cache_read"), cache_write: number("cache_write") }]
+            ? [{
+                model,
+                input: number("input"),
+                output: number("output"),
+                cache_read: number("cache_read"),
+                cache_write: number("cache_write"),
+                ...(tier === "standard" ? {} : { tier }),
+              }]
             : []),
         ],
         model_aliases: [
@@ -371,7 +502,25 @@ function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(
         </>
       }
     >
-      <p>Dollars per million tokens.</p>
+      <p>Dollars per million tokens. Another tier never borrows the standard rate.</p>
+      <Field label="Tier">
+        {(props) => (
+          <select
+            {...props}
+            value={tier}
+            onChange={(event) => {
+              setTier(event.target.value);
+              setRates({});
+            }}
+          >
+            {PRICE_TIERS.map((entry) => (
+              <option key={entry} value={entry}>
+                {TIER_LABELS[entry]}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
       {RATES.map((rate) => (
         <Field key={rate.key} label={rate.label}>
           {(props) => (
@@ -540,7 +689,10 @@ export function UsagePage({ onClose }: { onClose(): void }) {
             ) : null}
             <div aria-busy={usage.pending}>
               {usage.data ? (
-                <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => void usage.reload()} />
+                <>
+                  <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => void usage.reload()} />
+                  <ScanStatus report={usage.data} nameOf={nameOf} />
+                </>
               ) : usage.pending ? (
                 <div className="usage-body"><Loading label="Loading usage" rows={4} /></div>
               ) : null}

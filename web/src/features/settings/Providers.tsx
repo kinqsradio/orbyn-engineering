@@ -1,3 +1,4 @@
+import type { EngineUpdateOutcome } from "../../generated/EngineUpdateOutcome";
 import { RefreshCw, Trash2, ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, request } from "../../api/client";
@@ -14,6 +15,7 @@ import { AcpRegistry } from "./AcpRegistry";
 import { ErrorState, Loading } from "../../ui/states";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ProviderInstances } from "./ProviderInstances";
+import { HistoryImport } from "./HistoryImport";
 import { NativeSessions } from "./NativeSessions";
 
 const POLL_WHILE_UPDATING_MS = 1500;
@@ -125,6 +127,7 @@ function CustomModels({ engine }: { engine: EngineStatus }) {
         scope: {}, membership_version: preferences.data.catalog.version,
         if_match: { [row.key]: row.revision }, edits: { [row.key]: { op: "set", value: next } },
       });
+      useUi.getState().bumpPreferencesRevision();
       preferences.setData(changed);
       void useModelStore.getState().reload(engine.id);
       return true;
@@ -367,6 +370,11 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
             <CopyCommand command={engine.sign_in_command} label="Copy sign-in command" />
           ) : null}
         </div>
+      ) : engine.tier === "acp" && engine.sign_in_command ? (
+        <div className="setting-sub">
+          <p>{signInLabel(engine)}. Run this in a terminal:</p>
+          <CopyCommand command={engine.sign_in_command} label="Copy sign-in command" />
+        </div>
       ) : null}
       {!engine.update_command && engine.manual_hint && !engine.compatibility ? <p className="muted">{engine.manual_hint}</p> : null}
       {removing ? (
@@ -387,12 +395,21 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
   );
 }
 
+/** An engine the service's update-all takes: owned, newer, not an instance, no signed warning. */
+function wantsUpdate(engine: EngineStatus) {
+  return !engine.instance_of && !!engine.update_command && !engine.compatibility
+    && engine.latest !== null && engine.latest !== engine.version;
+}
+
 export function ProvidersSection() {
   const engines = useWorkspace((state) => state.engines);
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updating = engines.data?.some((engine) => engine.updating) ?? false;
+  const updatable = (engines.data ?? []).filter(wantsUpdate);
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [outcomes, setOutcomes] = useState<EngineUpdateOutcome[] | null>(null);
 
   useEffect(() => {
     if (!updating) return;
@@ -419,10 +436,39 @@ export function ProvidersSection() {
         <h1 className="sr-only" tabIndex={-1} data-page-title>
           Providers
         </h1>
+        {updatable.length > 1 && !updating ? (
+          <Button small onClick={() => setConfirmingAll(true)}>
+            Update all
+          </Button>
+        ) : null}
         <Button small busy={refreshing} onClick={() => void recheck()}>
           Check again
         </Button>
       </div>
+      {confirmingAll ? (
+        <ConfirmDialog
+          title={`Update ${updatable.length} providers?`}
+          confirmLabel="Update all"
+          onClose={() => setConfirmingAll(false)}
+          onConfirm={async () => {
+            setOutcomes(await api.updateAllEngines());
+            await refreshEngines();
+          }}
+        >
+          <p>Orbyn runs the installer that owns each binary, one at a time:</p>
+          {updatable.map((engine) => (
+            <CopyCommand key={engine.id} command={engine.update_command ?? ""} label={`Copy ${engine.name} update command`} />
+          ))}
+          <p className="muted">A provider with an active run is skipped and reported.</p>
+        </ConfirmDialog>
+      ) : null}
+      {outcomes?.some((outcome) => outcome.error) ? (
+        <ul className="field-error" role="alert">
+          {outcomes.filter((outcome) => outcome.error).map((outcome) => (
+            <li key={outcome.id}>{outcome.name}: {outcome.error}</li>
+          ))}
+        </ul>
+      ) : null}
       {error ? (
         <p className="field-error" role="alert">
           {error}
@@ -439,6 +485,7 @@ export function ProvidersSection() {
           <UpdateAction engine={engine} />
         </>} renderInstance={(engine) => engine.installed ? <><EngineModelList engine={engine} /><NativeSessions engine={engine} /></> : null} />
       )}
+      <HistoryImport />
       <AcpRegistry />
     </>
   );

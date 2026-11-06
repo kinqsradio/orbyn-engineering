@@ -12,6 +12,7 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { accentColor, newInstanceId, patchInstance, readInstance, validCompactWindow, validInstanceId } from "./providerInstanceData";
 import { ProviderInstanceColor } from "./ProviderInstanceColor";
 import "./ProviderInstances.css";
+import { useUi } from "../../state/ui";
 
 function DraftField({ label, value, disabled, save, normalize = (next) => next }: { label: string; value: string; disabled: boolean; save(value: string): Promise<boolean>; normalize?(value: string): string }) {
   const [draft, setDraft] = useState(value), [seen, setSeen] = useState(value);
@@ -65,6 +66,7 @@ export function ProviderInstances({ engines, renderDriver, renderBase, renderIns
     try {
       const changed = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", { scope: {}, membership_version: preferences.data.catalog.version,
         if_match: { provider_instances: row.revision }, edits: { provider_instances: { op: "set", value: next } } });
+      useUi.getState().bumpPreferencesRevision();
       if (mounted.current) preferences.setData(changed); void refresh(); return true;
     } catch (failure) {
       if (mounted.current) { const reason = toFailure(failure); if (reason.status === 409) setConflict(true); if (currentView.current === view) setError(reason.message); }

@@ -192,6 +192,7 @@ impl Core {
             base_url: config.base_url.clone(),
             runs_dir: config.data_dir.join("runs"),
             setups: setups.clone(),
+            terminals: terminals.clone(),
         }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
         let usage = Arc::new(UsageCenter::new(&config.data_dir)?);
@@ -366,7 +367,14 @@ impl Core {
         let thread = self.store.thread(thread_id)?;
         let project = self.store.project(&thread.project_id)?;
         if !project.is_git {
-            return Ok(Vec::new());
+            let Some(root) = crate::jj::root(Path::new(&thread.cwd), Path::new(&project.path))
+            else {
+                return Ok(Vec::new());
+            };
+            if !project.trusted {
+                return Err(CoreError::FolderUntrusted);
+            }
+            return crate::jj::diff(&root).await;
         }
         if !project.trusted {
             return Err(CoreError::FolderUntrusted);
@@ -376,6 +384,26 @@ impl Core {
             .as_ref()
             .map(|worktree| worktree.base.as_str());
         git::diff(Path::new(&thread.cwd), base).await
+    }
+
+    /// The Jujutsu working-copy change of a thread's checkout, or `None` when it
+    /// is not a jj checkout of its own. Reading lets jj snapshot, so it needs trust.
+    pub async fn thread_jj_status(
+        &self,
+        thread_id: &str,
+    ) -> Result<Option<orbyn_contracts::JjStatus>> {
+        let thread = self.store.thread(thread_id)?;
+        let project = self.store.project(&thread.project_id)?;
+        if project.is_git {
+            return Ok(None);
+        }
+        let Some(root) = crate::jj::root(Path::new(&thread.cwd), Path::new(&project.path)) else {
+            return Ok(None);
+        };
+        if !project.trusted {
+            return Err(CoreError::FolderUntrusted);
+        }
+        crate::jj::status(&root).await.map(Some)
     }
 
     /// Stops every engine, terminal and browser this process owns.

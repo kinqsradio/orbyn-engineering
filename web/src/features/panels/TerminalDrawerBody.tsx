@@ -1,5 +1,5 @@
 import { useCommand } from "../../app/shortcuts";
-import { Columns2, Eye, Play, Plus, Rows2, X } from "lucide-react";
+import { Columns2, Eye, Play, Plus, Rows2, SquareTerminal, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { request } from "../../api/client";
 import type { ProjectFileView, TerminalInfo } from "../../api/types";
@@ -55,6 +55,16 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
   const open = async (body: Record<string, string>) => {
     try {
       const made = await request<TerminalInfo>("POST", `${base}/terminals`, body);
+      setActive(made.group);
+      reload();
+    } catch (failure) {
+      fail(failure);
+    }
+  };
+  /** The engine's own CLI resumed on this thread's session; the service says when it can't. */
+  const openConsole = async () => {
+    try {
+      const made = await request<TerminalInfo>("POST", `${base}/console`, {});
       setActive(made.group);
       reload();
     } catch (failure) {
@@ -129,6 +139,9 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
         </IconButton>
         <IconButton label="New terminal" onClick={() => void open({})}>
           <Plus size={14} aria-hidden />
+        </IconButton>
+        <IconButton label="Open engine console" onClick={() => void openConsole()}>
+          <SquareTerminal size={14} aria-hidden />
         </IconButton>
         {scriptList.length > 0 ? (
           <IconButton
