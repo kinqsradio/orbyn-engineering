@@ -94,16 +94,14 @@ function EmptyProjectRow({ project }: { project: Project }) {
         href={routeHref(target)}
         aria-label={project.trusted ? `New thread in ${project.name}` : `Review trust for ${project.name}`}
       >
-        <span className="thread-row-line">
-          <ProjectBadge name={project.name} project={project} />
-          <span className="thread-row-project">{project.name}</span>
-          {project.trusted ? null : (
-            <span className="row-status tone-warn" title="Folder not trusted">
-              <ShieldAlert size={14} aria-hidden />
-              Not trusted
-            </span>
-          )}
-        </span>
+        <ProjectBadge name={project.name} project={project} />
+        <span className="thread-row-title">{project.name}</span>
+        {project.trusted ? null : (
+          <span className="row-status tone-warn" title="Folder not trusted">
+            <ShieldAlert size={14} aria-hidden />
+            Not trusted
+          </span>
+        )}
         <span className="thread-row-empty">No threads yet</span>
       </a>
     </li>
@@ -128,7 +126,7 @@ function DraftRow({ route }: { route: Route }) {
   };
   return (
     <li className="draft-row">
-      <a className="thread-row thread-row-compact" href={routeHref({ name: "new", projectId })}>
+      <a className="thread-row" href={routeHref({ name: "new", projectId })}>
         <FilePen size={14} aria-hidden />
         <span className="thread-row-title">{text.trim().split("\n")[0] || `${files.length} files`}</span>
         <span className="row-trailing">
