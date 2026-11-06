@@ -14,6 +14,23 @@ use super::{Admission, Store, insert_event, parse_json, parse_wire};
 use crate::error::{CoreError, Result};
 use crate::util::{new_id, now};
 
+/// What a guide write stores; the stops are already checked and serialized.
+pub struct PullGuideWrite<'a> {
+    pub head_sha: Option<&'a str>,
+    pub stops: &'a str,
+    pub thread_id: &'a str,
+}
+
+/// A stored review guide, as the guide tools answer it.
+#[derive(Debug, serde::Serialize)]
+pub struct PullGuide {
+    pub number: u64,
+    pub head_sha: Option<String>,
+    pub stops: serde_json::Value,
+    pub thread_id: Option<String>,
+    pub written_at: String,
+}
+
 fn queued_row(row: &Row<'_>) -> rusqlite::Result<QueuedMessage> {
     let ids: String = row.get("attachment_ids")?;
     Ok(QueuedMessage {
@@ -475,6 +492,54 @@ impl Store {
             }
             Ok(())
         })
+    }
+
+    /// Replaces the project's review guide for one pull request. `stops` is the
+    /// already checked JSON array of stops.
+    pub fn write_pull_guide(
+        &self,
+        project_id: &str,
+        number: u64,
+        guide: &PullGuideWrite<'_>,
+    ) -> Result<String> {
+        let written_at = now();
+        self.commit(|tx, _| {
+            tx.execute(
+                "INSERT INTO pull_guides (project_id, number, head_sha, stops, thread_id, written_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT (project_id, number) DO UPDATE SET head_sha = excluded.head_sha,
+                    stops = excluded.stops, thread_id = excluded.thread_id,
+                    written_at = excluded.written_at",
+                params![
+                    project_id,
+                    number as i64,
+                    guide.head_sha,
+                    guide.stops,
+                    guide.thread_id,
+                    written_at
+                ],
+            )?;
+            Ok(())
+        })?;
+        Ok(written_at)
+    }
+
+    /// The project's review guide for one pull request, if one was written.
+    pub fn pull_guide(&self, project_id: &str, number: u64) -> Result<Option<PullGuide>> {
+        let conn = self.reader();
+        let mut statement =
+            conn.prepare_cached("SELECT * FROM pull_guides WHERE project_id = ?1 AND number = ?2")?;
+        Ok(statement
+            .query_row(params![project_id, number as i64], |row| {
+                Ok(PullGuide {
+                    number: row.get::<_, i64>("number")? as u64,
+                    head_sha: row.get("head_sha")?,
+                    stops: parse_json(3, &row.get::<_, String>("stops")?)?,
+                    thread_id: row.get("thread_id")?,
+                    written_at: row.get("written_at")?,
+                })
+            })
+            .optional()?)
     }
 
     pub fn unlink_pull(&self, thread_id: &str, number: u64) -> Result<()> {

@@ -78,3 +78,18 @@ it("reads a command's key from the service, the fallback, or a removed rule", ()
   expect(commandShortcut([{ key: "mod+o", command: "editor.openFavorite", when: null, remove: true }], "editor.openFavorite")).toBeNull();
   expect(commandShortcut([], "editor.openFavorite")).toBe("mod+o");
 });
+
+it("gives mod+w rules an alt+w alternate in a browser only", async () => {
+  const { browserAlternate, isReservedCloseEvent, ruleMatches } = await import("./shortcuts");
+  const ctrlW = key("w", { ctrlKey: true, metaKey: true });
+  const altW = key("w", { altKey: true });
+  expect(browserAlternate("mod+w")).toBe("alt+w");
+  expect(browserAlternate("mod+shift+w")).toBe("alt+shift+w");
+  expect(browserAlternate("mod+k")).toBeNull();
+  expect(ruleMatches("mod+w", altW, false)).toBe(true);
+  expect(ruleMatches("mod+w", altW, true)).toBe(false);
+  expect(ruleMatches("mod+k", altW, false)).toBe(false);
+  const mod = /mac/i.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true };
+  expect(isReservedCloseEvent(key("w", mod))).toBe(true);
+  expect(isReservedCloseEvent(ctrlW)).toBe(false);
+});

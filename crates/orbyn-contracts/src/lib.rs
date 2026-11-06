@@ -2335,6 +2335,10 @@ pub struct PreviewTab {
     /// `human` while a person holds the page, `none` otherwise.
     pub control: String,
     pub recording: bool,
+    /// A recording stopped on a quota or write failure; starting again clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recording_error: Option<String>,
     pub viewers: usize,
     pub width: u32,
     pub height: u32,
@@ -2402,6 +2406,19 @@ wire! {
 pub struct AnswerFileChooser {
     #[serde(default)]
     pub files: Vec<String>,
+}
+}
+
+wire! {
+/// A content-free cue from a successful agent input; coordinates are frame pixels.
+pub struct PreviewPointer {
+    pub sequence: u32,
+    /// `move`, `click`, or `clear`.
+    pub phase: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: u32,
+    pub height: u32,
 }
 }
 
@@ -2537,9 +2554,32 @@ pub struct PreviewInput {
 }
 
 wire! {
+/// Recording overlays are opt-in; FPS is a requested maximum, not a timing guarantee.
+#[serde(default)]
+pub struct PreviewRecordingOptions {
+    pub fps: u32,
+    pub show_key_presses: bool,
+    pub show_mouse_presses: bool,
+}
+}
+
+impl Default for PreviewRecordingOptions {
+    fn default() -> Self {
+        Self {
+            fps: 5,
+            show_key_presses: false,
+            show_mouse_presses: false,
+        }
+    }
+}
+
+wire! {
 pub struct PreviewRecording {
     pub path: String,
     pub frames: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
 }
 }
 
@@ -2570,6 +2610,9 @@ pub enum ShellAction {
     RemoveCli,
     OpenAccessibilitySettings,
     OpenScreenRecordingSettings,
+    /// Quits the app, which stops its service and runs; sent once a window's quit
+    /// confirmation is met.
+    Quit,
 }
 }
 
@@ -3239,6 +3282,37 @@ pub struct ServerInfo {
     pub remote: bool,
     pub platform: String,
     pub environment_label: String,
+    /// The theme this environment publishes, applied once by each viewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_theme: Option<EnvironmentTheme>,
+    /// `dev` for a debug build, `nightly` for a build made with
+    /// `ORBYN_CHANNEL=nightly`, otherwise `stable`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub channel: Option<ReleaseChannel>,
+    /// `environment_icon`: `laptop`, `desktop`, `tower` or `server`; absent is the plain monitor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_icon: Option<String>,
+}
+}
+
+wire_enum! {
+pub enum ReleaseChannel {
+    Stable,
+    Nightly,
+    Dev,
+}
+}
+
+wire! {
+/// `default_theme` and when it was last set, in Unix milliseconds. A viewer applies
+/// it when `set_at` is newer than the one it last applied, then keeps its own choice.
+pub struct EnvironmentTheme {
+    pub name: String,
+    #[ts(type = "number")]
+    pub set_at: i64,
 }
 }
 

@@ -122,6 +122,8 @@ export interface Service {
 }
 
 export interface ServiceOptions {
+  /** Opt in to the freshly built production UI, served by this real service. */
+  builtUi?: boolean;
   /** Records only protocol-double launches, for controlled ordering assertions. */
   engineLaunchLog?: string;
   /** Use production automatic provider discovery only in controlled lifecycle tests. */
@@ -185,7 +187,9 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
     XDG_RUNTIME_DIR: join(dir, ".run"), APPDATA: join(dir, ".appdata/roaming"), LOCALAPPDATA: join(dir, ".appdata/local"),
   };
   for (const path of Object.values(profile)) mkdirSync(path, { recursive: true, mode: 0o700 });
-  const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir)], {
+  const ui = options.builtUi ? resolve(WEB, "dist") : null;
+  if (ui && !existsSync(join(ui, "index.html"))) throw new Error("Build this checkout's production UI first: npm run build");
+  const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir), ...(ui ? ["--ui-dir", ui] : [])], {
     // A home of its own, so no real engine history or login is read.
     env: { ...inherited, ...profile, ...engines, ORBYN_KNOWN_ENGINE_IDS: options.discoverKnownEngines ? undefined : "[]", ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${forge ? `${forge.bin}${delimiter}` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
@@ -194,14 +198,13 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
     service.once("exit", (code) => fail(new Error(`orbynd exited with ${code}`)));
     createInterface({ input: service.stdout }).once("line", (line) => done(JSON.parse(line) as never));
   });
-  const port = await freePort();
-  // Node itself, so stopping it frees the port for a spec that restarts after a failure.
-  const vite = spawn(process.execPath, [resolve(WEB, "node_modules/vite/bin/vite.js"), "--port", String(port), "--strictPort"], {
+  const port = ui ? null : await freePort();
+  const vite = ui ? null : spawn(process.execPath, [resolve(WEB, "node_modules/vite/bin/vite.js"), "--port", String(port), "--strictPort"], {
     cwd: WEB,
     env: { ...process.env, ORBYN_API: ready.url, NO_COLOR: "1" },
     stdio: ["ignore", "pipe", "ignore"],
   });
-  await viteReady(vite, port);
+  if (vite && port !== null) await viteReady(vite, port);
   const folder = join(dir, "my-folder");
   mkdirSync(folder);
   const repo = join(dir, "my-repo");
@@ -234,7 +237,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
             .filter(Boolean)
             .map((line) => JSON.parse(line) as string[])
         : [],
-    page: `http://localhost:${port}/?token=${ready.token}`,
+    page: ui ? `${ready.url}/?token=${ready.token}` : `http://localhost:${port}/?token=${ready.token}`,
     async api<T>(method: string, path: string, body?: unknown) {
       const response = await fetch(`${ready.url}${path}`, {
         method,
@@ -249,9 +252,10 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
       return (text ? JSON.parse(text) : undefined) as T;
     },
     async stop() {
-      const gone = [service, vite].filter((child) => child.exitCode === null).map((child) => once(child, "exit"));
+      const children = [service, ...(vite ? [vite] : [])];
+      const gone = children.filter((child) => child.exitCode === null).map((child) => once(child, "exit"));
       service.kill();
-      vite.kill();
+      vite?.kill();
       await Promise.all(gone);
       // An engine or preview the service just stopped can still be closing its files.
       rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

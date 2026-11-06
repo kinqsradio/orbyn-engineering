@@ -186,6 +186,14 @@ Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
 paste into a composer restores the chips and refetches a file whose text was not
 carried. Ordinary text, broken JSON and half-known chips never become chips.
 
+File source annotations use review chips with a captured line range, source excerpt
+and comment. The chip opens its captured details for editing or removal; neither
+action changes the file. A successful send, queue or steer consumes only chips whose
+values still match the submitted snapshot, so editing a chip with the same ID while
+the request is in flight preserves that edit. New chips and newer draft text stay.
+Review comments, like terminal context, cannot be consumed by local commands,
+compact/goal commands, side chats or approval replies that do not carry context.
+
 A terminal selection also records the one-based buffer rows it covered, so its
 chip and prompt block name those lines instead of the whole terminal. Chips count
 as part of the message, not as text beside it: the 120,000-character limit covers
@@ -1023,7 +1031,10 @@ A new worktree without an entered purpose gets a unique prompt-derived purpose. 
 a clean checkout on the remote's default branch every 30 minutes.
 
 `keybindings.json` lives in app data and holds only the person's changes over built-in
-defaults, so new defaults reach them. It allows comments and trailing commas, and a
+defaults, so new defaults reach them. `mod+w` is reserved: in the desktop app the page
+takes it even when no rule runs, so it never closes the window. A browser closes the tab
+before the page hears it, so outside the desktop app a `mod+w` rule also matches the same
+key with `alt` in place of `mod`; the editor says which applies. It allows comments and trailing commas, and a
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
@@ -1089,6 +1100,27 @@ retention. A worktree goes only through `git worktree remove` with no force, so 
 keeps uncommitted work. Candidates observed as owned by another live thread are
 kept. `?dry_run=true` only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
+
+## Environment identity
+
+The local environment publishes a theme in `GET /api/info` as `environment_theme`:
+the `default_theme` preference and `default_theme_set_at`, the Unix milliseconds when
+it was last written. Every write of `default_theme`, from settings or `orbyn theme`,
+stamps that time, and clearing the theme clears it; a client cannot write the time.
+A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
+theme once, when its `set_at` is newer than the one it last applied, at startup and
+when the window takes focus; after that the viewer's own choice stays. An unknown id
+is recorded as applied and changes nothing. Remote environments publish nothing here.
+
+`/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
+`stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
+marks it as the viewer chose: Dev or Nightly artwork (nothing for stable), a version
+pill, or none. That choice is viewer-local.
+
+Appearance edits `default_theme` and `environment_icon` as environment settings through
+the scoped preference writer, showing when the theme was set. `environment_icon` is one
+of `laptop`, `desktop`, `tower` or `server`, or empty for the plain monitor; `/api/info`
+publishes it and the settings environment label draws it.
 
 ## Message search
 
@@ -1163,6 +1195,13 @@ on every filesystem. A path is judged where it lands, so a link into `.git` or a
 different spelling of it on a case-insensitive disk is refused too. These saves are the
 user's own edits, audited, and differ from rule 4, which covers what Orbyn adds on its
 own.
+
+The source viewer offers comments on one line or a Shift-selected range. Comments
+capture at most 4,000 source characters and 20,000 comment characters, within the
+complete prompt limit. Their annotation positions belong to the displayed revision
+and checkout; a reload or edited revision never transfers those positions to new
+source. Submitted chips keep their captured context when the file changes, and
+only the ordinary send action passes that context to the engine.
 
 `GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
 byte range at a time; a form it does not serve gets the whole file. A checkout holds
@@ -1548,7 +1587,12 @@ runs. A second launch hands its links to the first and exits.
 `POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
 path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
 the window, and everything else goes to the windows as a `command`, the same ones keys
-run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
+run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. On macOS
+the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
+service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
+quits through the `quit` shell action after the key is held for one second, or pressed
+again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
 application window; without one they do nothing. Viewer zoom is independent and transient.
@@ -1557,8 +1601,9 @@ that viewer. App-wide commands such as Settings still reveal and target the main
 
 The service owns the rule for running work and sends `activity` when it changes: the
 counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
-The shell applies it. The Dock badge counts only runs waiting on a person, the tray shows
-the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
+The shell applies it. `activity` also counts threads flagged unread and not archived. The
+Dock badge counts those unread threads plus runs waiting on a person; Windows has no badge
+count, so its tray tooltip names both. The tray shows the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
 `SetThreadExecutionState` on Windows. The display can still sleep and a closed lid still
 sleeps.
 
@@ -1655,6 +1700,15 @@ it returns has no query; a client builds the frame URL with `?render=`. Nothing 
 the page yet, so the height the call asks for is the height it gets, and the tool
 says so.
 
+`orbyn_pull_guide_write` stores a review guide the calling agent wrote, one per project
+and pull request number, replacing the earlier one; `orbyn_pull_guide_read` returns it
+or `null`. Like viewed-file marks, a guide is this service's own and never reaches the
+forge. The write carries an effect, so the gate asks, and it fails while the project's
+`review_guides_enabled` preference is off. Its stops are rebuilt with only their known
+fields (title, summary, files with a path and note, questions) and are bounded: 30
+stops, a stored size of 128 KiB. Neither tool checks that the number names a real pull
+request, and `head_sha` is the agent's own claim.
+
 ## Computer gateway
 
 The order is fixed: resolve the target, evaluate policy, write audit, act. Browser
@@ -1695,8 +1749,48 @@ four run at once, and they close when their thread settles, archives or is delet
 Frames are polled about five times a second, only while someone watches or records,
 and a frame that did not change is not sent. `/ws/preview` sends each as base64 JPEG
 text. Watching gives no control: input needs a person to take the page first.
-Recording keeps the changed frames as numbered JPEG files in
-`<data>/browser-artifacts`, with no video encoder. Agents can read their thread's
+The separate authenticated `/ws/preview/:thread/:tab/pointer` feed carries only
+server-created ephemeral cues after successful agent click or scroll input.
+Each tab owns a monotonic sequence; positions are frame pixels, with zoom applied
+once at the input owner. Main-frame CDP document lifecycle (including same-URL reload), view changes and browser recovery clear the
+cue. Viewers scale it to the actual picture and expire it after 700 ms, with reduced
+motion support. A slow viewer skips cues and cannot block approved page input.
+Typing and denied actions emit no pointer cue, and an action that fails before
+dispatch emits none; a navigation reported after the mouse release can still show its
+cue for one frame on the new page. Arbitrary page evaluation is not
+interpreted as pointer input. The feed accepts no client-published cues and carries
+no typed text, selectors, page URLs or credentials. JPEG frame messages are unchanged.
+
+Recording samples numbered JPEG files in `<data>/browser-artifacts`, including
+unchanged pages, at a requested maximum of 1, 2, 5 or 10 FPS (default 5), with no
+video encoder. `POST .../recording` accepts `PreviewRecordingOptions` as query
+parameters; omitted options retain the defaults. Mouse and key overlays default
+off. Successful mouse presses use the actual dispatched frame point. Key labels
+come only from the fixed Enter, Tab, Escape, arrow, Backspace and Delete vocabulary
+after successful human key dispatch. Printable text never becomes a label. A
+boolean focus check before dispatch and capture suppresses labels for text fields,
+passwords, OTP, frames, shadow hosts, BODY, editing mode and uncertain focus; this
+check does not restrict human input. Overlays are drawn into saved JPEG pixels,
+without injecting UI into the page or changing streamed JPEGs.
+
+Each recording owns its captured cues, writer, successful frame/byte counts and
+summary. Stop cancels new frames and waits for the actual blocking writer before
+returning the saved path and frame count; cancelling an awaiting caller cannot
+release the writer's compositor permit early. The frame loop never waits on
+encoding: it hands each frame to a one-slot per-recording queue where the newest
+replaces a waiting one, and only that recording's own task takes the shared
+compositor gate, so a slow encoder cannot stall live viewers. Finished state and
+errors are readable while the writer is busy. A new recording is refused with an
+error once recordings under the folder total 2 GiB; nothing is deleted
+automatically. Limits are five minutes,
+3,000 frames and 256 MiB including reserved summary space. Input JPEGs are capped
+at 16 MiB and 4,096 pixels per dimension. A limit or write failure stops capture
+and retains an error. Failed summary publication retains the stopped owner for a
+Finish retry and blocks replacement until publication succeeds. The Browser panel
+shows the server's successful count and folder after Stop, and a committed
+Start/Stop remains authoritative when its status refresh fails.
+
+Agents can read their thread's
 tabs with `orbyn_preview_snapshot` and `orbyn_preview_wait_for`, and drive them
 with `orbyn_preview_act` (click, append text, scroll) and `orbyn_preview_evaluate`
 (page JavaScript). The acting tools use the normal `tool` approval gate. Taking
@@ -2113,7 +2207,7 @@ because browsers cannot set headers on them.
 | `DELETE /api/threads/:id/previews/:tab` | Close the tab and its browser |
 | `POST .../previews/:tab/navigate`, `/control`, `/input` | `NavigatePreview`; `PreviewControl`; `PreviewInput`, `400` until a person holds the page |
 | `POST .../previews/:tab/history`, `/resize` | `StepPreview`; `ResizePreview`, `400` outside 100 to 4096; both to `PreviewTab` |
-| `POST, DELETE .../previews/:tab/recording` | Start; stop, to `PreviewRecording` |
+| `POST, DELETE .../previews/:tab/recording` | Start with optional `PreviewRecordingOptions` query; stop, to `PreviewRecording` with successful frame count and optional error |
 | `POST .../previews/file` | `OpenPreviewFile` to `PreviewTab`, inside the checkout |
 | `POST .../previews/:tab/view`, `/reload`, `/clear`, `/pick` | `PreviewView`; `ReloadPreview`; `ClearPreview`; `PickPreview` to `PickedElement` |
 | `GET, POST /api/browser-profiles` | `BrowserProfile[]`; `CreateBrowserProfile` |
