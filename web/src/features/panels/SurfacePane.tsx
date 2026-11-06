@@ -213,7 +213,7 @@ export function SurfacePane({
             ) : tab === "files" ? (
               <FilesPanel threadId={thread.id} />
             ) : tab === "activity" ? (
-              <ActivityPanel threadId={thread.id} />
+              <ActivityPanel key={thread.id} threadId={thread.id} />
             ) : tab === "side" ? (
               <SideChatPane parent={thread} />
             ) : (
