@@ -37,12 +37,11 @@ export async function openSideChat(parent: Thread, question: string | null) {
   }
 }
 
-/** Closes the tab. One you never used goes with it, since nothing would find it again. */
+/** Closes the open chat; the tab stays. One you never used goes with it, since nothing would find it again. */
 export function closeSideChat() {
-  const { sideChat, closeSurface, setPrefs } = useUi.getState();
+  const { sideChat, setPrefs } = useUi.getState();
   const { threads, dropThread } = useWorkspace.getState();
   const side = sideChat ? threads[sideChat] : undefined;
-  closeSurface("side");
   setPrefs({ sideChat: null });
   if (side && side.active_run === null && side.last_run_state === null) {
     dropThread(side);

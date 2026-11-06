@@ -286,36 +286,27 @@ test("rows close and reopen, one at a time or selected together", async ({ page 
   await expect.poll(() => service.ghPull(1).state).toBe("OPEN");
 });
 
-test("the surface menu opens this thread's pull request and keeps one closable tab", async ({ page }) => {
+test("the PRs tab lists this thread's pull request and a thread without one says so", async ({ page }) => {
   const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Surface menu" });
   await service.api("POST", `/api/threads/${thread.id}/pulls`, { number: 1 });
   await page.goto(`${service.page}#/threads/${thread.id}`);
   await page.getByRole("button", { name: "Surfaces", exact: true }).click();
-  await page.getByRole("button", { name: "New surface", exact: true }).click();
-  const entry = page.getByRole("menuitem", { name: "Pull request", exact: true });
-  await expect(entry).toBeEnabled();
-  await entry.click();
-  await expect(detail(page, "First layer")).toBeVisible();
   const tab = page.getByRole("tab", { name: "Pull requests", exact: true });
-  await expect(tab).toHaveCount(1);
-  await page.getByRole("button", { name: "New surface", exact: true }).click();
-  await entry.click();
+  await expect(tab).toHaveText("PRs");
+  await tab.click();
+  await page.getByRole("button", { name: /First layer/ }).first().click();
   await expect(detail(page, "First layer")).toBeVisible();
   await expect(tab).toHaveCount(1);
-  await page.getByRole("button", { name: "Close Pull requests", exact: true }).click();
-  await expect(tab).toHaveCount(0);
+  await page.getByRole("tab", { name: "Files", exact: true }).click();
   await expect(detail(page, "First layer")).toHaveCount(0);
+  await expect(tab).toHaveCount(1);
   expect((await service.api<{ number: number }[]>("GET", `/api/threads/${thread.id}/pulls`)).map((pull) => pull.number)).toEqual([1]);
 
   const unlinked = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "No linked pull" });
   await page.goto(`${service.page}#/threads/${unlinked.id}`);
   await page.getByRole("button", { name: "Surfaces", exact: true }).click();
-  await page.getByRole("button", { name: "New surface", exact: true }).click();
-  await expect(entry).toBeDisabled();
-  await expect(page.getByRole("menuitem", { name: "Device", exact: true })).toBeDisabled();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu", { name: "New surface" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "New surface", exact: true })).toBeFocused();
+  await page.getByRole("tab", { name: "Pull requests", exact: true }).click();
+  await expect(page.getByText("No linked pull requests")).toBeVisible();
 });
 
 test("a thread links, watches and unlinks; Work on this opens a thread on the branch", async ({ page }) => {

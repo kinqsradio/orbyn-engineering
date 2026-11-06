@@ -101,8 +101,7 @@ test("diff, file, terminal and page-element chips are sent as labelled blocks", 
   await page.getByRole("button", { name: "Terminal", exact: true }).click();
 
   // Page element: picked from the service's own browser.
-  await page.getByRole("button", { name: "New surface" }).click();
-  await page.getByRole("menuitem", { name: "Browser", exact: true }).click();
+  await page.getByRole("tab", { name: "Browser", exact: true }).click();
   const address = page.getByRole("combobox", { name: "Search or enter URL" });
   await address.fill(`127.0.0.1:${sitePort}/pick`);
   await address.press("Enter");
