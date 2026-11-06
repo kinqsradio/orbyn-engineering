@@ -19,7 +19,7 @@ import { IconButton } from "../../ui/controls";
 import { ProjectBadge } from "../../ui/badges";
 import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
-import { Loading } from "../../ui/states";
+import { Loading, NarrowBack } from "../../ui/states";
 import { ACCESS, EffortTrigger, offeredModes, shownAccess, useTraitsMenu } from "../thread/ComposerTraits";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
 import { resolveModel, useEngineModels } from "../../state/modelStore";
@@ -319,6 +319,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
     <div className="draft-layout">
       <section className="draft-main thread-main" aria-label="New thread">
         <header className="topbar">
+          <NarrowBack />
           <div className="crumbs">
             {project ? <ProjectBadge name={project.name} project={project} /> : <SquareDashed size={14} aria-hidden />}
             <span className="crumb-project">{project?.name ?? "No project"}</span>

@@ -74,3 +74,16 @@ test("thread details show what's left, and checks stay five minutes apart", asyn
   await expect(page.getByText(/% left/)).toBeVisible();
   expect(checks).toBe(1);
 });
+
+test("the provider menu opens above the usage dialog and goes back to all providers", async ({ page }) => {
+  await page.goto(`${service.page}#/usage`);
+  const usage = page.getByRole("dialog", { name: "Usage" });
+  const picker = usage.getByRole("button", { name: "All providers" });
+  await picker.click();
+  // A click lands only on what is on top, so this fails while the menu sits under the dialog.
+  await page.getByRole("menuitem", { name: "Codex" }).click();
+  await expect(usage.getByRole("button", { name: "Codex" })).toBeVisible();
+  await usage.getByRole("button", { name: "Codex" }).click();
+  await page.getByRole("menuitem", { name: "All providers" }).click();
+  await expect(picker).toBeVisible();
+});

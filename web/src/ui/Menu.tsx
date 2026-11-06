@@ -16,10 +16,13 @@ export interface MenuItem {
   onSelect?(): void;
 }
 
+/** Keeps the menu 8px inside the window, measured by layout size so the opening scale can't shrink it. */
 const placed = (element: HTMLElement) => {
   const rect = element.getBoundingClientRect();
-  if (rect.right > window.innerWidth - 8) element.style.left = `${window.innerWidth - rect.width - 8}px`;
-  if (rect.bottom > window.innerHeight - 8) element.style.top = `${Math.max(8, window.innerHeight - rect.height - 8)}px`;
+  const width = element.offsetWidth;
+  const height = element.offsetHeight;
+  if (rect.left + width > window.innerWidth - 8) element.style.left = `${Math.max(8, window.innerWidth - width - 8)}px`;
+  if (rect.top + height > window.innerHeight - 8) element.style.top = `${Math.max(8, window.innerHeight - height - 8)}px`;
 };
 
 function MenuList({
@@ -162,6 +165,24 @@ function FragmentRow({ separator, children }: { separator: boolean; children: Re
   );
 }
 
+const isModal = (dialog: HTMLDialogElement) => {
+  try {
+    return dialog.matches(":modal");
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * A modal dialog sits in the top layer, above anything in the body, so a menu opened from one
+ * has to live inside it. The last open modal in document order stands in for the topmost; the
+ * app never opens a second modal that sits earlier in the document than the first.
+ */
+function menuHost(): HTMLElement {
+  const modals = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].filter(isModal);
+  return modals.at(-1) ?? document.body;
+}
+
 /** A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work. */
 export function Menu({
   x,
@@ -186,8 +207,10 @@ export function Menu({
     return () => document.removeEventListener("mousedown", close);
   }, [onClose]);
 
+  // Chosen once, so a dialog opening or closing behind the menu doesn't remount it.
+  const [host] = useState(menuHost);
   return createPortal(
     <MenuList x={x} y={y} origin={origin} label={label} items={items} onClose={onClose} />,
-    document.body,
+    host,
   );
 }

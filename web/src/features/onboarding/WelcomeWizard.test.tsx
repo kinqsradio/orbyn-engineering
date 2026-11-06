@@ -24,7 +24,8 @@ beforeEach(() => {
 it("names what each engine still needs", () => {
   expect(engineReadiness(engine({})).label).toBe("Ready");
   expect(engineReadiness(engine({ auth: "logged_out" }))).toMatchObject({ label: "Sign in needed", next: "claude login" });
-  expect(engineReadiness(engine({ installed: false }))).toMatchObject({ label: "Not installed", next: "npm install -g claude" });
+  // The manual hint says how to update, which is no help before the engine exists.
+  expect(engineReadiness(engine({ installed: false }))).toMatchObject({ label: "Not installed", next: null, step: "Install Claude, then check again." });
 });
 
 it("walks agents then projects and remembers it was finished", async () => {

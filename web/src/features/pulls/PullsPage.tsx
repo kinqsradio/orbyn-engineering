@@ -8,7 +8,7 @@ import { useVisibleProjects } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
-import { ErrorState, Loading } from "../../ui/states";
+import { ErrorState, Loading, NarrowBack } from "../../ui/states";
 import { PullDetail } from "./PullDetail";
 import { authorsOf, labelsOf, noFilters, parseSearch, visiblePulls, type PullFilters, type PullSort } from "./pullModel";
 import { pullsApi } from "../../api/pulls";
@@ -128,6 +128,7 @@ export function PullsPage() {
   return (
     <div className="pulls-page">
       <header className="topbar">
+        <NarrowBack />
         <div className="crumbs">
           <h1 tabIndex={-1} data-page-title>
             Pull requests
@@ -161,21 +162,24 @@ export function PullsPage() {
                 </button>
               ) : null}
             </label>
-            <button type="button" className="pulls-chip" onClick={(event) => open("sort", event.currentTarget)}>
-              <ArrowUpDown size={14} aria-hidden />
-              Sort
-            </button>
-            <button type="button" className="pulls-chip" onClick={(event) => open("filters", event.currentTarget)}>
-              <ListFilter size={14} aria-hidden />
-              Filters
-            </button>
-            <button type="button" className="pulls-chip" onClick={(event) => open("project", event.currentTarget)}>
-              <Folder size={14} aria-hidden />
-              {filters.project ? nameOf(filters.project) : "All"}
-            </button>
-            <IconButton label="Refresh pull requests" onClick={refresh}>
-              <RefreshCw size={14} aria-hidden />
-            </IconButton>
+            {/* The chips wrap as one group, so a narrow column never strands one alone. */}
+            <div className="pulls-bar-actions">
+              <button type="button" className="pulls-chip" onClick={(event) => open("sort", event.currentTarget)}>
+                <ArrowUpDown size={14} aria-hidden />
+                Sort
+              </button>
+              <button type="button" className="pulls-chip" onClick={(event) => open("filters", event.currentTarget)}>
+                <ListFilter size={14} aria-hidden />
+                Filters
+              </button>
+              <button type="button" className="pulls-chip" onClick={(event) => open("project", event.currentTarget)}>
+                <Folder size={14} aria-hidden />
+                {filters.project ? nameOf(filters.project) : "All"}
+              </button>
+              <IconButton label="Refresh pull requests" onClick={refresh}>
+                <RefreshCw size={14} aria-hidden />
+              </IconButton>
+            </div>
           </div>
           {picked.length > 0 ? (
             <div className="pulls-bulk" role="status">

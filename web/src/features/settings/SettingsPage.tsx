@@ -133,6 +133,13 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [target, current]);
 
+  // The section list scrolls (down on a short window, sideways on a narrow one), so the open section is kept in view.
+  const searching = Boolean(query.trim());
+  useEffect(() => {
+    if (searching) return;
+    ref.current?.querySelector<HTMLElement>('.settings-nav [aria-current="page"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [current, searching]);
+
   return (
     <dialog
       ref={ref}

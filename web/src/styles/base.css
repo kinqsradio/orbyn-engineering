@@ -100,6 +100,10 @@ main:focus-visible,
 [role="log"]:focus-visible {
   outline-offset: -2px;
 }
+/* A route moves focus to its title for screen readers; the title is not a control. */
+[data-page-title]:focus-visible {
+  outline: none;
+}
 input:not([type="checkbox"], [type="radio"]),
 textarea,
 select {
@@ -119,6 +123,10 @@ textarea:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
+}
+/* A select picked with the mouse is still `:focus-visible` in Chrome; the ring is for keys. */
+:root[data-input="pointer"] select:focus-visible {
+  outline: none;
 }
 input::placeholder,
 textarea::placeholder {
@@ -685,7 +693,10 @@ input[type="radio"] {
   z-index: 60;
   display: flex;
   flex-direction: column;
+  /* Its own width, not what is left before the window edge, so placement sees an overflow. */
+  width: max-content;
   min-width: 160px;
+  max-width: min(320px, calc(100vw - 16px));
   padding: 4px;
   border-radius: var(--radius-md);
   background: var(--color-raised);

@@ -156,6 +156,12 @@
   font-size: var(--text-title);
   font-weight: 500;
 }
+.setting-group-desc {
+  padding: 0 16px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  line-height: 18px;
+}
 .setting-line {
   display: flex;
   align-items: center;
@@ -1128,6 +1134,12 @@ kbd {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  gap: 8px;
+}
+.pulls-bar-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
   gap: 8px;
 }
 .pulls-search {
