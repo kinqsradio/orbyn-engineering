@@ -68,10 +68,19 @@ export function waitingOnDelegates(threads: readonly Thread[]): ReadonlySet<stri
   return waiting;
 }
 
+/** How urgently a thread wants the person: 0 needs them now, 1 failed, 2 anything else. */
+export function attentionRank(thread: Thread): number {
+  if (thread.active_run?.state === "awaiting_approval" || thread.lifecycle?.limit) return 0;
+  if (!thread.active_run && thread.last_run_state === "failed") return 1;
+  return 2;
+}
+
 export function arrangeThreads(
   threads: readonly Thread[],
   now: number,
   workingSection = true,
+  /** The Ledger layout lists what needs the person first; the saved order breaks ties. */
+  needsYouFirst = false,
 ): ThreadSections {
   const sections: ThreadSections = { pinned: [], active: [], working: [], snoozed: [], settled: [] };
   const shelf = { enabled: workingSection, waiting: waitingOnDelegates(threads) };
@@ -80,7 +89,7 @@ export function arrangeThreads(
     if (section) sections[section].push(thread);
   }
   sections.pinned.sort(savedOrder);
-  sections.active.sort(savedOrder);
+  sections.active.sort(needsYouFirst ? (a, b) => attentionRank(a) - attentionRank(b) || savedOrder(a, b) : savedOrder);
   sections.working.sort(newest);
   sections.snoozed.sort((a, b) =>
     (a.lifecycle?.snoozed_until ?? "").localeCompare(b.lifecycle?.snoozed_until ?? ""),
