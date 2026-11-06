@@ -34,7 +34,7 @@ use super::pipes::{
 use super::{
     CLAUDE_APPROVE_TOOL, EngineDescriptor, EngineDriver, EngineEvent, EngineOutcome, EngineProbe,
     ItemRecord, MCP_SERVER_NAME, ModelCatalog, ProbeDir, RunControl, RunHandle, RunKind, RunSpec,
-    UpdatePlan, effort_option, proposed_plan_events,
+    UpdatePlan, WarmProcess, effort_option, proposed_plan_events,
 };
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
@@ -193,6 +193,7 @@ impl EngineDriver for ClaudeDriver {
                 ],
                 goal_control: false,
                 decline_feedback: true,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -327,37 +328,117 @@ impl EngineDriver for ClaudeDriver {
         spec: RunSpec,
         events: mpsc::Sender<EngineEvent>,
     ) -> Result<RunHandle> {
+        let process = self.launch(&spec)?;
+        Ok(handle_for(process, spec, events, None))
+    }
+
+    fn can_warm(&self) -> bool {
+        true
+    }
+
+    fn warm_key(&self, spec: &RunSpec) -> Option<String> {
+        let command = resolve_engine(&self.program).ok()?;
+        // A reinstall at the same path is a different program.
+        let installed = std::fs::metadata(&command.program).ok()?;
+        let modified = installed
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        // The run's own folder differs per run; what goes in it is compared instead.
+        let mut neutral = spec.clone();
+        neutral.run_dir = std::path::PathBuf::from("run");
+        let args: Vec<String> = run_args(
+            &neutral,
+            Path::new("run/mcp.json"),
+            self.auto_compact_window,
+        )
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+        Some(
+            json!({
+                "program": command.program,
+                "prefix": command.prefix.iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>(),
+                "size": installed.len(),
+                "modified": modified.as_nanos().to_string(),
+                "args": args,
+                "cwd": spec.cwd,
+                "mcp": spec.mcp_url,
+                "settings": run_settings(spec, self.auto_compact_window),
+                "mode": spec.mode,
+                "saved_login": crate::child_env::prefers_saved_login(),
+            })
+            .to_string(),
+        )
+    }
+
+    async fn start_warm(&self, mut spec: RunSpec) -> Result<Option<WarmProcess>> {
+        let Some(key) = self.warm_key(&spec) else {
+            return Ok(None);
+        };
+        let dir = ProbeDir::new()?;
+        spec.run_dir = dir.path().to_path_buf();
+        let process = self.launch(&spec)?;
+        Ok(Some(WarmProcess { key, process, dir }))
+    }
+
+    async fn adopt_run(
+        &self,
+        spec: RunSpec,
+        events: mpsc::Sender<EngineEvent>,
+        warm: WarmProcess,
+    ) -> Result<RunHandle> {
+        let WarmProcess { process, dir, .. } = warm;
+        Ok(handle_for(process, spec, events, Some(dir)))
+    }
+}
+
+/// Starts `run_protocol` on a process. A warm process's folder lives as long as it.
+fn handle_for(
+    process: EngineProcess,
+    spec: RunSpec,
+    events: mpsc::Sender<EngineEvent>,
+    dir: Option<ProbeDir>,
+) -> RunHandle {
+    let cancel = CancellationToken::new();
+    let (input, steering) = mpsc::unbounded_channel();
+    let (control, controls) = mpsc::unbounded_channel();
+    let protocol = run_protocol(
+        process,
+        spec,
+        events,
+        Inputs { steering, controls },
+        cancel.clone(),
+    );
+    let task = tokio::spawn(async move {
+        let _dir = dir;
+        protocol.await;
+    });
+    RunHandle {
+        cancel,
+        task,
+        input: Some(input),
+        control: Some(control),
+    }
+}
+
+impl ClaudeDriver {
+    /// Writes a run's files into its folder and starts the CLI on them.
+    fn launch(&self, spec: &RunSpec) -> Result<EngineProcess> {
         let command = resolve_engine(&self.program)?;
         let mcp_config = spec.run_dir.join("mcp.json");
         let config = json!({
             "mcpServers": { (MCP_SERVER_NAME): { "type": "http", "url": spec.mcp_url } }
         });
         write_private(&mcp_config, config.to_string().as_bytes())?;
-        if let Some(settings) = run_settings(&spec, self.auto_compact_window) {
-            write_private(&run_settings_path(&spec), settings.to_string().as_bytes())?;
+        if let Some(settings) = run_settings(spec, self.auto_compact_window) {
+            write_private(&run_settings_path(spec), settings.to_string().as_bytes())?;
         }
-        let args = run_args(&spec, &mcp_config, self.auto_compact_window);
-        let process = spawn_engine(&command, &args, &spec.cwd)?;
-        let cancel = CancellationToken::new();
-        let (input, steering) = mpsc::unbounded_channel();
-        let (control, controls) = mpsc::unbounded_channel();
-        let task = tokio::spawn(run_protocol(
-            process,
-            spec,
-            events,
-            Inputs { steering, controls },
-            cancel.clone(),
-        ));
-        Ok(RunHandle {
-            cancel,
-            task,
-            input: Some(input),
-            control: Some(control),
-        })
+        let args = run_args(spec, &mcp_config, self.auto_compact_window);
+        spawn_engine(&command, &args, &spec.cwd)
     }
-}
 
-impl ClaudeDriver {
     /// Reads the CLI's `initialize` response from a process that never gets a
     /// prompt, in an empty folder of its own.
     async fn initialize(&self) -> Result<Value> {

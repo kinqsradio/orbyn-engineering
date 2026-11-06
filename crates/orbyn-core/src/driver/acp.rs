@@ -41,6 +41,7 @@ pub struct AcpDriver {
     env: &'static [(&'static str, &'static str)],
     /// False for an agent that cannot ask before it edits.
     asks: bool,
+    modes: Vec<orbyn_contracts::PermissionMode>,
 }
 
 impl AcpDriver {
@@ -49,6 +50,7 @@ impl AcpDriver {
             engine,
             env: &[],
             asks: true,
+            modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
         }
     }
 
@@ -58,6 +60,7 @@ impl AcpDriver {
             engine,
             env: known.env,
             asks: known.asks,
+            modes: crate::permission_modes::offered(known.id),
         }
     }
 }
@@ -79,6 +82,7 @@ impl EngineDriver for AcpDriver {
                 skill_delivery: vec![SkillDelivery::McpSkillServer],
                 goal_control: false,
                 decline_feedback: false,
+                permission_modes: self.modes.clone(),
             },
         }
     }

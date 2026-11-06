@@ -584,3 +584,99 @@ async fn probes_read_version_and_login_without_a_session() {
     assert_eq!(codex["installer"], "unknown");
     assert!(codex["update_command"].is_null());
 }
+
+/// Claude run launches so far, leaving out capability probes.
+fn claude_run_launches(file: &std::path::Path) -> usize {
+    std::fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|entry| {
+            entry["mode"] == "claude"
+                && entry["args"]
+                    .as_array()
+                    .is_some_and(|args| args.iter().any(|arg| arg == "--permission-prompt-tool"))
+        })
+        .count()
+}
+
+async fn claude_launches_reach(file: &std::path::Path, wanted: usize) {
+    for _ in 0..2000 {
+        if claude_run_launches(file) >= wanted {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    panic!("{} launches, wanted {wanted}", claude_run_launches(file));
+}
+
+/// The thread's events through the end of its `runs`th run.
+async fn events_through(service: &Service, thread: &str, runs: usize) -> Vec<Value> {
+    let ended = std::cell::Cell::new(0);
+    service
+        .events_until(thread, None, |event| {
+            if matches!(
+                event["event"]["type"].as_str(),
+                Some("RUN_FINISHED" | "RUN_ERROR")
+            ) {
+                ended.set(ended.get() + 1);
+            }
+            ended.get() >= runs
+        })
+        .await
+}
+
+fn warm_adoptions(events: &[Value]) -> usize {
+    events
+        .iter()
+        .filter(|event| event["event"]["name"] == "engine.warm")
+        .count()
+}
+
+#[tokio::test]
+async fn the_next_claude_turn_adopts_a_process_started_for_it_only_when_inputs_match() {
+    let dir = TempDir::new();
+    let file = dir.path().join("launches");
+    let options = Options {
+        env: vec![(
+            "ORBYN_FAKE_LAUNCH_FILE".into(),
+            file.to_string_lossy().into_owned(),
+        )],
+        ..Options::default()
+    };
+    let (service, thread) = setup(&dir, options, "claude").await;
+    let response = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": { "warm_next_turn": true } }))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    service.admit(&thread, "say hi").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    // The completed turn starts the next one's process, which waits unprompted.
+    claude_launches_reach(&file, 2).await;
+    service.admit(&thread, "say hi again").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let events = events_through(&service, &thread, 2).await;
+    assert_eq!(warm_adoptions(&events), 1);
+    assert_eq!(text_of(&events), "hello from claudehello from claude");
+    // The adopted turn launched nothing of its own; its end starts another.
+    claude_launches_reach(&file, 3).await;
+    assert_eq!(claude_run_launches(&file), 3);
+
+    // A changed mode is a different launch: the waiting process is not used.
+    let (status, _) = service
+        .patch(&thread, json!({ "permission_mode": "full_access" }))
+        .await;
+    assert_eq!(status, 200);
+    service.admit(&thread, "and again").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert_eq!(
+        warm_adoptions(&events_through(&service, &thread, 3).await),
+        1
+    );
+    claude_launches_reach(&file, 5).await;
+}

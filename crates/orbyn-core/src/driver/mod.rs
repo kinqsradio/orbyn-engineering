@@ -421,6 +421,34 @@ pub trait EngineDriver: Send + Sync {
         false
     }
 
+    /// True for an engine that can start the next turn's process ahead of time.
+    fn can_warm(&self) -> bool {
+        false
+    }
+
+    /// Every input this engine's run process is launched with, for an engine that can
+    /// start the next turn's process ahead of time. `None` means it cannot.
+    fn warm_key(&self, _spec: &RunSpec) -> Option<String> {
+        None
+    }
+
+    /// Starts the process `spec` would launch, idle until a run adopts it. Nothing
+    /// is sent to it, so it spends no usage.
+    async fn start_warm(&self, _spec: RunSpec) -> Result<Option<WarmProcess>> {
+        Ok(None)
+    }
+
+    /// Runs `spec` on a process started ahead of time, whose key the caller checked.
+    async fn adopt_run(
+        &self,
+        spec: RunSpec,
+        events: mpsc::Sender<EngineEvent>,
+        warm: WarmProcess,
+    ) -> Result<RunHandle> {
+        drop(warm);
+        self.start_run(spec, events).await
+    }
+
     /// Whether repository-derived text may enter this driver's strict tool-free
     /// one-shot path. Unsupported drivers retain manual source control text.
     fn supports_writing(&self) -> bool {
@@ -474,6 +502,36 @@ fn effort_label(id: &str) -> String {
                 first.to_uppercase().chain(chars).collect()
             })
         }
+    }
+}
+
+/// An engine process started ahead of the turn it is for, idle on its input. Its
+/// files live in `dir`. Dropping it ends the process and removes the folder.
+pub struct WarmProcess {
+    /// Every launch input the process was started with. A run adopts it only when
+    /// its own inputs give the same key.
+    pub key: String,
+    pub(crate) process: pipes::EngineProcess,
+    pub(crate) dir: ProbeDir,
+}
+
+/// A long-lived stand-in process, for tests of what happens to a warm one.
+#[cfg(all(test, unix))]
+pub(crate) fn stand_in_warm(key: &str) -> Result<WarmProcess> {
+    let command = crate::process::resolve("sh")
+        .ok_or_else(|| crate::error::CoreError::Internal("no sh".into()))?;
+    let args = [std::ffi::OsString::from("-c"), "sleep 60".into()];
+    Ok(WarmProcess {
+        key: key.to_owned(),
+        process: pipes::spawn_engine(&command, &args, &std::env::temp_dir())?,
+        dir: ProbeDir::new()?,
+    })
+}
+
+impl WarmProcess {
+    /// False once the process has ended on its own.
+    pub fn is_alive(&mut self) -> bool {
+        matches!(self.process.child.child_mut().try_wait(), Ok(None))
     }
 }
 
