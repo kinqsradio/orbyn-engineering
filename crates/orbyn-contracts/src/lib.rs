@@ -3425,6 +3425,24 @@ pub struct SteerResult {
 }
 
 wire! {
+/// The script a Claude Code workflow runs, read for display only.
+pub struct WorkflowScript {
+    /// Where the CLI keeps the script, when it reported one.
+    pub path: Option<String>,
+    pub contents: String,
+    /// The script was longer than the display cap and was cut.
+    pub truncated: bool,
+}
+}
+
+wire! {
+/// A workflow stop the running engine was asked for; its end arrives as an event.
+pub struct WorkflowStop {
+    pub requested: bool,
+}
+}
+
+wire! {
 pub struct CreatePolicyRule {
     pub effect: PolicyEffect,
     pub kind: ActionKind,

@@ -69,6 +69,22 @@ admitted -> starting -> running <-> awaiting_approval
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.
+- A Claude Code workflow (the CLI's `Workflow` tool) runs in the background past the
+  turn that launched it, and closing the CLI's input would end it. So a Claude run whose
+  turn completes while a workflow it launched still runs stays `running`: it ends with
+  the follow-up turn the CLI starts when the workflow finishes, or five seconds after the
+  last one ends with no follow-up turn, as after a stop. A failed turn is not held. The
+  workflow's handles are kept as a `workflow` item beside the call, and its states
+  arrive as `CUSTOM workflow.state`. Stopping one sends the CLI's `stop_task` control
+  request through the live run after a `workflow.stop` audit row, and a stop that never
+  reaches the engine adds a `workflow.stop_failed` row; acceptance is not the end, which
+  the CLI reports as `stopped`. Stopping the run still ends everything, and a workflow
+  still running when its run ends is reported `stopped`. The delegated-run silence
+  watchdog does not count a run waiting on a running workflow as stuck.
+  The script view reads an inline script from the call, and otherwise only a `.js`
+  regular file whose resolved path is inside the CLI's own `projects` or `workflows`
+  folder or the thread's checkout, cut at 256 KiB. Nothing else in the CLI's config is
+  read, so hard rule 1 holds.
 - A forced stop (`POST /api/threads/:id/force-stop`) is for an engine that stopped
   answering, so it skips the wait for it: the stop is saved, the process tree and those
   of delegated threads are killed, and the run ends `cancelled` within seconds. If a stage
@@ -1717,7 +1733,7 @@ parent's children read as not found. It uses the existing durable cancellation
 path, including running delegated descendants, and reports `stopped: true` when
 the request is accepted; this is not terminal completion. An idle child returns
 `stopped: false`, and cancellation errors are reported. This is a delegated-run
-control, not the unimplemented M13 workflow/script engine. `orbyn_thread_wait`
+control, not M13's Claude Code workflows, which the person stops from the timeline. `orbyn_thread_wait`
 then observes completion, accepts only non-negative integer seconds, clamps at
 40 seconds and reports `ended: false` when that bounded wait expires.
 The stop tool's entire call, including its approval wait, is capped at 45 seconds;
@@ -2226,6 +2242,8 @@ because browsers cannot set headers on them.
 | `POST /api/projects/:id/publish` | `PublishProject`: create the remote, with `gh` or `glab`, and push |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `POST /api/threads/:id/force-stop` | `ForcedStop`: end the run now; `run_id` is empty when nothing was running |
+| `GET /api/threads/:id/workflows/:call/script` | `WorkflowScript` of a Claude Code workflow the call launched; `404` for any other call |
+| `POST /api/threads/:id/workflows/:call/stop` | `WorkflowStop` (`202`): ask the running engine to stop that workflow; `400` once it has ended |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
