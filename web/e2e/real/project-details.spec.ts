@@ -75,7 +75,7 @@ test("selected project names update the group or checkout without changing paths
       membership_version: expect.any(String), expected_names: { [one.id]: one.name, [two.id]: two.name }, name: "Shared detail name" })]);
     await expect(page.getByRole("link", { name: "New thread in Shared detail name", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Review trust for Shared detail name", exact: true })).toBeVisible();
-    const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+    const settings = page.getByRole("region", { name: "Settings", exact: true });
     await expect(settings.getByText("Git root", { exact: true })).toHaveCount(0);
     await expect(settings.getByText("Revision", { exact: true })).toHaveCount(0);
     await expect(settings.getByRole("button", { name: /^Settings for / })).toHaveCount(0);
@@ -134,7 +134,7 @@ test("a conflicting name retains its draft and a saved name survives a failed sc
     await expect(nameField(page)).toBeDisabled();
     expect(writes).toHaveLength(3);
     failRead = false;
-    await page.getByRole("dialog", { name: "Settings", exact: true }).getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByRole("region", { name: "Settings", exact: true }).getByRole("button", { name: "Retry", exact: true }).click();
     await expect(nameField(page)).toBeEnabled();
     await expect(nameField(page)).toHaveValue("Saved before refresh failure");
     expect(writes).toHaveLength(3); // Retry reads; it never resubmits the committed rename.

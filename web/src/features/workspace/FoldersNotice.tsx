@@ -13,7 +13,7 @@ export function FoldersNotice() {
     <div {...swipe} className="toast folders-notice" role="group" aria-label="Threads grouped by project">
       <div className="folders-notice-body">
         <strong>Threads are now grouped by project.</strong>
-        <p>Change this any time in Settings › Labs.</p>
+        <p>Change this any time in Settings › Threads.</p>
         <div className="star-prompt-actions">
           <Button small tone="quiet" onClick={() => close(true)}>
             Turn off

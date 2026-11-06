@@ -78,7 +78,7 @@ test("Escape closes a dialog and returns focus to its opener", async ({ page }) 
   await expect(dialog).toBeHidden();
   await expect(open).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
+  await expect(page.getByRole("region", { name: "Settings" })).toBeHidden();
 });
 
 test("keyboard focus is visible and reduced motion stops animation", async ({ page }) => {
@@ -197,10 +197,20 @@ test("disclosures animate height over 200 ms", async ({ page }) => {
 test("settings float over the workspace and close back to it", async ({ page }) => {
   await page.goto("/#/threads/t-done");
   await expect(page.getByRole("heading", { name: "Explain how the event log resumes" })).toBeVisible();
-  await page.getByRole("link", { name: "Settings" }).click();
-  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  const opener = page.getByRole("link", { name: "Settings" });
+  await opener.click();
+  await expect(page.getByRole("region", { name: "Settings" })).toBeVisible();
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page).toHaveURL(/threads\/t-done/);
+  // Closing returns focus to what opened it.
+  await expect(opener).toBeFocused();
+  // Escape closes from anywhere on the page, not only from inside it.
+  await opener.click();
+  await expect(page.getByRole("region", { name: "Settings" })).toBeVisible();
+  await page.locator(".settings-side").evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Settings" })).toHaveCount(0);
+  await expect(opener).toBeFocused();
 });
 
 test("the sidebar rail resizes and remembers", async ({ page }) => {

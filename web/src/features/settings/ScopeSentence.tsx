@@ -132,8 +132,8 @@ export function ScopeSentence() {
   // Do not mark that group's menu option selected until it is explicitly chosen.
   const pickerValue = checkoutSelection ? checkout?.physical_key ?? `unavailable:${checkoutSelection.project_id}` : groupKey;
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+    <div className="settings-scope">
+      <div className="settings-scope-line">
         <span>Applying settings for</span>
         <ScopePicker axis="Project" label={scope.loading ? "Loading projects…" : projectLabel} value={pickerValue}
           disabled={scope.loading || !scope.catalog} allLabel="All projects"

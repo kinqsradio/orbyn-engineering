@@ -34,13 +34,14 @@ function QuestionRow({
       <legend className={question.header ? undefined : "sr-only"}>{question.header || question.question}</legend>
       <Markdown text={question.question} remoteImages="link" />
       <div className="question-options">
-        {question.options.map((option) => {
+        {question.options.map((option, at) => {
           const on = picked.includes(option.label);
           return (
             <button
               key={option.label}
               type="button"
               aria-pressed={on}
+              data-option={at + 1}
               onClick={() =>
                 onPick(
                   question.multi_select
@@ -51,6 +52,9 @@ function QuestionRow({
                 )
               }
             >
+              <kbd className="question-key" aria-hidden>
+                {at + 1}
+              </kbd>
               <strong>{option.label}</strong>
               {option.description ? <span>{option.description}</span> : null}
             </button>
@@ -138,10 +142,41 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
   );
 
   return (
-    <section className="question-panel" aria-label="Question from the agent">
+    <section
+      className="question-panel"
+      aria-label="Question from the agent"
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("select, textarea, input:not([type=radio]):not([type=checkbox])")) return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        if (/^[1-9]$/.test(event.key)) {
+          const group = target.closest("fieldset") ?? event.currentTarget.querySelector("fieldset");
+          const option = group?.querySelector<HTMLButtonElement>(`button[data-option="${event.key}"]`);
+          if (option) {
+            event.preventDefault();
+            option.click();
+          }
+          return;
+        }
+        // Enter submits only from the panel itself, its fieldset or a radio or checkbox option;
+        // on a link, button or select it keeps its own meaning.
+        const own =
+          target === event.currentTarget ||
+          target.tagName === "FIELDSET" ||
+          (target instanceof HTMLInputElement && (target.type === "radio" || target.type === "checkbox"));
+        if (event.key === "Enter" && own && complete && !busy && uploading === null) {
+          event.preventDefault();
+          void finish("answer", {
+            answers,
+            ...(Object.keys(keptFiles).length > 0 ? { attachments: keptFiles } : {}),
+          });
+        }
+      }}
+    >
       <p className="ask-label">
         <span className="status-dot" aria-hidden />
-        Needs you
+        The agent asks
       </p>
       {open.questions.map((question) => (
         <Fragment key={question.id}>

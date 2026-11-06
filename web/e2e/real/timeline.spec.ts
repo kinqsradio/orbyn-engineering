@@ -147,7 +147,7 @@ test("a proposed plan shows as a card and can be implemented or saved", async ({
   await expect(dialog).toBeHidden();
 
   await expect(page.getByRole("status").filter({ hasText: "Plan ready" })).toBeVisible();
-  await page.getByRole("button", { name: "Implement plan" }).click();
+  await page.getByRole("button", { name: "Approve and start" }).click();
   await expect(page.getByText("PLEASE IMPLEMENT THIS PLAN:", { exact: false }).first()).toBeVisible();
   await settled(service, id);
 });

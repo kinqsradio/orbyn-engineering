@@ -3,6 +3,8 @@ import { useEffect, useState, type RefObject } from "react";
 export interface MinimapItem {
   key: string;
   text: string;
+  /** Your message (ink), a failure (red) or a decision waiting on you (amber). */
+  kind?: "you" | "failed" | "ask";
 }
 
 const SPACING = 8;
@@ -19,6 +21,7 @@ export function Minimap({ items, scroller }: { items: readonly MinimapItem[]; sc
       const top = element.getBoundingClientRect().top + element.clientHeight / 3;
       let current: string | null = null;
       for (const item of items) {
+        if (item.kind === "failed" || item.kind === "ask") continue;
         const row = element.querySelector(`[data-minimap="${CSS.escape(item.key)}"]`);
         if (row && row.getBoundingClientRect().top <= top) current = item.key;
       }
@@ -28,7 +31,7 @@ export function Minimap({ items, scroller }: { items: readonly MinimapItem[]; sc
     element.addEventListener("scroll", update, { passive: true });
     return () => element.removeEventListener("scroll", update);
   }, [items, scroller]);
-  if (items.length < MIN_ITEMS) return null;
+  if (items.filter((item) => item.kind !== "failed" && item.kind !== "ask").length < MIN_ITEMS) return null;
   // Hidden until the pointer reaches the edge, so a short thread shows no stray ticks.
   return (
     <div className="minimap-zone" onWheel={(event) => scroller.current?.scrollBy(0, event.deltaY)}>
@@ -37,7 +40,16 @@ export function Minimap({ items, scroller }: { items: readonly MinimapItem[]; sc
         aria-label="Prompts in this thread"
         style={{ height: `min(${(items.length - 1) * SPACING}px, calc(100vh - 18rem))` }}
       >
-        {items.map((item, at) => (
+        {items.map((item, at) =>
+          item.kind === "failed" || item.kind === "ask" ? (
+            <span
+              key={item.key}
+              className="minimap-mark"
+              data-kind={item.kind}
+              style={{ top: `${items.length > 1 ? (at / (items.length - 1)) * 100 : 0}%` }}
+              aria-hidden
+            />
+          ) : (
           <button
             key={item.key}
             type="button"
@@ -52,7 +64,8 @@ export function Minimap({ items, scroller }: { items: readonly MinimapItem[]; sc
                 ?.scrollIntoView({ block: "start" })
             }
           />
-        ))}
+          ),
+        )}
         {hover ? <p className="minimap-preview">{hover.text.slice(0, 160)}</p> : null}
       </nav>
     </div>
