@@ -943,6 +943,11 @@ kbd {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.usage-spark {
+  display: block;
+  color: var(--color-muted);
+}
+
 .usage-table {
   overflow-x: auto;
 }

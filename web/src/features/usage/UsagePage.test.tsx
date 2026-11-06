@@ -18,7 +18,7 @@ function report(tokens: number, model = "local-model"): UsageReport {
     engines: [{ engine: "claude", status: "scanned", files_scanned: 1, files_skipped: 0,
       models: [{ model, input_tokens: tokens, output_tokens: 0, cache_read_tokens: 0,
         cache_write_tokens: 0, estimated_cost: null, cost_split: null,
-        tiers: [{ tier: "standard", tokens, estimated_cost: null }], unpriced_tokens: tokens }], days: [] }],
+        tiers: [{ tier: "standard", tokens, estimated_cost: null }], unpriced_tokens: tokens, days: [] }], days: [] }],
   };
 }
 
@@ -147,4 +147,21 @@ it("splits cost by token type and tier and keeps an unpriced tier unknown", asyn
   expect(split).toHaveTextContent("Fast · 50 tokens$6.00");
   expect(split).toHaveTextContent("Priority · 50 tokensUnpriced");
   expect(split).toHaveTextContent("Standard · 200 tokens$12.00");
+});
+
+it("shows each model's cache hit, cost per million and trend", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const data = report(1_000_000);
+  data.engines[0]!.models[0] = {
+    ...data.engines[0]!.models[0]!, input_tokens: 500_000, cache_read_tokens: 500_000,
+    estimated_cost: 3, cost_split: { input: 3, output: 0, cache_read: 0, cache_write: 0 },
+    tiers: [{ tier: "standard", tokens: 1_000_000, estimated_cost: 3 }], unpriced_tokens: 0,
+    days: [{ date: today, tokens: 1_000_000 }],
+  };
+  vi.mocked(api.usage).mockResolvedValue(data);
+  render(<UsagePage onClose={() => undefined} />);
+  const line = await screen.findByRole("row", { name: /local-model/ });
+  expect(line).toHaveTextContent("50.0%");
+  expect(line).toHaveTextContent("$3.00/M");
+  expect(within(line).getByRole("img", { name: "local-model daily tokens" })).toBeInTheDocument();
 });

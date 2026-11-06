@@ -1549,6 +1549,9 @@ pub struct ModelUsage {
     /// Tokens in tiers with no configured price, left out of the estimate.
     #[serde(default)]
     pub unpriced_tokens: u64,
+    /// This model's daily tokens in the period, oldest first.
+    #[serde(default)]
+    pub days: Vec<DailyUsage>,
 }
 }
 

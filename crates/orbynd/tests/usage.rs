@@ -303,6 +303,13 @@ async fn cost_splits_by_token_type_and_tier_and_a_tier_never_borrows_the_standar
     assert_eq!(tier("standard")["tokens"], 4_000_000);
     assert_eq!(tier("fast")["estimated_cost"], 6.0);
     assert!(tier("priority")["estimated_cost"].is_null());
+    assert_eq!(
+        model["days"],
+        json!([
+            { "date": "2026-10-30", "tokens": 4_000_000 },
+            { "date": "2026-10-31", "tokens": 1_500_000 }
+        ])
+    );
     service.stop().await;
 }
 

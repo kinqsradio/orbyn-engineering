@@ -2,7 +2,7 @@ import { ChevronDown, RefreshCw, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
-import type { EngineLimits, LimitsOverview, UsageReport } from "../../api/types";
+import type { EngineLimits, LimitsOverview, ModelUsage, UsageReport } from "../../api/types";
 import { readJson, writeJson } from "../../lib/storage";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -14,9 +14,12 @@ import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
 import { useUsageReport } from "./useUsageReport";
 import {
+  cacheHit,
+  costPerMillion,
   formatPercent,
   formatTokens,
   formatUsd,
+  modelTrend,
   TIER_LABELS,
   USAGE_PERIODS,
   usageTotals,
@@ -69,6 +72,30 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+/** A model's daily tokens across the period, scaled to its own busiest day. */
+function Sparkline({ values, label }: { values: readonly number[]; label: string }) {
+  const width = 72;
+  const height = 18;
+  const max = Math.max(1, ...values);
+  const step = values.length > 1 ? width / (values.length - 1) : 0;
+  const points = values.map((value, at) => `${(at * step).toFixed(1)},${(height - 1 - (value / max) * (height - 2)).toFixed(1)}`);
+  return (
+    <svg className="usage-spark" width={width} height={height} role="img" aria-label={label}>
+      <polyline points={points.join(" ")} fill="none" stroke="currentColor" strokeWidth={1.25} />
+    </svg>
+  );
+}
+
+const perMillion = (model: ModelUsage) => {
+  const rate = costPerMillion(model);
+  return rate === null ? "—" : `${formatUsd(rate)}/M`;
+};
+
+const hitText = (model: ModelUsage) => {
+  const hit = cacheHit(model);
+  return hit === null ? "—" : formatPercent(hit);
+};
 
 function resetsIn(iso: string): string {
   const left = new Date(iso).getTime() - Date.now();
@@ -288,6 +315,9 @@ function UsageView({
                 <tr>
                   <th>Model</th>
                   <th>Cost</th>
+                  <th>Per million</th>
+                  <th>Cache hit</th>
+                  <th>Trend</th>
                   <th>Share</th>
                   <th>Tokens</th>
                 </tr>
@@ -301,6 +331,11 @@ function UsageView({
                       </button>
                     </td>
                     <td>{cost(model.estimated_cost)}</td>
+                    <td>{perMillion(model)}</td>
+                    <td>{hitText(model)}</td>
+                    <td>
+                      <Sparkline values={modelTrend(model, totals.dates)} label={`${model.model} daily tokens`} />
+                    </td>
                     <td>{formatPercent(totals.tokens > 0 ? model.tokens / totals.tokens : 0)}</td>
                     <td>{formatTokens(model.tokens)}</td>
                   </tr>

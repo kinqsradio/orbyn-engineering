@@ -13,6 +13,24 @@ export type UsageDays = (typeof USAGE_PERIODS)[number]["days"];
 export const modelTokens = (model: ModelUsage) =>
   model.input_tokens + model.output_tokens + model.cache_read_tokens + model.cache_write_tokens;
 
+/** Cached input as a share of all input, or null with no input. */
+export function cacheHit(model: ModelUsage): number | null {
+  const input = model.input_tokens + model.cache_read_tokens + model.cache_write_tokens;
+  return input > 0 ? model.cache_read_tokens / input : null;
+}
+
+/** Dollars per million priced tokens, or null when nothing is priced. */
+export function costPerMillion(model: ModelUsage): number | null {
+  const priced = modelTokens(model) - model.unpriced_tokens;
+  return model.estimated_cost === null || priced <= 0 ? null : (model.estimated_cost / priced) * 1e6;
+}
+
+/** One value per period day, zero where the model was idle. */
+export function modelTrend(model: ModelUsage, dates: readonly string[]): number[] {
+  const byDay = new Map(model.days.map((day) => [day.date, day.tokens]));
+  return dates.map((date) => byDay.get(date) ?? 0);
+}
+
 export interface ModelRow extends ModelUsage {
   engine: string;
   tokens: number;

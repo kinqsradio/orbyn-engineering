@@ -310,6 +310,7 @@ fn price_for<'a>(settings: &'a ServerSettings, model: &str, tier: &str) -> Optio
 fn model_usage(
     model: String,
     tiers: BTreeMap<String, Tokens>,
+    days: BTreeMap<String, u64>,
     settings: &ServerSettings,
 ) -> ModelUsage {
     let mut tokens = Tokens::default();
@@ -347,6 +348,10 @@ fn model_usage(
         cost_split: split,
         tiers,
         unpriced_tokens: unpriced,
+        days: days
+            .into_iter()
+            .map(|(date, tokens)| DailyUsage { date, tokens })
+            .collect(),
         model,
         input_tokens: tokens.input,
         output_tokens: tokens.output,
@@ -375,13 +380,20 @@ fn summarize(
             .map_or_else(|| model.to_owned(), |alias| alias.counts_as.clone())
     };
     let mut models: BTreeMap<String, BTreeMap<String, Tokens>> = BTreeMap::new();
+    let mut model_days: BTreeMap<String, BTreeMap<String, u64>> = BTreeMap::new();
     let mut days: BTreeMap<String, u64> = BTreeMap::new();
     for ((day, model, tier), tokens) in totals {
         if since.is_some_and(|since| day.as_str() < since) {
             continue;
         }
+        let model = resolve(&model);
+        *model_days
+            .entry(model.clone())
+            .or_default()
+            .entry(day.clone())
+            .or_default() += tokens.total();
         models
-            .entry(resolve(&model))
+            .entry(model)
             .or_default()
             .entry(tier)
             .or_default()
@@ -395,7 +407,10 @@ fn summarize(
         files_skipped: skipped,
         models: models
             .into_iter()
-            .map(|(model, tiers)| model_usage(model, tiers, settings))
+            .map(|(model, tiers)| {
+                let days = model_days.remove(&model).unwrap_or_default();
+                model_usage(model, tiers, days, settings)
+            })
             .collect(),
         days: days
             .into_iter()
@@ -830,6 +845,12 @@ mod tests {
         assert_eq!(usage.models[0].estimated_cost, Some(13.0));
         assert_eq!(usage.models[1].estimated_cost, None);
         assert_eq!(usage.days[0].tokens, 6_000_000);
+        assert_eq!(
+            usage.models[0].days.len(),
+            1,
+            "each model keeps its own trend"
+        );
+        assert_eq!(usage.models[0].days[0].tokens, 3_000_000);
     }
 
     #[test]
@@ -868,7 +889,7 @@ mod tests {
         tiers.insert("standard".to_owned(), million(1));
         tiers.insert("fast".to_owned(), million(2));
         tiers.insert("priority".to_owned(), million(3));
-        let usage = model_usage("m".into(), tiers, &settings);
+        let usage = model_usage("m".into(), tiers, BTreeMap::new(), &settings);
         assert_eq!(usage.estimated_cost, Some(13.0));
         let split = usage.cost_split.unwrap();
         assert_eq!((split.input, split.output), (13.0, 0.0));
