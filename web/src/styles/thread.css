@@ -1657,6 +1657,12 @@ button.detail-row:hover {
   overscroll-behavior: contain;
   padding: 8px 12px 16px;
 }
+.jj-change {
+  margin: 0 0 8px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
 .panel-bar {
   display: flex;
   align-items: center;
@@ -3177,6 +3183,29 @@ button.detail-row:hover {
   font-size: var(--text-small);
 }
 .thread-error span {
+  flex: 1;
+  min-width: 0;
+}
+.setup-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: var(--reading-w);
+  margin: 0 auto 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-raised);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.setup-card.failed {
+  border-color: var(--color-dangerBorder);
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.setup-card span {
   flex: 1;
   min-width: 0;
 }

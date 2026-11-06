@@ -525,6 +525,19 @@ or reviews; the viewer's own comments are not news. It ends at a merge or close,
 unlink, or when the thread settles or archives. A subagent thread cannot watch.
 Viewed-file marks are this service's own, per project, and never reach the forge.
 
+A Jujutsu checkout that is not colocated with Git (a `.jj` folder with no `.git`
+beside it, found from the thread's folder upwards but never above the project
+folder, so a project inside a larger jj repository is not read as it) is a non-Git project, read
+through the person's installed `jj`; Orbyn ships, links and installs no jj, and a
+missing `jj` is `422 unsupported`. It reads the working-copy change (`jj log -r @`
+with a fixed template) and its diff (`jj diff --git -r @`, jj's built-in Git
+format, so no configured diff tool runs), always with `--no-pager`, no colour and
+the file monitor off. Like any jj command this snapshots the working copy into jj's
+operation log, so it needs a trusted folder. That is the whole jj surface: the
+worktree diff scope and `GET /api/threads/:id/jj`. Commits, bookmarks, worktrees
+(jj workspaces), checkpoints and forge actions stay Git-only; a colocated checkout
+is a Git project.
+
 A background clone is a job kept in memory until the service stops. Its staging
 folder removes itself when the job is cancelled. An SSH URL the server refuses is
 tried once over HTTPS, and the job says so.
@@ -659,6 +672,16 @@ until its captured setup is started; `async: false` also waits for exit code zer
 Engine title generation follows that same gate. Startup failure or unsuccessful
 synchronous setup fails the first turn; an async exit does not block it,
 and a later explicit user message does not implicitly execute project code again.
+The thread view shows the setup as a card: starting, running (saying when the first
+turn waits for it), finished with its exit code, or stopped. `stopped` means it
+ended with no exit code, by a cancel or a service restart. Its Output button selects
+the setup terminal, and a successful setup's card leaves after a few seconds. Cancel
+stops a setup this service is preparing or running, kills its process tree, is
+audited as `setup.cancel`, and is not a run cancel: a synchronous setup then fails
+the first turn as an unsuccessful preparation, which keeps its Retry, while a
+cancelled async setup leaves the thread free. Cancelling a finished or stopped
+setup changes nothing; a thread with no setup is `404`. An async setup's exit is read from its process; only the
+waiter of a synchronous setup records an exit.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic
 restart/limit continuation cannot bypass it. The failure's timeline Retry control
@@ -1071,6 +1094,7 @@ modules, direct modules only, or no modules, respectively. Earlier `top_level` a
 settings or project files; UI edits use the canonical values.
 A new draft waits for the selected checkout's effective mode; explicit checkout
 choices and reused worktrees win, and late responses cannot change another project.
+A folder outside Git shows "This folder" and offers no checkout choice.
 A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards
 a clean checkout on the remote's default branch every 30 minutes.
 
@@ -1495,7 +1519,8 @@ library. `repo/` is the exception, and a folder under it still has to meet the n
 rules: its own Git root, its Git data under `repo/`, and ignored by the library. A
 folder already registered is `409 project_exists` by its real path, so a link to it
 cannot make a second project. A folder outside Git is allowed, and works without
-worktrees, diffs, checkpoints or forge features. This differs on purpose from the
+worktrees, diffs, checkpoints or forge features, except that a non-colocated
+Jujutsu checkout shows its working-copy diff (Source control). This differs on purpose from the
 library's `workspace.py check --in-place`, which requires a Git root. The same check
 runs again before each run, because a folder can change between runs.
 
@@ -2247,6 +2272,9 @@ because browsers cannot set headers on them.
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
+| `GET /api/threads/:id/jj` | `JjStatus` of a non-colocated Jujutsu checkout, or `null`; `422` without `jj` |
+| `GET /api/threads/:id/setup` | `ThreadSetup`, or `null` when the checkout ran no setup |
+| `POST /api/threads/:id/setup/cancel` | Stops a preparing or running setup; returns `ThreadSetup` |
 | `GET /api/threads/:id/commits` | `CommitInfo[]`, newest 100 |
 | `GET /api/threads/:id/checkpoints` | `Checkpoint[]` |
 | `POST /api/threads/:id/restore` | `RestoreWorkspace`; `409 shared_directory`, `409 thread_busy` |

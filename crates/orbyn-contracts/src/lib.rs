@@ -1731,6 +1731,48 @@ pub struct RetryPreparation {
 }
 
 wire! {
+/// The working-copy change of a Jujutsu checkout that is not colocated with Git,
+/// as the installed `jj` reports it.
+pub struct JjStatus {
+    pub change_id: String,
+    pub commit_id: String,
+    pub bookmarks: Vec<String>,
+    /// The first line of the change's description; empty when undescribed.
+    pub description: String,
+    pub conflict: bool,
+    pub changed_files: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+}
+
+wire_enum! {
+/// Where a worktree's setup action stands. `stopped` means it ended without an
+/// exit code: cancelled, or cut off by a service restart.
+pub enum SetupPhase {
+    Preparing,
+    Running,
+    Finished,
+    Stopped,
+}
+}
+
+wire! {
+/// The setup action a new worktree runs, and where it stands.
+pub struct ThreadSetup {
+    pub name: String,
+    /// The first turn waits for this action to exit successfully.
+    pub blocking: bool,
+    pub phase: SetupPhase,
+    pub exit_code: Option<i32>,
+    /// The terminal that shows its output, once it has started.
+    pub terminal_id: Option<String>,
+    /// Only a setup this service is preparing or running can be cancelled.
+    pub cancellable: bool,
+}
+}
+
+wire! {
 pub struct Run {
     pub id: String,
     pub thread_id: String,
