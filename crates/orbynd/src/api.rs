@@ -169,6 +169,7 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
         environment_theme: state.core.environment_theme().ok().flatten(),
         channel: Some(orbyn_core::environment::release_channel()),
         environment_icon: state.core.environment_icon().ok().flatten(),
+        database_upgrade: state.core.store.upgrade(),
     })
 }
 
@@ -177,7 +178,7 @@ pub async fn repository_star_status(State(state): State<AppState>) -> impl IntoR
 }
 
 pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.store.list_projects()?))
+    Ok(Json(state.core.projects()?))
 }
 
 pub async fn project_icon(

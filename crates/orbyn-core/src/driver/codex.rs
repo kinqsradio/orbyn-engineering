@@ -36,6 +36,8 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// An upload is slower than a read, so it does not share the read allowance.
 const FEEDBACK_TIMEOUT: Duration = Duration::from_secs(120);
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
+/// An MCP App page read holds the turn's event loop, so it is kept short.
+const APP_READ_TIMEOUT: Duration = Duration::from_secs(10);
 /// A turn started before tool startup finishes can reach the model with no usable
 /// tools, and it then answers that it cannot read the files. The startup status
 /// updates end too soon to show this; the status list blocks until it is over.
@@ -253,6 +255,42 @@ impl EngineDriver for CodexDriver {
         true
     }
 
+    /// A tool call from an MCP App page, on a short-lived app-server in the thread's
+    /// checkout. Codex 0.166.0 answers `mcpServer/tool/call` only for a thread it has
+    /// loaded, so an ephemeral, read-only thread is started for the call; nothing is
+    /// sent to a model and the thread's own session is not touched.
+    async fn mcp_app_tool_call(
+        &self,
+        cwd: &std::path::Path,
+        server: &str,
+        tool: &str,
+        arguments: &Value,
+    ) -> Result<Value> {
+        let session = self.short_session_in(cwd).await?;
+        let thread = session
+            .rpc
+            .call(
+                "thread/start",
+                json!({ "cwd": cwd, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": true }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+        let thread = thread
+            .pointer("/thread/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                CoreError::EngineUnavailable("Codex started no thread for the app's call.".into())
+            })?;
+        session
+            .rpc
+            .call(
+                "mcpServer/tool/call",
+                json!({ "server": server, "threadId": thread, "tool": tool, "arguments": arguments }),
+                CALL_TIMEOUT,
+            )
+            .await
+    }
+
     async fn start_run(
         &self,
         spec: RunSpec,
@@ -288,9 +326,13 @@ struct ShortSession {
 
 impl CodexDriver {
     async fn short_session(&self) -> Result<ShortSession> {
+        self.short_session_in(&std::env::temp_dir()).await
+    }
+
+    async fn short_session_in(&self, cwd: &std::path::Path) -> Result<ShortSession> {
         let command = resolve_engine(&self.program)?;
         let args = [OsString::from("app-server")];
-        let process = spawn_engine(&command, &args, &std::env::temp_dir())?;
+        let process = spawn_engine(&command, &args, cwd)?;
         let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, false);
         rpc.call(
             "initialize",
@@ -538,6 +580,12 @@ async fn run_protocol(
                             if events.send(event).await.is_err() {
                                 return;
                             }
+                        }
+                        if method == "item/completed"
+                            && let Some(app) = read_app(&rpc, &session, &params).await
+                            && events.send(EngineEvent::McpApp(app)).await.is_err()
+                        {
+                            return;
                         }
                         if let Some(outcome) = step.outcome {
                             break outcome;
@@ -838,6 +886,46 @@ fn answer_request(
         let result = approval_response(&method, &params, &verdict);
         let _ = rpc.respond(id, result).await;
     });
+}
+
+/// Reads the MCP App page of a finished tool call from the run's own app-server,
+/// which is the only process that still knows the call. A read that fails or times
+/// out leaves the row as an ordinary tool call.
+async fn read_app(
+    rpc: &RpcClient,
+    session: &str,
+    params: &Value,
+) -> Option<crate::mcp_apps::McpAppSnapshot> {
+    if params
+        .get("threadId")
+        .and_then(Value::as_str)
+        .is_some_and(|thread| thread != session)
+    {
+        return None;
+    }
+    let item = params.get("item")?;
+    let (server, tool, uri, display_mode) = crate::mcp_apps::codex_app_target(item)?;
+    let tool_call_id = text(item, "id")?;
+    let read = rpc
+        .call(
+            "mcpServer/resource/read",
+            json!({ "server": server, "uri": uri, "threadId": session, "originCallId": tool_call_id }),
+            APP_READ_TIMEOUT,
+        )
+        .await
+        .map_err(|error| tracing::debug!(%error, "could not read an MCP App page"))
+        .ok()?;
+    let (html, prefers_border) = crate::mcp_apps::page_from_read(&read, &uri)?;
+    Some(crate::mcp_apps::McpAppSnapshot {
+        tool_call_id,
+        server,
+        tool,
+        resource_uri: uri,
+        html,
+        display_mode,
+        prefers_border,
+        structured: crate::mcp_apps::structured_output(item),
+    })
 }
 
 /// Codex names a thread it no longer has in one of these ways.

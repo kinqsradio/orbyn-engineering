@@ -176,6 +176,14 @@ export function Composer({
     (state) => state.managed.data?.targets.find((t) => t.project_id === thread.project_id)?.branch ?? null,
   );
   const branch = thread.worktree?.branch ?? projectBranch;
+  // Until the workspace status names the branch, a Git project keeps its place.
+  const branchPending = useWorkspace(
+    (state) =>
+      !thread.worktree &&
+      state.managed.data === null &&
+      state.managed.error === null &&
+      (state.projects.data?.find((project) => project.id === thread.project_id)?.is_git ?? false),
+  );
   const busy = thread.active_run !== null;
   const uploading = attachments.some((file) => file.id === null);
   const outbound = useMemo(() => promptWithChips(draft, chips), [draft, chips]);
@@ -979,6 +987,13 @@ export function Composer({
               <dd>
                 <GitBranch size={12} aria-hidden />
                 {branch}
+              </dd>
+            </div>
+          ) : branchPending ? (
+            <div className="composer-branch-pending" aria-hidden>
+              <dd>
+                <GitBranch size={12} aria-hidden />
+                main
               </dd>
             </div>
           ) : null}

@@ -216,6 +216,8 @@ pub(crate) struct RunServices {
     pub mcp: Arc<McpService>,
     pub base_url: String,
     pub runs_dir: PathBuf,
+    /// Where published renders live, so an MCP App page joins its thread's renders.
+    pub renders_dir: PathBuf,
     pub setups: Arc<crate::project_setup::SetupManager>,
     pub terminals: Arc<crate::terminal::TerminalManager>,
 }
@@ -230,6 +232,7 @@ pub struct RunManager {
     mcp: Arc<McpService>,
     base_url: String,
     runs_dir: PathBuf,
+    renders_dir: PathBuf,
     setups: Arc<crate::project_setup::SetupManager>,
     /// A live engine console owns its thread's session, so no run is admitted.
     terminals: Arc<crate::terminal::TerminalManager>,
@@ -239,6 +242,11 @@ pub struct RunManager {
     stopped_with_parent: Mutex<HashSet<String>>,
     /// Limits engines reported, until their run ends. Unix seconds, when they said.
     limit_signals: Mutex<HashMap<String, Option<i64>>>,
+    /// The latest note an MCP App page left for the model, per thread, until the
+    /// thread's next turn takes it. Kept in memory: a restart forgets an unsent note.
+    app_notes: Mutex<HashMap<String, crate::mcp_apps::AppNote>>,
+    /// A taken note's timeline record, per run, written once the run is active.
+    notes_sent: Mutex<HashMap<String, AgUiEvent>>,
 }
 
 /// How a run is asked to end. `cancel` lets the engine stop itself; `force` ends it
@@ -275,6 +283,7 @@ impl RunManager {
             mcp,
             base_url,
             runs_dir,
+            renders_dir,
             setups,
             terminals,
         } = services;
@@ -288,11 +297,14 @@ impl RunManager {
             mcp,
             base_url,
             runs_dir,
+            renders_dir,
             setups,
             terminals,
             active: Mutex::new(HashMap::new()),
             stopped_with_parent: Mutex::new(HashSet::new()),
             limit_signals: Mutex::new(HashMap::new()),
+            app_notes: Mutex::new(HashMap::new()),
+            notes_sent: Mutex::new(HashMap::new()),
         }
     }
 
@@ -756,6 +768,50 @@ impl RunManager {
     }
 
     /// The engine refused a message it was handed mid-turn, so it goes in the queue.
+    /// Replaces this thread's app note, or clears it with `None`.
+    pub fn set_app_note(&self, thread_id: &str, note: Option<crate::mcp_apps::AppNote>) {
+        let mut notes = self
+            .app_notes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match note {
+            Some(note) => notes.insert(thread_id.to_owned(), note),
+            None => notes.remove(thread_id),
+        };
+    }
+
+    fn take_app_note(&self, thread_id: &str) -> Option<crate::mcp_apps::AppNote> {
+        self.app_notes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(thread_id)
+    }
+
+    /// Stores an MCP App's page as one of this thread's renders and answers the
+    /// timeline marker that ties it to its tool row. A page the render store refuses,
+    /// such as one over its size limit, leaves the row an ordinary tool call.
+    fn store_app(
+        &self,
+        thread_id: &str,
+        app: &crate::mcp_apps::McpAppSnapshot,
+    ) -> Option<AgUiEvent> {
+        match crate::renders::publish_app_page(
+            &self.renders_dir,
+            thread_id,
+            &app.html,
+            &serde_json::json!({ "server": app.server, "tool": app.tool, "resourceUri": app.resource_uri }),
+        ) {
+            Ok(render) => Some(AgUiEvent::Custom {
+                name: "mcp_app".into(),
+                value: crate::mcp_apps::timeline_marker(app, &render.id, &render.frame_token),
+            }),
+            Err(error) => {
+                tracing::info!(%error, "could not store an MCP App page");
+                None
+            }
+        }
+    }
+
     fn requeue_steer(&self, scope: &RunScope, prompt: &str) {
         let queued = self
             .store
@@ -1403,7 +1459,7 @@ impl RunManager {
         }
         let (revision, dirty) = self.workspace.identity().await?;
         let handoff = self.store.run_handoff(&scope.run_id)?;
-        let context = run_context(&RunContext {
+        let mut context = run_context(&RunContext {
             library: &root,
             revision: &revision,
             dirty,
@@ -1421,6 +1477,21 @@ impl RunManager {
         });
         let native = descriptor.tier == EngineTier::Native;
         let kind = RunKind::parse(&prompt);
+        // An app's note rides with the next ordinary turn only, and the timeline
+        // records exactly what was sent before the engine sees it.
+        if kind == RunKind::Turn
+            && let Some(note) = self.take_app_note(&thread.id)
+        {
+            context.push_str(&note.context_block());
+            let sent = AgUiEvent::Custom {
+                name: "mcp_app.context".into(),
+                value: serde_json::json!({ "server": note.server, "text": note.text }),
+            };
+            self.notes_sent
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(scope.run_id.clone(), sent);
+        }
         let chosen = self
             .selection_for_run(thread, driver.as_ref(), &scope.run_id)
             .await?;
@@ -1584,6 +1655,17 @@ impl RunManager {
         )
         .is_ok_and(|mode| mode == "turn");
         let mut shaper = EventShaper::new(whole);
+        // A note taken for this turn is on the timeline before anything the engine says.
+        let sent = self
+            .notes_sent
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&scope.run_id);
+        if let Some(sent) = sent
+            && let Some(outcome) = self.write_events(scope, vec![sent])
+        {
+            tracing::debug!(?outcome, "could not record an app note");
+        }
         let stop_deadline = tokio::time::sleep(Duration::MAX / 4);
         tokio::pin!(stop_deadline);
         // Only a delegated run, which nobody is watching, is stopped for going quiet.
@@ -1698,6 +1780,13 @@ impl RunManager {
                         }
                         EngineEvent::Permission(request) => {
                             self.answer(scope, request);
+                        }
+                        EngineEvent::McpApp(app) => {
+                            if let Some(marker) = self.store_app(&thread.id, &app)
+                                && let Some(outcome) = self.write_events(scope, shaper.push(marker))
+                            {
+                                break outcome;
+                            }
                         }
                         EngineEvent::Finished(outcome) => break outcome,
                     }

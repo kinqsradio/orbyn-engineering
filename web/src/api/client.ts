@@ -179,6 +179,23 @@ const q = encodeURIComponent;
 
 export const api = {
   repositoryStar: (signal?: AbortSignal) => request<import("../generated/RepositoryStarStatus").RepositoryStarStatus>("GET", "/api/source-control/repository-star", undefined, signal),
+  /** An MCP App's tool call, after the person confirmed it in the host's dialog. */
+  mcpAppToolCall: (threadId: string, renderId: string, name: string, args: Record<string, unknown>) =>
+    request<unknown>("POST", `/api/threads/${q(threadId)}/mcp-apps/${q(renderId)}/tool-call`, {
+      name,
+      arguments: args,
+      confirmed: true,
+    }),
+  /** An MCP App's message, queued as the person's own after they confirmed it. */
+  mcpAppMessage: (threadId: string, renderId: string, text: string) =>
+    request<QueuedMessage>("POST", `/api/threads/${q(threadId)}/mcp-apps/${q(renderId)}/message`, {
+      text,
+      confirmed: true,
+    }),
+  /** An MCP App's latest note for the model, sent with the thread's next turn. */
+  mcpAppContext: (threadId: string, renderId: string, text: string) =>
+    request<void>("PUT", `/api/threads/${q(threadId)}/mcp-apps/${q(renderId)}/context`, { text }),
+  clearMcpAppContext: (threadId: string) => request<void>("DELETE", `/api/threads/${q(threadId)}/mcp-app-context`),
   queue: (threadId: string, signal?: AbortSignal) =>
     request<QueuedMessage[]>("GET", `/api/threads/${q(threadId)}/queue`, undefined, signal),
   enqueue: (threadId: string, prompt: string, attachmentIds: string[]) =>

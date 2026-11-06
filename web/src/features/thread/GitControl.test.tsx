@@ -49,3 +49,11 @@ it("push-only sends no request for generated content", async () => {
   await user.click(dialog.getByRole("button", { name: "Push" }));
   expect(action).toHaveBeenCalledExactlyOnceWith("writing", { push: true });
 });
+
+it("a generation fallback shows its notice with the result", async () => {
+  const { user, action, dialog } = await open("Commit");
+  action.mockResolvedValueOnce({ phases: [{ name: "commit", ok: true, message: null, url: null }],
+    notice: "Text was not generated, so the thread title was used. This change is too large to generate text." });
+  await user.click(dialog.getByRole("button", { name: "Commit" }));
+  expect(await dialog.findByRole("status")).toHaveTextContent("thread title was used");
+});

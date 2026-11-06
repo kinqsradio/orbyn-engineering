@@ -155,7 +155,10 @@ impl Core {
             }
             .await;
             if !self.record_phase(id, &mut phases, phase("commit", outcome))? {
-                return Ok(GitActionResult { phases });
+                return Ok(GitActionResult {
+                    phases,
+                    notice: prepared.notice.clone(),
+                });
             }
         }
         let branch = text(&git(cwd, &["branch", "--show-current"]).await?);
@@ -165,7 +168,10 @@ impl Core {
                 .await
                 .map(|_| None);
             if !self.record_phase(id, &mut phases, phase("push", outcome))? {
-                return Ok(GitActionResult { phases });
+                return Ok(GitActionResult {
+                    phases,
+                    notice: prepared.notice.clone(),
+                });
             }
         }
         if let Some(draft) = &action.pull_request {
@@ -173,7 +179,10 @@ impl Core {
             let outcome = self.open_pull(id, cwd, &branch, draft).await.map(Some);
             self.record_phase(id, &mut phases, phase("pull_request", outcome))?;
         }
-        Ok(GitActionResult { phases })
+        Ok(GitActionResult {
+            phases,
+            notice: prepared.notice.clone(),
+        })
     }
 
     async fn open_pull(

@@ -87,6 +87,7 @@ function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan
   if (result) {
     return (
       <Dialog title={plan.title} onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
+        {result.notice ? <p role="status" className="muted">{result.notice}</p> : null}
         <ul className="git-phases" aria-label="Result">
           {result.phases.map((phase) => (
             <Phase key={phase.name} phase={phase} />
@@ -111,7 +112,7 @@ function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan
         </>
       }
     >
-      {plan.commit || plan.pull ? <p>Review and confirm your changes. Leave text blank to auto-generate it when your engine supports writing; this uses engine usage. Otherwise a blank PR title uses the thread title.</p> : null}
+      {plan.commit || plan.pull ? <p>Review and confirm your changes. Leave text blank to auto-generate it when your engine supports writing; this uses engine usage. If generation fails, a blank commit message or PR title uses the thread title. Otherwise a blank PR title uses the thread title.</p> : null}
       {plan.commit ? (
         <Field label="Commit message">
           {(props) => <textarea {...props} rows={3} value={message} placeholder="Leave empty to auto-generate" autoFocus onChange={(event) => setMessage(event.target.value)} />}

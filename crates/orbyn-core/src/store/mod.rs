@@ -52,6 +52,7 @@ pub struct Store {
     read: Mutex<Connection>,
     epoch: String,
     hub: EventHub,
+    upgrade: Option<orbyn_contracts::DatabaseUpgrade>,
 }
 
 /// One audit row. Rows are only ever inserted.
@@ -100,14 +101,21 @@ impl Store {
         refuse_newer(&write)?;
         write.pragma_update(None, "journal_mode", "WAL")?;
         write.pragma_update(None, "synchronous", "NORMAL")?;
-        migrate(&mut write)?;
+        let upgrade = migrate(&mut write)?;
         let read = connect(path)?;
         Ok(Self {
             write: Mutex::new(write),
             read: Mutex::new(read),
             epoch: epoch.into(),
             hub: EventHub::default(),
+            upgrade,
         })
+    }
+
+    /// The schema versions this start moved an existing database between, if it did.
+    /// A new database is created, not upgraded, so it reports nothing.
+    pub fn upgrade(&self) -> Option<orbyn_contracts::DatabaseUpgrade> {
+        self.upgrade.clone()
     }
 
     pub fn epoch(&self) -> &str {
@@ -171,6 +179,7 @@ impl Store {
                 created_at: now(),
                 managed: new.managed,
                 scratch: new.scratch,
+                library: false,
                 project_icon: None,
                 favicon_path: None,
                 metadata_revision: "0".into(),
@@ -539,13 +548,24 @@ fn prune_scratch(tx: &Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
-fn migrate(conn: &mut Connection) -> Result<()> {
+/// Applies every missing migration and reports an upgrade of an existing database:
+/// the highest version it held before and after. A database with no recorded
+/// version, which this start creates, is not an upgrade.
+fn migrate(conn: &mut Connection) -> Result<Option<orbyn_contracts::DatabaseUpgrade>> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,
             applied_at TEXT NOT NULL
         )",
     )?;
+    let version = |conn: &Connection| -> Result<i64> {
+        Ok(conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )?)
+    };
+    let before = version(conn)?;
     for (version, sql) in migrations::MIGRATIONS {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let applied: bool = tx.query_row(
@@ -562,7 +582,13 @@ fn migrate(conn: &mut Connection) -> Result<()> {
         }
         tx.commit()?;
     }
-    Ok(())
+    let after = version(conn)?;
+    Ok(
+        (before > 0 && after > before).then_some(orbyn_contracts::DatabaseUpgrade {
+            from: before,
+            to: after,
+        }),
+    )
 }
 
 fn with_run_state(conn: &Connection, mut thread: Thread) -> Result<Thread> {
@@ -731,6 +757,7 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
         created_at: row.get("created_at")?,
         managed: row.get("managed")?,
         scratch: row.get("scratch")?,
+        library: false,
         project_icon,
         favicon_path: row.get("favicon_path")?,
         metadata_revision: row.get::<_, i64>("metadata_revision")?.to_string(),

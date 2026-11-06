@@ -333,6 +333,19 @@ describe("Composer", () => {
     start.mockRestore();
   });
 
+  it("holds the branch's place in a Git project until the workspace status names it", () => {
+    const project = { id: "p", name: "P", path: "/r", trusted: true, is_git: true, managed: false, scratch: false, created_at: "" };
+    useWorkspace.setState({
+      projects: { data: [project], error: null, loading: false },
+      managed: { data: null, error: null, loading: true },
+    });
+    const { container } = render(<Composer thread={thread} engine={null} showContext />);
+    const context = container.querySelector(".composer-context dl");
+    expect(context?.children).toHaveLength(2);
+    expect(container.querySelector(".composer-branch-pending")).toHaveAttribute("aria-hidden", "true");
+    useWorkspace.setState({ managed: { data: null, error: null, loading: false } });
+  });
+
   it("shows engine and model", () => {
     render(<Composer thread={thread} engine={null} showContext />);
     expect(screen.getByText("opus")).toBeInTheDocument();

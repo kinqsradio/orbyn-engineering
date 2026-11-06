@@ -40,6 +40,19 @@ import { IconButton } from "../ui/controls";
 const HIDDEN_POLL_EVERY = 3;
 const POLL_MS = 4000;
 
+// One load at a time: a remount (React's development double mount included) or a
+// slow load meeting the next tick joins the load already running.
+let loading: Promise<void> | null = null;
+const loadAll = () =>
+  (loading ??= useWorkspace.getState().refreshAll().finally(() => {
+    loading = null;
+  }));
+let loadingEngines: Promise<void> | null = null;
+const loadEngines = () =>
+  (loadingEngines ??= useWorkspace.getState().refreshEngines().finally(() => {
+    loadingEngines = null;
+  }));
+
 type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
 
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
@@ -488,16 +501,15 @@ export function Shell() {
   useRouteFocus(routeKey, threadReady, main);
 
   useEffect(() => {
-    const { refreshAll, refreshEngines } = useWorkspace.getState();
-    void refreshAll();
-    void refreshEngines();
+    void loadAll();
+    void loadEngines();
     let ticks = 0;
     const timer = setInterval(() => {
       ticks += 1;
       // A hidden window keeps up while work runs, or its alerts would never fire, and
       // looks in now and then so it hears of work started elsewhere.
       const running = Object.values(useWorkspace.getState().threads).some((thread) => thread.active_run);
-      if (!document.hidden || running || ticks % HIDDEN_POLL_EVERY === 0) void refreshAll();
+      if (!document.hidden || running || ticks % HIDDEN_POLL_EVERY === 0) void loadAll();
     }, POLL_MS);
     return () => clearInterval(timer);
   }, []);

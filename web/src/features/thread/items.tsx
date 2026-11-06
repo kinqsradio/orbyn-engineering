@@ -34,6 +34,7 @@ import { outputSpans } from "./ansi";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
 import { CodeBlock } from "./CodeBlock";
 import { HtmlRender } from "./HtmlRender";
+import { McpApp } from "./McpApp";
 import { SurfacedWorkflows, WorkflowCards } from "./WorkflowControls";
 import { Markdown } from "./Markdown";
 import { PlanCard } from "./PlanCard";
@@ -229,6 +230,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
       </Collapsible>
       {/* A published page is the result, so it stays visible with the details closed. */}
       <HtmlRender item={item} threadId={threadId} />
+      <McpApp item={item} threadId={threadId} />
       {surfaced ? null : <WorkflowCards items={[item]} threadId={threadId} live={live} />}
     </>
   );
