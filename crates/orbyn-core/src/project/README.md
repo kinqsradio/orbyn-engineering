@@ -17,4 +17,9 @@ Projects and the files inside them, and the one managed workspace that holds the
 | `file_bytes` | Raw bytes of a checkout file for media and binary views |
 | `outside_files` | Read-only files outside a thread's checkout |
 
+`workspace` owns the managed library and project boundary, including the lock
+that coordinates library replacement with run admission. `conversation::runs`,
+`agents::console`, and `operations::updates` use that boundary; their use does
+not make them owners of the library lifecycle.
+
 The crate's [group table](../../README.md#groups) lists every group.

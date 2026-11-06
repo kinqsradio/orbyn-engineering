@@ -38,6 +38,15 @@ Shared by every group, at the crate root: `app` (assembly), `error`, `store`
 Before a group calls into another, check that the decision belongs to the group
 being called, not the caller.
 
+Three shared capabilities keep their current decision owners:
+
+- [`project::workspace`](src/project/README.md): library lifecycle and project
+  boundaries, including coordination with run admission.
+- [`tools::claude_skills`](src/tools/README.md): skill discovery for the composer
+  and configuration-directory lookup for workflow script display.
+- [`browser::remote_images`](src/browser/README.md): remote raster fetch policy
+  shared by thread media and browser history icons.
+
 ## Known limitations
 
 - Groups are an ownership map, not layers. Today they call each other in both

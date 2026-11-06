@@ -10,4 +10,8 @@ The pages a person watches beside a thread, and everything that crosses into or 
 | `preview_trace` | Ephemeral, content-free input cues |
 | `remote_images` | Bounded remote raster images with pinned DNS |
 
+`remote_images` owns the shared fetch policy for browser-facing remote raster
+media. The HTTP adapter exposes it to both thread media and browser history icons;
+neither presentation caller owns the fetch policy.
+
 The crate's [group table](../../README.md#groups) lists every group.
