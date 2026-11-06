@@ -540,4 +540,16 @@ describe("App against the mock API", () => {
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"theme":"light"');
   });
+
+  it("switches the workspace layout and remembers it", async () => {
+    const user = userEvent.setup();
+    go("#/settings/appearance");
+    render(<App />);
+    const layout = await screen.findByRole("combobox", { name: "Layout" });
+    expect(layout).toHaveValue("console");
+    await user.selectOptions(layout, "reading");
+    expect(document.documentElement.dataset.workspace).toBe("reading");
+    expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"workspaceLayout":"reading"');
+    expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"sidebarCollapsed":true');
+  });
 });

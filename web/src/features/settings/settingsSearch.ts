@@ -78,6 +78,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "appearance-interface-font", "title": "Interface font", "section": "appearance"},
   {"id": "appearance-code-font", "title": "Code font", "section": "appearance"},
   {"id": "appearance-theme", "title": "Theme", "section": "appearance"},
+  {"id": "appearance-layout", "title": "Layout", "section": "appearance"},
   {"id": "appearance-contrast", "title": "Contrast", "section": "appearance"},
   {"id": "appearance-font-smoothing", "title": "Font smoothing", "section": "appearance"},
   {"id": "appearance-environment-identification", "title": "Environment identification", "section": "appearance"},
