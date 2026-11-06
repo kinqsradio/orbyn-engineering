@@ -1,11 +1,12 @@
-import { Plus } from "lucide-react";
-import type { EngineStatus } from "../../api/types";
+import { Check, FolderPlus } from "lucide-react";
+import type { EngineStatus, PermissionMode } from "../../api/types";
 import { HistoryImport } from "../settings/HistoryImport";
-import { navigate } from "../../state/route";
+import { ACCESS } from "../thread/ComposerTraits";
+import { navigate, routeHref } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Pill } from "../../ui/controls";
-import { SettingGroup, SettingRow } from "../../ui/SettingRow";
+import "./onboarding.css";
 
 /**
  * What a person needs to do before an engine can run, in the order they'd do it. `next`
@@ -18,35 +19,83 @@ export function engineReadiness(engine: EngineStatus): { label: string; tone: "a
   return { label: "Ready", tone: "accent", next: null };
 }
 
+const OVERVIEW = [
+  { title: "Connect an agent", text: "Claude Code, Codex or any ACP agent" },
+  { title: "Add a project", text: "A folder on this computer, or clone one" },
+  { title: "Choose how agents ask", text: "Supervised, Auto or Full access" },
+] as const;
+
+function Overview() {
+  // Only a confirmed library earns the claim; unknown or failed shows nothing.
+  const ready = useWorkspace((state) => state.managed.data?.configured === true);
+  return (
+    <>
+      <ol className="welcome-steps">
+        {OVERVIEW.map((step, at) => (
+          <li key={step.title} data-first={at === 0 || undefined}>
+            <small>Step {at + 1}</small>
+            <b>{step.title}</b>
+            <span>{step.text}</span>
+          </li>
+        ))}
+      </ol>
+      {!ready ? null : (
+        <p className="welcome-note">
+          <Check size={14} aria-hidden />
+          Skills are built in and ready
+        </p>
+      )}
+    </>
+  );
+}
+
 function AgentsStep() {
   const engines = useWorkspace((state) => state.engines.data) ?? [];
   const refresh = useWorkspace((state) => state.refreshEngines);
   const known = engines.filter((engine) => engine.tier !== "acp" || engine.installed);
   return (
-    <SettingGroup
-      title="Agents on this computer"
-      description={
-        <>
-          <p>Orbyn runs the agents you already have, with their own sign-in.</p>
-          {known.length === 0 ? <p role="status">Looking for agents…</p> : null}
-        </>
-      }
-    >
-      {known.map((engine) => {
-        const ready = engineReadiness(engine);
-        return (
-          <SettingRow key={engine.id} title={engine.name} description={ready.step ?? (engine.version ? `Version ${engine.version}` : undefined)}>
-            <Pill tone={ready.tone}>{ready.label}</Pill>
-            {ready.next ? <CopyCommand command={ready.next} label={`Copy the ${engine.name} step`} /> : null}
-          </SettingRow>
-        );
-      })}
-      <SettingRow title="Installed or signed in just now?">
+    <>
+      {known.length === 0 ? <p role="status" className="welcome-note">Looking for agents…</p> : null}
+      <ul className="welcome-agents" aria-label="Agents on this computer">
+        {known.map((engine) => {
+          const ready = engineReadiness(engine);
+          return (
+            <li key={engine.id}>
+              <span className="welcome-avatar" aria-hidden>
+                {engine.name.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="welcome-agent-name">
+                <b>{engine.name}</b>
+                <small>{ready.step ?? (engine.version ? `Version ${engine.version}` : "Installed")}</small>
+              </span>
+              <span className="welcome-agent-next">
+                {ready.next ? <CopyCommand command={ready.next} label={`Copy the ${engine.name} step`} /> : null}
+              </span>
+              <Pill tone={ready.tone}>{ready.label}</Pill>
+            </li>
+          );
+        })}
+        <li>
+          <span className="welcome-avatar" aria-hidden>
+            A
+          </span>
+          <span className="welcome-agent-name">
+            <b>ACP registry</b>
+            <small>Agents that speak ACP</small>
+          </span>
+          <span className="welcome-agent-next">In Settings · Providers</span>
+          <a className="btn btn-small" href={routeHref({ name: "settings", section: "providers" })}>
+            Open
+          </a>
+        </li>
+      </ul>
+      <p className="welcome-note">
+        Installed or signed in just now?
         <Button small tone="quiet" onClick={() => void refresh()}>
           Check again
         </Button>
-      </SettingRow>
-    </SettingGroup>
+      </p>
+    </>
   );
 }
 
@@ -54,26 +103,52 @@ function ProjectsStep() {
   const setPalette = useUi((state) => state.setPalette);
   return (
     <>
-      <SettingGroup title="Your projects">
-        <SettingRow title="Add a folder you work in" description="A new folder starts untrusted until you trust it.">
-          <Button
-            small
-            tone="primary"
-            icon={<Plus size={16} aria-hidden />}
-            onClick={() => setPalette("add-project")}
-          >
-            Add project
-          </Button>
-        </SettingRow>
-      </SettingGroup>
+      <div className="welcome-row">
+        <p>A new folder starts untrusted until you trust it.</p>
+        <Button small tone="primary" icon={<FolderPlus size={16} aria-hidden />} onClick={() => setPalette("add-project")}>
+          Add project
+        </Button>
+      </div>
       <HistoryImport />
     </>
   );
 }
 
-const STEPS = ["Agents", "Projects"] as const;
+const MODES: PermissionMode[] = ["supervised", "auto", "full_access"];
 
-/** First-run steps on the empty home, inline so the page stays usable: which agents are ready, then projects and past conversations. */
+/** What each mode means; the default for new threads is chosen in Settings · Threads. */
+function AccessStep() {
+  return (
+    <>
+      <ul className="welcome-access" aria-label="How agents ask">
+        {MODES.map((mode) => {
+          const Icon = ACCESS[mode].icon;
+          return (
+            <li key={mode}>
+              <Icon size={16} aria-hidden />
+              <span>
+                <b>{ACCESS[mode].label}</b>
+                <small>{ACCESS[mode].description}</small>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="welcome-note">
+        <a href={routeHref({ name: "settings", section: "threads" })}>Choose the default in Settings · Threads</a>
+      </p>
+    </>
+  );
+}
+
+const STEPS = [
+  { title: "Welcome to Orbyn Engineering", lede: "Agents that work in your projects while you stay in control. Ready in a minute." },
+  { title: "Connect an agent", lede: "Pick at least one. You can add more in Settings · Providers. Signing in happens in the agent's own CLI; Orbyn never sees the password." },
+  { title: "Add a project", lede: "Add any folder in place; adding it copies nothing." },
+  { title: "Choose how agents ask", lede: "Each thread can change it from its composer." },
+] as const;
+
+/** First-run steps on the empty home, inline so the page stays usable: overview, agents, projects, then how agents ask. */
 export function WelcomeWizard({ onClose }: { onClose(): void }) {
   const step = useUi((state) => state.welcomeStep) ?? 0;
   const setStep = useUi((state) => state.setWelcomeStep);
@@ -83,16 +158,17 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
     onClose();
   };
   const last = step === STEPS.length - 1;
+  const first = step === 0;
   return (
     <section className="welcome-wizard" aria-labelledby="welcome-title">
-      <h2 id="welcome-title">Welcome to Orbyn · {STEPS[step]}</h2>
-      <p className="setting-line-desc" aria-live="polite">
-        Step {step + 1} of {STEPS.length}
+      <h2 id="welcome-title">{STEPS[step]?.title}</h2>
+      <p className="welcome-lede" aria-live="polite">
+        {first ? STEPS[0].lede : `Step ${step} of ${STEPS.length - 1}. ${STEPS[step]?.lede}`}
       </p>
-      {step === 0 ? <AgentsStep /> : <ProjectsStep />}
+      {step === 0 ? <Overview /> : step === 1 ? <AgentsStep /> : step === 2 ? <ProjectsStep /> : <AccessStep />}
       <div className="welcome-wizard-actions">
-        <Button small tone="quiet" onClick={step === 0 ? finish : () => setStep(step - 1)}>
-          {step === 0 ? "Skip" : "Back"}
+        <Button small tone="quiet" onClick={first ? finish : () => setStep(step - 1)}>
+          {first ? "Skip for now" : "Back"}
         </Button>
         <Button
           small
@@ -105,7 +181,7 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
             }
           }}
         >
-          {last ? "Done" : "Next"}
+          {last ? "Done" : first ? "Start" : "Continue"}
         </Button>
       </div>
     </section>

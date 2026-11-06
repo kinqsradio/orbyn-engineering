@@ -168,7 +168,7 @@ describe("App against the mock API", () => {
     mock.reset("empty");
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "What should we work on?" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "Add project" }).at(-1)!);
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
@@ -176,7 +176,7 @@ describe("App against the mock API", () => {
     // Typed straight after the starting ~/, an absolute path replaces it.
     await user.type(field, "/Users/dev/code/payments-service{Enter}");
 
-    expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ })).toBeInTheDocument();
     expect(screen.getByText(/execute this repository's hooks/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Trust folder" }));
 
@@ -202,7 +202,7 @@ describe("App against the mock API", () => {
     expect(await within(palette).findByRole("alert")).toHaveTextContent("The remote refused.");
     expect(field).toHaveValue("https://example.com/team/repo.git");
     await user.keyboard("{Enter}");
-    expect(await screen.findByRole("heading", { name: "Trust this folder?" }, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ }, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it("creates a new project", async () => {
@@ -222,13 +222,13 @@ describe("App against the mock API", () => {
     const field = await within(palette).findByLabelText("Folder path");
     await user.clear(field);
     await user.type(field, "/Users/dev/code/site/{Enter}");
-    expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ })).toBeInTheDocument();
   });
 
   it("opens straight on the draft flow, with nothing to set up", async () => {
     mock.reset("first-run");
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "What should we work on?" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Workspace" })).toBeInTheDocument();
     expect(screen.queryByText(/set up/i)).toBeNull();
     expect(screen.queryByRole("link", { name: "Skill library settings" })).toBeNull();
@@ -239,7 +239,7 @@ describe("App against the mock API", () => {
     mock.failSetup();
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "What should we work on?" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
     await user.click(await screen.findByRole("link", { name: "Skill library settings" }));
     await user.click(await screen.findByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't be reached/);
@@ -393,7 +393,7 @@ describe("App against the mock API", () => {
     go(`#/threads/${created.id}`);
     render(<App />);
     await user.type(await screen.findByLabelText(/^Message/), "go{Enter}");
-    expect(await screen.findByRole("heading", { name: "Trust this folder?" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Trust folder" }));
     await waitFor(() => expect(window.location.hash).toBe(`#/threads/${created.id}`));
     expect(await screen.findByLabelText(/^Message/)).toHaveValue("go");
