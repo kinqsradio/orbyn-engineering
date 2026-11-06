@@ -2,6 +2,7 @@
 import type {
   Approval,
   EngineStatus,
+  EngineUsage,
   FileDiff,
   Project,
   Run,
@@ -840,28 +841,35 @@ export const lifecycle = (): NonNullable<Thread["lifecycle"]> => ({
   plan_mode: false,
 });
 
-export const usageEngines = () => [
-  {
-    engine: "claude",
-    status: "scanned",
-    files_scanned: 3,
-    files_skipped: 0,
-    models: [
-      {
-        model: "claude-sonnet",
-        input_tokens: 120_000,
-        output_tokens: 90_000,
-        cache_read_tokens: 4_000_000,
-        cache_write_tokens: 40_000,
-        estimated_cost: 4.25,
-      },
-    ],
-    days: [
-      { date: iso(-86_400).slice(0, 10), tokens: 1_250_000 },
-      { date: iso(0).slice(0, 10), tokens: 3_000_000 },
-    ],
-  },
-];
+export const usageEngines = (): EngineUsage[] => {
+  const days = [
+    { date: iso(-86_400).slice(0, 10), tokens: 1_250_000, estimated_cost: 1.25 },
+    { date: iso(0).slice(0, 10), tokens: 3_000_000, estimated_cost: 3 },
+  ];
+  return [
+    {
+      engine: "claude",
+      status: "scanned",
+      files_scanned: 3,
+      files_skipped: 0,
+      models: [
+        {
+          model: "claude-sonnet",
+          input_tokens: 120_000,
+          output_tokens: 90_000,
+          cache_read_tokens: 4_000_000,
+          cache_write_tokens: 40_000,
+          estimated_cost: 4.25,
+          cost_split: { input: 0.36, output: 1.35, cache_read: 1.2, cache_write: 1.34 },
+          tiers: [{ tier: "standard", tokens: 4_250_000, estimated_cost: 4.25 }],
+          unpriced_tokens: 0,
+          days,
+        },
+      ],
+      days,
+    },
+  ];
+};
 
 const effort = {
   id: "effort",
