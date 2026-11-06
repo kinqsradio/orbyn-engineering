@@ -57,7 +57,7 @@ export function TrustFolder({ projectId, threadId }: { projectId: string; thread
             </a>
           ) : null}
           <h1 id="trust-title" tabIndex={-1} data-page-title>
-            Trust this folder?
+            Trust {project.name}?
           </h1>
         </header>
         <p>
@@ -65,10 +65,6 @@ export function TrustFolder({ projectId, threadId }: { projectId: string; thread
           MCP servers, without asking again. Only trust folders whose contents you know.
         </p>
         <dl className="trust-facts">
-          <div>
-            <dt>Folder</dt>
-            <dd>{project.name}</dd>
-          </div>
           <div>
             <dt>Path</dt>
             <dd>

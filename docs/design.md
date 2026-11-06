@@ -91,19 +91,21 @@ Only floating layers (menus, popovers, tooltips) cast a shadow.
 
 - Welcome steps sit above home, 720px wide, each with a 22px title: an overview of the
   three steps (agents, projects, how agents ask) with "Skip for now" and "Start", then
-  Connect an agent (a row per engine with a Ready pill; a missing engine says "Install
+  Connect an agent (a row per engine with a Ready pill, and an ACP registry row that opens Settings › Providers; a missing engine says "Install
   <name>, then check again"; a signed-out one shows its command to copy), Add a project
   (with the history import) and how agents ask. The last step explains the modes and links to
   Settings › Threads, which owns the default. "Back" and "Continue" move between steps.
-- The empty home is a centred 20px title, one muted line and the buttons: Add project,
-  Start without a project, Welcome steps.
-- Trust this folder is a 480px card (16px radius, ring and shadow) with the folder name
-  and path, "Not now" and "Trust folder".
-- A draft with a project shows four suggestion chips under the heading; one fills the
-  message and never sends it. Checkout, branch and permissions under the composer are
-  28px chips.
+- The empty home is a centred 20px "Add your first project", one muted line and the
+  buttons: Clone from GitHub (opens the palette on its Git URL view), Add project, Start
+  without a project, Welcome steps.
+- Trust is a 480px card (16px radius, ring and shadow) titled "Trust <folder>?" with
+  the full path below it, "Not now" and "Trust folder".
+- A draft with a project docks its composer at the bottom (draft-scoped CSS); the heading
+  and four suggestion chips centre above it. A chip fills the message and never sends it.
+  Checkout, branch and permissions under the composer are 28px chips.
 - Add project is views of the command palette: a source list, then a path field in mono
-  with "Folders" rows that carry a Git or Folder hint at the right.
+  with "Folders" rows that carry a Git or Folder hint at the right, then a divider and
+  "Clone from GitHub".
 
 ## Layouts
 

@@ -74,13 +74,25 @@ function AgentsStep() {
             </li>
           );
         })}
+        <li>
+          <span className="welcome-avatar" aria-hidden>
+            A
+          </span>
+          <span className="welcome-agent-name">
+            <b>ACP registry</b>
+            <small>Agents that speak ACP</small>
+          </span>
+          <span className="welcome-agent-next">In Settings · Providers</span>
+          <a className="btn btn-small" href={routeHref({ name: "settings", section: "providers" })}>
+            Open
+          </a>
+        </li>
       </ul>
       <p className="welcome-note">
         Installed or signed in just now?
         <Button small tone="quiet" onClick={() => void refresh()}>
           Check again
         </Button>
-        <a href={routeHref({ name: "settings", section: "providers" })}>More in Settings · Providers</a>
       </p>
     </>
   );
@@ -130,7 +142,7 @@ function AccessStep() {
 
 const STEPS = [
   { title: "Welcome to Orbyn Engineering", lede: "Agents that work in your projects while you stay in control. Ready in a minute." },
-  { title: "Connect an agent", lede: "Pick at least one. Signing in happens in the agent's own flow; Orbyn never sees the password." },
+  { title: "Connect an agent", lede: "Pick at least one. You can add more in Settings · Providers. Signing in happens in the agent's own CLI; Orbyn never sees the password." },
   { title: "Add a project", lede: "Add any folder in place; nothing is copied or installed into it." },
   { title: "Choose how agents ask", lede: "Each thread can change it from its composer." },
 ] as const;

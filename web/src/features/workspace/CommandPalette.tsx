@@ -66,7 +66,7 @@ function useMessageSearch(query: string, enabled: boolean) {
 export function CommandPalette({ start, onClose }: { start: PaletteStart; onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);
   const allProjects = useWorkspace((state) => state.projects.data);
-  const [adding, setAdding] = useState(start === "add-project");
+  const [adding, setAdding] = useState(start === "add-project" || start === "add-project-url");
   const ref = useRef<HTMLDialogElement>(null);
   const [newIn, setNewIn] = useState(false);
   const projects = useVisibleProjects();
@@ -222,7 +222,11 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       }}
     >
       {adding ? (
-        <AddProjectPalette onBack={() => (start === "add-project" ? onClose() : setAdding(false))} onClose={onClose} />
+        <AddProjectPalette
+          initialView={start === "add-project-url" ? "clone" : "sources"}
+          onBack={() => (start === "add-project" || start === "add-project-url" ? onClose() : setAdding(false))}
+          onClose={onClose}
+        />
       ) : (
         <>
       <div className="palette-search">

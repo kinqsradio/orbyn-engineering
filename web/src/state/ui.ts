@@ -156,7 +156,7 @@ export interface ThreadLayout {
 export const DRAFT_LAYOUT = "draft";
 const MAX_LAYOUTS = 200;
 
-export type PaletteStart = "root" | "add-project" | "files" | "search";
+export type PaletteStart = "root" | "add-project" | "add-project-url" | "files" | "search";
 
 export const DEFAULT_SIDEBAR_WIDTH = 224;
 const TOAST_MS = 4000;

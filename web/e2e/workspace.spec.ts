@@ -95,14 +95,14 @@ test("keyboard focus is visible and reduced motion stops animation", async ({ pa
 
 test("first run opens on the draft flow with nothing to set up", async ({ page }) => {
   await page.goto("/__mock/scenario/first-run");
-  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   await expect(page.getByText(/set up/i)).toHaveCount(0);
 });
 
 test("unavailable skills get a quiet line, never a blocking screen", async ({ page }) => {
   await page.goto("/__mock/scenario/no-skills");
-  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Skills aren't available right now" })).toBeVisible();
   await page.getByRole("button", { name: "Start without a project" }).click();
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
@@ -222,13 +222,14 @@ test("code blocks get a language header and highlighted tokens", async ({ page }
   await expect(page.locator(".code-card code span[style]").first()).toBeAttached();
 });
 
-test("the draft heading keeps its distance from the composer", async ({ page }) => {
+test("the draft docks its composer at the bottom with the heading above it", async ({ page }) => {
   for (const width of [1280, 1728]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/#/new");
     const heading = await page.locator(".hero-title").boundingBox();
     const composer = await page.locator(".composer-box").boundingBox();
-    expect((composer?.y ?? 0) - ((heading?.y ?? 0) + (heading?.height ?? 0))).toBe(95);
+    expect((heading?.y ?? 0) + (heading?.height ?? 0)).toBeLessThan(composer?.y ?? 0);
+    expect(900 - ((composer?.y ?? 0) + (composer?.height ?? 0))).toBeLessThan(80);
   }
 });
 

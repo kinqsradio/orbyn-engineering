@@ -17,3 +17,8 @@
   font-family: var(--font-mono);
   font-size: var(--text-small);
 }
+.add-project-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--color-divider);
+}
