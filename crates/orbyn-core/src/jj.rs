@@ -22,15 +22,20 @@ const TEMPLATE: &str = concat!(
     r#"if(conflict, "1", "0") ++ "\n" ++ description.first_line() ++ "\n""#
 );
 
-/// The jj root above `path`, when it is a jj checkout with no Git checkout of
-/// its own. A colocated checkout has `.git` beside `.jj` and stays on Git.
-pub fn root(path: &Path) -> Option<PathBuf> {
+/// The jj root at or above `path` but never above `project`, when it is a jj
+/// checkout with no Git checkout of its own. A colocated checkout has `.git`
+/// beside `.jj` and stays on Git. A project folder inside a larger jj repository
+/// is not that repository: reading it would snapshot folders outside the project.
+pub fn root(path: &Path, project: &Path) -> Option<PathBuf> {
+    if !path.starts_with(project) {
+        return None;
+    }
     let mut current = Some(path);
     while let Some(dir) = current {
         if dir.join(".jj").is_dir() {
             return (!dir.join(".git").exists()).then(|| dir.to_path_buf());
         }
-        if dir.join(".git").exists() {
+        if dir.join(".git").exists() || dir == project {
             return None;
         }
         current = dir.parent();
@@ -258,9 +263,21 @@ rename to after.txt
         }
         std::fs::create_dir_all(colocated.join(".git")).unwrap();
         std::fs::create_dir_all(jj_only.join("src")).unwrap();
-        assert_eq!(root(&plain), None);
-        assert_eq!(root(&colocated), None);
-        assert_eq!(root(&jj_only), Some(jj_only.clone()));
-        assert_eq!(root(&jj_only.join("src")), Some(jj_only));
+        assert_eq!(root(&plain, &plain), None);
+        assert_eq!(root(&colocated, &colocated), None);
+        assert_eq!(root(&jj_only, &jj_only), Some(jj_only.clone()));
+        assert_eq!(root(&jj_only.join("src"), &jj_only), Some(jj_only.clone()));
+    }
+
+    #[test]
+    fn a_project_inside_a_larger_jj_repository_is_not_that_repository() {
+        let dir = crate::testing::TempDir::new();
+        let parent = dir.path().join("home");
+        let project = parent.join("projects").join("plain");
+        std::fs::create_dir_all(parent.join(".jj")).unwrap();
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        assert_eq!(root(&project, &project), None);
+        assert_eq!(root(&project.join("src"), &project), None);
+        assert_eq!(root(&parent, &project), None, "outside the project");
     }
 }

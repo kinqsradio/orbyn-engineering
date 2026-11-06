@@ -526,7 +526,8 @@ unlink, or when the thread settles or archives. A subagent thread cannot watch.
 Viewed-file marks are this service's own, per project, and never reach the forge.
 
 A Jujutsu checkout that is not colocated with Git (a `.jj` folder with no `.git`
-beside it, found from the thread's folder upwards) is a non-Git project, read
+beside it, found from the thread's folder upwards but never above the project
+folder, so a project inside a larger jj repository is not read as it) is a non-Git project, read
 through the person's installed `jj`; Orbyn ships, links and installs no jj, and a
 missing `jj` is `422 unsupported`. It reads the working-copy change (`jj log -r @`
 with a fixed template) and its diff (`jj diff --git -r @`, jj's built-in Git
@@ -679,7 +680,7 @@ stops a setup this service is preparing or running, kills its process tree, is
 audited as `setup.cancel`, and is not a run cancel: a synchronous setup then fails
 the first turn as an unsuccessful preparation, which keeps its Retry, while a
 cancelled async setup leaves the thread free. Cancelling a finished or stopped
-setup changes nothing. An async setup's exit is read from its process; only the
+setup changes nothing; a thread with no setup is `404`. An async setup's exit is read from its process; only the
 waiter of a synchronous setup records an exit.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic

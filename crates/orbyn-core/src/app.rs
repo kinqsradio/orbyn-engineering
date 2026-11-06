@@ -366,7 +366,8 @@ impl Core {
         let thread = self.store.thread(thread_id)?;
         let project = self.store.project(&thread.project_id)?;
         if !project.is_git {
-            let Some(root) = crate::jj::root(Path::new(&thread.cwd)) else {
+            let Some(root) = crate::jj::root(Path::new(&thread.cwd), Path::new(&project.path))
+            else {
                 return Ok(Vec::new());
             };
             if !project.trusted {
@@ -395,7 +396,7 @@ impl Core {
         if project.is_git {
             return Ok(None);
         }
-        let Some(root) = crate::jj::root(Path::new(&thread.cwd)) else {
+        let Some(root) = crate::jj::root(Path::new(&thread.cwd), Path::new(&project.path)) else {
             return Ok(None);
         };
         if !project.trusted {

@@ -174,10 +174,12 @@ async fn a_jj_checkout_reports_its_change_and_diff_through_the_installed_jj() {
 }
 
 #[tokio::test]
-async fn a_plain_folder_is_not_a_jj_checkout_and_runs_no_jj() {
+async fn a_plain_folder_inside_a_jj_repository_runs_no_jj() {
     let dir = TempDir::new();
     let bin = stand_in(dir.path());
     let service = Service::start(&dir.path().join("data"), options(&dir, Some(&bin)));
+    // The project sits inside a larger jj repository, which is not the project's.
+    std::fs::create_dir_all(dir.path().join(".jj/repo")).unwrap();
     let folder = dir.path().join("plain");
     std::fs::create_dir_all(&folder).unwrap();
     service.ensure_workspace(dir.path()).await;

@@ -1062,7 +1062,8 @@ pub async fn thread_setup(
     Ok(Json(state.core.thread_setup(&id)?))
 }
 
-/// Stops the thread's setup action. Nothing to stop is not an error.
+/// Stops the thread's setup action. A setup that already ended is not an error;
+/// a thread whose checkout ran no setup is `404`.
 pub async fn cancel_setup(
     State(state): State<AppState>,
     Path(id): Path<String>,
