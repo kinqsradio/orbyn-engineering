@@ -27,6 +27,7 @@ const palette = (id: string, name: string, scheme: "light" | "dark", values: rea
 });
 
 export const THEME_PRESETS: ThemePreset[] = [
+  palette("dim", "Dim", "dark", ["#101010", "#101010", "#171717", "#262626", "#ebebeb", "#a3a3a3", "#f2f2f2"]),
   palette("dusk", "Dusk", "dark", ["#14161c", "#101217", "#1c1f27", "#2a2e38", "#e6e8ee", "#9aa1b1", "#7aa2f7"]),
   palette("forest", "Forest", "dark", ["#111814", "#0d130f", "#18211b", "#26332a", "#e3ece5", "#93a698", "#6fcf97"]),
   palette("ember", "Ember", "dark", ["#191412", "#14100e", "#231c19", "#352b26", "#efe6e0", "#ab9c93", "#f2994a"]),
