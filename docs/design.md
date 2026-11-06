@@ -53,7 +53,9 @@ changes arrangement and density only, never colour or behaviour.
 - Console, the default: sidebar by project, the thread in the middle, the side panel as
   a column on the right.
 - Ledger: threads that need you (approval, question, limit) come first in the sidebar,
-  then failed ones; rows are denser and the details rail opens.
+  then failed ones; rows are denser and the details rail opens. Inside a thread, a
+  "Needs you" strip stays pinned at the top of the transcript while a decision waits,
+  with Show to jump to it; the decision itself stays on its card.
 - Reading: the sidebar collapses, the thread is one 680px column with roomier lines,
   and on a wide window the side panel floats over the thread as a drawer.
 

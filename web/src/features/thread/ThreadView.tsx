@@ -22,6 +22,7 @@ import { isWide, useLayoutWidth } from "../../lib/useLayout";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
 import { GitActions } from "./GitControl";
+import { LedgerPin } from "./LedgerPin";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
@@ -438,6 +439,7 @@ export function ThreadView({ id }: { id: string }) {
               threadId={id}
               active={thread.active_run !== null}
               readUpTo={lastVisit}
+              header={<LedgerPin threadId={id} />}
                 footer={
                   <>
                     <StreamBanner threadId={id} />
