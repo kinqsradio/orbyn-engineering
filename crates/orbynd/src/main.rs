@@ -606,6 +606,9 @@ fn router(state: AppState) -> Router {
             post(preview_routes::stop_server),
         )
         .route("/api/threads/{id}/runs", post(api::start_run))
+        .route("/api/threads/{id}/jj", get(api::thread_jj_status))
+        .route("/api/threads/{id}/setup", get(api::thread_setup))
+        .route("/api/threads/{id}/setup/cancel", post(api::cancel_setup))
         .route("/api/threads/{id}/preparation", get(api::preparation_retry))
         .route(
             "/api/threads/{id}/preparation/retry",

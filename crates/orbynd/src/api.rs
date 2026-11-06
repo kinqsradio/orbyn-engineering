@@ -1046,6 +1046,31 @@ pub async fn put_settings(
     Ok(Json(settings))
 }
 
+/// The Jujutsu working-copy change of the thread's checkout, or `null`.
+pub async fn thread_jj_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_jj_status(&id).await?))
+}
+
+/// The thread's worktree setup action and where it stands, or `null`.
+pub async fn thread_setup(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_setup(&id)?))
+}
+
+/// Stops the thread's setup action. A setup that already ended is not an error;
+/// a thread whose checkout ran no setup is `404`.
+pub async fn cancel_setup(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.cancel_setup(&id, LOCAL_USER)?))
+}
+
 pub async fn preparation_retry(
     State(state): State<AppState>,
     Path(id): Path<String>,

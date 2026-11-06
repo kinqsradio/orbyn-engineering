@@ -1581,6 +1581,32 @@ pub struct ModelPrice {
     pub output: f64,
     pub cache_read: f64,
     pub cache_write: f64,
+    /// The service tier these rates apply to, as the engine names it: `fast`,
+    /// `priority`, `batch`, `flex` or `other`. Absent means the standard tier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tier: Option<String>,
+}
+}
+
+wire! {
+/// Estimated dollars by token type.
+pub struct TokenCosts {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+}
+
+wire! {
+/// One service tier of a model, as its history records it.
+pub struct TierUsage {
+    /// `standard`, `fast`, `priority`, `batch`, `flex` or `other`.
+    pub tier: String,
+    pub tokens: u64,
+    /// `None` when this tier has no configured price.
+    pub estimated_cost: Option<f64>,
 }
 }
 
@@ -1598,8 +1624,19 @@ pub struct ModelUsage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
-    /// `None` when this model has no configured price.
+    /// `None` when no tier of this model has a configured price.
     pub estimated_cost: Option<f64>,
+    /// The priced part of `estimated_cost`, by token type.
+    #[serde(default)]
+    pub cost_split: Option<TokenCosts>,
+    #[serde(default)]
+    pub tiers: Vec<TierUsage>,
+    /// Tokens in tiers with no configured price, left out of the estimate.
+    #[serde(default)]
+    pub unpriced_tokens: u64,
+    /// This model's daily tokens in the period, oldest first.
+    #[serde(default)]
+    pub days: Vec<DailyUsage>,
 }
 }
 
@@ -1608,6 +1645,9 @@ pub struct DailyUsage {
     /// `YYYY-MM-DD`.
     pub date: String,
     pub tokens: u64,
+    /// The priced part of this day. `None` when nothing that day has a price.
+    #[serde(default)]
+    pub estimated_cost: Option<f64>,
 }
 }
 
@@ -1798,6 +1838,48 @@ wire! {
 /// Retry the saved workspace preparation and input of one failed run.
 pub struct RetryPreparation {
     pub run_id: String,
+}
+}
+
+wire! {
+/// The working-copy change of a Jujutsu checkout that is not colocated with Git,
+/// as the installed `jj` reports it.
+pub struct JjStatus {
+    pub change_id: String,
+    pub commit_id: String,
+    pub bookmarks: Vec<String>,
+    /// The first line of the change's description; empty when undescribed.
+    pub description: String,
+    pub conflict: bool,
+    pub changed_files: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+}
+
+wire_enum! {
+/// Where a worktree's setup action stands. `stopped` means it ended without an
+/// exit code: cancelled, or cut off by a service restart.
+pub enum SetupPhase {
+    Preparing,
+    Running,
+    Finished,
+    Stopped,
+}
+}
+
+wire! {
+/// The setup action a new worktree runs, and where it stands.
+pub struct ThreadSetup {
+    pub name: String,
+    /// The first turn waits for this action to exit successfully.
+    pub blocking: bool,
+    pub phase: SetupPhase,
+    pub exit_code: Option<i32>,
+    /// The terminal that shows its output, once it has started.
+    pub terminal_id: Option<String>,
+    /// Only a setup this service is preparing or running can be cancelled.
+    pub cancellable: bool,
 }
 }
 
