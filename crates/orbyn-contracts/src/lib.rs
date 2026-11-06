@@ -71,6 +71,11 @@ pub struct Project {
     /// A thread's dated folder under app data, hidden from project lists.
     #[serde(default)]
     pub scratch: bool,
+    /// The bundled skills library, which the service registers by itself and
+    /// project lists leave out, from the first list on.
+    #[serde(default)]
+    #[ts(as = "Option<bool>", optional)]
+    pub library: bool,
 }
 }
 

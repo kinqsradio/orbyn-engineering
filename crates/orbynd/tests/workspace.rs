@@ -358,6 +358,18 @@ async fn a_library_thread_is_explicit_and_cannot_reach_nested_projects() {
         .unwrap();
     let id = library["id"].as_str().unwrap();
     assert_eq!(library["trusted"], false, "opening the library is a choice");
+    assert_eq!(
+        library["library"], true,
+        "the list marks the library, so the sidebar never waits to hide it"
+    );
+    assert!(
+        projects
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|project| project["id"] != library["id"])
+            .all(|project| project["library"] == false)
+    );
     let thread = service.thread(id, "codex").await;
     let (code, _) = service
         .send(

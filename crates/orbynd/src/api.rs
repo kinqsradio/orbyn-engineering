@@ -177,7 +177,7 @@ pub async fn repository_star_status(State(state): State<AppState>) -> impl IntoR
 }
 
 pub async fn list_projects(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.store.list_projects()?))
+    Ok(Json(state.core.projects()?))
 }
 
 pub async fn project_icon(

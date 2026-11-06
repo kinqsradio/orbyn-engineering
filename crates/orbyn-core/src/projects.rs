@@ -97,6 +97,19 @@ impl Core {
         self.workspace.status(&projects).await
     }
 
+    /// Every project, with the skills library marked so a list can leave it out
+    /// without waiting for the workspace status.
+    pub fn projects(&self) -> Result<Vec<Project>> {
+        let mut projects = self.store.list_projects()?;
+        if let Ok(root) = self.workspace.root() {
+            let root = root.to_string_lossy();
+            for project in &mut projects {
+                project.library = project.path == root;
+            }
+        }
+        Ok(projects)
+    }
+
     /// The library is a project of its own, from startup on, and only once.
     pub fn ensure_library_project(&self) -> Result<()> {
         let root = self.workspace.root()?;
