@@ -77,6 +77,7 @@ const DEFINITIONS: &[Definition] = defs![
     "preview_zoom" Kind::Number, 1, false;
     "preview_appearance" Kind::OneOf(&["system", "light", "dark"]), "system", false;
     "preview_profiles" Kind::List, [], false;
+    "open_web_links_in_app" Kind::Bool, false, false;
     "enable_agent_device_access" Kind::Bool, false, true;
     "auto_settle_after_days" Kind::Days, 3, true;
     "auto_settle_on_merge" Kind::Bool, true, true;

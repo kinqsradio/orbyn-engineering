@@ -419,6 +419,24 @@ impl Store {
             .collect()
     }
 
+    /// The live thread in a trusted project that changed last, where a web link from
+    /// another app opens.
+    pub fn latest_trusted_thread(&self) -> Result<Option<Thread>> {
+        let conn = self.reader();
+        let thread = conn
+            .query_row(
+                "SELECT threads.* FROM threads JOIN projects ON projects.id = threads.project_id
+                 WHERE threads.archived_at IS NULL AND projects.trusted
+                 ORDER BY threads.updated_at DESC, threads.created_at DESC LIMIT 1",
+                [],
+                thread_row,
+            )
+            .optional()?;
+        thread
+            .map(|thread| with_run_state(&conn, thread))
+            .transpose()
+    }
+
     /// Deletes a thread with its descendants and their logs. Refused while any
     /// of them has a run, because that owner still has effects in flight. Audit
     /// rows outlive the threads. Returns every deleted id.
