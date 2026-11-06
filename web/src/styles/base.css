@@ -62,6 +62,13 @@ a {
   color: var(--color-accentText);
   text-underline-offset: 2px;
 }
+/* Links share the ink colour, so link-like elements that drop the underline get it back on hover and focus. */
+.back-link:hover,
+.back-link:focus-visible,
+.row-link:hover,
+.row-link:focus-visible {
+  text-decoration: underline;
+}
 button,
 input,
 textarea,
