@@ -19,6 +19,12 @@ use crate::error::{CoreError, Result};
 /// launched the app.
 const HELD_EVENTS: usize = 8;
 const ID_LIMIT: usize = 128;
+/// Web links from other apps waiting to open. More than this at once are dropped.
+const WAITING_WEB_LINKS: usize = 8;
+/// The longest web link another app may hand over.
+const WEB_LINK_LIMIT: usize = 2048;
+/// Who opened a preview for a link another app handed to the desktop app.
+const LINK_ACTOR: &str = "desktop_link";
 /// How often the shell's picture of running work is brought up to date.
 const ACTIVITY_EVERY: Duration = Duration::from_secs(2);
 
@@ -28,6 +34,8 @@ pub struct ShellBridge {
     held: Mutex<VecDeque<ShellEvent>>,
     windows: Arc<AtomicUsize>,
     facts: Mutex<ShellFacts>,
+    web_links: mpsc::Sender<String>,
+    waiting_web_links: Mutex<Option<mpsc::Receiver<String>>>,
 }
 
 /// One window following events. Dropping it stops counting that window.
@@ -46,7 +54,10 @@ impl Drop for ShellWatch {
 
 impl Default for ShellBridge {
     fn default() -> Self {
+        let (web_links, waiting) = mpsc::channel(WAITING_WEB_LINKS);
         Self {
+            web_links,
+            waiting_web_links: Mutex::new(Some(waiting)),
             lines: Mutex::new(None),
             events: broadcast::channel(32).0,
             held: Mutex::new(VecDeque::new()),
@@ -138,9 +149,16 @@ impl ShellBridge {
         let text = |key: &str| message.get(key).and_then(Value::as_str);
         match text("type") {
             Some("open_link") => {
-                match text("url").and_then(link_route) {
-                    Some(href) => self.publish(ShellEvent::Navigate { href }),
-                    None => tracing::warn!("ignoring a link this app does not know"),
+                let url = text("url").unwrap_or_default();
+                if let Some(href) = link_route(url) {
+                    self.publish(ShellEvent::Navigate { href });
+                } else if let Some(link) = web_link(url) {
+                    // Core decides whether and where it opens; see `Core::open_web_link`.
+                    if self.web_links.try_send(link).is_err() {
+                        tracing::warn!("dropping a web link: too many are waiting");
+                    }
+                } else {
+                    tracing::warn!("ignoring a link this app does not know");
                 }
                 true
             }
@@ -203,6 +221,64 @@ impl Activity {
 }
 
 impl Core {
+    /// Opens a web link another app handed to the desktop app in a preview tab, when
+    /// the person turned that on. It goes to the live thread in a trusted project
+    /// that changed last, since a preview belongs to a thread and runs that thread's
+    /// browser. The link never goes back to the system: if this app is the system's
+    /// default browser, that would hand it straight back here.
+    pub async fn open_web_link(&self, url: &str) -> Result<orbyn_contracts::PreviewTab> {
+        if self.preference("open_web_links_in_app", None)? != json!(true) {
+            return Err(CoreError::Unsupported(
+                "Another app sent Orbyn a link. To open links like this in the Browser panel, turn on Open links from other apps here in Settings.".to_owned(),
+            ));
+        }
+        let Some(thread) = self.store.latest_trusted_thread()? else {
+            return Err(CoreError::Unsupported(
+                "Another app sent Orbyn a link, but there's no thread in a trusted project to open it in.".to_owned(),
+            ));
+        };
+        self.open_preview(
+            &thread.id,
+            url,
+            (None, None),
+            LINK_ACTOR,
+            crate::preview::OpenHow::default(),
+        )
+        .await
+    }
+
+    /// Opens web links from the shell one at a time, until `stop` fires.
+    pub async fn run_web_links(&self, stop: tokio_util::sync::CancellationToken) {
+        let Some(mut links) = lock(&self.shell.waiting_web_links).take() else {
+            return;
+        };
+        loop {
+            let link = tokio::select! {
+                () = stop.cancelled() => return,
+                link = links.recv() => match link {
+                    Some(link) => link,
+                    None => return,
+                },
+            };
+            let event = match self.open_web_link(&link).await {
+                Ok(tab) => {
+                    tracing::info!(thread = %tab.thread_id, tab = %tab.id, "opened a web link from another app");
+                    ShellEvent::ShowPreview {
+                        thread_id: tab.thread_id,
+                        tab_id: tab.id,
+                    }
+                }
+                Err(error) => {
+                    tracing::info!(%error, "did not open a web link from another app");
+                    ShellEvent::Failed {
+                        message: error.to_string(),
+                    }
+                }
+            };
+            self.shell.publish(event);
+        }
+    }
+
     fn activity(&self) -> Result<Activity> {
         let runs = self.store.active_runs()?;
         let waiting = runs
@@ -251,6 +327,15 @@ fn is_id(text: &str) -> bool {
             .all(|char| char.is_ascii_alphanumeric() || char == '-' || char == '_')
 }
 
+/// A web link another app handed over, if it is one: `http` or `https`, short, and
+/// with no control characters. The preview checks it again before opening it.
+pub fn web_link(url: &str) -> Option<String> {
+    if url.len() > WEB_LINK_LIMIT || url.chars().any(char::is_control) {
+        return None;
+    }
+    crate::computer::cdp::normalize_url(url).ok()
+}
+
 /// The route an `orbyn://` link names. A link comes from outside the app, so it can
 /// only move the window, and only to a place spelled exactly as a route.
 pub fn link_route(url: &str) -> Option<String> {
@@ -295,6 +380,47 @@ mod tests {
         assert_eq!(route("orbyn://thread/a/b").as_deref(), None);
         assert_eq!(route("orbyn://run/start").as_deref(), None);
         assert_eq!(route("https://example.com/thread/a").as_deref(), None);
+    }
+
+    #[test]
+    fn only_short_web_links_go_on_to_core() {
+        assert_eq!(
+            web_link("HTTPS://Example.com/a?b=1").as_deref(),
+            Some("https://example.com/a?b=1")
+        );
+        assert_eq!(
+            web_link("http://127.0.0.1:5000").as_deref(),
+            Some("http://127.0.0.1:5000/")
+        );
+        assert_eq!(web_link("file:///etc/passwd"), None);
+        assert_eq!(web_link("javascript:alert(1)"), None);
+        assert_eq!(web_link("vscode://file/x"), None);
+        assert_eq!(web_link("https://"), None);
+        assert_eq!(web_link("https://example.com/\nx"), None);
+        assert_eq!(web_link("https://example.com/a\u{7}"), None);
+        let long = format!("https://example.com/{}", "a".repeat(WEB_LINK_LIMIT));
+        assert_eq!(web_link(&long), None);
+    }
+
+    #[tokio::test]
+    async fn a_web_link_waits_for_core_and_a_flood_is_dropped() {
+        let shell = ShellBridge::default();
+        assert!(shell.on_line(r#"{"type":"open_link","url":"https://example.com/"}"#));
+        for _ in 0..WAITING_WEB_LINKS + 4 {
+            shell.on_line(r#"{"type":"open_link","url":"https://example.com/more"}"#);
+        }
+        // Nothing reaches a window on its own: Core decides and then publishes.
+        assert!(shell.watch().held.is_empty());
+        let mut waiting = lock(&shell.waiting_web_links).take().unwrap();
+        assert_eq!(
+            waiting.recv().await.as_deref(),
+            Some("https://example.com/")
+        );
+        let mut rest = 0;
+        while waiting.try_recv().is_ok() {
+            rest += 1;
+        }
+        assert_eq!(rest, WAITING_WEB_LINKS - 1);
     }
 
     #[test]

@@ -473,6 +473,10 @@ export function onShellEvent(event: ShellEvent) {
       return;
     case "failed":
       useUi.getState().pushToast(event.message);
+      return;
+    case "show_preview":
+      window.location.hash = `/threads/${event.thread_id}`;
+      useUi.getState().showInBrowser({ tabId: event.tab_id });
   }
 }
 

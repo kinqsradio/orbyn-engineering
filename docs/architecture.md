@@ -1893,6 +1893,19 @@ place spelled as a route: `thread/<id>`, `new[/<project>]`, `settings[/<section>
 anything else, and a link that started the app waits in the shell until the service
 runs. A second launch hands its links to the first and exits.
 
+On macOS the bundle also declares `http` and `https` (`desktop/src-tauri/Info.plist`), so a
+person can pick the app as their default browser in System Settings. The app never sets
+itself as the default. The shell forwards such a link like an `orbyn://` one and decides
+nothing. The service drops anything that isn't a short `http` or `https` URL, and it holds
+at most eight waiting links. It opens a link only when `open_web_links_in_app` is on, which
+is off by default, and only in a preview tab of the live thread in a trusted project that
+changed last. The audit actor for that tab is `desktop_link`. The window is then told to
+show that tab. A refusal, such as no trusted thread or the setting being off, reaches the
+window as a toast. A web link is never handed back to the system browser, because when
+this app is the default that would return it here.
+Windows declares no web links: a default browser there needs registered capabilities
+and a per-person choice in Settings, which the installer does not write.
+
 `POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
 path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
 the window, and everything else goes to the windows as a `command`, the same ones keys

@@ -308,6 +308,17 @@ export function ChatSection() {
             ],
           },
           {
+            title: "Links from other apps",
+            rows: [
+              {
+                key: "open_web_links_in_app",
+                title: settingsLabel("chat-open-links-from-other-apps"),
+                description:
+                  "In the macOS desktop app, a web link another app hands to Orbyn opens in the Browser panel of your latest thread. This doesn't make Orbyn your default browser; that stays your choice in System Settings.",
+              },
+            ],
+          },
+          {
             title: "Idle threads",
             rows: [
               { key: "compact_idle_threads", title: settingsLabel("chat-compact-idle-threads") },

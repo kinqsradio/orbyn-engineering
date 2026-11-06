@@ -38,6 +38,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "chat-open-changes-after-large-turns", "title": "Open Changes after large turns", "section": "chat"},
   {"id": "chat-search-engine", "title": "Search engine", "section": "chat"},
   {"id": "chat-open-links-in", "title": "Open links in", "section": "chat"},
+  {"id": "chat-open-links-from-other-apps", "title": "Open links from other apps here", "section": "chat"},
   {"id": "chat-float-pages-agents-open", "title": "Float pages agents open", "section": "chat"},
   {"id": "chat-keep-checkout-and-branch-visible", "title": "Keep checkout and branch visible", "section": "chat"},
   {"id": "chat-show-skills-in-the-slash-menu", "title": "Show skills in the slash menu", "section": "chat"},
