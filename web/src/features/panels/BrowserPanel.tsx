@@ -315,12 +315,18 @@ export function PageView({
       pushToast(`Couldn't reach the page. ${toFailure(failure).message}`),
     );
   };
+  // The size the page has, or was last asked to take. The tab list only catches up
+  // on its next poll, and a click mapped from the old size lands somewhere else.
+  const sized = useRef({ width: tab.width, height: tab.height });
+  useEffect(() => {
+    sized.current = { width: tab.width, height: tab.height };
+  }, [tab.width, tab.height]);
   const point = (event: MouseEvent) => {
     const box = stage.current?.getBoundingClientRect();
     if (!box) return { x: 0, y: 0 };
     return {
-      x: ((event.clientX - box.left) / box.width) * tab.width,
-      y: ((event.clientY - box.top) / box.height) * tab.height,
+      x: ((event.clientX - box.left) / box.width) * sized.current.width,
+      y: ((event.clientY - box.top) / box.height) * sized.current.height,
     };
   };
   const onKey = (event: KeyboardEvent) => {
@@ -357,10 +363,14 @@ export function PageView({
       timer = setTimeout(() => {
         const size = pageSize(entry.contentRect.width, entry.contentRect.height);
         if (Math.abs(size.width - fitted.current.width) + Math.abs(size.height - fitted.current.height) < RESIZE_SLACK) return;
+        const before = sized.current;
         fitted.current = size;
-        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) =>
-          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`),
-        );
+        // Input sent from now on reaches the page after this resize, so it maps to the new size.
+        sized.current = size;
+        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) => {
+          if (sized.current === size) sized.current = before;
+          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`);
+        });
       }, RESIZE_DELAY_MS);
     });
     observer.observe(element);
