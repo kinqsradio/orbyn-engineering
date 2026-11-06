@@ -100,6 +100,21 @@ enum Command {
     /// Inspect the local server trace file.
     #[command(subcommand)]
     Trace(TraceCommand),
+    /// Check for a new release, and install the latest through the desktop app.
+    Update {
+        /// Only report what is available. Change nothing.
+        #[arg(long)]
+        check: bool,
+        /// Install this exact release. Only the latest release can be installed.
+        #[arg(long, value_name = "VERSION")]
+        version: Option<String>,
+        /// A release channel. Orbyn publishes one, so this is refused.
+        #[arg(long, value_name = "CHANNEL")]
+        channel: Option<String>,
+        /// Go back to an older release. Refused: the installer only moves forward.
+        #[arg(long)]
+        downgrade: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -610,6 +625,94 @@ async fn doctor(cli: &Cli, fix: bool) -> Outcome<()> {
     })
 }
 
+/// What `orbyn update` was asked for.
+struct Wanted<'a> {
+    check: bool,
+    version: Option<&'a str>,
+    channel: Option<&'a str>,
+    downgrade: bool,
+}
+
+/// Why a version request cannot be met, before anything is asked of the service.
+/// The installer that owns the app only installs the latest signed release.
+fn refused_request(wanted: &Wanted) -> Option<String> {
+    const MANUAL: &str = "To run another release, install that release's desktop \
+                          bundle yourself; threads and settings stay in the data folder.";
+    if wanted.downgrade {
+        return Some(format!(
+            "Downgrading is not supported: the app's installer only moves to the latest \
+             release. {MANUAL}"
+        ));
+    }
+    if let Some(channel) = wanted.channel {
+        return Some(format!(
+            "There is no `{channel}` channel: Orbyn publishes one release line. {MANUAL}"
+        ));
+    }
+    None
+}
+
+/// Checks through the running service and, unless only checking, asks it to have the
+/// desktop shell install the latest release. A version that is not the latest is
+/// refused: the installer only offers the latest.
+async fn update(cli: &Cli, wanted: &Wanted<'_>) -> Outcome<()> {
+    if let Some(message) = refused_request(wanted) {
+        return Err(Failure::new(message));
+    }
+    let service = Service::find(&data_dir(cli)?)?;
+    let checked = service.post("/api/updates/check", json!({})).await?;
+    let app = checked["app"].clone();
+    let current = text_of(&app, "current").to_owned();
+    let latest = app["latest"].as_str().map(str::to_owned);
+    let newer = latest
+        .as_deref()
+        .is_some_and(|latest| orbyn_core::engines::manifest::is_newer(latest, &current));
+    if let Some(version) = wanted.version {
+        let version = version.trim_start_matches('v');
+        if version == current {
+            return show(cli.json, &app, |_| {
+                println!("Orbyn {current} is already installed.")
+            });
+        }
+        if latest.as_deref() != Some(version) {
+            let offered = latest.as_deref().unwrap_or("no release");
+            let older = orbyn_core::engines::manifest::is_newer(&current, version);
+            return Err(Failure::new(if older {
+                format!(
+                    "{version} is older than {current}, and downgrading is not supported. \
+                     The update channel offers {offered}."
+                )
+            } else {
+                format!(
+                    "{version} is not available: the update channel offers {offered}, \
+                     and only the latest release can be installed."
+                )
+            }));
+        }
+    }
+    let reason = text_of(&app, "blocked_reason").to_owned();
+    if wanted.check || !newer {
+        return show(cli.json, &app, |_| match (&latest, newer) {
+            (Some(latest), true) => println!("Orbyn {latest} is available (running {current})."),
+            _ if app["unconfigured"] == true => println!("{reason}"),
+            _ => println!("Orbyn {current} is up to date."),
+        });
+    }
+    if app["can_apply"] != true {
+        return Err(Failure::new(format!(
+            "Orbyn {} is available but cannot be installed from here: {reason}",
+            latest.unwrap_or_default()
+        )));
+    }
+    service.post("/api/updates/app/apply", json!({})).await?;
+    show(cli.json, &app, |_| {
+        println!(
+            "Installing Orbyn {} through the desktop app. It restarts when done.",
+            latest.unwrap_or_default()
+        );
+    })
+}
+
 /// `orbynd` sits beside this program in every install.
 fn orbynd_path() -> Outcome<PathBuf> {
     let name = if cfg!(windows) {
@@ -1010,6 +1113,20 @@ async fn run(cli: Cli) -> Outcome<()> {
         Command::Serve { args } => return run_service(args, cli.data_dir.as_deref()),
         Command::Status => return status(&cli).await,
         Command::Doctor { fix, .. } => return doctor(&cli, *fix).await,
+        Command::Update {
+            check,
+            version,
+            channel,
+            downgrade,
+        } => {
+            let wanted = Wanted {
+                check: *check,
+                version: version.as_deref(),
+                channel: channel.as_deref(),
+                downgrade: *downgrade,
+            };
+            return update(&cli, &wanted).await;
+        }
         _ => {}
     }
     let service = Service::find(&data_dir(&cli)?)?;

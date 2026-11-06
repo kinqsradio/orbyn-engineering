@@ -44,8 +44,25 @@ private. A detached service writes `service.log` in its data folder.
 `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`, `--update-manifest` and
 `--parent-stdin`; the last is the desktop's ownership channel, not an interactive
 session. `ORBYN_LIBRARY_BUNDLE` selects a bundled library and
-`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check. There is no
-CLI command here for exact-version update, channel switching or downgrade.
+`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check.
+
+## Updating
+
+| Command | Behavior |
+| --- | --- |
+| `orbyn update --check` | Ask the running service to check, and report the current and latest release. Changes nothing. |
+| `orbyn update` | Check, then ask the desktop app's installer to install the latest release. |
+| `orbyn update --version VERSION` | The same, only when `VERSION` (with or without a leading `v`) is the latest release; the running version reports that it is installed. |
+| `orbyn update --channel NAME`, `--downgrade` | Refused with exit 1 before any service is contacted. |
+
+The app updates only through the installer that owns it: the desktop shell's
+signed updater, which offers the latest release of one release line. There is no
+version index, channel or downgrade path, so an older or unlisted version is refused
+and the message says to install that release's bundle manually. A service with no
+desktop shell cannot replace itself: `orbyn update` reports its blocked reason
+and an unconfigured manifest, and exits 1 when a newer release exists that it
+cannot install. Install is refused while runs are active, as in the UI. Engines and
+the skills library update from the UI's update center, not this command.
 
 ## Threads, projects and preferences
 
