@@ -108,7 +108,7 @@ enum Command {
         /// Install this exact release. Only the latest release can be installed.
         #[arg(long, value_name = "VERSION")]
         version: Option<String>,
-        /// A release channel. Orbyn publishes one, so this is refused.
+        /// A release channel. Only the channel this build was made for is accepted.
         #[arg(long, value_name = "CHANNEL")]
         channel: Option<String>,
         /// Go back to an older release. Refused: the installer only moves forward.
@@ -650,12 +650,18 @@ fn refused_request(wanted: &Wanted) -> Option<String> {
              release. {MANUAL}"
         ));
     }
-    if let Some(channel) = wanted.channel {
-        return Some(format!(
-            "There is no `{channel}` channel: Orbyn publishes one release line. {MANUAL}"
-        ));
-    }
     None
+}
+
+/// A build follows the channel it was compiled for; the installer cannot switch it.
+fn refused_channel(wanted: &str, built: &str) -> Option<String> {
+    (wanted != built).then(|| {
+        format!(
+            "This build follows the `{built}` channel and cannot switch to `{wanted}`. \
+             To change channels, install a `{wanted}` build yourself; threads and settings \
+             stay in the data folder."
+        )
+    })
 }
 
 /// Checks through the running service and, unless only checking, asks it to have the
@@ -666,6 +672,12 @@ async fn update(cli: &Cli, wanted: &Wanted<'_>) -> Outcome<()> {
         return Err(Failure::new(message));
     }
     let service = Service::find(&data_dir(cli)?)?;
+    if let Some(channel) = wanted.channel {
+        let info = service.get("/api/info").await?;
+        if let Some(message) = refused_channel(channel, text_of(&info, "channel")) {
+            return Err(Failure::new(message));
+        }
+    }
     let checked = service.post("/api/updates/check", json!({})).await?;
     let app = checked["app"].clone();
     let current = text_of(&app, "current").to_owned();

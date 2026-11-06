@@ -79,10 +79,13 @@ async fn update_checks_refuses_other_versions_and_installs_the_latest_through_th
         &orbyn(&data, &["update", "--downgrade"]).await,
         "Downgrading",
     );
+    // A debug build is the `dev` channel; it cannot switch, but naming its own works.
     refused(
-        &orbyn(&data, &["update", "--channel", "beta"]).await,
-        "no `beta` channel",
+        &orbyn(&data, &["update", "--channel", "nightly"]).await,
+        "cannot switch to `nightly`",
     );
+    let output = orbyn(&data, &["update", "--check", "--channel", "dev"]).await;
+    assert!(output.status.success(), "{output:?}");
     refused(
         &orbyn(&data, &["update", "--version", "98.0.0"]).await,
         "98.0.0 is not available",
