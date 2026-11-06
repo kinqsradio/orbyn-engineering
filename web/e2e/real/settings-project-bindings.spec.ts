@@ -74,3 +74,28 @@ test("default permissions and response streaming are set per project on the Thre
   });
   expect(thread.lifecycle.permission_mode).toBe("auto_edits");
 });
+
+test("a provider turned off for one project is refused there and inherits again", async ({ page }) => {
+  const engines = await service.api<{ id: string; name: string }[]>("GET", "/api/engines");
+  const codex = engines.find((engine) => engine.id === "codex")!;
+  await page.goto(await projectSettingsUrl(service, projectId, "providers"));
+  await expect(page.getByText("Provider instances and custom models are saved for this environment and apply to every project.")).toBeVisible();
+  const toggle = page.getByRole("switch", { name: codex.name, exact: true });
+  await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect.poll(async () => (await pref("disabled_engines", projectId))?.value).toEqual(["codex"]);
+  expect((await pref("disabled_engines"))?.value).toEqual([]);
+  const create = () => fetch(`${service.url}/api/threads`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${new URL(service.page).searchParams.get("token")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: projectId, engine: "codex", model: null, title: "Off", worktree: null, skill_profile: null }),
+  });
+  const refused = await create();
+  expect(refused.status).toBe(400);
+  expect(await refused.text()).toContain("turned off for this project");
+
+  await page.getByRole("button", { name: "Reset Providers in use to default", exact: true }).click();
+  await expect.poll(async () => (await pref("disabled_engines", projectId))?.source).not.toBe("project");
+  await expect(toggle).toBeChecked();
+  expect((await create()).ok).toBe(true);
+});

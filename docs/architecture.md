@@ -944,9 +944,12 @@ rows and thread lifecycle/title controls use scoped reads and revision-fenced ed
 Mixed controls do not save an untouched empty value. Provenance displays actual
 project, environment, file and default layers. Reset all deletes only the explicit
 listed project overrides. Each write stays attached to the scope that supplied its
-revision, including when navigation changes before it finishes. Remaining provider
-controls and storage forms still need their own bindings and qualification; their
-parity claims stay partial until those and native walkthroughs are verified.
+revision, including when navigation changes before it finishes. On Providers,
+`disabled_engines` is bound to the selected scope (Providers in use), and the service
+refuses a new thread on a provider its project turned off. Provider instances and
+custom models are environment settings: they apply to every project, the page says
+so when a project is selected, and their writes always target the environment.
+Native walkthroughs remain to be verified before the parity claims are complete.
 
 Project images are passive metadata, resolved by registered physical project ID.
 `GET /api/projects/:id/icon/resource` returns the source, relative path, content
