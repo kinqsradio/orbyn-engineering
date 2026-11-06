@@ -1,4 +1,4 @@
-import { AlarmClock, Check, CircleCheck, CircleDashed, Clock, Gauge, GitBranch, OctagonAlert, Pin, PinOff, Unplug, X } from "lucide-react";
+import { AlarmClock, Check, CircleCheck, CircleDashed, Clock, GitBranch, Pin, PinOff, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Thread } from "../../api/types";
@@ -22,68 +22,64 @@ const VERB_BADGE: Record<DropVerb, { label: string; icon: ReactNode }> = {
   wake: { label: "Wake", icon: <Clock size={12} aria-hidden /> },
 };
 
-function RowStatus({ thread }: { thread: Thread }) {
+interface RowStatus {
+  /** Leading 14px glyph: spinner, amber dot or red x. Nothing for idle and settled rows. */
+  glyph: ReactNode;
+  /** Trailing text: a short status word, or the relative age. */
+  text: ReactNode;
+}
+
+function useRowStatus(thread: Thread): RowStatus {
   const active = thread.active_run;
   const now = useNow(active !== null);
   const approvals = useWorkspace((state) => state.approvals.data);
   if (active) {
     if (active.state === "awaiting_approval") {
       const asking = approvals && !approvals.some((approval) => approval.thread_id === thread.id);
-      return (
-        <span className="row-status tone-warn">
-          <span className="status-dot" aria-hidden />
-          {asking ? "Question" : "Approval"}
-        </span>
-      );
+      return {
+        glyph: <span className="status-dot tone-warn" aria-hidden />,
+        text: <span className="row-status tone-warn">{asking ? "Question" : "Approval"}</span>,
+      };
     }
     const label = active.state === "admitted" ? "Queued" : thread.goal ? "Goal" : "Working";
-    return (
-      <span className="row-status tone-info">
-        <CircleDashed size={14} className="spin" aria-hidden />
-        {label} {elapsed(active.started_at, now)}
-      </span>
-    );
+    return {
+      glyph: <CircleDashed size={14} className="spin" aria-hidden />,
+      text: (
+        <span className="row-status">
+          {label} {elapsed(active.started_at, now)}
+        </span>
+      ),
+    };
   }
   if (thread.lifecycle?.limit) {
-    return (
-      <span className="row-status tone-warn">
-        <Gauge size={14} aria-hidden />
-        Limited
-      </span>
-    );
+    return {
+      glyph: <span className="status-dot tone-warn" aria-hidden />,
+      text: <span className="row-status tone-warn">Limited</span>,
+    };
   }
   const state = thread.last_run_state;
   if (state === "failed") {
-    return (
-      <span className="row-status tone-danger">
-        <OctagonAlert size={14} aria-hidden />
-        Failed
-      </span>
-    );
+    return {
+      glyph: <X size={14} className="tone-danger" aria-hidden />,
+      text: <span className="row-status tone-danger">Failed</span>,
+    };
   }
   if (state === "interrupted") {
-    return (
-      <span className="row-status tone-warn">
-        <Unplug size={14} aria-hidden />
-        Interrupted
-      </span>
-    );
+    return { glyph: null, text: <span className="row-status">Interrupted</span> };
   }
   const fresh =
     thread.lifecycle?.unread ?? Date.now() - new Date(thread.updated_at).getTime() < DONE_WINDOW_MS;
   if (state === "completed" && fresh) {
-    return (
-      <span className="row-status tone-success">
-        <CircleCheck size={14} aria-hidden />
-        Done
-      </span>
-    );
+    return { glyph: null, text: <span className="row-status">Done</span> };
   }
-  return (
-    <time className="row-age" dateTime={thread.updated_at}>
-      {compactAge(thread.updated_at)}
-    </time>
-  );
+  return {
+    glyph: null,
+    text: (
+      <time className="row-age" dateTime={thread.updated_at}>
+        {compactAge(thread.updated_at)}
+      </time>
+    ),
+  };
 }
 
 /** Details for a row, beside it, after a short delay. Pointer only. */
@@ -227,6 +223,15 @@ export function ThreadRow({
   const lifecycle = thread.lifecycle;
   const pinned = Boolean(lifecycle?.pinned_at);
   const unread = lifecycle?.unread === true;
+  const status = useRowStatus(thread);
+  const showProject = !compact || section === "settled" || section === "snoozed";
+  const details = [
+    projectName,
+    branch,
+    thread.model ? `${engineName}, ${thread.model}` : engineName,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const stopHover = () => {
     clearTimeout(timer.current);
     setHover(null);
@@ -249,7 +254,7 @@ export function ThreadRow({
                 {compactAge(lifecycle.snoozed_until)}
               </time>
             ) : (
-              <RowStatus thread={thread} />
+              status.text
             )}
           </span>
           <span className="row-actions">
@@ -378,7 +383,8 @@ export function ThreadRow({
       }}
     >
       <a
-        className={compact ? "thread-row thread-row-compact" : "thread-row"}
+        className="thread-row"
+        title={details}
         data-unread={unread || undefined}
         data-multiline={multiline || undefined}
         href={routeHref({ name: "thread", id: thread.id })}
@@ -403,38 +409,16 @@ export function ThreadRow({
           actions.onMenu(event, thread);
         }}
       >
-        {compact ? (
-          <>
-            <ProjectBadge name={projectName} project={thread.scratch ? undefined : project} />
-            {title}
-            {wokeMark}
-            {pinMark}
-            {trailing}
-          </>
-        ) : (
-          <>
-            <span className="thread-row-line">
-              <ProjectBadge name={projectName} project={thread.scratch ? undefined : project} />
-              <span className="thread-row-project">{projectName}</span>
-              {wokeMark}
-              {pinMark}
-              {trailing}
-            </span>
-            {title}
-            <span className="thread-row-line thread-row-foot">
-              <span className="thread-row-branch">
-                {branch ? (
-                  <>
-                    <GitBranch size={12} aria-hidden />
-                    {branch}
-                  </>
-                ) : null}
-              </span>
-              {unmanaged ? <span className="row-age">Unmanaged</span> : null}
-              <EngineGlyph name={engineName} />
-            </span>
-          </>
-        )}
+        <span className="row-glyph">{status.glyph}</span>
+        {title}
+        {wokeMark}
+        {pinMark}
+        {unmanaged ? (
+          <span className="thread-row-project">Unmanaged</span>
+        ) : showProject ? (
+          <span className="thread-row-project">{projectName}</span>
+        ) : null}
+        {trailing}
       </a>
       {hover && !dragging ? (
         <ThreadHoverCard
