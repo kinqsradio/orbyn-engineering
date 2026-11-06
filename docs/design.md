@@ -109,6 +109,28 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
 Borders belong to inputs, menus and dividers; cards and panels separate by fill.
 Only floating layers (menus, popovers, tooltips) cast a shadow.
 
+## Getting started
+
+`features/onboarding/onboarding.css` holds these screens' styles; tokens only.
+
+- Welcome steps sit above home, 720px wide, each with a 22px title: an overview of the
+  three steps (agents, projects, how agents ask) with "Skip for now" and "Start", then
+  Connect an agent (a row per engine with a Ready pill, and an ACP registry row that opens Settings › Providers; a missing engine says "Install
+  <name>, then check again"; a signed-out one shows its command to copy), Add a project
+  (with the history import) and how agents ask. The last step explains the modes and links to
+  Settings › Threads, which owns the default. "Back" and "Continue" move between steps.
+- The empty home is a centred 20px "Add your first project", one muted line and the
+  buttons: Clone from GitHub (opens the palette on its Git URL view), Add project, Start
+  without a project, Welcome steps.
+- Trust is a 480px card (16px radius, ring and shadow) titled "Trust <folder>?" with
+  the full path below it, "Not now" and "Trust folder".
+- A draft with a project docks its composer at the bottom (draft-scoped CSS); the heading
+  and four suggestion chips centre above it. A chip fills the message and never sends it.
+  Checkout, branch and permissions under the composer are 28px chips.
+- Add project is views of the command palette: a source list, then a path field in mono
+  with "Folders" rows that carry a Git or Folder hint at the right, then a divider and
+  "Clone from GitHub".
+
 ## Layouts
 
 Settings › Appearance › Layout picks one of three arrangements of the same components.
@@ -134,3 +156,10 @@ Saved preferences carry a `prefsVersion`. Version 1 (the frame) moves a saved si
 of exactly 208px to 224px and turns project folders on, once; a custom width stays. Someone
 with saved preferences gets a one-time notice with Turn off; the option lives in Settings ›
 Labs.
+
+## Planned with the Orbyn platform
+
+The Orbyn Engineer Designs also draw four screens that need engine work that does not
+exist yet (connected-app scopes and a remote-access relay): Sign in to Orbyn, Connect
+Orbyn Planner, Remote access and pairing, and On a phone. They are not built, not even as
+placeholders, and `docs/parity.md` records them as L52–L55.

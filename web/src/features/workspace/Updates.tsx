@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowUp, Check, CircleDashed, Loader2, X } from "lucide-react";
+import { AlertCircle, Check, CircleDashed, Download, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { UpdateStatus } from "../../api/types";
@@ -11,7 +11,7 @@ import {
   type UpdateRun,
   type UpdateRunStep,
 } from "../../state/workspace";
-import { Button, IconButton } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Markdown } from "../thread/Markdown";
 
@@ -145,6 +145,9 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
         </>
       }
     >
+      <p className="update-intro">
+        Updates install one at a time. An agent with a run in progress updates once that run ends.
+      </p>
       {blocked ? <p className="update-reason">{blocked}</p> : null}
       {run ? <Steps steps={run.steps} /> : null}
       {run?.error ? (
@@ -161,6 +164,7 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
               <div key={engine.id} className="update-item">
                 <span className="update-name">{name}</span>
                 <Versions current={engine.current} latest={engine.latest} />
+                <span className="update-kind">CLI</span>
                 {engine.can_apply ? (
                   <ItemButton
                     label={name}
@@ -207,6 +211,7 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
           <div className="update-item">
             <span className="update-name">Orbyn Engineering</span>
             <Versions current={status.app.current} latest={status.app.latest} />
+            <span className="update-kind">Restarts the app</span>
             {status.app.can_apply ? (
               <ItemButton
                 label="app"
@@ -292,13 +297,10 @@ export function UpdatePill() {
           Updating {done + 1}/{steps.length}
         </button>
       ) : (
-        <IconButton
-          className="update-btn"
-          label={count === 1 ? "1 update available" : `${count} updates available`}
-          onClick={() => setOpen(true)}
-        >
-          <ArrowUp size={14} aria-hidden />
-        </IconButton>
+        <button type="button" className="update-pill" onClick={() => setOpen(true)}>
+          <Download size={13} aria-hidden />
+          Updates available{count > 0 ? ` · ${count}` : ""}
+        </button>
       )}
       {open ? <UpdateEverythingDialog onClose={() => setOpen(false)} /> : null}
     </>

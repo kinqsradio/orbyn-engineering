@@ -707,19 +707,6 @@ details[open] > summary > .chev {
 .sidebar-nav[data-ledger] {
   margin-bottom: 4px;
 }
-.update-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  margin-left: auto;
-  padding: 0;
-  border: 1px solid var(--color-borderStrong);
-  border-radius: 50%;
-  background: var(--color-raised);
-  color: var(--color-text);
-  cursor: pointer;
-}
 .sidebar-rail {
   position: absolute;
   z-index: 3;
@@ -993,23 +980,27 @@ details[open] > summary > .chev {
 .update-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
 }
 .update-group h3 {
-  color: var(--color-muted);
+  color: var(--color-faint);
   font-size: var(--text-meta);
   font-weight: 500;
 }
 .update-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   min-height: 32px;
   font-size: var(--text-small);
 }
 .update-name {
-  flex: 1;
+  flex: 1 0 150px;
   min-width: 0;
   overflow: hidden;
   color: var(--color-text);
@@ -1027,6 +1018,9 @@ details[open] > summary > .chev {
   flex-direction: column;
   gap: 4px;
   margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
   font-size: var(--text-small);
 }
 .update-steps li {
@@ -1069,19 +1063,32 @@ details[open] > summary > .chev {
   font-size: var(--text-small);
 }
 .update-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 32px;
-  margin-left: auto;
+  flex: none;
+  height: 28px;
+  margin: 0 8px 4px;
   padding: 0 10px;
-  border: 1px solid var(--color-borderStrong);
-  border-radius: 999px;
-  background: var(--color-raised);
-  color: var(--color-text);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
   font-size: var(--text-meta);
   white-space: nowrap;
   cursor: pointer;
+}
+.update-pill:hover {
+  background: var(--color-selected);
+}
+.update-kind {
+  flex: none;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.update-intro {
+  color: var(--color-muted);
 }
 .update-pill[data-failed] {
   color: var(--color-danger);
@@ -1202,22 +1209,45 @@ li[data-file-over] .thread-row {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  min-width: 200px;
-  padding: 14px 20px;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 20px 22px;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-raised);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
   color: var(--color-text);
-  box-shadow: 0 10px 30px var(--color-shadow);
-  font-weight: 600;
+  box-shadow:
+    0 16px 48px var(--color-shadow),
+    0 0 0 1px var(--color-borderStrong);
+  text-align: center;
+  font-size: var(--text-small);
+}
+.quit-overlay b {
+  font-weight: 500;
+}
+.quit-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 56px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  box-shadow: inset 0 -1px 0 var(--color-borderStrong);
+  color: var(--color-textSoft);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.quit-note {
+  color: var(--color-muted);
+  font-size: 12px;
 }
 .quit-progress {
   width: 100%;
-  height: 3px;
-  border-radius: var(--radius-xs);
-  background: var(--color-primary);
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-text);
   transform-origin: left;
   animation: quit-hold linear forwards;
 }
@@ -1228,34 +1258,4 @@ li[data-file-over] .thread-row {
   to {
     transform: scaleX(1);
   }
-}
-.welcome-wizard {
-  width: min(560px, 100%);
-  margin: 16px auto;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-raised);
-  text-align: left;
-}
-.welcome-wizard h2 {
-  margin: 0 0 4px;
-  font-size: var(--text-title);
-}
-/* The card already insets its content, so its groups line up with its own title. */
-.welcome-wizard .setting-group {
-  margin-top: 12px;
-}
-.welcome-wizard .setting-group h2,
-.welcome-wizard .setting-group-desc {
-  padding: 0;
-}
-.welcome-wizard .setting-group h2 {
-  font-size: var(--text-body);
-}
-.welcome-wizard-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
 }

@@ -496,11 +496,13 @@ input[type="radio"] {
   width: min(440px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-xl);
-  background: var(--color-raised);
+  background: var(--color-surface);
   color: var(--color-text);
-  box-shadow: 0 16px 48px var(--color-shadow);
+  box-shadow:
+    0 16px 48px var(--color-shadow),
+    0 0 0 1px var(--color-borderStrong);
 }
 .dialog[open] {
   display: flex;
@@ -530,10 +532,10 @@ input[type="radio"] {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 12px 8px 20px;
+  padding: 16px 14px 4px 22px;
 }
 .dialog-head h2 {
-  font-size: var(--text-title);
+  font-size: 16px;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -541,17 +543,43 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 20px 16px;
+  padding: 0 22px 16px;
   overflow: auto;
+  color: var(--color-muted);
   overflow-wrap: anywhere;
 }
 .dialog-foot {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--color-divider);
+  gap: 6px;
+  padding: 4px 22px 20px;
+}
+/* Dialog actions: Cancel is a quiet ghost, the confirm is solid, only danger is red. */
+.dialog-foot .btn {
+  border-color: transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+}
+.dialog-foot .btn:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--color-selected);
+}
+.dialog-foot .btn-primary {
+  background: var(--color-primary);
+  color: var(--color-onAccent);
+}
+.dialog-foot .btn-primary:hover:not(:disabled) {
+  background: var(--color-primaryHover);
+}
+.dialog-foot .btn-danger {
+  background: var(--color-danger);
+  color: var(--color-onDanger);
+}
+.dialog-foot .btn-danger:hover:not(:disabled) {
+  background: var(--color-danger);
+  filter: brightness(1.08);
 }
 .command {
   display: flex;
@@ -850,11 +878,13 @@ input[type="radio"] {
 .toast {
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 340px;
+  gap: 12px;
+  min-width: 300px;
+  max-width: 380px;
   padding: 10px 12px 10px 14px;
   border-radius: var(--radius-lg);
-  background: var(--color-raised);
+  background: var(--color-surface);
+  color: var(--color-text);
   box-shadow:
     0 10px 30px var(--color-shadow),
     0 0 0 1px var(--color-borderStrong);

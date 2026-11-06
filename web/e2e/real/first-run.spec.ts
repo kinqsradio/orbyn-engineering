@@ -18,7 +18,7 @@ test.afterAll(() => service.stop());
 test("a fresh install opens on the draft flow with no setup step", async ({ page }) => {
   await page.setViewportSize(WINDOW);
   await page.goto(service.page);
-  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
   await expect(page.locator(".no-projects").getByRole("button", { name: "Add project" })).toBeVisible();
   await expect(page.locator(".no-projects").getByRole("button", { name: "Start without a project" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();

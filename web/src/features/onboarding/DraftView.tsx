@@ -1,7 +1,7 @@
 import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
 import { useDraftModelDefaults } from "./useDraftModelDefaults";
 import { useDraftCheckout } from "./useDraftCheckout";
-import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, X } from "lucide-react";
+import { ArrowUp, Bot, Eye, Folder, GitBranch, GitPullRequest, PanelRight, Paperclip, Sparkles, X, XCircle } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
@@ -13,6 +13,7 @@ import { useThreadLogs } from "../thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { SkillsNotice } from "./SkillsNotice";
+import "./onboarding.css";
 import { NoProjects } from "./NoProjects";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { IconButton } from "../../ui/controls";
@@ -104,6 +105,14 @@ function DraftModelControls({
     </>
   );
 }
+
+/** Starting points that only fill the message; sending is still the person's call. */
+const SUGGESTIONS = [
+  { icon: XCircle, label: "Fix a failing test", text: "Find and fix a failing test." },
+  { icon: GitPullRequest, label: "Review an open pull request", text: "Review the open pull request." },
+  { icon: Eye, label: "Explain this codebase", text: "Explain how this codebase is organised." },
+  { icon: Sparkles, label: "Use a skill", text: "$" },
+] as const;
 
 /** The default screen: a composer for a thread that doesn't exist until you send. */
 export function DraftView({ projectId }: { projectId: string | null }) {
@@ -377,6 +386,23 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                 )}
               </p>
               <SkillsNotice />
+              {project && !prompt ? (
+                <div className="draft-suggestions" role="group" aria-label="Suggestions">
+                  {SUGGESTIONS.map(({ icon: Icon, label, text }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        setPrompt(text);
+                        field.current?.focus();
+                      }}
+                    >
+                      <Icon size={14} aria-hidden />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <form
               className="composer"

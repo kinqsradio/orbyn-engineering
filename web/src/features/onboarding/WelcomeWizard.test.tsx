@@ -28,21 +28,33 @@ it("names what each engine still needs", () => {
   expect(engineReadiness(engine({ installed: false }))).toMatchObject({ label: "Not installed", next: null, step: "Install Claude, then check again." });
 });
 
-it("walks agents then projects and remembers it was finished", async () => {
+it("walks the overview, agents, projects and access, and remembers it was finished", async () => {
   const user = userEvent.setup();
   useWorkspace.setState({ engines: { data: [engine({}), engine({ id: "codex", name: "Codex", auth: "logged_out" })], error: null, loading: false } });
   const onClose = vi.fn();
   render(<WelcomeWizard onClose={onClose} />);
+  expect(screen.getByRole("heading", { name: "Welcome to Orbyn Engineering" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Start" }));
   expect(screen.getByText("Ready")).toBeInTheDocument();
   expect(screen.getByText("Sign in needed")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByRole("button", { name: "Continue" }));
   await user.click(screen.getByRole("button", { name: "Add project" }));
   expect(onClose).not.toHaveBeenCalled();
   expect(useUi.getState().palette).toBe("add-project");
   await user.click(screen.getByRole("button", { name: "Find conversations" }));
   expect(await screen.findByText("No saved conversations found.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Continue" }));
+  expect(screen.getByRole("list", { name: "How agents ask" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Done" }));
   expect(onClose).toHaveBeenCalled();
+  expect(useUi.getState().welcomeDone).toBe(true);
+  expect(useUi.getState().welcomeStep).toBeNull();
+});
+
+it("skips from the overview and remembers it", async () => {
+  const user = userEvent.setup();
+  render(<WelcomeWizard onClose={() => undefined} />);
+  await user.click(screen.getByRole("button", { name: "Skip for now" }));
   expect(useUi.getState().welcomeDone).toBe(true);
   expect(useUi.getState().welcomeStep).toBeNull();
 });
