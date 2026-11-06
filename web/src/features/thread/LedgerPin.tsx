@@ -5,7 +5,8 @@ import { useWorkspace } from "../../state/workspace";
 /**
  * The Ledger layout pins what the thread is waiting on above the transcript, so the
  * decision stays in view however far the person has scrolled. It only points at the
- * decision: approving and declining stay on the card itself, where the detail is.
+ * decision: approving and declining stay on the card itself, where the detail is, and
+ * Show focuses the card so the next Tab reaches the choices.
  */
 export function LedgerPin({ threadId }: { threadId: string }) {
   const layout = useUi((state) => state.workspaceLayout);
@@ -17,11 +18,12 @@ export function LedgerPin({ threadId }: { threadId: string }) {
   const first = pending[0];
   if (layout !== "ledger" || !first) return null;
   const show = () => {
-    const card = document.querySelector<HTMLElement>(
-      ".transcript .approval[data-pending]",
-    );
-    card?.scrollIntoView({ block: "center", behavior: "smooth" });
-    card?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+    const card = document.querySelector<HTMLElement>(".transcript .approval[data-pending]");
+    if (!card) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    card.scrollIntoView?.({ block: "center", behavior: still ? "auto" : "smooth" });
+    // Focus the card, not a button: a second key press must never decide the request.
+    card.focus({ preventScroll: true });
   };
   return (
     <div className="ledger-pin" role="status">

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Approval } from "../../api/types";
 import { useUi } from "../../state/ui";
@@ -30,5 +30,24 @@ describe("LedgerPin", () => {
     useUi.getState().setPrefs({ workspaceLayout: "ledger" });
     rerender(<LedgerPin threadId="t9" />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("focuses the waiting card, never one of its decision buttons", () => {
+    useUi.getState().setPrefs({ workspaceLayout: "ledger" });
+    seed([approval("a1", "t1")]);
+    render(
+      <>
+        <LedgerPin threadId="t1" />
+        <div className="transcript">
+          <article className="approval" data-pending="" tabIndex={-1} aria-label="Run a1?">
+            <button type="button">Decline</button>
+            <button type="button">Approve</button>
+          </article>
+        </div>
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(document.activeElement).toBe(screen.getByRole("article", { name: "Run a1?" }));
+    expect(document.activeElement?.tagName).not.toBe("BUTTON");
   });
 });
