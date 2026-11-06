@@ -326,4 +326,29 @@ async fn the_shell_hears_when_work_starts_and_ends() {
     service.finished(&thread).await;
     let seen = activity(&mut service, 0).await;
     assert_eq!(seen["keep_awake"], false);
+    assert_eq!(seen["unread"], 0);
+
+    // A thread marked unread reaches the Dock badge's count.
+    let code = service
+        .client
+        .patch(format!("{}/api/threads/{thread}", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "unread": true }))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert!(code.is_success(), "{code}");
+    let mut line = String::new();
+    loop {
+        line.clear();
+        service.stdout.read_line(&mut line).unwrap();
+        assert!(!line.is_empty(), "stdout closed");
+        if let Ok(value) = serde_json::from_str::<Value>(&line)
+            && value["type"] == "activity"
+            && value["unread"] == 1
+        {
+            break;
+        }
+    }
 }

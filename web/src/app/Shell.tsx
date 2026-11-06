@@ -1,3 +1,4 @@
+import { QuitConfirmation } from "../features/workspace/QuitConfirmation";
 import { PanelLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { create } from "zustand";
@@ -27,7 +28,7 @@ import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
-import { actionShortcutAllowed, FALLBACK_RULES, matchesKey, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { actionShortcutAllowed, FALLBACK_RULES, isReservedCloseEvent, matchesKey, ruleMatches, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { actionIdFromCommand } from "../lib/actionCommand";
 import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
@@ -397,12 +398,17 @@ function useGlobalKeys(route: Route) {
         for (const rule of [...rules].reverse()) {
           const action = actionIdFromCommand(rule.command) !== null;
           if ((!modified && !action) || (action && !actionAllowed())) continue;
-          if (rule.remove || !matchesKey(rule.key, event) || !whenHolds(rule.when, context)) continue;
+          if (rule.remove || !ruleMatches(rule.key, event, inDesktopApp()) || !whenHolds(rule.when, context)) continue;
           if (runHandlers(rule.command) || (action && runHandlers("projectActions.pending", rule.command)) || runShellCommand(rule.command, route)) {
             event.preventDefault();
             return;
           }
         }
+      }
+      // Nothing took it, but the desktop window still must not close on it.
+      if (inDesktopApp() && isReservedCloseEvent(event)) {
+        event.preventDefault();
+        return;
       }
       const digit = /^Digit([1-9])$/.exec(event.code);
       if (digit && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
@@ -517,6 +523,7 @@ export function Shell() {
       </a>
       {showNav ? <Sidebar route={route} /> : null}
       <BackgroundAnnouncer />
+      <QuitConfirmation />
       <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
       <Toasts />
       <CloneJobs />
