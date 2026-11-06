@@ -1,5 +1,5 @@
 import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
-import { chooseDraftEngine } from "./draftEngine";
+import { useDraftModelDefaults } from "./useDraftModelDefaults";
 import { useDraftCheckout } from "./useDraftCheckout";
 import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -119,10 +119,8 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const [chosenProject, setChosenProject] = useState(projectId);
   const lastModel = useUi((state) => state.lastModel);
   const setPrefs = useUi((state) => state.setPrefs);
-  const [choice, setChoice] = useState(lastModel);
-  const [pickedHere, setPickedHere] = useState(false);
   const [chosenAccess, setAccess] = useState<PermissionMode>("supervised");
-  const [extras, setExtras] = useState<Record<string, string>>({});
+  const [optionDraft, setOptionDraft] = useState<{ owner: string; values: Record<string, string> } | null>(null);
   const prompt = useUi((state) => state.drafts[DRAFT_KEY] ?? "");
   const setDraft = useUi((state) => state.setDraft);
   const setPalette = useUi((state) => state.setPalette);
@@ -141,6 +139,11 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
   const scratch = chosenProject === SCRATCH;
   const project: Project | null = scratch ? null : (projects?.find((p) => p.id === chosenProject) ?? projects?.[0] ?? null);
+  const modelDefaults = useDraftModelDefaults(project?.id ?? null, engines, lastModel);
+  const { installed, engine, model: pickedModel, effort: pickedEffort, choose: setChoice } = modelDefaults;
+  const optionOwner = JSON.stringify([project?.id ?? null, engine?.id, pickedModel]);
+  const extras = optionDraft?.owner === optionOwner ? optionDraft.values : {};
+  const setExtras = (values: Record<string, string>) => setOptionDraft({ owner: optionOwner, values });
   const { worktree, setWorktree, loading: checkoutLoading, error: checkoutError } = useDraftCheckout(project, reused);
   const [extraModels, setExtraModels] = useState<ModelChoice[]>([]);
   const sendBackground = useRef<() => boolean>(() => false);
@@ -169,8 +172,6 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   }, [chosenProject, setPrefs]);
 
   if (!projects || !engines) return <div className="page"><Loading label="Loading" rows={3} /></div>;
-  const installed = engines.filter((e) => e.installed);
-  const engine = chooseDraftEngine(installed, choice?.engine ?? null, pickedHere);
   const unmanaged = engine !== null && !engine.capabilities.managed;
   // A mode the chosen engine does not offer would run Supervised, so it starts that way.
   const access = shownAccess(engine, chosenAccess);
@@ -179,8 +180,6 @@ export function DraftView({ projectId }: { projectId: string | null }) {
 
   const branch = targets?.find((target) => target.project_id === project?.id)?.branch ?? null;
   const setPrompt = (text: string) => setDraft(DRAFT_KEY, text);
-  const pickedModel = choice?.engine === engine?.id ? (choice?.model ?? null) : null;
-  const pickedEffort = choice?.engine === engine?.id ? (choice?.effort ?? null) : null;
   const AccessIcon = ACCESS[access].icon;
 
   const earlier = [
@@ -236,7 +235,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
 
   const send = async () => {
     const text = prompt.trim();
-    if (!text || busy || checkoutLoading || checkoutError || !engine || untrusted()) return;
+    if (!text || busy || checkoutLoading || checkoutError || modelDefaults.loading || modelDefaults.error || !engine || untrusted()) return;
     if (extraModels.length > 0) {
       void sendEach(text);
       return;
@@ -262,7 +261,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   /** Starts without leaving: the next draft keeps its checkout choice, each send its own worktree. */
   const startInBackground = async () => {
     const text = prompt.trim();
-    if (!text || busy || checkoutLoading || checkoutError || !engine || untrusted()) return;
+    if (!text || busy || checkoutLoading || checkoutError || modelDefaults.loading || modelDefaults.error || !engine || untrusted()) return;
     setBusy(true);
     setError(null);
     try {
@@ -311,7 +310,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   };
 
   sendBackground.current = () => {
-    if (!prompt.trim() || busy || checkoutLoading || checkoutError || !engine) return false;
+    if (!prompt.trim() || busy || checkoutLoading || checkoutError || modelDefaults.loading || modelDefaults.error || !engine) return false;
     void (extraModels.length > 0 ? send() : startInBackground());
     return true;
   };
@@ -387,9 +386,10 @@ export function DraftView({ projectId }: { projectId: string | null }) {
               }}
             >
               <div className="composer-inner">
-                {error || checkoutError ? (
+                {error || checkoutError || modelDefaults.error ? (
                   <p className="field-error composer-error" role="alert">
-                    {error ?? checkoutError}
+                    {error ?? checkoutError ?? modelDefaults.error}
+                    {modelDefaults.error ? <button type="button" onClick={modelDefaults.reload}>Retry</button> : null}
                   </p>
                 ) : null}
                 <div className="composer-box">
@@ -463,10 +463,9 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                           )
                         }
                         onModel={(next) => {
-                          const picked = { ...next, effort: pickedEffort };
+                          const picked = { ...next, effort: next.engine === engine.id && next.model === pickedModel ? pickedEffort : null };
                           setExtraModels([]);
                           setExtras({});
-                          setPickedHere(true);
                           setChoice(picked);
                           setPrefs({ lastModel: picked });
                         }}
@@ -478,13 +477,19 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                         onOption={(option, value) => setExtras({ ...extras, [option]: value })}
                         onAccess={setAccess}
                       />
+                    ) : installed.length > 0 ? (
+                      <ModelPickerTrigger engines={installed} selected={{ engine: installed[0]!.id, model: null }}
+                        onPick={(next) => {
+                          const picked = { ...next, effort: null };
+                          setChoice(picked); setPrefs({ lastModel: picked }); setExtraModels([]);
+                        }} />
                     ) : (
                       <span className="composer-control">
                         <Bot size={14} aria-hidden />
                         No engine
                       </span>
                     )}
-                    <button type="submit" className="send-btn" aria-label="Send" disabled={!prompt.trim() || busy || checkoutLoading || !!checkoutError || !engine}>
+                    <button type="submit" className="send-btn" aria-label="Send" disabled={!prompt.trim() || busy || checkoutLoading || !!checkoutError || modelDefaults.loading || !!modelDefaults.error || !engine}>
                       <ArrowUp size={16} aria-hidden />
                     </button>
                   </div>

@@ -231,6 +231,9 @@ const defaults: Prefs = {
 };
 
 interface UiState extends Prefs {
+  /** Counts saved server preferences, so a mounted reader can read them again. Never persisted. */
+  preferencesRevision: number;
+  bumpPreferencesRevision(): void;
   terminalReveal: { threadId: string; group: string; nonce: number } | null;
   revealTerminal(threadId: string, group: string): void;
   drafts: Record<string, string>;
@@ -596,6 +599,10 @@ export const useUi = create<UiState>((set, get) => {
       const { [DRAFT_LAYOUT]: _draft, ...others } = state.layouts;
       set({ layouts: others, layoutKey: threadId });
       savePrefs();
+    },
+    preferencesRevision: 0,
+    bumpPreferencesRevision() {
+      set((state) => ({ preferencesRevision: state.preferencesRevision + 1 }));
     },
     toggleSidebar() {
       set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));

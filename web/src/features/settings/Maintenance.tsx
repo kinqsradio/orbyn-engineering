@@ -109,6 +109,7 @@ function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disable
     } satisfies ScopedPreferencesChange;
     try {
       const next = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", mutation);
+      useUi.getState().bumpPreferencesRevision();
       if (mounted.current) {
         preferences.setData(next);
         setDraft({});
@@ -220,6 +221,7 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
     } satisfies ScopedPreferencesChange;
     try {
       const next = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", mutation);
+      useUi.getState().bumpPreferencesRevision();
       if (mounted.current) {
         preferences.setData({ ...snapshot, catalog: next.catalog,
           rows: snapshot.rows.map((previous) => next.rows.find((entry) => entry.key === previous.key) ?? previous) });

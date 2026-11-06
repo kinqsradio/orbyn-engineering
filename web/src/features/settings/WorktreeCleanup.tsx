@@ -10,6 +10,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { ErrorState, Loading } from "../../ui/states";
 import { Advanced } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { useUi } from "../../state/ui";
 
 type Policy = { mode?: string; rules?: { settled_after_days?: unknown } };
 const policy = (value: unknown): Policy => value !== null && typeof value === "object" ? value as Policy : {};
@@ -57,6 +58,7 @@ function CleanupRules({ query }: { query: ProjectScopesQuery }) {
         scope: query, membership_version: snapshot.catalog.version,
         if_match: { [row.key]: row.revision }, edits: { [row.key]: edit },
       });
+      useUi.getState().bumpPreferencesRevision();
       if (mounted.current) {
         read.setData({ ...snapshot, catalog: changed.catalog, rows: snapshot.rows.map((previous) => changed.rows.find((next) => next.key === previous.key) ?? previous) });
       }

@@ -127,6 +127,7 @@ function CustomModels({ engine }: { engine: EngineStatus }) {
         scope: {}, membership_version: preferences.data.catalog.version,
         if_match: { [row.key]: row.revision }, edits: { [row.key]: { op: "set", value: next } },
       });
+      useUi.getState().bumpPreferencesRevision();
       preferences.setData(changed);
       void useModelStore.getState().reload(engine.id);
       return true;
