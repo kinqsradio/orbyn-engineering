@@ -124,17 +124,16 @@ test("a Mixed project group changes both captured checkouts while a checkout cho
   } finally { await service.stop(); }
 });
 
-test("Escape closes only the model picker inside native modal settings, including from its provider rail", async ({ page }) => {
+test("Escape closes only the model picker inside the settings page, including from its provider rail", async ({ page }) => {
   const { service, projectId } = await startProject({ fakeEngines: true });
   try {
     for (const focus of ["search", "provider"]) {
       await page.goto(await projectSettingsUrl(service, projectId));
       const settings = page.getByRole("region", { name: "Settings", exact: true });
       await expect(settings).toBeVisible();
-      expect(await settings.evaluate((element) => element.matches(":modal"))).toBe(true);
       const trigger = modelRow(page).locator("[data-model-trigger]");
       await trigger.click();
-      const picker = settings.getByRole("dialog", { name: "Choose a model" });
+      const picker = page.getByRole("dialog", { name: "Choose a model" });
       await expect(picker).toBeVisible();
       const search = picker.getByRole("textbox", { name: "Search models" });
       await expect(search).toBeFocused();

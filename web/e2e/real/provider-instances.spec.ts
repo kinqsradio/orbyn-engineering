@@ -98,7 +98,7 @@ test("accent picker escapes scrolling settings and supports desktop-dark and nar
     for (const entry of [{ width: 1400, height: 900, theme: "dark" }, { width: 640, height: 760, theme: "light" }]) {
       await page.setViewportSize({ width: entry.width, height: entry.height });
       await page.goto(`${service.page}#/settings/appearance`);
-      await page.getByRole("combobox", { name: "Theme", exact: true }).selectOption(entry.theme);
+      await page.getByRole("radiogroup", { name: "Theme", exact: true }).getByRole("radio", { name: entry.theme === "dark" ? "Dark" : "Light", exact: true }).click();
       await expect(page.locator("html")).toHaveAttribute("data-theme", entry.theme);
       await open(page, service); await page.getByRole("button", { name: "Select Work", exact: true }).click();
       const trigger = page.getByRole("button", { name: /^(Add|Change) accent color for Work$/ });

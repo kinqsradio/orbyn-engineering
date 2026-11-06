@@ -532,7 +532,7 @@ export function Shell() {
   const onHome = underneath.name === "home" && !needsProject;
   const reading = useUi((state) => state.workspaceLayout === "reading");
   const readingNav = useReadingNav((state) => state.open);
-  const showNav = layout === "narrow" ? onHome : reading ? readingNav : !collapsed;
+  const showNav = layout === "narrow" ? onHome && route.name !== "settings" : reading ? readingNav : !collapsed;
 
   return (
     <div
