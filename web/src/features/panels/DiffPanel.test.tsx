@@ -4,11 +4,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { useComposerChips } from "../../state/composerChips";
 import { useUi } from "../../state/ui";
-import { DiffPanel, diffCommentRange, numberedLines, parsePatch } from "./DiffPanel";
+import { useWorkspace } from "../../state/workspace";
+import { DiffPanel, diffCommentRange, nextPageEnd, numberedLines, parsePatch } from "./DiffPanel";
 afterEach(() => {
   vi.restoreAllMocks();
   useComposerChips.setState({ chips: {} });
-  useUi.getState().setPrefs({ diffLayout: "stacked" });
+  useUi.getState().setPrefs({ diffLayout: "stacked", diffFilesCollapsed: false });
 });
 it("shows a historical turn diff without exposing a per-file restore action", async () => {
   const user = userEvent.setup();
@@ -98,3 +99,60 @@ it("a diff comment range covers only shown new-side lines and stays within the c
   const long = numberedLines(parsePatch(`@@ -0,0 +1 @@\n+${"x".repeat(5000)}\n`));
   expect(diffCommentRange(long, 1, 1)).toBeNull();
 });
+
+const many = (count: number) => Array.from({ length: count }, (_, at) => ({
+  path: `src/file-${String(at).padStart(3, "0")}.ts`, status: "modified", additions: 1, deletions: 1,
+  patch: `@@ -1 +1 @@\n-old ${at}\n+needle ${at}\n`,
+}));
+
+it("a large diff loads its files a page at a time and find says it covers loaded files only", async () => {
+  const user = userEvent.setup();
+  // Collapsed rows keep the case light; Find reads patches, not the rendered lines.
+  useUi.getState().setPrefs({ diffFilesCollapsed: true });
+  vi.spyOn(api, "diff").mockResolvedValue(many(120));
+  render(<DiffPanel threadId="t" />);
+  await screen.findByRole("button", { name: "Copy path src/file-000.ts" });
+  expect(screen.getAllByRole("button", { name: /^Copy path / })).toHaveLength(50);
+  // The summary still counts the whole diff.
+  expect(screen.getByText("120 files")).toBeInTheDocument();
+  await user.click(screen.getByRole("searchbox", { name: "Find in diff" }));
+  await user.paste("needle");
+  expect(screen.getByText("50 matches")).toBeInTheDocument();
+  expect(screen.getByText(/Find covers the 50 of 120 files loaded so far\./)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Load more files (70 left)" }));
+  expect(screen.getAllByRole("button", { name: /^Copy path / })).toHaveLength(100);
+  expect(screen.getByText("100 matches")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Load more files (20 left)" }));
+  expect(screen.getAllByRole("button", { name: /^Copy path / })).toHaveLength(120);
+  expect(screen.queryByRole("button", { name: /^Load more files/ })).toBeNull();
+  expect(screen.queryByText(/Find covers/)).toBeNull();
+}, 20_000);
+
+it("a page also ends at about 4,000 patch lines, never before its first file", () => {
+  const big = { patch: "x\n".repeat(3000) };
+  expect(nextPageEnd([big, big, big], 0)).toBe(1);
+  expect(nextPageEnd([{ patch: "x\n".repeat(9000) }, big], 0)).toBe(1);
+  expect(nextPageEnd(many(10), 0)).toBe(10);
+  expect(nextPageEnd(many(120), 100)).toBe(120);
+});
+
+it("revealing a file past the loaded pages loads it and scrolls to it", async () => {
+  const thread = { id: "t", project_id: "p", title: "Big", engine: "codex", model: null, cwd: "/repo", worktree: null,
+    skill_profile: null, scratch: false, active_run: null, last_run_state: null, created_at: "", updated_at: "" };
+  window.history.replaceState(null, "", "#/threads/t");
+  useWorkspace.setState({ threads: { t: thread } as never });
+  useUi.getState().setPrefs({ diffFilesCollapsed: true });
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  vi.spyOn(api, "diff").mockResolvedValue(many(120));
+  vi.spyOn(api, "resolveThreadPath").mockResolvedValue({ cwd: "/repo", checkout_path: "src/file-110.ts",
+    repository_path: "src/file-110.ts" });
+  render(<DiffPanel threadId="t" />);
+  await screen.findByRole("button", { name: "Copy path src/file-000.ts" });
+  expect(screen.queryByRole("button", { name: "Copy path src/file-110.ts" })).toBeNull();
+  act(() => useUi.getState().revealDiff("src/file-110.ts", { threadId: "t", cwd: "/repo" }));
+  await screen.findByRole("button", { name: "Copy path src/file-110.ts" }, { timeout: 10_000 });
+  await waitFor(() => expect(useUi.getState().diffReveal).toBeNull(), { timeout: 10_000 });
+  expect(scroll).toHaveBeenCalled();
+  useWorkspace.setState({ threads: {} });
+}, 20_000);

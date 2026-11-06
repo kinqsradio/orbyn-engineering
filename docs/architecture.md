@@ -1337,6 +1337,13 @@ on (source, run, base or commit, and checkout); editing or removing the chip edi
 removes the annotation, and the annotation's Remove removes the chip. Removed lines
 take no comment, since a chip names new-side lines only.
 
+A large diff mounts its files a page at a time: 50 files or about 4,000 patch
+lines, never less than one file. The next page loads as the end of the list
+scrolls into view, or from its Load more button. The file count and line totals
+cover the whole diff; Find counts matches in loaded files only and says so while
+files remain. Revealing a file loads the pages up to it first. The service still
+returns the whole diff in one response.
+
 `GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
 byte range at a time; a form it does not serve gets the whole file. A checkout holds
 code nobody here wrote, so nothing in it may run in this origin. The type comes from

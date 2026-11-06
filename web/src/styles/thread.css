@@ -3921,3 +3921,8 @@ div.browser-bridge-row {
   grid-row: 1 / span 2;
   align-self: start;
 }
+.diff-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}

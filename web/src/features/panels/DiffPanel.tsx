@@ -13,6 +13,22 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 
 const LINE_LIMIT = 2000;
+/** A large diff renders files in pages, so a huge change set never mounts at once. */
+const FILE_PAGE = 50;
+const PAGE_LINES = 4000;
+
+/** Where the page that starts at `from` ends: 50 files or about 4,000 patch lines, at least one file. */
+export function nextPageEnd(files: readonly { patch: string }[], from: number): number {
+  let lines = 0;
+  let at = from;
+  while (at < files.length && at - from < FILE_PAGE) {
+    lines += files[at]!.patch.split("\n").length;
+    if (at > from && lines > PAGE_LINES) break;
+    at += 1;
+  }
+  return at;
+}
+
 export type DiffLine = { kind: "hunk" | "add" | "del" | "ctx" | "meta"; text: string };
 
 export function parsePatch(patch: string): DiffLine[] {
@@ -443,7 +459,16 @@ export function DiffPanel({ threadId }: { threadId: string }) {
   const reveal = useUi((state) => state.diffReveal);
   const resolved = useResolvedThreadPath(threadId, reveal ? { ...reveal, basis: "repository" } : null);
   const consume = useUi((state) => state.consumeDiffReveal);
+  const [loaded, setLoaded] = useState(0);
+  const shownFiles = useMemo(() => {
+    const every = diff.data ?? [];
+    return hideTests ? every.filter((file) => !TEST_FILE.test(file.path)) : every;
+  }, [diff.data, hideTests]);
+  const shownCount = Math.max(loaded, nextPageEnd(shownFiles, 0));
+  // A new diff starts again from its first page.
+  useEffect(() => setLoaded(0), [scope, hideTests]);
   const root = useRef<HTMLDivElement>(null);
+  const more = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
     if (!reveal) return;
@@ -458,19 +483,34 @@ export function DiffPanel({ threadId }: { threadId: string }) {
     const path = resolved.value?.repository_path;
     if (!path || !reveal || useUi.getState().diffReveal?.nonce !== reveal.nonce
       || useWorkspace.getState().threads[threadId]?.cwd !== reveal.cwd) return;
+    // A file past the loaded pages loads first, then scrolls into view.
+    const at = shownFiles.findIndex((file) => file.path === path);
+    if (at >= shownCount) { setLoaded(at + 1); return; }
     const target = root.current?.querySelector(`[data-diff-file="${CSS.escape(path)}"]`);
     if (target) { target.scrollIntoView({ block: "start" }); consume(reveal.nonce); }
-  }, [reveal, resolved.value, diff.data, consume, threadId]);
+  }, [reveal, resolved.value, diff.data, consume, threadId, shownFiles, shownCount]);
+
+  // Loading the next page as the end of the list scrolls into view.
+  useEffect(() => {
+    const sentinel = more.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setLoaded((count) => nextPageEnd(shownFiles, Math.max(count, shownCount)));
+    }, { rootMargin: "400px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [shownFiles, shownCount]);
 
   if (diff.status === "loading") return <Loading label="Loading diff" />;
   if (diff.status === "error" && !diff.data) {
     return <ErrorState title="Couldn't load the diff" failure={diff.error} onRetry={reload} />;
   }
-  const all = diff.data ?? [];
-  const files = hideTests ? all.filter((file) => !TEST_FILE.test(file.path)) : all;
+  const files = shownFiles;
+  const page = files.slice(0, shownCount);
   const needle = find.trim().toLowerCase();
+  // Find covers the files loaded so far, and says so while more remain.
   const hits = needle
-    ? files.reduce((sum, file) => sum + parsePatch(file.patch).filter((line) => line.text.toLowerCase().includes(needle)).length, 0)
+    ? page.reduce((sum, file) => sum + parsePatch(file.patch).filter((line) => line.text.toLowerCase().includes(needle)).length, 0)
     : 0;
   const added = files.reduce((sum, file) => sum + file.additions, 0);
   const removed = files.reduce((sum, file) => sum + file.deletions, 0);
@@ -515,6 +555,9 @@ export function DiffPanel({ threadId }: { threadId: string }) {
           onChange={(event) => setFind(event.target.value)}
         />
         {needle ? <output>{hits === 1 ? "1 match" : `${hits} matches`}</output> : null}
+        {needle && page.length < files.length ? (
+          <p className="muted" role="note">Find covers the {page.length} of {files.length} files loaded so far. Scroll to load more.</p>
+        ) : null}
       </div>
       <div className="panel-bar">
         <span>
@@ -537,7 +580,7 @@ export function DiffPanel({ threadId }: { threadId: string }) {
         <Empty title="No changes" />
       ) : (
         <ul className="diff-files">
-          {files.map((file) => (
+          {page.map((file) => (
             <FileRow
               key={file.path}
               file={file}
@@ -552,6 +595,13 @@ export function DiffPanel({ threadId }: { threadId: string }) {
               }}
             />
           ))}
+          {page.length < files.length ? (
+            <li ref={more} className="diff-more">
+              <Button small tone="quiet" onClick={() => setLoaded(nextPageEnd(files, page.length))}>
+                Load more files ({files.length - page.length} left)
+              </Button>
+            </li>
+          ) : null}
         </ul>
       )}
     </div>
