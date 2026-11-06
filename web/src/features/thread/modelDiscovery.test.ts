@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
 import type { EngineModels } from "../../api/types";
-import { useModelStore } from "./modelStore";
+import { useModelStore } from "../../state/modelStore";
 
 afterEach(() => vi.restoreAllMocks());
 

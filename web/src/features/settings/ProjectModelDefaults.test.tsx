@@ -8,7 +8,7 @@ import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesR
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
 import { ProjectModelDefaults } from "./ProjectModelDefaults";
 import { scopedFixture } from "./scopedPreferenceFixture.test-support";
-import { useModelStore } from "../thread/modelStore";
+import { useModelStore } from "../../state/modelStore";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 vi.mock("../../state/workspace", () => ({ useWorkspace: (select: (state: unknown) => unknown) =>

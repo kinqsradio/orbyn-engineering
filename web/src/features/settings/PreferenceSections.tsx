@@ -20,7 +20,7 @@ import { WorktreeCleanup } from "./WorktreeCleanup";
 import { SourceControlWriting } from "./SourceControlWriting";
 import type { TriagePlaybook } from "../../generated/TriagePlaybook";
 import { navigate } from "../../state/route";
-import { DRAFT_KEY, SCRATCH } from "../onboarding/draftStore";
+import { DRAFT_KEY, SCRATCH } from "../../state/draftStore";
 
 const heading = (title: string) => (
   <h1 className="sr-only" tabIndex={-1} data-page-title>

@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-import { api } from "../../api/client";
-import type { EngineModels, ModelInfo } from "../../api/types";
-import { toFailure } from "../../lib/useAsync";
+import { api } from "../api/client";
+import type { EngineModels, ModelInfo } from "../api/types";
+import { toFailure } from "../lib/useAsync";
 
 interface ModelState {
   byEngine: Record<string, EngineModels>;

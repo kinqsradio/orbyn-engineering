@@ -15,7 +15,7 @@ import {
   useEngineModels,
   useModelStore,
   type PickerRow,
-} from "./modelStore";
+} from "../../state/modelStore";
 
 const MARGIN = 6;
 const GAP = 4;

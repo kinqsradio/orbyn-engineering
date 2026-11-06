@@ -14,7 +14,7 @@ vi.mock("./SideChatPane", () => ({ SideChatPane: () => null }));
 vi.mock("./sideChat", () => ({ openSideChat: vi.fn(), closeSideChat: vi.fn() }));
 
 const linked = vi.fn(async () => [] as { number: number }[]);
-vi.mock("../pulls/pullsApi", () => ({ pullsApi: { linked: () => linked() } }));
+vi.mock("../../api/pulls", () => ({ pullsApi: { linked: () => linked() } }));
 
 const thread = { id: "thread-1" } as Thread;
 

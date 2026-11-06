@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { ModelInfo } from "../../api/types";
+import type { ModelInfo } from "../api/types";
 import { arrangeModels, effortValue, resolveModel, searchRows, shortModelName } from "./modelStore";
-import { chooseSide, placeFloating } from "./ModelPicker";
+import { chooseSide, placeFloating } from "../features/thread/ModelPicker";
 
 const model = (id: string, over: Partial<ModelInfo> = {}): ModelInfo => ({
   id,

@@ -5,7 +5,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
-import { pullsApi } from "./pullsApi";
+import { pullsApi } from "../../api/pulls";
 
 interface PatchLine {
   text: string;

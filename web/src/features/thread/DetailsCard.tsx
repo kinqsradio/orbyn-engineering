@@ -26,7 +26,7 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { Menu, type MenuItem } from "../../ui/Menu";
-import { pullsApi } from "../pulls/pullsApi";
+import { pullsApi } from "../../api/pulls";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { BranchRow } from "./GitControl";

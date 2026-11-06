@@ -22,13 +22,13 @@ import { Menu } from "../../ui/Menu";
 import { Loading } from "../../ui/states";
 import { ACCESS, EffortTrigger, offeredModes, shownAccess, useTraitsMenu } from "../thread/ComposerTraits";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
-import { resolveModel, useEngineModels } from "../thread/modelStore";
+import { resolveModel, useEngineModels } from "../../state/modelStore";
 import { DraftProjectPicker } from "./DraftProjectPicker";
-import { DRAFT_KEY, SCRATCH, useDraftStore, worktreePurpose } from "./draftStore";
+import { DRAFT_KEY, SCRATCH, useDraftStore, worktreePurpose } from "../../state/draftStore";
 
 type OpenMenu = { kind: "checkout"; x: number; y: number };
 
-export { SCRATCH } from "./draftStore";
+export { SCRATCH } from "../../state/draftStore";
 
 interface ModelChoice {
   engine: string;

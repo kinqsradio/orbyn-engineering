@@ -8,7 +8,7 @@ import { Button, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { PullDetail } from "../pulls/PullDetail";
-import { pullsApi } from "../pulls/pullsApi";
+import { pullsApi } from "../../api/pulls";
 
 /** Finds a pull request by number or words, and links it to this thread. */
 function LinkDialog({ thread, onClose, onLinked }: { thread: Thread; onClose(): void; onLinked(): void }) {

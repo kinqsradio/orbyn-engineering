@@ -11,7 +11,7 @@ import { Menu, type MenuItem } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
 import { PullDetail } from "./PullDetail";
 import { authorsOf, labelsOf, noFilters, parseSearch, visiblePulls, type PullFilters, type PullSort } from "./pullModel";
-import { pullsApi } from "./pullsApi";
+import { pullsApi } from "../../api/pulls";
 
 const SORTS: { value: PullSort; label: string }[] = [
   { value: "updated", label: "Recently updated" },
