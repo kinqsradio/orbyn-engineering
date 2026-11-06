@@ -652,7 +652,12 @@ hooks use this same resolver. The scripts response keeps the actual file content
 the file. Opening a script terminal preserves its selected tab while the terminal
 list refreshes. Malformed files block execution, and script lists require unique nonempty
 names and nonempty commands. The action editor preserves a named script's
-role and options when editing its command. Both manual script menus open a new
+role and options when editing its command. Every saved action list, for the
+environment or a checkout, writes a `project.actions.save` audit row in the same
+transaction and before the write: the scope (`all_projects` or the project id),
+whether it reverts to Inherit, and each action's id and name. Commands are not copied
+into the audit log. Running an action is audited as `script.run` and opening a file in
+an editor or file manager as `file.open`, each before the effect. Both manual script menus open a new
 Browser tab after successful command launch when `auto_open_preview` is enabled
 and `preview_url` is set. The existing preview API validates the URL and owns its
 browser process. The new tab is selected without replacing another page; preview
