@@ -330,6 +330,11 @@ function UsageView({
             <p className="usage-note">No model in this period has a price.</p>
           )}
           <h2>Cost by tier</h2>
+          {totals.tiers.some((tier) => tier.tier !== "standard" && tier.unpricedTokens > 0) ? (
+            <p className="usage-note" role="note">
+              A price without a tier now covers the standard tier only. Set a price for each other tier from its model.
+            </p>
+          ) : null}
           <div className="usage-stats">
             {totals.tiers.map((tier) => (
               <Stat

@@ -147,6 +147,7 @@ it("splits cost by token type and tier and keeps an unpriced tier unknown", asyn
   expect(split).toHaveTextContent("Fast · 50 tokens$6.00");
   expect(split).toHaveTextContent("Priority · 50 tokensUnpriced");
   expect(split).toHaveTextContent("Standard · 200 tokens$12.00");
+  expect(within(split).getByRole("note")).toHaveTextContent("covers the standard tier only");
 });
 
 it("shows each model's cache hit, cost per million and trend", async () => {
