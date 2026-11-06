@@ -1623,7 +1623,8 @@ button.detail-row:hover {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 12px 6px 8px;
+  /* 4px sides leave room for all six tabs at 380px whatever the platform's font metrics. */
+  padding: 12px 4px 8px;
   flex: none;
 }
 .context-head .layout-toggles .icon-btn[aria-pressed="false"],
@@ -1673,7 +1674,6 @@ button.detail-row:hover {
   display: flex;
   flex: none;
   gap: 0;
-  margin-left: 2px;
 }
 .context-head .end .icon-btn {
   width: 24px;
