@@ -69,20 +69,18 @@ test("diff, file, terminal and page-element chips are sent as labelled blocks", 
   threadId = threadIdOf(page);
   await settled(service, threadId);
 
-  // Review comment: the stacked diff offers one per line; the split layout offers none.
+  // Review comment: both diff layouts offer one on the new side of a line; this one is made in split.
   await page.getByRole("button", { name: /^Changes/ }).click();
   const patch = page.locator("[data-diff-file='notes.txt']");
   await expect(patch.locator(".patch-line").first()).toBeVisible();
-  const comment = patch.getByRole("button", { name: "Comment on this line" });
-  await expect(comment.first()).toBeAttached();
+  await expect(patch.getByRole("button", { name: "Comment on line 2", exact: true })).toBeAttached();
   const split = page.getByRole("checkbox", { name: "Split" });
   await split.check();
   await expect(patch.locator(".patch-split").first()).toBeVisible();
-  await expect(comment).toHaveCount(0);
-  await split.uncheck();
-  await patch.locator(".patch-line", { hasText: "two changed" }).getByRole("button", { name: "Comment on this line" }).click();
+  await patch.locator(".patch-split", { hasText: "two changed" }).getByRole("button", { name: "Comment on line 2", exact: true }).click();
   await page.getByRole("textbox", { name: "Review comment on notes.txt line 2" }).fill("Why change two?");
   await page.getByRole("button", { name: "Add to message", exact: true }).click();
+  await split.uncheck();
   await expect(chips(page).locator("li[data-kind=review]")).toContainText("notes.txt:2");
 
   // File: the link in the reply reveals line 3, and the open file joins the message there.
