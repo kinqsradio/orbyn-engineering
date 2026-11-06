@@ -28,7 +28,7 @@ export function LimitBanner({ thread }: { thread: Thread }) {
   const snoozedUntilReset = future && thread.lifecycle?.snoozed_until != null &&
     Date.parse(thread.lifecycle.snoozed_until) === Date.parse(limit.resets_at ?? "");
   return (
-    <div className="thread-error" role="status" aria-label="Limited">
+    <div className="thread-error thread-limit" role="status" aria-label="Limited">
       <Gauge size={14} aria-hidden />
       <span>
         {limit.message}

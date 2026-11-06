@@ -17,14 +17,19 @@ const outcome = {
 const kindIcon = (kind: Approval["kind"]) =>
   kind === "command" ? SquareTerminal : kind === "file_change" ? FileDiff : Wrench;
 
+const kindLabel: Partial<Record<Approval["kind"], string>> = { command: "command", file_change: "file change" };
+
 /** An approval as a work row: what it would do, then Decline, Approve and More. */
-export function ApprovalCard({ approval }: { approval: Approval }) {
+export function ApprovalCard({ approval, minimapKey }: { approval: Approval; minimapKey?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
   const putReceipt = useWorkspace((state) => state.putReceipt);
   const refreshApprovals = useWorkspace((state) => state.refreshApprovals);
-  const touches = touchesOf(approval.detail).flatMap((touch) => touch.values);
+  const touches = touchesOf(approval.detail)
+    .filter((touch) => touch.label !== "Address" && touch.label !== "Folder")
+    .flatMap((touch) => touch.values);
+  const targets = touches.length > 0 ? touches : [approval.summary];
   const Icon = kindIcon(approval.kind);
 
   const decide = async (allow: boolean, remember: boolean) => {
@@ -58,23 +63,43 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
   };
 
   const decided = approval.state === "pending" ? null : outcome[approval.state];
+  const reaches = touchesOf(approval.detail).filter((touch) => touch.label === "Address" || touch.label === "Folder");
+  const why = approval.summary && !targets.includes(approval.summary) ? approval.summary : null;
   return (
-    <article className="approval" data-pending={decided ? undefined : ""} aria-label={approval.summary} tabIndex={decided ? undefined : -1}>
+    <article className="approval" data-minimap={minimapKey} data-pending={decided ? undefined : ""} aria-label={approval.summary} tabIndex={decided ? undefined : -1}>
       {decided ? null : (
-        <p className="ask-label">
-          <span className="status-dot" aria-hidden />
-          Needs you
-        </p>
+        <div className="approval-top">
+          <p className="ask-label">
+            <span className="status-dot" aria-hidden />
+            Needs you · {kindLabel[approval.kind] ?? "tool"}
+          </p>
+          <span className="approval-wait">Waiting for approval</span>
+        </div>
       )}
-      <p className="approval-target">
-        <Icon size={14} aria-hidden />
-        <code>{touches[0] ?? approval.summary}</code>
-      </p>
-      {touches.slice(1).map((value) => (
-        <p key={value} className="approval-target approval-more-target">
-          <code>{value}</code>
-        </p>
-      ))}
+      <div className="approval-targets">
+        {targets.map((value, at) => (
+          <p key={value} className={at === 0 ? "approval-target" : "approval-target approval-more-target"}>
+            {at === 0 ? <Icon size={14} aria-hidden /> : null}
+            <code>{value}</code>
+          </p>
+        ))}
+      </div>
+      {decided ? null : (
+        <>
+          {why ? (
+            <p className="approval-kv">
+              <span>Why</span>
+              <b>{why}</b>
+            </p>
+          ) : null}
+          {reaches.map((touch) => (
+            <p key={touch.label} className="approval-kv">
+              <span>{touch.label === "Address" ? "Reaches" : "Runs in"}</span>
+              <b className="mono">{touch.values.join(", ")}</b>
+            </p>
+          ))}
+        </>
+      )}
       {decided ? (
         <p className="approval-line">
           <decided.icon size={12} aria-hidden />
@@ -82,15 +107,9 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         </p>
       ) : (
         <div className="approval-line">
-          <span className="approval-wait">Waiting for approval</span>
-          <button type="button" disabled={busy} onClick={() => void decide(false, false)}>
-            Decline
-          </button>
-          <button type="button" className="approval-primary" disabled={busy} onClick={() => void decide(true, false)}>
-            Approve
-          </button>
           <button
             type="button"
+            className="approval-more"
             aria-haspopup="menu"
             disabled={busy}
             onClick={(event) => {
@@ -99,6 +118,12 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
             }}
           >
             More
+          </button>
+          <button type="button" disabled={busy} onClick={() => void decide(false, false)}>
+            Decline
+          </button>
+          <button type="button" className="approval-primary" disabled={busy} onClick={() => void decide(true, false)}>
+            Approve
           </button>
         </div>
       )}
