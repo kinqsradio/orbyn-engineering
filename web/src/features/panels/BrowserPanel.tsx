@@ -1,5 +1,5 @@
 import { serviceSocketUrl } from "../../api/origin";
-import { ArrowLeft, ArrowRight, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
+import { AppWindow, ArrowLeft, ArrowRight, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -796,6 +796,16 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
         >
           <EyeOff size={14} aria-hidden />
         </IconButton></> : null}
+        {active && !detached && inDesktopApp() ? (
+          <span className="browser-popout">
+            <IconButton
+              label="Open in separate window"
+              onClick={() => void act(() => request("POST", `${base}/${q(active.id)}/window`))}
+            >
+              <AppWindow size={14} aria-hidden />
+            </IconButton>
+          </span>
+        ) : null}
         {onlyTabId && onMove ? <IconButton label="Close second Browser panel" onClick={() => onMove(onlyTabId)}><X size={14} aria-hidden /></IconButton> : null}
       </div>
       <div className="browser-bar">

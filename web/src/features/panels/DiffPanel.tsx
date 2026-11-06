@@ -1,8 +1,9 @@
-import { ChevronRight, Copy, MessageSquare, RefreshCw } from "lucide-react";
+import { ChevronRight, Copy, GitPullRequest, MessageSquare, RefreshCw, Undo2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { FileDiff } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
+import { pullsApi } from "../../api/pulls";
 import { useWorkspace } from "../../state/workspace";
 import { useThreadLogs } from "../thread/threadLogs";
 import { useUi } from "../../state/ui";
@@ -10,6 +11,8 @@ import { useComposerChips } from "../thread/composerChipStore";
 import { CHIP_EXCERPT_LIMIT, charactersOver, chipId, chipLabel, promptWithChips, type ReviewChip } from "../thread/composerContext";
 import { Button, IconButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
+import { RestoreFilesDialog } from "../thread/MessageActions";
+import { CREATE_PULL_REQUEST, GitActionDialog } from "../thread/GitControl";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 
 const LINE_LIMIT = 2000;
@@ -364,18 +367,28 @@ function FileRow({
   );
 }
 
-function DiffOptions() {
+/** Unified or split, the same stored choice as Settings › Diffs. */
+function DiffView() {
   const layout = useUi((state) => state.diffLayout);
+  const setPrefs = useUi((state) => state.setPrefs);
+  return (
+    <div className="diff-view segment" role="radiogroup" aria-label="Diff view">
+      {([["stacked", "Unified"], ["split", "Split"]] as const).map(([id, label]) => (
+        <button key={id} type="button" role="radio" aria-checked={layout === id} onClick={() => setPrefs({ diffLayout: id })}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DiffOptions() {
   const collapsed = useUi((state) => state.diffFilesCollapsed);
   const ignoreSpace = useUi((state) => state.diffIgnoreWhitespace);
   const hideTests = useUi((state) => state.diffHideTests);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
     <div className="diff-options">
-      <label>
-        <input type="checkbox" checked={layout === "split"} onChange={(event) => setPrefs({ diffLayout: event.target.checked ? "split" : "stacked" })} />
-        Split
-      </label>
       <label>
         <input type="checkbox" checked={collapsed} onChange={(event) => setPrefs({ diffFilesCollapsed: event.target.checked })} />
         Collapse files
@@ -417,7 +430,13 @@ export function DiffPanel({ threadId }: { threadId: string }) {
   const checkpoints = useAsync(`checkpoints:${threadId}:${source === "turn" ? version : "off"}`, (signal) =>
     source === "turn" ? api.checkpoints(threadId, signal) : Promise.resolve([]),
   );
-  const latestRun = checkpoints.data?.at(-1)?.run_id ?? null;
+  const turns = checkpoints.data ?? [];
+  const [pickedRun, setPickedRun] = useState<string | null>(null);
+  const latestRun = (pickedRun && turns.some((turn) => turn.run_id === pickedRun) ? pickedRun : turns.at(-1)?.run_id) ?? null;
+  const thread = useWorkspace((state) => state.threads[threadId]);
+  const linkedPulls = useAsync(`diff-linked:${threadId}`, (signal) => pullsApi.linked(threadId, signal));
+  const [restoring, setRestoring] = useState(false);
+  const [creating, setCreating] = useState(false);
   const commits = useAsync(`commits:${threadId}:${source}`, (signal) =>
     source === "commit" ? api.commits(threadId, signal) : Promise.resolve([]),
   );
@@ -545,6 +564,21 @@ export function DiffPanel({ threadId }: { threadId: string }) {
           ))}
         </select>
       ) : null}
+      <DiffView />
+      {source === "turn" && turns.length > 0 ? (
+        <select
+          className="diff-commit"
+          aria-label="Turn"
+          value={latestRun ?? ""}
+          onChange={(event) => setPickedRun(event.target.value)}
+        >
+          {turns.map((turn, at) => (
+            <option key={turn.run_id} value={turn.run_id}>
+              {`Turn ${at + 1} of ${turns.length}`}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <DiffOptions />
       <div className="diff-find">
         <input
@@ -604,6 +638,22 @@ export function DiffPanel({ threadId }: { threadId: string }) {
           ) : null}
         </ul>
       )}
+      {thread && thread.active_run === null && ((source === "turn" && latestRun) || (linkedPulls.status === "ready" && linkedPulls.data.length === 0)) ? (
+        <div className="diff-foot">
+          {source === "turn" && latestRun ? (
+            <Button small tone="quiet" icon={<Undo2 size={14} aria-hidden />} onClick={() => setRestoring(true)}>
+              Restore files to before this response
+            </Button>
+          ) : null}
+          {linkedPulls.status === "ready" && linkedPulls.data.length === 0 ? (
+            <Button small tone="quiet" icon={<GitPullRequest size={14} aria-hidden />} onClick={() => setCreating(true)}>
+              Create pull request
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {restoring && latestRun ? <RestoreFilesDialog threadId={threadId} runId={latestRun} onClose={() => setRestoring(false)} /> : null}
+      {creating && thread ? <GitActionDialog thread={thread} plan={CREATE_PULL_REQUEST} onClose={() => setCreating(false)} /> : null}
     </div>
   );
 }

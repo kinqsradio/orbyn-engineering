@@ -61,9 +61,9 @@ test("the diff surface: status, tests filter, find, split, whitespace, collapse,
   await expect(page.locator(".patch-line[data-hit]").first()).toBeVisible();
   await page.getByRole("searchbox", { name: "Find in diff" }).fill("");
 
-  await page.getByLabel("Split").check();
+  await page.getByRole("radio", { name: "Split" }).click();
   await expect(page.locator(".patch-split").first()).toBeVisible();
-  await page.getByLabel("Split").uncheck();
+  await page.getByRole("radio", { name: "Unified" }).click();
 
   await page.getByLabel("Ignore whitespace").check();
   await expect(page.locator("[data-diff-file='spaced.txt'] .patch-add")).toHaveCount(0);

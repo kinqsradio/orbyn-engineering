@@ -74,13 +74,13 @@ test("diff, file, terminal and page-element chips are sent as labelled blocks", 
   const patch = page.locator("[data-diff-file='notes.txt']");
   await expect(patch.locator(".patch-line").first()).toBeVisible();
   await expect(patch.getByRole("button", { name: "Comment on line 2", exact: true })).toBeAttached();
-  const split = page.getByRole("checkbox", { name: "Split" });
-  await split.check();
+  const view = page.getByRole("radiogroup", { name: "Diff view" });
+  await view.getByRole("radio", { name: "Split" }).click();
   await expect(patch.locator(".patch-split").first()).toBeVisible();
   await patch.locator(".patch-split", { hasText: "two changed" }).getByRole("button", { name: "Comment on line 2", exact: true }).click();
   await page.getByRole("textbox", { name: "Review comment on notes.txt line 2" }).fill("Why change two?");
   await page.getByRole("button", { name: "Add to message", exact: true }).click();
-  await split.uncheck();
+  await view.getByRole("radio", { name: "Unified" }).click();
   await expect(chips(page).locator("li[data-kind=review]")).toContainText("notes.txt:2");
 
   // File: the link in the reply reveals line 3, and the open file joins the message there.

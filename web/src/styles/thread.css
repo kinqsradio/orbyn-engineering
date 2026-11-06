@@ -4322,3 +4322,15 @@ div.browser-bridge-row {
 :root[data-workspace="reading"] .context:not([data-maximized]) .ptab {
   padding: 0 4px;
 }
+.browser-popout {
+  margin-left: auto;
+}
+.diff-view.segment {
+  margin: 4px 12px;
+}
+.diff-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+}

@@ -11,7 +11,7 @@ import { Button, Field } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
 
-interface Plan {
+export interface Plan {
   title: string;
   commit: boolean;
   push: boolean;
@@ -33,6 +33,8 @@ const PLANS: { label: string; plan: Plan; icon: typeof Upload }[] = [
     icon: GitPullRequest,
   },
 ];
+
+export const CREATE_PULL_REQUEST: Plan = { title: "Create pull request", commit: false, push: true, pull: true };
 
 const PHASE_NAMES: Record<string, string> = { commit: "Commit", push: "Push", pull_request: "Pull request" };
 
@@ -56,7 +58,7 @@ function Phase({ phase }: { phase: GitPhase }) {
   );
 }
 
-function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan; onClose(): void }) {
+export function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan; onClose(): void }) {
   const [message, setMessage] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");

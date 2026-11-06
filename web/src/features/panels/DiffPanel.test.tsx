@@ -28,6 +28,29 @@ it("shows a historical turn diff without exposing a per-file restore action", as
   expect(screen.getByRole("group", { name: "Patch" })).toHaveTextContent("new");
 });
 
+it("switches unified and split, picks a turn and offers restore for it", async () => {
+  const user = userEvent.setup();
+  const diff = vi.spyOn(api, "diff").mockResolvedValue([{ path: "a.txt", status: "modified", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new\n" }]);
+  vi.spyOn(api, "checkpoints").mockResolvedValue([
+    { run_id: "r1", start: "s1", end: "e1", created_at: "" },
+    { run_id: "r2", start: "s2", end: "e2", created_at: "" },
+  ]);
+  useWorkspace.setState({ threads: { t: { id: "t", active_run: null } as never } });
+  render(<DiffPanel threadId="t" />);
+  await screen.findByRole("button", { name: "Copy path a.txt" });
+  expect(screen.queryByRole("button", { name: "Restore files to before this response" })).toBeNull();
+  await user.click(screen.getByRole("radio", { name: "Split" }));
+  expect(useUi.getState().diffLayout).toBe("split");
+  await user.click(screen.getByRole("radio", { name: "Unified" }));
+  expect(useUi.getState().diffLayout).toBe("stacked");
+  await user.click(screen.getByRole("radio", { name: "Turn" }));
+  const picker = await screen.findByRole("combobox", { name: "Turn" });
+  expect(picker).toHaveValue("r2");
+  await user.selectOptions(picker, "r1");
+  await waitFor(() => expect(diff).toHaveBeenCalledWith("t", expect.any(AbortSignal), "turn&run=r1"));
+  expect(screen.getByRole("button", { name: "Restore files to before this response" })).toBeInTheDocument();
+});
+
 it("numbers new lines and adds a review comment chip for one", async () => {
   const user = userEvent.setup();
   vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1,
