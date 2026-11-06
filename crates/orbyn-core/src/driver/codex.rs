@@ -255,6 +255,42 @@ impl EngineDriver for CodexDriver {
         true
     }
 
+    /// A tool call from an MCP App page, on a short-lived app-server in the thread's
+    /// checkout. Codex 0.166.0 answers `mcpServer/tool/call` only for a thread it has
+    /// loaded, so an ephemeral, read-only thread is started for the call; nothing is
+    /// sent to a model and the thread's own session is not touched.
+    async fn mcp_app_tool_call(
+        &self,
+        cwd: &std::path::Path,
+        server: &str,
+        tool: &str,
+        arguments: &Value,
+    ) -> Result<Value> {
+        let session = self.short_session_in(cwd).await?;
+        let thread = session
+            .rpc
+            .call(
+                "thread/start",
+                json!({ "cwd": cwd, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": true }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+        let thread = thread
+            .pointer("/thread/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                CoreError::EngineUnavailable("Codex started no thread for the app's call.".into())
+            })?;
+        session
+            .rpc
+            .call(
+                "mcpServer/tool/call",
+                json!({ "server": server, "threadId": thread, "tool": tool, "arguments": arguments }),
+                CALL_TIMEOUT,
+            )
+            .await
+    }
+
     async fn start_run(
         &self,
         spec: RunSpec,
@@ -290,9 +326,13 @@ struct ShortSession {
 
 impl CodexDriver {
     async fn short_session(&self) -> Result<ShortSession> {
+        self.short_session_in(&std::env::temp_dir()).await
+    }
+
+    async fn short_session_in(&self, cwd: &std::path::Path) -> Result<ShortSession> {
         let command = resolve_engine(&self.program)?;
         let args = [OsString::from("app-server")];
-        let process = spawn_engine(&command, &args, &std::env::temp_dir())?;
+        let process = spawn_engine(&command, &args, cwd)?;
         let (rpc, _inbound) = RpcClient::start(process.stdin, process.stdout, false);
         rpc.call(
             "initialize",

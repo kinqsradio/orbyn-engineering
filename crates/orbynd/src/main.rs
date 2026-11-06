@@ -2,6 +2,7 @@
 
 mod access;
 mod api;
+mod mcp_apps;
 mod preview_routes;
 mod pulls;
 mod raw_files;
@@ -255,6 +256,14 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/threads/{id}/files/raw", get(raw_files::serve))
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
+        .route(
+            "/api/threads/{id}/mcp-apps/{render_id}/tool-call",
+            post(mcp_apps::tool_call),
+        )
+        .route(
+            "/api/threads/{id}/mcp-apps/{render_id}/message",
+            post(mcp_apps::message),
+        )
         .route("/api/threads/{id}/renders", post(renders::publish))
         .route("/api/threads/{id}/renders/{render_id}", get(renders::page))
         .route(

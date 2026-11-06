@@ -398,6 +398,20 @@ pub trait EngineDriver: Send + Sync {
         Ok(None)
     }
 
+    /// Calls one tool on an MCP server the engine has configured, for an MCP App
+    /// page, in `cwd`. The default says this engine reports no MCP Apps.
+    async fn mcp_app_tool_call(
+        &self,
+        _cwd: &std::path::Path,
+        _server: &str,
+        _tool: &str,
+        _arguments: &Value,
+    ) -> Result<Value> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot call an MCP App's tools.".into(),
+        ))
+    }
+
     /// Sends a feedback report through the engine's own route. The default says
     /// this engine has none.
     async fn feedback(&self, _request: &EngineFeedbackRequest) -> Result<EngineFeedbackReceipt> {

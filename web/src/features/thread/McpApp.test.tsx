@@ -1,5 +1,6 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "../../api/client";
 import { useUi } from "../../state/ui";
 import { applyEvents, emptyLog, type ToolItem } from "./projection";
 import type { AgUiEvent, WireThreadEvent } from "../../api/types";
@@ -69,10 +70,65 @@ describe("MCP App marker", () => {
 });
 
 describe("MCP App bridge", () => {
+  it("offers only what the host was given", async () => {
+    const full = await answerApp(
+      { id: 1, method: "ui/initialize", params: {} },
+      host({ callTool: vi.fn(), sendMessage: vi.fn(), requestDisplayMode: vi.fn() }),
+    );
+    expect(full).toMatchObject({
+      result: {
+        hostCapabilities: { serverTools: {}, message: { text: {} } },
+        hostContext: { availableDisplayModes: ["inline", "fullscreen"] },
+      },
+    });
+  });
+
+  it("passes a tool call on and reports its failure as the page's error", async () => {
+    const callTool = vi.fn().mockResolvedValueOnce({ content: [] }).mockRejectedValueOnce(new Error("The person declined."));
+    const call = { id: 3, method: "tools/call", params: { name: "pick", arguments: { a: 1 } } };
+    expect(await answerApp(call, host({ callTool }))).toEqual({ result: { content: [] } });
+    expect(callTool).toHaveBeenCalledWith("pick", { a: 1 });
+    expect(await answerApp(call, host({ callTool }))).toEqual({ error: { code: -32000, message: "The person declined." } });
+    expect(await answerApp({ id: 4, method: "tools/call", params: { name: "", arguments: {} } }, host({ callTool }))).toMatchObject({
+      error: { code: -32602 },
+    });
+    expect(await answerApp({ id: 5, method: "tools/call", params: { name: "pick", arguments: [1] } }, host({ callTool }))).toMatchObject({
+      error: { code: -32602 },
+    });
+    expect(await answerApp(call, host())).toMatchObject({ error: { code: -32601 } });
+  });
+
+  it("sends only user text as a message", async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    const send = (params: Record<string, unknown>) => answerApp({ id: 6, method: "ui/message", params }, host({ sendMessage }));
+    expect(await send({ role: "user", content: [{ type: "text", text: " pick blue " }] })).toEqual({ result: {} });
+    expect(await send({ role: "user", content: { type: "text", text: "one block" } })).toEqual({ result: {} });
+    expect(sendMessage.mock.calls).toEqual([["pick blue"], ["one block"]]);
+    for (const bad of [
+      { role: "assistant", content: [{ type: "text", text: "x" }] },
+      { role: "user", content: [{ type: "image", data: "x" }] },
+      { role: "user", content: [{ type: "text", text: "  " }] },
+    ]) {
+      expect(await send(bad), JSON.stringify(bad)).toMatchObject({ error: { code: -32602 } });
+    }
+  });
+
+  it("switches display mode only between the two it knows", async () => {
+    const requestDisplayMode = vi.fn((mode: string) => mode as "inline" | "fullscreen");
+    const ask = (mode: unknown) => answerApp({ id: 7, method: "ui/request-display-mode", params: { mode } }, host({ requestDisplayMode }));
+    expect(await ask("fullscreen")).toEqual({ result: { mode: "fullscreen" } });
+    expect(await ask("pip")).toEqual({ result: { mode: "inline" } });
+    expect(requestDisplayMode.mock.calls).toEqual([["fullscreen"]]);
+  });
+
   it("initializes with the theme and no extra capabilities", async () => {
     const reply = await answerApp({ id: 1, method: "ui/initialize", params: {} }, host());
     expect(reply).toMatchObject({
-      result: { protocolVersion: "2026-01-26", hostCapabilities: {}, hostContext: { theme: "dark", displayMode: "inline" } },
+      result: {
+        protocolVersion: "2026-01-26",
+        hostCapabilities: {},
+        hostContext: { theme: "dark", displayMode: "inline", availableDisplayModes: ["inline"] },
+      },
     });
   });
 
@@ -132,6 +188,63 @@ describe("MCP App frame", () => {
       },
       "*",
     );
+  });
+
+  it("runs an app's tool call only after the person confirms it in the host", async () => {
+    const call = vi.spyOn(api, "mcpAppToolCall").mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
+    render(<McpApp item={appRow()} threadId={THREAD} />);
+    const own = (screen.getByTitle("demo show_widget") as HTMLIFrameElement).contentWindow as Window;
+    const sent = vi.spyOn(own, "postMessage");
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "pick", arguments: { color: "blue" } } },
+          source: own,
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText("demo wants to run pick")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run tool" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(call).toHaveBeenCalledWith(THREAD, RENDER, "pick", { color: "blue" });
+    expect(sent).toHaveBeenCalledWith({ jsonrpc: "2.0", id: 9, result: { content: [{ type: "text", text: "ok" }] } }, "*");
+  });
+
+  it("answers a declined message with an error and sends nothing", async () => {
+    const message = vi.spyOn(api, "mcpAppMessage").mockResolvedValue({} as never);
+    render(<McpApp item={appRow()} threadId={THREAD} />);
+    const own = (screen.getByTitle("demo show_widget") as HTMLIFrameElement).contentWindow as Window;
+    const sent = vi.spyOn(own, "postMessage");
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { jsonrpc: "2.0", id: 10, method: "ui/message", params: { role: "user", content: [{ type: "text", text: "pick blue" }] } },
+          source: own,
+        }),
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await Promise.resolve();
+    });
+    expect(message).not.toHaveBeenCalled();
+    expect(sent).toHaveBeenCalledWith({ jsonrpc: "2.0", id: 10, error: { code: -32000, message: "The person declined." } }, "*");
+  });
+
+  it("shows the same frame full screen and back", () => {
+    const { container } = render(<McpApp item={appRow()} threadId={THREAD} />);
+    const frame = screen.getByTitle("demo show_widget");
+    fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    expect(container.querySelector("figure")?.getAttribute("data-display")).toBe("fullscreen");
+    expect(screen.getByTitle("demo show_widget")).toBe(frame);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(container.querySelector("figure")?.getAttribute("data-display")).toBe("inline");
   });
 
   it("shows nothing for an ordinary tool row", () => {

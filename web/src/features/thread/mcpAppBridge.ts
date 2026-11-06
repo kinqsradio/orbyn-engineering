@@ -92,6 +92,12 @@ export interface AppHost {
   toolResult: { content: unknown[]; structuredContent?: unknown };
   /** Resize the inline frame. */
   resize(height: number): void;
+  /** Calls a tool on the app's own server, once a person has confirmed it. */
+  callTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
+  /** Sends text as the person's next message, once a person has confirmed it. */
+  sendMessage?(text: string): Promise<void>;
+  /** Switches between the inline card and the full-screen view; answers the mode now shown. */
+  requestDisplayMode?(mode: McpAppDisplayMode): McpAppDisplayMode;
 }
 
 export type AppReply = { result: unknown } | { error: { code: number; message: string } };
@@ -105,14 +111,31 @@ export function hostContext(host: AppHost): Record<string, unknown> {
   return {
     theme: host.theme,
     displayMode: host.displayMode,
-    availableDisplayModes: ["inline"],
+    availableDisplayModes: host.requestDisplayMode ? ["inline", "fullscreen"] : ["inline"],
     platform: "web",
   };
 }
 
-/** The capabilities this host offers in `ui/initialize`. */
-export function hostCapabilities(): Record<string, unknown> {
-  return {};
+/** The capabilities this host offers in `ui/initialize`: only what it was given. */
+export function hostCapabilities(host: AppHost): Record<string, unknown> {
+  return {
+    ...(host.callTool ? { serverTools: {} } : {}),
+    ...(host.sendMessage ? { message: { text: {} } } : {}),
+  };
+}
+
+/** A refusal or failure the page sees as a JSON-RPC error, with the reason. */
+const failed = (error: unknown): AppReply =>
+  refuse(-32000, error instanceof Error && error.message ? error.message : "The host could not do that.");
+
+/** The text of a `ui/message`: user-role text blocks only, one block or a list. */
+export function messageText(params: Record<string, unknown>): string | null {
+  const blocks = Array.isArray(params.content) ? params.content : [params.content];
+  if (params.role !== "user" || blocks.length === 0) return null;
+  const texts = blocks.map((block) => (isRecord(block) && block.type === "text" && typeof block.text === "string" ? block.text : null));
+  if (texts.includes(null)) return null;
+  const text = texts.join("\n").trim();
+  return text === "" ? null : text;
 }
 
 /**
@@ -126,20 +149,41 @@ export async function answerApp(message: AppMessage, host: AppHost): Promise<App
         result: {
           protocolVersion: MCP_APP_PROTOCOL_VERSION,
           hostInfo: { name: "Orbyn", version: "1" },
-          hostCapabilities: hostCapabilities(),
+          hostCapabilities: hostCapabilities(host),
           hostContext: hostContext(host),
         },
       };
     case "ping":
       return { result: {} };
+    case "tools/call": {
+      if (!host.callTool) break;
+      const { name, arguments: args = {} } = message.params;
+      if (typeof name !== "string" || name.trim() === "" || !isRecord(args)) {
+        return refuse(INVALID_PARAMS, "tools/call needs a tool name and object arguments.");
+      }
+      return host.callTool(name, args).then((result) => ({ result }), failed);
+    }
+    case "ui/message": {
+      if (!host.sendMessage) break;
+      const text = messageText(message.params);
+      if (text === null) return refuse(INVALID_PARAMS, "Only non-empty text from the user role can be sent.");
+      return host.sendMessage(text).then(() => ({ result: {} }), failed);
+    }
+    case "ui/request-display-mode": {
+      if (!host.requestDisplayMode) break;
+      const mode = message.params.mode;
+      if (mode !== "inline" && mode !== "fullscreen") return { result: { mode: host.displayMode } };
+      return { result: { mode: host.requestDisplayMode(mode) } };
+    }
     case "ui/notifications/size-changed": {
       const height = clampAppHeight(message.params.height);
       if (height !== null) host.resize(height);
       return null;
     }
     default:
-      return message.id === undefined ? null : refuse(NOT_SUPPORTED, `This host does not serve ${message.method}.`);
+      break;
   }
+  return message.id === undefined ? null : refuse(NOT_SUPPORTED, `This host does not serve ${message.method}.`);
 }
 
 /** The notifications that follow the page's `ui/notifications/initialized`. */

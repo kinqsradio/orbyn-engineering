@@ -769,7 +769,12 @@ impl RunManager {
         thread_id: &str,
         app: &crate::mcp_apps::McpAppSnapshot,
     ) -> Option<AgUiEvent> {
-        match crate::renders::publish_app_page(&self.renders_dir, thread_id, &app.html) {
+        match crate::renders::publish_app_page(
+            &self.renders_dir,
+            thread_id,
+            &app.html,
+            &serde_json::json!({ "server": app.server, "tool": app.tool, "resourceUri": app.resource_uri }),
+        ) {
             Ok(render) => Some(AgUiEvent::Custom {
                 name: "mcp_app".into(),
                 value: crate::mcp_apps::timeline_marker(app, &render.id, &render.frame_token),

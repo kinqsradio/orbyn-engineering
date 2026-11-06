@@ -2981,6 +2981,29 @@ button.detail-row:hover {
 .md-thread-link {
   color: var(--color-primary);
 }
+/* An MCP App page. Full screen keeps the same frame, so the page keeps its state. */
+.mcp-app[data-display="fullscreen"] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border-radius: 0;
+}
+.mcp-app[data-display="fullscreen"] .render-body {
+  flex: 1;
+  height: auto !important;
+}
+.mcp-app[data-display="fullscreen"] .render-frame {
+  height: 100% !important;
+}
+.mcp-app-ask pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* Composer additions */
 .context-meter {

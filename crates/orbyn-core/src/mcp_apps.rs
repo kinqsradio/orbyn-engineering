@@ -7,7 +7,15 @@
 //! C21 sandbox and `?render=` token, so it runs offline in an opaque origin with no
 //! service credential. Checkout images are never embedded into it.
 
+use std::time::Duration;
+
+use orbyn_contracts::{ActionKind, PolicyEffect, QueuedMessage};
 use serde_json::{Value, json};
+
+use crate::app::Core;
+use crate::error::{CoreError, Result};
+use crate::policy;
+use crate::store::AuditRecord;
 
 /// The resource scheme MCP Apps use for their pages.
 pub const RESOURCE_SCHEME: &str = "ui://";
@@ -18,6 +26,13 @@ const MAX_NAME_BYTES: usize = 256;
 /// Structured tool output kept for the page's `tool-result` notification. Beyond
 /// this the page still gets the text content from the row.
 const MAX_STRUCTURED_BYTES: usize = 32 * 1024;
+
+/// A tool call an app asks for answers within the 45 seconds every tool call has.
+const APP_CALL_BUDGET: Duration = Duration::from_secs(45);
+const MAX_ARGUMENTS_BYTES: usize = 64 * 1024;
+/// The reply cap every tool call has.
+const MAX_RESULT_BYTES: usize = 256 * 1024;
+const MAX_MESSAGE_CHARS: usize = 16_000;
 
 /// One app page, read while the run's engine was still alive.
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +127,137 @@ pub fn timeline_marker(app: &McpAppSnapshot, render_id: &str, frame_token: &str)
         "prefersBorder": app.prefers_border,
         "structuredContent": app.structured,
     })
+}
+
+/// What an app's page asked for, as the policy and the audit name it.
+fn app_target(server: &str, what: &str) -> String {
+    format!("mcp_app:{server}:{what}")
+}
+
+impl Core {
+    /// The server an app render came from. Only a render stored from an MCP App has
+    /// one, and only in a trusted thread.
+    fn app_server(&self, thread_id: &str, render_id: &str) -> Result<String> {
+        self.file_scope(thread_id)?;
+        let app = self.render_app(thread_id, render_id)?;
+        app.get("server")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| CoreError::NotFound("app".into()))
+    }
+
+    /// An app's request goes through the policy rules before anything happens: a
+    /// deny rule refuses, an allow rule passes, and otherwise a person must have
+    /// confirmed it. There is no run to pause for a page shown after its run, so the
+    /// person answers in the host's own dialog, which the sandboxed page cannot reach,
+    /// and says so with `confirmed`. The decision is audited before the effect.
+    fn app_gate(&self, thread_id: &str, target: &str, confirmed: bool, actor: &str) -> Result<()> {
+        let rules = self.store.list_rules()?;
+        let decision = policy::evaluate(&rules, ActionKind::Tool, target, "direct");
+        let (effect, source) = match decision.effect {
+            PolicyEffect::Ask if confirmed => (PolicyEffect::Allow, "person".to_owned()),
+            PolicyEffect::Ask => (PolicyEffect::Deny, "unconfirmed".to_owned()),
+            effect => (effect, decision.source),
+        };
+        let allowed = effect == PolicyEffect::Allow;
+        self.store.append_audit(&AuditRecord {
+            actor: actor.to_owned(),
+            action: if allowed {
+                "action.allow"
+            } else {
+                "action.deny"
+            }
+            .into(),
+            target: target.to_owned(),
+            decision: Some(effect),
+            source,
+            thread_id: Some(thread_id.to_owned()),
+            run_id: None,
+            detail: json!({ "reason": decision.reason, "kind": ActionKind::Tool }),
+        })?;
+        if allowed {
+            Ok(())
+        } else if decision.effect == PolicyEffect::Ask {
+            Err(CoreError::PolicyDenied(
+                "An app's request needs a person to confirm it.".into(),
+            ))
+        } else {
+            Err(CoreError::PolicyDenied(
+                "A rule denies this app's request.".into(),
+            ))
+        }
+    }
+
+    /// Calls one tool on the app's own MCP server, through the thread's engine, in
+    /// its checkout. An app reaches no other server.
+    pub async fn mcp_app_tool_call(
+        &self,
+        thread_id: &str,
+        render_id: &str,
+        tool: &str,
+        arguments: &Value,
+        confirmed: bool,
+        actor: &str,
+    ) -> Result<Value> {
+        let tool = tool.trim();
+        if tool.is_empty() || tool.len() > MAX_NAME_BYTES {
+            return Err(CoreError::Invalid(
+                "An app's tool call needs a tool name.".into(),
+            ));
+        }
+        if !arguments.is_object() || arguments.to_string().len() > MAX_ARGUMENTS_BYTES {
+            return Err(CoreError::Invalid(format!(
+                "An app's tool arguments are one object of at most {MAX_ARGUMENTS_BYTES} bytes."
+            )));
+        }
+        let server = self.app_server(thread_id, render_id)?;
+        let (thread, scope) = self.file_scope(thread_id)?;
+        let driver = self.engines.driver(&thread.engine)?;
+        self.app_gate(thread_id, &app_target(&server, tool), confirmed, actor)?;
+        let call = driver.mcp_app_tool_call(&scope.checkout, &server, tool, arguments);
+        let result = tokio::time::timeout(APP_CALL_BUDGET, call)
+            .await
+            .map_err(|_| CoreError::EngineUnavailable("The app's tool call took too long.".into()))
+            .and_then(|result| result);
+        self.store.append_audit(&AuditRecord {
+            actor: actor.to_owned(),
+            action: "mcp_app.result".into(),
+            target: app_target(&server, tool),
+            decision: None,
+            source: "mcp_app".into(),
+            thread_id: Some(thread_id.to_owned()),
+            run_id: None,
+            detail: json!({ "ok": result.is_ok() }),
+        })?;
+        let result = result?;
+        if result.to_string().len() > MAX_RESULT_BYTES {
+            return Err(CoreError::Invalid(format!(
+                "The tool's result is over the {MAX_RESULT_BYTES} byte reply limit."
+            )));
+        }
+        Ok(result)
+    }
+
+    /// Queues a message an app's page asked to send, as the person's own next
+    /// message in this thread.
+    pub fn mcp_app_message(
+        &self,
+        thread_id: &str,
+        render_id: &str,
+        text: &str,
+        confirmed: bool,
+        actor: &str,
+    ) -> Result<QueuedMessage> {
+        let text = text.trim();
+        if text.is_empty() || text.chars().count() > MAX_MESSAGE_CHARS || text.contains('\0') {
+            return Err(CoreError::Invalid(format!(
+                "An app's message is text of at most {MAX_MESSAGE_CHARS} characters."
+            )));
+        }
+        let server = self.app_server(thread_id, render_id)?;
+        self.app_gate(thread_id, &app_target(&server, "message"), confirmed, actor)?;
+        self.runs.enqueue(thread_id, text, &[])
+    }
 }
 
 #[cfg(test)]

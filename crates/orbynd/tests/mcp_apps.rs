@@ -131,3 +131,171 @@ async fn an_app_page_over_the_render_limit_leaves_an_ordinary_tool_row() {
     );
     service.stop().await;
 }
+
+/// Runs `[mcp-app]` and answers the app's render id.
+async fn app_render(service: &Service, thread: &str) -> String {
+    service.admit(thread, "[mcp-app]").await;
+    assert_eq!(service.finished(thread).await, "completed");
+    markers(service, thread).await[0]["renderId"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// `(id, action, target)` of each audit row, oldest first.
+async fn audit_targets(service: &Service, thread: &str) -> Vec<(i64, String, String)> {
+    let mut rows: Vec<_> = service
+        .audit(thread)
+        .await
+        .iter()
+        .map(|row| {
+            (
+                row["id"].as_i64().unwrap(),
+                row["action"].as_str().unwrap_or_default().to_owned(),
+                row["target"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+#[tokio::test]
+async fn an_app_tool_call_needs_a_person_reaches_only_its_server_and_never_a_model() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("launches.jsonl");
+    let (service, thread) = setup(&dir, options(&launch_file), "codex").await;
+    let render = app_render(&service, &thread).await;
+    let route = format!("/api/threads/{thread}/mcp-apps/{render}/tool-call");
+    let turns_before = launches(&launch_file, "codex-turn").len();
+
+    let (status, body) = service
+        .send(
+            &route,
+            json!({ "name": "show_widget", "arguments": { "text": "x" } }),
+        )
+        .await;
+    assert_eq!(status, 403, "{body}");
+    assert!(
+        launches(&launch_file, "codex-app-tool").is_empty(),
+        "refused before the engine"
+    );
+
+    let (status, body) = service
+        .send(
+            &route,
+            json!({ "name": "show_widget", "arguments": { "text": "from app" }, "confirmed": true }),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["content"][0]["text"], "called show_widget");
+    assert_eq!(body["structuredContent"], json!({ "text": "from app" }));
+    let calls = launches(&launch_file, "codex-app-tool");
+    assert_eq!(calls.len(), 1);
+    let call: Value = serde_json::from_str(calls[0]["args"][0].as_str().unwrap()).unwrap();
+    assert_eq!(call["server"], "demo", "only the app's own server");
+    assert_eq!(call["tool"], "show_widget");
+    assert_eq!(
+        launches(&launch_file, "codex-turn").len(),
+        turns_before,
+        "a tool call starts no model turn"
+    );
+    let audit = audit_targets(&service, &thread).await;
+    let find = |action: &str| {
+        audit
+            .iter()
+            .find(|(_, a, target)| a == action && target == "mcp_app:demo:show_widget")
+            .map(|(id, _, _)| *id)
+    };
+    let allow = find("action.allow").expect("allowed before the call");
+    let result = find("mcp_app.result").expect("result audited");
+    assert!(allow < result, "the decision is written before the effect");
+    assert!(
+        find("action.deny").is_some(),
+        "the unconfirmed call was refused"
+    );
+
+    for bad in [
+        json!({ "name": "", "confirmed": true }),
+        json!({ "name": "show_widget", "arguments": [1], "confirmed": true }),
+        json!({ "name": "show_widget", "arguments": { "x": "y".repeat(70_000) }, "confirmed": true }),
+    ] {
+        assert_eq!(service.send(&route, bad.clone()).await.0, 400, "{bad}");
+    }
+    let (status, _) = service
+        .send(
+            &format!("/api/threads/{thread}/mcp-apps/01zzzzzzzzzzzzzzzzzzzzzzzz/tool-call"),
+            json!({ "name": "show_widget", "confirmed": true }),
+        )
+        .await;
+    assert_eq!(status, 404, "an unknown render names no app");
+    assert_eq!(launches(&launch_file, "codex-app-tool").len(), 1);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_deny_rule_refuses_a_confirmed_app_request() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("launches.jsonl");
+    let (service, thread) = setup(&dir, options(&launch_file), "codex").await;
+    let render = app_render(&service, &thread).await;
+    let (status, body) = service
+        .send(
+            "/api/policy/rules",
+            json!({ "effect": "deny", "kind": "tool", "pattern": "mcp_app:demo:*" }),
+        )
+        .await;
+    assert!(status < 300, "{body}");
+    let (status, _) = service
+        .send(
+            &format!("/api/threads/{thread}/mcp-apps/{render}/tool-call"),
+            json!({ "name": "show_widget", "confirmed": true }),
+        )
+        .await;
+    assert_eq!(status, 403);
+    let (status, _) = service
+        .send(
+            &format!("/api/threads/{thread}/mcp-apps/{render}/message"),
+            json!({ "text": "hi", "confirmed": true }),
+        )
+        .await;
+    assert_eq!(status, 403);
+    assert!(launches(&launch_file, "codex-app-tool").is_empty());
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn an_app_message_needs_a_person_and_becomes_the_next_turn() {
+    let dir = TempDir::new();
+    let launch_file = dir.path().join("launches.jsonl");
+    let (service, thread) = setup(&dir, options(&launch_file), "codex").await;
+    let render = app_render(&service, &thread).await;
+    let route = format!("/api/threads/{thread}/mcp-apps/{render}/message");
+    assert_eq!(
+        service.send(&route, json!({ "text": "pick blue" })).await.0,
+        403
+    );
+    assert_eq!(
+        service
+            .send(&route, json!({ "text": "  ", "confirmed": true }))
+            .await
+            .0,
+        400
+    );
+    let (status, body) = service
+        .send(&route, json!({ "text": "pick blue", "confirmed": true }))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(service.finished(&thread).await, "completed");
+    let turns = launches(&launch_file, "codex-turn");
+    let last: Value =
+        serde_json::from_str(turns.last().unwrap()["args"][0].as_str().unwrap()).unwrap();
+    assert!(
+        last["input"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("pick blue"),
+        "{last}"
+    );
+    service.stop().await;
+}

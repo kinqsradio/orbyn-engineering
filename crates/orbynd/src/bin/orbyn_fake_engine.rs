@@ -710,6 +710,22 @@ fn codex() {
                 }
                 send(&json!({ "id": id, "result": { "data": [], "nextCursor": null } }));
             }
+            // As Codex 0.166.0 answered: a loaded thread is required, and the server's
+            // own result comes back unchanged.
+            "mcpServer/tool/call" => {
+                record_launch("codex-app-tool", &[message["params"].to_string()]);
+                let params = &message["params"];
+                if params["threadId"].as_str() != Some(state.thread.as_str()) {
+                    send(&json!({ "id": id, "error": {
+                        "code": -32600, "message": format!("thread not found: {}", params["threadId"]),
+                    }}));
+                } else {
+                    send(&json!({ "id": id, "result": {
+                        "content": [{ "type": "text", "text": format!("called {}", params["tool"].as_str().unwrap_or("")) }],
+                        "structuredContent": params["arguments"],
+                    }}));
+                }
+            }
             "turn/start" => {
                 record_launch("codex-turn", &[message["params"].to_string()]);
                 if !state.tools_ready {

@@ -1427,6 +1427,27 @@ to it. It answers `ui/initialize` with the theme and display mode, sends the cal
 arguments and result as `tool-input` and `tool-result` after `ui/notifications/initialized`,
 holds `size-changed` heights to 80..2000, and refuses every request it does not serve.
 
+A page may ask for a tool call (`tools/call`) or a message (`ui/message`, user-role text
+only). Each waits for the person in a host dialog outside the frame, which the page cannot
+reach or click, and names the server and what it asked. The web then calls
+`POST /api/threads/:id/mcp-apps/:render_id/tool-call` or `.../message` with
+`confirmed: true`. Those routes need the service token; the page only ever holds its frame
+token, which opens nothing but its own page. The service finds the app's server in the
+render's own record, which only an app render has, and checks the policy rules as a `tool`
+action on `mcp_app:<server>:<tool>` or `mcp_app:<server>:message`: a deny rule refuses even
+a confirmed request, an allow rule passes without one, and otherwise an unconfirmed request
+is refused. The decision is audited before the effect. There is no run to pause for a page
+shown after its run, so this is the person's answer rather than an approval card, as the
+computer gateway does for a call with no run. A tool call reaches only the app's own server:
+Codex 0.166.0 answers `mcpServer/tool/call` only for a thread it has loaded, so the service
+starts a short-lived app-server in the thread's trusted checkout, opens an ephemeral
+read-only thread there and calls the tool, with no model turn and the thread's own session
+untouched. Arguments are one object of at most 64 KiB, the whole call has 45 seconds, the
+result is audited and held to 256 KiB. A message is queued as the person's own next message.
+`ui/request-display-mode` switches between the inline card and full screen, which keeps the
+same frame so the page keeps its state; Escape or the card's control returns it inline, and
+the page hears the mode through `host-context-changed`.
+
 ## Approval lifecycle
 
 ```text
@@ -2327,6 +2348,8 @@ because browsers cannot set headers on them.
 | `POST /api/threads/:id/runs` | Admit a run with an optional `model`, `effort` and `options` (`202`, `409 thread_busy`, `403 folder_untrusted`, `422 unsupported_option`) |
 | `GET, POST /api/threads/:id/queue` | `QueuedMessage[]`; queue a message, which starts at once if idle and can carry a selection (`422 unsupported_option`) |
 | `POST /api/threads/:id/queue/resume` | Release a held queue |
+| `POST /api/threads/:id/mcp-apps/:render_id/tool-call` | An MCP App's confirmed tool call on its own server |
+| `POST /api/threads/:id/mcp-apps/:render_id/message` | An MCP App's confirmed message, queued |
 | `PATCH, DELETE /api/queue/:id` | Edit or remove a queued message |
 | `POST /api/queue/:id/send-now` | Send next, stopping a running turn for it |
 | `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported); a selection applies from the next turn |

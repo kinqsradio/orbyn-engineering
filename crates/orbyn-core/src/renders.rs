@@ -34,6 +34,8 @@ const PAGE_FILE: &str = "index.html";
 /// The digest of this render's frame token. Written before the page, so a served
 /// page always has a hash to check against.
 const FRAME_FILE: &str = "frame.sha256";
+/// Which MCP server and tool an app render came from. Never served.
+const APP_FILE: &str = "app.json";
 const PAGE_TYPE: &str = "text/html; charset=utf-8";
 
 /// True when a document of this size is over the publish limit.
@@ -365,7 +367,12 @@ pub fn renders_root(data_dir: &Path) -> PathBuf {
 /// page is stored but with nothing embedded: its HTML comes from an outside MCP
 /// server, so no checkout image is copied in and its `src` values stay as written.
 /// Only a run calls this, and a run only starts in a trusted folder.
-pub fn publish_app_page(root: &Path, thread_id: &str, html: &str) -> Result<PublishedRender> {
+pub fn publish_app_page(
+    root: &Path,
+    thread_id: &str,
+    html: &str,
+    app: &serde_json::Value,
+) -> Result<PublishedRender> {
     if html_too_large(html.len()) {
         return Err(CoreError::Invalid(format!(
             "This page is {} bytes, over the {} byte (512 KiB) render limit.",
@@ -381,6 +388,7 @@ pub fn publish_app_page(root: &Path, thread_id: &str, html: &str) -> Result<Publ
     std::fs::create_dir_all(&dir)?;
     let frame_token = random_token()?;
     std::fs::write(dir.join(FRAME_FILE), sha256_hex(frame_token.as_bytes()))?;
+    std::fs::write(dir.join(APP_FILE), app.to_string())?;
     std::fs::write(dir.join(PAGE_FILE), html.as_bytes())?;
     Ok(PublishedRender {
         url: format!("/api/threads/{thread_id}/renders/{id}"),
@@ -486,6 +494,13 @@ impl Core {
             return false;
         };
         secrets_match(token, stored.trim())
+    }
+
+    /// The server and tool an MCP App render came from. A render an agent published
+    /// has none, so it reads as not found and no app request can name it.
+    pub fn render_app(&self, thread_id: &str, render_id: &str) -> Result<serde_json::Value> {
+        let bytes = self.read_render(thread_id, render_id, APP_FILE, "app")?;
+        serde_json::from_slice(&bytes).map_err(|_| CoreError::NotFound("app".into()))
     }
 
     /// The stored page of one render. Another thread's render id is simply not in
