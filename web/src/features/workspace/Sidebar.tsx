@@ -49,7 +49,8 @@ import {
   projectDrop,
   sectionOf,
   sweepIds,
-  threadsFlat,
+  drawnOrder,
+  ledgerGroupsOf,
   type DropSection,
   type DropTarget,
   type DropVerb,
@@ -71,6 +72,7 @@ import {
 } from "./threadActions";
 import { bulkMenuItems, CustomSnoozeDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
 import { ThreadRow, type RowActions } from "./ThreadRow";
+import { useDrawnOrder } from "./drawnOrder";
 import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
 import { ProviderUpdatePill, UpdatePill } from "./Updates";
 
@@ -381,8 +383,9 @@ function FolderHeader({
         <ProjectBadge name={project.name} project={project} />
         <span className="folder-name">{label}</span>
         {needs > 0 ? (
-          <span className="folder-needs" aria-label={`${needs} waiting on you`} title={`${needs} waiting on you`}>
-            {needs}
+          <span className="folder-needs">
+            <span aria-hidden>{needs}</span>
+            <span className="sr-only">{needs} waiting on you</span>
           </span>
         ) : null}
         {collapsed && count > 0 ? <span className="group-count">{count}</span> : null}
@@ -571,14 +574,8 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   // Ledger lists running threads in its own Running section, not on the Working shelf.
   const sections = arrangeThreads(scoped, Date.now(), workingSection && !ledger, ledger);
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
+  // What the list draws, in order; set below, once the folders and groups are known.
   const orderedRef = useRef<Thread[]>([]);
-  orderedRef.current = threadsFlat(sections);
-  const jumpRank = new Map(
-    orderedRef.current
-      .filter((thread) => !thread.lifecycle?.settled_at)
-      .slice(0, 9)
-      .map((thread, at) => [thread.id, at + 1]),
-  );
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const sectionsRef = useRef(sections);
@@ -688,7 +685,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       }
     },
     onPressStart(event, thread, section) {
-      if (event.button !== 0 || section === "working" || projectFolders) return;
+      if (event.button !== 0 || section === "working") return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || renaming === thread.id) return;
       const row = event.currentTarget.closest("li");
       if (!row || !tree.current) return;
@@ -696,14 +693,19 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       grabOffset.current = event.clientY - row.getBoundingClientRect().top;
       pointerY.current = event.clientY;
       let target: DropTarget | null = null;
+      // Project folders keep the drag to a composer; reordering is for the flat list and Ledger's order.
+      const reorder = !foldersView;
       const reset = () => {
         row.style.transform = "";
         setDrag(null);
       };
       trackPress(event, {
-        onStart: () => setDrag({ id: thread.id, from: section, target: null }),
+        onStart: () => {
+          if (reorder) setDrag({ id: thread.id, from: section, target: null });
+        },
         onMove: (y) => {
           pointerY.current = y;
+          if (!reorder) return;
           target = dropTargetAt(list, y, thread.id, shownRef.current);
           setDrag((current) =>
             current && sameTarget(current.target, target) ? current : current && { ...current, target },
@@ -714,7 +716,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           reset();
           const composer = document.elementFromPoint(at.x, at.y)?.closest(".composer");
           if (composer) mentionInComposer(selection.has(thread.id) ? orderedRef.current.filter((row) => selection.has(row.id)) : [thread]);
-          else if (target) void finishDrop(thread, section, target);
+          else if (reorder && target) void finishDrop(thread, section, target);
         },
         onCancel: reset,
       });
@@ -831,6 +833,49 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     }
   };
 
+  const foldersView = projectFolders && !ledger;
+  const settledRows = shown.settled.slice(0, Math.max(settledVisible, 1));
+  const ledgerGroups = ledger ? ledgerGroupsOf(shown.active) : [];
+  const folders = foldersView
+    ? foldersOf(
+        projectFilter.length > 0 ? list.filter((p) => projectFilter.includes(p.id)) : list,
+        shown.active,
+        groupingCatalog?.groups.map((group) => ({
+          key: group.key,
+          label: group.label,
+          projectIds: group.members.map((member) => member.project_id),
+        })) ?? null,
+        projectSort,
+        threadSort,
+      )
+    : [];
+  // Threads outside every folder (no project, or a project the list hides) still need a row.
+  const inFolders = new Set(folders.flatMap((folder) => folder.threads.map((thread) => thread.id)));
+  const strays = foldersView ? shown.active.filter((thread) => !inFolders.has(thread.id)) : [];
+  const shelves = shown.working;
+  const groupOpen = (id: "working" | "snoozed" | "settled") => closedGroups[id] ?? id !== "settled";
+  const drawn = drawnOrder({
+    sections: shown,
+    ledger,
+    folders: foldersView ? folders : null,
+    strays,
+    folderOpen: (folder) => closedGroups[`folder:${folder.key}`] !== false,
+    groupOpen: (id) => groupOpen(id) || drag !== null,
+    settled: settledRows,
+  });
+  orderedRef.current = isSearching ? results : drawn;
+  const jumpRank = new Map(
+    orderedRef.current
+      .filter((thread) => !thread.lifecycle?.settled_at)
+      .slice(0, 9)
+      .map((thread, at) => [thread.id, at + 1]),
+  );
+  const drawnIds = orderedRef.current.map((thread) => thread.id).join("\n");
+  useEffect(() => {
+    useDrawnOrder.getState().set(drawnIds ? drawnIds.split("\n") : []);
+  }, [drawnIds]);
+  useEffect(() => () => useDrawnOrder.getState().set(null), []);
+
   const firstRow = orderedRef.current[0]?.id ?? null;
   const rovingId =
     focusId && threads[focusId] ? focusId : selectedThread && threads[selectedThread] ? selectedThread : firstRow;
@@ -865,56 +910,25 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         highlighted={highlighted}
         nested={nested}
         showProject={showProject}
+        ledger={ledger}
         verb={verb}
         actions={actions}
       />
     );
   };
 
-  const ledgerGroups = ledger
-    ? [
-        { key: "needs", label: "Needs you", tone: "warn", rows: shown.active.filter((thread) => attentionRank(thread) === 0) },
-        { key: "failed", label: "Failed", tone: "danger", rows: shown.active.filter((thread) => attentionRank(thread) === 1) },
-        {
-          key: "running",
-          label: "Running",
-          tone: "ink",
-          rows: shown.active.filter((thread) => attentionRank(thread) === 2 && thread.active_run),
-        },
-        {
-          key: "done",
-          label: "Done today",
-          tone: "ink",
-          rows: shown.active.filter((thread) => attentionRank(thread) === 2 && !thread.active_run),
-        },
-      ]
-    : [];
   const dragTarget = drag?.target?.section ?? null;
   const dragging = drag !== null;
   const noActiveRows = shown.active.length === 0 && emptyProjects.length === 0;
-  const settledRows = shown.settled.slice(0, Math.max(settledVisible, 1));
-  const foldersView = projectFolders && !ledger;
-  const folders = foldersView
-    ? foldersOf(
-        projectFilter.length > 0 ? list.filter((p) => projectFilter.includes(p.id)) : list,
-        [...shown.active, ...shown.working],
-        groupingCatalog?.groups.map((group) => ({
-          key: group.key,
-          label: group.label,
-          projectIds: group.members.map((member) => member.project_id),
-        })) ?? null,
-        projectSort,
-        threadSort,
-      )
-    : [];
-  // Threads outside every folder (no project, or a project the list hides) still need a row.
-  const inFolders = new Set(folders.flatMap((folder) => folder.threads.map((thread) => thread.id)));
-  const strays = foldersView
-    ? [...shown.active, ...shown.working].filter((thread) => !inFolders.has(thread.id))
-    : [];
-  const shelves = foldersView ? [] : shown.working;
+  // Under project folders the Working shelf sits above them; otherwise it joins the groups below.
+  const shelfAbove = foldersView && shelves.length > 0;
+  const workingGroup = (
+    <Group id="working" label="Working" count={shelves.length} defaultOpen>
+      {shelves.map((thread) => row(thread, "working", false))}
+    </Group>
+  );
   const hasShelf =
-    shelves.length > 0 || shown.snoozed.length > 0 || shown.settled.length > 0 || dragging;
+    (!foldersView && shelves.length > 0) || shown.snoozed.length > 0 || shown.settled.length > 0 || dragging;
 
   const setGroupingOverride = (projectId: string, mode: ProjectGroupingMode | null) => {
     const next = { ...projectGroupingOverrides };
@@ -1052,6 +1066,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           )
         ) : (
           <>
+            {shelfAbove ? <div className="sidebar-groups sidebar-shelf">{workingGroup}</div> : null}
             <ul className="thread-list">
               <DraftRow route={route} />
               {dragging ? <DragBoundary label="Pinned" section="pinned" active={dragTarget === "pinned"} /> : null}
@@ -1073,6 +1088,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
                 ? folders.map((folder) => {
                     const key = `folder:${folder.key}`;
                     const collapsed = closedGroups[key] === false;
+                    // A project with no threads keeps its own row: identity, trust state and a way in.
+                    const bare = folder.projects.filter((project) => emptyProjects.some((empty) => empty.id === project.id));
+                    if (folder.threads.length === 0 && bare.length > 0) {
+                      return bare.map((project) => <EmptyProjectRow key={project.id} project={project} />);
+                    }
                     return [
                       <FolderHeader
                         key={key}
@@ -1096,11 +1116,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
             </ul>
             {hasShelf ? (
               <div className="sidebar-groups">
-                {shelves.length > 0 ? (
-                  <Group id="working" label="Working" count={shelves.length} defaultOpen>
-                    {shelves.map((thread) => row(thread, "working", false))}
-                  </Group>
-                ) : null}
+                {!foldersView && shelves.length > 0 ? workingGroup : null}
                 {shown.snoozed.length > 0 ? (
                   <Group id="snoozed" label="Snoozed" count={shown.snoozed.length} defaultOpen>
                     {shown.snoozed.map((thread) => row(thread, "snoozed", true))}
