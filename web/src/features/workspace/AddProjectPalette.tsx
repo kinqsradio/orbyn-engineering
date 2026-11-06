@@ -168,7 +168,7 @@ function Sources({ onPick, onBack }: { onPick(view: View): void; onBack(): void 
           >
             {item.icon}
             <span className="palette-title">{item.title}</span>
-            <span className="add-project-hint">{item.description}</span>
+            <span className="add-project-hint add-project-hint-prose">{item.description}</span>
           </button>
         ))}
       </div>

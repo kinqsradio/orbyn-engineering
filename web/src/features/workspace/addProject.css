@@ -10,6 +10,11 @@
   font-size: var(--text-caption);
   white-space: nowrap;
 }
+/* A sentence reads in the interface face; only short tokens (Git · main, Folder) are mono. */
+.add-project-hint-prose {
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+}
 .palette-list button[data-active] .add-project-hint {
   color: var(--color-muted);
 }
