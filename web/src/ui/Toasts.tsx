@@ -1,12 +1,13 @@
+import type { ReactNode } from "react";
 import { useUi } from "../state/ui";
-import { GitHubStarPrompt } from "../features/workspace/GitHubStarPrompt";
 
-/** Brief confirmations. Persistent state stays in the view it belongs to. */
-export function Toasts() {
+/** Brief confirmations. Persistent state stays in the view it belongs to. `lead`
+ * renders first in the stack, for a caller's own prompt. */
+export function Toasts({ lead }: { lead?: ReactNode }) {
   const toasts = useUi((state) => state.toasts);
   return (
     <div className="toasts" role="status" aria-live="polite">
-      <GitHubStarPrompt />
+      {lead}
       {toasts.map((toast) => (
         <div key={toast.id} className="toast">
           {toast.text}

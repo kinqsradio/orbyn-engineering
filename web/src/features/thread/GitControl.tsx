@@ -4,7 +4,7 @@ import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
 import type { BranchInfo, GitActionResult, GitPhase, Thread } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { useThreadLogs } from "../../state/threadLogs";
+import { useThreadLogs } from "./threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Button, Field } from "../../ui/controls";

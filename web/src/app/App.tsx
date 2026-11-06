@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiFailure, api, setUnauthorizedHandler } from "../api/client";
 import { followShell, readShellStatus } from "../api/shell";
 import { SignIn } from "../features/onboarding/SignIn";
-import { adoptEnvironmentTheme } from "../lib/environmentTheme";
+import { adoptEnvironmentTheme } from "./environmentTheme";
 import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
 import { onShellEvent, Shell } from "./Shell";
-import { upgradeToast } from "./healthToasts";
+import { upgradeToast } from "../state/healthToasts";
 import { PreviewWindow } from "../features/panels/PreviewWindow";
 import { previewWindowRoute } from "../features/panels/browserPanels";
 

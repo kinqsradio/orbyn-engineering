@@ -20,7 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
-import { useThreadLogs } from "../../state/threadLogs";
+import { useThreadLogs } from "../thread/threadLogs";
 import { useUi, type ContextTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";

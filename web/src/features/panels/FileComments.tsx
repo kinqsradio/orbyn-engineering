@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useComposerChips } from "../../state/composerChips";
+import { useComposerChips } from "../thread/composerChipStore";
 import { useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { CHIP_EXCERPT_LIMIT, charactersOver, chipId, chipLabel, promptWithChips } from "../thread/composerContext";

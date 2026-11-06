@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { presetById, THEME_TOKENS, type ThemeColors } from "../features/settings/themes";
+import { presetById, THEME_TOKENS, type ThemeColors } from "../styles/themes";
 import type { ProjectGroupingMode } from "../generated/ProjectGroupingMode";
 import { readJson, writeJson } from "../lib/storage";
 import { useWorkspace } from "./workspace";
