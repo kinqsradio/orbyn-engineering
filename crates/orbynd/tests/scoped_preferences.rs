@@ -762,3 +762,56 @@ async fn distinct_action_ids_keep_similar_names_in_separate_real_terminals() {
     }
     service.stop().await;
 }
+
+#[tokio::test]
+async fn an_action_edit_is_audited_by_name_without_its_command() {
+    const KEY: &str = "default_project_scripts";
+    let dir = TempDir::new();
+    let (service, projects, scope) = fixture(&dir).await;
+    // A fresh database is created, not upgraded, so there is nothing to announce.
+    assert!(
+        service
+            .json("/api/info")
+            .await
+            .get("database_upgrade")
+            .is_none()
+    );
+    let environment = query(&service, json!({}), &[KEY]).await;
+    let add = edit_body(
+        &environment,
+        json!({}),
+        json!({KEY:{"op":"add_project_script","script":{"name":"Deploy","command":"deploy --marker=command-text-two"}}}),
+    );
+    let (status, body) = put(&service, "/api/settings/preferences", add).await;
+    assert_eq!(status, 200, "{body}");
+    let grouped = query(&service, scope.clone(), &[KEY]).await;
+    let remove = edit_body(
+        &grouped,
+        scope,
+        json!({KEY:{"op":"remove_project_script","name":"Deploy"}}),
+    );
+    let (status, body) = put(&service, "/api/settings/preferences", remove).await;
+    assert_eq!(status, 200, "{body}");
+    let audit = service.json("/api/audit?limit=200").await;
+    let saved: Vec<&Value> = audit
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["action"] == "project.actions.save")
+        .collect();
+    let global = saved
+        .iter()
+        .find(|row| row["target"] == "all_projects")
+        .expect("the environment list is audited");
+    assert_eq!(global["detail"]["actions"][0]["name"], "Deploy");
+    assert!(global["detail"]["actions"][0]["id"].is_string());
+    for project in &projects {
+        let row = saved
+            .iter()
+            .find(|row| row["target"] == project["id"])
+            .expect("each checkout written is audited");
+        assert_eq!(row["detail"]["actions"], json!([]));
+    }
+    assert!(!audit.to_string().contains("command-text-two"));
+    service.stop().await;
+}

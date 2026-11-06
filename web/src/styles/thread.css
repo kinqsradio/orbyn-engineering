@@ -2981,6 +2981,42 @@ button.detail-row:hover {
 .md-thread-link {
   color: var(--color-primary);
 }
+/* An MCP App page. Full screen keeps the same frame, so the page keeps its state. */
+.mcp-app[data-display="fullscreen"] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border-radius: 0;
+}
+.mcp-app[data-display="fullscreen"] .render-body {
+  flex: 1;
+  height: auto !important;
+}
+.mcp-app[data-display="fullscreen"] .render-frame {
+  height: 100% !important;
+}
+.mcp-app-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 6px 4px 10px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.mcp-app-note span {
+  flex: 1;
+}
+.mcp-app-ask pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* Composer additions */
 .context-meter {
@@ -3926,6 +3962,9 @@ div.browser-bridge-row {
   justify-content: center;
   padding: 8px;
 }
+/* Holds the branch's place until the workspace status names it. */
+.composer-branch-pending {
+  visibility: hidden;
 
 .outside-badge {
   display: inline-flex;

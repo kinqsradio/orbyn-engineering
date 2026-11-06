@@ -458,6 +458,28 @@ async fn acp_cancel_reaches_the_agent() {
     assert_eq!(service.finished(&thread).await, "cancelled");
 }
 
+#[tokio::test]
+async fn an_acp_agent_without_http_mcp_reaches_tools_through_the_stdio_bridge() {
+    let dir = TempDir::new();
+    let options = Options {
+        env: vec![("ORBYN_FAKE_ACP_STDIO_MCP".into(), "1".into())],
+        ..Options::default()
+    };
+    let (service, _) = setup(&dir, options, "codex").await;
+    custom_engine(&service, "acp", FAKE, json!(["acp"])).await;
+    let projects = service.json("/api/projects").await;
+    let thread = service
+        .thread(projects[0]["id"].as_str().unwrap(), "custom")
+        .await;
+    service.admit(&thread, "[bridge]").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    let events = service.all_events(&thread).await;
+    assert_eq!(
+        text_of(&events),
+        "bridge true listed tools; call ok; token on command line no"
+    );
+}
+
 /// The fake AG-UI agent, stopped with its test.
 struct Agent(std::process::Child);
 

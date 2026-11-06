@@ -190,6 +190,8 @@ pub enum EngineEvent {
     Question(QuestionAsk),
     /// The goal as the engine reports it; `None` means it was cleared.
     Goal(Option<orbyn_contracts::ThreadGoal>),
+    /// An MCP App page for a finished tool call, read while the engine was alive.
+    McpApp(crate::mcp_apps::McpAppSnapshot),
     Finished(EngineOutcome),
 }
 
@@ -394,6 +396,20 @@ pub trait EngineDriver: Send + Sync {
     /// `Ok(None)` means it has no way to report them.
     async fn models(&self) -> Result<Option<ModelCatalog>> {
         Ok(None)
+    }
+
+    /// Calls one tool on an MCP server the engine has configured, for an MCP App
+    /// page, in `cwd`. The default says this engine reports no MCP Apps.
+    async fn mcp_app_tool_call(
+        &self,
+        _cwd: &std::path::Path,
+        _server: &str,
+        _tool: &str,
+        _arguments: &Value,
+    ) -> Result<Value> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot call an MCP App's tools.".into(),
+        ))
     }
 
     /// Sends a feedback report through the engine's own route. The default says

@@ -5,6 +5,8 @@ import { followThread, type StreamStatus } from "../api/sse";
 import type { WireThreadEvent } from "../api/types";
 import { applyEvents, emptyLog, type ThreadLog } from "../features/thread/projection";
 import { useWorkspace } from "./workspace";
+import { useUi } from "./ui";
+import { permissionToasts } from "../app/healthToasts";
 
 export interface LocalPrompt {
   runId: string;
@@ -54,6 +56,8 @@ export const useThreadLogs = create<ThreadLogState>((set, get) => ({
         ? { ...state.diffVersion, [threadId]: (state.diffVersion[threadId] ?? 0) + 1 }
         : state.diffVersion,
     }));
+    // Only news that arrives while the thread is open is announced, not a first replay.
+    if (previousSeq > 0) for (const text of permissionToasts(fresh)) useUi.getState().pushToast(text);
     if (fresh.some(refreshesThread)) {
       const workspace = useWorkspace.getState();
       void workspace.refreshThread(threadId);

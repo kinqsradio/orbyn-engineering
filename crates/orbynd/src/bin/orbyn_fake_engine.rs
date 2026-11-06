@@ -238,6 +238,17 @@ fn one_shot() {
             || (prompt.contains("[bad-pr-text]") && !prompt.contains("string fields subject"))
         {
             println!("invalid structured text");
+        } else if prompt.contains("[fenced-scm-text]") {
+            // Claude's usual shape: the JSON inside one tagged Markdown fence.
+            let fields = if prompt.contains("string fields subject") {
+                serde_json::json!({"subject":"feat(git): fenced reply","body":"Inside a fence"})
+            } else {
+                serde_json::json!({"title":"feat(git): fenced reply","body":"## Summary\n\n```sh\nnpm test\n```"})
+            };
+            println!(
+                "```json\n{}\n```",
+                serde_json::to_string_pretty(&fields).unwrap()
+            );
         } else if prompt.contains("string fields subject") {
             println!(
                 "{}",
@@ -710,6 +721,22 @@ fn codex() {
                 }
                 send(&json!({ "id": id, "result": { "data": [], "nextCursor": null } }));
             }
+            // As Codex 0.166.0 answered: a loaded thread is required, and the server's
+            // own result comes back unchanged.
+            "mcpServer/tool/call" => {
+                record_launch("codex-app-tool", &[message["params"].to_string()]);
+                let params = &message["params"];
+                if params["threadId"].as_str() != Some(state.thread.as_str()) {
+                    send(&json!({ "id": id, "error": {
+                        "code": -32600, "message": format!("thread not found: {}", params["threadId"]),
+                    }}));
+                } else {
+                    send(&json!({ "id": id, "result": {
+                        "content": [{ "type": "text", "text": format!("called {}", params["tool"].as_str().unwrap_or("")) }],
+                        "structuredContent": params["arguments"],
+                    }}));
+                }
+            }
             "turn/start" => {
                 record_launch("codex-turn", &[message["params"].to_string()]);
                 if !state.tools_ready {
@@ -965,6 +992,35 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         .expect("write");
         codex_note(state, "item/completed", json!({ "item": item }));
     }
+    // An MCP App tool call, in the shape Codex 0.166.0 reported for a descriptor with
+    // `_meta.ui.resourceUri`; the driver then reads the page from this process.
+    if has(prompt, "mcp-app") {
+        let item = json!({
+            "type": "mcpToolCall", "id": "app-call-1", "server": "demo", "tool": "show_widget",
+            "status": "completed", "arguments": { "text": "hello" },
+            "appContext": null, "mcpAppResourceUri": "ui://demo/widget.html", "mcpAppUi": null,
+            "result": { "content": [{ "type": "text", "text": "shown: hello" }],
+                        "structuredContent": { "text": "hello" }, "_meta": null },
+            "error": null, "durationMs": 4,
+        });
+        codex_note(state, "item/started", json!({ "item": item }));
+        codex_note(state, "item/completed", json!({ "item": item }));
+        for message in lines.by_ref() {
+            if message["method"] == "mcpServer/resource/read" {
+                record_launch("codex-app-read", &[message["params"].to_string()]);
+                let html = if has(prompt, "mcp-app-huge") {
+                    "x".repeat(600 * 1024)
+                } else {
+                    "<!doctype html><p id=v>demo widget</p><img src=\"secret.png\">".to_owned()
+                };
+                send(&json!({ "id": message["id"], "result": { "contents": [{
+                    "uri": "ui://demo/widget.html", "mimeType": "text/html;profile=mcp-app",
+                    "text": html, "_meta": { "ui": { "prefersBorder": true } },
+                }], "originCallId": null }}));
+                break;
+            }
+        }
+    }
     // `[mcp-call:<tool>]<json args>[/mcp-call]` calls one tool and answers with it.
     if let Some(rest) = prompt.split("[mcp-call:").nth(1)
         && let Some((name, rest)) = rest.split_once(']')
@@ -1185,14 +1241,18 @@ fn acp() {
     let mut lines = stdin_lines();
     let mut session = "acp-session-1".to_owned();
     let session = &mut session;
+    let mut servers = Value::Null;
     while let Some(message) = lines.next() {
         assert_eq!(message["jsonrpc"], "2.0", "ACP frames carry the header");
         let id = message.get("id").cloned().unwrap_or(Value::Null);
+        if let Some(list) = message.pointer("/params/mcpServers") {
+            servers = list.clone();
+        }
         match message["method"].as_str().unwrap_or_default() {
             "initialize" => acp_send(json!({ "id": id, "result": {
                 "protocolVersion": 1,
                 "agentCapabilities": {
-                    "mcpCapabilities": { "http": true },
+                    "mcpCapabilities": { "http": std::env::var_os("ORBYN_FAKE_ACP_STDIO_MCP").is_none() },
                     "loadSession": native_dir().is_some(),
                     "sessionCapabilities": if native_dir().is_some() {
                         json!({ "list": {}, "delete": {} })
@@ -1324,6 +1384,9 @@ fn acp() {
                     }),
                 );
                 let mut answer = "hello from acp".to_owned();
+                if has(&prompt, "bridge") {
+                    answer = acp_stdio_bridge(&servers);
+                }
                 if has(&prompt, "approve") {
                     acp_update(
                         session,
@@ -1385,6 +1448,79 @@ fn acp() {
             _ => {}
         }
     }
+}
+
+/// Uses the stdio MCP server Orbyn offered, as an ACP agent without HTTP MCP would:
+/// the bridge for `tools/list`, then `acp-mcp-call` for one tool.
+fn acp_stdio_bridge(servers: &Value) -> String {
+    let server = &servers[0];
+    let Some(program) = server["command"].as_str() else {
+        return format!("no stdio server in {servers}");
+    };
+    let env: Vec<(String, String)> = server["env"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|pair| {
+            (
+                pair["name"].as_str().unwrap_or_default().to_owned(),
+                pair["value"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    let args: Vec<String> = server["args"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|arg| arg.as_str().map(str::to_owned))
+        .collect();
+    let mut bridge = std::process::Command::new(program)
+        .args(&args)
+        .envs(env.iter().cloned())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("start the bridge");
+    {
+        let mut input = bridge.stdin.take().expect("bridge stdin");
+        for line in [
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}),
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        ] {
+            writeln!(input, "{line}").expect("write to the bridge");
+        }
+    }
+    let output = bridge.wait_with_output().expect("bridge output");
+    let replies: Vec<Value> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let listed = replies.iter().any(|reply| {
+        reply["id"] == 2
+            && reply["result"]["tools"]
+                .as_array()
+                .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == "skill_search"))
+    });
+    let call = std::process::Command::new(program)
+        .args(["acp-mcp-call", "skill_search", "{\"query\":\"\"}"])
+        .envs(env.iter().cloned())
+        .output()
+        .expect("run acp-mcp-call");
+    let result: Value = serde_json::from_slice(&call.stdout).unwrap_or(Value::Null);
+    let called = call.status.success() && result["isError"] != true && result["content"].is_array();
+    let token_on_line = args.iter().any(|arg| arg.contains("/mcp/"));
+    format!(
+        "bridge {} {}; call {}; token on command line {}",
+        output.status.success(),
+        if listed {
+            "listed tools"
+        } else {
+            "listed nothing"
+        },
+        if called { "ok" } else { "failed" },
+        if token_on_line { "yes" } else { "no" },
+    )
 }
 
 // AG-UI over HTTP and SSE.

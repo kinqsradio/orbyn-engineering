@@ -668,16 +668,29 @@ async fn initialize(rpc: &RpcClient) -> Result<Value> {
 }
 
 fn mcp_servers(init: &Value, url: Option<&str>) -> Value {
-    match url {
-        Some(url)
-            if init
-                .pointer("/agentCapabilities/mcpCapabilities/http")
-                .and_then(Value::as_bool)
-                == Some(true) =>
-        {
-            json!([{"type":"http","name":MCP_SERVER_NAME,"url":url,"headers":[]}])
-        }
-        _ => json!([]),
+    servers_for(init, url, crate::acp_mcp_bridge::bridge_program)
+}
+
+/// HTTP when the agent says it supports it. Otherwise stdio, which ACP requires of
+/// every agent, through the sibling `orbyn` bridge; none when that program is absent.
+fn servers_for(
+    init: &Value,
+    url: Option<&str>,
+    bridge: impl FnOnce() -> Option<std::path::PathBuf>,
+) -> Value {
+    let Some(url) = url else {
+        return json!([]);
+    };
+    let http = init
+        .pointer("/agentCapabilities/mcpCapabilities/http")
+        .and_then(Value::as_bool)
+        == Some(true);
+    if http {
+        return json!([{"type":"http","name":MCP_SERVER_NAME,"url":url,"headers":[]}]);
+    }
+    match bridge() {
+        Some(program) => json!([crate::acp_mcp_bridge::stdio_server(&program, url)]),
+        None => json!([]),
     }
 }
 
@@ -1296,6 +1309,20 @@ fn tool_output(update: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agents_without_http_mcp_get_the_stdio_bridge() {
+        let url = "http://127.0.0.1:1/mcp/token";
+        let http = json!({"agentCapabilities":{"mcpCapabilities":{"http":true}}});
+        let plain = json!({"agentCapabilities":{}});
+        let program = || Some(std::path::PathBuf::from("orbyn"));
+        assert_eq!(servers_for(&http, Some(url), program)[0]["type"], "http");
+        let stdio = servers_for(&plain, Some(url), program);
+        assert_eq!(stdio[0]["args"], json!(["acp-mcp-bridge"]));
+        assert_eq!(stdio[0]["env"][0]["value"], url);
+        assert_eq!(servers_for(&plain, Some(url), || None), json!([]));
+        assert_eq!(servers_for(&plain, None, program), json!([]));
+    }
 
     #[test]
     fn tool_updates_report_only_terminal_outcomes() {

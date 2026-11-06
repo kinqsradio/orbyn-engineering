@@ -255,6 +255,26 @@ impl Store {
                     json!({ "mode": mode }),
                 )?;
                 notify(tx, appended, id, "permission_mode")?;
+                // A run copies its mode when it starts, so a change made while one is
+                // live applies from the next run; the thread says so.
+                let live: bool = tx.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM runs WHERE thread_id = ?1
+                     AND state IN ('starting', 'running', 'awaiting_approval'))",
+                    [id],
+                    |row| row.get(0),
+                )?;
+                if live {
+                    insert_event(
+                        tx,
+                        appended,
+                        id,
+                        None,
+                        &AgUiEvent::Custom {
+                            name: "permission.updated".into(),
+                            value: json!({ "mode": mode, "applies": "next_run" }),
+                        },
+                    )?;
+                }
             }
             apply_selection(
                 tx,

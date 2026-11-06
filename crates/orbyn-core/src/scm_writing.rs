@@ -106,15 +106,26 @@ async fn read_git_bounded(cwd: &Path, args: &[&str], attributes: Option<&str>) -
         let mut error = Vec::new();
         let mut stdout = stdout.take((CONTEXT_BYTES + 1) as u64);
         let mut stderr = stderr.take(2049);
+        // Either stream over its cap ends the read at once: Git would otherwise
+        // block on the unread rest of the pipe until the deadline.
+        let too_large =
+            || invalid("This change is too large to generate text. Enter text manually.");
         tokio::try_join!(
-            stdout.read_to_end(&mut output),
-            stderr.read_to_end(&mut error)
+            async {
+                stdout.read_to_end(&mut output).await?;
+                if output.len() > CONTEXT_BYTES {
+                    return Err(too_large());
+                }
+                Ok(())
+            },
+            async {
+                stderr.read_to_end(&mut error).await?;
+                if error.len() > 2048 {
+                    return Err(too_large());
+                }
+                Ok::<_, CoreError>(())
+            }
         )?;
-        if output.len() > CONTEXT_BYTES || error.len() > 2048 {
-            return Err(invalid(
-                "This change is too large to generate text. Enter text manually.",
-            ));
-        }
         if !child.wait().await?.success() {
             return Err(CoreError::Git(
                 String::from_utf8_lossy(&error).trim().into(),
@@ -127,12 +138,33 @@ async fn read_git_bounded(cwd: &Path, args: &[&str], attributes: Option<&str>) -
         .map_err(|_| invalid("Reading this change timed out. Enter text manually."))?
 }
 
+/// The major and minor version in `git version` output, such as
+/// `git version 2.39.3 (Apple Git-146)` or `git version 2.45.1.windows.1`.
+fn git_version(output: &str) -> Option<(u32, u32)> {
+    let version = output.trim().strip_prefix("git version ")?;
+    let mut parts = version.split(|c: char| !c.is_ascii_digit());
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
+}
+
+/// `GIT_ATTR_SOURCE` arrived in Git 2.40. Older Git ignores it, so the working
+/// tree's `.gitattributes` could still apply clean filters from local config
+/// while the diff is read; generation is refused there instead.
+async fn require_attr_source(cwd: &Path) -> Result<()> {
+    let output = utf8(read_git_bounded(cwd, &["version"], None).await?)?;
+    match git_version(&output) {
+        Some(version) if version >= (2, 40) => Ok(()),
+        _ => Err(invalid(
+            "Generating text needs Git 2.40 or later. Enter text manually.",
+        )),
+    }
+}
+
 fn utf8(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes)
         .map_err(|_| invalid("This change contains unsupported text. Enter text manually."))
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct Candidate {
     identity: Vec<u8>,
     context: String,
@@ -426,11 +458,33 @@ fn subject(value: &str) -> Result<()> {
     Ok(())
 }
 
+/// The JSON inside a reply. Claude often wraps it in one Markdown fence, with
+/// or without a `json` tag. Only a fence around the whole reply is unwrapped;
+/// text around it, or a second block, leaves what JSON parsing then refuses. A
+/// fence inside a JSON string, such as a code block in a description, stays.
+fn unfenced(reply: &str) -> &str {
+    let trimmed = reply.trim();
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return trimmed;
+    };
+    let Some((tag, body)) = rest.split_once('\n') else {
+        return trimmed;
+    };
+    let tag = tag.trim();
+    if !(tag.is_empty() || tag.eq_ignore_ascii_case("json")) {
+        return trimmed;
+    }
+    let Some(body) = body.trim_end().strip_suffix("```") else {
+        return trimmed;
+    };
+    body.trim()
+}
+
 fn commit_reply(reply: &str) -> Result<String> {
     if reply.len() > REPLY_BYTES {
         return Err(invalid("The engine returned too much text."));
     }
-    let text: CommitText = serde_json::from_str(reply)
+    let text: CommitText = serde_json::from_str(unfenced(reply))
         .map_err(|_| invalid("The engine returned invalid commit text. Enter text manually."))?;
     subject(&text.subject)?;
     if text.body.contains('\0') {
@@ -447,7 +501,7 @@ fn pull_reply(reply: &str) -> Result<PullText> {
     if reply.len() > REPLY_BYTES {
         return Err(invalid("The engine returned too much text."));
     }
-    let text: PullText = serde_json::from_str(reply).map_err(|_| {
+    let text: PullText = serde_json::from_str(unfenced(reply)).map_err(|_| {
         invalid("The engine returned invalid pull request text. Enter text manually.")
     })?;
     subject(&text.title)?;
@@ -465,6 +519,8 @@ pub(crate) struct PreparedWriting {
     base: Option<(String, String)>,
     head: Option<String>,
     branch: Option<Vec<u8>>,
+    /// Why generated text was replaced by the fallback, for the person to see.
+    pub notice: Option<String>,
 }
 
 impl PreparedWriting {
@@ -529,6 +585,7 @@ impl Core {
                 base: None,
                 head: None,
                 branch: None,
+                notice: None,
             });
         }
         let commit = action
@@ -546,9 +603,40 @@ impl Core {
                 base: None,
                 head: None,
                 branch: None,
+                notice: None,
             });
         }
         self.check_engine_enabled(&thread.engine, &thread.project_id)?;
+        let mut prepared = PreparedWriting {
+            action,
+            candidate: None,
+            base: None,
+            head: None,
+            branch: None,
+            notice: None,
+        };
+        match self
+            .generate_writing(thread, &mut prepared, commit, pull, actor)
+            .await
+        {
+            Ok(()) => Ok(prepared),
+            Err(error) if stops_the_action(&error) => Err(error),
+            // Generation is a convenience: its failure never stops the action.
+            Err(error) => Ok(fallback(thread, prepared, &error)),
+        }
+    }
+
+    /// Fills each blank field it generates into `prepared`, with the state that
+    /// text was read from; a failure leaves the fields generated before it.
+    async fn generate_writing(
+        &self,
+        thread: &Thread,
+        prepared: &mut PreparedWriting,
+        commit: bool,
+        pull: bool,
+        actor: &str,
+    ) -> Result<()> {
+        let mut action = prepared.action.clone();
         let configured = self.preference("text_generation_model", Some(&thread.project_id))?;
         let model = configured
             .as_str()
@@ -568,6 +656,7 @@ impl Core {
         )?;
         let driver = self.engines.driver(&thread.engine)?;
         let cwd = Path::new(&thread.cwd);
+        require_attr_source(cwd).await?;
         let root = utf8(read_git(cwd, &["rev-parse", "--show-toplevel"]).await?)?;
         let cwd = Path::new(root.trim_end_matches(['\r', '\n']));
         let style = style::parse(
@@ -697,9 +786,7 @@ impl Core {
                 || fresh.model != thread.model
                 || fresh.project_id != thread.project_id
             {
-                return Err(invalid(
-                    "The thread changed. Review the action and try again.",
-                ));
+                return Err(invalid(THREAD_CHANGED));
             }
             self.check_engine_enabled(&thread.engine, &thread.project_id)?;
             self.store.append_audit(&AuditRecord {
@@ -715,6 +802,8 @@ impl Core {
             let reply = driver.write_text(&prompt, Some(&model)).await?;
             if purpose == "commit" {
                 action.commit_message = Some(commit_reply(&reply)?);
+                prepared.action.commit_message = action.commit_message.clone();
+                prepared.candidate = snapshot.clone();
             } else {
                 let text = pull_reply(&reply)?;
                 let draft = action.pull_request.as_mut().expect("pull requested");
@@ -724,16 +813,65 @@ impl Core {
                 if draft.body.trim().is_empty() {
                     draft.body = text.body;
                 }
+                prepared.action.pull_request = action.pull_request.clone();
+                prepared.candidate = snapshot.clone();
+                prepared.base = base_identity.clone();
+                prepared.head = head.clone();
+                prepared.branch = branch.clone();
             }
         }
-        Ok(PreparedWriting {
-            action,
-            candidate: snapshot,
-            base: base_identity,
-            head,
-            branch,
-        })
+        Ok(())
     }
+}
+
+const THREAD_CHANGED: &str = "The thread changed. Review the action and try again.";
+
+/// What still stops the action when generation fails: the thread is busy,
+/// archived, untrusted or changed, or the person turned the engine off. Anything about the change, the
+/// model or its reply only means the text is not generated.
+fn stops_the_action(error: &CoreError) -> bool {
+    match error {
+        CoreError::ThreadBusy
+        | CoreError::ThreadArchived
+        | CoreError::FolderUntrusted
+        | CoreError::ConsoleOpen
+        | CoreError::NotFound(_) => true,
+        CoreError::Invalid(message) => {
+            message == THREAD_CHANGED || message.contains("is turned off")
+        }
+        _ => false,
+    }
+}
+
+/// What a blank field gets when generation failed, as before generation
+/// existed: the thread title for a commit message or pull request title, and an
+/// empty description. Fields generated before the failure stay. The notice says
+/// why, so the person can amend the text.
+fn fallback(thread: &Thread, mut prepared: PreparedWriting, error: &CoreError) -> PreparedWriting {
+    let title = if thread.title.trim().is_empty() {
+        "Update files".to_owned()
+    } else {
+        thread.title.trim().to_owned()
+    };
+    if let Some(message) = prepared.action.commit_message.as_mut()
+        && message.trim().is_empty()
+    {
+        *message = title.clone();
+    }
+    if let Some(draft) = prepared.action.pull_request.as_mut()
+        && draft.title.trim().is_empty()
+    {
+        draft.title = title;
+    }
+    let reason = error.to_string();
+    let reason = reason
+        .trim()
+        .trim_end_matches("Enter text manually.")
+        .trim();
+    prepared.notice = Some(format!(
+        "Text was not generated, so the thread title was used. {reason}"
+    ));
+    prepared
 }
 
 #[cfg(test)]
@@ -750,13 +888,72 @@ mod tests {
         for value in [
             "",
             "```json\n{}\n```",
+            "Here it is:\n```json\n{\"subject\":\"fix: x\",\"body\":\"\"}\n```",
+            "```json\n{\"subject\":\"fix: x\",\"body\":\"\"}\n```\n```json\n{}\n```",
+            "```yaml\nsubject: fix\n```",
             r#"{"subject":"bad\nsubject","body":""}"#,
             r#"{"subject":"","body":"x"}"#,
         ] {
             assert!(commit_reply(value).is_err());
         }
         assert!(pull_reply(r#"{"title":"Valid","body":""}"#).is_err());
+        // Claude's usual reply: one fenced block, tagged or not, with blank lines around.
+        assert_eq!(
+            commit_reply("```json\n{\"subject\":\"fix: keep fences\",\"body\":\"Why\"}\n```\n")
+                .unwrap(),
+            "fix: keep fences\n\nWhy"
+        );
+        assert_eq!(
+            commit_reply("\n```\n{\"subject\":\"fix: bare fence\",\"body\":\"\"}\n```").unwrap(),
+            "fix: bare fence"
+        );
+        // A code block inside the description is part of the JSON string.
+        let pull = pull_reply(
+            "```JSON\n{\"title\":\"Add fences\",\"body\":\"## Summary\\n\\n```rust\\nfn x() {}\\n```\"}\n```",
+        )
+        .unwrap();
+        assert_eq!(pull.title, "Add fences");
+        assert_eq!(pull.body, "## Summary\n\n```rust\nfn x() {}\n```");
         assert!(commit_reply(&"x".repeat(REPLY_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn generation_needs_git_that_reads_attributes_from_a_tree() {
+        for (output, version) in [
+            ("git version 2.39.3 (Apple Git-146)\n", Some((2, 39))),
+            ("git version 2.40.0\n", Some((2, 40))),
+            ("git version 2.45.1.windows.1\r\n", Some((2, 45))),
+            ("git version 3.0.0", Some((3, 0))),
+            ("not git", None),
+        ] {
+            assert_eq!(git_version(output), version, "{output}");
+        }
+        assert!(git_version("git version 2.39.9").unwrap() < (2, 40));
+    }
+
+    #[test]
+    fn only_a_busy_changed_or_turned_off_thread_stops_the_action() {
+        for error in [
+            CoreError::ThreadBusy,
+            CoreError::ThreadArchived,
+            CoreError::FolderUntrusted,
+            invalid(THREAD_CHANGED),
+            invalid("claude is turned off for this project."),
+            invalid("claude is turned off."),
+        ] {
+            assert!(stops_the_action(&error), "{error}");
+        }
+        for error in [
+            invalid("Choose a text generation or thread model, or enter text manually."),
+            invalid("This change is too large to generate text. Enter text manually."),
+            invalid("Reading this change timed out. Enter text manually."),
+            invalid("A writing reference is a symlink. Enter text manually."),
+            invalid("The engine returned invalid commit text. Enter text manually."),
+            CoreError::EngineUnavailable("claude is not installed".into()),
+            CoreError::Git("fatal: bad object".into()),
+        ] {
+            assert!(!stops_the_action(&error), "{error}");
+        }
     }
 
     #[tokio::test]

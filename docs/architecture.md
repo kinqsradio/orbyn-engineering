@@ -481,6 +481,16 @@ files, revoked project trust and an active run refuse the action after generatio
 existing phase receipts still describe any earlier completed effects. There is no
 automatic rollback of user work.
 
+Generation never blocks the action. When it fails for any reason about the change,
+the model or its reply (too large, unsupported text, a symlinked reference, a
+timeout, no model, an unparsable reply), each field still blank falls back: the
+thread title for a commit message or pull request title, and an empty description.
+Fields generated before the failure stay. The result carries a notice that says
+why. A busy, archived, untrusted or changed thread and an engine turned off still
+refuse the action. A reply may be bare JSON or one Markdown fence around it. Generation
+needs Git 2.40 or later, which honours `GIT_ATTR_SOURCE`; older Git could apply
+the working tree's clean filters while the diff is read, so it falls back instead.
+
 Writing uses the selected thread engine and the configured text-generation model,
 or the thread's explicit model when that setting is empty. It never chooses another
 provider or guesses a smaller model. Only the guarded Claude one-shot path supports
@@ -652,7 +662,12 @@ hooks use this same resolver. The scripts response keeps the actual file content
 the file. Opening a script terminal preserves its selected tab while the terminal
 list refreshes. Malformed files block execution, and script lists require unique nonempty
 names and nonempty commands. The action editor preserves a named script's
-role and options when editing its command. Both manual script menus open a new
+role and options when editing its command. Every saved action list, for the
+environment or a checkout, writes a `project.actions.save` audit row in the same
+transaction and before the write: the scope (`all_projects` or the project id),
+whether it reverts to Inherit, and each action's id and name. Commands are not copied
+into the audit log. Running an action is audited as `script.run` and opening a file in
+an editor or file manager as `file.open`, each before the effect. Both manual script menus open a new
 Browser tab after successful command launch when `auto_open_preview` is enabled
 and `preview_url` is set. The existing preview API validates the URL and owns its
 browser process. The new tab is selected without replacing another page; preview
@@ -1462,6 +1477,68 @@ dimensions and known background and shape colours, with no console or page error
 The PNG is attached to the test result. This adds no browser download or runtime
 verification API; automatic page measurement remains unimplemented.
 
+## MCP Apps
+
+An MCP App is a page an MCP server names on a tool's descriptor with a `ui://` resource.
+Codex is the only engine that reports one. Codex 0.166.0, observed on 6 November 2026 with
+a local server whose tool carried `_meta.ui.resourceUri`, finished the `mcpToolCall` item
+with `mcpAppResourceUri` set and `mcpAppUi` null; newer descriptors fill `mcpAppUi`, which
+wins when present. While the run's app-server is still alive, the driver asks it for
+`mcpServer/resource/read` with the server, the URI, the session and the call id, for at
+most 10 seconds, and takes the first HTML text content for that URI; a blob page is not
+decoded. Only a completed call has an app. The page is stored with the render store under
+the same limits, but nothing is embedded: its HTML comes from an outside server, so no
+checkout image is copied in and every `src` stays as written. A `CUSTOM mcp_app` event then
+ties the tool row to the render with its frame token, the server, the tool, the URI, the
+preferred display mode, `prefersBorder` and the call's structured output when it is at most
+32 KiB. A read that fails, times out or is refused by the render store leaves an ordinary
+tool row.
+
+The page is untrusted and gets nothing a published page does not: the C21 frame
+(`sandbox="allow-scripts"`, opaque origin, `no-referrer`), the render policy with no
+`connect-src`, and only its own `?render=` token. A server's requested CSP domains and
+permissions are not honoured, so an app that loads remote scripts or data does not work
+here. The host takes `postMessage` JSON-RPC only from that frame's window and answers only
+to it. It answers `ui/initialize` with the theme and display mode, sends the call's
+arguments and result as `tool-input` and `tool-result` after `ui/notifications/initialized`,
+holds `size-changed` heights to 80..2000, and refuses every request it does not serve.
+
+A page may ask for a tool call (`tools/call`) or a message (`ui/message`, user-role text
+only). Each waits for the person in a host dialog outside the frame, which the page cannot
+reach or click, and names the server and what it asked. The web then calls
+`POST /api/threads/:id/mcp-apps/:render_id/tool-call` or `.../message` with
+`confirmed: true`. Those routes need the service token; the page only ever holds its frame
+token, which opens nothing but its own page. The service finds the app's server in the
+render's own record, which only an app render has, and checks the policy rules as a `tool`
+action on `mcp_app:<server>:<tool>` or `mcp_app:<server>:message`: a deny rule refuses even
+a confirmed request, an allow rule passes without one, and otherwise an unconfirmed request
+is refused. The decision is audited before the effect. There is no run to pause for a page
+shown after its run, so this is the person's answer rather than an approval card, as the
+computer gateway does for a call with no run. A tool call reaches only the app's own server:
+Codex 0.166.0 answers `mcpServer/tool/call` only for a thread it has loaded, so the service
+starts a short-lived app-server in the thread's trusted checkout, opens an ephemeral
+read-only thread there and calls the tool, with no model turn and the thread's own session
+untouched. Arguments are one object of at most 64 KiB, the whole call has 45 seconds, the
+result is audited and held to 256 KiB. A message is queued as the person's own next message.
+`ui/request-display-mode` switches between the inline card and full screen, which keeps the
+same frame so the page keeps its state; Escape or the card's control returns it inline, and
+the page hears the mode through `host-context-changed`.
+
+`ui/update-model-context` leaves a note for the model: its text blocks, then its structured
+content as JSON, at most 8000 characters. The web sends it with
+`PUT /api/threads/:id/mcp-apps/:render_id/context`; the latest note replaces any earlier
+one, empty text clears it, and a deny rule on `mcp_app:<server>:context` refuses it. Codex
+has no request for model context, so the service keeps the note for the thread's next
+ordinary turn (not `/compact` or `/goal`) and appends it to that turn's context in an
+`<mcp-app-context server="…">` block that says it is the app's text, not the person's; a
+closing tag inside the note is broken; Codex takes it with the rest of the run's context as
+the thread's `developerInstructions`. A `CUSTOM mcp_app.context` event recording the server
+and text opens that turn's timeline, ahead of anything the engine reports, and the timeline
+shows that the note was sent. The card
+says while a note is waiting and can drop it (`DELETE /api/threads/:id/mcp-app-context`). The
+note is held in memory, so a service restart forgets an unsent one. Setting a note needs no
+confirmation: it changes nothing until the person's next message, which shows it was sent.
+
 ## Approval lifecycle
 
 ```text
@@ -1500,7 +1577,11 @@ Activity types are `approval` (content is the `Approval`), `plan`
 and `unmanaged`. `question` (content is the `QuestionRequest`), and `CUSTOM` carries `tool.output`,
 `tool.finished`, `subagent.activity`, `usage`, `goal.updated`, `engine.warning`,
 `engine.retrying`, `engine.selection`, `engine.sign_in_required`,
-`engine.session_lost` and `run.force_stopped`. The prompt is logged as a `user` text message whose id ends in
+`engine.session_lost`, `run.force_stopped` and `permission.updated`. A run copies its
+permission mode when it starts, so a mode changed while a run is starting, running or
+waiting on an approval applies from the next run; the change then logs
+`permission.updated` (`{mode, applies: "next_run"}`) and the web shows a toast for one
+that arrives while the thread is open. The prompt is logged as a `user` text message whose id ends in
 `:prompt`.
 
 The AG-UI interrupt model ends a run at an interrupt, while a CLI blocked on
@@ -1858,6 +1939,12 @@ sets no `PATH`: `child_env` widens that for every child without sourcing a shell
 
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
 random per run, is passed only to that run's engine, and is revoked at run end.
+An ACP agent that does not report HTTP MCP support gets a stdio server instead,
+which ACP requires every agent to support: the sibling `orbyn acp-mcp-bridge`,
+with the run's endpoint (token included) in `ORBYN_ACP_MCP_ENDPOINT`, never in its
+arguments. The bridge relays each JSON-RPC line to the same route, so it adds no
+tool, scope or credential. Without a sibling `orbyn` program the agent gets no
+MCP server, as before.
 Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
 governed `computer_*` tools and `orbyn_*` tools for threads, projects, worktrees,
 attachments, preview tabs, published pages, pull requests, delegation, scheduling and
@@ -2130,7 +2217,11 @@ sandbox remain separate and receive no remote-fetch permission from this route.
 
 SQLite in WAL mode in the OS app-data directory. Migrations are ordered and
 forward-only, applied in a transaction at startup, and recorded in
-`schema_migrations`. A database from a newer version is refused, not opened.
+`schema_migrations`. A database from a newer version is refused, not opened. A start
+that moves an existing database forward reports `database_upgrade: {from, to}` in
+`/api/info`, and the web shows one toast per upgrade; a database this start created
+reports nothing. Orbyn has no older thread database to import (A54), so this forward
+upgrade is the only migration event.
 
 Secret files are created with mode `0600` on Unix. Windows has no mode bits: they
 inherit the ACL of the per-user `%LOCALAPPDATA%` directory, which excludes other
@@ -2362,6 +2453,10 @@ because browsers cannot set headers on them.
 | `POST /api/threads/:id/runs` | Admit a run with an optional `model`, `effort` and `options` (`202`, `409 thread_busy`, `403 folder_untrusted`, `422 unsupported_option`) |
 | `GET, POST /api/threads/:id/queue` | `QueuedMessage[]`; queue a message, which starts at once if idle and can carry a selection (`422 unsupported_option`) |
 | `POST /api/threads/:id/queue/resume` | Release a held queue |
+| `POST /api/threads/:id/mcp-apps/:render_id/tool-call` | An MCP App's confirmed tool call on its own server |
+| `POST /api/threads/:id/mcp-apps/:render_id/message` | An MCP App's confirmed message, queued |
+| `PUT /api/threads/:id/mcp-apps/:render_id/context` | An MCP App's note for the next turn |
+| `DELETE /api/threads/:id/mcp-app-context` | Drop the unsent app note |
 | `PATCH, DELETE /api/queue/:id` | Edit or remove a queued message |
 | `POST /api/queue/:id/send-now` | Send next, stopping a running turn for it |
 | `POST /api/threads/:id/steer` | `SteerRun`: add text to the running turn (`422` if unsupported); a selection applies from the next turn |

@@ -358,13 +358,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   async refreshAll() {
     const { refreshProjects, refreshThreads, refreshApprovals, refreshManaged, refreshUpdates } = get();
+    // The workspace status names each project's branch, so it starts with the projects.
+    const managed = refreshManaged();
     await refreshProjects();
     const projects = get().projects.data ?? [];
     await Promise.all([
       ...projects.map((p) => refreshThreads(p.id)),
       get().refreshScratch(),
       refreshApprovals(),
-      refreshManaged(),
+      managed,
       refreshUpdates(),
     ]);
   },
@@ -460,7 +462,7 @@ export function useVisibleProjects(): Project[] | null {
   const projects = useWorkspace((state) => state.projects.data);
   const library = useWorkspace((state) => state.managed.data?.library?.path);
   return useMemo(
-    () => projects?.filter((project) => project.path !== library && !project.scratch) ?? null,
+    () => projects?.filter((project) => !project.library && project.path !== library && !project.scratch) ?? null,
     [projects, library],
   );
 }

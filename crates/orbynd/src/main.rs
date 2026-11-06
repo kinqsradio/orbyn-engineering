@@ -2,6 +2,7 @@
 
 mod access;
 mod api;
+mod mcp_apps;
 mod preview_routes;
 mod pulls;
 mod raw_files;
@@ -259,6 +260,22 @@ fn router(state: AppState) -> Router {
             get(api::read_outside_file),
         )
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
+        .route(
+            "/api/threads/{id}/mcp-apps/{render_id}/tool-call",
+            post(mcp_apps::tool_call),
+        )
+        .route(
+            "/api/threads/{id}/mcp-apps/{render_id}/message",
+            post(mcp_apps::message),
+        )
+        .route(
+            "/api/threads/{id}/mcp-apps/{render_id}/context",
+            axum::routing::put(mcp_apps::context),
+        )
+        .route(
+            "/api/threads/{id}/mcp-app-context",
+            axum::routing::delete(mcp_apps::clear_context),
+        )
         .route("/api/threads/{id}/renders", post(renders::publish))
         .route("/api/threads/{id}/renders/{render_id}", get(renders::page))
         .route(

@@ -133,3 +133,18 @@ it("does not replace observed versioned project metadata with an unversioned rep
   useWorkspace.getState().putProject({ ...newer, name: "Unversioned", metadata_revision: undefined });
   expect(useWorkspace.getState().projects.data).toEqual([newer]);
 });
+
+describe("visible projects", () => {
+  it("leaves the skills library out before the workspace status loads", async () => {
+    const { renderHook } = await import("@testing-library/react");
+    const { useVisibleProjects } = await import("./workspace");
+    const library: Project = { ...projects[0]!, id: "library", path: "/library", name: "Skills library", library: true };
+    const mine: Project = { ...projects[0]!, id: "mine", path: "/mine", name: "Mine", library: false };
+    useWorkspace.setState({
+      projects: { data: [library, mine], error: null, loading: false },
+      managed: { data: null, error: null, loading: true },
+    });
+    const { result } = renderHook(() => useVisibleProjects());
+    expect(result.current?.map((project) => project.id)).toEqual(["mine"]);
+  });
+});

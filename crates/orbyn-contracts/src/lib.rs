@@ -71,6 +71,11 @@ pub struct Project {
     /// A thread's dated folder under app data, hidden from project lists.
     #[serde(default)]
     pub scratch: bool,
+    /// The bundled skills library, which the service registers by itself and
+    /// project lists leave out, from the first list on.
+    #[serde(default)]
+    #[ts(as = "Option<bool>", optional)]
+    pub library: bool,
 }
 }
 
@@ -853,6 +858,9 @@ wire! {
 pub struct GitActionResult {
     /// Phases that ran. A failed phase is the last one.
     pub phases: Vec<GitPhase>,
+    /// Why blank text was not generated and the fallback was used instead.
+    #[serde(default)]
+    pub notice: Option<String>,
 }
 }
 
@@ -3563,6 +3571,20 @@ pub struct ServerInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub environment_icon: Option<String>,
+    /// Set when this service start moved an existing database to a newer schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub database_upgrade: Option<DatabaseUpgrade>,
+}
+}
+
+wire! {
+/// The schema versions a service start moved the database between.
+pub struct DatabaseUpgrade {
+    #[ts(type = "number")]
+    pub from: i64,
+    #[ts(type = "number")]
+    pub to: i64,
 }
 }
 

@@ -34,6 +34,8 @@ const PAGE_FILE: &str = "index.html";
 /// The digest of this render's frame token. Written before the page, so a served
 /// page always has a hash to check against.
 const FRAME_FILE: &str = "frame.sha256";
+/// Which MCP server and tool an app render came from. Never served.
+const APP_FILE: &str = "app.json";
 const PAGE_TYPE: &str = "text/html; charset=utf-8";
 
 /// True when a document of this size is over the publish limit.
@@ -356,6 +358,47 @@ pub struct PublishedRender {
     pub bytes: usize,
 }
 
+/// Where every thread's renders are kept.
+pub fn renders_root(data_dir: &Path) -> PathBuf {
+    data_dir.join(RENDERS_FOLDER)
+}
+
+/// Stores an MCP App's page as one of the thread's renders, the same way an agent's
+/// page is stored but with nothing embedded: its HTML comes from an outside MCP
+/// server, so no checkout image is copied in and its `src` values stay as written.
+/// Only a run calls this, and a run only starts in a trusted folder.
+pub fn publish_app_page(
+    root: &Path,
+    thread_id: &str,
+    html: &str,
+    app: &serde_json::Value,
+) -> Result<PublishedRender> {
+    if html_too_large(html.len()) {
+        return Err(CoreError::Invalid(format!(
+            "This page is {} bytes, over the {} byte (512 KiB) render limit.",
+            html.len(),
+            MAX_RENDER_HTML_BYTES
+        )));
+    }
+    let folder = root.join(thread_id);
+    std::fs::create_dir_all(&folder)?;
+    evict_renders(&folder, MAX_RENDERS_PER_THREAD.saturating_sub(1));
+    let id = new_id();
+    let dir = folder.join(&id);
+    std::fs::create_dir_all(&dir)?;
+    let frame_token = random_token()?;
+    std::fs::write(dir.join(FRAME_FILE), sha256_hex(frame_token.as_bytes()))?;
+    std::fs::write(dir.join(APP_FILE), app.to_string())?;
+    std::fs::write(dir.join(PAGE_FILE), html.as_bytes())?;
+    Ok(PublishedRender {
+        url: format!("/api/threads/{thread_id}/renders/{id}"),
+        id,
+        frame_token,
+        images: 0,
+        bytes: html.len(),
+    })
+}
+
 /// The bytes of one published file, ready to send as they are.
 pub struct RenderFile {
     pub bytes: Vec<u8>,
@@ -364,7 +407,7 @@ pub struct RenderFile {
 
 impl Core {
     fn renders_root(&self) -> PathBuf {
-        self.config.data_dir.join(RENDERS_FOLDER)
+        renders_root(&self.config.data_dir)
     }
 
     /// Stores an agent's page under this thread's renders and copies the checkout
@@ -451,6 +494,13 @@ impl Core {
             return false;
         };
         secrets_match(token, stored.trim())
+    }
+
+    /// The server and tool an MCP App render came from. A render an agent published
+    /// has none, so it reads as not found and no app request can name it.
+    pub fn render_app(&self, thread_id: &str, render_id: &str) -> Result<serde_json::Value> {
+        let bytes = self.read_render(thread_id, render_id, APP_FILE, "app")?;
+        serde_json::from_slice(&bytes).map_err(|_| CoreError::NotFound("app".into()))
     }
 
     /// The stored page of one render. Another thread's render id is simply not in
