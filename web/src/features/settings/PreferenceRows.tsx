@@ -29,6 +29,8 @@ export interface PreferenceRow {
   inheritance?: boolean;
   /** Value and label, for a fixed choice. */
   options?: { value: string; label: string }[];
+  /** Shows a short fixed choice side by side instead of as a menu. */
+  segmented?: boolean;
   parse?(value: string): unknown;
   multiline?: boolean;
   /** For a value none of the plain controls fit. */

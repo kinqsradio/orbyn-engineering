@@ -220,3 +220,21 @@ it("uploads a file for a custom answer and keeps it with that question", async (
   });
   expect(upload).toHaveBeenCalledWith("t", file);
 });
+
+it("keys 1-9 pick an option, and Enter submits only from the panel itself", async () => {
+  ask.questions = [{ ...ask.questions[0]!, question: "See [the docs](https://example.com/docs)." }];
+  const user = userEvent.setup();
+  render(<QuestionPanel threadId="t" waiting />);
+  const panel = await screen.findByRole("region", { name: "Question from the agent" });
+  const first = within(panel).getByRole("button", { name: /A\s*First/ });
+  first.focus();
+  await user.keyboard("2");
+  expect(within(panel).getByRole("button", { name: /B\s*Second/ })).toHaveAttribute("aria-pressed", "true");
+  // A link keeps Enter for itself, so nothing is sent.
+  within(panel).getByRole("link", { name: "the docs" }).focus();
+  await user.keyboard("{Enter}");
+  expect(mock).not.toHaveBeenCalledWith("POST", expect.anything(), expect.anything());
+  panel.focus();
+  await user.keyboard("{Enter}");
+  expect(mock).toHaveBeenCalledWith("POST", "/api/questions/request%2F1/answer", { answers: { choice: ["B"] } });
+});

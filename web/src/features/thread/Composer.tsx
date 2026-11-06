@@ -38,6 +38,7 @@ import {
 import { ACCESS, EffortTrigger, offeredModes, shownAccess, useTraitsMenu } from "./ComposerTraits";
 import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
+import { SubagentChips } from "./SubagentBar";
 import { effortOption, effortValue, resolveModel, useEngineModels } from "../../state/modelStore";
 import { QueuedMessages } from "./QueuedMessages";
 import { openSideChat } from "../panels/sideChat";
@@ -542,6 +543,9 @@ export function Composer({
     field.current?.focus();
   };
 
+  useOwnCommand(side, "composer.focus", () => {
+    field.current?.focus();
+  });
   useOwnCommand(side, "composer.stash", () => {
     stash();
   });
@@ -710,6 +714,7 @@ export function Composer({
           {error}
         </p>
       ) : null}
+      {busy ? <SubagentChips agents={log?.subagents ?? []} /> : null}
       <QueuedMessages
         threadId={thread.id}
         items={queue.data ?? []}

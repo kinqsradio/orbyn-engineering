@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
 import { applyTheme, useUi, type EnvironmentIdentification, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
+import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
 import { api } from "../../api/client";
@@ -46,14 +47,27 @@ function EnvironmentGroup() {
   );
 }
 
-type LayoutOption = { value: LayoutChoice; label: string; description: string };
+type LayoutOption = { value: LayoutChoice; label: string; description: string; columns: string; rows?: string; cells: { span?: boolean; lead?: boolean; inset?: boolean }[] };
 
-const CONSOLE: LayoutOption = { value: "console", label: "Console", description: "Projects on the left, the thread in the middle, context on the right." };
+const CONSOLE: LayoutOption = {
+  value: "console",
+  label: "Console",
+  description: "Sidebar, thread, side panel",
+  columns: "22% 1fr 30%",
+  cells: [{}, {}, {}],
+};
 
 const LAYOUTS: LayoutOption[] = [
   CONSOLE,
-  { value: "ledger", label: "Ledger", description: "Threads that need you come first, with the details rail open." },
-  { value: "reading", label: "Reading", description: "One centred reading column; the sidebar and panels open when you need them." },
+  {
+    value: "ledger",
+    label: "Ledger",
+    description: "What needs you first",
+    columns: "24% 1fr 22%",
+    rows: "14px 1fr",
+    cells: [{ span: true, lead: true }, { lead: true }, { span: true }, {}],
+  },
+  { value: "reading", label: "Reading", description: "One calm column", columns: "8% 1fr", cells: [{}, { inset: true }] },
 ];
 
 /** A layout preset: it sets the arrangement and the few panel defaults that go with it. */
@@ -69,14 +83,41 @@ function LayoutRow() {
     applyTheme(theme);
   };
   return (
-    <SettingRow title={settingsLabel("appearance-layout")} description={current.description}>
-      <select aria-label="Layout" value={current.value} onChange={(event) => choose(event.target.value as LayoutChoice)}>
+    <SettingRow title={settingsLabel("appearance-layout")} stacked>
+      <div
+        className="layout-cards"
+        role="radiogroup"
+        aria-label="Layout"
+        onKeyDown={(event) => {
+          const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+          if (!step) return;
+          event.preventDefault();
+          const next = LAYOUTS[(LAYOUTS.indexOf(current) + step + LAYOUTS.length) % LAYOUTS.length];
+          if (!next) return;
+          choose(next.value);
+          requestAnimationFrame(() => event.currentTarget.querySelector<HTMLElement>('[aria-checked="true"]')?.focus());
+        }}
+      >
         {LAYOUTS.map((choice) => (
-          <option key={choice.value} value={choice.value}>
-            {choice.label}
-          </option>
+          <button
+            key={choice.value}
+            type="button"
+            role="radio"
+            className="layout-card"
+            aria-checked={choice.value === current.value}
+            tabIndex={choice.value === current.value ? 0 : -1}
+            onClick={() => choose(choice.value)}
+          >
+            <span className="layout-mini" aria-hidden style={{ gridTemplateColumns: choice.columns, gridTemplateRows: choice.rows }}>
+              {choice.cells.map((cell, at) => (
+                <i key={at} className={cell.lead ? "lead" : undefined} data-span={cell.span || undefined} data-inset={cell.inset || undefined} />
+              ))}
+            </span>
+            <b>{choice.label}</b>
+            <span>{choice.description}</span>
+          </button>
         ))}
-      </select>
+      </div>
     </SettingRow>
   );
 }
@@ -86,6 +127,34 @@ const choices: { value: ThemeChoice; label: string }[] = [
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
 ];
+
+type LookChoice = ThemeChoice | "dim";
+const LOOKS: { value: LookChoice; label: string }[] = [...choices, { value: "dim", label: "Dim" }];
+
+/** System, Light, Dark and Dim; Dim is the dark theme with the Dim preset. */
+function ThemeChoiceRow() {
+  const theme = useUi((state) => state.theme);
+  const darkPreset = useUi((state) => state.darkPreset);
+  const setTheme = useUi((state) => state.setTheme);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const value: LookChoice = theme === "dark" && darkPreset === "dim" ? "dim" : theme;
+  const choose = (next: LookChoice) => {
+    if (next === "dim") {
+      setPrefs({ darkPreset: "dim" });
+      setTheme("dark");
+      applyTheme("dark");
+      return;
+    }
+    if (next === "dark" && darkPreset === "dim") setPrefs({ darkPreset: null });
+    setTheme(next);
+    applyTheme(next);
+  };
+  return (
+    <SettingRow title={settingsLabel("appearance-theme")} description="How the app looks on this device.">
+      <Segmented label="Theme" value={value} options={LOOKS} onChange={choose} />
+    </SettingRow>
+  );
+}
 
 function PresetRow({ scheme }: { scheme: "light" | "dark" }) {
   const key = scheme === "dark" ? "darkPreset" : "lightPreset";
@@ -211,7 +280,6 @@ function TypographyGroup() {
 
 export function AppearanceSection() {
   const theme = useUi((state) => state.theme);
-  const setTheme = useUi((state) => state.setTheme);
   const panelMs = useUi((state) => state.panelAnimationMs);
   const setPanelMs = useUi((state) => state.setPanelAnimationMs);
   const effortDisplay = useUi((state) => state.effortDisplay);
@@ -225,15 +293,7 @@ export function AppearanceSection() {
         Appearance
       </h1>
       <SettingGroup title="Theme">
-        <SettingRow title={settingsLabel("appearance-theme")} description="How the app looks on this device.">
-          <select aria-label="Theme" value={theme} onChange={(event) => setTheme(event.target.value as ThemeChoice)}>
-            {choices.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-        </SettingRow>
+        <ThemeChoiceRow />
         <LayoutRow />
         <SettingRow
           title={settingsLabel("appearance-environment-identification")}

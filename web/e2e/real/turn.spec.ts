@@ -91,8 +91,8 @@ test("a question and an approval are answered from the composer", async ({ page 
   const id = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
   await expect.poll(async () => (await service.api<Thread>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 }).toBeNull();
   await send(page, "[approve] change a file");
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Decline", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Allow", exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Deny", exact: true }).click();
   await expect.poll(async () => (await service.api<Thread>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 }).toBeNull();
 });
 

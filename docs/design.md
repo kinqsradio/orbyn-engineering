@@ -64,8 +64,8 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
   faint) with three small tools (search the list, filter by project, add project); then
   the thread list; Settings pinned at the bottom with the update, provider-update and
   undo notices above it. The selected row has the `--color-selected` fill.
-- Project folders is the default arrangement ("Project folders" in Settings › Labs keeps
-  working). A folder row shows the project badge, its name and an amber count of threads
+- Project folders is the default arrangement ("Group threads by project" in Settings › Threads
+  keeps working). A folder row shows the project badge, its name and an amber count of threads
   waiting on you. Its threads are nested rows (25px, 32px left padding, 12.5px) with the
   status at the right: spinner, amber dot, age or "Failed" in red. The flat arrangement
   still has pinned rows, the Working shelf, snoozed and settled groups, and drag and drop.
@@ -83,6 +83,30 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
   Browser's pages (each closable, plus New tab) over its address bar, and a thread's side
   chats (plus New side chat). The terminal is a drawer under the thread with its own tabs.
   Choosing the selected tab again, or "Open a surface…" in the command palette, shows the "Open a surface" list with its letter shortcuts; Escape returns to the tab. The tab row is one tablist (arrow keys, Home, End) and fades at its edge when it overflows.
+
+## Thread
+
+- Transcript: your message is a right-aligned `--color-message` bubble; the agent's text is
+  soft ink. Tool calls read as a short trail (a 1px rule at the left, 26px rows, 12.5px
+  muted text, ink icons). A failed call is the only red row: a red cross, the command, and
+  "Output" at the end. A finished turn folds into one trail row.
+- Needs you: an approval or question is an amber card (`--color-warnSoft`, 16px radius) with
+  the label "Needs you · command" or "The agent asks". An approval shows the exact command
+  in a mono box, then Why and Reaches or Runs in rows when the engine reports them, and
+  ends with More (cancel the run), Deny, Always allow and Allow. A question lists numbered
+  options (keys 1-9 pick one, Enter submits when every question has an answer and focus is
+  not in a field) and keeps Dismiss and Submit answers.
+- Subagents the engine reports show as chips above the composer while a turn runs; queued
+  messages show as one quiet bar ("Queued · sends when this turn ends") that keeps Steer,
+  Edit, Send now and Remove.
+- Composer: a 16px-radius box with a 26px control row (attach, Plan, model, effort, access,
+  send). Menus (model, access, mentions, slash commands) are the floating layer: 12px
+  radius, 30px rows, mono shortcuts and hints.
+- Banners: a usage limit is amber, a failure is red (a flat tint, no border), and context
+  or reconnecting notices stay ink. A new worktree's card lists Path, Branch and Setup.
+- Minimap: a 6px strip near the right edge, shown when the pointer reaches it. Ticks for
+  your messages are ink and can be clicked; failures (red) and decisions waiting on you
+  (amber) are marks.
 
 ## Surfaces
 
@@ -135,7 +159,19 @@ Layout rules live in `web/src/styles/layouts.css`; ordering lives in `attentionR
 Saved preferences carry a `prefsVersion`. Version 1 (the frame) moves a saved sidebar width
 of exactly 208px to 224px and turns project folders on, once; a custom width stays. Someone
 with saved preferences gets a one-time notice with Turn off; the option lives in Settings ›
-Labs.
+Threads.
+
+## Settings
+
+Settings is a page in the frame's main area, not a dialog. A 260px section list sits on
+the left: "Find a setting" search (it lists matching settings and reveals the chosen
+row), then General to Keybindings, the Agents group (Providers, Threads, Scheduled tasks), the Code group (Projects, Source control, Worktrees), then Maintenance, Labs, About and Archive.
+The open section shows a 22px title with a close button, an optional scope line ("Applying settings for"
+a project, or "Applies to this computer" in General), then rows: 52px, a label with a small
+description at the left, the control at the right, one hairline between rows. Toggles are 30x18
+switches; Theme is System, Light, Dark and Dim (Dim is the dark theme with the Dim preset);
+Layout is three cards (Console, Ledger, Reading) with a small plan of each. Escape or the
+close button returns to the page behind. The page is a labelled region, not a dialog.
 
 ## Planned with the Orbyn platform
 

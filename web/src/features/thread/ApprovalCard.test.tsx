@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
@@ -27,8 +27,8 @@ describe("ApprovalCard", () => {
   });
 
   it.each([
-    ["Approve", true],
-    ["Decline", false],
+    ["Allow", true],
+    ["Deny", false],
   ])("%s sends allow=%s", async (label, allow) => {
     const decide = vi
       .spyOn(api, "decideApproval")
@@ -40,12 +40,20 @@ describe("ApprovalCard", () => {
     decide.mockRestore();
   });
 
-  it("offers always allow under More", async () => {
+  it("asks once before always allowing, and Cancel sends nothing", async () => {
     const decide = vi.spyOn(api, "decideApproval").mockResolvedValue({ ...approval, state: "allowed" });
     render(<ApprovalCard approval={approval} />);
-    await userEvent.click(screen.getByRole("button", { name: "More" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Always allow" }));
-    expect(decide).toHaveBeenCalledExactlyOnceWith("a1", true, true);
+    const always = screen.getByRole("button", { name: "Always allow this command" });
+    expect(always).toHaveAccessibleDescription(/Allow cargo test for .* in every project from now on/);
+    await userEvent.click(always);
+    const dialog = await screen.findByRole("dialog", { name: "Always allow cargo test?" });
+    expect(dialog).toHaveTextContent("Applies in every project.");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(decide).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Always allow this command" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Always allow" }));
+    await waitFor(() => expect(decide).toHaveBeenCalledExactlyOnceWith("a1", true, true));
     decide.mockRestore();
   });
 
@@ -53,10 +61,10 @@ describe("ApprovalCard", () => {
     let finish!: (value: Approval) => void;
     const decide = vi.spyOn(api, "decideApproval").mockReturnValue(new Promise((resolve) => (finish = resolve)));
     render(<ApprovalCard approval={approval} />);
-    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(screen.getByRole("button", { name: "Decline" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Allow" }));
+    expect(screen.getByRole("button", { name: "Deny" })).toBeDisabled();
     finish({ ...approval, state: "allowed" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Decline" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled());
     decide.mockRestore();
   });
 
@@ -68,7 +76,7 @@ describe("ApprovalCard", () => {
       );
     const refresh = vi.spyOn(api, "pendingApprovals").mockResolvedValue([]);
     render(<ApprovalCard approval={approval} />);
-    await userEvent.click(screen.getByRole("button", { name: "Decline" }));
+    await userEvent.click(screen.getByRole("button", { name: "Deny" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Already decided");
     expect(useWorkspace.getState().receipts.a1?.state).toBe("allowed");
     decide.mockRestore();
@@ -78,6 +86,6 @@ describe("ApprovalCard", () => {
   it("offers no decisions on a closed approval", () => {
     render(<ApprovalCard approval={{ ...approval, state: "expired" }} />);
     expect(screen.getByText("Expired")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
   });
 });

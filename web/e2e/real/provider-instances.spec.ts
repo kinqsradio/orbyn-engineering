@@ -98,7 +98,7 @@ test("accent picker escapes scrolling settings and supports desktop-dark and nar
     for (const entry of [{ width: 1400, height: 900, theme: "dark" }, { width: 640, height: 760, theme: "light" }]) {
       await page.setViewportSize({ width: entry.width, height: entry.height });
       await page.goto(`${service.page}#/settings/appearance`);
-      await page.getByRole("combobox", { name: "Theme", exact: true }).selectOption(entry.theme);
+      await page.getByRole("radiogroup", { name: "Theme", exact: true }).getByRole("radio", { name: entry.theme === "dark" ? "Dark" : "Light", exact: true }).click();
       await expect(page.locator("html")).toHaveAttribute("data-theme", entry.theme);
       await open(page, service); await page.getByRole("button", { name: "Select Work", exact: true }).click();
       const trigger = page.getByRole("button", { name: /^(Add|Change) accent color for Work$/ });
@@ -138,7 +138,7 @@ test("a pending accent write keeps Escape owned by the popup and restores focus 
     const hex = popup.getByRole("textbox", { name: "Custom hex accent color", exact: true });
     await hex.fill("#2468ab"); await expect.poll(() => committed).toBe(true); await expect(hex).toBeDisabled();
     await page.keyboard.press("Escape");
-    await expect(popup).toBeHidden(); await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible(); expect(mutations).toBe(1);
+    await expect(popup).toBeHidden(); await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible(); expect(mutations).toBe(1);
     release();
     const trigger = page.getByRole("button", { name: "Change accent color for Work", exact: true });
     await expect(trigger).toBeEnabled(); await expect(trigger).toBeFocused();

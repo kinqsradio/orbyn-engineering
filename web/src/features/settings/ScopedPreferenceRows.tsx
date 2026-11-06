@@ -10,6 +10,7 @@ import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
 import { PreferenceInheritance, type PreferenceRow, type PreferenceControl, type PreferenceSaveResult } from "./PreferenceRows";
+import { Segmented } from "../../ui/Segmented";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { runHandlers } from "../../app/shortcuts";
 import { useUi } from "../../state/ui";
@@ -97,6 +98,8 @@ function ValueControl({ row, value, save, control }: { row: PreferenceRow; value
     {value.mixed ? <span>Mixed</span> : null}
     {row.render(value.value, (next) => { if (!value.mixed || touched.current) save(next); }, control)}
   </div>;
+  if (row.options && row.segmented && !value.mixed) return <Segmented label={row.title} value={String(value.value ?? "")} options={row.options}
+    onChange={(next) => save(row.parse ? row.parse(next) : next)} />;
   if (row.options) return <select aria-label={row.title} value={value.mixed ? "__mixed__" : String(value.value ?? "")}
     onChange={(event) => save(row.parse ? row.parse(event.target.value) : event.target.value)}>
     {value.mixed ? <option value="__mixed__" disabled>Mixed</option> : null}

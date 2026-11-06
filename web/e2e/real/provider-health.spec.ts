@@ -28,7 +28,7 @@ test("the composer follows provider health reports and recovery", async ({ page 
     await check.click();
     await expect(check).toBeEnabled();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeHidden();
+    await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeHidden();
   };
   const banner = page.locator(".composer-banner");
   await expect(banner).toHaveText("Codex: This engine did not respond.");

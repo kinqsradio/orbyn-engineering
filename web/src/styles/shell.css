@@ -111,6 +111,10 @@
   border-left: 0;
   border-top-left-radius: 0;
 }
+/* Holds the routed page without changing how it lays out in .main. */
+.main-view {
+  display: contents;
+}
 .main:focus {
   outline: none;
 }

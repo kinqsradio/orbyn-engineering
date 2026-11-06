@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
-import { useCommand } from "../../app/shortcuts";
+import { runHandlers, useCommand } from "../../app/shortcuts";
 import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
@@ -222,8 +222,15 @@ function PlanBanner({ thread }: { thread: Thread }) {
     <div className="plan-banner" role="status">
       <strong>Plan ready</strong>
       <span>{planTitle(plan)}</span>
+      <Button
+        small
+        tone="quiet"
+        onClick={() => runHandlers("composer.focus")}
+      >
+        Suggest changes
+      </Button>
       <Button small onClick={() => void implement()}>
-        Implement plan
+        Approve and start
       </Button>
     </div>
   );
