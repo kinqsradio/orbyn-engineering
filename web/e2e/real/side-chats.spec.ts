@@ -47,7 +47,9 @@ test("/side asks in a tab while the row list stays as it was, and it can be foun
   await page.getByRole("button", { name: "Close Side chat" }).click();
   await expect(page.getByText("No side chat open")).toBeVisible();
   await expect((await sideOf(id)).length).toBe(1);
-  await expect(page.getByRole("group", { name: "Side chats" }).getByRole("button", { name: "Side chat 1" })).toBeVisible();
+  // The chip carries the side chat's own title, or "Side chat N" while it has none.
+  const [kept] = await sideOf(id);
+  await expect(page.getByRole("group", { name: "Side chats" }).getByRole("button", { name: kept?.title?.trim() || "Side chat 1", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close surfaces" }).click();
   await page.getByRole("complementary", { name: "Thread details" }).getByRole("button", { name: /Side chat/ }).click();
   await expect(pane(page).getByText("what did it find?")).toBeVisible();
