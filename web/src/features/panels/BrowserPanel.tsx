@@ -426,7 +426,9 @@ export function PageView({
       {picture && resize ? (
         <div className="browser-box" style={{ width: box.width, height: box.height }}>
           {picture}
-          <AgentCursor key={`${threadId}:${tab.id}:${tab.url}:${tab.width}:${tab.height}:${tab.zoom}`} threadId={threadId} tabId={tab.id} image={stage} />
+          {/* One stream per tab: the service clears the cue itself on navigation or a resize, and a
+            remount here would drop a cue sent while the new stream connects. */}
+          <AgentCursor key={`${threadId}:${tab.id}`} threadId={threadId} tabId={tab.id} image={stage} />
           {resize.handles ? (
             <ResizeHandles
               page={page}
@@ -438,7 +440,7 @@ export function PageView({
           ) : null}
         </div>
       ) : picture ? (
-        <>{picture}<AgentCursor key={`${threadId}:${tab.id}:${tab.url}:${tab.width}:${tab.height}:${tab.zoom}`} threadId={threadId} tabId={tab.id} image={stage} /></>
+        <>{picture}<AgentCursor key={`${threadId}:${tab.id}`} threadId={threadId} tabId={tab.id} image={stage} /></>
       ) : (
         <p className="browser-note">{lost ? "Browser connection was refused." : "Connecting..."}</p>
       )}
