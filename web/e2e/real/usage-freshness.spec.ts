@@ -51,10 +51,10 @@ test("a real local refresh keeps and dims figures, then applies its response", a
   try {
     await page.getByRole("button", { name: "Refresh usage" }).click();
     await held.ready;
-    await expect(page.getByRole("dialog", { name: "Usage" }).getByRole("status")).toHaveText("Refreshing usage…");
+    await expect(page.getByRole("region", { name: "Usage" }).getByRole("status")).toHaveText("Refreshing usage…");
     await expect(row).toContainText("101");
-    await expect(page.locator(".usage-total strong")).toHaveCSS("transition-delay", "0.15s");
-    await expect(page.locator(".usage-total strong")).toHaveCSS("opacity", "0.4");
+    await expect(page.locator(".usage-stat strong").first()).toHaveCSS("transition-delay", "0.15s");
+    await expect(page.locator(".usage-stat strong").first()).toHaveCSS("opacity", "0.4");
     await expect(page.locator(".usage-chart")).toHaveCSS("opacity", "0.4");
     expect(await model?.evaluate((element) => element.isConnected)).toBe(true);
     await page.screenshot({ path: test.info().outputPath("refresh-pending.png") });
@@ -62,7 +62,7 @@ test("a real local refresh keeps and dims figures, then applies its response", a
     await held.release();
   }
   await expect(row).toContainText("202");
-  await expect(page.locator(".usage-total strong")).toHaveCSS("opacity", "1");
+  await expect(page.locator(".usage-stat strong").first()).toHaveCSS("opacity", "1");
   await expect(page.getByRole("button", { name: "Refresh usage" })).toBeEnabled();
   await expect(row).toContainText("Unpriced");
   await page.screenshot({ path: test.info().outputPath("refresh-settled.png") });
@@ -101,7 +101,7 @@ test("a failed transport retains figures and offers a working retry at narrow wi
   await page.getByRole("button", { name: "Refresh usage" }).click();
   await expect(page.getByRole("alert")).toContainText("Couldn't refresh usage");
   await expect(row).toContainText("404");
-  await expect(page.locator(".usage-total strong")).toHaveCSS("opacity", "1");
+  await expect(page.locator(".usage-stat strong").first()).toHaveCSS("opacity", "1");
   await page.screenshot({ path: test.info().outputPath("refresh-error-narrow.png") });
   await page.unroute("**/api/usage/refresh?**");
   writeHistory(505);

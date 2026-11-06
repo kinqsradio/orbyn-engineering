@@ -55,7 +55,7 @@ const loadEngines = () =>
     loadingEngines = null;
   }));
 
-type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
+type PageRoute = Exclude<Route, { name: "settings" }>;
 
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
@@ -68,6 +68,8 @@ function RouteView({ route, needsProject }: { route: PageRoute; needsProject: bo
       );
     case "pulls":
       return <PullsPage />;
+    case "usage":
+      return <UsagePage />;
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":
@@ -526,7 +528,7 @@ export function Shell() {
   }, []);
 
   const needsProject = projects !== null && projects.length === 0;
-  const overlay = route.name === "settings" || route.name === "usage";
+  const overlay = route.name === "settings";
   const underneath = overlay ? behindSettings.current : route;
   if (!overlay) behindSettings.current = route;
   const onHome = underneath.name === "home" && !needsProject;
@@ -570,7 +572,6 @@ export function Shell() {
           <RouteView route={underneath} needsProject={needsProject} />
         </main>
       )}
-      {route.name === "usage" ? <UsagePage onClose={() => navigate(underneath)} /> : null}
       {route.name === "settings" ? (
         <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
       ) : null}

@@ -116,7 +116,7 @@ test("F6 walks the window's areas", async ({ page }) => {
 
 test("usage period keys come from the rules", async ({ page }) => {
   await page.goto(`${service.page}#/usage`);
-  const usage = page.getByRole("dialog", { name: "Usage" });
+  const usage = page.getByRole("region", { name: "Usage" });
   await expect(usage).toBeVisible();
   // The rules arrive just after the page does.
   await expect(async () => {

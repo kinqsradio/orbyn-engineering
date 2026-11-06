@@ -1,5 +1,6 @@
-import { ChevronDown, RefreshCw, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, RefreshCw } from "lucide-react";
+import "./usage.css";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
 import type { EngineLimits, LimitsOverview, ModelUsage, UsageReport } from "../../api/types";
@@ -10,6 +11,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, Field, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
+import { PageBar } from "../../ui/PageBar";
 import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
 import { useUsageReport } from "./useUsageReport";
@@ -65,11 +67,12 @@ function Segment<T extends string | number>({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="usage-stat">
       <span>{label}</span>
       <strong>{value}</strong>
+      {note ? <small>{note}</small> : null}
     </div>
   );
 }
@@ -155,7 +158,7 @@ function resetsIn(iso: string): string {
 function LimitRow({ label, used, resets }: { label: string; used: number; resets: string | null }) {
   const left = Math.max(0, Math.round(100 - used));
   return (
-    <div className="limit-row">
+    <div className="limit-row" data-low={left < 15 || undefined}>
       <div className="limit-head">
         <span>{label}</span>
         <strong>{left}% left</strong>
@@ -257,20 +260,44 @@ function UsageView({
   }
   const cost = (value: number | null) => (value === null ? "Unpriced" : formatUsd(value));
   const models = totals.engines.flatMap((engine) => engine.models).sort((a, b) => b.tokens - a.tokens);
+  const chart = days > 1 && (metric === "tokens" || totals.cost !== null);
+  const cachedShare = totals.cached + totals.input > 0 ? totals.cached / (totals.cached + totals.input) : null;
+  const tokensTile = { label: "Processed tokens", value: formatTokens(totals.tokens) };
+  const costTile = {
+    label: "Estimated cost",
+    value: cost(totals.cost),
+    note: `API estimate${totals.unpriced && totals.cost !== null ? ", some usage is unpriced" : ""}`,
+  };
   const dated = [...totals.dates].reverse().filter((date) => totals.engines.some((engine) => engine.daily.has(date)));
   return (
     <div className="usage-body">
-      <section className="usage-hero">
-        <div className="usage-summary">
-          <div className="usage-total">
-            <strong>{metric === "cost" ? cost(totals.cost) : formatTokens(totals.tokens)}</strong>
-            {metric === "cost" ? (
-              <span>
-                API estimate
-                {totals.unpriced && totals.cost !== null ? ", some usage is unpriced" : ""}
-              </span>
-            ) : null}
+      <section className="usage-tiles" aria-label="Totals">
+        {(metric === "cost"
+          ? [costTile, tokensTile]
+          : [tokensTile, costTile]
+        ).map((tile) => (
+          <Stat key={tile.label} {...tile} />
+        ))}
+        <Stat label="Cache hits" value={cachedShare === null ? "—" : formatPercent(cachedShare)} />
+        <Stat label="Output" value={formatTokens(totals.output)} />
+        <Stat label="Cached input" value={formatTokens(totals.cached)} />
+        <Stat label="Uncached input" value={formatTokens(totals.input)} />
+      </section>
+      <section className={chart ? "usage-cols" : undefined}>
+        {chart ? (
+          <div className="usage-plot">
+            <h2>{metric === "cost" ? "Daily estimated cost" : "Daily processed tokens"}</h2>
+            <UsageChart
+              engines={totals.engines}
+              dates={totals.dates}
+              colorOf={colorOf}
+              nameOf={nameOf}
+              metric={metric}
+            />
           </div>
+        ) : null}
+        <div className="usage-summary">
+          <h2>Providers</h2>
           {totals.engines.length > 1 ? (
             <ShareBar engines={totals.engines} metric={metric} colorOf={colorOf} nameOf={nameOf} />
           ) : null}
@@ -293,27 +320,6 @@ function UsageView({
               </div>
             );
           })}
-        </div>
-        {days > 1 && (metric === "tokens" || totals.cost !== null) ? (
-          <div className="usage-plot">
-            <h2>{metric === "cost" ? "Daily estimated cost" : "Daily processed tokens"}</h2>
-            <UsageChart
-              engines={totals.engines}
-              dates={totals.dates}
-              colorOf={colorOf}
-              nameOf={nameOf}
-              metric={metric}
-            />
-          </div>
-        ) : null}
-      </section>
-      <section className="usage-section">
-        <h2>Totals</h2>
-        <div className="usage-stats">
-          <Stat label="Processed tokens" value={formatTokens(totals.tokens)} />
-          <Stat label="Cached input" value={formatTokens(totals.cached)} />
-          <Stat label="Uncached input" value={formatTokens(totals.input)} />
-          <Stat label="Output" value={formatTokens(totals.output)} />
         </div>
       </section>
       {metric === "cost" ? (
@@ -547,9 +553,8 @@ function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(
   );
 }
 
-/** Usage floats over the workspace, like Settings. */
-export function UsagePage({ onClose }: { onClose(): void }) {
-  const ref = useRef<HTMLDialogElement>(null);
+/** What agents used, by day, provider and model, and the limits that matter most. */
+export function UsagePage() {
   const saved = readJson<{ days?: UsageDays; metric?: UsageMetric }>(PREFS_KEY);
   const [days, setDays] = useState<UsageDays>(saved?.days ?? 30);
   const [metric, setMetric] = useState<UsageMetric>(saved?.metric ?? "tokens");
@@ -566,19 +571,12 @@ export function UsagePage({ onClose }: { onClose(): void }) {
     metric === "limits" ? api.limits(false, signal) : Promise.resolve(null),
   );
 
-  useLayoutEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => {
-      if (dialog?.open) dialog.close();
-    };
-  }, []);
-
   useEffect(() => writeJson(PREFS_KEY, { days, metric }), [days, metric]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.target instanceof HTMLInputElement) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
       const next = { c: "cost", t: "tokens", l: "limits" }[event.key.toLowerCase()] as UsageMetric | undefined;
       if (next) setMetric(next);
     };
@@ -611,49 +609,9 @@ export function UsagePage({ onClose }: { onClose(): void }) {
   const pending = metric === "limits" ? refreshing : usage.pending;
 
   return (
-    <dialog
-      ref={ref}
-      className="usage-panel"
-      aria-label="Usage"
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-    >
-      <header className="usage-head">
-        <div className="usage-crumbs">
-          <h1>Usage</h1>
-          <span className="crumb-slash" aria-hidden>
-            /
-          </span>
-          <button
-            type="button"
-            className="usage-picker"
-            aria-haspopup="menu"
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              setMenu({ x: rect.left, y: rect.bottom + 4 });
-            }}
-          >
-            {only ? nameOf(only) : "All providers"}
-            <ChevronDown size={14} aria-hidden />
-          </button>
-        </div>
-        <div className="usage-controls">
-          {metric === "limits" ? null : (
-            <Segment
-              label="Usage period"
-              value={days}
-              options={USAGE_PERIODS.map((period) => ({ value: period.days, label: period.label }))}
-              onChange={setDays}
-            />
-          )}
-          <Segment
-            label="Usage metric"
-            value={metric}
-            options={METRICS.map((entry) => ({ value: entry.id, label: entry.label }))}
-            onChange={setMetric}
-          />
+    <section className="usage-page" aria-label="Usage">
+      <PageBar
+        actions={
           <IconButton
             label={metric === "limits" ? "Refresh limits" : "Refresh usage"}
             disabled={pending}
@@ -661,11 +619,40 @@ export function UsagePage({ onClose }: { onClose(): void }) {
           >
             <RefreshCw size={14} className={pending ? "spin" : undefined} aria-hidden />
           </IconButton>
-          <IconButton label="Close usage" onClick={onClose}>
-            <X size={16} aria-hidden />
-          </IconButton>
-        </div>
-      </header>
+        }
+      >
+        <h1 tabIndex={-1} data-page-title>
+          Usage
+        </h1>
+      </PageBar>
+      <div className="usage-filters">
+        {metric === "limits" ? null : (
+          <Segment
+            label="Usage period"
+            value={days}
+            options={USAGE_PERIODS.map((period) => ({ value: period.days, label: period.label }))}
+            onChange={setDays}
+          />
+        )}
+        <button
+          type="button"
+          className="usage-picker"
+          aria-haspopup="menu"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: rect.left, y: rect.bottom + 4 });
+          }}
+        >
+          {only ? nameOf(only) : "All providers"}
+          <ChevronDown size={14} aria-hidden />
+        </button>
+        <Segment
+          label="Usage metric"
+          value={metric}
+          options={METRICS.map((entry) => ({ value: entry.id, label: entry.label }))}
+          onChange={setMetric}
+        />
+      </div>
       <div className="usage-scroll">
         {metric === "limits" ? (
           limits.status === "error" ? (
@@ -715,7 +702,7 @@ export function UsagePage({ onClose }: { onClose(): void }) {
           ]}
         />
       ) : null}
-    </dialog>
+    </section>
   );
 }
 

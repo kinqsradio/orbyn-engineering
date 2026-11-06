@@ -153,14 +153,12 @@ test("multi-select settles in bulk, and press-drag settles a range", async ({ pa
 
 test("usage reads the real report and limits", async ({ page }) => {
   await page.getByRole("link", { name: "Usage" }).click();
-  const usage = page.getByRole("dialog", { name: "Usage" });
+  const usage = page.getByRole("region", { name: "Usage" });
   await expect(usage.getByRole("radio", { name: "30 days" })).toBeChecked();
   await usage.getByRole("radio", { name: "7 days" }).click();
   await usage.getByRole("button", { name: "Refresh usage" }).click();
   await usage.getByRole("radio", { name: "Limits" }).click();
   await expect(usage.getByText(/reports limits|left|:/).first()).toBeVisible({ timeout: 15_000 });
-  await page.keyboard.press("Escape");
-  await expect(usage).toBeHidden();
 });
 
 test("the composer picks model and effort, sets access, and keeps favourites", async ({ page }) => {
