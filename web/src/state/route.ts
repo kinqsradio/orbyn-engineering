@@ -33,6 +33,7 @@ export type Route =
       task?: string;
     }
   | { name: "usage" }
+  | { name: "tasks" }
   | { name: "pulls" };
 
 const enc = encodeURIComponent;
@@ -49,6 +50,8 @@ export function routeHref(route: Route): string {
       return `#/trust/${enc(route.projectId)}${route.threadId ? `/${enc(route.threadId)}` : ""}`;
     case "usage":
       return "#/usage";
+    case "tasks":
+      return "#/tasks";
     case "pulls":
       return "#/pulls";
     case "settings": {
@@ -89,6 +92,8 @@ export function parseRoute(hash: string): Route {
       return first ? { name: "trust", projectId: first, threadId: second ?? null } : { name: "home" };
     case "usage":
       return { name: "usage" };
+    case "tasks":
+      return { name: "tasks" };
     case "pulls":
       return { name: "pulls" };
     case "settings": {

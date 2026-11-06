@@ -4,6 +4,7 @@ import { navigate, parseRoute, routeHref, type Route } from "./route";
 describe("routes", () => {
   it.each<Route>([
     { name: "home" },
+    { name: "tasks" },
     { name: "thread", id: "t/1 x" },
     { name: "new", projectId: null },
     { name: "new", projectId: "p1" },

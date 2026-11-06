@@ -1,18 +1,20 @@
 import { serviceUrl } from "../../api/origin";
 import { chooseDraftEngine } from "../onboarding/draftEngine";
-import { Pencil, Play, Plus, ScrollText, Trash2, Webhook, X } from "lucide-react";
+import { Check, Pencil, Play, Plus, ScrollText, Trash2, Webhook, X } from "lucide-react";
+import "./ScheduledTasks.css";
 import { useEffect, useRef, useState } from "react";
 import { request } from "../../api/client";
 import type { ScheduledTask, WebhookDelivery, WebhookEndpoint, WebhookFilter } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { WEEKDAYS } from "../../lib/taskSchedule";
+import { relativeTime } from "../../lib/format";
+import { scheduleLabel, taskTone, WEEKDAYS } from "../../lib/taskSchedule";
 import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Field, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
+import { PageBar } from "../../ui/PageBar";
 import { Empty, ErrorState, Loading } from "../../ui/states";
-import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
 const listTasks = (signal?: AbortSignal) => request<ScheduledTask[]>("GET", "/api/tasks", undefined, signal);
 
@@ -212,6 +214,7 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
   return (
     <Dialog
       title={task ? "Edit scheduled task" : "New scheduled task"}
+      className="task-dialog"
       onClose={onClose}
       footer={
         <>
@@ -224,7 +227,9 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
         </>
       }
     >
-      <Field label="Name">{(props) => <input {...props} value={name} onChange={(event) => setName(event.target.value)} />}</Field>
+      <Field label="Prompt" hint="What the agent should do each time it runs.">
+        {(props) => <textarea {...props} rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} />}
+      </Field>
       <Field label="Project">
         {(props) => (
           <select {...props} value={project} onChange={(event) => setProject(event.target.value)}>
@@ -235,9 +240,6 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
             ))}
           </select>
         )}
-      </Field>
-      <Field label="Prompt">
-        {(props) => <textarea {...props} rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} />}
       </Field>
       <Field label="Schedule">
         {(props) => (
@@ -299,6 +301,7 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
           </label>
         </>
       ) : null}
+      <Field label="Name">{(props) => <input {...props} value={name} onChange={(event) => setName(event.target.value)} />}</Field>
       {error ? (
         <p className="field-error" role="alert">
           {error}
@@ -388,12 +391,35 @@ const DELIVERY_STATES: Record<string, string> = {
   failed: "Failed",
 };
 
-export function ScheduledTasksSection() {
+/** Where the last firing ended: nothing yet, running or started, or the reason it failed. */
+function LastRun({ task }: { task: ScheduledTask }) {
+  const tone = taskTone(task);
+  if (tone === "idle") return <span className="task-last">—</span>;
+  const when = task.last_run_at ? relativeTime(task.last_run_at) : "";
+  if (tone === "fail") {
+    return (
+      <span className="task-last" data-tone="fail">
+        <X size={12} aria-hidden />
+        Failed · {task.last_status}
+      </span>
+    );
+  }
+  return (
+    <span className="task-last">
+      <Check size={12} aria-hidden />
+      {when ? `Started ${when.toLowerCase()}` : "Started"}
+    </span>
+  );
+}
+
+function TasksView({ page }: { page: boolean }) {
   const tasks = useAsync("tasks", listTasks);
   const [editing, setEditing] = useState<ScheduledTask | "new" | null>(null);
   const [webhook, setWebhook] = useState<ScheduledTask | null>(null);
   const [deliveries, setDeliveries] = useState<ScheduledTask | null>(null);
   const pushToast = useUi((state) => state.pushToast);
+  const projects = useVisibleProjects();
+  const engines = useWorkspace((state) => state.engines.data);
   const route = useRoute();
   const linkedId = route.name === "settings" ? route.task : undefined;
   const [openedLink, setOpenedLink] = useState<string | undefined>(undefined);
@@ -419,62 +445,101 @@ export function ScheduledTasksSection() {
 
   const act = (work: Promise<unknown>) =>
     work.then(tasks.reload, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));
-  return (
+  const newTask = (
+    <Button small tone={page ? "primary" : "secondary"} icon={page ? <Plus size={14} aria-hidden /> : undefined} onClick={() => setEditing("new")}>
+      New task
+    </Button>
+  );
+  const content = (
     <>
-      <div className="section-bar">
-        <h1 className="sr-only" tabIndex={-1} data-page-title>
-          Scheduled tasks
-        </h1>
-        <Button small onClick={() => setEditing("new")}>
-          New task
-        </Button>
-      </div>
-      {tasks.status === "loading" ? (
-        <Loading label="Loading tasks" rows={3} />
-      ) : tasks.status === "error" ? (
-        <ErrorState title="Couldn't load tasks" failure={tasks.error} onRetry={tasks.reload} />
-      ) : tasks.data.length === 0 ? (
-        <Empty title="No scheduled tasks" />
+      {page ? (
+        <PageBar actions={newTask}>
+          <h1 tabIndex={-1} data-page-title>
+            Scheduled tasks
+          </h1>
+        </PageBar>
       ) : (
-        <SettingGroup title="Tasks">
-          {tasks.data.map((task) => (
-            <SettingRow
-              key={task.id}
-              title={task.name}
-              description={task.next_run_at ? `Next run ${new Date(task.next_run_at).toLocaleString()}` : task.last_status}
-            >
-              <input
-                type="checkbox"
-                role="switch"
-                aria-label={`Enable ${task.name}`}
-                checked={task.enabled}
-                onChange={(event) =>
-                  void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/enabled`, { enabled: event.target.checked }))
-                }
-              />
-              <IconButton label={`Run ${task.name}`} onClick={() => void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/run`))}>
-                <Play size={14} aria-hidden />
-              </IconButton>
-              {task.schedule.kind === "webhook" ? (
-                <>
-                  <IconButton label={`Webhook address for ${task.name}`} onClick={() => setWebhook(task)}>
-                    <Webhook size={14} aria-hidden />
-                  </IconButton>
-                  <IconButton label={`Deliveries for ${task.name}`} onClick={() => setDeliveries(task)}>
-                    <ScrollText size={14} aria-hidden />
-                  </IconButton>
-                </>
-              ) : null}
-              <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
-                <Pencil size={14} aria-hidden />
-              </IconButton>
-              <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
-                <Trash2 size={14} aria-hidden />
-              </IconButton>
-            </SettingRow>
-          ))}
-        </SettingGroup>
+        <div className="section-bar">
+          <h1 className="sr-only" tabIndex={-1} data-page-title>
+            Scheduled tasks
+          </h1>
+          {newTask}
+        </div>
       )}
+      <div className="tasks-body">
+        {tasks.status === "loading" ? (
+          <Loading label="Loading tasks" rows={3} />
+        ) : tasks.status === "error" ? (
+          <ErrorState title="Couldn't load tasks" failure={tasks.error} onRetry={tasks.reload} />
+        ) : tasks.data.length === 0 ? (
+          <Empty title="No scheduled tasks" />
+        ) : (
+          <div className={page ? "task-table" : "task-table task-table-compact"} role="table" aria-label="Tasks">
+            <div className="task-row task-head" role="row">
+              <span role="columnheader">Task</span>
+              <span role="columnheader">When</span>
+              <span role="columnheader">Last run</span>
+              <span role="columnheader">On</span>
+              <span role="columnheader" className="sr-only">
+                Actions
+              </span>
+            </div>
+            {tasks.data.map((task) => {
+              const project = projects?.find((entry) => entry.id === task.project_id)?.name;
+              const engine = engines?.find((entry) => entry.id === task.engine)?.name ?? task.engine;
+              return (
+                <div className="task-row" role="row" key={task.id} data-paused={task.enabled ? undefined : true}>
+                  <span role="cell" className="task-name">
+                    <b>{task.name}</b>
+                    <small>{[project, engine].filter(Boolean).join(" · ")}</small>
+                  </span>
+                  <span role="cell" className="task-when">
+                    {scheduleLabel(task.schedule)}
+                    <small>
+                      {!task.enabled ? "Paused" : task.next_run_at ? `Next run ${new Date(task.next_run_at).toLocaleString()}` : ""}
+                    </small>
+                  </span>
+                  <span role="cell">
+                    <LastRun task={task} />
+                  </span>
+                  <span role="cell">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label={`Enable ${task.name}`}
+                      checked={task.enabled}
+                      onChange={(event) =>
+                        void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/enabled`, { enabled: event.target.checked }))
+                      }
+                    />
+                  </span>
+                  <span role="cell" className="task-actions">
+                    <IconButton label={`Run ${task.name}`} onClick={() => void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/run`))}>
+                      <Play size={14} aria-hidden />
+                    </IconButton>
+                    {task.schedule.kind === "webhook" ? (
+                      <>
+                        <IconButton label={`Webhook address for ${task.name}`} onClick={() => setWebhook(task)}>
+                          <Webhook size={14} aria-hidden />
+                        </IconButton>
+                        <IconButton label={`Deliveries for ${task.name}`} onClick={() => setDeliveries(task)}>
+                          <ScrollText size={14} aria-hidden />
+                        </IconButton>
+                      </>
+                    ) : null}
+                    <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
+                      <Pencil size={14} aria-hidden />
+                    </IconButton>
+                    <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
+                      <Trash2 size={14} aria-hidden />
+                    </IconButton>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
       {editing ? (
         <TaskDialog task={editing === "new" ? null : editing} onClose={closeEditor} onSaved={tasks.reload} />
       ) : null}
@@ -482,5 +547,15 @@ export function ScheduledTasksSection() {
       {deliveries ? <DeliveriesDialog task={deliveries} onClose={() => setDeliveries(null)} /> : null}
     </>
   );
+  return page ? <div className="tasks-page">{content}</div> : content;
 }
 
+/** Scheduled tasks as a section of Settings. */
+export function ScheduledTasksSection() {
+  return <TasksView page={false} />;
+}
+
+/** Scheduled tasks as a page of their own, reached from the sidebar. */
+export function ScheduledTasksPage() {
+  return <TasksView page />;
+}

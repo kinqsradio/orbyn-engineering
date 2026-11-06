@@ -21,6 +21,7 @@ import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from 
 import { CloneJobs } from "../features/workspace/CloneJobs";
 import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
+import { ScheduledTasksPage } from "../features/settings/ScheduledTasks";
 import { UsagePage } from "../features/usage/UsagePage";
 import { PreviewFloat } from "../features/panels/PreviewFloat";
 import { Toasts } from "../ui/Toasts";
@@ -70,6 +71,8 @@ function RouteView({ route, needsProject }: { route: PageRoute; needsProject: bo
       return <PullsPage />;
     case "usage":
       return <UsagePage />;
+    case "tasks":
+      return <ScheduledTasksPage />;
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":

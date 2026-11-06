@@ -64,11 +64,13 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
         ? "Pull requests"
         : route.name === "usage"
           ? "Usage"
-          : route.name === "settings"
-            ? labels[route.section ?? "general"]
-            : route.name === "trust"
-              ? "Trust folder"
-              : "New thread";
+          : route.name === "tasks"
+            ? "Scheduled tasks"
+            : route.name === "settings"
+              ? labels[route.section ?? "general"]
+              : route.name === "trust"
+                ? "Trust folder"
+                : "New thread";
   const shown = reading ? readingNav : !collapsed;
 
   return (
