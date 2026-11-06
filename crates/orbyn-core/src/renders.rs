@@ -356,6 +356,41 @@ pub struct PublishedRender {
     pub bytes: usize,
 }
 
+/// Where every thread's renders are kept.
+pub fn renders_root(data_dir: &Path) -> PathBuf {
+    data_dir.join(RENDERS_FOLDER)
+}
+
+/// Stores an MCP App's page as one of the thread's renders, the same way an agent's
+/// page is stored but with nothing embedded: its HTML comes from an outside MCP
+/// server, so no checkout image is copied in and its `src` values stay as written.
+/// Only a run calls this, and a run only starts in a trusted folder.
+pub fn publish_app_page(root: &Path, thread_id: &str, html: &str) -> Result<PublishedRender> {
+    if html_too_large(html.len()) {
+        return Err(CoreError::Invalid(format!(
+            "This page is {} bytes, over the {} byte (512 KiB) render limit.",
+            html.len(),
+            MAX_RENDER_HTML_BYTES
+        )));
+    }
+    let folder = root.join(thread_id);
+    std::fs::create_dir_all(&folder)?;
+    evict_renders(&folder, MAX_RENDERS_PER_THREAD.saturating_sub(1));
+    let id = new_id();
+    let dir = folder.join(&id);
+    std::fs::create_dir_all(&dir)?;
+    let frame_token = random_token()?;
+    std::fs::write(dir.join(FRAME_FILE), sha256_hex(frame_token.as_bytes()))?;
+    std::fs::write(dir.join(PAGE_FILE), html.as_bytes())?;
+    Ok(PublishedRender {
+        url: format!("/api/threads/{thread_id}/renders/{id}"),
+        id,
+        frame_token,
+        images: 0,
+        bytes: html.len(),
+    })
+}
+
 /// The bytes of one published file, ready to send as they are.
 pub struct RenderFile {
     pub bytes: Vec<u8>,
@@ -364,7 +399,7 @@ pub struct RenderFile {
 
 impl Core {
     fn renders_root(&self) -> PathBuf {
-        self.config.data_dir.join(RENDERS_FOLDER)
+        renders_root(&self.config.data_dir)
     }
 
     /// Stores an agent's page under this thread's renders and copies the checkout

@@ -191,6 +191,7 @@ impl Core {
             mcp: mcp.clone(),
             base_url: config.base_url.clone(),
             runs_dir: config.data_dir.join("runs"),
+            renders_dir: crate::renders::renders_root(&config.data_dir),
             setups: setups.clone(),
             terminals: terminals.clone(),
         }));

@@ -190,6 +190,8 @@ pub enum EngineEvent {
     Question(QuestionAsk),
     /// The goal as the engine reports it; `None` means it was cleared.
     Goal(Option<orbyn_contracts::ThreadGoal>),
+    /// An MCP App page for a finished tool call, read while the engine was alive.
+    McpApp(crate::mcp_apps::McpAppSnapshot),
     Finished(EngineOutcome),
 }
 

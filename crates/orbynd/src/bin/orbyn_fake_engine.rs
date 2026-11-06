@@ -965,6 +965,35 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         .expect("write");
         codex_note(state, "item/completed", json!({ "item": item }));
     }
+    // An MCP App tool call, in the shape Codex 0.166.0 reported for a descriptor with
+    // `_meta.ui.resourceUri`; the driver then reads the page from this process.
+    if has(prompt, "mcp-app") {
+        let item = json!({
+            "type": "mcpToolCall", "id": "app-call-1", "server": "demo", "tool": "show_widget",
+            "status": "completed", "arguments": { "text": "hello" },
+            "appContext": null, "mcpAppResourceUri": "ui://demo/widget.html", "mcpAppUi": null,
+            "result": { "content": [{ "type": "text", "text": "shown: hello" }],
+                        "structuredContent": { "text": "hello" }, "_meta": null },
+            "error": null, "durationMs": 4,
+        });
+        codex_note(state, "item/started", json!({ "item": item }));
+        codex_note(state, "item/completed", json!({ "item": item }));
+        for message in lines.by_ref() {
+            if message["method"] == "mcpServer/resource/read" {
+                record_launch("codex-app-read", &[message["params"].to_string()]);
+                let html = if has(prompt, "mcp-app-huge") {
+                    "x".repeat(600 * 1024)
+                } else {
+                    "<!doctype html><p id=v>demo widget</p><img src=\"secret.png\">".to_owned()
+                };
+                send(&json!({ "id": message["id"], "result": { "contents": [{
+                    "uri": "ui://demo/widget.html", "mimeType": "text/html;profile=mcp-app",
+                    "text": html, "_meta": { "ui": { "prefersBorder": true } },
+                }], "originCallId": null }}));
+                break;
+            }
+        }
+    }
     // `[mcp-call:<tool>]<json args>[/mcp-call]` calls one tool and answers with it.
     if let Some(rest) = prompt.split("[mcp-call:").nth(1)
         && let Some((name, rest)) = rest.split_once(']')

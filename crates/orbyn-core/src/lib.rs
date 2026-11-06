@@ -27,6 +27,7 @@ pub mod keybindings;
 pub mod local_trace;
 pub mod maintenance;
 pub mod mcp;
+pub mod mcp_apps;
 pub mod mcp_tools;
 pub mod native_sessions;
 pub mod network;

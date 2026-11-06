@@ -1401,6 +1401,32 @@ dimensions and known background and shape colours, with no console or page error
 The PNG is attached to the test result. This adds no browser download or runtime
 verification API; automatic page measurement remains unimplemented.
 
+## MCP Apps
+
+An MCP App is a page an MCP server names on a tool's descriptor with a `ui://` resource.
+Codex is the only engine that reports one. Codex 0.166.0, observed on 6 November 2026 with
+a local server whose tool carried `_meta.ui.resourceUri`, finished the `mcpToolCall` item
+with `mcpAppResourceUri` set and `mcpAppUi` null; newer descriptors fill `mcpAppUi`, which
+wins when present. While the run's app-server is still alive, the driver asks it for
+`mcpServer/resource/read` with the server, the URI, the session and the call id, for at
+most 10 seconds, and takes the first HTML text content for that URI; a blob page is not
+decoded. Only a completed call has an app. The page is stored with the render store under
+the same limits, but nothing is embedded: its HTML comes from an outside server, so no
+checkout image is copied in and every `src` stays as written. A `CUSTOM mcp_app` event then
+ties the tool row to the render with its frame token, the server, the tool, the URI, the
+preferred display mode, `prefersBorder` and the call's structured output when it is at most
+32 KiB. A read that fails, times out or is refused by the render store leaves an ordinary
+tool row.
+
+The page is untrusted and gets nothing a published page does not: the C21 frame
+(`sandbox="allow-scripts"`, opaque origin, `no-referrer`), the render policy with no
+`connect-src`, and only its own `?render=` token. A server's requested CSP domains and
+permissions are not honoured, so an app that loads remote scripts or data does not work
+here. The host takes `postMessage` JSON-RPC only from that frame's window and answers only
+to it. It answers `ui/initialize` with the theme and display mode, sends the call's
+arguments and result as `tool-input` and `tool-result` after `ui/notifications/initialized`,
+holds `size-changed` heights to 80..2000, and refuses every request it does not serve.
+
 ## Approval lifecycle
 
 ```text
