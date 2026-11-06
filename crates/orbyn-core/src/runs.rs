@@ -1016,6 +1016,7 @@ impl RunManager {
             EngineOutcome::Failed(message) => {
                 let sign_in = self.engines.driver(&scope.engine).ok();
                 let sign_in = sign_in.as_ref().and_then(|driver| driver.sign_in_command());
+                let sign_in = sign_in.as_deref();
                 if diagnostics::is_sign_in_failure(&message) {
                     sign_in_note = Some(json!({ "command": sign_in }));
                 }
