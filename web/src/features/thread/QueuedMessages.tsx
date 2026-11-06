@@ -35,6 +35,7 @@ export function QueuedMessages({
     <div className="queue" aria-label="Queued messages">
       {items.map((item) => (
         <div key={item.id} className="queue-row">
+          <span className="queue-label">{running ? "Queued · sends when this turn ends" : "Queued"}</span>
           <span className="queue-text">{item.prompt}</span>
           {running ? (
             <IconButton

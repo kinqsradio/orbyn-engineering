@@ -78,18 +78,34 @@ export function WorktreeSetupCard({ thread }: { thread: Thread }) {
   const Icon = going ? LoaderCircle : failed ? CircleX : CircleCheck;
   return (
     <div className={`setup-card${failed ? " failed" : ""}`} role="status" aria-label="Worktree setup">
-      <Icon size={14} aria-hidden className={going ? "spin" : undefined} />
-      <span>{describe(setup)}</span>
-      {setup.terminal_id ? (
-        <Button small tone="quiet" icon={<SquareTerminal size={12} aria-hidden />} onClick={showOutput}>
-          Output
-        </Button>
-      ) : null}
-      {setup.cancellable ? (
-        <Button small tone="quiet" disabled={cancelling} icon={<Square size={12} aria-hidden />} onClick={cancel}>
-          Cancel setup
-        </Button>
-      ) : null}
+      <p className="setup-title">
+        <Icon size={14} aria-hidden className={going ? "spin" : undefined} />
+        Working in a new worktree
+      </p>
+      <p className="setup-kv">
+        <span>Path</span>
+        <b className="mono" title={thread.worktree.path}>
+          {thread.worktree.path}
+        </b>
+      </p>
+      <p className="setup-kv">
+        <span>Branch</span>
+        <b className="mono">{thread.worktree.branch}</b>
+      </p>
+      <div className="setup-kv">
+        <span>Setup</span>
+        <b>{describe(setup)}</b>
+        {setup.terminal_id ? (
+          <Button small tone="quiet" icon={<SquareTerminal size={12} aria-hidden />} onClick={showOutput}>
+            Output
+          </Button>
+        ) : null}
+        {setup.cancellable ? (
+          <Button small tone="quiet" disabled={cancelling} icon={<Square size={12} aria-hidden />} onClick={cancel}>
+            Cancel setup
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

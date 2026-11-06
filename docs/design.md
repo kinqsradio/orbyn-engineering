@@ -80,6 +80,30 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
   the open surfaces; "Pull requests" reads "PRs" on its tab. The close button ends the
   row.
 
+## Thread
+
+- Transcript: your message is a right-aligned `--color-message` bubble; the agent's text is
+  soft ink. Tool calls read as a short trail (a 1px rule at the left, 26px rows, 12.5px
+  muted text, ink icons). A failed call is the only red row: a red cross, the command, and
+  "Output" at the end. A finished turn folds into one trail row.
+- Needs you: an approval or question is an amber card (`--color-warnSoft`, 16px radius) with
+  the label "Needs you · command" or "The agent asks". An approval shows the exact command
+  in a mono box, then Why and Reaches or Runs in rows when the engine reports them, and
+  ends with More (cancel the run), Deny, Always allow and Allow. A question lists numbered
+  options (keys 1-9 pick one, Enter submits when every question has an answer and focus is
+  not in a field) and keeps Dismiss and Submit answers.
+- Subagents the engine reports show as chips above the composer while a turn runs; queued
+  messages show as one quiet bar ("Queued · sends when this turn ends") that keeps Steer,
+  Edit, Send now and Remove.
+- Composer: a 16px-radius box with a 26px control row (attach, Plan, model, effort, access,
+  send). Menus (model, access, mentions, slash commands) are the floating layer: 12px
+  radius, 30px rows, mono shortcuts and hints.
+- Banners: a usage limit is amber, a failure is red (a flat tint, no border), and context
+  or reconnecting notices stay ink. A new worktree's card lists Path, Branch and Setup.
+- Minimap: a 6px strip near the right edge, shown when the pointer reaches it. Ticks for
+  your messages are ink and can be clicked; failures (red) and decisions waiting on you
+  (amber) are marks.
+
 ## Surfaces
 
 Borders belong to inputs, menus and dividers; cards and panels separate by fill.

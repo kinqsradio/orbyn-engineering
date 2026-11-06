@@ -6,7 +6,7 @@ import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { TimelineRow, TimelineThread } from "./items";
-import { Minimap } from "./Minimap";
+import { Minimap, type MinimapItem } from "./Minimap";
 import type { MessageItem, ThreadItem } from "./projection";
 import { arrangeTimeline, entryForMessage, entryIndexOf, firstUnread, runningTools } from "./timeline";
 
@@ -76,7 +76,15 @@ export function Transcript({
   );
   const tools = useMemo(() => (active ? runningTools(items) : []), [items, active]);
   const turnPrompts = useMemo(
-    () => items.flatMap((item) => (item.kind === "message" && item.role === "user" ? [{ key: item.key, text: item.text }] : [])),
+    () =>
+      items.flatMap((item): MinimapItem[] => {
+        if (item.kind === "message" && item.role === "user") return [{ key: item.key, text: item.text, kind: "you" }];
+        if (item.kind === "notice" && item.tone === "error") return [{ key: item.key, text: item.text, kind: "failed" }];
+        if (item.kind === "approval" && item.approval.state === "pending") {
+          return [{ key: item.key, text: item.approval.summary, kind: "ask" }];
+        }
+        return [];
+      }),
     [items],
   );
 

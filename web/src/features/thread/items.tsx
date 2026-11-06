@@ -204,12 +204,19 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
         summaryClassName="trace-summary"
         summary={
           <>
-            <Icon size={14} aria-hidden />
+            {failed ? null : <Icon size={14} aria-hidden />}
             <span className={running ? "trace-label text-sweep" : "trace-label"} title={trace.label}>
               {trace.label}
             </span>
             {running ? <span className="sr-only">Running</span> : null}
-            {failed ? <X size={14} className="trace-failed" role="img" aria-label="Tool call failed" /> : null}
+            {failed ? (
+              <X size={14} className="trace-failed trace-lead" role="img" aria-label="Tool call failed" />
+            ) : null}
+            {failed ? (
+              <span className="trace-output" aria-hidden>
+                Output
+              </span>
+            ) : null}
             <span className="trace-time" aria-hidden>
               {clockTime(item.ts, timestampFormat)}
             </span>
@@ -238,7 +245,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
 
 function ApprovalEntry({ item }: { item: ApprovalItem }) {
   const approval = useResolvedApproval(item.approval);
-  return <ApprovalCard approval={approval} />;
+  return <ApprovalCard approval={approval} minimapKey={item.key} />;
 }
 
 const stepDone = (status: string | null) => status === "completed" || status === "done";
@@ -347,7 +354,7 @@ function Notice({ item }: { item: NoticeItem }) {
     return <p className="notice">{item.text}</p>;
   }
   return (
-    <div className="notice-error" role="alert">
+    <div className="notice-error" role="alert" data-minimap={item.key}>
       <OctagonAlert size={16} aria-hidden />
       <div>
         <strong>Run failed</strong>
@@ -411,9 +418,8 @@ export function WorkGroupView({ group, live }: { group: WorkGroup; live: boolean
         summaryClassName="trace-summary"
         summary={
           <>
-            <Icon size={14} aria-hidden />
+            {failed ? <X size={14} className="trace-failed" aria-hidden /> : <Icon size={14} aria-hidden />}
             <span className="trace-label">{summary}</span>
-            {failed ? <X size={14} className="trace-failed" aria-hidden /> : null}
             <ChevronRight size={14} className="chev trace-end" aria-hidden />
           </>
         }

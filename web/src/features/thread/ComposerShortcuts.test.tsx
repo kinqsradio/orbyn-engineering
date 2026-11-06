@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockApi } from "../../../mock/api";
 import { App } from "../../app/App";
+import { runHandlers } from "../../app/shortcuts";
 import { installMockFetch } from "../../test-support";
 import { useUi } from "../../state/ui";
 
@@ -99,6 +100,14 @@ describe("composer menu shortcuts (K41)", () => {
     await press("u", "High"); // down from the bottom wraps to the top
     await press("u", "Medium");
     expect(mock.threads.find((t) => t.id === "t-done")?.effort).toBe("medium");
+  });
+
+  it("composer.focus puts the caret in the composer", async () => {
+    const box = await openThread("t-done");
+    box.blur();
+    expect(box).not.toHaveFocus();
+    act(() => void runHandlers("composer.focus"));
+    expect(box).toHaveFocus();
   });
 
   it("composer.stash stashes the draft, then restores it", async () => {
