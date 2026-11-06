@@ -58,8 +58,27 @@ private. A detached service writes `service.log` in its data folder.
 `--port`, `--data-dir`, `--ui-dir`, `--library-bundle`, `--update-manifest` and
 `--parent-stdin`; the last is the desktop's ownership channel, not an interactive
 session. `ORBYN_LIBRARY_BUNDLE` selects a bundled library and
-`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check. There is no
-CLI command here for exact-version update, channel switching or downgrade.
+`ORBYN_UPDATE_MANIFEST` selects the read-only release manifest check.
+
+## Updating
+
+| Command | Behavior |
+| --- | --- |
+| `orbyn update --check` | Ask the running service to check, and report the current and latest release. Changes nothing. |
+| `orbyn update` | Check, then ask the desktop app's installer to install the latest release. |
+| `orbyn update --version VERSION` | The same, only when `VERSION` (with or without a leading `v`) is the latest release; the running version reports that it is installed. |
+| `orbyn update --channel NAME` | Accepted only when `NAME` is the build's own channel (`/api/info` `channel`); switching is refused with exit 1. |
+| `orbyn update --downgrade` | Refused with exit 1 before any service is contacted. |
+
+The app updates only through the installer that owns it: the desktop shell's
+signed updater, which offers the latest release of the channel the build was
+compiled for. There is no version index, channel switch or downgrade path, so an
+older or unlisted version or another channel is refused and the message says to
+install that build manually. A service with no
+desktop shell cannot replace itself: `orbyn update` reports its blocked reason
+and an unconfigured manifest, and exits 1 when a newer release exists that it
+cannot install. Install is refused while runs are active, as in the UI. Engines and
+the skills library update from the UI's update center, not this command.
 
 ## Threads, projects and preferences
 
@@ -94,8 +113,20 @@ The background registration uses launchd on macOS. Windows background setup is
 unsupported; desktop startup and direct `service run` remain available. No
 administrator rights or PATH changes are requested. Dry runs print a plan without
 running a manager or modifying its files. Linux/systemd support in shared service
-planning is outside this product's macOS/Windows scope. There is no top-level
-uninstall or OOM-protection command.
+planning is outside this product's macOS/Windows scope. There is no
+OOM-protection command: the reference supports it only on Linux with systemd.
+
+## Uninstalling
+
+`orbyn uninstall [--dry-run]` removes what Orbyn registered with the operating
+system: the background service, exactly as `orbyn service uninstall`. Orbyn puts
+no launcher on PATH and keeps no side-by-side versions, so there is nothing else
+for it to remove. It then says how to remove the app through the installer that
+owns it (move the `.app` bundle to the Trash on macOS; Settings > Apps > Installed
+apps on Windows, which has no background service) and names a service that is
+still running. The data folder with threads and settings is kept and named; delete
+it yourself to remove them. `--dry-run` prints the plan and changes nothing; with
+`--json` it reports `service`, `running`, `launcher`, `versions`, `app` and `data`.
 
 ## Triage in a native terminal
 
