@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { KeybindingRule } from "../api/types";
+import { inDesktopApp } from "../api/shell";
 import { actionIdFromCommand } from "../lib/actionCommand";
 
 /** Handlers live with what they act on, and register while mounted. */
@@ -76,6 +77,34 @@ export function matchesKey(rule: string, event: KeyboardEvent): boolean {
   );
 }
 
+/**
+ * `mod+w` is reserved. In the desktop app the page always takes it, so it never
+ * closes the window; a browser closes the tab before the page hears it, so there a
+ * `mod+w` rule also answers to the same key with `alt` in place of `mod`.
+ */
+export const isCloseKey = (rule: string) => {
+  const parts = rule.toLowerCase().split(/\+(?=.)/);
+  return parts.pop() === "w" && parts.includes("mod");
+};
+
+export function browserAlternate(rule: string): string | null {
+  if (!isCloseKey(rule)) return null;
+  const parts = rule.toLowerCase().split(/\+(?=.)/);
+  const key = parts.pop();
+  const rest = parts.filter((part) => part !== "mod" && part !== "alt");
+  return ["alt", ...rest, key].join("+");
+}
+
+/** A rule's key, or its browser alternate outside the desktop app. */
+export function ruleMatches(rule: string, event: KeyboardEvent, desktop: boolean): boolean {
+  if (matchesKey(rule, event)) return true;
+  const alternate = desktop ? null : browserAlternate(rule);
+  return alternate !== null && matchesKey(alternate, event);
+}
+
+/** The reserved close key itself, as pressed. */
+export const isReservedCloseEvent = (event: KeyboardEvent) => matchesKey("mod+w", event) || matchesKey("mod+shift+w", event);
+
 export type WhenContext = Record<string, boolean>;
 
 let terminalRules: KeybindingRule[] = [];
@@ -97,7 +126,7 @@ export function setTerminalRules(rules: KeybindingRule[], context: () => WhenCon
 /** True for a key the app owns while a terminal has focus, so xterm leaves it alone. */
 export const isTerminalShortcut = (event: KeyboardEvent) => {
   const context = terminalContext();
-  return terminalRules.some((rule) => matchesKey(rule.key, event)
+  return terminalRules.some((rule) => ruleMatches(rule.key, event, inDesktopApp())
     && (actionIdFromCommand(rule.command) === null || (actionShortcutAllowed(event, context)
       && whenHolds(rule.when, context)
       && (hasHandler(rule.command) || hasHandler("projectActions.pending", rule.command)))));

@@ -570,6 +570,10 @@ fn router(state: AppState) -> Router {
             post(preview_routes::start_recording).delete(preview_routes::stop_recording),
         )
         .route("/ws/preview/{id}/{tab}", get(preview_routes::stream))
+        .route(
+            "/ws/preview/{id}/{tab}/pointer",
+            get(preview_routes::pointers),
+        )
         .route("/api/threads/{id}/servers", get(preview_routes::servers))
         .route(
             "/api/threads/{id}/servers/{pid}/stop",

@@ -26,6 +26,12 @@ pub fn unix_now() -> i64 {
     time::OffsetDateTime::now_utc().unix_timestamp()
 }
 
+/// Unix milliseconds, for times two quick writes must not share.
+pub fn unix_now_ms() -> i64 {
+    i64::try_from(time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
+        .unwrap_or(i64::MAX)
+}
+
 pub fn random_bytes<const N: usize>() -> Result<[u8; N]> {
     let mut bytes = [0u8; N];
     getrandom::fill(&mut bytes)

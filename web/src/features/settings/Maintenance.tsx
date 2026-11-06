@@ -1,5 +1,6 @@
 import { settingsLabel } from "./settingsSearch";
-import { ChevronRight, Monitor } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { EnvironmentIcon } from "../../ui/EnvironmentIcon";
 import { useLayoutEffect, useRef, useState } from "react";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";
@@ -49,7 +50,7 @@ function TelemetryEnvironmentNotice() {
     <p className="setting-line-desc">Choose one environment to configure its telemetry exports.</p>
     {info.error ? <ErrorState title="Couldn't load settings" failure={info.error} onRetry={info.reload} compact /> :
       <Button small tone="quiet" style={{ justifyContent: "space-between" }} disabled={!scope || !info.data} onClick={() => scope?.select(undefined)}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Monitor size={14} aria-hidden />{info.data?.environment_label ?? "Loading…"}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}><EnvironmentIcon icon={info.data?.environment_icon} />{info.data?.environment_label ?? "Loading…"}</span>
         <ChevronRight size={14} aria-hidden />
       </Button>}
   </div>;

@@ -12,6 +12,22 @@ use support::{Options, Service, TempDir, setup};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
+#[tokio::test]
+async fn input_trace_requires_service_access_and_an_owned_tab() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let base = service.url.replacen("http", "ws", 1);
+    for (token, expected) in [("wrong", 401), (service.token.as_str(), 404)] {
+        let url = format!("{base}/ws/preview/{thread}/missing/pointer?token={token}");
+        let error = tokio_tungstenite::connect_async(&url).await.unwrap_err();
+        let tokio_tungstenite::tungstenite::Error::Http(response) = error else {
+            panic!("expected HTTP rejection, got {error}");
+        };
+        assert_eq!(response.status().as_u16(), expected);
+    }
+    service.stop().await;
+}
+
 const PAGE: &str = "<!doctype html><title>t</title>\
 <body style='margin:0;background:#fff'><button id=b style='width:400px;height:300px'>go</button>\
 <script>document.getElementById('b').addEventListener('click',\
