@@ -9,7 +9,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { Markdown } from "../thread/Markdown";
-import { pullsApi } from "./pullsApi";
+import { pullsApi } from "../../api/pulls";
 
 /** The guide names a commit, and the pull request has moved past it. */
 export const guideIsStale = (guide: Guide, headSha: string | null | undefined) =>

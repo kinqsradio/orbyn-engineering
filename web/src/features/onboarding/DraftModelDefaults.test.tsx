@@ -5,7 +5,7 @@ import { api, request } from "../../api/client";
 import type { EngineStatus, PreferenceView, Project, Run, Thread } from "../../api/types";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { DRAFT_KEY } from "./draftStore";
+import { DRAFT_KEY } from "../../state/draftStore";
 import { DraftView } from "./DraftView";
 
 vi.mock("../../api/client", async (original) => {
@@ -15,7 +15,7 @@ vi.mock("../../api/client", async (original) => {
 vi.mock("../../app/shortcuts", () => ({ useCommand: () => undefined }));
 vi.mock("../workspace/GitHubStarPrompt", () => ({ recordUserPrompt: () => undefined }));
 vi.mock("./useDraftCheckout", () => ({ useDraftCheckout: () => ({ worktree: null, setWorktree: () => undefined, loading: false, error: null }) }));
-vi.mock("../thread/modelStore", () => ({ useEngineModels: () => null, resolveModel: () => null }));
+vi.mock("../../state/modelStore", () => ({ useEngineModels: () => null, resolveModel: () => null }));
 vi.mock("../thread/ComposerTraits", () => ({
   ACCESS: { supervised: { label: "Supervised", icon: () => null } },
   EffortTrigger: () => null,

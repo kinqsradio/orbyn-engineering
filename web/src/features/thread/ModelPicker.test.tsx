@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import type { EngineModels, EngineStatus } from "../../api/types";
 import { ModelPickerTrigger } from "./ModelPicker";
-import { useModelStore } from "./modelStore";
+import { useModelStore } from "../../state/modelStore";
 
 vi.mock("../../api/client", async (original) => {
   const actual = await original<typeof import("../../api/client")>();

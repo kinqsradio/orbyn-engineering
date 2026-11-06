@@ -1,4 +1,4 @@
-import { request } from "../../api/client";
+import { request } from "./client";
 import type {
   AskedAboutStop,
   ForgeStatus,
@@ -18,8 +18,8 @@ import type {
   PullWatch,
   ReviewLineComment,
   UpdatePull,
-} from "../../api/types";
-import type { PullRevision } from "../../generated/PullRevision";
+} from "./types";
+import type { PullRevision } from "../generated/PullRevision";
 
 const q = encodeURIComponent;
 const base = (projectId: string, number: number) => `/api/projects/${q(projectId)}/pulls/${number}`;

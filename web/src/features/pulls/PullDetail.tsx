@@ -14,7 +14,7 @@ import { Markdown } from "../thread/Markdown";
 import { PullCode } from "./PullCode";
 import { PullConversation } from "./PullConversation";
 import { PullGuide } from "./PullGuide";
-import { pullsApi } from "./pullsApi";
+import { pullsApi } from "../../api/pulls";
 
 type Tab = "summary" | "guide" | "timeline" | "code";
 

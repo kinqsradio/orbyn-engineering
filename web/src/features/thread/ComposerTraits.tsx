@@ -2,7 +2,7 @@ import { Lock, PenLine, ShieldOff, Sparkles, type LucideIcon } from "lucide-reac
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EngineStatus, ModelInfo, ModelOption, PermissionMode } from "../../api/types";
 import { FloatingPanel } from "./ModelPicker";
-import { effortOption, effortValue } from "./modelStore";
+import { effortOption, effortValue } from "../../state/modelStore";
 import { EffortGlyph } from "./EffortGlyph";
 import { useUi } from "../../state/ui";
 

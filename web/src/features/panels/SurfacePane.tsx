@@ -32,7 +32,7 @@ import { LinkedPulls } from "./LinkedPulls";
 import { closeSideChat, openSideChat } from "./sideChat";
 import { SideChatPane } from "./SideChatPane";
 import { RIGHT_TABS } from "./tabs";
-import { pullsApi } from "../pulls/pullsApi";
+import { pullsApi } from "../../api/pulls";
 
 interface LauncherAction {
   id: ContextTab | "new-side";

@@ -9,7 +9,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
-import { useEngineModels, useModelStore } from "../thread/modelStore";
+import { useEngineModels, useModelStore } from "../../state/modelStore";
 import { PreferenceGroups, PreferenceInheritance } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { MODEL_DEFAULT_KEYS, modelDefaultChange, type DefaultModelChoice } from "./modelDefaultChange";

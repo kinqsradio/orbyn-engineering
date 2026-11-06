@@ -8,7 +8,7 @@ import { authLabels, signInLabel, supportLabels, tierLabels } from "../../lib/fo
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { arrangeModels, modelKey, useEngineModels, useModelStore } from "../thread/modelStore";
+import { arrangeModels, modelKey, useEngineModels, useModelStore } from "../../state/modelStore";
 import { Button, CopyCommand, Pill, type PillTone, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { AcpRegistry } from "./AcpRegistry";
