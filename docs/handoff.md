@@ -732,7 +732,7 @@ not commit it. Move it to a real secret store before any release.
 ## How to work here
 
 Read `AGENTS.md`, then `docs/architecture.md`. `docs/parity.md` is the backlog and
-`docs/ui-parity-audit.md` is the UI evidence. `docs/research/pandacode-findings.md`
+`docs/design.md` sets the look; `docs/ui-parity-audit.md` is the behaviour evidence (its T3 pixel targets are retired). `docs/research/pandacode-findings.md`
 holds the engine table, Windows and macOS solutions and ranked reliability work.
 
 Shared engineering methods are in the outer library at
