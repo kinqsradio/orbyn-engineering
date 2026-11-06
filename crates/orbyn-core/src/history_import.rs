@@ -320,6 +320,8 @@ mod tests {
         let folder = dir.path().join("work");
         std::fs::create_dir_all(&folder).unwrap();
         let cwd = folder.to_str().unwrap().to_owned();
+        // Absolute on every platform; a bare `/x` has no drive on Windows.
+        let elsewhere = dir.path().join("elsewhere").to_str().unwrap().to_owned();
         let claude = dir.path().join("claude");
         let codex = dir.path().join("codex");
         write(
@@ -334,7 +336,7 @@ mod tests {
         write(
             &codex.join("2026/11/06").join("rollout-x.jsonl"),
             &[
-                json!({"type": "session_meta", "payload": {"id": "k1", "cwd": "/elsewhere"}}),
+                json!({"type": "session_meta", "payload": {"id": "k1", "cwd": elsewhere}}),
                 json!({"type": "event_msg", "payload": {"type": "user_message", "message": "<environment>"}}),
                 json!({"type": "event_msg", "payload": {"type": "user_message", "message": "Add tests"}}),
             ],
