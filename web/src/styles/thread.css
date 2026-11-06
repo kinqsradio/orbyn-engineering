@@ -4318,3 +4318,7 @@ div.browser-bridge-row {
   border-radius: var(--radius-md);
   font-size: var(--text-meta);
 }
+/* The Reading drawer is 360px: tighter tabs keep all six in view next to the controls. */
+:root[data-workspace="reading"] .context:not([data-maximized]) .ptab {
+  padding: 0 4px;
+}
