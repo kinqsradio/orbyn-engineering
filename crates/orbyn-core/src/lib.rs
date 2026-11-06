@@ -13,6 +13,7 @@ pub mod computer;
 pub mod diagnostics;
 pub mod driver;
 pub mod engines;
+pub mod environment;
 pub mod error;
 pub mod file_bytes;
 pub mod file_changes;

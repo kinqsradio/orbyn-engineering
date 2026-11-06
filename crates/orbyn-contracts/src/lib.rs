@@ -2567,6 +2567,9 @@ pub enum ShellAction {
     RemoveCli,
     OpenAccessibilitySettings,
     OpenScreenRecordingSettings,
+    /// Quits the app, which stops its service and runs; sent once a window's quit
+    /// confirmation is met.
+    Quit,
 }
 }
 
@@ -3236,6 +3239,37 @@ pub struct ServerInfo {
     pub remote: bool,
     pub platform: String,
     pub environment_label: String,
+    /// The theme this environment publishes, applied once by each viewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_theme: Option<EnvironmentTheme>,
+    /// `dev` for a debug build, `nightly` for a build made with
+    /// `ORBYN_CHANNEL=nightly`, otherwise `stable`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub channel: Option<ReleaseChannel>,
+    /// `environment_icon`: `laptop`, `desktop`, `tower` or `server`; absent is the plain monitor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_icon: Option<String>,
+}
+}
+
+wire_enum! {
+pub enum ReleaseChannel {
+    Stable,
+    Nightly,
+    Dev,
+}
+}
+
+wire! {
+/// `default_theme` and when it was last set, in Unix milliseconds. A viewer applies
+/// it when `set_at` is newer than the one it last applied, then keeps its own choice.
+pub struct EnvironmentTheme {
+    pub name: String,
+    #[ts(type = "number")]
+    pub set_at: i64,
 }
 }
 

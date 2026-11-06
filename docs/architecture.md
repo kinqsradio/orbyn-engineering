@@ -1031,7 +1031,10 @@ A new worktree without an entered purpose gets a unique prompt-derived purpose. 
 a clean checkout on the remote's default branch every 30 minutes.
 
 `keybindings.json` lives in app data and holds only the person's changes over built-in
-defaults, so new defaults reach them. It allows comments and trailing commas, and a
+defaults, so new defaults reach them. `mod+w` is reserved: in the desktop app the page
+takes it even when no rule runs, so it never closes the window. A browser closes the tab
+before the page hears it, so outside the desktop app a `mod+w` rule also matches the same
+key with `alt` in place of `mod`; the editor says which applies. It allows comments and trailing commas, and a
 bad entry is reported while the rest apply. A key with two commands in one exact
 context is a conflict; a key in two contexts is not.
 
@@ -1097,6 +1100,27 @@ retention. A worktree goes only through `git worktree remove` with no force, so 
 keeps uncommitted work. Candidates observed as owned by another live thread are
 kept. `?dry_run=true` only reports. Database repair is a `VACUUM`, refused during a run, and suggested at
 1 GiB reclaimable. The OTLP check posts an empty export and reports the status.
+
+## Environment identity
+
+The local environment publishes a theme in `GET /api/info` as `environment_theme`:
+the `default_theme` preference and `default_theme_set_at`, the Unix milliseconds when
+it was last written. Every write of `default_theme`, from settings or `orbyn theme`,
+stamps that time, and clearing the theme clears it; a client cannot write the time.
+A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
+theme once, when its `set_at` is newer than the one it last applied, at startup and
+when the window takes focus; after that the viewer's own choice stays. An unknown id
+is recorded as applied and changes nothing. Remote environments publish nothing here.
+
+`/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
+`stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
+marks it as the viewer chose: Dev or Nightly artwork (nothing for stable), a version
+pill, or none. That choice is viewer-local.
+
+Appearance edits `default_theme` and `environment_icon` as environment settings through
+the scoped preference writer, showing when the theme was set. `environment_icon` is one
+of `laptop`, `desktop`, `tower` or `server`, or empty for the plain monitor; `/api/info`
+publishes it and the settings environment label draws it.
 
 ## Message search
 
@@ -1563,7 +1587,12 @@ runs. A second launch hands its links to the first and exits.
 `POST /api/shell/actions` takes one of a closed list of `ShellAction`s and carries no
 path, URL or command. It answers `422` with no shell. The menu bar handles what acts on
 the window, and everything else goes to the windows as a `command`, the same ones keys
-run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. The zoom
+run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. On macOS
+the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
+service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
+quits through the `quit` shell action after the key is held for one second, or pressed
+again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
 application window; without one they do nothing. Viewer zoom is independent and transient.
@@ -1572,8 +1601,9 @@ that viewer. App-wide commands such as Settings still reveal and target the main
 
 The service owns the rule for running work and sends `activity` when it changes: the
 counts and whether to stay awake, which is any run unless `keep_awake_during_runs` is off.
-The shell applies it. The Dock badge counts only runs waiting on a person, the tray shows
-the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
+The shell applies it. `activity` also counts threads flagged unread and not archived. The
+Dock badge counts those unread threads plus runs waiting on a person; Windows has no badge
+count, so its tray tooltip names both. The tray shows the rest, and idle sleep is held off, by `caffeinate -i -w` on macOS and
 `SetThreadExecutionState` on Windows. The display can still sleep and a closed lid still
 sleeps.
 

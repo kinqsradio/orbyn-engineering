@@ -383,6 +383,7 @@ fn main() {
         .manage(ServicePort::default())
         .manage(Zoom::default())
         .manage(activity::KeepAwake::default())
+        .manage(menu::QuitItem::default())
         .menu(menu::build)
         .on_menu_event(menu::on_event)
         .invoke_handler(tauri::generate_handler![restart_core])
