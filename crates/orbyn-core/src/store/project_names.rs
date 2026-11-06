@@ -124,7 +124,7 @@ impl Store {
             let projects = statement
                 .query_map([], project_row)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            crate::project_scopes::fence_members(&projects, catalog, library_root)?;
+            crate::project::project_scopes::fence_members(&projects, catalog, library_root)?;
             let expected_map = match expected {
                 Expected::Names(values) | Expected::Revisions(values) => values,
             };
@@ -142,7 +142,7 @@ impl Store {
                 if Path::new(&project.path) == library_root || !matches {
                     return Err(CoreError::SettingsConflict);
                 }
-                let next = crate::project_icon_override::revision(&project.metadata_revision)?
+                let next = crate::project::project_icon_override::revision(&project.metadata_revision)?
                     .checked_add(1)
                     .ok_or_else(|| CoreError::Invalid("Project metadata revision is exhausted.".into()))?;
                 project.metadata_revision = next.to_string();
@@ -159,12 +159,12 @@ impl Store {
                 }
                 selected.push(project);
             }
-            if serde_json::to_vec(&selected)?.len() > crate::project_scopes::MAX_PROJECT_METADATA_BYTES {
+            if serde_json::to_vec(&selected)?.len() > crate::project::project_scopes::MAX_PROJECT_METADATA_BYTES {
                 return Err(CoreError::Invalid("This settings scope is too large.".into()));
             }
             // Compare the complete selection before any partial-column update.
             for project in &selected {
-                let revision = crate::project_icon_override::revision(&project.metadata_revision)?;
+                let revision = crate::project::project_icon_override::revision(&project.metadata_revision)?;
                 match edit {
                     Edit::Name(name) => {
                         tx.execute(
@@ -182,7 +182,7 @@ impl Store {
                     Edit::Image(path) => {
                         tx.execute("UPDATE projects SET favicon_path=?2, project_icon=NULL, metadata_revision=?3 WHERE id=?1", params![project.id,path,revision])?;
                         // Search history ranks the checkout's own files; an imported copy is none.
-                        if crate::project_image_import::imported_name(path).is_none() {
+                        if crate::project::project_image_import::imported_name(path).is_none() {
                             remember_image(tx, &project.id, path)?;
                         }
                     }

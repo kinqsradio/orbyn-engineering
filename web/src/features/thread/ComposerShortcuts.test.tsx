@@ -9,7 +9,7 @@ import { useUi } from "../../state/ui";
 /**
  * Parity row K41. Each test presses the real chord at the document and lets the shell's
  * dispatcher find the command, so a missing rule, a wrong `when` or a dead handler fails.
- * The default chords mirror crates/orbyn-core/src/keybindings.rs; the effort step commands
+ * The default chords mirror crates/orbyn-core/src/settings/keybindings.rs; the effort step commands
  * have no default chord, so they are bound the way a person's keybindings file would.
  */
 const DEFAULTS = [

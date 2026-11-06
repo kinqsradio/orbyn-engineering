@@ -631,7 +631,7 @@ async fn browser_setup_leaves_the_supported_host_and_running_service_alone() {
 
 #[tokio::test]
 async fn service_run_transfers_literal_environment_to_the_real_core() {
-    use orbyn_core::process::ManagedChild;
+    use orbyn_core::host::process::ManagedChild;
     use std::{path::Path, process::Stdio, time::Duration};
     use tokio::io::AsyncBufReadExt;
     let dir = TempDir::new();
@@ -855,7 +855,8 @@ async fn trace_summary_reads_real_core_timings_without_payloads_or_a_running_ser
         .find(|row| row["name"] == "GET /api/threads/{id}")
         .unwrap();
     assert_eq!(missing["failed"], 1);
-    let records = std::fs::read_to_string(orbyn_core::local_trace::trace_path(&data)).unwrap();
+    let records =
+        std::fs::read_to_string(orbyn_core::operations::local_trace::trace_path(&data)).unwrap();
     for private in [
         secret_id,
         "private-query",

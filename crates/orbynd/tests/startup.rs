@@ -1,7 +1,7 @@
 //! Cancellation before the service announces readiness, through real processes.
 mod support;
 
-use orbyn_core::process::{ManagedChild, ProcessTree};
+use orbyn_core::host::process::{ManagedChild, ProcessTree};
 use std::{path::Path, process::Stdio, time::Duration};
 use support::{Options, Service, TempDir};
 use tokio::{io::AsyncReadExt, process::Command};

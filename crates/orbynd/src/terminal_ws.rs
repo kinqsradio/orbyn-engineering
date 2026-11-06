@@ -16,10 +16,10 @@ use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use orbyn_contracts::{OpenConsole, OpenTerminal, RenameTerminal, RunScript, TerminalScrollback};
 use orbyn_core::CoreError;
-use orbyn_core::store::AuditRecord;
-use orbyn_core::terminal::{
+use orbyn_core::host::terminal::{
     MAIN_TERMINAL, PtyOutputState, PtySession, PtySpec, TerminalLabel, default_shell,
 };
+use orbyn_core::store::AuditRecord;
 use orbyn_core::util::new_id;
 use serde::Deserialize;
 use serde_json::json;
@@ -367,7 +367,7 @@ fn input_allowed(observe: bool, child_alive: bool, output_state: PtyOutputState)
 #[cfg(test)]
 mod tests {
     use super::next_output;
-    use orbyn_core::terminal::PtyOutputState;
+    use orbyn_core::host::terminal::PtyOutputState;
 
     #[test]
     fn draining_output_does_not_extend_input_or_resize_authority() {

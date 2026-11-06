@@ -9,25 +9,25 @@ use std::time::Duration;
 use orbyn_contracts::Thread;
 use orbyn_contracts::{PermissionMode, UpdateThread};
 
-use crate::approvals::ApprovalGate;
-use crate::computer::{ComputerBackend, ComputerConfig, ComputerGateway, LocalBackend};
-use crate::engines::{EngineConfig, EngineManager};
+use crate::agents::engines::{EngineConfig, EngineManager};
+use crate::agents::usage::UsageCenter;
+use crate::browser::preview::PreviewManager;
+use crate::conversation::questions::QuestionDesk;
+use crate::conversation::runs::{RunManager, RunServices};
 use crate::error::{CoreError, Result};
-use crate::git;
-use crate::mcp::McpService;
-use crate::preview::PreviewManager;
-use crate::project_setup::SetupManager;
-use crate::projects::ClonePool;
-use crate::questions::QuestionDesk;
-use crate::runs::{RunManager, RunServices};
-use crate::shell::ShellBridge;
-use crate::skills::SkillService;
+use crate::governance::approvals::ApprovalGate;
+use crate::governance::computer::{ComputerBackend, ComputerConfig, ComputerGateway, LocalBackend};
+use crate::host::shell::ShellBridge;
+use crate::host::terminal::TerminalManager;
+use crate::operations::updates::UpdateCenter;
+use crate::project::project_setup::SetupManager;
+use crate::project::projects::ClonePool;
+use crate::project::workspace::Workspace;
+use crate::source_control::git;
 use crate::store::{NewSetup, NewThread, Recovery, Store};
-use crate::terminal::TerminalManager;
-use crate::updates::UpdateCenter;
-use crate::usage::UsageCenter;
+use crate::tools::mcp::McpService;
+use crate::tools::skills::SkillService;
 use crate::util::new_id;
-use crate::workspace::Workspace;
 
 /// A wait of this length covers an unattended person without a run hanging forever.
 pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -84,14 +84,14 @@ impl CoreConfig {
         Self {
             data_dir,
             base_url,
-            workspace_url: crate::workspace::DEFAULT_LIBRARY_URL.to_owned(),
+            workspace_url: crate::project::workspace::DEFAULT_LIBRARY_URL.to_owned(),
             library_bundle: None,
             update_manifest: None,
             engines: EngineConfig::default(),
             approval_timeout: DEFAULT_APPROVAL_TIMEOUT,
             desktop_program: None,
             browser_path: None,
-            acp_registry_url: crate::acp_registry::REGISTRY_URL.to_owned(),
+            acp_registry_url: crate::agents::acp_registry::REGISTRY_URL.to_owned(),
             browser_headless: false,
             browser_in_process_gpu: false,
         }
@@ -100,7 +100,7 @@ impl CoreConfig {
 
 pub struct Core {
     pub config: CoreConfig,
-    pub timings: Arc<crate::local_trace::LocalTrace>,
+    pub timings: Arc<crate::operations::local_trace::LocalTrace>,
     pub store: Arc<Store>,
     pub gate: Arc<ApprovalGate>,
     pub questions: Arc<QuestionDesk>,
@@ -141,7 +141,7 @@ impl Core {
     pub fn open_with(config: CoreConfig, backend: Arc<dyn ComputerBackend>) -> Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
         let lock = take_owner_lock(&config.data_dir)?;
-        let timings = crate::local_trace::LocalTrace::open(&config.data_dir)?;
+        let timings = crate::operations::local_trace::LocalTrace::open(&config.data_dir)?;
         // A preview outlives no process, so any profile here is a leftover.
         let _ = std::fs::remove_dir_all(config.data_dir.join("preview-profiles"));
         // A new epoch per process start fences anything the last process left.
@@ -191,7 +191,7 @@ impl Core {
             mcp: mcp.clone(),
             base_url: config.base_url.clone(),
             runs_dir: config.data_dir.join("runs"),
-            renders_dir: crate::renders::renders_root(&config.data_dir),
+            renders_dir: crate::conversation::renders::renders_root(&config.data_dir),
             setups: setups.clone(),
             terminals: terminals.clone(),
         }));
@@ -246,7 +246,7 @@ impl Core {
         self.engines.driver(&request.engine)?;
         self.check_engine_enabled(&request.engine, &project.id)?;
         if let Some(profile) = request.skill_profile.as_deref()
-            && profile != crate::skills::DEFAULT_PROFILE
+            && profile != crate::tools::skills::DEFAULT_PROFILE
             && self.store.profile(profile)?.is_none()
         {
             return Err(CoreError::NotFound("skill profile".into()));
@@ -317,7 +317,7 @@ impl Core {
                 project_id: project.id,
                 title: request
                     .title
-                    .unwrap_or_else(|| crate::titles::NEW_THREAD_TITLE.to_owned()),
+                    .unwrap_or_else(|| crate::agents::titles::NEW_THREAD_TITLE.to_owned()),
                 engine: request.engine,
                 model,
                 cwd,
@@ -377,14 +377,15 @@ impl Core {
         let thread = self.store.thread(thread_id)?;
         let project = self.store.project(&thread.project_id)?;
         if !project.is_git {
-            let Some(root) = crate::jj::root(Path::new(&thread.cwd), Path::new(&project.path))
+            let Some(root) =
+                crate::source_control::jj::root(Path::new(&thread.cwd), Path::new(&project.path))
             else {
                 return Ok(Vec::new());
             };
             if !project.trusted {
                 return Err(CoreError::FolderUntrusted);
             }
-            return crate::jj::diff(&root).await;
+            return crate::source_control::jj::diff(&root).await;
         }
         if !project.trusted {
             return Err(CoreError::FolderUntrusted);
@@ -407,13 +408,15 @@ impl Core {
         if project.is_git {
             return Ok(None);
         }
-        let Some(root) = crate::jj::root(Path::new(&thread.cwd), Path::new(&project.path)) else {
+        let Some(root) =
+            crate::source_control::jj::root(Path::new(&thread.cwd), Path::new(&project.path))
+        else {
             return Ok(None);
         };
         if !project.trusted {
             return Err(CoreError::FolderUntrusted);
         }
-        crate::jj::status(&root).await.map(Some)
+        crate::source_control::jj::status(&root).await.map(Some)
     }
 
     /// Stops every engine, terminal and browser this process owns.
@@ -423,7 +426,7 @@ impl Core {
         self.terminals.close_all();
         self.previews.close_all();
         self.computer.shutdown().await;
-        crate::telemetry_export::finish().await;
+        crate::operations::telemetry_export::finish().await;
     }
 }
 

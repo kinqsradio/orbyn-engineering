@@ -4,7 +4,7 @@ mod support;
 
 use std::time::Duration;
 
-use orbyn_core::automations::hmac_sha256;
+use orbyn_core::conversation::automations::hmac_sha256;
 use orbyn_core::util::hex;
 use serde_json::{Value, json};
 use support::{FAKE, Options, Service, TempDir, setup};

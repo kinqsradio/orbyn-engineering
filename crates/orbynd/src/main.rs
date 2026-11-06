@@ -25,7 +25,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn_with_state;
 use axum::routing::{get, post};
 use clap::{Args, Parser, Subcommand};
-use orbyn_core::engines::EngineConfig;
+use orbyn_core::agents::engines::EngineConfig;
 use orbyn_core::util::{random_token, sha256_hex};
 use orbyn_core::{Core, CoreConfig, CoreError};
 use serde_json::json;
@@ -608,7 +608,7 @@ fn router(state: AppState) -> Router {
         .route(
             "/api/threads/{id}/previews/{tab}/uploads",
             post(preview_routes::upload).layer(DefaultBodyLimit::max(
-                orbyn_core::preview_bridge::MAX_UPLOAD_BYTES + 1024,
+                orbyn_core::browser::preview_bridge::MAX_UPLOAD_BYTES + 1024,
             )),
         )
         .route(
@@ -736,7 +736,9 @@ fn router(state: AppState) -> Router {
             "/mcp/{thread_token}",
             post(api::mcp)
                 .get(api::mcp_get)
-                .layer(DefaultBodyLimit::max(orbyn_core::mcp::MAX_REQUEST_BYTES)),
+                .layer(DefaultBodyLimit::max(
+                    orbyn_core::tools::mcp::MAX_REQUEST_BYTES,
+                )),
         )
         .fallback(ui::serve)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
@@ -845,7 +847,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         Core::open(core_config(&args, base_url.clone())?).map_err(|error| error.to_string())?,
     );
     core.mcp.bind_host(&core);
-    orbyn_core::diagnostics::start_sampling();
+    orbyn_core::operations::diagnostics::start_sampling();
     core.start_telemetry_export(telemetry_interval()?)
         .map_err(|error| error.to_string())?;
     // Parent EOF and termination own startup too: provisioning may be waiting
@@ -901,7 +903,7 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         access,
         remote: args.remote,
         ui_dir: args.ui_dir.clone(),
-        images: Arc::new(orbyn_core::remote_images::ImageProxy::default()),
+        images: Arc::new(orbyn_core::browser::remote_images::ImageProxy::default()),
     });
 
     // Attach before readiness so the early parent reader cannot drop a reply
@@ -978,7 +980,7 @@ fn telemetry_interval() -> Result<std::time::Duration, String> {
             Ok(millis) if millis > 0 => Ok(std::time::Duration::from_millis(millis)),
             _ => Err("ORBYN_TELEMETRY_INTERVAL_MS must be a positive number.".to_owned()),
         },
-        Err(_) => Ok(orbyn_core::telemetry_export::DEFAULT_INTERVAL),
+        Err(_) => Ok(orbyn_core::operations::telemetry_export::DEFAULT_INTERVAL),
     }
 }
 

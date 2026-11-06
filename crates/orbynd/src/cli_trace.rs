@@ -36,8 +36,8 @@ pub fn duration(text: &str) -> Result<Duration, String> {
 }
 
 pub fn summary(data: &Path, since: Option<Duration>, limit: u32, json: bool) -> Result<(), String> {
-    let report =
-        orbyn_core::local_trace::summarize(data, since).map_err(|error| error.to_string())?;
+    let report = orbyn_core::operations::local_trace::summarize(data, since)
+        .map_err(|error| error.to_string())?;
     if json {
         println!(
             "{}",
@@ -46,7 +46,7 @@ pub fn summary(data: &Path, since: Option<Duration>, limit: u32, json: bool) -> 
     } else if report.span_count == 0 {
         println!(
             "No spans found in {} or its rotated files{}.",
-            orbyn_core::local_trace::trace_path(data).display(),
+            orbyn_core::operations::local_trace::trace_path(data).display(),
             if since.is_some() {
                 " in that window"
             } else {

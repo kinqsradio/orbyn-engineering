@@ -158,7 +158,7 @@ enum TriageAgent {
     Codex,
 }
 
-impl From<TriageAgent> for orbyn_core::triage::Agent {
+impl From<TriageAgent> for orbyn_core::agents::triage::Agent {
     fn from(agent: TriageAgent) -> Self {
         match agent {
             TriageAgent::Claude => Self::Claude,
@@ -700,7 +700,7 @@ async fn update(cli: &Cli, wanted: &Wanted<'_>) -> Outcome<()> {
     let latest = app["latest"].as_str().map(str::to_owned);
     let newer = latest
         .as_deref()
-        .is_some_and(|latest| orbyn_core::engines::manifest::is_newer(latest, &current));
+        .is_some_and(|latest| orbyn_core::agents::engines::manifest::is_newer(latest, &current));
     if let Some(version) = wanted.version {
         let version = version.trim_start_matches('v');
         if version == current {
@@ -710,7 +710,7 @@ async fn update(cli: &Cli, wanted: &Wanted<'_>) -> Outcome<()> {
         }
         if latest.as_deref() != Some(version) {
             let offered = latest.as_deref().unwrap_or("no release");
-            let older = orbyn_core::engines::manifest::is_newer(&current, version);
+            let older = orbyn_core::agents::engines::manifest::is_newer(&current, version);
             return Err(Failure::new(if older {
                 format!(
                     "{version} is older than {current}, and downgrading is not supported. \
@@ -1294,7 +1294,7 @@ fn usage(message: impl Into<String>) -> Failure {
 }
 
 fn bridge_endpoint(command: &str) -> Outcome<String> {
-    use orbyn_core::acp_mcp_bridge::ENDPOINT_ENV;
+    use orbyn_core::agents::acp_mcp_bridge::ENDPOINT_ENV;
     std::env::var(ENDPOINT_ENV)
         .ok()
         .filter(|endpoint| !endpoint.is_empty())
@@ -1308,7 +1308,7 @@ fn bridge_endpoint(command: &str) -> Outcome<String> {
 async fn acp_mcp_bridge() -> Outcome<()> {
     let endpoint = bridge_endpoint("acp-mcp-bridge")?;
     let input = tokio::io::BufReader::new(tokio::io::stdin());
-    orbyn_core::acp_mcp_bridge::run_bridge(&endpoint, input, tokio::io::stdout())
+    orbyn_core::agents::acp_mcp_bridge::run_bridge(&endpoint, input, tokio::io::stdout())
         .await
         .map_err(|error| Failure::new(error.to_string()))
 }
@@ -1320,7 +1320,7 @@ async fn acp_mcp_call(tool: &str, arguments_json: &str) -> Outcome<()> {
     if !arguments.is_object() {
         return Err(usage("acp-mcp-call arguments must be a JSON object."));
     }
-    let result = orbyn_core::acp_mcp_bridge::call_tool(&endpoint, tool, arguments)
+    let result = orbyn_core::agents::acp_mcp_bridge::call_tool(&endpoint, tool, arguments)
         .await
         .map_err(|error| Failure::new(error.to_string()))?;
     println!("{result}");
@@ -1328,7 +1328,7 @@ async fn acp_mcp_call(tool: &str, arguments_json: &str) -> Outcome<()> {
 }
 
 fn claude_history(method: &str, session: &str, options: Option<&str>) -> Outcome<()> {
-    use orbyn_core::claude_history::{HistoryOptions, session_messages};
+    use orbyn_core::agents::claude_history::{HistoryOptions, session_messages};
     match method {
         "getSessionMessages" => {}
         "forkSession" => {

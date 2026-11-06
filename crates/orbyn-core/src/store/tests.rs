@@ -1009,7 +1009,7 @@ fn every_word_must_be_in_one_message_even_across_events() {
     say(&f.store, &run, "a", "user", &["fix the lo", "gin page"]);
     say(&f.store, &run, "b", "assistant", &["the login"]);
     say(&f.store, &run, "c", "assistant", &["page only"]);
-    let scope = crate::search::SearchScope::default();
+    let scope = crate::conversation::search::SearchScope::default();
     let found = f.store.search_messages("PAGE login", &scope).unwrap();
     assert_eq!(found.hits.len(), 1, "{found:?}");
     assert_eq!(found.hits[0].message_id, "a");
@@ -1028,7 +1028,7 @@ fn an_id_reused_on_a_later_turn_is_a_second_message() {
         .unwrap();
     let second = running(&f.store, &f.thread);
     say(&f.store, &second, "msg", "assistant", &["bravo words"]);
-    let scope = crate::search::SearchScope::default();
+    let scope = crate::conversation::search::SearchScope::default();
     assert_eq!(
         f.store.search_messages("words", &scope).unwrap().hits.len(),
         2
@@ -1047,7 +1047,7 @@ fn search_folds_any_script_and_short_queries_read_nothing() {
     let f = fixture();
     let run = running(&f.store, &f.thread);
     say(&f.store, &run, "a", "assistant", &["ÉCOLE 登录页面 ok"]);
-    let scope = crate::search::SearchScope::default();
+    let scope = crate::conversation::search::SearchScope::default();
     let search = |query: &str| f.store.search_messages(query, &scope).unwrap();
     assert_eq!(search("école").hits.len(), 1, "non-ASCII case folds");
     assert_eq!(
@@ -1085,7 +1085,7 @@ fn old_logs_fill_the_search_table_with_the_migration() {
         .find(|(version, _)| *version == 14)
         .unwrap();
     conn.execute_batch(migration).unwrap();
-    let scope = crate::search::SearchScope::default();
+    let scope = crate::conversation::search::SearchScope::default();
     let found = f.store.search_messages("one two", &scope).unwrap();
     assert_eq!(found.hits.len(), 1);
     assert_eq!(found.hits[0].role, "user");

@@ -14,7 +14,7 @@ use orbyn_contracts::{
     OpenPreviewFile, PickPreview, PreviewControl, PreviewCopy, PreviewInput,
     PreviewRecordingOptions, PreviewUpload, PreviewView, ReloadPreview, ResizePreview, StepPreview,
 };
-use orbyn_core::preview::OpenHow;
+use orbyn_core::browser::preview::OpenHow;
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::io::ReaderStream;

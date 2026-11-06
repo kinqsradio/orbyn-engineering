@@ -11,7 +11,7 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
-use orbyn_core::renders::{is_image_name, is_render_id};
+use orbyn_core::conversation::renders::{is_image_name, is_render_id};
 use orbyn_core::util::{random_token, secrets_match, sha256_hex};
 
 use crate::api::ApiFailure;

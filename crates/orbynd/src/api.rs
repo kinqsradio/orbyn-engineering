@@ -23,9 +23,9 @@ use orbyn_contracts::{
     StartRun, SteerResult, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled,
     UpdateThread, UpsertTask, WorkflowStop, WorkspaceSetup, WriteFile,
 };
-use orbyn_core::computer::Caller;
-use orbyn_core::selection;
-use orbyn_core::skills::DEFAULT_PROFILE;
+use orbyn_core::agents::selection;
+use orbyn_core::governance::computer::Caller;
+use orbyn_core::tools::skills::DEFAULT_PROFILE;
 use orbyn_core::util::new_id;
 use orbyn_core::{Core, CoreError};
 use serde::Deserialize;
@@ -38,7 +38,7 @@ pub const LOCAL_USER: &str = "user";
 
 #[derive(Clone)]
 pub struct AppState {
-    pub images: Arc<orbyn_core::remote_images::ImageProxy>,
+    pub images: Arc<orbyn_core::browser::remote_images::ImageProxy>,
     pub core: Arc<Core>,
     pub access: Arc<Access>,
     pub remote: bool,
@@ -167,7 +167,7 @@ pub async fn info(State(state): State<AppState>) -> Json<ServerInfo> {
         environment_label: state.core.environment_label(),
         // A storage error leaves the theme unpublished rather than failing /api/info.
         environment_theme: state.core.environment_theme().ok().flatten(),
-        channel: Some(orbyn_core::environment::release_channel()),
+        channel: Some(orbyn_core::settings::environment::release_channel()),
         environment_icon: state.core.environment_icon().ok().flatten(),
         database_upgrade: state.core.store.upgrade(),
     })
@@ -417,7 +417,7 @@ pub async fn browse(Query(query): Query<BrowseQuery>) -> ApiResult<Json<FsListin
             let full = entry.path();
             FsEntry {
                 name: entry.file_name().to_string_lossy().into_owned(),
-                is_git: orbyn_core::git::is_git_repo(&full),
+                is_git: orbyn_core::source_control::git::is_git_repo(&full),
                 path: full.to_string_lossy().into_owned(),
             }
         })
@@ -664,7 +664,7 @@ pub async fn search_files(
 }
 
 pub async fn editors() -> Json<Vec<orbyn_contracts::EditorInfo>> {
-    Json(orbyn_core::files::installed_editors())
+    Json(orbyn_core::project::files::installed_editors())
 }
 
 pub async fn open_in_editor(
@@ -974,7 +974,7 @@ pub async fn change_scoped_preferences(
     let result = state.core.change_scoped_preferences(&change).await?;
     if change
         .edits
-        .contains_key(orbyn_core::engines::instances::PREFERENCE)
+        .contains_key(orbyn_core::agents::engines::instances::PREFERENCE)
     {
         state.core.engines.instances_changed().await;
     }
@@ -996,7 +996,7 @@ pub async fn set_preferences(
     state.core.set_preferences(None, &body.values)?;
     if body
         .values
-        .contains_key(orbyn_core::engines::instances::PREFERENCE)
+        .contains_key(orbyn_core::agents::engines::instances::PREFERENCE)
     {
         state.core.engines.instances_changed().await;
     }
@@ -1029,7 +1029,7 @@ pub async fn diagnostics(State(state): State<AppState>) -> ApiResult<impl IntoRe
 }
 
 pub async fn stop_process(Path(pid): Path<u32>) -> ApiResult<StatusCode> {
-    orbyn_core::diagnostics::stop_process(pid)?;
+    orbyn_core::operations::diagnostics::stop_process(pid)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1186,7 +1186,7 @@ pub async fn edit_queued(
     Path(id): Path<String>,
     ApiJson(body): ApiJson<EditQueuedMessage>,
 ) -> ApiResult<impl IntoResponse> {
-    orbyn_core::composer::check_prompt(&body.prompt)?;
+    orbyn_core::conversation::composer::check_prompt(&body.prompt)?;
     Ok(Json(state.core.store.edit_queued(&id, &body.prompt)?))
 }
 
@@ -1378,12 +1378,12 @@ pub async fn import_native_session(
 }
 
 pub async fn triage_playbook() -> Json<orbyn_contracts::TriagePlaybook> {
-    let channel = match orbyn_core::environment::release_channel() {
+    let channel = match orbyn_core::settings::environment::release_channel() {
         orbyn_contracts::ReleaseChannel::Stable => "stable",
         orbyn_contracts::ReleaseChannel::Nightly => "nightly",
         orbyn_contracts::ReleaseChannel::Dev => "dev",
     };
-    Json(orbyn_core::triage::service_playbook(
+    Json(orbyn_core::agents::triage::service_playbook(
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         channel,
@@ -1473,7 +1473,7 @@ pub async fn search_messages(
     State(state): State<AppState>,
     Query(query): Query<MessageSearchQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let scope = orbyn_core::search::SearchScope {
+    let scope = orbyn_core::conversation::search::SearchScope {
         project_id: query.project_id,
         thread_id: query.thread_id,
         archived: query.archived.unwrap_or(false),
@@ -1735,7 +1735,7 @@ pub async fn add_custom_engine(
             CoreError::Invalid("Name the engine and give its command or URL.".into()).into(),
         );
     }
-    if engine.id == orbyn_core::engines::instances::LOCAL_ACP_DRIVER {
+    if engine.id == orbyn_core::agents::engines::instances::LOCAL_ACP_DRIVER {
         return Err(CoreError::Invalid(
             "That engine id is reserved for local ACP instances.".into(),
         )
@@ -1894,7 +1894,7 @@ pub async fn computer_action(
     let thread = state.core.store.thread(&id)?;
     let result = match &thread.active_run {
         Some(run) => {
-            let scope = orbyn_core::approvals::RunScope {
+            let scope = orbyn_core::governance::approvals::RunScope {
                 run_id: run.id.clone(),
                 thread_id: thread.id.clone(),
                 engine: thread.engine.clone(),

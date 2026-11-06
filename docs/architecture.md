@@ -10,9 +10,9 @@ credentials.
 | Owner | Path | Owns |
 | --- | --- | --- |
 | Wire contract | `crates/orbyn-contracts` | Serialized types shared with the UI; generated TS in `web/src/generated` |
-| Core | `crates/orbyn-core` | Store, run lifecycle, policy, audit, skills, engines, git, terminal, computer gateway |
+| Core | `crates/orbyn-core` | Store, run lifecycle, policy, audit, skills, engines, git, terminal, computer gateway, in the capability groups its [README](../crates/orbyn-core/README.md#groups) lists |
 | Service | `crates/orbynd` | HTTP/SSE/WebSocket transport, static UI, access control, CLI entry point |
-| Workspace | `crates/orbyn-core` `workspace`, `projects` | Library checkout, target boundaries, library updates, project intake |
+| Workspace | `crates/orbyn-core` `project::workspace`, `project::projects` | Library checkout, target boundaries, library updates, project intake |
 | UI | `web` | Task flows only; it holds no authority and no lifecycle rules |
 | Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads stable bundled UI assets, tray, app updates and what only the OS can do |
 
@@ -1354,7 +1354,7 @@ that left something out. Archived threads are searched only when asked.
 
 ## Automatic requests
 
-`GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
+`GET /api/network` and `crates/orbyn-core/src/governance/network.rs` list every outbound request
 Orbyn makes without being asked, with host, cadence, what turns it off, the key that does
 and whether it is on now. A new one is added there in the same change, with a switch.
 The two-minute pull request poll has its own, `poll_pull_requests`. Engines make their own requests under their own terms.

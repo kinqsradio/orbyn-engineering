@@ -9,7 +9,9 @@ same commit as any change to them.
 ## Layout
 
 - `crates/orbyn-contracts`: wire types. Run `npm run generate` in `web` after edits.
-- `crates/orbyn-core`: all product behavior.
+- `crates/orbyn-core`: all product behavior, in capability groups under `src/`.
+  A new module joins a group in [its README](crates/orbyn-core/README.md#groups),
+  and a new group adds its own README and a row there.
 - `crates/orbynd`: transport and CLI only.
 - `web`: React UI. No Tauri imports, no lifecycle rules.
 - `desktop/src-tauri`: thin shell.
