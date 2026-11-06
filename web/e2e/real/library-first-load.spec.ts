@@ -36,9 +36,11 @@ test("a slow workspace status never shows the library or a trust warning, and lo
   const sidebar = page.getByRole("navigation").first();
   await expect(sidebar).toContainText("repo", { timeout: 15_000 });
   const projectsLoaded = requests.filter((path) => path === "/api/projects").length;
+  const workspace = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/workspace");
   release();
-  await expect.poll(() => requests.includes("/api/workspace")).toBe(true);
-  await page.waitForLoadState("networkidle");
+  await workspace;
+  // The status is in; give the sidebar a moment to render it.
+  await expect(sidebar).toContainText("repo");
   const seen = await page.evaluate(() => (window as unknown as { sidebarSeen: string[] }).sidebarSeen.join("\n"));
   expect(seen).not.toContain("Skills library");
   expect(seen).not.toContain("Not trusted");
