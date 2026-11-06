@@ -69,7 +69,8 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   const threadUrl = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
   const size = async () => (await service.api<{ width: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.width;
   const before = await size();
-  await page.setViewportSize({ width: 1700, height: 900 });
+  // Wide enough to reach the panel's 539px cap with the 224px sidebar.
+  await page.setViewportSize({ width: 1900, height: 900 });
   await expect.poll(size, { timeout: 10_000 }).not.toBe(before);
 
   const zoom = async () => (await service.api<{ zoom: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.zoom;

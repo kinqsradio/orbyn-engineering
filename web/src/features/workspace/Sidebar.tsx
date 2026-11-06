@@ -549,6 +549,11 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     [list, projectGroupingOverrides],
   );
 
+  // The polled project list gives `groupingOverrides` a new identity every few seconds; the
+  // catalog is asked again only when its content changes.
+  const overridesKey = JSON.stringify(groupingOverrides);
+  // A renamed, added or re-iconed project changes the catalog's labels and members too.
+  const projectsKey = list.map((project) => `${project.id}:${project.name}:${project.metadata_revision ?? ""}`).join("|");
   useEffect(() => {
     if (!projectFolders) {
       setGroupingCatalog(null);
@@ -558,13 +563,13 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     request<ProjectScopeCatalog>(
       "POST",
       "/api/settings/project-scopes",
-      { recipe: { mode: projectGrouping, overrides: groupingOverrides } },
+      { recipe: { mode: projectGrouping, overrides: JSON.parse(overridesKey) as typeof groupingOverrides } },
       abort.signal,
     ).then(setGroupingCatalog, () => {
       if (!abort.signal.aborted) setGroupingCatalog(null);
     });
     return () => abort.abort();
-  }, [groupingOverrides, projectFolders, projectGrouping]);
+  }, [overridesKey, projectsKey, projectFolders, projectGrouping]);
 
   const scoped = useMemo(() => {
     const all = Object.values(threads);
