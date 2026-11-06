@@ -49,7 +49,17 @@ export interface ToolItem extends ItemBase {
   exitCode: number | null;
   /** The driver's reported protocol outcome; absent in older logs. */
   outcome?: "success" | "failure";
+  /** The engine workflow this call launched, while the engine reports one. */
+  workflow?: ToolWorkflow;
 }
+export type WorkflowState = "running" | "completed" | "failed" | "stopped";
+export interface ToolWorkflow {
+  state: WorkflowState;
+  name: string | null;
+  /** The engine refused the last stop. */
+  stopError?: string;
+}
+const WORKFLOW_STATES: readonly string[] = ["running", "completed", "failed", "stopped"];
 export interface ApprovalItem extends ItemBase {
   kind: "approval";
   approval: Approval;
@@ -484,6 +494,24 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         const outcome = body?.outcome;
         if (typeof body?.toolCallId === "string" && (outcome === "success" || outcome === "failure")) {
           patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({ ...item, outcome }));
+        }
+      } else if (event.name === "workflow.state") {
+        const body = record(event.value);
+        const state = body?.state;
+        if (typeof body?.toolCallId === "string" && typeof state === "string" && WORKFLOW_STATES.includes(state)) {
+          const name = typeof body.name === "string" ? body.name : null;
+          patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({
+            ...item,
+            workflow: { state: state as WorkflowState, name: name ?? item.workflow?.name ?? null },
+          }));
+        }
+      } else if (event.name === "workflow.stop_failed") {
+        const body = record(event.value);
+        const message = body?.message;
+        if (typeof body?.toolCallId === "string" && typeof message === "string") {
+          patch(fold, scoped("tool", body.toolCallId), "tool", (item) =>
+            item.workflow ? { ...item, workflow: { ...item.workflow, stopError: message } } : item,
+          );
         }
       } else if (event.name === "tool.finished") {
         const body = record(event.value);

@@ -34,6 +34,7 @@ import { outputSpans } from "./ansi";
 import { ApprovalCard, useResolvedApproval } from "./ApprovalCard";
 import { CodeBlock } from "./CodeBlock";
 import { HtmlRender } from "./HtmlRender";
+import { SurfacedWorkflows, WorkflowCards } from "./WorkflowControls";
 import { Markdown } from "./Markdown";
 import { PlanCard } from "./PlanCard";
 import { proposedPlanIn, textAroundPlan } from "./proposedPlan";
@@ -192,6 +193,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
   const failed = toolFailed(item);
   const Icon = ACTION_ICONS[trace.action];
   const threadId = useThreadOfTimeline();
+  const surfaced = use(SurfacedWorkflows);
   const timestampFormat = useUi((state) => state.timestampFormat);
   return (
     <>
@@ -227,6 +229,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
       </Collapsible>
       {/* A published page is the result, so it stays visible with the details closed. */}
       <HtmlRender item={item} threadId={threadId} />
+      {surfaced ? null : <WorkflowCards items={[item]} threadId={threadId} live={live} />}
     </>
   );
 }
@@ -382,6 +385,7 @@ function RunningStack({ tools }: { tools: ToolItem[] }) {
 
 /** One call shows as its own row; several read as one summary until opened. */
 export function WorkGroupView({ group, live }: { group: WorkGroup; live: boolean }) {
+  const threadId = useThreadOfTimeline();
   const [open, setOpen] = useState(false);
   const [all, setAll] = useState(false);
   const only = group.items[0];
@@ -397,6 +401,7 @@ export function WorkGroupView({ group, live }: { group: WorkGroup; live: boolean
   const hiddenRows = all ? 0 : Math.max(group.items.length - LIVE_ROW_LIMIT, 0);
   return (
     <section className="work-rows" aria-label="Activity">
+      <SurfacedWorkflows value>
       <Collapsible
         open={open}
         onOpenChange={setOpen}
@@ -422,6 +427,8 @@ export function WorkGroupView({ group, live }: { group: WorkGroup; live: boolean
           ))}
         </div>
       </Collapsible>
+      </SurfacedWorkflows>
+      <WorkflowCards items={group.items} threadId={threadId} live={live} />
     </section>
   );
 }
@@ -441,10 +448,12 @@ function Working({ row, tools }: { row: WorkingRow; tools: ToolItem[] }) {
 }
 
 /** The summary of a finished turn; what it hides stays mounted for find. */
-function Fold({ fold }: { fold: TurnFold }) {
+function Fold({ fold, live }: { fold: TurnFold; live: boolean }) {
+  const threadId = useThreadOfTimeline();
   const [open, setOpen] = useState(false);
   return (
     <div className="work">
+      <SurfacedWorkflows value>
       <Collapsible
         open={open}
         onOpenChange={setOpen}
@@ -462,6 +471,9 @@ function Fold({ fold }: { fold: TurnFold }) {
           ))}
         </div>
       </Collapsible>
+      </SurfacedWorkflows>
+      {/* A workflow outlives the turn that launched it, so it stays in view. */}
+      <WorkflowCards items={foldTools(fold.entries)} threadId={threadId} live={live} />
       <hr />
     </div>
   );
@@ -469,12 +481,18 @@ function Fold({ fold }: { fold: TurnFold }) {
 
 const NO_TOOLS: ToolItem[] = [];
 
+function foldTools(entries: TimelineEntry[]): WorkItem[] {
+  return entries.flatMap((entry) =>
+    entry.kind === "work" ? entry.items : entry.kind === "fold" ? foldTools(entry.entries) : [],
+  );
+}
+
 export function TimelineRow({ entry, live, tools }: { entry: TimelineEntry; live: boolean; tools: ToolItem[] }) {
   switch (entry.kind) {
     case "work":
       return <WorkGroupView group={entry} live={live} />;
     case "fold":
-      return <Fold fold={entry} />;
+      return <Fold fold={entry} live={live} />;
     case "working":
       return <Working row={entry} tools={tools} />;
     default:

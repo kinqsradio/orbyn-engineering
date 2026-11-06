@@ -21,7 +21,7 @@ use orbyn_contracts::{
     RenameProject, ReorderThreads, ResolveThreadPath, RestoreChanges, RestoreWorkspace,
     RetryPreparation, RewindThread, ServerInfo, ServerSettings, SetPreferences, SkillProfile,
     StartRun, SteerResult, SteerRun, SubmitReview, SwitchBranch, SwitchEngine, TaskEnabled,
-    UpdateThread, UpsertTask, WorkspaceSetup, WriteFile,
+    UpdateThread, UpsertTask, WorkflowStop, WorkspaceSetup, WriteFile,
 };
 use orbyn_core::computer::Caller;
 use orbyn_core::selection;
@@ -1420,6 +1420,21 @@ pub async fn force_stop(
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.runs.force_stop(&id, LOCAL_USER).await?))
+}
+
+pub async fn workflow_script(
+    State(state): State<AppState>,
+    Path((id, item)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.workflow_script(&id, &item)?))
+}
+
+pub async fn stop_workflow(
+    State(state): State<AppState>,
+    Path((id, item)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    state.core.runs.stop_workflow(&id, &item, LOCAL_USER)?;
+    Ok((StatusCode::ACCEPTED, Json(WorkflowStop { requested: true })))
 }
 
 #[derive(Deserialize)]

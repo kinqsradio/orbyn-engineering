@@ -23,8 +23,8 @@ use crate::checkpoints::checkpoint_ref;
 use crate::composer::check_prompt;
 use crate::driver::diagnostics;
 use crate::driver::{
-    EngineDriver, EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunHandle, RunKind,
-    RunSpec,
+    EngineDriver, EngineEvent, EngineOutcome, GoalAction, PermissionRequest, RunControl, RunHandle,
+    RunKind, RunSpec,
 };
 use crate::engines::EngineManager;
 use crate::error::{CoreError, Result};
@@ -250,6 +250,7 @@ struct ActiveRun {
     stops: Stops,
     task: Option<JoinHandle<()>>,
     input: Option<mpsc::UnboundedSender<String>>,
+    control: Option<mpsc::UnboundedSender<RunControl>>,
 }
 
 async fn sleep_until_due(due: Option<tokio::time::Instant>) {
@@ -460,6 +461,7 @@ impl RunManager {
                 stops: stops.clone(),
                 task: None,
                 input: None,
+                control: None,
             },
         );
         if !preparation_retry {
@@ -670,6 +672,71 @@ impl RunManager {
             .send(prompt.to_owned())
             .map_err(|_| CoreError::RunClosed)?;
         Ok(SteerState::Delivered)
+    }
+
+    /// Asks the running engine to stop the workflow one of its tool calls launched.
+    /// Acceptance is not the end: the engine reports that as the workflow's state.
+    pub fn stop_workflow(&self, thread_id: &str, tool_call_id: &str, actor: &str) -> Result<()> {
+        let workflow = self
+            .store
+            .item(thread_id, &crate::driver::workflow_item_id(tool_call_id))
+            .map_err(|_| CoreError::NotFound("workflow".into()))?;
+        if workflow.raw.get("state").and_then(Value::as_str) != Some("running") {
+            return Err(CoreError::Invalid(
+                "This workflow is no longer running.".into(),
+            ));
+        }
+        let run = self.store.thread(thread_id)?.active_run;
+        let Some(run) = run.filter(|run| workflow.run_id.as_deref() == Some(run.id.as_str()))
+        else {
+            return Err(CoreError::Invalid(
+                "This workflow is no longer running.".into(),
+            ));
+        };
+        let control = self
+            .lock()
+            .get(&run.id)
+            .and_then(|active| active.control.clone())
+            .ok_or_else(|| CoreError::Invalid("This engine cannot stop a workflow.".into()))?;
+        self.store.append_audit(&AuditRecord {
+            actor: actor.to_owned(),
+            action: "workflow.stop".into(),
+            target: tool_call_id.to_owned(),
+            decision: None,
+            source: "user".into(),
+            thread_id: Some(thread_id.to_owned()),
+            run_id: Some(run.id.clone()),
+            detail: Value::Null,
+        })?;
+        let sent = control.send(RunControl::StopWorkflow {
+            tool_call_id: tool_call_id.to_owned(),
+        });
+        if sent.is_err() {
+            // The audit row came first, as every effect's does; this one records that
+            // the stop never reached the engine.
+            self.store.append_audit(&AuditRecord {
+                actor: actor.to_owned(),
+                action: "workflow.stop_failed".into(),
+                target: tool_call_id.to_owned(),
+                decision: None,
+                source: "system".into(),
+                thread_id: Some(thread_id.to_owned()),
+                run_id: Some(run.id.clone()),
+                detail: Value::Null,
+            })?;
+            return Err(CoreError::RunClosed);
+        }
+        Ok(())
+    }
+
+    /// A workflow this run launched still runs, as its driver last reported.
+    fn workflow_running(&self, thread_id: &str, run_id: &str) -> bool {
+        self.store.run_items(thread_id, run_id).is_ok_and(|items| {
+            items.iter().any(|item| {
+                item.kind == "workflow"
+                    && item.raw.get("state").and_then(Value::as_str) == Some("running")
+            })
+        })
     }
 
     /// The engine refused a message it was handed mid-turn, so it goes in the queue.
@@ -1396,6 +1463,7 @@ impl RunManager {
             .note_thread_event(&thread.id, "engine.selection", json!(chosen))?;
         if let Some(active) = self.lock().get_mut(&scope.run_id) {
             active.input.clone_from(&handle.input);
+            active.control.clone_from(&handle.control);
         }
         if let Err(error) = self.store.mark_running(&scope.run_id) {
             handle.cancel.cancel();
@@ -1533,9 +1601,10 @@ impl RunManager {
                 () = &mut stop_deadline, if cancelling => break EngineOutcome::Cancelled,
                 () = &mut silence, if delegated && !cancelling => {
                     // Waiting on a person is not silence.
+                    // A turn held open for a quiet workflow is waiting, not stuck.
                     let waiting = self.store.run(&scope.run_id).is_ok_and(|run| {
                         run.state == RunState::AwaitingApproval
-                    });
+                    }) || self.workflow_running(&thread.id, &scope.run_id);
                     silence.as_mut().reset(tokio::time::Instant::now() + SILENCE_LIMIT);
                     if !waiting {
                         break EngineOutcome::Failed(
