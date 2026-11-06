@@ -238,7 +238,11 @@ function Patch({ patch, find, path, threadId, origin }: {
       <div className="diff-annotations">
         {here.map((chip) => (
           <div key={chip.id} className="diff-comment" role="note" aria-label={`Review comment ${chipLabel(chip)}`}>
-            <strong>{chipLabel(chip)}</strong>
+            <span className="diff-comment-head">
+              <strong>You</strong>
+              <span className="diff-comment-where">{chipLabel(chip)}</span>
+              <span className="diff-comment-state">Review comment</span>
+            </span>
             <p>{chip.comment}</p>
             <Button small tone="quiet" onClick={() => useComposerChips.getState().remove(threadId, chip.id)}>
               Remove comment

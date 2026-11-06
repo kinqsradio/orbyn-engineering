@@ -4159,8 +4159,32 @@ div.browser-bridge-row {
   grid-template-columns: 1fr auto;
   gap: 2px 8px;
   padding: 8px 10px;
-  border-radius: var(--radius-md);
-  background: var(--color-selected);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-textSoft);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  white-space: normal;
+}
+.diff-comment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  grid-column: 1;
+}
+.diff-comment-head strong {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.diff-comment-where,
+.diff-comment-state {
+  color: var(--color-muted);
+}
+.diff-comment-where::before,
+.diff-comment-state::before {
+  content: "· ";
 }
 .diff-comment p {
   grid-column: 1;
@@ -4333,4 +4357,16 @@ div.browser-bridge-row {
   flex-wrap: wrap;
   gap: 6px;
   padding: 8px 12px;
+}
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.activity-summary {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
 }
