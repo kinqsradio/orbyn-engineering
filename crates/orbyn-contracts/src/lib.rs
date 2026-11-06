@@ -1235,7 +1235,8 @@ pub struct PullGuideState {
 }
 
 wire! {
-/// Starts a thread that writes the guide. An absent model uses the engine's default.
+/// Starts a thread that writes the guide. An absent model uses the project's
+/// review guide model, then the engine's default.
 pub struct GeneratePullGuide {
     pub engine: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

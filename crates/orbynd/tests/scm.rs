@@ -887,7 +887,11 @@ async fn a_review_guide_is_written_by_a_linked_thread_that_reads_the_pull_reques
     assert!(refused.to_string().contains("Review guides are off"));
 
     let preferences = format!("/api/projects/{project}/preferences");
-    let on = json!({ "values": { "review_guides_enabled": true } });
+    let on = json!({ "values": {
+        "review_guides_enabled": true,
+        "review_guide_instructions": "Lead with the migration.",
+        "review_guide_model": "guide-model",
+    } });
     assert_eq!(put_json(&f.service, &preferences, on).await, 200);
     assert_eq!(f.service.json(&guide).await["enabled"], true);
     let (code, thread) = f.service.send(&guide, json!({ "engine": "codex" })).await;

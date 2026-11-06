@@ -515,7 +515,9 @@ ordinary thread in the project root, linked to the pull request, whose first mes
 asks the agent to read the change through the forge CLI, change nothing, and call
 `orbyn_pull_guide_write` with the head commit. The write goes through the approval
 gate like any other tool effect. Starting one is refused while the project's
-`review_guides_enabled` preference is off. A guide naming an older head commit than
+`review_guides_enabled` preference is off. The project's `review_guide_instructions`
+are appended to that message, and the thread runs on the asked model, else the
+project's `review_guide_model`, else the engine's default. A guide naming an older head commit than
 the pull request is shown as not covering the newer commits; nothing else checks it.
 
 A background clone is a job kept in memory until the service stops. Its staging
