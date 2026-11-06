@@ -1815,6 +1815,12 @@ sets no `PATH`: `child_env` widens that for every child without sourcing a shell
 
 `orbynd` serves MCP over streamable HTTP at `/mcp/:thread_token`. The token is
 random per run, is passed only to that run's engine, and is revoked at run end.
+An ACP agent that does not report HTTP MCP support gets a stdio server instead,
+which ACP requires every agent to support: the sibling `orbyn acp-mcp-bridge`,
+with the run's endpoint (token included) in `ORBYN_ACP_MCP_ENDPOINT`, never in its
+arguments. The bridge relays each JSON-RPC line to the same route, so it adds no
+tool, scope or credential. Without a sibling `orbyn` program the agent gets no
+MCP server, as before.
 Tools: `approve` (Claude permission prompt), `skill_search`, `skill_load`, the
 governed `computer_*` tools and `orbyn_*` tools for threads, projects, worktrees,
 attachments, preview tabs, published pages, pull requests, delegation, scheduling and
