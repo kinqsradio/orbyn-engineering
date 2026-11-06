@@ -428,8 +428,7 @@ async fn native_image_cors_is_exact_and_does_not_replace_authentication() {
     );
 }
 
-const PNG: &[u8] =
-    b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0\x1f\x15\xc4\x89";
+const PNG: &[u8] = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0d\x49\x44\x41\x54\x78\x9c\x63\x60\x68\xf8\xff\x1f\x00\x04\x82\x02\x7f\xe7\xd8\x5a\x6c\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
 
 /// The body that asks for an image for this one checkout, fenced on its revision.
 async fn choose_body(service: &Service, id: &str) -> Value {
@@ -564,6 +563,22 @@ async fn an_image_chosen_in_the_desktop_dialog_is_copied_into_orbyn_and_applied(
     assert_eq!(raw.bytes().await.unwrap().as_ref(), PNG);
     let icon = service.json(&format!("/api/projects/{id}/icon")).await;
     assert_eq!(icon["image"]["relative_path"], hint.as_str());
+
+    // A PNG signature alone is not an image: no revision change or new copy.
+    let before = service.json("/api/projects").await;
+    let fragment = outside.join("fragment.png");
+    std::fs::write(&fragment, b"\x89PNG\r\n\x1a\n").unwrap();
+    let pending = choose(&service, choose_body(&service, &id).await).await;
+    answer_dialog(&mut service, Some(&fragment));
+    let (status, body) = pending.await.unwrap();
+    assert_eq!(status, 400, "truncated PNG must be refused: {body}");
+    assert_eq!(service.json("/api/projects").await, before);
+    assert_eq!(
+        std::fs::read_dir(dir.path().join("data/project-images"))
+            .unwrap()
+            .count(),
+        1
+    );
 
     // A file that is not the image its name says is refused, and the saved image stays.
     let fake = outside.join("fake.png");

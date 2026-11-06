@@ -1058,7 +1058,11 @@ chosen path, or none, and only one dialog is open at a time. The caller never na
 path, and a remote viewer cannot open the dialog. The service accepts an absolute
 regular file of at most 8 MiB whose extension is a project image type and whose
 leading bytes are that kind of image (an SVG must be text with an `<svg` element), and
-keeps only the PNG inside an ICNS file. It copies the bytes into
+keeps only the PNG inside an ICNS file. PNGs, including extracted ICNS PNGs, must
+fully decode before publication, with at most 8192 pixels on either axis and a
+64 MiB decoder allocation budget; truncated or oversized decoded images leave the
+existing project icon and metadata revision unchanged and create no managed copy.
+Other formats retain their existing identification checks. It copies the bytes into
 `<data>/project-images/<sha256>.<ext>`, so the same image is one copy and the original
 may move or go. The project records the copy as `./.orbyn-imported/<sha256>.<ext>` in
 `favicon_path`, through the same membership and revision fences as a project image. A
