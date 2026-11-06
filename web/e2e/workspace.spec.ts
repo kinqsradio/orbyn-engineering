@@ -302,6 +302,8 @@ test("Reading folds the sidebar away on a wide window, but a narrow home is stil
   await reading();
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/#/");
+  // The mock scenario already loaded the app at this address, so the init script needs a fresh load.
+  await page.reload();
   const nav = page.getByRole("navigation", { name: "Workspace" });
   await expect(nav).toBeVisible();
   await expect(nav.getByRole("link", { name: "New thread", exact: true })).toBeVisible();
