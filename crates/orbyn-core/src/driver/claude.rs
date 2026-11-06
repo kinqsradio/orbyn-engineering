@@ -220,8 +220,8 @@ impl EngineDriver for ClaudeDriver {
         false
     }
 
-    fn sign_in_command(&self) -> Option<&str> {
-        Some("claude auth login")
+    fn sign_in_command(&self) -> Option<String> {
+        Some("claude auth login".into())
     }
 
     fn check_launch_available(&self) -> Result<()> {

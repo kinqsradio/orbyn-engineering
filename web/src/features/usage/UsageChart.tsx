@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { axisTicks, formatTokens, type EngineTotals } from "./usageModel";
+import { axisTicks, formatTokens, formatUsd, type EngineTotals } from "./usageModel";
 
 const HEIGHT = 200;
 const PAD = { top: 8, right: 0, bottom: 22, left: 40 };
@@ -9,18 +9,23 @@ const shortDate = (date: string) =>
     .toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })
     .toUpperCase();
 
-/** Stacked daily tokens per engine. Hovering reads one day. */
+/** Stacked daily tokens or priced cost per engine. Hovering reads one day. */
 export function UsageChart({
   engines,
   dates,
   colorOf,
   nameOf,
+  metric = "tokens",
 }: {
   engines: readonly EngineTotals[];
   dates: readonly string[];
   colorOf(engine: string): string;
   nameOf(engine: string): string;
+  metric?: "cost" | "tokens";
 }) {
+  const valueOf = (engine: EngineTotals, date: string) =>
+    (metric === "cost" ? engine.dailyCost.get(date) : engine.daily.get(date)) ?? 0;
+  const format = metric === "cost" ? formatUsd : formatTokens;
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
   const [hover, setHover] = useState<number | null>(null);
@@ -39,7 +44,7 @@ export function UsageChart({
   const stacks = dates.map((date) => {
     let running = 0;
     return engines.map((engine) => {
-      running += engine.daily.get(date) ?? 0;
+      running += valueOf(engine, date);
       return running;
     });
   });
@@ -70,12 +75,12 @@ export function UsageChart({
       }}
       onPointerLeave={() => setHover(null)}
     >
-      <svg width={width} height={HEIGHT} role="img" aria-label="Daily processed tokens by engine">
+      <svg width={width} height={HEIGHT} role="img" aria-label={metric === "cost" ? "Daily estimated cost by engine" : "Daily processed tokens by engine"}>
         {ticks.map((tick) => (
           <g key={tick}>
             <line className="usage-grid" x1={PAD.left} x2={width} y1={y(tick)} y2={y(tick)} />
             <text className="usage-tick" x={PAD.left - 8} y={y(tick) + 4} textAnchor="end">
-              {formatTokens(tick)}
+              {format(tick)}
             </text>
           </g>
         ))}
@@ -115,7 +120,7 @@ export function UsageChart({
             <span key={engine.engine}>
               <span className="usage-dot" style={{ background: colorOf(engine.engine) }} />
               {nameOf(engine.engine)}
-              <b>{formatTokens(engine.daily.get(hovered) ?? 0)}</b>
+              <b>{format(valueOf(engine, hovered))}</b>
             </span>
           ))}
         </div>

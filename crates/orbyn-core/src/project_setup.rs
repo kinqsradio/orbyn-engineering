@@ -54,6 +54,34 @@ pub(crate) fn check_captured_selection(
 }
 
 impl crate::Core {
+    /// The thread's setup action, or `None` when its checkout has none.
+    pub fn thread_setup(&self, thread: &str) -> Result<Option<orbyn_contracts::ThreadSetup>> {
+        self.store.thread(thread)?;
+        self.setups.status(thread)
+    }
+
+    /// Stops the thread's setup action and audits that it was asked to.
+    pub fn cancel_setup(
+        &self,
+        thread: &str,
+        actor: &str,
+    ) -> Result<Option<orbyn_contracts::ThreadSetup>> {
+        self.store.thread(thread)?;
+        if self.setups.cancel(thread)? {
+            self.store.append_audit(&crate::store::AuditRecord {
+                actor: actor.to_owned(),
+                action: "setup.cancel".into(),
+                target: thread.to_owned(),
+                decision: None,
+                source: "user".into(),
+                thread_id: Some(thread.to_owned()),
+                run_id: None,
+                detail: serde_json::Value::Null,
+            })?;
+        }
+        self.setups.status(thread)
+    }
+
     pub async fn retry_preparation(
         &self,
         thread: &str,
@@ -161,6 +189,73 @@ impl SetupManager {
         Ok(())
     }
 
+    /// Where the thread's setup stands. An async action's exit is read from its
+    /// process; only the waiter of a synchronous action records an exit.
+    pub(crate) fn status(&self, thread: &str) -> Result<Option<orbyn_contracts::ThreadSetup>> {
+        use orbyn_contracts::SetupPhase;
+        let sessions = self.lock();
+        let Some(record) = self.store.setup(thread)? else {
+            return Ok(None);
+        };
+        let current = record.owner == self.store.epoch();
+        let (phase, exit_code, cancellable) = match &record.state {
+            SetupState::Preparing => (SetupPhase::Preparing, None, current),
+            SetupState::Running { terminal_id } => {
+                let exited = sessions
+                    .get(thread)
+                    .filter(|owned| &owned.terminal_id == terminal_id)
+                    .and_then(|owned| owned.session.exit_code());
+                match exited {
+                    Some(code) => (SetupPhase::Finished, Some(code), false),
+                    None => (SetupPhase::Running, None, current),
+                }
+            }
+            SetupState::Finished { code } => (SetupPhase::Finished, Some(*code), false),
+            SetupState::Failed { .. } => (SetupPhase::Stopped, None, false),
+        };
+        Ok(Some(orbyn_contracts::ThreadSetup {
+            name: record.name,
+            blocking: record.wait_for_exit,
+            phase,
+            exit_code,
+            terminal_id: record.terminal_id,
+            cancellable,
+        }))
+    }
+
+    /// Stops a setup this service is preparing or running. A synchronous setup
+    /// then fails its first turn, which keeps its Retry; an async one stops
+    /// without holding the thread. Returns false when there was nothing to stop.
+    pub(crate) fn cancel(&self, thread: &str) -> Result<bool> {
+        let mut sessions = self.lock();
+        let Some(record) = self.store.setup(thread)? else {
+            return Err(CoreError::NotFound("setup".into()));
+        };
+        if record.owner != self.store.epoch() {
+            return Ok(false);
+        }
+        match &record.state {
+            SetupState::Preparing => {}
+            SetupState::Running { terminal_id } => {
+                let exited = sessions
+                    .get(thread)
+                    .filter(|owned| &owned.terminal_id == terminal_id)
+                    .is_some_and(|owned| owned.session.exit_code().is_some());
+                if exited {
+                    return Ok(false);
+                }
+            }
+            SetupState::Finished { .. } | SetupState::Failed { .. } => return Ok(false),
+        }
+        self.store.fail_setup(thread)?;
+        if let Some(owned) = sessions.remove(thread) {
+            owned.session.kill();
+        }
+        drop(sessions);
+        self.notify();
+        Ok(true)
+    }
+
     pub(crate) fn fail_preparation(&self, thread: &str, run: &str) {
         if let Err(error) = self.cancel_run(thread, run) {
             tracing::warn!(%error, "could not fail preparation");
@@ -250,8 +345,16 @@ impl SetupManager {
                         loop {
                             let code = *exited.borrow_and_update();
                             if let Some(code) = code {
-                                self.store
-                                    .finish_owned_setup(thread, &owned.terminal_id, code)?;
+                                // A cancel that won the race already stopped it.
+                                match self.store.finish_owned_setup(
+                                    thread,
+                                    &owned.terminal_id,
+                                    code,
+                                ) {
+                                    Ok(()) => {}
+                                    Err(CoreError::StaleOwner) => return Err(failed()),
+                                    Err(error) => return Err(error),
+                                }
                                 self.lock().remove(thread);
                                 return if code == 0 { Ok(true) } else { Err(failed()) };
                             }

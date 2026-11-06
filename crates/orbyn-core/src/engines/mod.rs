@@ -428,6 +428,9 @@ impl EngineManager {
         let updating = lock(&self.updating);
         for status in &mut statuses {
             status.updating = updating.contains(&status.id);
+            if status.tier == EngineTier::Acp {
+                status.sign_in_command = crate::driver::acp::known_sign_in(&status.id);
+            }
         }
         Ok(statuses)
     }

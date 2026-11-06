@@ -170,3 +170,20 @@ describe("update all", () => {
     expect(screen.queryByRole("button", { name: "Update all" })).toBeNull();
   });
 });
+
+describe("acp sign-in", () => {
+  it("shows the terminal sign-in an ACP agent named, and nothing when it named none", async () => {
+    const acp = { id: "opencode", name: "OpenCode", tier: "acp" as const, auth: "not_applicable" as const, installer: "unknown" as const };
+    mock.engines = [engine({ ...acp, sign_in_command: "opencode acp --login" })];
+    const { unmount } = render(<ProvidersSection />);
+    expect(await screen.findByText("Sign in through the OpenCode CLI. Run this in a terminal:")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy sign-in command" })).toBeVisible();
+    expect(screen.getByText("opencode acp --login")).toBeVisible();
+    unmount();
+
+    mock.engines = [engine({ ...acp, sign_in_command: null })];
+    render(<ProvidersSection />);
+    expect((await screen.findAllByText("OpenCode")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Copy sign-in command" })).toBeNull();
+  });
+});

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use orbyn_contracts::{
     DailyUsage, EngineLimits, EngineUsage, LimitWindow, LimitsOverview, LimitsUnavailable,
-    ModelPrice, ModelUsage, PooledWindow, ServerSettings, UsageReport,
+    ModelPrice, ModelUsage, PooledWindow, ServerSettings, TierUsage, TokenCosts, UsageReport,
 };
 use serde_json::Value;
 
@@ -42,8 +42,20 @@ impl Tokens {
     }
 }
 
-/// `(day, model) -> tokens` for one file.
-type FileTotals = BTreeMap<(String, String), Tokens>;
+/// `(day, model, tier) -> tokens` for one file.
+type FileTotals = BTreeMap<(String, String, String), Tokens>;
+
+pub const STANDARD_TIER: &str = "standard";
+
+/// The tiers history names. Anything else is counted as `other`, never dropped.
+fn tier_of(name: Option<&str>) -> String {
+    match name.map(str::trim).filter(|name| !name.is_empty()) {
+        None => STANDARD_TIER.to_owned(),
+        Some(name @ ("standard" | "fast" | "priority" | "batch" | "flex")) => name.to_owned(),
+        Some("default" | "auto") => STANDARD_TIER.to_owned(),
+        Some(_) => "other".to_owned(),
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Engine {
@@ -65,9 +77,10 @@ fn day_of(entry: &Value) -> String {
 }
 
 /// Claude writes a message repeatedly as it streams, so the last line of each
-/// message stands. Input and cache counts are already separate.
+/// message stands. Input and cache counts are already separate. Fast mode is
+/// `speed: fast`; otherwise the `service_tier` names the tier.
 pub fn scan_claude(reader: impl BufRead) -> FileTotals {
-    let mut messages: HashMap<String, (String, String, Tokens)> = HashMap::new();
+    let mut messages: HashMap<String, (String, String, String, Tokens)> = HashMap::new();
     for line in reader.lines().map_while(Result::ok) {
         if !line.contains("\"usage\"") {
             continue;
@@ -89,11 +102,17 @@ pub fn scan_claude(reader: impl BufRead) -> FileTotals {
             .and_then(Value::as_str)
             .unwrap_or("unknown")
             .to_owned();
+        let tier = if usage.get("speed").and_then(Value::as_str) == Some("fast") {
+            "fast".to_owned()
+        } else {
+            tier_of(usage.get("service_tier").and_then(Value::as_str))
+        };
         messages.insert(
             id.to_owned(),
             (
                 day_of(&entry),
                 model,
+                tier,
                 Tokens {
                     input: number(usage, "input_tokens"),
                     output: number(usage, "output_tokens"),
@@ -104,17 +123,19 @@ pub fn scan_claude(reader: impl BufRead) -> FileTotals {
         );
     }
     let mut totals = FileTotals::new();
-    for (day, model, tokens) in messages.into_values() {
-        totals.entry((day, model)).or_default().add(tokens);
+    for (day, model, tier, tokens) in messages.into_values() {
+        totals.entry((day, model, tier)).or_default().add(tokens);
     }
     totals
 }
 
 /// Codex logs a running total with each turn, and repeats it unchanged. Its input
-/// count includes cached input, so that part is moved out.
+/// count includes cached input, so that part is moved out. A turn context's
+/// `service_tier` names the tier of the turns after it.
 pub fn scan_codex(reader: impl BufRead) -> FileTotals {
     let mut totals = FileTotals::new();
     let mut model = "unknown".to_owned();
+    let mut tier = STANDARD_TIER.to_owned();
     let mut last_total = None;
     for line in reader.lines().map_while(Result::ok) {
         if !line.contains("token_count") && !line.contains("turn_context") {
@@ -128,6 +149,7 @@ pub fn scan_codex(reader: impl BufRead) -> FileTotals {
             if let Some(name) = payload.get("model").and_then(Value::as_str) {
                 model = name.to_owned();
             }
+            tier = tier_of(payload.get("service_tier").and_then(Value::as_str));
             continue;
         }
         if payload.get("type").and_then(Value::as_str) != Some("token_count") {
@@ -148,7 +170,7 @@ pub fn scan_codex(reader: impl BufRead) -> FileTotals {
         };
         let cached = number(last, "cached_input_tokens");
         totals
-            .entry((day_of(&entry), model.clone()))
+            .entry((day_of(&entry), model.clone(), tier.clone()))
             .or_default()
             .add(Tokens {
                 input: number(last, "input_tokens").saturating_sub(cached),
@@ -260,12 +282,105 @@ fn scan_engine(engine: Engine, cache: &mut ScanCache) -> (String, u32, u32, File
     ("scanned".to_owned(), scanned, skipped, combined)
 }
 
-fn cost(tokens: Tokens, price: &ModelPrice) -> f64 {
+fn cost_split(tokens: Tokens, price: &ModelPrice) -> TokenCosts {
     let rate = |count: u64, per_million: f64| count as f64 / 1_000_000.0 * per_million;
-    rate(tokens.input, price.input)
-        + rate(tokens.output, price.output)
-        + rate(tokens.cache_read, price.cache_read)
-        + rate(tokens.cache_write, price.cache_write)
+    TokenCosts {
+        input: rate(tokens.input, price.input),
+        output: rate(tokens.output, price.output),
+        cache_read: rate(tokens.cache_read, price.cache_read),
+        cache_write: rate(tokens.cache_write, price.cache_write),
+    }
+}
+
+fn split_total(costs: &TokenCosts) -> f64 {
+    costs.input + costs.output + costs.cache_read + costs.cache_write
+}
+
+/// A tier's own rate, or the model's standard rate for the standard tier. Another
+/// tier never borrows the standard rate, since engines bill those differently.
+fn price_for<'a>(settings: &'a ServerSettings, model: &str, tier: &str) -> Option<&'a ModelPrice> {
+    let tier_of_price =
+        |price: &ModelPrice| price.tier.as_deref().unwrap_or(STANDARD_TIER).to_owned();
+    settings
+        .model_prices
+        .iter()
+        .find(|price| price.model == model && tier_of_price(price) == tier)
+}
+
+/// One day's tokens and the priced part of their cost.
+#[derive(Clone, Copy, Default)]
+struct Day {
+    tokens: u64,
+    cost: Option<f64>,
+}
+
+impl Day {
+    fn add(&mut self, tokens: Tokens, cost: Option<f64>) {
+        self.tokens += tokens.total();
+        if let Some(cost) = cost {
+            self.cost = Some(self.cost.unwrap_or(0.0) + cost);
+        }
+    }
+}
+
+fn daily(days: BTreeMap<String, Day>) -> Vec<DailyUsage> {
+    days.into_iter()
+        .map(|(date, day)| DailyUsage {
+            date,
+            tokens: day.tokens,
+            estimated_cost: day.cost,
+        })
+        .collect()
+}
+
+fn model_usage(
+    model: String,
+    tiers: BTreeMap<String, Tokens>,
+    days: BTreeMap<String, Day>,
+    settings: &ServerSettings,
+) -> ModelUsage {
+    let mut tokens = Tokens::default();
+    let mut split: Option<TokenCosts> = None;
+    let mut unpriced = 0;
+    let tiers = tiers
+        .into_iter()
+        .map(|(tier, counted)| {
+            tokens.add(counted);
+            let costs = price_for(settings, &model, &tier).map(|price| cost_split(counted, price));
+            match &costs {
+                Some(costs) => {
+                    let sum = split.get_or_insert(TokenCosts {
+                        input: 0.0,
+                        output: 0.0,
+                        cache_read: 0.0,
+                        cache_write: 0.0,
+                    });
+                    sum.input += costs.input;
+                    sum.output += costs.output;
+                    sum.cache_read += costs.cache_read;
+                    sum.cache_write += costs.cache_write;
+                }
+                None => unpriced += counted.total(),
+            }
+            TierUsage {
+                tier,
+                tokens: counted.total(),
+                estimated_cost: costs.as_ref().map(split_total),
+            }
+        })
+        .collect();
+    ModelUsage {
+        estimated_cost: split.as_ref().map(split_total),
+        cost_split: split,
+        tiers,
+        unpriced_tokens: unpriced,
+        days: daily(days),
+        model,
+        input_tokens: tokens.input,
+        output_tokens: tokens.output,
+        cache_read_tokens: tokens.cache_read,
+        cache_write_tokens: tokens.cache_write,
+    }
 }
 
 /// `YYYY-MM-DD` of the first day inside a period of `days`, today included.
@@ -287,14 +402,29 @@ fn summarize(
             .find(|alias| alias.model == model)
             .map_or_else(|| model.to_owned(), |alias| alias.counts_as.clone())
     };
-    let mut models: BTreeMap<String, Tokens> = BTreeMap::new();
-    let mut days: BTreeMap<String, u64> = BTreeMap::new();
-    for ((day, model), tokens) in totals {
+    let mut models: BTreeMap<String, BTreeMap<String, Tokens>> = BTreeMap::new();
+    let mut model_days: BTreeMap<String, BTreeMap<String, Day>> = BTreeMap::new();
+    let mut days: BTreeMap<String, Day> = BTreeMap::new();
+    for ((day, model, tier), tokens) in totals {
         if since.is_some_and(|since| day.as_str() < since) {
             continue;
         }
-        models.entry(resolve(&model)).or_default().add(tokens);
-        *days.entry(day).or_default() += tokens.total();
+        let model = resolve(&model);
+        let cost =
+            price_for(settings, &model, &tier).map(|price| split_total(&cost_split(tokens, price)));
+        model_days
+            .entry(model.clone())
+            .or_default()
+            .entry(day.clone())
+            .or_default()
+            .add(tokens, cost);
+        models
+            .entry(model)
+            .or_default()
+            .entry(tier)
+            .or_default()
+            .add(tokens);
+        days.entry(day).or_default().add(tokens, cost);
     }
     EngineUsage {
         engine: engine.to_owned(),
@@ -303,23 +433,12 @@ fn summarize(
         files_skipped: skipped,
         models: models
             .into_iter()
-            .map(|(model, tokens)| ModelUsage {
-                estimated_cost: settings
-                    .model_prices
-                    .iter()
-                    .find(|price| price.model == model)
-                    .map(|price| cost(tokens, price)),
-                model,
-                input_tokens: tokens.input,
-                output_tokens: tokens.output,
-                cache_read_tokens: tokens.cache_read,
-                cache_write_tokens: tokens.cache_write,
+            .map(|(model, tiers)| {
+                let days = model_days.remove(&model).unwrap_or_default();
+                model_usage(model, tiers, days, settings)
             })
             .collect(),
-        days: days
-            .into_iter()
-            .map(|(date, tokens)| DailyUsage { date, tokens })
-            .collect(),
+        days: daily(days),
     }
 }
 
@@ -650,8 +769,11 @@ mod tests {
             input: 5,
             ..Tokens::default()
         };
-        totals.insert(("2000-01-01".into(), "m".into()), tokens);
-        totals.insert((period_start(1), "m".into()), tokens);
+        totals.insert(
+            ("2000-01-01".into(), "m".into(), STANDARD_TIER.into()),
+            tokens,
+        );
+        totals.insert((period_start(1), "m".into(), STANDARD_TIER.into()), tokens);
         let settings = crate::store::default_settings();
         let scan = ("scanned".to_owned(), 1, 0, totals);
         let usage = summarize("claude", scan.clone(), &settings, Some(&period_start(7)));
@@ -680,7 +802,11 @@ mod tests {
                 cache_write: 2
             }
         );
-        assert!(totals.contains_key(&("2026-10-30".to_owned(), "opus".to_owned())));
+        assert!(totals.contains_key(&(
+            "2026-10-30".to_owned(),
+            "opus".to_owned(),
+            "standard".to_owned()
+        )));
     }
 
     #[test]
@@ -703,7 +829,11 @@ mod tests {
                 cache_write: 0
             }
         );
-        assert!(totals.contains_key(&("2026-10-30".to_owned(), "gpt-x".to_owned())));
+        assert!(totals.contains_key(&(
+            "2026-10-30".to_owned(),
+            "gpt-x".to_owned(),
+            "standard".to_owned()
+        )));
     }
 
     #[test]
@@ -715,6 +845,7 @@ mod tests {
             output: 10.0,
             cache_read: 1.0,
             cache_write: 0.0,
+            tier: None,
         }];
         settings.model_aliases = vec![ModelAlias {
             model: "base-2026".into(),
@@ -727,13 +858,89 @@ mod tests {
             cache_read: 1_000_000,
             cache_write: 0,
         };
-        totals.insert(("d".into(), "base-2026".into()), tokens);
-        totals.insert(("d".into(), "mystery".into()), tokens);
+        totals.insert(
+            ("d".into(), "base-2026".into(), STANDARD_TIER.into()),
+            tokens,
+        );
+        totals.insert(("d".into(), "mystery".into(), STANDARD_TIER.into()), tokens);
         let usage = summarize("x", ("scanned".into(), 1, 0, totals), &settings, None);
         assert_eq!(usage.models[0].model, "base");
         assert_eq!(usage.models[0].estimated_cost, Some(13.0));
         assert_eq!(usage.models[1].estimated_cost, None);
         assert_eq!(usage.days[0].tokens, 6_000_000);
+        assert_eq!(
+            usage.models[0].days.len(),
+            1,
+            "each model keeps its own trend"
+        );
+        assert_eq!(usage.models[0].days[0].tokens, 3_000_000);
+        assert_eq!(
+            usage.days[0].estimated_cost,
+            Some(13.0),
+            "the priced part of the day"
+        );
+        assert_eq!(usage.models[1].days[0].estimated_cost, None);
+    }
+
+    #[test]
+    fn tiers_come_from_history_and_are_priced_only_by_their_own_rate() {
+        let claude = scan_claude(lines(&[
+            r#"{"timestamp":"2026-10-30T01:00:00Z","message":{"id":"a","model":"m","usage":{"input_tokens":10,"speed":"standard","service_tier":"standard"}}}"#,
+            r#"{"timestamp":"2026-10-30T01:00:00Z","message":{"id":"b","model":"m","usage":{"input_tokens":20,"speed":"fast","service_tier":"standard"}}}"#,
+            r#"{"timestamp":"2026-10-30T01:00:00Z","message":{"id":"c","model":"m","usage":{"input_tokens":30,"service_tier":"priority"}}}"#,
+            r#"{"timestamp":"2026-10-30T01:00:00Z","message":{"id":"d","model":"m","usage":{"input_tokens":40,"service_tier":"mystery"}}}"#,
+        ]));
+        let tiers: Vec<&str> = claude.keys().map(|(_, _, tier)| tier.as_str()).collect();
+        assert_eq!(tiers, ["fast", "other", "priority", "standard"]);
+
+        let codex = scan_codex(lines(&[
+            r#"{"type":"turn_context","payload":{"model":"g","service_tier":"fast"}}"#,
+            r#"{"timestamp":"2026-10-30T02:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":5},"last_token_usage":{"input_tokens":5}}}}"#,
+        ]));
+        assert!(codex.contains_key(&("2026-10-30".into(), "g".into(), "fast".into())));
+
+        let mut settings = crate::store::default_settings();
+        let price = |tier: Option<&str>, input: f64| ModelPrice {
+            model: "m".into(),
+            input,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_write: 0.0,
+            tier: tier.map(str::to_owned),
+        };
+        let million = |input: u64| Tokens {
+            input: input * 1_000_000,
+            output: 1_000_000,
+            ..Tokens::default()
+        };
+        settings.model_prices = vec![price(None, 1.0), price(Some("fast"), 6.0)];
+        let mut tiers = BTreeMap::new();
+        tiers.insert("standard".to_owned(), million(1));
+        tiers.insert("fast".to_owned(), million(2));
+        tiers.insert("priority".to_owned(), million(3));
+        let usage = model_usage("m".into(), tiers, BTreeMap::new(), &settings);
+        assert_eq!(usage.estimated_cost, Some(13.0));
+        let split = usage.cost_split.unwrap();
+        assert_eq!((split.input, split.output), (13.0, 0.0));
+        assert_eq!(
+            usage.unpriced_tokens, 4_000_000,
+            "priority has no rate of its own"
+        );
+        let priority = usage
+            .tiers
+            .iter()
+            .find(|tier| tier.tier == "priority")
+            .unwrap();
+        assert_eq!(priority.estimated_cost, None);
+        assert_eq!(
+            usage
+                .tiers
+                .iter()
+                .find(|tier| tier.tier == "fast")
+                .unwrap()
+                .estimated_cost,
+            Some(12.0)
+        );
     }
 
     #[test]

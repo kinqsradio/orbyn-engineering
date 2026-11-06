@@ -288,6 +288,25 @@ function DiffOptions() {
   );
 }
 
+/** A Jujutsu checkout's working-copy change, as the installed `jj` describes it. */
+function JjChange({ threadId, version }: { threadId: string; version: number }) {
+  const status = useAsync(`jj:${threadId}:${version}`, (signal) => api.jjStatus(threadId, signal));
+  if (status.status === "error") {
+    return <p className="jj-change" role="note">Jujutsu: {status.error.message}</p>;
+  }
+  const change = status.data;
+  if (!change) return null;
+  return (
+    <p className="jj-change" role="note" aria-label="Jujutsu change">
+      <span>jj change <code>{change.change_id}</code></span>
+      <span> commit <code>{change.commit_id}</code></span>
+      {change.bookmarks.length > 0 ? <span> on {change.bookmarks.join(", ")}</span> : null}
+      <span> · {change.description || "(no description)"}</span>
+      {change.conflict ? <span className="diff-del"> · conflicted</span> : null}
+    </p>
+  );
+}
+
 export function DiffPanel({ threadId }: { threadId: string }) {
   const version = useThreadLogs((state) => state.diffVersion[threadId] ?? 0);
   const [source, setSource] = useState<DiffSource>("worktree");
@@ -364,6 +383,7 @@ export function DiffPanel({ threadId }: { threadId: string }) {
 
   return (
     <div ref={root}>
+      <JjChange threadId={threadId} version={version} />
       <div className="diff-sources segment" role="radiogroup" aria-label="Diff source">
         {DIFF_SOURCES.map((entry) => (
           <button

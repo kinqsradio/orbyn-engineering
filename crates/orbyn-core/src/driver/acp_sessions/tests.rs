@@ -437,3 +437,24 @@ async fn live_session_ids_are_bounded_before_prompt_or_persistence() {
     ));
     assert!(f.methods().is_empty());
 }
+
+#[test]
+fn version_one_runs_a_v1_shaped_two_falls_back_and_a_v2_reply_is_refused() {
+    assert!(check_version(&json!({"protocolVersion": 1, "agentCapabilities": {}})).is_ok());
+    // Version 2 in version 1's shape, as some shipped agents answer.
+    let labelled =
+        json!({"protocolVersion": 2, "agentInfo": {"name": "a"}, "agentCapabilities": {}});
+    assert!(check_version(&labelled).is_ok());
+    let v2 = json!({"protocolVersion": 2, "info": {"name": "a"}, "capabilities": {}});
+    let error = check_version(&v2).unwrap_err().to_string();
+    assert!(error.contains("only ACP version 2"), "{error}");
+    for reply in [
+        json!({"protocolVersion": 3}),
+        json!({}),
+        json!({"protocolVersion": "1"}),
+    ] {
+        let error = check_version(&reply).unwrap_err().to_string();
+        assert!(error.contains("does not speak ACP version 1"), "{error}");
+    }
+    assert_eq!(initialize_params()["protocolVersion"], 1);
+}
