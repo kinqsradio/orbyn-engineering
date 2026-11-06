@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use orbyn_contracts::{RunState, ShellAction, ShellEvent, ShellFacts, ShellStatus};
 use serde_json::{Value, json};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::app::Core;
 use crate::error::{CoreError, Result};
@@ -21,6 +21,14 @@ const HELD_EVENTS: usize = 8;
 const ID_LIMIT: usize = 128;
 /// How often the shell's picture of running work is brought up to date.
 const ACTIVITY_EVERY: Duration = Duration::from_secs(2);
+/// How long a native file dialog may stay open before the request gives up.
+const PICK_WAIT: Duration = Duration::from_secs(15 * 60);
+
+/// The one native image dialog that may be open, and where its answer goes.
+struct Pick {
+    id: String,
+    answer: oneshot::Sender<Option<std::path::PathBuf>>,
+}
 
 pub struct ShellBridge {
     lines: Mutex<Option<mpsc::UnboundedSender<Value>>>,
@@ -28,6 +36,7 @@ pub struct ShellBridge {
     held: Mutex<VecDeque<ShellEvent>>,
     windows: Arc<AtomicUsize>,
     facts: Mutex<ShellFacts>,
+    pick: Mutex<Option<Pick>>,
 }
 
 /// One window following events. Dropping it stops counting that window.
@@ -52,6 +61,7 @@ impl Default for ShellBridge {
             held: Mutex::new(VecDeque::new()),
             windows: Arc::default(),
             facts: Mutex::default(),
+            pick: Mutex::new(None),
         }
     }
 }
@@ -98,6 +108,43 @@ impl ShellBridge {
             Err(CoreError::Unsupported(
                 "This needs the desktop app.".to_owned(),
             ))
+        }
+    }
+
+    /// Opens the desktop app's own image dialog and waits for the person. The shell
+    /// returns only the chosen path, or none when cancelled; deciding what that file
+    /// may become is the caller's. One dialog at a time.
+    pub async fn choose_image(&self) -> Result<Option<std::path::PathBuf>> {
+        let id = crate::util::new_id();
+        let (answer, chosen) = oneshot::channel();
+        {
+            let mut pick = lock(&self.pick);
+            if pick.as_ref().is_some_and(|open| !open.answer.is_closed()) {
+                return Err(CoreError::Invalid(
+                    "An image dialog is already open.".into(),
+                ));
+            }
+            *pick = Some(Pick {
+                id: id.clone(),
+                answer,
+            });
+        }
+        if !self.send(json!({ "type": "choose_project_image", "request_id": id })) {
+            lock(&self.pick).take();
+            return Err(CoreError::Unsupported(
+                "This needs the desktop app.".to_owned(),
+            ));
+        }
+        let outcome = tokio::time::timeout(PICK_WAIT, chosen).await;
+        // Whatever happened, this request no longer owns the dialog.
+        let mut pick = lock(&self.pick);
+        if pick.as_ref().is_some_and(|open| open.id == id) {
+            pick.take();
+        }
+        match outcome {
+            Ok(Ok(path)) => Ok(path),
+            Ok(Err(_)) => Ok(None),
+            Err(_) => Err(CoreError::Invalid("The image dialog didn't answer.".into())),
         }
     }
 
@@ -160,6 +207,21 @@ impl ShellBridge {
                         let _ = self.events.send(ShellEvent::Changed);
                     }
                     Err(error) => tracing::debug!(%error, "ignoring shell facts"),
+                }
+                true
+            }
+            Some("project_image_chosen") => {
+                let mut pick = lock(&self.pick);
+                if pick
+                    .as_ref()
+                    .is_some_and(|open| Some(open.id.as_str()) == text("request_id"))
+                    && let Some(open) = pick.take()
+                {
+                    // Only an absolute path counts; anything else reads as cancelled.
+                    let path = text("path")
+                        .map(std::path::PathBuf::from)
+                        .filter(|path| path.is_absolute());
+                    let _ = open.answer.send(path);
                 }
                 true
             }
@@ -321,6 +383,67 @@ mod tests {
         drop(first);
         assert_eq!(shell.status().windows, 0);
         assert!(shell.watch().held.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_image_dialog_returns_only_its_own_absolute_answer() {
+        let bridge = Arc::new(ShellBridge::default());
+        assert!(matches!(
+            bridge.choose_image().await,
+            Err(CoreError::Unsupported(_))
+        ));
+        let (lines, mut sent) = mpsc::unbounded_channel();
+        bridge.attach(lines);
+        let waiting = tokio::spawn({
+            let bridge = bridge.clone();
+            async move { bridge.choose_image().await }
+        });
+        let asked = sent.recv().await.unwrap();
+        assert_eq!(asked["type"], "choose_project_image");
+        let id = asked["request_id"].as_str().unwrap().to_owned();
+        // A second dialog is refused while the first is open.
+        assert!(matches!(
+            bridge.choose_image().await,
+            Err(CoreError::Invalid(_))
+        ));
+        // Another request's answer changes nothing.
+        assert!(
+            bridge.on_line(
+                &json!({ "type": "project_image_chosen", "request_id": "other", "path": "/x.png" })
+                    .to_string()
+            )
+        );
+        let chosen = if cfg!(windows) {
+            "C:\\images\\logo.png"
+        } else {
+            "/images/logo.png"
+        };
+        bridge.on_line(
+            &json!({ "type": "project_image_chosen", "request_id": id, "path": chosen })
+                .to_string(),
+        );
+        assert_eq!(
+            waiting.await.unwrap().unwrap(),
+            Some(std::path::PathBuf::from(chosen))
+        );
+
+        let waiting = tokio::spawn({
+            let bridge = bridge.clone();
+            async move { bridge.choose_image().await }
+        });
+        let id = sent.recv().await.unwrap()["request_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        bridge.on_line(
+            &json!({ "type": "project_image_chosen", "request_id": id, "path": "relative.png" })
+                .to_string(),
+        );
+        assert_eq!(
+            waiting.await.unwrap().unwrap(),
+            None,
+            "a relative path reads as cancelled"
+        );
     }
 
     #[test]

@@ -7,6 +7,7 @@ import type { WorkflowStop } from "../generated/WorkflowStop";
 import type { RenameSelectedProjects } from "../generated/RenameSelectedProjects";
 import type { ChangeProjectIcon } from "../generated/ChangeProjectIcon";
 import type { ChangeProjectImage } from "../generated/ChangeProjectImage";
+import type { ChooseProjectImage } from "../generated/ChooseProjectImage";
 import type { SearchProjectImages } from "../generated/SearchProjectImages";
 import type { ProjectImageSearchResult } from "../generated/ProjectImageSearchResult";
 import type { ProjectIconResource } from "../generated/ProjectIconResource";
@@ -284,6 +285,9 @@ export const api = {
   renameSelectedProjects: (change: RenameSelectedProjects) => request<Project[]>("POST", "/api/settings/projects/rename", change),
   changeProjectIcon: (change: ChangeProjectIcon) => request<Project[]>("POST", "/api/settings/projects/icon", change),
   changeProjectImage: (change: ChangeProjectImage) => request<Project[]>("POST", "/api/settings/projects/image", change),
+  /** Opens the desktop app's image dialog; `undefined` means the person cancelled. */
+  chooseProjectImage: (change: ChooseProjectImage) =>
+    request<Project[] | undefined>("POST", "/api/settings/projects/image/choose", change),
   searchProjectImages: (query: SearchProjectImages, signal?: AbortSignal) => request<ProjectImageSearchResult>("POST", "/api/settings/projects/image-search", query, signal),
   projectIconResource: (id: string, signal?: AbortSignal) => request<ProjectIconResource>("GET", `/api/projects/${encodeURIComponent(id)}/icon/resource`, undefined, signal),
   clones: (signal?: AbortSignal) => request<CloneJob[]>("GET", "/api/clones", undefined, signal),

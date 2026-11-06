@@ -1048,8 +1048,24 @@ selected physical member. Missing peer files or a source removed after selection
 do not prevent saving the hint; each member resolves its own bytes or fallback.
 The image writer clears the structured override and advances metadata revisions;
 structured writes and Reset clear the hint. A conflict refreshes the catalog for
-a later explicit open and never replays the write. No files are copied or changed.
-The optional native external chooser and its authority/qualification remain work.
+a later explicit open and never replays the write. No project files are copied or
+changed.
+
+In the desktop app, Choose from computer opens the shell's native file dialog for an
+image outside the project. The web asks the service, which sends the shell one
+`choose_project_image` request and holds the call open; the shell returns only the
+chosen path, or none, and only one dialog is open at a time. The caller never names a
+path, and a remote viewer cannot open the dialog. The service accepts an absolute
+regular file of at most 8 MiB whose extension is a project image type and whose
+leading bytes are that kind of image (an SVG must be text with an `<svg` element), and
+keeps only the PNG inside an ICNS file. It copies the bytes into
+`<data>/project-images/<sha256>.<ext>`, so the same image is one copy and the original
+may move or go. The project records the copy as `./.orbyn-imported/<sha256>.<ext>` in
+`favicon_path`, through the same membership and revision fences as a project image. A
+checkout hint can never take that form, because hints have no `.` component; reads
+open only the copy, never the original, and refuse a link in place of a copy. The
+reserved form joins no image-search history. A cancelled dialog is `204` and writes
+nothing; on a plain server the request fails because there is no desktop app.
 
 Core search runs no Git command or hook and reads no global ignore configuration.
 It parses checked in-root `.gitignore` and `.ignore` data, never descends symlink
@@ -1059,8 +1075,12 @@ visits/depth/enumeration time to 20,000/48/3 seconds with a separate cooperative
 unreadable or unsafe ignore sources omit their subtree. Results are capped at 200.
 Independent case-insensitive Unicode subsequence matching ranks basename, prefix,
 contiguous match, gaps, position and path length, then recent selection/count/path.
-Empty queries prioritize selection history. Exact native fff ranking weights are
-not established by this implementation.
+Empty queries prioritize selection history. This ordering is the product rule: a
+lexicographic comparison of more words matching the basename, more word prefixes,
+more contiguous words, fewer gap characters, earlier match positions and a shorter
+path, then the most recent and most chosen history, then the path. It has no numeric
+weights and does not reproduce the reference app's `fff` scoring, whose weights
+Orbyn neither copies nor matches.
 
 Schema 21 adds nullable `project_icon` JSON and `favicon_path`, and a nonnegative
 integer `metadata_revision` initially zero; wire revisions are decimal strings.

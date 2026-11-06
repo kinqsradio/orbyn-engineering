@@ -181,7 +181,10 @@ impl Store {
                     }
                     Edit::Image(path) => {
                         tx.execute("UPDATE projects SET favicon_path=?2, project_icon=NULL, metadata_revision=?3 WHERE id=?1", params![project.id,path,revision])?;
-                        remember_image(tx, &project.id, path)?;
+                        // Search history ranks the checkout's own files; an imported copy is none.
+                        if crate::project_image_import::imported_name(path).is_none() {
+                            remember_image(tx, &project.id, path)?;
+                        }
                     }
                 }
             }

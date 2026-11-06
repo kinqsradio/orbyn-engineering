@@ -474,33 +474,65 @@ impl Core {
         request: &orbyn_contracts::ChangeProjectImage,
     ) -> Result<Vec<Project>> {
         crate::project_image_picker::validate_hint(&request.path)?;
-        if request.expected_revisions.is_empty() || request.expected_revisions.len() > MAX_PROJECTS
-        {
+        self.apply_project_image(
+            &request.scope,
+            &request.membership_version,
+            &request.expected_revisions,
+            &request.path,
+        )
+        .await
+    }
+
+    /// Copies an image chosen outside the project into the data directory, then
+    /// applies that copy exactly as a project image is applied, with the same fences.
+    /// `source` comes from the desktop app's file dialog, never from a caller.
+    pub async fn import_project_image(
+        &self,
+        request: &orbyn_contracts::ChooseProjectImage,
+        source: &std::path::Path,
+    ) -> Result<Vec<Project>> {
+        let hint = crate::project_image_import::import(&self.config.data_dir, source)?;
+        self.apply_project_image(
+            &request.scope,
+            &request.membership_version,
+            &request.expected_revisions,
+            &hint,
+        )
+        .await
+    }
+
+    async fn apply_project_image(
+        &self,
+        scope: &orbyn_contracts::ProjectScopesQuery,
+        membership_version: &str,
+        expected_revisions: &std::collections::BTreeMap<String, String>,
+        hint: &str,
+    ) -> Result<Vec<Project>> {
+        if expected_revisions.is_empty() || expected_revisions.len() > MAX_PROJECTS {
             return Err(CoreError::Invalid(
                 "Choose the selected projects once.".into(),
             ));
         }
-        for revision in request.expected_revisions.values() {
+        for revision in expected_revisions.values() {
             crate::project_icon_override::revision(revision)?;
         }
-        let catalog = self.project_scope_catalog(&request.scope).await?;
-        if request.membership_version != catalog.version {
+        let catalog = self.project_scope_catalog(scope).await?;
+        if membership_version != catalog.version {
             return Err(CoreError::SettingsConflict);
         }
         let ids = selected_members(&catalog)?;
         if ids.is_empty() {
             return Err(CoreError::SettingsScopeUnavailable);
         }
-        if ids.iter().collect::<BTreeSet<_>>()
-            != request.expected_revisions.keys().collect::<BTreeSet<_>>()
+        if ids.iter().collect::<BTreeSet<_>>() != expected_revisions.keys().collect::<BTreeSet<_>>()
         {
             return Err(CoreError::SettingsConflict);
         }
         self.store.change_selected_project_image(
             &catalog,
             &self.workspace.root()?,
-            &request.expected_revisions,
-            &request.path,
+            expected_revisions,
+            hint,
         )
     }
     pub async fn change_project_icon(
