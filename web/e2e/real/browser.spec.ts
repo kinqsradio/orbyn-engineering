@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { startProject, type Service } from "./service";
@@ -10,14 +10,30 @@ const SITE_PORT = 5293;
 let service: Service;
 let threadId = "";
 let site: Server;
+let site6: Server | undefined;
 let clicks = 0;
 
 test.beforeAll(async () => {
-  site = createServer((request, response) => {
+  const handler = (request: IncomingMessage, response: ServerResponse) => {
     if (request.url === "/clicked") clicks += 1;
     response.setHeader("Content-Type", "text/html");
     response.end(`<body style="margin:0;background:#2a6"><button style="width:100vw;height:100vh" onclick="fetch('/clicked')">${request.url}</button></body>`);
-  }).listen(SITE_PORT);
+  };
+  // The browser resolves `localhost` to ::1 or 127.0.0.1, whichever it tries first, so answer on both
+  // loopback addresses, and wait until the port is open before the service is asked to load it.
+  const listen = (server: Server, host: string) =>
+    new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(SITE_PORT, host, () => resolve());
+    });
+  site = createServer(handler);
+  await listen(site, "127.0.0.1");
+  // Where IPv6 is unavailable the browser can only use 127.0.0.1, which is already open.
+  site6 = createServer(handler);
+  await listen(site6, "::1").catch(() => {
+    site6?.close();
+    site6 = undefined;
+  });
   const started = await startProject({ fakeEngines: true });
   service = started.service;
   const thread = await service.api<{ id: string }>("POST", "/api/threads", {
@@ -39,6 +55,7 @@ test.afterAll(async () => {
   }
   await service.stop();
   site.close();
+  site6?.close();
 });
 
 test("a page opens, streams, takes input under control, and tabs close", async ({ page }) => {
@@ -69,7 +86,8 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   const threadUrl = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
   const size = async () => (await service.api<{ width: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.width;
   const before = await size();
-  await page.setViewportSize({ width: 1700, height: 900 });
+  // Wide enough to reach the panel's 539px cap with the 224px sidebar.
+  await page.setViewportSize({ width: 1900, height: 900 });
   await expect.poll(size, { timeout: 10_000 }).not.toBe(before);
 
   const zoom = async () => (await service.api<{ zoom: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.zoom;

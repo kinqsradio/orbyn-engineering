@@ -45,10 +45,6 @@ test.beforeAll(async () => {
 test.afterAll(() => service.stop());
 
 test.beforeEach(async ({ page }) => {
-  // These cases cover the flat arrangement (drag and drop, the shelves); sidebar-grouping covers folders.
-  await page.addInitScript(() => {
-    if (!localStorage.getItem("orbyn.prefs.v1")) localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ projectFolders: false, prefsVersion: 1 }));
-  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(service.page);
   await expect(row(page, "Alpha")).toBeVisible();
@@ -84,6 +80,13 @@ test("the menu pins, snoozes through Custom and wakes", async ({ page }) => {
 });
 
 test("dragging reorders, pins and settles with an action badge", async ({ page }) => {
+  // Reordering is for the flat list: project folders sort by activity, so they have nothing to reorder.
+  await page.evaluate(() => {
+    const key = "orbyn.prefs.v1";
+    localStorage.setItem(key, JSON.stringify({ ...JSON.parse(localStorage.getItem(key) ?? "{}"), projectFolders: false }));
+  });
+  await page.reload();
+  await expect(row(page, "Alpha")).toBeVisible();
   const list = page.locator("li[data-section=active]");
   await expect(list).toHaveCount(4);
   const titles = await list.locator(".thread-row-title").allInnerTexts();
