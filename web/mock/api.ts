@@ -594,7 +594,7 @@ export function createMockApi(options: MockOptions = {}) {
           ...(patch.permission_mode ? { permission_mode: patch.permission_mode } : {}),
         };
         threads = threads.map((t) =>
-          t.id === thread.id ? { ...t, lifecycle, title: patch.title ?? t.title } : t,
+          t.id === thread.id ? { ...t, lifecycle, title: patch.title ?? t.title, ...(patch.effort ? { effort: patch.effort } : {}) } : t,
         );
         return { status: 200, body: threads.find((t) => t.id === thread.id) };
       }
