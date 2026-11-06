@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Thread } from "../../api/types";
 import {
   arrangeThreads,
+  attentionRank,
   dropPatch,
   dropVerb,
   foldersOf,
@@ -212,5 +213,23 @@ describe("lifecycle changes", () => {
     const rows = [thread("running", {}, running), thread("watched", { watching: true })];
     expect(arrangeThreads(rows, now, false).active.map((item) => item.id)).toEqual(["running", "watched"]);
     expect(arrangeThreads(rows, now).working.map((item) => item.id)).toEqual(["running", "watched"]);
+  });
+});
+
+describe("ledger order", () => {
+  const waiting = { active_run: { id: "r", state: "awaiting_approval" } as Thread["active_run"] };
+  const failed = { last_run_state: "failed" } as Partial<Thread>;
+
+  it("ranks needing you before failed before the rest", () => {
+    expect(attentionRank(thread("a", {}, waiting))).toBe(0);
+    expect(attentionRank(thread("a", { limit: { kind: "usage" } } as never))).toBe(0);
+    expect(attentionRank(thread("a", {}, failed))).toBe(1);
+    expect(attentionRank(thread("a"))).toBe(2);
+  });
+
+  it("lists active threads that need you first only when asked", () => {
+    const threads = [thread("plain", { position: 0 }), thread("broke", { position: 1 }, failed), thread("asks", { position: 2 }, waiting)];
+    expect(arrangeThreads(threads, now).active.map((t) => t.id)).toEqual(["plain", "broke", "asks"]);
+    expect(arrangeThreads(threads, now, true, true).active.map((t) => t.id)).toEqual(["asks", "broke", "plain"]);
   });
 });

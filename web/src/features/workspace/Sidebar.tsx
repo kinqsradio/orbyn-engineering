@@ -446,6 +446,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const projectFolders = useUi((state) => state.projectFolders);
   const multilineRows = useUi((state) => state.multilineRows);
   const workingSection = useUi((state) => state.workingSection);
+  const workspaceLayout = useUi((state) => state.workspaceLayout);
   const threadSort = useUi((state) => state.threadSort);
   const projectSort = useUi((state) => state.projectSort);
   const projectGrouping = useUi((state) => state.projectGrouping);
@@ -518,7 +519,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     return projectFilter.length === 0 ? all : all.filter((thread) => projectFilter.includes(thread.project_id));
   }, [threads, projectFilter]);
 
-  const sections = arrangeThreads(scoped, Date.now(), workingSection);
+  const sections = arrangeThreads(scoped, Date.now(), workingSection, workspaceLayout === "ledger");
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
   const orderedRef = useRef<Thread[]>([]);
   orderedRef.current = threadsFlat(sections);

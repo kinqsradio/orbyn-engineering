@@ -11,6 +11,7 @@ import "./styles/base.css";
 import "./styles/shell.css";
 import "./styles/thread.css";
 import "./styles/pages.css";
+import "./styles/layouts.css";
 
 captureToken();
 applyTheme(useUi.getState().theme);

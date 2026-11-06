@@ -1,7 +1,7 @@
 import { settingsLabel } from "./settingsSearch";
 import { useRef } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
-import { applyTheme, useUi, type EnvironmentIdentification, type ThemeChoice, type Typography } from "../../state/ui";
+import { applyTheme, useUi, type EnvironmentIdentification, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "./themes";
@@ -43,6 +43,41 @@ function EnvironmentGroup() {
         },
       ]}
     />
+  );
+}
+
+type LayoutOption = { value: LayoutChoice; label: string; description: string };
+
+const CONSOLE: LayoutOption = { value: "console", label: "Console", description: "Projects on the left, the thread in the middle, context on the right." };
+
+const LAYOUTS: LayoutOption[] = [
+  CONSOLE,
+  { value: "ledger", label: "Ledger", description: "Threads that need you come first, with the details rail open." },
+  { value: "reading", label: "Reading", description: "One centred reading column; the sidebar and panels open when you need them." },
+];
+
+/** A layout preset: it sets the arrangement and the few panel defaults that go with it. */
+function LayoutRow() {
+  const layout = useUi((state) => state.workspaceLayout);
+  const theme = useUi((state) => state.theme);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const current = LAYOUTS.find((choice) => choice.value === layout) ?? CONSOLE;
+  const choose = (value: LayoutChoice) => {
+    if (value === "ledger") setPrefs({ workspaceLayout: value, sidebarCollapsed: false, detailsOpen: true });
+    else if (value === "reading") setPrefs({ workspaceLayout: value, sidebarCollapsed: true, chatWidth: "comfortable" });
+    else setPrefs({ workspaceLayout: value, sidebarCollapsed: false });
+    applyTheme(theme);
+  };
+  return (
+    <SettingRow title={settingsLabel("appearance-layout")} description={current.description}>
+      <select aria-label="Layout" value={current.value} onChange={(event) => choose(event.target.value as LayoutChoice)}>
+        {LAYOUTS.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </SettingRow>
   );
 }
 
@@ -199,6 +234,7 @@ export function AppearanceSection() {
             ))}
           </select>
         </SettingRow>
+        <LayoutRow />
         <SettingRow
           title={settingsLabel("appearance-environment-identification")}
           description="How the sidebar marks a Dev or Nightly build of this environment."

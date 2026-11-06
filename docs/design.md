@@ -46,7 +46,15 @@ Only floating layers (menus, popovers, tooltips) cast a shadow.
 
 ## Layouts
 
-Console is the default: sidebar by project, conversation, and a side panel for changes,
-browser and terminal. Ledger (sidebar by status, one row per run) and Reading (one
-document column, panels as drawers) are presets in Settings › Appearance, built from
-the same components.
+Settings › Appearance › Layout picks one of three arrangements of the same components.
+It is a device preference (`workspaceLayout`), set on `<html data-workspace>`, and it
+changes arrangement and density only, never colour or behaviour.
+
+- Console, the default: sidebar by project, the thread in the middle, the side panel as
+  a column on the right.
+- Ledger: threads that need you (approval, question, limit) come first in the sidebar,
+  then failed ones; rows are denser and the details rail opens.
+- Reading: the sidebar collapses, the thread is one 680px column with roomier lines,
+  and on a wide window the side panel floats over the thread as a drawer.
+
+Layout rules live in `web/src/styles/layouts.css`; ordering lives in `attentionRank`.

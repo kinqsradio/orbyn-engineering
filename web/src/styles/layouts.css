@@ -1,0 +1,32 @@
+/* Workspace layouts, chosen in Settings › Appearance and set on <html data-workspace>.
+   Console is the base styling in shell.css and thread.css; Ledger and Reading adjust it.
+   They change arrangement and density only, never colour or behaviour. */
+
+/* Ledger: threads that need you sort first (groups.ts); rows are denser. */
+:root[data-workspace="ledger"] .thread-row {
+  min-height: 28px;
+}
+
+/* Reading: one calm column with larger line spacing. */
+:root[data-workspace="reading"] .thread-main[data-chat-width="comfortable"] {
+  --reading-w: 680px;
+}
+:root[data-workspace="reading"] .transcript-inner {
+  line-height: 1.7;
+}
+/* On a wide window the side panel floats over the thread as a drawer instead of
+   taking a column; on medium and narrow windows it already replaces the thread. */
+:root[data-workspace="reading"] .thread-layout {
+  position: relative;
+}
+:root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 15;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 16px 48px var(--color-shadow);
+  overflow: hidden;
+}
