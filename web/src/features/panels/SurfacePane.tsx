@@ -104,8 +104,36 @@ const MIN_MAIN = 420;
 /** Saves this thread's pane width when the drag ends. */
 export function PaneResizer() {
   const setWidth = useUi((state) => state.setPanelWidth);
+  const layoutKey = useUi((state) => state.layoutKey);
+  const drag = useRef<{ pane: HTMLElement; handle: HTMLElement; pointerId: number; right: number; layoutKey: string; startWidth: string; writtenWidth: string | null } | null>(null);
   const clamp = (right: number, x: number) =>
     Math.max(MIN_PANE, Math.min(right - MIN_MAIN, Math.round(right - x)));
+
+  useEffect(() => () => {
+    const active = drag.current;
+    if (!active) return;
+    drag.current = null;
+    if (active.handle.hasPointerCapture(active.pointerId)) active.handle.releasePointerCapture(active.pointerId);
+    const current = useUi.getState();
+    if (current.layoutKey !== active.layoutKey) {
+      active.pane.style.width = current.panelWidth === null ? "" : `${current.panelWidth}px`;
+    } else if (active.writtenWidth !== null && active.pane.style.width === active.writtenWidth) {
+      active.pane.style.width = active.startWidth;
+    }
+  }, [layoutKey]);
+
+  const stop = (pointerId: number) => {
+    const active = drag.current;
+    if (!active || active.pointerId !== pointerId) return;
+    drag.current = null;
+    const current = useUi.getState();
+    if (current.layoutKey === active.layoutKey) {
+      setWidth(Math.round(active.pane.getBoundingClientRect().width));
+    } else {
+      active.pane.style.width = current.panelWidth === null ? "" : `${current.panelWidth}px`;
+    }
+    if (active.handle.hasPointerCapture(pointerId)) active.handle.releasePointerCapture(pointerId);
+  };
   return (
     <div
       className="pane-resizer"
@@ -115,22 +143,23 @@ export function PaneResizer() {
       title="Drag to resize"
       onDoubleClick={() => setWidth(null)}
       onPointerDown={(event) => {
+        if (event.button !== 0 || drag.current) return;
         const pane = event.currentTarget.parentElement;
         if (!pane) return;
+        event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        const right = pane.getBoundingClientRect().right;
-        const handle = event.currentTarget;
-        const move = (moved: PointerEvent) => {
-          pane.style.width = `${clamp(right, moved.clientX)}px`;
-        };
-        const stop = () => {
-          handle.removeEventListener("pointermove", move);
-          handle.removeEventListener("lostpointercapture", stop);
-          setWidth(Math.round(pane.getBoundingClientRect().width));
-        };
-        handle.addEventListener("pointermove", move);
-        handle.addEventListener("lostpointercapture", stop);
+        drag.current = { pane, handle: event.currentTarget, pointerId: event.pointerId, right: pane.getBoundingClientRect().right, layoutKey, startWidth: pane.style.width, writtenWidth: null };
       }}
+      onPointerMove={(event) => {
+        const active = drag.current;
+        if (active && active.pointerId === event.pointerId && useUi.getState().layoutKey === active.layoutKey) {
+          active.writtenWidth = `${clamp(active.right, event.clientX)}px`;
+          active.pane.style.width = active.writtenWidth;
+        }
+      }}
+      onPointerUp={(event) => stop(event.pointerId)}
+      onPointerCancel={(event) => stop(event.pointerId)}
+      onLostPointerCapture={(event) => stop(event.pointerId)}
     />
   );
 }
