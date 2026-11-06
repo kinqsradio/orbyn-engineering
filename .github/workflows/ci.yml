@@ -131,9 +131,9 @@ jobs:
         run: npm run build
         working-directory: web
 
-  # The browser suite, split by file across four runners.
+  # The browser suite, split by file across eight runners.
   e2e-shard:
-    name: E2E shard ${{ matrix.shard }}/4
+    name: E2E shard ${{ matrix.shard }}/8
     needs: changes
     runs-on: ubuntu-24.04
     env:
@@ -141,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - if: env.RUN != 'true'
         run: echo "No change the browser suite covers."
@@ -172,7 +172,7 @@ jobs:
         run: sudo npx playwright install-deps chromium-headless-shell
         working-directory: web
       - if: env.RUN == 'true'
-        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/8
         working-directory: web
       - name: Keep failure traces
         if: failure() && env.RUN == 'true'
