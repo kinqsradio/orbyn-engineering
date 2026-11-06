@@ -491,14 +491,6 @@ kbd {
   background: var(--color-chip);
 }
 
-/* Folder browser, trust, new thread */
-.no-projects-actions .btn-secondary {
-  border-color: transparent;
-  background: var(--color-chip);
-}
-.no-projects-actions .btn-secondary:hover:not(:disabled) {
-  background: var(--color-selected);
-}
 .browser {
   border-radius: var(--radius-lg);
   background: var(--color-chip);
@@ -566,17 +558,6 @@ kbd {
 .inline-form .btn {
   margin-top: 24px;
   min-height: var(--control-h);
-}
-.trust-path {
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--color-sunken);
-  overflow-wrap: anywhere;
-}
-.trust-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 .engine-options {
   display: flex;

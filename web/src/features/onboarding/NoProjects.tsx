@@ -1,9 +1,10 @@
-import { Plus } from "lucide-react";
+import { Download, FolderPlus } from "lucide-react";
 import { useEffect } from "react";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { SkillsNotice } from "./SkillsNotice";
+import "./onboarding.css";
 
 /** The app with nothing to work on yet. The welcome steps open once on a new device. */
 export function NoProjects() {
@@ -16,11 +17,14 @@ export function NoProjects() {
   return (
     <div className="no-projects">
       <h1 tabIndex={-1} data-page-title>
-        What should we work on?
+        Add your first project
       </h1>
-      <p>Add a project, or start without one.</p>
+      <p>Point Orbyn at a folder with code. Agents work in it in place.</p>
       <div className="no-projects-actions">
-        <Button tone="primary" small icon={<Plus size={16} aria-hidden />} onClick={() => setPalette("add-project")}>
+        <Button small icon={<Download size={16} aria-hidden />} onClick={() => setPalette("add-project-url")}>
+          Clone from GitHub
+        </Button>
+        <Button tone="primary" small icon={<FolderPlus size={16} aria-hidden />} onClick={() => setPalette("add-project")}>
           Add project
         </Button>
         <Button small onClick={() => navigate({ name: "new", projectId: "scratch" })}>
