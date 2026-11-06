@@ -224,8 +224,10 @@ draft and the chip instead of consuming either. Captured output is plain text an
 is never reread from a running terminal.
 
 After a Claude thread has sat idle past its prompt-cache window, returning to it
-offers one compact action before the next turn. It is not offered while a run is
-active, and no other engine has that cache, so none is offered it.
+offers one compact action before the next turn. The window is the lifetime Claude's
+last usage report says its cache write used: an hour when `cache_creation` counts
+one-hour tokens, otherwise Anthropic's documented five minutes. It is not offered
+while a run is active, and no other engine has that cache, so none is offered it.
 
 ## Models
 

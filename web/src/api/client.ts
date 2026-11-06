@@ -236,6 +236,9 @@ export const api = {
     request<Thread[]>("GET", `/api/threads?project_id=${q(projectId)}&archived=true`, undefined, signal),
   mentions: (threadId: string, query: string, signal?: AbortSignal) =>
     request<Mentions>("GET", `/api/threads/${q(threadId)}/mentions?q=${q(query)}`, undefined, signal),
+  /** The engine's latest usage report for a thread, as the service kept it. */
+  threadUsage: (threadId: string, signal?: AbortSignal) =>
+    request<JsonValue | null>("GET", `/api/threads/${q(threadId)}/usage`, undefined, signal),
   commands: (threadId: string, signal?: AbortSignal) =>
     request<SlashCommand[]>("GET", `/api/threads/${q(threadId)}/commands`, undefined, signal),
   uploadAttachment: async (threadId: string, file: File): Promise<Attachment> => {

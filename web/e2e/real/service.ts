@@ -10,6 +10,7 @@ import { once } from "node:events";
 const WEB = resolve(import.meta.dirname, "../..");
 const BIN = process.env.ORBYN_BIN ?? resolve(WEB, "../target/debug/orbynd");
 const SCRIPTED = resolve(WEB, "e2e/real/scripted-engine.mjs");
+const USAGE_ENGINE = resolve(WEB, "e2e/real/usage-engine.mjs");
 
 /** The shell from `npm run test:e2e:install`, so the service's previews never open an installed browser. */
 function headlessShell(): string {
@@ -130,6 +131,8 @@ export interface ServiceOptions {
   discoverKnownEngines?: boolean;
   starred?: boolean;
   fakeEngines?: boolean;
+  /** Fake engines, with this usage report added to each Claude turn's result. */
+  claudeUsage?: Record<string, unknown>;
   scenes?: boolean;
   /** Runs `gh` through the stand-in, with these pull requests on the forge. */
   forge?: boolean | PullFixture[];
@@ -169,7 +172,9 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
   const fake = resolve(BIN, "../orbyn-fake-engine");
   const engines = options.scenes
     ? { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: SCRIPTED, ORBYN_E2E_FAKE: fake }
-    : options.fakeEngines
+    : options.claudeUsage
+      ? { ORBYN_CLAUDE_BIN: USAGE_ENGINE, ORBYN_CODEX_BIN: fake, ORBYN_E2E_FAKE: fake, ORBYN_E2E_USAGE: JSON.stringify(options.claudeUsage) }
+      : options.fakeEngines
       ? { ORBYN_CLAUDE_BIN: fake, ORBYN_CODEX_BIN: fake }
       : // Never an installed engine, so a run reads the same on every machine.
         { ORBYN_CLAUDE_BIN: join(dir, "no-claude"), ORBYN_CODEX_BIN: join(dir, "no-codex") };
