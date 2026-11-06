@@ -49,6 +49,7 @@
   --color-message: rgb(0 0 0 / 3.5%);
   --color-sendIdle: rgb(0 0 0 / 12%);
   --color-danger: #d42a2a;
+  --color-onDanger: #ffffff;
   --color-dangerSoft: rgb(239 68 68 / 7%);
   --color-dangerBorder: rgb(220 38 38 / 25%);
   --color-warn: #b45309;
@@ -190,6 +191,7 @@
   --color-message: rgb(255 255 255 / 5%);
   --color-sendIdle: rgb(255 255 255 / 14%);
   --color-danger: #f05252;
+  --color-onDanger: #0a0a0a;
   --color-dangerSoft: rgb(239 68 68 / 10%);
   --color-dangerBorder: rgb(239 68 68 / 32%);
   --color-warn: #fbbf24;
@@ -253,6 +255,7 @@
   --color-message: rgb(255 255 255 / 4%);
   --color-sendIdle: rgb(255 255 255 / 14%);
   --color-danger: hsl(4 82% 67%);
+  --color-onDanger: #101010;
   --color-dangerSoft: hsl(4 72% 54% / 14%);
   --color-dangerBorder: hsl(4 72% 60% / 34%);
   --color-warn: hsl(40 78% 63%);

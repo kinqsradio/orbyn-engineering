@@ -1,16 +1,19 @@
-import { ShieldCheck } from "lucide-react";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure } from "../../lib/useAsync";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
 import { Button, LinkButton } from "../../ui/controls";
-import { Empty, Loading, PageHeader } from "../../ui/states";
+import { Empty, Loading } from "../../ui/states";
+import "./onboarding.css";
 
 export function TrustFolder({ projectId, threadId }: { projectId: string; threadId: string | null }) {
   const project = useWorkspace((state) => state.projects.data?.find((p) => p.id === projectId));
   const loaded = useWorkspace((state) => state.projects.data !== null);
   const putProject = useWorkspace((state) => state.putProject);
+  const narrow = useLayoutWidth() === "narrow";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,26 +47,43 @@ export function TrustFolder({ projectId, threadId }: { projectId: string; thread
   };
 
   return (
-    <div className="page page-narrow">
-      <PageHeader title="Trust this folder?" back={leave} backLabel={threadId ? "Back to thread" : "Threads"} />
-      <code className="trust-path">{project.path}</code>
-      <div className="trust-copy">
+    <div className="trust">
+      <div className="trust-card" role="group" aria-labelledby="trust-title">
+        <header>
+          {narrow || threadId ? (
+            <a className="trust-back" href={routeHref(leave)}>
+              <ArrowLeft size={14} aria-hidden />
+              {threadId ? "Back to thread" : "Threads"}
+            </a>
+          ) : null}
+          <h1 id="trust-title" tabIndex={-1} data-page-title>
+            Trust {project.name}?
+          </h1>
+        </header>
         <p>
-          Engines run real commands here. They can execute this repository's hooks and load its
-          configuration, including MCP servers, without asking again.
+          Engines run real commands here. They can execute this repository's hooks and load its configuration, including
+          MCP servers, without asking again. Only trust folders whose contents you know.
         </p>
-        <p>Only trust folders whose contents you know. Nothing runs until you do.</p>
-      </div>
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <div className="form-actions">
-        <Button tone="primary" busy={busy} icon={<ShieldCheck size={16} aria-hidden />} onClick={() => void trust()}>
-          Trust folder
-        </Button>
-        <LinkButton href={routeHref(leave)}>Not now</LinkButton>
+        <dl className="trust-facts">
+          <div>
+            <dt>Path</dt>
+            <dd>
+              <code className="trust-path">{project.path}</code>
+            </dd>
+          </div>
+        </dl>
+        <p>Nothing runs until you do.</p>
+        {error ? (
+          <p className="field-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="trust-actions">
+          <LinkButton href={routeHref(leave)}>Not now</LinkButton>
+          <Button tone="primary" busy={busy} icon={<ShieldCheck size={16} aria-hidden />} onClick={() => void trust()}>
+            Trust folder
+          </Button>
+        </div>
       </div>
     </div>
   );

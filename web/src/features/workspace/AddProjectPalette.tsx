@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUp, Folder, FolderGit2, FolderPlus, GitBranch, Link } from "lucide-react";
+import { ArrowLeft, ArrowUp, Download, Folder, FolderGit2, FolderPlus, GitBranch, Link } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api } from "../../api/client";
 import type { Project } from "../../api/types";
@@ -7,6 +7,7 @@ import { navigate } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
 import { dropTrailingSlash, expandHome, replaceHomePrefix, shortenHome, splitPath, withSlash } from "./pathInput";
 import { trackClone } from "./CloneJobs";
+import "./addProject.css";
 
 type View = "sources" | "browse" | "new" | "clone";
 
@@ -57,10 +58,12 @@ function Head({
   placeholder,
   chip,
   label,
+  mono,
   onChange,
   onKeyDown,
   onBack,
 }: {
+  mono?: boolean;
   value: string;
   placeholder: string;
   chip: { label: string; onClick(): void; disabled?: boolean } | null;
@@ -76,6 +79,7 @@ function Head({
       </button>
       <input
         autoFocus
+        className={mono ? "add-project-path" : undefined}
         aria-label={label}
         placeholder={placeholder}
         value={value}
@@ -163,10 +167,8 @@ function Sources({ onPick, onBack }: { onPick(view: View): void; onBack(): void 
             onClick={() => onPick(item.view)}
           >
             {item.icon}
-            <span className="palette-title">
-              {item.title}
-              <small>{item.description}</small>
-            </span>
+            <span className="palette-title">{item.title}</span>
+            <span className="add-project-hint add-project-hint-prose">{item.description}</span>
           </button>
         ))}
       </div>
@@ -175,7 +177,7 @@ function Sources({ onPick, onBack }: { onPick(view: View): void; onBack(): void 
   );
 }
 
-function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
+function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void; onClose(): void }) {
   const finish = useFinish(onClose);
   const [home, setHome] = useState<string | null>(null);
   const [value, setValue] = useState("~/");
@@ -243,6 +245,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
         value={value}
         placeholder="Enter a folder path"
         label="Folder path"
+        mono
         chip={{ label: "Add", onClick: addTyped, disabled: busy }}
         onBack={onBack}
         onChange={(next) => {
@@ -275,7 +278,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
         {listing.status === "error" ? <p className="sidebar-empty">{listing.error.message}</p> : null}
         {/* Until the home folder is known nothing was listed, so nothing is empty yet. */}
         {listing.status === "ready" && listing.data !== null && rows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
-        {rows > 0 ? <div className="palette-group">Directories</div> : null}
+        {rows > 0 ? <div className="palette-group">Folders</div> : null}
         {parent ? (
           <button
             type="button"
@@ -299,9 +302,18 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
             >
               {entry.is_git ? <GitBranch size={16} aria-hidden /> : <Folder size={16} aria-hidden />}
               <span className="palette-title">{entry.name}</span>
+              <span className="add-project-hint" aria-hidden>
+                {entry.is_git ? "Git" : "Folder"}
+              </span>
             </button>
           );
         })}
+        <div className="add-project-sep" role="separator" />
+        <button type="button" onClick={onClone}>
+          <Download size={16} aria-hidden />
+          <span className="palette-title">Clone from GitHub</span>
+          <span className="add-project-hint">Git URL</span>
+        </button>
       </div>
       <Keys back select={false} />
     </>
@@ -377,15 +389,23 @@ function SingleField({
 }
 
 /** Adding a project, as the palette's own views. Folders stay where they are. */
-export function AddProjectPalette({ onBack, onClose }: { onBack(): void; onClose(): void }) {
-  const [view, setView] = useState<View>("sources");
+export function AddProjectPalette({
+  initialView = "sources",
+  onBack,
+  onClose,
+}: {
+  initialView?: View;
+  onBack(): void;
+  onClose(): void;
+}) {
+  const [view, setView] = useState<View>(initialView);
   const finish = useFinish(onClose);
   const toSources = () => setView("sources");
   switch (view) {
     case "sources":
       return <Sources onPick={setView} onBack={onBack} />;
     case "browse":
-      return <Browse onBack={toSources} onClose={onClose} />;
+      return <Browse onBack={toSources} onClone={() => setView("clone")} onClose={onClose} />;
     case "new":
       return (
         <SingleField
