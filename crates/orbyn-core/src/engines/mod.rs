@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
     AuthState, CustomEngine, EngineCompatibility, EngineFeedbackReceipt, EngineFeedbackRequest,
-    EngineModels, EngineStatus, EngineTier, InstallerKind, ModelSelection, ProviderInstance,
-    VersionSupport,
+    EngineModels, EngineStatus, EngineTier, EngineUpdateProgress, InstallerKind, ModelSelection,
+    ProviderInstance, VersionSupport,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
@@ -46,6 +46,8 @@ const MODELS_KEY_CHECK: Duration = Duration::from_secs(60);
 /// A stand-in list is kept only long enough not to start a process per read.
 const MODELS_RETRY: Duration = Duration::from_secs(30);
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
+/// The longest installer line sent as progress, in characters.
+const PROGRESS_LINE: usize = 500;
 
 #[derive(Clone, Debug)]
 pub struct EngineConfig {
@@ -98,6 +100,8 @@ pub struct EngineManager {
     warm: Mutex<HashMap<String, warm::WarmEntry>>,
     /// Warm processes being started. An update cannot begin while any is.
     warming: Arc<Mutex<usize>>,
+    /// Each step of an update while it runs. Nothing is kept for a late listener.
+    progress: tokio::sync::broadcast::Sender<EngineUpdateProgress>,
 }
 
 /// A warm process being started; updates wait until it is dropped.
@@ -143,6 +147,7 @@ impl EngineManager {
             installer_locks: Mutex::new(HashMap::new()),
             warm: Mutex::new(HashMap::new()),
             warming: Arc::new(Mutex::new(0)),
+            progress: tokio::sync::broadcast::channel(256).0,
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
             known_models: Mutex::new(HashMap::new()),
@@ -655,6 +660,17 @@ impl EngineManager {
             .map(str::to_owned)
     }
 
+    /// Each step of every update from now on: the installer's command, the lines
+    /// it prints, then how it ended.
+    pub fn update_events(&self) -> tokio::sync::broadcast::Receiver<EngineUpdateProgress> {
+        self.progress.subscribe()
+    }
+
+    fn emit(&self, event: EngineUpdateProgress) {
+        // No listener is not an error: progress is only for whoever is watching.
+        let _ = self.progress.send(event);
+    }
+
     /// Updates an engine through its owning installer, then verifies by probing.
     pub async fn update(&self, id: &str, actor: &str) -> Result<EngineStatus> {
         self.update_to(id, actor, None).await
@@ -749,6 +765,37 @@ impl EngineManager {
             locks.entry(plan.lock_key.clone()).or_default().clone()
         };
         let _installer = installer_lock.lock().await;
+        self.emit(EngineUpdateProgress::Started {
+            engine: id.to_owned(),
+            command: plan.display(),
+        });
+        let mut finish = Finish {
+            engines: self,
+            id: id.to_owned(),
+            sent: false,
+        };
+        let result = self
+            .apply_update(id, driver.as_ref(), &plan, before.version, actor)
+            .await;
+        finish.sent = true;
+        self.emit(EngineUpdateProgress::Finished {
+            engine: id.to_owned(),
+            version: result.as_ref().ok().and_then(|after| after.version.clone()),
+            error: result.as_ref().err().map(ToString::to_string),
+        });
+        result
+    }
+
+    /// Runs the installer and checks what it did. The caller holds the update marker
+    /// and the installer lock.
+    async fn apply_update(
+        &self,
+        id: &str,
+        driver: &dyn EngineDriver,
+        plan: &UpdatePlan,
+        before: Option<String>,
+        actor: &str,
+    ) -> Result<EngineStatus> {
         self.store.append_audit(&AuditRecord {
             actor: actor.to_owned(),
             action: "engine.update".into(),
@@ -757,9 +804,9 @@ impl EngineManager {
             source: "user".into(),
             thread_id: None,
             run_id: None,
-            detail: json!({ "engine": id, "from": before.version }),
+            detail: json!({ "engine": id, "from": before }),
         })?;
-        let result = self.run_update(&plan).await;
+        let result = self.run_update(id, plan).await;
         let after = driver.probe().await;
         self.store.append_audit(&AuditRecord {
             actor: "system:update".into(),
@@ -771,7 +818,7 @@ impl EngineManager {
             run_id: None,
             detail: json!({
                 "ok": result.is_ok(),
-                "from": before.version,
+                "from": before,
                 "to": after.version,
                 "output": result.as_ref().map_or_else(|error| error.to_string(), Clone::clone),
             }),
@@ -783,7 +830,7 @@ impl EngineManager {
             ));
         }
         // An installer's exit code says it finished, not that anything changed.
-        if after.version == before.version {
+        if after.version == before {
             self.invalidate().await;
             return Err(CoreError::UpdateFailed(format!(
                 "The update ran, but this is still version {}.",
@@ -816,7 +863,9 @@ impl EngineManager {
         })
     }
 
-    async fn run_update(&self, plan: &UpdatePlan) -> Result<String> {
+    /// Runs the installer to the end, sending each line it prints as progress. It is
+    /// never stopped partway by a person: that could leave a half-written engine.
+    async fn run_update(&self, id: &str, plan: &UpdatePlan) -> Result<String> {
         let command = resolve(&plan.program)
             .ok_or_else(|| CoreError::UpdateFailed(format!("{} was not found.", plan.program)))?;
         let args: Vec<std::ffi::OsString> = plan.args.iter().map(Into::into).collect();
@@ -828,9 +877,15 @@ impl EngineManager {
         let outcome = tokio::time::timeout(self.config.update_timeout, async {
             let mut out = Vec::new();
             let mut err = Vec::new();
+            let progress = |line: String| {
+                self.emit(EngineUpdateProgress::Output {
+                    engine: id.to_owned(),
+                    line,
+                });
+            };
             let (_, _, status) = tokio::join!(
-                read_all(stdout.as_mut(), &mut out),
-                read_all(stderr.as_mut(), &mut err),
+                read_lines(stdout.as_mut(), &mut out, progress),
+                read_lines(stderr.as_mut(), &mut err, progress),
                 child.wait()
             );
             (status, out, err)
@@ -907,10 +962,79 @@ fn still_good(cached: &mut CachedModels, key: Option<&String>) -> bool {
     }
 }
 
-async fn read_all(source: Option<&mut (impl tokio::io::AsyncRead + Unpin)>, into: &mut Vec<u8>) {
-    if let Some(source) = source {
-        let _ = source.read_to_end(into).await;
+/// Reads to the end, keeping every byte, and hands over each line as it finishes.
+/// A carriage return ends a line too, because progress bars redraw with one.
+async fn read_lines(
+    source: Option<&mut (impl tokio::io::AsyncRead + Unpin)>,
+    into: &mut Vec<u8>,
+    line: impl Fn(String),
+) {
+    let Some(source) = source else { return };
+    let mut chunk = [0u8; 4096];
+    let mut start = into.len();
+    loop {
+        let read = match source.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(read) => read,
+        };
+        into.extend_from_slice(&chunk[..read]);
+        while let Some(end) = into[start..]
+            .iter()
+            .position(|byte| *byte == b'\n' || *byte == b'\r')
+        {
+            send_line(&into[start..start + end], &line);
+            start += end + 1;
+        }
     }
+    send_line(&into[start..], &line);
+}
+
+/// One printable line, without colour codes or other control characters, cut to
+/// `PROGRESS_LINE` characters. Blank lines are skipped.
+fn send_line(bytes: &[u8], line: &impl Fn(String)) {
+    let text = strip_escapes(&String::from_utf8_lossy(bytes));
+    let text = text.trim();
+    if !text.is_empty() {
+        line(text.chars().take(PROGRESS_LINE).collect());
+    }
+}
+
+/// Drops ANSI escape sequences and the remaining control characters.
+fn strip_escapes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            match chars.next() {
+                // A CSI sequence ends at its first character in @..~.
+                Some('[') => {
+                    for next in chars.by_ref() {
+                        if ('@'..='~').contains(&next) {
+                            break;
+                        }
+                    }
+                }
+                // An OSC sequence, such as a window title, ends at BEL or ESC \.
+                Some(']') => {
+                    while let Some(next) = chars.next() {
+                        if next == '\u{7}'
+                            || (next == '\u{1b}' && chars.next_if_eq(&'\\').is_some())
+                        {
+                            break;
+                        }
+                    }
+                }
+                // A character-set choice carries one more character.
+                Some('(' | ')') => {
+                    chars.next();
+                }
+                _ => {}
+            }
+        } else if !c.is_control() || c == '\t' {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Exclusion held for one configuration commit.
@@ -928,6 +1052,26 @@ pub struct NativeOperation {
 impl Drop for NativeOperation {
     fn drop(&mut self) {
         lock(&self.set).remove(&self.id);
+    }
+}
+
+/// Sends `finished` for an update dropped before it ended, so no listener is left
+/// showing it as running.
+struct Finish<'a> {
+    engines: &'a EngineManager,
+    id: String,
+    sent: bool,
+}
+
+impl Drop for Finish<'_> {
+    fn drop(&mut self) {
+        if !self.sent {
+            self.engines.emit(EngineUpdateProgress::Finished {
+                engine: std::mem::take(&mut self.id),
+                version: None,
+                error: Some("The update stopped before it finished.".into()),
+            });
+        }
     }
 }
 
@@ -1302,5 +1446,206 @@ mod tests {
         assert!(compatibility(&manifest, "codex", "0.166.0", Some(&plan)).is_none());
         assert!(compatibility(&manifest, "claude", "2.1.318", Some(&plan)).is_none());
         assert!(compatibility(&manifest, "other", "1.0.0", Some(&plan)).is_none());
+    }
+
+    /// An installer that prints, waits to be told to go on, then writes the new
+    /// version. Arguments: the version file, the go-on file.
+    const INSTALLER: &str = r#"
+const fs = require('fs');
+const [version, go] = process.argv.slice(1);
+process.stdout.write('fetching\n');
+process.stderr.write('\x1b[32mhalf\x1b[0m\rlinked\n');
+const wait = setInterval(() => {
+  if (!fs.existsSync(go)) return;
+  clearInterval(wait);
+  fs.writeFileSync(version, '2.0.0');
+  process.stdout.write('added 1 package');
+}, 20);
+"#;
+
+    struct PlannedDriver {
+        version: PathBuf,
+        go: PathBuf,
+    }
+
+    #[async_trait::async_trait]
+    impl EngineDriver for PlannedDriver {
+        fn descriptor(&self) -> crate::driver::EngineDescriptor {
+            let mut descriptor = KeyedDriver {
+                key: None,
+                failing: false,
+                empty: false,
+            }
+            .descriptor();
+            descriptor.id = "planned".into();
+            descriptor
+        }
+
+        async fn probe(&self) -> crate::driver::EngineProbe {
+            crate::driver::EngineProbe {
+                path: Some(self.version.clone()),
+                version: std::fs::read_to_string(&self.version).ok(),
+                ..Default::default()
+            }
+        }
+
+        async fn update_plan(&self, _probe: &crate::driver::EngineProbe) -> Option<UpdatePlan> {
+            Some(UpdatePlan {
+                installer: InstallerKind::Npm,
+                program: "node".into(),
+                args: vec![
+                    "-e".into(),
+                    INSTALLER.into(),
+                    self.version.to_string_lossy().into_owned(),
+                    self.go.to_string_lossy().into_owned(),
+                ],
+                lock_key: "planned".into(),
+            })
+        }
+
+        async fn start_run(
+            &self,
+            _spec: crate::driver::RunSpec,
+            _events: tokio::sync::mpsc::Sender<crate::driver::EngineEvent>,
+        ) -> Result<crate::driver::RunHandle> {
+            Err(CoreError::Unsupported("no run".into()))
+        }
+    }
+
+    async fn next(
+        events: &mut tokio::sync::broadcast::Receiver<EngineUpdateProgress>,
+    ) -> EngineUpdateProgress {
+        tokio::time::timeout(Duration::from_secs(20), events.recv())
+            .await
+            .expect("an update step in time")
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_update_reports_each_installer_line_while_it_runs() {
+        let dir = TempDir::new();
+        let engines = Arc::new(manager(&dir));
+        let version = dir.path().join("version");
+        let go = dir.path().join("go");
+        std::fs::write(&version, "1.0.0").unwrap();
+        engines.register(Arc::new(PlannedDriver {
+            version: version.clone(),
+            go: go.clone(),
+        }));
+        let mut events = engines.update_events();
+        let update = tokio::spawn({
+            let engines = engines.clone();
+            async move { engines.update("planned", "test").await }
+        });
+
+        let EngineUpdateProgress::Started { engine, command } = next(&mut events).await else {
+            panic!("the update did not start first");
+        };
+        assert_eq!(engine, "planned");
+        assert!(command.starts_with("node -e"));
+        let mut lines = Vec::new();
+        while lines.len() < 3 {
+            match next(&mut events).await {
+                EngineUpdateProgress::Output { engine, line } => {
+                    assert_eq!(engine, "planned");
+                    lines.push(line);
+                }
+                other => panic!("expected a line, got {other:?}"),
+            }
+        }
+        // Stdout and stderr arrive in either order; each keeps its own.
+        lines.sort();
+        assert_eq!(lines, ["fetching", "half", "linked"]);
+        // The installer is still waiting, so the lines came while it ran.
+        assert!(!update.is_finished());
+
+        std::fs::write(&go, "").unwrap();
+        assert_eq!(
+            next(&mut events).await,
+            EngineUpdateProgress::Output {
+                engine: "planned".into(),
+                line: "added 1 package".into(),
+            }
+        );
+        assert_eq!(
+            next(&mut events).await,
+            EngineUpdateProgress::Finished {
+                engine: "planned".into(),
+                version: Some("2.0.0".into()),
+                error: None,
+            }
+        );
+        assert_eq!(
+            update.await.unwrap().unwrap().version.as_deref(),
+            Some("2.0.0")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_update_that_changes_nothing_finishes_with_its_error() {
+        let dir = TempDir::new();
+        let engines = manager(&dir);
+        let version = dir.path().join("version");
+        std::fs::write(&version, "2.0.0").unwrap();
+        engines.register(Arc::new(PlannedDriver {
+            version,
+            go: dir.path().join("go"),
+        }));
+        std::fs::write(dir.path().join("go"), "").unwrap();
+        let mut events = engines.update_events();
+        let error = engines.update("planned", "test").await.unwrap_err();
+        let mut last = None;
+        while let Ok(event) = events.try_recv() {
+            last = Some(event);
+        }
+        assert_eq!(
+            last,
+            Some(EngineUpdateProgress::Finished {
+                engine: "planned".into(),
+                version: None,
+                error: Some(error.to_string()),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dropped_update_still_finishes_for_its_listeners() {
+        let dir = TempDir::new();
+        let engines = Arc::new(manager(&dir));
+        let version = dir.path().join("version");
+        std::fs::write(&version, "1.0.0").unwrap();
+        engines.register(Arc::new(PlannedDriver {
+            version,
+            go: dir.path().join("go"),
+        }));
+        let mut events = engines.update_events();
+        let update = tokio::spawn({
+            let engines = engines.clone();
+            async move { engines.update("planned", "test").await }
+        });
+        assert!(matches!(
+            next(&mut events).await,
+            EngineUpdateProgress::Started { .. }
+        ));
+        update.abort();
+        loop {
+            if let EngineUpdateProgress::Finished { version, error, .. } = next(&mut events).await {
+                assert_eq!(version, None);
+                assert!(error.unwrap().contains("stopped"));
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn a_progress_line_drops_colour_codes_and_control_characters() {
+        assert_eq!(
+            strip_escapes("\u{1b}[1;31merror\u{1b}[0m\u{7} done"),
+            "error done"
+        );
+        assert_eq!(
+            strip_escapes("\u{1b}]0;npm install\u{7}\u{1b}(Badded\u{1b}]8;;x\u{1b}\\ 1"),
+            "added 1"
+        );
     }
 }

@@ -93,3 +93,18 @@ it("reads the saved default again when settings bumps the preferences revision, 
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.model).toBe("picked"); expect(result.current.engine?.id).toBe("codex");
 });
+
+it("takes the project's default effort with its default model over the remembered effort", async () => {
+  const withEffort = (effort: string, model = "remembered") => [...views("codex", model),
+    { key: "default_effort", value: effort, default: "", source: "project", project_scoped: true }] as PreferenceView[];
+  mocked.mockResolvedValue(withEffort("low") as never);
+  const { result, unmount } = renderHook(() => useDraftModelDefaults("checkout", engines, remembered));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.model).toBe("remembered"); expect(result.current.effort).toBe("low");
+  unmount();
+  // No default effort leaves the remembered one for the same model.
+  mocked.mockResolvedValue(withEffort("") as never);
+  const second = renderHook(() => useDraftModelDefaults("checkout", engines, remembered));
+  await waitFor(() => expect(second.result.current.loading).toBe(false));
+  expect(second.result.current.effort).toBe("high");
+});

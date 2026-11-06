@@ -116,6 +116,22 @@ pub async fn update_events(
     Sse::new(frames).keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
 }
 
+/// `GET /api/engines/update-events`: each step of an engine update from now on. A
+/// client that falls behind is disconnected, since it may have missed a `finished`;
+/// it reconnects and forgets what it showed.
+pub async fn engine_update_events(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let events = state.core.engines.update_events();
+    let frames = stream::unfold(events, |mut events| async move {
+        // Lagging ends the stream too.
+        let event = events.recv().await.ok()?;
+        let frame = Event::default().json_data(&event).ok()?;
+        Some((Ok(frame), events))
+    });
+    Sse::new(frames).keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
+}
+
 /// What the shell sends the windows. The counted watch lives as long as this stream.
 pub async fn shell_events(
     State(state): State<AppState>,

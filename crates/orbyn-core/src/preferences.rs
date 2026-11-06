@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use orbyn_contracts::PreferenceView;
+use orbyn_contracts::{ModelSelection, PreferenceView};
 
 mod scoped;
 mod worktree_cleanup;
@@ -92,7 +92,9 @@ const DEFINITIONS: &[Definition] = defs![
     "keep_awake_during_runs" Kind::Bool, true, false;
     "quit_confirmation" Kind::OneOf(QUIT), "direct", false;
     "default_engine" Kind::Text, "", true;
-    "fallback_model" Kind::Text, "", false;
+    "default_effort" Kind::Text, "", true;
+    "default_model_options" Kind::Object, {}, true;
+    "fallback_model" Kind::Text, "", true;
     "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;
     "default_thread_env_mode" Kind::OneOf(ENV_MODE), "local", true;
     "new_worktrees_start_from_origin" Kind::Bool, true, true;
@@ -189,6 +191,12 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
     if fits && definition.key == "source_control_writing_style" {
         crate::scm_writing::validate_style(value)?;
     }
+    if fits && definition.key == "default_model_options" && !model_options(value) {
+        return Err(CoreError::Invalid(
+            "Model options are option ids with one value each, and effort is set on its own."
+                .into(),
+        ));
+    }
     if fits {
         Ok(())
     } else {
@@ -197,6 +205,22 @@ fn check(definition: &Definition, value: &Value) -> Result<()> {
             definition.key
         )))
     }
+}
+
+/// Default model options: short option ids, each with one value, and never effort,
+/// which `default_effort` holds.
+fn model_options(value: &Value) -> bool {
+    value.as_object().is_some_and(|options| {
+        options.len() <= 32
+            && options.iter().all(|(id, value)| {
+                !id.is_empty()
+                    && id.len() <= 128
+                    && id != crate::selection::EFFORT
+                    && value
+                        .as_str()
+                        .is_some_and(|text| !text.is_empty() && text.len() <= 128)
+            })
+    })
 }
 
 fn setting_key(key: &str) -> String {
@@ -346,8 +370,13 @@ impl Core {
         Ok(())
     }
 
-    /// The project's default model, when it applies to this engine.
-    pub fn project_default_model(&self, engine: &str, project_id: &str) -> Result<Option<String>> {
+    /// The project's default model with its effort and options, when it applies to
+    /// this engine. Effort and options belong to that model and to no other.
+    pub fn project_default_selection(
+        &self,
+        engine: &str,
+        project_id: &str,
+    ) -> Result<Option<ModelSelection>> {
         let text = |key: &str| -> Result<String> {
             Ok(self
                 .preference(key, Some(project_id))?
@@ -357,8 +386,25 @@ impl Core {
         };
         let default_engine = text("default_engine")?;
         let model = text("default_model")?;
-        let applies = default_engine.is_empty() || default_engine == engine;
-        Ok((applies && !model.is_empty()).then_some(model))
+        if !(default_engine.is_empty() || default_engine == engine) || model.is_empty() {
+            return Ok(None);
+        }
+        let effort = text("default_effort")?;
+        let options = self
+            .preference("default_model_options", Some(project_id))?
+            .as_object()
+            .map(|options| {
+                options
+                    .iter()
+                    .filter_map(|(id, value)| Some((id.clone(), value.as_str()?.to_owned())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(Some(ModelSelection {
+            model: Some(model),
+            effort: (!effort.is_empty()).then_some(effort),
+            options,
+        }))
     }
 
     /// Refuses an engine this project turned off.

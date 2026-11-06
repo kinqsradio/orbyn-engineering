@@ -271,16 +271,20 @@ the running turn alone and applies from the next. A fork keeps the selection. An
 switch takes what was asked for, then what was last chosen on that engine, and never
 keeps the old engine's values. The last selection used on an engine is remembered and
 reported as `remembered`. A new thread takes the request's model, then the project's
-`default_model` (when `default_engine` is empty or matches), then the remembered one,
-and effort and options carry only along with their model. A project's
-`default_permission_mode` also applies there.
+`default_model` (when `default_engine` is empty or matches), then the remembered one.
+Effort and options carry only along with their model: the request's own, then the
+project's `default_effort` and `default_model_options` when the thread's model is that
+default model, then the remembered ones for the same model. `default_model_options`
+holds option ids with one string value each and never `effort`, which has its own key.
+A project's `default_permission_mode` also applies there.
 
 The new-thread draft resolves that physical project's effective model preferences
 before sending an implicit selection. A model picked in the draft wins over a
 late defaults response. A disabled or missing configured provider requires an
 explicit replacement; it never silently selects another provider. Draft effort
-and options remain attached to their project and model, without adding persisted
-effort or option defaults. Settings opens over the
+and options remain attached to their project and model; when the draft's model is
+the project's default model, its default effort wins over the remembered one, and
+the service fills the default options. Settings opens over the
 still-mounted draft, so every successful preference save bumps a session-only
 revision that makes the draft read its defaults again; an explicit draft choice
 stays.
@@ -291,7 +295,8 @@ options are checked for it. `PATCH` does not check, because a model and its effo
 change in two steps. A run's start checks again, which is what catches a queued message
 that outlived a model; that run fails with the same message.
 
-`fallback_model` covers a model that went away. When the engine's own list, not a stand-in,
+`fallback_model` covers a model that went away. It may be set per project, and a turn
+reads it in its thread's project. When the engine's own list, not a stand-in,
 no longer has the thread's model, the model is not a custom one and the list has the
 fallback, that turn runs on it with no effort or options and logs `engine.warning`. The
 thread keeps its choice, so the model is used again when it returns.
@@ -843,9 +848,13 @@ project. The catalog holds no secret: provider environments and tokens stay out 
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
 
-The project settings Model control writes `default_engine` and `default_model`
-together, fencing both preference revisions and the selected membership. Automatic
-sets an empty pair; Inherit removes the selected project overrides. A conflict
+The project settings Model control writes `default_engine`, `default_model`,
+`default_effort` and `default_model_options` together as one tuple, fencing all four
+preference revisions and the selected membership. Effort and option selects show the
+default model's own options; choosing another model clears them, and any of the four
+differing across the selection shows Mixed without a write. Automatic sets an empty
+tuple; Inherit removes the selected project overrides of all four. The fallback model
+is its own scoped row beside it. A conflict
 retains the choice and requires an explicit reload before retrying. Reset all
 removes only the captured project overrides and leaves environment defaults alone.
 Its model picker stays in the owning settings dialog's top layer. Escape closes
@@ -926,14 +935,21 @@ title generation, merge settling and idle settling use the same project resolver
 the local host display name for the fixed local environment label; it performs no
 remote lookup and adds no selectable remote environment.
 The local UI preserves project/checkout IDs across settings sections and exact-row
-search. Device-only sections intentionally edit this computer's defaults. Preference
+search. Device-only sections (General, Appearance, Chat, Diffs, About) intentionally
+edit this computer's defaults, so a preference a project may override is never bound
+only there: its row lives on a project-scoped section. Default permissions, response
+streaming, agent browser access and continuing threads after a restart are on Threads
+for that reason. Preference
 rows and thread lifecycle/title controls use scoped reads and revision-fenced edits;
 Mixed controls do not save an untouched empty value. Provenance displays actual
 project, environment, file and default layers. Reset all deletes only the explicit
 listed project overrides. Each write stays attached to the scope that supplied its
-revision, including when navigation changes before it finishes. Remaining provider
-controls and storage forms still need their own bindings and qualification; their
-parity claims stay partial until those and native walkthroughs are verified.
+revision, including when navigation changes before it finishes. On Providers,
+`disabled_engines` is bound to the selected scope (Providers in use), and the service
+refuses a new thread on a provider its project turned off. Provider instances and
+custom models are environment settings: they apply to every project, the page says
+so when a project is selected, and their writes always target the environment.
+Native walkthroughs remain to be verified before the parity claims are complete.
 
 Project images are passive metadata, resolved by registered physical project ID.
 `GET /api/projects/:id/icon/resource` returns the source, relative path, content
@@ -1852,6 +1868,16 @@ engine with a signed warning is left to its recommended install, and each goes t
 single-engine update, so a busy engine or a failed installer is reported by name while the
 rest still run. Settings offers Update all when two or more engines qualify.
 
+`GET /api/engines/update-events` sends each step of an engine update while it runs:
+`started` with the installer's command, an `output` for each line it prints (stdout and
+stderr, a carriage return ending a line, colour codes dropped, 500 characters at most), then
+one `finished` with the new version or the error, even when the update is dropped. Nothing is
+replayed to a late listener, and a listener that falls behind is disconnected, because it may have
+missed a `finished`. Settings → Providers shows the latest line. An update runs to the end and
+cannot be cancelled from Orbyn, because stopping an installer partway could leave a half-written
+engine: the service keeps it running when the client that asked goes away, and only the update
+timeout stops one that hangs.
+
 ## Desktop shell
 
 The native product UI loads from the stable bundled asset origin (`tauri://localhost`
@@ -2577,6 +2603,7 @@ because browsers cannot set headers on them.
 | `GET, POST /api/threads/:id/scripts` | `ProjectFileView`; `RunScript` to `TerminalInfo` |
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
+| `GET /api/engines/update-events` | SSE `EngineUpdateProgress` while an engine update runs |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
 | `GET /api/acp/registry?q=` | `AcpRegistryEntry[]`, with how this machine can install each; `502` if unreachable |
 | `POST, DELETE /api/acp/registry/:id` | `InstallAcpAgent` to `EngineStatus`, `422` if refused; remove, `409 engine_busy` |

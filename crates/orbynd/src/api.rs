@@ -509,7 +509,10 @@ pub async fn apply_app_update(State(state): State<AppState>) -> ApiResult<Status
 }
 
 pub async fn apply_all_updates(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.updates.apply_all(LOCAL_USER).await?))
+    let updates = state.core.updates.clone();
+    Ok(Json(
+        to_the_end(async move { updates.apply_all(LOCAL_USER).await }).await?,
+    ))
 }
 
 pub async fn list_items(
@@ -1652,14 +1655,30 @@ pub async fn refresh_engines(State(state): State<AppState>) -> ApiResult<impl In
 
 /// Updates every engine with a newer version, through the installer that owns each.
 pub async fn update_all_engines(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.engines.update_all(LOCAL_USER).await?))
+    let engines = state.core.engines.clone();
+    Ok(Json(
+        to_the_end(async move { engines.update_all(LOCAL_USER).await }).await?,
+    ))
+}
+
+/// Runs an update to the end even when the client goes away, because stopping an
+/// installer partway could leave a half-written engine.
+async fn to_the_end<T: Send + 'static>(
+    work: impl std::future::Future<Output = orbyn_core::Result<T>> + Send + 'static,
+) -> orbyn_core::Result<T> {
+    tokio::spawn(work)
+        .await
+        .map_err(|error| CoreError::Internal(format!("The update stopped: {error}")))?
 }
 
 pub async fn update_engine(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.engines.update(&id, LOCAL_USER).await?))
+    let engines = state.core.engines.clone();
+    Ok(Json(
+        to_the_end(async move { engines.update(&id, LOCAL_USER).await }).await?,
+    ))
 }
 
 /// Installs the version the signed manifest recommends, through the installer
@@ -1668,12 +1687,9 @@ pub async fn install_recommended_engine(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    let engines = state.core.engines.clone();
     Ok(Json(
-        state
-            .core
-            .engines
-            .install_recommended(&id, LOCAL_USER)
-            .await?,
+        to_the_end(async move { engines.install_recommended(&id, LOCAL_USER).await }).await?,
     ))
 }
 

@@ -17,6 +17,8 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { ProviderInstances } from "./ProviderInstances";
 import { HistoryImport } from "./HistoryImport";
 import { NativeSessions } from "./NativeSessions";
+import { ProjectProviders } from "./ProjectProviders";
+import { followEngineUpdates, UpdateProgressLine, useEngineUpdates } from "./engineUpdates";
 
 const POLL_WHILE_UPDATING_MS = 1500;
 
@@ -32,12 +34,17 @@ function UpdateAction({ engine }: { engine: EngineStatus }) {
   const refreshEngines = useWorkspace((state) => state.refreshEngines);
   const advisory = engine.compatibility;
   const recommended = advisory?.recommended_command ? (advisory.recommended_version ?? null) : null;
-  if (engine.updating) {
+  const running = useEngineUpdates((state) => engine.id in state.running);
+  // An open dialog stays open: it holds the update's own outcome and error.
+  if ((engine.updating || running) && !confirming) {
     return (
-      <span className="inline-status" role="status">
-        <RefreshCw size={16} className="spin" aria-hidden />
-        Updating
-      </span>
+      <>
+        <span className="inline-status" role="status">
+          <RefreshCw size={16} className="spin" aria-hidden />
+          Updating
+        </span>
+        <UpdateProgressLine engine={engine.id} />
+      </>
     );
   }
   const hasNewer = engine.latest !== null && engine.latest !== engine.version;
@@ -79,6 +86,7 @@ function UpdateAction({ engine }: { engine: EngineStatus }) {
           <p>Orbyn runs the installer that owns this binary:</p>
           <CopyCommand command={action.command} label={action.install ? "Copy install command" : "Copy update command"} />
           <p className="muted">Updates are refused while this engine has an active run.</p>
+          <UpdateProgressLine engine={engine.id} />
         </ConfirmDialog>
       ) : null}
     </>
@@ -411,6 +419,8 @@ export function ProvidersSection() {
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [outcomes, setOutcomes] = useState<EngineUpdateOutcome[] | null>(null);
 
+  useEffect(() => followEngineUpdates(), []);
+
   useEffect(() => {
     if (!updating) return;
     const timer = setInterval(() => void refreshEngines(), POLL_WHILE_UPDATING_MS);
@@ -460,6 +470,7 @@ export function ProvidersSection() {
             <CopyCommand key={engine.id} command={engine.update_command ?? ""} label={`Copy ${engine.name} update command`} />
           ))}
           <p className="muted">A provider with an active run is skipped and reported.</p>
+          <UpdateProgressLine />
         </ConfirmDialog>
       ) : null}
       {outcomes?.some((outcome) => outcome.error) ? (
@@ -478,13 +489,14 @@ export function ProvidersSection() {
         <ErrorState title="Couldn't load providers" failure={engines.error} onRetry={() => void refreshEngines()} />
       ) : !engines.data ? (
         <Loading label="Loading providers" />
-      ) : (
+      ) : (<>
+        <ProjectProviders engines={engines.data} />
         <ProviderInstances engines={engines.data} renderBase={(engine) => <NativeSessions engine={engine} />} renderDriver={(engine) => <EngineRow engine={engine} />} renderStatus={(engine) => <>
           {engine.installed ? <Pill tone={supportTone[engine.support]}>{supportLabels[engine.support]}</Pill> : <Pill tone="warn">Not installed</Pill>}
           <dl className="facts"><div><dt>Version</dt><dd>{engine.version ?? "Unknown"}</dd></div><div><dt>Location</dt><dd><code>{engine.path ?? "Not found"}</code></dd></div></dl>
           <UpdateAction engine={engine} />
         </>} renderInstance={(engine) => engine.installed ? <><EngineModelList engine={engine} /><NativeSessions engine={engine} /></> : null} />
-      )}
+      </>)}
       <HistoryImport />
       <AcpRegistry />
     </>

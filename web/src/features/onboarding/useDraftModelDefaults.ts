@@ -6,17 +6,19 @@ import { toFailure } from "../../lib/useAsync";
 import { chooseDraftEngine } from "./draftEngine";
 
 type Choice = { engine: string; model: string | null; effort: string | null };
-type Defaults = { engine: string; model: string; disabled: string[] };
+type Defaults = { engine: string; model: string; effort: string; disabled: string[] };
 
 function readDefaults(views: PreferenceView[]): Defaults {
   const engine = views.find((view) => view.key === "default_engine")?.value;
   const model = views.find((view) => view.key === "default_model")?.value;
+  // An older service has no default effort; that reads as the model's own default.
+  const effort = views.find((view) => view.key === "default_effort")?.value ?? "";
   const disabled = views.find((view) => view.key === "disabled_engines")?.value;
-  if (typeof engine !== "string" || typeof model !== "string" || !Array.isArray(disabled)
+  if (typeof engine !== "string" || typeof model !== "string" || typeof effort !== "string" || !Array.isArray(disabled)
     || !disabled.every((value) => typeof value === "string")) {
     throw new Error("Model defaults are unavailable.");
   }
-  return { engine, model, disabled };
+  return { engine, model, effort, disabled };
 }
 
 /** A default read and an explicit choice each belong to one physical draft project. */
@@ -50,8 +52,10 @@ export function useDraftModelDefaults(projectId: string | null, engines: EngineS
     : chooseDraftEngine(installed, wanted, false);
   const model = explicit ? explicit.model
     : defaults?.model ? defaults.model : remembered && remembered.engine === engine?.id ? remembered.model : null;
+  // The project's default effort belongs to its default model and wins over what was last chosen with it.
+  const defaultEffort = defaults?.model && model === defaults.model && defaults.effort ? defaults.effort : null;
   const effort = explicit ? explicit.effort
-    : remembered && remembered.engine === engine?.id && remembered.model === model ? remembered.effort : null;
+    : defaultEffort ?? (remembered && remembered.engine === engine?.id && remembered.model === model ? remembered.effort : null);
   return {
     installed, engine, model, effort, explicit: explicit !== null,
     loading: current === null,

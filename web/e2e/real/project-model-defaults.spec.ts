@@ -38,6 +38,7 @@ test("a scoped model pick commits the tuple, preserves environment defaults and 
     expect(response.ok()).toBe(true);
     expect(response.request().postDataJSON().edits).toEqual({
       default_engine: { op: "set", value: "codex" }, default_model: { op: "set", value: "fake-small" },
+      default_effort: { op: "set", value: "" }, default_model_options: { op: "set", value: {} },
     });
     await expect.poll(() => values(service, projectId)).toEqual({ default_engine: "codex", default_model: "fake-small" });
     expect(await values(service)).toEqual(before);
@@ -148,5 +149,80 @@ test("Escape closes only the model picker inside native modal settings, includin
       await page.keyboard.press("Escape");
       await expect(settings).toHaveCount(0);
     }
+  } finally { await service.stop(); }
+});
+
+const prefs = async (service: Service, project?: string) => Object.fromEntries(
+  (await service.api<{ key: string; value: unknown }[]>("GET", project ? `/api/preferences?project_id=${project}` : "/api/preferences"))
+    .map((row) => [row.key, row.value]));
+
+test("default effort, options and fallback save for the project and reach a new thread", async ({ page }) => {
+  const { service, projectId } = await startProject({ fakeEngines: true });
+  try {
+    const catalog = await service.api<EngineModels>("GET", "/api/engines/codex/models");
+    const tuned = catalog.models.find((entry) => entry.options.some((option) => option.id === "effort" && option.values.length > 1))!;
+    const effort = tuned.options.find((option) => option.id === "effort")!;
+    const tier = tuned.options.find((option) => option.id === "service_tier")!;
+    expect(tier).toBeTruthy();
+    const deep = effort.values.find((value) => !value.default)!;
+    const before = await prefs(service);
+    await page.goto(await projectSettingsUrl(service, projectId));
+    await expect(modelRow(page)).toBeVisible();
+    const put = () => page.waitForResponse((response) => response.request().method() === "PUT"
+      && new URL(response.url()).pathname === "/api/settings/preferences");
+    let saved = put();
+    await selectModel(page, tuned.label);
+    expect((await saved).ok()).toBe(true);
+
+    // Effort and options save with the model as one tuple.
+    const effortSelect = page.getByRole("combobox", { name: `Default ${effort.label}` });
+    await expect(effortSelect).toBeEnabled();
+    saved = put();
+    await effortSelect.selectOption(deep.id);
+    expect((await saved).request().postDataJSON().edits).toEqual({
+      default_engine: { op: "set", value: "codex" }, default_model: { op: "set", value: tuned.id },
+      default_effort: { op: "set", value: deep.id }, default_model_options: { op: "set", value: {} },
+    });
+    const tierSelect = page.getByRole("combobox", { name: `Default ${tier.label}` });
+    await expect(tierSelect).toBeEnabled();
+    saved = put();
+    await tierSelect.selectOption(tier.values[0]!.id);
+    expect((await saved).ok()).toBe(true);
+    await expect.poll(async () => {
+      const project = await prefs(service, projectId);
+      return [project.default_model, project.default_effort, project.default_model_options];
+    }).toEqual([tuned.id, deep.id, { service_tier: tier.values[0]!.id }]);
+
+    // The fallback model is the project's own; the environment keeps none.
+    const fallback = page.getByRole("textbox", { name: "Fallback model" });
+    saved = put();
+    await fallback.fill(" fake-small ");
+    await fallback.blur();
+    expect((await saved).ok()).toBe(true);
+    await expect.poll(async () => (await prefs(service, projectId)).fallback_model).toBe("fake-small");
+    const after = await prefs(service);
+    for (const key of ["default_engine", "default_model", "default_effort", "default_model_options", "fallback_model"]) {
+      expect(after[key]).toEqual(before[key]);
+    }
+
+    // Choosing another model clears the effort and options that belonged to the first.
+    saved = put();
+    await selectModel(page, catalog.models.find((entry) => entry.id === "fake-small")!.label);
+    expect((await saved).request().postDataJSON().edits.default_effort).toEqual({ op: "set", value: "" });
+    saved = put();
+    await selectModel(page, tuned.label);
+    await saved;
+    saved = put();
+    await page.getByRole("combobox", { name: `Default ${effort.label}` }).selectOption(deep.id);
+    await saved;
+
+    await page.goto(`${service.page}#/new/${projectId}`);
+    await page.getByRole("textbox", { name: /^Message/ }).fill("tuned defaults fixture");
+    const created = page.waitForResponse((reply) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/threads");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const thread = await (await created).json() as { id: string; model: string; effort?: string };
+    expect(thread.model).toBe(tuned.id);
+    expect(thread.effort).toBe(deep.id);
+    await settled(service, thread.id);
   } finally { await service.stop(); }
 });
