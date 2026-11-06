@@ -123,3 +123,79 @@ async fn update_with_no_service_says_so_with_its_own_code() {
     let output = orbyn(&dir.path().join("data"), &["update"]).await;
     assert_eq!(output.status.code(), Some(2));
 }
+
+fn profile(dir: &TempDir) -> std::path::PathBuf {
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    home
+}
+
+fn orbyn_at_home(data: &Path, home: &Path, args: &[&str]) -> Output {
+    Command::new(ORBYN)
+        .arg("--data-dir")
+        .arg(data)
+        .args(args)
+        .env("HOME", home)
+        .env("USERPROFILE", home)
+        .output()
+        .unwrap()
+}
+
+#[test]
+#[cfg(not(windows))]
+fn uninstall_dry_run_plans_the_service_removal_and_keeps_everything_else() {
+    let dir = TempDir::new();
+    let home = profile(&dir);
+    let data = dir.path().join("data");
+    let output = orbyn_at_home(&data, &home, &["--json", "uninstall", "--dry-run"]);
+    assert!(output.status.success(), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["dry_run"], true);
+    let removed = report["service"]["remove"].as_str().unwrap();
+    assert!(Path::new(removed).starts_with(&home), "{removed}");
+    assert!(report["launcher"].is_null());
+    assert_eq!(report["versions"], serde_json::json!([]));
+    assert!(report["running"].is_null());
+    assert_eq!(report["data"], data.to_string_lossy().as_ref());
+    let output = orbyn_at_home(&data, &home, &["uninstall", "--dry-run"]);
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("Would remove"), "{text}");
+    assert!(text.contains("stay in"), "{text}");
+    // A plan touches nothing: no profile file, and no data folder appears.
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    assert!(!data.exists());
+}
+
+#[test]
+#[cfg(windows)]
+fn uninstall_on_windows_has_no_service_and_points_at_installed_apps() {
+    let dir = TempDir::new();
+    let home = profile(&dir);
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("keep.txt"), "x").unwrap();
+    let output = orbyn_at_home(&data, &home, &["uninstall"]);
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("No background service"), "{text}");
+    assert!(text.contains("Installed apps"), "{text}");
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    assert!(data.join("keep.txt").exists());
+}
+
+#[tokio::test]
+async fn uninstall_names_a_service_that_is_still_running() {
+    let dir = TempDir::new();
+    let home = profile(&dir);
+    let data = dir.path().join("data");
+    let service = Service::start(&data, Options::default());
+    let (data2, home2) = (data.clone(), home.clone());
+    let output = tokio::task::spawn_blocking(move || {
+        orbyn_at_home(&data2, &home2, &["--json", "uninstall", "--dry-run"])
+    })
+    .await
+    .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["running"], service.url.as_str());
+}

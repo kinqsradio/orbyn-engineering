@@ -97,8 +97,20 @@ The background registration uses launchd on macOS. Windows background setup is
 unsupported; desktop startup and direct `service run` remain available. No
 administrator rights or PATH changes are requested. Dry runs print a plan without
 running a manager or modifying its files. Linux/systemd support in shared service
-planning is outside this product's macOS/Windows scope. There is no top-level
-uninstall or OOM-protection command.
+planning is outside this product's macOS/Windows scope. There is no
+OOM-protection command: the reference supports it only on Linux with systemd.
+
+## Uninstalling
+
+`orbyn uninstall [--dry-run]` removes what Orbyn registered with the operating
+system: the background service, exactly as `orbyn service uninstall`. Orbyn puts
+no launcher on PATH and keeps no side-by-side versions, so there is nothing else
+for it to remove. It then says how to remove the app through the installer that
+owns it (move the `.app` bundle to the Trash on macOS; Settings > Apps > Installed
+apps on Windows, which has no background service) and names a service that is
+still running. The data folder with threads and settings is kept and named; delete
+it yourself to remove them. `--dry-run` prints the plan and changes nothing; with
+`--json` it reports `service`, `running`, `launcher`, `versions`, `app` and `data`.
 
 ## Triage in a native terminal
 

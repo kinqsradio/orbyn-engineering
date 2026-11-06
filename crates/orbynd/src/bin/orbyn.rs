@@ -115,6 +115,12 @@ enum Command {
         #[arg(long)]
         downgrade: bool,
     },
+    /// Remove the background service, and say how to remove the app. Data stays.
+    Uninstall {
+        /// Show what would change and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -961,20 +967,23 @@ fn run_step(step: &cli_service::Step) -> Outcome<std::process::Output> {
     )))
 }
 
+fn plan_json(plan: &cli_service::Plan) -> Value {
+    let steps: Vec<Value> = plan
+        .steps
+        .iter()
+        .map(|step| json!({ "program": step.program, "args": step.args }))
+        .collect();
+    json!({
+        "file": plan.file.as_ref().map(|(path, _)| path),
+        "text": plan.file.as_ref().map(|(_, text)| text),
+        "remove": plan.remove,
+        "steps": steps,
+    })
+}
+
 fn show_plan(plan: &cli_service::Plan, json_output: bool) {
     if json_output {
-        let steps: Vec<Value> = plan
-            .steps
-            .iter()
-            .map(|step| json!({ "program": step.program, "args": step.args }))
-            .collect();
-        let report = json!({
-            "file": plan.file.as_ref().map(|(path, _)| path),
-            "text": plan.file.as_ref().map(|(_, text)| text),
-            "remove": plan.remove,
-            "steps": steps,
-        });
-        println!("{report}");
+        println!("{}", plan_json(plan));
         return;
     }
     if let Some((path, text)) = &plan.file {
@@ -1037,6 +1046,75 @@ fn run_as_service(data: &Path) -> Outcome<()> {
     let mut command = service_process(&args)?;
     command.arg("--data-dir").arg(data).envs(values);
     wait_for(command)
+}
+
+/// How to remove the app itself. The installer that put it there owns it, and a
+/// running program cannot reliably delete its own bundle, so this only says how.
+fn app_removal(program: &Path) -> String {
+    if cfg!(windows) {
+        return "Remove Orbyn Engineering in Settings > Apps > Installed apps.".to_owned();
+    }
+    match program
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|extension| extension == "app"))
+    {
+        Some(bundle) => format!("Quit Orbyn, then move {} to the Trash.", bundle.display()),
+        None => format!(
+            "This `orbyn` runs from {}, outside an installed app. Remove that folder yourself.",
+            program.parent().unwrap_or(program).display()
+        ),
+    }
+}
+
+/// Removes what Orbyn registered with the OS: the background service. The app has
+/// no separate launcher on PATH and keeps no side-by-side versions, so the rest is
+/// the installer's to remove, and the data folder stays unless the user deletes it.
+async fn uninstall(cli: &Cli, dry_run: bool) -> Outcome<()> {
+    let data = data_dir(cli)?;
+    let home = home_dir()?;
+    let program = std::env::current_exe()
+        .map_err(|error| Failure::new(format!("This program's path: {error}")))?;
+    let plan = cli_service::Os::current().ok().map(|os| {
+        cli_service::Install {
+            os,
+            home: &home,
+            program: &program,
+            data: &data,
+            uid: user_id(&home),
+        }
+        .uninstall()
+    });
+    let running = live_service(&data).await.map(|service| service.url);
+    let removal = app_removal(&program);
+    let kept = format!(
+        "Threads and settings stay in {}. Delete that folder yourself to remove them.",
+        data.display()
+    );
+    if !dry_run && let Some(plan) = &plan {
+        apply_plan(plan)?;
+    }
+    let report = json!({
+        "dry_run": dry_run,
+        "service": plan.as_ref().map(plan_json),
+        "running": running,
+        "launcher": null,
+        "versions": [],
+        "app": removal,
+        "data": data,
+    });
+    show(cli.json, &report, |_| {
+        match (&plan, dry_run) {
+            (Some(plan), true) => show_plan(plan, false),
+            (Some(_), false) => println!("Removed the background service."),
+            (None, _) => println!("No background service is registered on this system."),
+        }
+        if let Some(url) = &running {
+            println!("A service is still running at {url}. Quit Orbyn to stop it.");
+        }
+        println!("There is no separate launcher or older version to remove.");
+        println!("{removal}");
+        println!("{kept}");
+    })
 }
 
 fn service_command(cli: &Cli, command: &ServiceCommand) -> Outcome<()> {
@@ -1127,6 +1205,7 @@ async fn run(cli: Cli) -> Outcome<()> {
             };
             return update(&cli, &wanted).await;
         }
+        Command::Uninstall { dry_run } => return uninstall(&cli, *dry_run).await,
         _ => {}
     }
     let service = Service::find(&data_dir(&cli)?)?;
