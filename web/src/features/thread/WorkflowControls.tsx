@@ -39,7 +39,8 @@ export function WorkflowControls({ item, threadId, live }: { item: ToolItem; thr
   const [error, setError] = useState<string | null>(null);
   const workflow = item.workflow;
   if (!workflow || !threadId) return null;
-  const running = workflow.state === "running";
+  // A workflow the engine never reported ending went with its run.
+  const running = workflow.state === "running" && live;
   const problem = error ?? workflow.stopError ?? null;
   const stop = () => {
     setStopping(true);
@@ -56,12 +57,12 @@ export function WorkflowControls({ item, threadId, live }: { item: ToolItem; thr
     <div className="workflow-card" aria-label={`Workflow ${workflow.name ?? ""}`.trim()}>
       <span className="workflow-name">{workflow.name ?? "Workflow"}</span>
       <span className="workflow-state" data-state={workflow.state}>
-        {running && stopping ? "Stopping" : STATE_LABEL[workflow.state]}
+        {running && stopping ? "Stopping" : workflow.state === "running" && !live ? "Ended" : STATE_LABEL[workflow.state]}
       </span>
       <Button small tone="quiet" icon={<FileCode size={14} aria-hidden />} onClick={() => setViewing(true)}>
         View script
       </Button>
-      {running && live ? (
+      {running ? (
         <Button small tone="danger" busy={stopping} icon={<Square size={14} aria-hidden />} onClick={stop}>
           Stop workflow
         </Button>

@@ -706,11 +706,35 @@ impl RunManager {
             run_id: Some(run.id.clone()),
             detail: Value::Null,
         })?;
-        control
-            .send(RunControl::StopWorkflow {
-                tool_call_id: tool_call_id.to_owned(),
+        let sent = control.send(RunControl::StopWorkflow {
+            tool_call_id: tool_call_id.to_owned(),
+        });
+        if sent.is_err() {
+            // The audit row came first, as every effect's does; this one records that
+            // the stop never reached the engine.
+            self.store.append_audit(&AuditRecord {
+                actor: actor.to_owned(),
+                action: "workflow.stop_failed".into(),
+                target: tool_call_id.to_owned(),
+                decision: None,
+                source: "system".into(),
+                thread_id: Some(thread_id.to_owned()),
+                run_id: Some(run.id.clone()),
+                detail: Value::Null,
+            })?;
+            return Err(CoreError::RunClosed);
+        }
+        Ok(())
+    }
+
+    /// A workflow this run launched still runs, as its driver last reported.
+    fn workflow_running(&self, thread_id: &str, run_id: &str) -> bool {
+        self.store.run_items(thread_id, run_id).is_ok_and(|items| {
+            items.iter().any(|item| {
+                item.kind == "workflow"
+                    && item.raw.get("state").and_then(Value::as_str) == Some("running")
             })
-            .map_err(|_| CoreError::RunClosed)
+        })
     }
 
     /// The engine refused a message it was handed mid-turn, so it goes in the queue.
@@ -1395,9 +1419,10 @@ impl RunManager {
                 () = &mut stop_deadline, if cancelling => break EngineOutcome::Cancelled,
                 () = &mut silence, if delegated && !cancelling => {
                     // Waiting on a person is not silence.
+                    // A turn held open for a quiet workflow is waiting, not stuck.
                     let waiting = self.store.run(&scope.run_id).is_ok_and(|run| {
                         run.state == RunState::AwaitingApproval
-                    });
+                    }) || self.workflow_running(&thread.id, &scope.run_id);
                     silence.as_mut().reset(tokio::time::Instant::now() + SILENCE_LIMIT);
                     if !waiting {
                         break EngineOutcome::Failed(

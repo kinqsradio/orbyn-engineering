@@ -76,8 +76,11 @@ admitted -> starting -> running <-> awaiting_approval
   last one ends with no follow-up turn, as after a stop. A failed turn is not held. The
   workflow's handles are kept as a `workflow` item beside the call, and its states
   arrive as `CUSTOM workflow.state`. Stopping one sends the CLI's `stop_task` control
-  request through the live run after a `workflow.stop` audit row; acceptance is not the
-  end, which the CLI reports as `stopped`. Stopping the run still ends everything.
+  request through the live run after a `workflow.stop` audit row, and a stop that never
+  reaches the engine adds a `workflow.stop_failed` row; acceptance is not the end, which
+  the CLI reports as `stopped`. Stopping the run still ends everything, and a workflow
+  still running when its run ends is reported `stopped`. The delegated-run silence
+  watchdog does not count a run waiting on a running workflow as stuck.
   The script view reads an inline script from the call, and otherwise only a `.js`
   regular file whose resolved path is inside the CLI's own `projects` or `workflows`
   folder or the thread's checkout, cut at 256 KiB. Nothing else in the CLI's config is

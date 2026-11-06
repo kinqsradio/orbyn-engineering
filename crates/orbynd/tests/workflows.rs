@@ -136,3 +136,22 @@ async fn only_a_workflow_call_has_a_script_or_a_stop() {
         .await;
     assert_eq!(status, 404);
 }
+
+#[tokio::test]
+async fn cancelling_a_held_run_reports_its_workflow_stopped() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "claude").await;
+    let run = service.admit(&thread, "go [workflow]").await;
+    until_workflow(&service, &thread, "running").await;
+    let (status, body) = service
+        .send(&format!("/api/runs/{run}/cancel"), serde_json::json!({}))
+        .await;
+    assert!(status < 300, "{status} {body}");
+    assert_eq!(service.finished(&thread).await, "cancelled");
+    assert_eq!(
+        workflow_state(&service, &thread).await.as_deref(),
+        Some("stopped")
+    );
+    let events = service.all_events(&thread).await;
+    assert_eq!(workflow_states(&events), ["running", "stopped"]);
+}

@@ -106,6 +106,29 @@ impl Workflows {
         state_events(&task, state)
     }
 
+    /// Every workflow still running when the run ends goes with the CLI, so each
+    /// is reported stopped rather than left running.
+    pub fn end_all(&mut self) -> Vec<EngineEvent> {
+        let mut ended: Vec<Task> = self.running.drain().map(|(_, task)| task).collect();
+        ended.sort_by(|a, b| a.tool_call_id.cmp(&b.tool_call_id));
+        ended
+            .iter()
+            .flat_map(|task| state_events(task, "stopped"))
+            .collect()
+    }
+
+    /// A stop that reached the driver after the workflow had already ended.
+    pub fn already_ended(tool_call_id: &str) -> EngineEvent {
+        AgUiEvent::Custom {
+            name: "workflow.stop_failed".into(),
+            value: json!({
+                "toolCallId": tool_call_id,
+                "message": "The workflow had already ended.",
+            }),
+        }
+        .into()
+    }
+
     /// The control request that stops the workflow this tool call launched, while
     /// it runs.
     pub fn stop_request(&self, tool_call_id: &str) -> Option<String> {

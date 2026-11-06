@@ -54,6 +54,12 @@ describe("workflow controls", () => {
     expect(calls).toEqual([{ url: `/api/threads/${THREAD}/workflows/wf/script`, method: "GET" }]);
   });
 
+  it("reads a workflow left running by an ended run as ended", () => {
+    render(<WorkflowControls item={tool({ state: "running", name: "probe" })} threadId={THREAD} live={false} />);
+    expect(screen.getByText("Ended")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop workflow" })).toBeNull();
+  });
+
   it("stops a running workflow and shows a refusal", async () => {
     const user = userEvent.setup();
     const calls = stubFetch(() =>

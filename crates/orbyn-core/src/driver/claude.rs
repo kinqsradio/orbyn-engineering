@@ -662,6 +662,8 @@ async fn run_protocol(
                         tracing::debug!(%error, "could not ask Claude to stop a workflow");
                     }
                     let _ = stdin.flush().await;
+                } else if events.send(Workflows::already_ended(&tool_call_id)).await.is_err() {
+                    return;
                 }
             }
             Some(text) = steering.recv() => {
@@ -701,6 +703,9 @@ async fn run_protocol(
     // Closing stdin is the CLI's signal to exit.
     drop(stdin);
     for event in mapper.close_open_blocks() {
+        let _ = events.send(event).await;
+    }
+    for event in mapper.workflows.end_all() {
         let _ = events.send(event).await;
     }
     let cancelled = cancel.is_cancelled();
