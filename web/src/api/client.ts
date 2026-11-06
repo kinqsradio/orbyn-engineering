@@ -183,6 +183,10 @@ export const api = {
       prompt,
       attachment_ids: attachmentIds,
     }),
+  threadSetup: (threadId: string, signal?: AbortSignal) =>
+    request<import("../generated/ThreadSetup").ThreadSetup | null>("GET", `/api/threads/${q(threadId)}/setup`, undefined, signal),
+  cancelSetup: (threadId: string) =>
+    request<import("../generated/ThreadSetup").ThreadSetup | null>("POST", `/api/threads/${q(threadId)}/setup/cancel`, {}),
   preparationRetry: (threadId: string, signal?: AbortSignal) => request<import("../generated/RetryPreparation").RetryPreparation | null>("GET", `/api/threads/${q(threadId)}/preparation`, undefined, signal),
   retryPreparation: (threadId: string, runId: string) => request<Run>("POST", `/api/threads/${q(threadId)}/preparation/retry`, { run_id: runId } satisfies import("../generated/RetryPreparation").RetryPreparation),
   resumeQueue: (threadId: string) => request<void>("POST", `/api/threads/${q(threadId)}/queue/resume`),

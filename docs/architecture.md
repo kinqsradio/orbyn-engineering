@@ -607,6 +607,16 @@ until its captured setup is started; `async: false` also waits for exit code zer
 Engine title generation follows that same gate. Startup failure or unsuccessful
 synchronous setup fails the first turn; an async exit does not block it,
 and a later explicit user message does not implicitly execute project code again.
+The thread view shows the setup as a card: starting, running (saying when the first
+turn waits for it), finished with its exit code, or stopped. `stopped` means it
+ended with no exit code, by a cancel or a service restart. Its Output button selects
+the setup terminal, and a successful setup's card leaves after a few seconds. Cancel
+stops a setup this service is preparing or running, kills its process tree, is
+audited as `setup.cancel`, and is not a run cancel: a synchronous setup then fails
+the first turn as an unsuccessful preparation, which keeps its Retry, while a
+cancelled async setup leaves the thread free. Cancelling a finished or stopped
+setup changes nothing. An async setup's exit is read from its process; only the
+waiter of a synchronous setup records an exit.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic
 restart/limit continuation cannot bypass it. The failure's timeline Retry control
@@ -2088,6 +2098,8 @@ because browsers cannot set headers on them.
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
+| `GET /api/threads/:id/setup` | `ThreadSetup`, or `null` when the checkout ran no setup |
+| `POST /api/threads/:id/setup/cancel` | Stops a preparing or running setup; returns `ThreadSetup` |
 | `GET /api/threads/:id/commits` | `CommitInfo[]`, newest 100 |
 | `GET /api/threads/:id/checkpoints` | `Checkpoint[]` |
 | `POST /api/threads/:id/restore` | `RestoreWorkspace`; `409 shared_directory`, `409 thread_busy` |

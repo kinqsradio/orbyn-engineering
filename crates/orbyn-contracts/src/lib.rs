@@ -1716,6 +1716,32 @@ pub struct RetryPreparation {
 }
 }
 
+wire_enum! {
+/// Where a worktree's setup action stands. `stopped` means it ended without an
+/// exit code: cancelled, or cut off by a service restart.
+pub enum SetupPhase {
+    Preparing,
+    Running,
+    Finished,
+    Stopped,
+}
+}
+
+wire! {
+/// The setup action a new worktree runs, and where it stands.
+pub struct ThreadSetup {
+    pub name: String,
+    /// The first turn waits for this action to exit successfully.
+    pub blocking: bool,
+    pub phase: SetupPhase,
+    pub exit_code: Option<i32>,
+    /// The terminal that shows its output, once it has started.
+    pub terminal_id: Option<String>,
+    /// Only a setup this service is preparing or running can be cancelled.
+    pub cancellable: bool,
+}
+}
+
 wire! {
 pub struct Run {
     pub id: String,

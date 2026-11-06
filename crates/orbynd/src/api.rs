@@ -1038,6 +1038,22 @@ pub async fn put_settings(
     Ok(Json(settings))
 }
 
+/// The thread's worktree setup action and where it stands, or `null`.
+pub async fn thread_setup(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.thread_setup(&id)?))
+}
+
+/// Stops the thread's setup action. Nothing to stop is not an error.
+pub async fn cancel_setup(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.cancel_setup(&id, LOCAL_USER)?))
+}
+
 pub async fn preparation_retry(
     State(state): State<AppState>,
     Path(id): Path<String>,
