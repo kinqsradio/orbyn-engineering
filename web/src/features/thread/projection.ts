@@ -1,3 +1,4 @@
+import { readMcpAppMarker, type McpAppView } from "./mcpAppBridge";
 import type {
   ActionKind,
   AgUiEvent,
@@ -51,6 +52,8 @@ export interface ToolItem extends ItemBase {
   outcome?: "success" | "failure";
   /** The engine workflow this call launched, while the engine reports one. */
   workflow?: ToolWorkflow;
+  /** The MCP App page the service stored for this call. */
+  app?: McpAppView;
 }
 export type WorkflowState = "running" | "completed" | "failed" | "stopped";
 export interface ToolWorkflow {
@@ -494,6 +497,18 @@ function applyEvent(fold: Fold, wire: WireThreadEvent): void {
         const outcome = body?.outcome;
         if (typeof body?.toolCallId === "string" && (outcome === "success" || outcome === "failure")) {
           patch(fold, scoped("tool", body.toolCallId), "tool", (item) => ({ ...item, outcome }));
+        }
+      } else if (event.name === "mcp_app.context") {
+        const body = record(event.value);
+        const server = typeof body?.server === "string" ? body.server : "An app";
+        const text = `Sent ${server}'s app note with this message`;
+        put(fold, { ...base, key: `notice:${wire.seq}`, kind: "notice", tone: "neutral", text, code: null });
+        log(text, null);
+      } else if (event.name === "mcp_app") {
+        const marker = readMcpAppMarker(event.value);
+        if (marker) {
+          const { toolCallId, ...app } = marker;
+          patch(fold, scoped("tool", toolCallId), "tool", (item) => ({ ...item, app }));
         }
       } else if (event.name === "workflow.state") {
         const body = record(event.value);

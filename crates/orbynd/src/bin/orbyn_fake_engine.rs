@@ -710,6 +710,22 @@ fn codex() {
                 }
                 send(&json!({ "id": id, "result": { "data": [], "nextCursor": null } }));
             }
+            // As Codex 0.166.0 answered: a loaded thread is required, and the server's
+            // own result comes back unchanged.
+            "mcpServer/tool/call" => {
+                record_launch("codex-app-tool", &[message["params"].to_string()]);
+                let params = &message["params"];
+                if params["threadId"].as_str() != Some(state.thread.as_str()) {
+                    send(&json!({ "id": id, "error": {
+                        "code": -32600, "message": format!("thread not found: {}", params["threadId"]),
+                    }}));
+                } else {
+                    send(&json!({ "id": id, "result": {
+                        "content": [{ "type": "text", "text": format!("called {}", params["tool"].as_str().unwrap_or("")) }],
+                        "structuredContent": params["arguments"],
+                    }}));
+                }
+            }
             "turn/start" => {
                 record_launch("codex-turn", &[message["params"].to_string()]);
                 if !state.tools_ready {
@@ -964,6 +980,35 @@ fn codex_turn(state: &CodexState, lines: &mut impl Iterator<Item = Value>) {
         )
         .expect("write");
         codex_note(state, "item/completed", json!({ "item": item }));
+    }
+    // An MCP App tool call, in the shape Codex 0.166.0 reported for a descriptor with
+    // `_meta.ui.resourceUri`; the driver then reads the page from this process.
+    if has(prompt, "mcp-app") {
+        let item = json!({
+            "type": "mcpToolCall", "id": "app-call-1", "server": "demo", "tool": "show_widget",
+            "status": "completed", "arguments": { "text": "hello" },
+            "appContext": null, "mcpAppResourceUri": "ui://demo/widget.html", "mcpAppUi": null,
+            "result": { "content": [{ "type": "text", "text": "shown: hello" }],
+                        "structuredContent": { "text": "hello" }, "_meta": null },
+            "error": null, "durationMs": 4,
+        });
+        codex_note(state, "item/started", json!({ "item": item }));
+        codex_note(state, "item/completed", json!({ "item": item }));
+        for message in lines.by_ref() {
+            if message["method"] == "mcpServer/resource/read" {
+                record_launch("codex-app-read", &[message["params"].to_string()]);
+                let html = if has(prompt, "mcp-app-huge") {
+                    "x".repeat(600 * 1024)
+                } else {
+                    "<!doctype html><p id=v>demo widget</p><img src=\"secret.png\">".to_owned()
+                };
+                send(&json!({ "id": message["id"], "result": { "contents": [{
+                    "uri": "ui://demo/widget.html", "mimeType": "text/html;profile=mcp-app",
+                    "text": html, "_meta": { "ui": { "prefersBorder": true } },
+                }], "originCallId": null }}));
+                break;
+            }
+        }
     }
     // `[mcp-call:<tool>]<json args>[/mcp-call]` calls one tool and answers with it.
     if let Some(rest) = prompt.split("[mcp-call:").nth(1)
