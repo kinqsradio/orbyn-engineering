@@ -935,7 +935,11 @@ title generation, merge settling and idle settling use the same project resolver
 the local host display name for the fixed local environment label; it performs no
 remote lookup and adds no selectable remote environment.
 The local UI preserves project/checkout IDs across settings sections and exact-row
-search. Device-only sections intentionally edit this computer's defaults. Preference
+search. Device-only sections (General, Appearance, Chat, Diffs, About) intentionally
+edit this computer's defaults, so a preference a project may override is never bound
+only there: its row lives on a project-scoped section. Default permissions, response
+streaming, agent browser access and continuing threads after a restart are on Threads
+for that reason. Preference
 rows and thread lifecycle/title controls use scoped reads and revision-fenced edits;
 Mixed controls do not save an untouched empty value. Provenance displays actual
 project, environment, file and default layers. Reset all deletes only the explicit

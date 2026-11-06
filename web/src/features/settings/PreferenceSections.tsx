@@ -190,6 +190,7 @@ export function GeneralSection() {
               { key: "enable_provider_update_checks", title: settingsLabel("general-check-providers-for-updates") },
             ],
           },
+
           {
             title: "New projects",
             rows: [{ key: "add_project_base_directory", title: settingsLabel("general-base-directory") }],
@@ -265,6 +266,7 @@ export function ChatSection() {
           set={(on) => setPrefs({ autoFloatPreview: on })}
         />
       </SettingGroup>
+
       <SettingGroup title="Composer">
         <Toggle title={settingsLabel("chat-keep-checkout-and-branch-visible")} on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />
         <Toggle title={settingsLabel("chat-show-skills-in-the-slash-menu")} on={skillsInSlash} set={(on) => setPrefs({ skillsInSlashMenu: on })} />
@@ -284,29 +286,6 @@ export function ChatSection() {
       </SettingGroup>
       <PreferenceGroups
         groups={[
-          {
-            title: "Defaults",
-            rows: [
-              {
-                key: "default_permission_mode",
-                title: settingsLabel("chat-default-permissions"),
-                options: [
-                  { value: "supervised", label: "Supervised" },
-                  { value: "auto_edits", label: "Auto-accept edits" },
-                  { value: "auto", label: "Auto" },
-                  { value: "full_access", label: "Full access" },
-                ],
-              },
-              {
-                key: "response_streaming_mode",
-                title: settingsLabel("chat-response-streaming"),
-                options: [
-                  { value: "paragraph", label: "By paragraph" },
-                  { value: "turn", label: "When the turn ends" },
-                ],
-              },
-            ],
-          },
           {
             title: "Idle threads",
             rows: [

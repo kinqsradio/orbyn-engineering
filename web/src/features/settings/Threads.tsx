@@ -85,6 +85,26 @@ export function ThreadsSection() {
           parse: (value) => value === "" ? null : Number(value) },
         { key: "auto_settle_on_merge", title: settingsLabel("threads-settle-on-merge"),
           description: "Settle a thread when its pull request merges." },
+        { key: "auto_settle_keep_pull_requests", title: settingsLabel("threads-keep-pull-requests"),
+          description: "Leave a thread whose pull request is still open out of idle settling." },
+      ] }, { title: "New threads", rows: [
+        { key: "default_permission_mode", title: settingsLabel("threads-default-permissions"),
+          options: [
+            { value: "supervised", label: "Supervised" },
+            { value: "auto_edits", label: "Auto-accept edits" },
+            { value: "auto", label: "Auto" },
+            { value: "full_access", label: "Full access" },
+          ] },
+        { key: "response_streaming_mode", title: settingsLabel("threads-response-streaming"),
+          options: [
+            { value: "paragraph", label: "By paragraph" },
+            { value: "turn", label: "When the turn ends" },
+          ] },
+      ] }, { title: "Agents", rows: [
+        { key: "enable_agent_browser_access", title: settingsLabel("threads-agent-browser-access"),
+          description: "Lets agents open and drive pages in the Browser panel. Off refuses their browser tools." },
+        { key: "continue_threads_after_update", title: settingsLabel("threads-continue-after-update"),
+          description: "After Orbyn restarts, pick up the threads the restart interrupted." },
       ] }, { title: "Titles", rows: [
         { key: "project_title_instructions", title: settingsLabel("threads-title-instructions"),
           description: "Guidance used when a thread title is generated.", multiline: true },
