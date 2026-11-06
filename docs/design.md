@@ -132,3 +132,10 @@ Saved preferences carry a `prefsVersion`. Version 1 (the frame) moves a saved si
 of exactly 208px to 224px and turns project folders on, once; a custom width stays. Someone
 with saved preferences gets a one-time notice with Turn off; the option lives in Settings ›
 Labs.
+
+## Planned with the Orbyn platform
+
+The Orbyn Engineer Designs also draw four screens that need engine work that does not
+exist yet (connected-app scopes and a remote-access relay): Sign in to Orbyn, Connect
+Orbyn Planner, Remote access and pairing, and On a phone. They are not built, not even as
+placeholders, and `docs/parity.md` records them as L52–L55.
