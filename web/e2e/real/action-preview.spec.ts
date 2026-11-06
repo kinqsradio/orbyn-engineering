@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
-import { startProject } from "./service";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { startProject, type Service } from "./service";
 
 for (const entry of ["terminal", "details"] as const) {
   test(`${entry} action opens its saved preview and selects the new tab`, async ({ page }) => {
@@ -12,16 +14,23 @@ for (const entry of ["terminal", "details"] as const) {
     const address = site.address();
     if (!address || typeof address === "string") throw new Error("Missing fixture address");
     const origin = `http://127.0.0.1:${address.port}`;
-    let stopService = async () => {};
+    let service: Service | undefined;
+    let base: string | undefined;
+    let failure: unknown;
+    let failed = false;
+    const cleanupErrors: unknown[] = [];
     try {
-      const { service, projectId } = await startProject({ fakeEngines: true });
-      stopService = () => service.stop();
+      const started = await startProject({ fakeEngines: true, parentStdin: true });
+      const fixture = started.service;
+      service = fixture;
+      const { projectId } = started;
       await page.setViewportSize({ width: 1600, height: 900 });
-      await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_project_scripts: [{ name: "Preview action", command: "echo preview-action-ran", preview_url: `${origin}/action`, auto_open_preview: true }] } });
-      const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Action preview" });
-      const base = `/api/threads/${thread.id}`;
-      const old = await service.api<{ id: string }>("POST", `${base}/previews`, { url: `${origin}/existing` });
-      await page.goto(`${service.page}#/threads/${thread.id}`);
+      await fixture.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_project_scripts: [{ name: "Preview action", command: "echo preview-action-ran", preview_url: `${origin}/action`, auto_open_preview: true }] } });
+      const thread = await fixture.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Action preview" });
+      const threadBase = `/api/threads/${thread.id}`;
+      base = threadBase;
+      const old = await fixture.api<{ id: string }>("POST", `${threadBase}/previews`, { url: `${origin}/existing` });
+      await page.goto(`${fixture.page}#/threads/${thread.id}`);
       if (entry === "terminal") {
         await page.getByRole("button", { name: "Terminal", exact: true }).click();
         await page.getByRole("button", { name: "Run a script", exact: true }).click();
@@ -31,17 +40,38 @@ for (const entry of ["terminal", "details"] as const) {
       }
       await expect(page.getByRole("combobox", { name: "Search or enter URL" })).toHaveValue(`${origin}/action`);
       await expect(page.getByRole("img", { name: `Page at ${origin}/action`, exact: true })).toBeVisible();
-      const tabs = await service.api<{ id: string; url: string }[]>("GET", `${base}/previews`);
+      const tabs = await fixture.api<{ id: string; url: string }[]>("GET", `${threadBase}/previews`);
       expect(tabs).toHaveLength(2);
       expect(tabs.find((tab) => tab.id === old.id)?.url).toBe(`${origin}/existing`);
       await expect.poll(async () => {
-        const terminals = await service.api<{ id: string; script: string | null }[]>("GET", `${base}/terminals`);
+        const terminals = await fixture.api<{ id: string; script: string | null }[]>("GET", `${threadBase}/terminals`);
         const terminal = terminals.find((item) => item.script === "Preview action");
-        return terminal ? (await service.api<{ text: string }>("GET", `${base}/terminals/${terminal.id}/scrollback`)).text : "";
+        return terminal ? (await fixture.api<{ text: string }>("GET", `${threadBase}/terminals/${terminal.id}/scrollback`)).text : "";
       }).toContain("preview-action-ran");
+    } catch (error) {
+      failed = true;
+      failure = error;
     } finally {
-      await stopService();
-      await new Promise<void>((resolve, reject) => site.close((error) => error ? reject(error) : resolve()));
+      if (service && base) {
+        try {
+          const tabs = await service.api<{ id: string }[]>("GET", `${base}/previews`);
+          for (const tab of tabs) {
+            try { await service.api("DELETE", `${base}/previews/${encodeURIComponent(tab.id)}`); }
+            catch (error) { cleanupErrors.push(error); }
+          }
+          const dataDir = service.dataDir;
+          const profiles = tabs.map((tab) => join(dataDir, "preview-profiles", tab.id));
+          await expect.poll(() => profiles.every((profile) => !existsSync(profile)), { timeout: 5_000 }).toBe(true);
+        } catch (error) { cleanupErrors.push(error); }
+      }
+      if (service) {
+        try { await service.stop(); } catch (error) { cleanupErrors.push(error); }
+      }
+      try { await new Promise<void>((resolve, reject) => site.close((error) => error ? reject(error) : resolve())); }
+      catch (error) { cleanupErrors.push(error); }
+    }
+    if (failed || cleanupErrors.length) {
+      throw new AggregateError([...(failed ? [failure] : []), ...cleanupErrors], "Action preview test or cleanup failed");
     }
   });
 }

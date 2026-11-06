@@ -131,6 +131,8 @@ export interface ServiceOptions {
   discoverKnownEngines?: boolean;
   starred?: boolean;
   fakeEngines?: boolean;
+  /** Enables desktop shell stdio semantics; closing stdin requests graceful shutdown. */
+  parentStdin?: boolean;
   /** Fake engines, with this usage report added to each Claude turn's result. */
   claudeUsage?: Record<string, unknown>;
   scenes?: boolean;
@@ -196,7 +198,7 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
   for (const path of Object.values(profile)) mkdirSync(path, { recursive: true, mode: 0o700 });
   const ui = options.builtUi ? resolve(WEB, "dist") : null;
   if (ui && !existsSync(join(ui, "index.html"))) throw new Error("Build this checkout's production UI first: npm run build");
-  const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir), ...(ui ? ["--ui-dir", ui] : [])], {
+  const service = spawn(BIN, ["serve", "--data-dir", join(dir, "data"), "--workspace-url", makeLibrary(dir), ...(options.parentStdin ? ["--parent-stdin"] : []), ...(ui ? ["--ui-dir", ui] : [])], {
     // A home of its own, so no real engine history or login is read.
     env: { ...inherited, ...profile, ...engines, ORBYN_KNOWN_ENGINE_IDS: options.discoverKnownEngines ? undefined : "[]", ...(options.registry ? { ORBYN_ACP_REGISTRY_URL: options.registry } : {}), PATH: `${(options.path ?? []).map((dir) => `${dir}${delimiter}`).join("")}${forge ? `${forge.bin}${delimiter}` : ""}${process.env.PATH}`, ORBYN_GH_STATE: forge?.state ?? "", ORBYN_GH_LOG: forge?.log ?? "", ORBYN_BROWSER: previewBrowser(dir), ORBYN_BROWSER_HEADLESS: "1", ORBYN_OFFLINE: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com", CLAUDE_CONFIG_DIR: join(dir, "claude"), CODEX_HOME: join(dir, "codex") },
     stdio: ["pipe", "pipe", "inherit"],
@@ -261,7 +263,8 @@ export async function startService(options: ServiceOptions = {}): Promise<Servic
     async stop() {
       const children = [service, ...(vite ? [vite] : [])];
       const gone = children.filter((child) => child.exitCode === null).map((child) => once(child, "exit"));
-      service.kill();
+      if (options.parentStdin) service.stdin?.end();
+      else service.kill();
       vite?.kill();
       await Promise.all(gone);
       // An engine or preview the service just stopped can still be closing its files.

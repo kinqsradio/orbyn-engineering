@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { projectSettingsUrl, startProject } from "./service";
+import { projectSettingsUrl, send, settled, startProject } from "./service";
 import { writeFileSync } from "node:fs";
 
 test("an action shortcut survives rename and can be cleared", async ({ page }) => {
@@ -47,6 +47,7 @@ test("an action shortcut survives rename and can be cleared", async ({ page }) =
     await expect.poll(() => pendingReads).toBe(0);
     await page.unroute(catalogRoute);
     await expect(page.getByRole("tab", { name: "Shortcut action", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".terminal-drawer-body .xterm-rows")).toContainText("shortcut-action-output");
     const createdAt = async () => (await service.api<{ script: string | null; created_at: string }[]>("GET", `${base}/terminals`))
       .find((terminal) => terminal.script === "Shortcut action")?.created_at;
     const firstStart = await createdAt();
@@ -66,6 +67,13 @@ test("an action shortcut survives rename and can be cleared", async ({ page }) =
     await page.keyboard.press("Control+Alt+k");
     await expect.poll(() => output("Renamed shortcut")).toContain("shortcut-action-output");
     await expect(page.getByRole("tab", { name: "Renamed shortcut", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".terminal-drawer-body .xterm-rows")).toContainText("shortcut-action-output");
+    await send(page, "Continue after the project action");
+    await settled(service, thread.id);
+    await expect(page.locator(".msg-user").last()).toContainText("Continue after the project action");
+    await expect(page.locator(".msg-assistant").last()).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Renamed shortcut", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".terminal-drawer-body .xterm-rows")).toContainText("shortcut-action-output");
     await page.goto(await projectSettingsUrl(service, projectId));
     await settings.getByRole("button", { name: "Edit Renamed shortcut", exact: true }).click();
     await expect(edit.getByLabel("Keybinding", { exact: true })).toBeEnabled();
