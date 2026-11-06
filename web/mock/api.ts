@@ -616,6 +616,28 @@ export function createMockApi(options: MockOptions = {}) {
           }
           if (seg[3] === "queue") return { status: 200, body: queued.filter((q) => q.thread_id === seg[2]) };
           if (seg[3] === "commands") return { status: 200, body: fixtures.slashCommands };
+          // The Files surface: a small checkout tree, and text for any file in it.
+          if (seg[3] === "files" && seg[4] === "content") {
+            const file = query.get("path") ?? "";
+            const content = `// ${file}\n// Mock file contents.\n`;
+            return { status: 200, body: { path: file, content, revision: "mock", size: content.length, binary: false, truncated: false } };
+          }
+          if (seg[3] === "files" && !seg[4]) {
+            const dir = query.get("path") ?? "";
+            const tree: Record<string, [string, boolean][]> = {
+              "": [["src", true], ["README.md", false], ["Cargo.toml", false]],
+              src: [["main.rs", false], ["lib.rs", false]],
+            };
+            const entries = (tree[dir] ?? []).map(([name, isDir]) => ({
+              name,
+              path: dir ? `${dir}/${name}` : name,
+              is_dir: isDir,
+              size: isDir ? 0 : 120,
+              ignored: false,
+            }));
+            return { status: 200, body: entries };
+          }
+          if (seg[3] === "previews") return { status: 200, body: [] };
           const thread = threads.find((t) => t.id === seg[2]);
           if (!thread) return err(404, "not_found", "Thread not found.");
           if (seg[3] === "diff") return { status: 200, body: fixtures.diffs[thread.id] ?? [] };
@@ -688,6 +710,25 @@ export function createMockApi(options: MockOptions = {}) {
         return { status: 201, body: item };
       }
       if (seg[1] === "threads" && seg[3] === "steer") return { status: 202 };
+      if (seg[1] === "threads" && seg[3] === "fork") {
+        const source = threads.find((t) => t.id === seg[2]);
+        if (!source) return err(404, "not_found", "Thread not found.");
+        const side = data.side === true;
+        const fork: Thread = {
+          ...source,
+          id: nextId("t"),
+          title: side ? `Side chat: ${source.title}` : `${source.title} (fork)`,
+          active_run: null,
+          last_run_state: null,
+          created_at: now(),
+          updated_at: now(),
+          lifecycle: source.lifecycle
+            ? { ...source.lifecycle, parent_thread_id: source.id, relation: side ? "side" : null, pinned_at: null, settled_at: null }
+            : source.lifecycle,
+        };
+        threads = [...threads, fork];
+        return { status: 201, body: fork };
+      }
       if (seg[1] === "queue" && seg[3] === "send-now") {
         queued = queued.filter((item) => item.id !== seg[2]);
         return { status: 202 };
