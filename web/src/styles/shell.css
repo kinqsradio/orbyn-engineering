@@ -1,12 +1,65 @@
+/* The window: a title bar over the sidebar and the main sheet. */
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
   height: 100dvh;
   background: var(--color-sidebar);
 }
 .shell[data-nav="hidden"],
 .shell[data-layout="narrow"] {
   grid-template-columns: minmax(0, 1fr);
+}
+.titlebar {
+  grid-area: 1 / 1 / 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 14px;
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+  user-select: none;
+}
+.titlebar .icon-btn {
+  margin-left: -6px;
+  color: var(--color-muted);
+}
+/* Room for the macOS traffic lights, in the desktop app only. */
+.titlebar-lights {
+  flex: none;
+  width: var(--lights-w);
+}
+.titlebar-brand {
+  flex: none;
+  color: var(--color-text);
+  font-weight: 500;
+  text-decoration: none;
+}
+.titlebar-page {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+}
+.titlebar-page-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.titlebar-end {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+}
+.titlebar-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-warn);
 }
 .skip-link {
   position: fixed;
@@ -22,6 +75,7 @@
   transform: none;
 }
 .main {
+  grid-area: 2 / 2;
   min-width: 0;
   min-height: 0;
   background: var(--color-background);
@@ -29,6 +83,10 @@
   border-left: 1px solid var(--color-border);
   border-top-left-radius: var(--radius-lg);
   overflow: auto;
+}
+.shell[data-nav="hidden"] > .main,
+.shell[data-layout="narrow"] > .main {
+  grid-area: 2 / 1;
 }
 .shell[data-nav="hidden"] > .main {
   border-top: 0;
@@ -41,23 +99,94 @@
 
 /* Sidebar */
 .sidebar {
+  grid-area: 2 / 1;
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  padding: 6px 10px 10px;
   background: var(--color-sidebar);
 }
-.sidebar-top {
+.sidebar-search {
+  flex: none;
+  margin: 0 0 4px;
+}
+.search-trigger,
+.search-field {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: var(--topbar-h);
-  padding: 0 12px;
-  flex: none;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-chip);
+  color: var(--color-faint);
+  font-size: var(--text-nav);
 }
-.sidebar-top .icon-btn {
+.search-trigger {
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.search-trigger:hover {
   color: var(--color-muted);
+}
+.search-trigger kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+.search-field {
+  flex: none;
+  width: auto;
+  margin-bottom: 4px;
+}
+.search-field input {
+  min-height: 0;
+  height: var(--hit);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-nav);
+}
+.search-field input:focus-visible {
+  outline: none;
+}
+.search-field:focus-within {
+  color: var(--color-text);
+}
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 1px;
+}
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  color: var(--color-textSoft);
+  font-size: var(--text-small);
+  text-decoration: none;
+}
+.nav-row:hover {
+  background: var(--color-rowHover);
+}
+.nav-row[aria-current="page"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.nav-row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .brand {
   display: inline-flex;
@@ -71,11 +200,6 @@
   text-decoration: none;
   white-space: nowrap;
 }
-.brand-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .brand-mark {
   width: 12px;
   height: 12px;
@@ -83,57 +207,29 @@
   border: 2.5px solid var(--color-primary);
   border-radius: 50%;
 }
-.sidebar-search {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  height: 32px;
-  margin: 6px 0 8px;
-  padding: 0 8px;
+.nav-row svg {
   flex: none;
 }
-.sidebar-search .icon-btn {
-  color: var(--color-muted);
-}
-.search-trigger,
-.search-field {
+.side-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  height: var(--hit);
-  color: var(--color-muted);
-  font-size: var(--text-body);
+  flex: none;
+  gap: 4px;
+  min-height: 28px;
+  margin-top: 8px;
+  padding: 0 0 0 8px;
+  color: var(--color-faint);
+  font-size: var(--text-label);
 }
-.search-trigger,
-.search-field {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: var(--radius-md);
-  background: var(--color-chip);
+.side-label-tools {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
 }
-.search-trigger {
-  border: 0;
-  text-align: left;
-  cursor: pointer;
-}
-.search-trigger:hover {
-  color: var(--color-text);
-}
-.search-field input {
-  min-height: 0;
-  height: var(--hit);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: var(--control-fs);
-}
-.search-field input:focus-visible {
-  outline: none;
-}
-.search-field:focus-within {
-  color: var(--color-text);
+.side-label .icon-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-faint);
 }
 .sidebar-scroll {
   position: relative;
@@ -143,7 +239,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 8px 4px;
+  padding: 0 0 4px;
 }
 .sidebar-scroll[data-dragging] {
   user-select: none;
@@ -183,7 +279,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
+  min-height: 30px;
   padding: 0 8px;
   border-radius: var(--radius-md);
   color: var(--color-textSoft);
@@ -194,7 +290,7 @@
   background: var(--color-rowHover);
 }
 .thread-row[aria-current="page"] {
-  background: var(--color-rowActive);
+  background: var(--color-selected);
   color: var(--color-text);
 }
 .row-glyph {
@@ -394,7 +490,7 @@ li[data-highlight] .thread-row {
 .folder-head {
   display: flex;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 2px;
 }
 .folder-head:first-child {
   margin-top: 0;
@@ -405,14 +501,13 @@ li[data-highlight] .thread-row {
   flex: 1;
   gap: 10px;
   min-width: 0;
-  height: 32px;
-  padding: 0 10px;
+  height: 30px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-textSoft);
   font-size: var(--text-small);
-  font-weight: 500;
   cursor: pointer;
 }
 .folder-toggle:hover {
@@ -546,12 +641,12 @@ li[data-highlight] .thread-row {
   align-items: center;
   width: 100%;
   height: 28px;
-  padding: 0 8px 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-muted);
-  font-size: var(--text-meta);
+  color: var(--color-faint);
+  font-size: var(--text-label);
   cursor: pointer;
 }
 .group-head:hover {
@@ -581,21 +676,18 @@ details[open] > summary > .chev {
 }
 .sidebar-foot {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   flex: none;
-  gap: 4px;
-  height: 40px;
-  padding: 0 9px 4px 8px;
-  padding-bottom: max(4px, env(safe-area-inset-bottom));
+  gap: 1px;
+  padding-top: 4px;
 }
-.sidebar-foot > .icon-btn {
-  width: 32px;
-  height: 32px;
-  color: var(--color-muted);
+.sidebar-foot > .undo-notice {
+  flex: none;
+  padding: 0 8px;
+  height: 28px;
 }
-.sidebar-foot > .icon-btn[aria-current="page"] {
-  background: var(--color-selected);
-  color: var(--color-text);
+.sidebar-nav[data-ledger] {
+  margin-bottom: 4px;
 }
 .update-btn {
   display: inline-grid;
@@ -639,11 +731,58 @@ details[open] > summary > .chev {
 .shell[data-layout="narrow"] .sidebar-rail {
   display: none;
 }
-.expand-nav {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 5;
+/* Rows under a project, and Ledger's sections. */
+.folder-needs {
+  flex: none;
+  color: var(--color-warn);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+.thread-row[data-nested] {
+  min-height: 25px;
+  padding-left: 32px;
+  font-size: var(--text-nav);
+}
+/* Under a project the status sits at the right: the glyph moves in front of the status text. */
+.thread-row[data-nested] .row-glyph {
+  order: 1;
+}
+.thread-row[data-nested] .row-glyph:empty {
+  display: none;
+}
+.thread-row[data-nested] .row-trailing {
+  order: 2;
+}
+.thread-row[data-nested] .thread-row-title {
+  font-size: var(--text-nav);
+}
+.thread-row[data-nested] .row-status,
+.thread-row[data-nested] .row-age {
+  font-size: var(--text-label);
+}
+.ledger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 8px 4px;
+  color: var(--color-faint);
+  font-size: var(--text-label);
+}
+.ledger-head:first-child {
+  padding-top: 4px;
+}
+.ledger-head[data-tone="warn"] > span:first-child {
+  color: var(--color-warn);
+}
+.ledger-head[data-tone="danger"] > span:first-child {
+  color: var(--color-danger);
+}
+.ledger-head .group-count {
+  margin-right: 0;
+}
+.sidebar .thread-row-project {
+  max-width: 40%;
 }
 
 /* Pages */
@@ -657,6 +796,12 @@ details[open] > summary > .chev {
 }
 .page-narrow {
   max-width: 640px;
+}
+.page-head h1 {
+  font-size: var(--text-page);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
 }
 .page-head {
   display: flex;

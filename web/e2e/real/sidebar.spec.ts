@@ -45,6 +45,10 @@ test.beforeAll(async () => {
 test.afterAll(() => service.stop());
 
 test.beforeEach(async ({ page }) => {
+  // These cases cover the flat arrangement (drag and drop, the shelves); sidebar-grouping covers folders.
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("orbyn.prefs.v1")) localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ projectFolders: false }));
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(service.page);
   await expect(row(page, "Alpha")).toBeVisible();

@@ -1,7 +1,7 @@
 import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
 import { useDraftModelDefaults } from "./useDraftModelDefaults";
 import { useDraftCheckout } from "./useDraftCheckout";
-import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, SquareDashed, X } from "lucide-react";
+import { ArrowUp, Bot, Folder, GitBranch, PanelRight, Paperclip, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
@@ -16,7 +16,6 @@ import { SkillsNotice } from "./SkillsNotice";
 import { NoProjects } from "./NoProjects";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { IconButton } from "../../ui/controls";
-import { ProjectBadge } from "../../ui/badges";
 import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
 import { Loading, NarrowBack } from "../../ui/states";
@@ -321,12 +320,12 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         <header className="topbar">
           <NarrowBack />
           <div className="crumbs">
-            {project ? <ProjectBadge name={project.name} project={project} /> : <SquareDashed size={14} aria-hidden />}
-            <span className="crumb-project">{project?.name ?? "No project"}</span>
-            <span className="crumb-slash" aria-hidden>
-              /
+            <span className="crumb-title">
+              New thread
             </span>
-            <span className="crumb-title">New thread</span>
+            <span className="page-sub">
+              <span className="page-sub-item">{project?.name ?? "No project"}</span>
+            </span>
           </div>
           <div className="layout-toggles" role="group" aria-label="Layout">
             {paneShown ? null : (

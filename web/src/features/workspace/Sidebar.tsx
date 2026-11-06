@@ -1,13 +1,12 @@
-import { EnvironmentIdentity } from "./EnvironmentIdentity";
 import {
   ChartColumn,
   ChevronRight,
+  Clock,
   Copy,
   FilePen,
   FolderPlus,
   GitPullRequest,
   Layers,
-  PanelLeft,
   Search,
   Settings,
   ShieldAlert,
@@ -29,14 +28,13 @@ import type { Project, ServerSettings, Thread } from "../../api/types";
 import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import { toFailure } from "../../lib/useAsync";
-import { useLayoutWidth } from "../../lib/useLayout";
 import { DRAFT_KEY, useDraftStore } from "../../state/draftStore";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { threadToken } from "../../lib/skillMention";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
-import { OrbynMark, ProjectBadge } from "../../ui/badges";
+import { ProjectBadge } from "../../ui/badges";
 import { Collapsible } from "../../ui/Collapsible";
 import { IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
@@ -44,6 +42,7 @@ import { Menu, type MenuItem } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
 import {
   arrangeThreads,
+  attentionRank,
   dropPatch,
   dropVerb,
   foldersOf,
@@ -274,43 +273,78 @@ function UndoNotice() {
   );
 }
 
-function SidebarFoot({ route }: { route: Route }) {
+const navRows: { label: string; icon: ReactNode; route: Route; current(route: Route): boolean }[] = [
+  {
+    label: "New thread",
+    icon: <SquarePen size={15} aria-hidden />,
+    route: { name: "new", projectId: null },
+    current: (route) => route.name === "new" || route.name === "home",
+  },
+  {
+    label: "Pull requests",
+    icon: <GitPullRequest size={15} aria-hidden />,
+    route: { name: "pulls" },
+    current: (route) => route.name === "pulls",
+  },
+  {
+    label: "Usage",
+    icon: <ChartColumn size={15} aria-hidden />,
+    route: { name: "usage" },
+    current: (route) => route.name === "usage",
+  },
+  {
+    label: "Scheduled tasks",
+    icon: <Clock size={15} aria-hidden />,
+    route: { name: "settings", section: "tasks" },
+    current: (route) => route.name === "settings" && route.section === "tasks",
+  },
+];
+
+function NavRow({
+  label,
+  icon,
+  route,
+  current,
+}: {
+  label: string;
+  icon: ReactNode;
+  route: Route;
+  current: boolean;
+}) {
   return (
-    <>
-      {/* Its own row: the footer has no room left for a readable label. */}
+    <a className="nav-row" href={routeHref(route)} aria-current={current ? "page" : undefined}>
+      {icon}
+      <span className="nav-row-label">{label}</span>
+    </a>
+  );
+}
+
+/** The labelled places to go. Console and Reading list them under the search row; Ledger at the bottom. */
+function SidebarNav({ route, ledger }: { route: Route; ledger: boolean }) {
+  return (
+    <div className="sidebar-nav" data-ledger={ledger || undefined}>
+      {navRows.map((row) => (
+        <NavRow key={row.label} label={row.label} icon={row.icon} route={row.route} current={row.current(route)} />
+      ))}
+    </div>
+  );
+}
+
+function SidebarFoot({ route, ledger }: { route: Route; ledger: boolean }) {
+  return (
+    <div className="sidebar-foot">
+      {/* Their own rows: the footer has no room left for a readable label. */}
       <ProviderUpdatePill />
-      <div className="sidebar-foot">
-        <a
-          className="icon-btn"
-          href={routeHref({ name: "settings", section: null })}
-          aria-label="Settings"
-          title="Settings"
-          aria-current={route.name === "settings" ? "page" : undefined}
-        >
-          <Settings size={16} aria-hidden />
-        </a>
-        <a
-          className="icon-btn"
-          href={routeHref({ name: "pulls" })}
-          aria-label="Pull requests"
-          title="Pull requests"
-          aria-current={route.name === "pulls" ? "page" : undefined}
-        >
-          <GitPullRequest size={16} aria-hidden />
-        </a>
-        <a
-          className="icon-btn"
-          href={routeHref({ name: "usage" })}
-          aria-label="Usage"
-          title="Usage"
-          aria-current={route.name === "usage" ? "page" : undefined}
-        >
-          <ChartColumn size={16} aria-hidden />
-        </a>
-        <UndoNotice />
-        <UpdatePill />
-      </div>
-    </>
+      <UndoNotice />
+      <UpdatePill />
+      {ledger ? <SidebarNav route={route} ledger /> : null}
+      <NavRow
+        label="Settings"
+        icon={<Settings size={15} aria-hidden />}
+        route={{ name: "settings", section: null }}
+        current={route.name === "settings" && route.section !== "tasks"}
+      />
+    </div>
   );
 }
 
@@ -319,6 +353,7 @@ function FolderHeader({
   label,
   collapsed,
   count,
+  needs,
   onToggle,
   onMenu,
 }: {
@@ -326,6 +361,8 @@ function FolderHeader({
   label: string;
   collapsed: boolean;
   count: number;
+  /** Threads in the folder that wait on the person. */
+  needs: number;
   onToggle(): void;
   onMenu(event: React.MouseEvent): void;
 }) {
@@ -343,6 +380,11 @@ function FolderHeader({
       >
         <ProjectBadge name={project.name} project={project} />
         <span className="folder-name">{label}</span>
+        {needs > 0 ? (
+          <span className="folder-needs" aria-label={`${needs} waiting on you`} title={`${needs} waiting on you`}>
+            {needs}
+          </span>
+        ) : null}
         {collapsed && count > 0 ? <span className="group-count">{count}</span> : null}
         <ChevronRight size={12} className="chev" aria-hidden />
       </button>
@@ -445,8 +487,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const threadError = useWorkspace(
     (state) => Object.values(state.threadIds).find((ids) => ids.error && !ids.data)?.error,
   );
-  const toggleSidebar = useUi((state) => state.toggleSidebar);
-  const narrow = useLayoutWidth() === "narrow";
   const toggleGroup = useUi((state) => state.toggleGroup);
   const closedGroups = useUi((state) => state.groups);
   const projectFilter = useUi((state) => state.projectFilter);
@@ -454,6 +494,8 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const multilineRows = useUi((state) => state.multilineRows);
   const workingSection = useUi((state) => state.workingSection);
   const workspaceLayout = useUi((state) => state.workspaceLayout);
+  const ledger = workspaceLayout === "ledger";
+  // Ledger sorts by what needs the person, so it replaces the project folders.
   const threadSort = useUi((state) => state.threadSort);
   const projectSort = useUi((state) => state.projectSort);
   const projectGrouping = useUi((state) => state.projectGrouping);
@@ -526,7 +568,8 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     return projectFilter.length === 0 ? all : all.filter((thread) => projectFilter.includes(thread.project_id));
   }, [threads, projectFilter]);
 
-  const sections = arrangeThreads(scoped, Date.now(), workingSection, workspaceLayout === "ledger");
+  // Ledger lists running threads in its own Running section, not on the Working shelf.
+  const sections = arrangeThreads(scoped, Date.now(), workingSection && !ledger, ledger);
   const shown = drag?.target ? projectDrop(sections, drag.id, drag.target) : sections;
   const orderedRef = useRef<Thread[]>([]);
   orderedRef.current = threadsFlat(sections);
@@ -792,7 +835,14 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const rovingId =
     focusId && threads[focusId] ? focusId : selectedThread && threads[selectedThread] ? selectedThread : firstRow;
 
-  const row = (thread: Thread, section: SidebarSection, compact: boolean, highlighted = false) => {
+  const row = (
+    thread: Thread,
+    section: SidebarSection,
+    compact: boolean,
+    highlighted = false,
+    nested = false,
+    showProject = false,
+  ) => {
     const dragged = drag?.id === thread.id;
     const verb = dragged
       ? dropVerb(drag.from, drag.target?.section ?? null)
@@ -813,17 +863,38 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         focusable={thread.id === rovingId}
         dragging={dragged}
         highlighted={highlighted}
+        nested={nested}
+        showProject={showProject}
         verb={verb}
         actions={actions}
       />
     );
   };
 
+  const ledgerGroups = ledger
+    ? [
+        { key: "needs", label: "Needs you", tone: "warn", rows: shown.active.filter((thread) => attentionRank(thread) === 0) },
+        { key: "failed", label: "Failed", tone: "danger", rows: shown.active.filter((thread) => attentionRank(thread) === 1) },
+        {
+          key: "running",
+          label: "Running",
+          tone: "ink",
+          rows: shown.active.filter((thread) => attentionRank(thread) === 2 && thread.active_run),
+        },
+        {
+          key: "done",
+          label: "Done today",
+          tone: "ink",
+          rows: shown.active.filter((thread) => attentionRank(thread) === 2 && !thread.active_run),
+        },
+      ]
+    : [];
   const dragTarget = drag?.target?.section ?? null;
   const dragging = drag !== null;
   const noActiveRows = shown.active.length === 0 && emptyProjects.length === 0;
   const settledRows = shown.settled.slice(0, Math.max(settledVisible, 1));
-  const folders = projectFolders
+  const foldersView = projectFolders && !ledger;
+  const folders = foldersView
     ? foldersOf(
         projectFilter.length > 0 ? list.filter((p) => projectFilter.includes(p.id)) : list,
         [...shown.active, ...shown.working],
@@ -836,7 +907,12 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         threadSort,
       )
     : [];
-  const shelves = projectFolders ? [] : shown.working;
+  // Threads outside every folder (no project, or a project the list hides) still need a row.
+  const inFolders = new Set(folders.flatMap((folder) => folder.threads.map((thread) => thread.id)));
+  const strays = foldersView
+    ? [...shown.active, ...shown.working].filter((thread) => !inFolders.has(thread.id))
+    : [];
+  const shelves = foldersView ? [] : shown.working;
   const hasShelf =
     shelves.length > 0 || shown.snoozed.length > 0 || shown.settled.length > 0 || dragging;
 
@@ -901,76 +977,62 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
 
   return (
     <nav ref={nav} className="sidebar" aria-label="Workspace">
-      <div className="sidebar-top">
-        {/* A narrow window shows the list on its own page, so there is nothing to collapse. */}
-        {narrow ? null : (
-          <IconButton label="Collapse sidebar" onClick={toggleSidebar}>
-            <PanelLeft size={16} aria-hidden />
-          </IconButton>
-        )}
-        <a className="brand" href={routeHref({ name: "home" })} title="Orbyn Engineering">
-          <OrbynMark />
-          <span className="brand-name">Orbyn Engineering</span>
-        </a>
-        <EnvironmentIdentity />
-      </div>
       <div className="sidebar-search">
-        {searching ? (
-          <div className="search-field">
-            <Search size={16} aria-hidden />
-            <input
-              type="search"
-              aria-label="Search threads"
-              placeholder="Search"
-              value={query}
-              autoFocus
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setHighlight(0);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setQuery("");
-                  setSearching(false);
-                } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                  event.preventDefault();
-                  const step = event.key === "ArrowDown" ? 1 : -1;
-                  setHighlight((at) => Math.min(results.length - 1, Math.max(0, at + step)));
-                } else if (event.key === "Enter") {
-                  const hit = results[highlight];
-                  if (hit) navigate({ name: "thread", id: hit.id });
-                }
-              }}
-            />
-            <IconButton
-              label="Close search"
-              onClick={() => {
+        <button type="button" className="search-trigger" onClick={() => setPalette("root")}>
+          <Search size={14} aria-hidden />
+          <span>Search or ask</span>
+          <kbd>{/mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K"}</kbd>
+        </button>
+      </div>
+      {ledger ? null : <SidebarNav route={route} ledger={false} />}
+      <div className="side-label">
+        <span>{ledger ? "Threads" : "Projects"}</span>
+        <span className="side-label-tools">
+          <IconButton
+            label={searching ? "Close thread search" : "Search threads"}
+            pressed={searching}
+            onClick={() => {
+              if (searching) setQuery("");
+              setSearching(!searching);
+            }}
+          >
+            <Search size={14} aria-hidden />
+          </IconButton>
+          <ProjectFilter projects={list} />
+          <IconButton label="Add project" onClick={() => setPalette("add-project")}>
+            <FolderPlus size={14} aria-hidden />
+          </IconButton>
+        </span>
+      </div>
+      {searching ? (
+        <div className="search-field">
+          <Search size={14} aria-hidden />
+          <input
+            type="search"
+            aria-label="Search threads"
+            placeholder="Filter threads"
+            value={query}
+            autoFocus
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setHighlight(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
                 setQuery("");
                 setSearching(false);
-              }}
-            >
-              <X size={14} aria-hidden />
-            </IconButton>
-          </div>
-        ) : (
-          <button type="button" className="search-trigger" onClick={() => setSearching(true)}>
-            <Search size={16} aria-hidden />
-            <span>Search</span>
-          </button>
-        )}
-        <ProjectFilter projects={list} />
-        <IconButton label="Add project" onClick={() => setPalette("add-project")}>
-          <FolderPlus size={16} aria-hidden />
-        </IconButton>
-        <a
-          className="icon-btn"
-          href={routeHref({ name: "new", projectId: null })}
-          aria-label="New thread"
-          title="New thread"
-        >
-          <SquarePen size={16} aria-hidden />
-        </a>
-      </div>
+              } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setHighlight((at) => Math.min(results.length - 1, Math.max(0, at + step)));
+              } else if (event.key === "Enter") {
+                const hit = results[highlight];
+                if (hit) navigate({ name: "thread", id: hit.id });
+              }
+            }}
+          />
+        </div>
+      ) : null}
       <div className="sidebar-scroll" ref={tree} onKeyDown={onTreeKey} data-dragging={dragging || undefined}>
         {projects.error && !projects.data ? (
           <ErrorState compact title="Couldn't load projects" failure={projects.error} onRetry={() => void refreshAll()} />
@@ -995,7 +1057,19 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
               {dragging ? <DragBoundary label="Pinned" section="pinned" active={dragTarget === "pinned"} /> : null}
               {shown.pinned.map((thread) => row(thread, "pinned", false))}
               {dragging ? <DragBoundary label="Active" section="active" active={dragTarget === "active"} /> : null}
-              {projectFolders
+              {ledger
+                ? ledgerGroups.map((group) =>
+                    group.rows.length === 0
+                      ? null
+                      : [
+                          <li key={`ledger:${group.key}`} className="ledger-head" data-tone={group.tone}>
+                            <span>{group.label}</span>
+                            <span className="group-count">{group.rows.length}</span>
+                          </li>,
+                          ...group.rows.map((thread) => row(thread, "active", false, false, false, true)),
+                        ],
+                  )
+                : foldersView
                 ? folders.map((folder) => {
                     const key = `folder:${folder.key}`;
                     const collapsed = closedGroups[key] === false;
@@ -1006,14 +1080,16 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
                         label={folder.label}
                         collapsed={collapsed}
                         count={folder.threads.length}
+                        needs={folder.threads.filter((thread) => attentionRank(thread) === 0).length}
                         onToggle={() => toggleGroup(key, true)}
                         onMenu={(event) => folderMenu(event, folder)}
                       />,
-                      ...(collapsed ? [] : folder.threads.map((thread) => row(thread, "active", true))),
+                      ...(collapsed ? [] : folder.threads.map((thread) => row(thread, "active", true, false, true))),
                     ];
                   })
                 : shown.active.map((thread) => row(thread, "active", false))}
-              {projectFolders ? null : emptyProjects.map((project) => <EmptyProjectRow key={project.id} project={project} />)}
+              {strays.map((thread) => row(thread, "active", false, false, false, true))}
+              {foldersView ? null : emptyProjects.map((project) => <EmptyProjectRow key={project.id} project={project} />)}
               {dragging && noActiveRows ? (
                 <DropPlaceholder label="Active" section="active" active={dragTarget === "active"} />
               ) : null}
@@ -1061,7 +1137,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           </>
         )}
       </div>
-      <SidebarFoot route={route} />
+      <SidebarFoot route={route} ledger={ledger} />
       <SidebarRail />
       {menu ? <Menu {...menu} onClose={() => setMenu(null)} /> : null}
       {snoozing ? <CustomSnoozeDialog threads={snoozing} onClose={() => setSnoozing(null)} /> : null}

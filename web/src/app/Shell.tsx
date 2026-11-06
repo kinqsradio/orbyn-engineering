@@ -1,6 +1,5 @@
 import { WelcomeHost } from "../features/onboarding/WelcomeWizard";
 import { QuitConfirmation } from "../features/workspace/QuitConfirmation";
-import { PanelLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { create } from "zustand";
 import { NoProjects } from "../features/onboarding/NoProjects";
@@ -36,7 +35,7 @@ import { useLayoutWidth } from "../lib/useLayout";
 import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
-import { IconButton } from "../ui/controls";
+import { TitleBar } from "./TitleBar";
 
 const HIDDEN_POLL_EVERY = 3;
 const POLL_MS = 4000;
@@ -491,7 +490,6 @@ export function Shell() {
   const layout = useLayoutWidth();
   const projects = useVisibleProjects();
   const collapsed = useUi((state) => state.sidebarCollapsed);
-  const toggleSidebar = useUi((state) => state.toggleSidebar);
   const sidebarWidth = useUi((state) => state.sidebarWidth);
   const behindSettings = useRef<PageRoute>({ name: "home" });
   const main = useRef<HTMLElement>(null);
@@ -544,6 +542,7 @@ export function Shell() {
       }}>
         Skip to content
       </a>
+      <TitleBar route={route} narrow={layout === "narrow"} />
       {showNav ? <Sidebar route={route} /> : null}
       <BackgroundAnnouncer />
       <QuitConfirmation />
@@ -551,11 +550,6 @@ export function Shell() {
       <Toasts lead={<GitHubStarPrompt />} />
       <CloneJobs />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
-      {collapsed && layout !== "narrow" && underneath.name !== "thread" ? (
-        <IconButton className="expand-nav" label="Expand sidebar" onClick={toggleSidebar}>
-          <PanelLeft size={16} aria-hidden />
-        </IconButton>
-      ) : null}
       {layout === "narrow" && onHome && !overlay ? (
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (

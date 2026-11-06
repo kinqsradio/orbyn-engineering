@@ -87,6 +87,10 @@ test("a thread you left shows where the new messages start", async ({ page }) =>
 });
 
 test("a watched thread goes to the Working shelf, unless that is off", async ({ page }) => {
+  // The shelf belongs to the flat arrangement; project folders list the thread under its project.
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("orbyn.prefs.v1")) localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ projectFolders: false }));
+  });
   const id = await fresh(page, "[scene:usage] watch");
   await settled(service, id);
   await service.api("POST", `/api/threads/${id}/pulls`, { number: 77 });

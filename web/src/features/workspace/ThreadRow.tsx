@@ -187,10 +187,16 @@ export function ThreadRow({
   focusable,
   dragging,
   highlighted,
+  nested = false,
+  showProject = false,
   verb,
   actions,
   jumpHint,
 }: {
+  /** A row under its project folder: indented, status at the right. */
+  nested?: boolean;
+  /** Names the project beside the title, for lists that are not grouped by project. */
+  showProject?: boolean;
   /** Shown while the jump modifier is held. */
   jumpHint?: number | null;
   thread: Thread;
@@ -389,6 +395,7 @@ export function ThreadRow({
         aria-describedby={detailsId}
         data-unread={unread || undefined}
         data-multiline={multiline || undefined}
+        data-nested={nested || undefined}
         href={routeHref({ name: "thread", id: thread.id })}
         aria-current={selected ? "page" : undefined}
         tabIndex={focusable ? 0 : -1}
@@ -423,7 +430,7 @@ export function ThreadRow({
         {pinMark}
         {unmanaged ? (
           <span className="thread-row-project">Unmanaged</span>
-        ) : thread.scratch ? (
+        ) : thread.scratch || showProject ? (
           <span className="thread-row-project">{projectName}</span>
         ) : null}
         {trailing}
