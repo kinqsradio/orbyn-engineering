@@ -944,8 +944,10 @@ async fn serve(args: ServeArgs) -> Result<(), String> {
         tokio::spawn(async move { core.run_lifecycle(stop).await })
     };
     if args.parent_stdin {
-        let (core, stop) = (core.clone(), stop.clone());
-        tokio::spawn(async move { core.run_shell_activity(stop).await });
+        let (activity, quit) = (core.clone(), stop.clone());
+        tokio::spawn(async move { activity.run_shell_activity(quit).await });
+        let (links, quit) = (core.clone(), stop.clone());
+        tokio::spawn(async move { links.run_web_links(quit).await });
     }
     let shutdown = stop.clone();
     let server = tokio::spawn(async move {

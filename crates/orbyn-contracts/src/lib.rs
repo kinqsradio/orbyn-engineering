@@ -2800,6 +2800,8 @@ pub enum ShellEvent {
     Changed,
     /// Something a window asked for could not be done.
     Failed { message: String },
+    /// Show this preview tab, which the service opened for a web link from another app.
+    ShowPreview { thread_id: String, tab_id: String },
 }
 }
 
