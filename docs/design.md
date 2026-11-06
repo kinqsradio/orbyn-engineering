@@ -54,8 +54,8 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
 (`--text-nav`), 11.5px (`--text-label`) and 22px (`--text-page`) joined the type scale.
 
 - Title bar (`app/TitleBar.tsx`): 12.5px muted text with the sidebar toggle, "Orbyn"
-  (medium weight, ink) and the page label (the project for a thread, otherwise the page
-  name). It carries the build identity at the right and, in Ledger, "N waiting on you" in
+  (medium weight, ink) and the page label (the thread title on a thread, otherwise the page
+  name or the settings section). It carries the build identity at the right and, in Ledger, "N waiting on you" in
   amber. In the desktop app on macOS it leaves `--lights-w` on the left for the traffic
   lights; the browser build shows no spacer.
 - Sidebar, 6px 10px 10px padding: a 32px "Search or ask ⌘K" row that opens the command
@@ -95,12 +95,18 @@ changes arrangement and density only, never colour or behaviour.
   middle, the side panel as a 380px column on the right.
 - Ledger: the sidebar lists Needs you (amber), Failed (red), Running and Done today, each
   with a count, instead of project folders; every row names its project. The nav moves to
-  the bottom, above Settings. Rows are denser and the 300px details rail opens at the
+  the bottom, above Settings. Rows give the title the room: no project column, and only a waiting or failed status word. Rows are denser and the 300px details rail opens at the
   right edge. Inside a thread, a "Needs you" strip stays pinned at the top of the
   transcript while a decision waits, with Show to jump to it; the decision itself stays on
   its card.
-- Reading: the sidebar column collapses (the title bar toggle brings it back), the thread
+- Reading: the sidebar column folds away (the title bar toggle brings it back) and the details card
+  stays closed unless asked for, the thread
   is one 680px column with roomier lines, and on a wide window the side panel floats over
   the thread as a 360px drawer with a shadow.
 
 Layout rules live in `web/src/styles/layouts.css`; ordering lives in `attentionRank`.
+
+Saved preferences carry a `prefsVersion`. Version 1 (the frame) moves a saved sidebar width
+of exactly 208px to 224px and turns project folders on, once; a custom width stays. Someone
+with saved preferences gets a one-time notice with Turn off; the option lives in Settings ›
+Labs.
