@@ -106,6 +106,7 @@ impl Store {
                 created_at: now(),
                 managed: false,
                 scratch: false,
+                library: false,
                 project_icon: None,
                 favicon_path: None,
                 metadata_revision: "0".into(),

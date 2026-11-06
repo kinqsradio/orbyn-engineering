@@ -21,4 +21,9 @@ managed: boolean,
 /**
  * A thread's dated folder under app data, hidden from project lists.
  */
-scratch: boolean, };
+scratch: boolean, 
+/**
+ * The bundled skills library, which the service registers by itself and
+ * project lists leave out, from the first list on.
+ */
+library?: boolean, };

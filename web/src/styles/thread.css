@@ -3962,3 +3962,7 @@ div.browser-bridge-row {
   justify-content: center;
   padding: 8px;
 }
+/* Holds the branch's place until the workspace status names it. */
+.composer-branch-pending {
+  visibility: hidden;
+}

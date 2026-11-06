@@ -29,7 +29,8 @@ export function ProjectBadge({ name, project }: { name: string; project?: Projec
   // library. Keep automatic identity until its canonical path is known.
   const libraryPath = useWorkspace((state) => state.managed.data?.library?.path);
   const icon = project?.project_icon;
-  const eligible = libraryPath && project && !icon && !project.scratch && project.path !== libraryPath ? project : undefined;
+  const eligible = libraryPath && project && !icon && !project.scratch && !project.library && project.path !== libraryPath
+    ? project : undefined;
   const id = eligible?.id;
   const path = eligible?.path;
   const faviconPath = eligible?.favicon_path ?? null;
