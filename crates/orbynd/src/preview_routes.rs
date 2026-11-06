@@ -4,12 +4,13 @@
 
 use axum::Json;
 use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{Path, State, WebSocketUpgrade};
+use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use orbyn_contracts::{
     ClearPreview, CreateBrowserProfile, NavigatePreview, OpenPreview, OpenPreviewFile, PickPreview,
-    PreviewControl, PreviewInput, PreviewView, ReloadPreview, ResizePreview, StepPreview,
+    PreviewControl, PreviewInput, PreviewRecordingOptions, PreviewView, ReloadPreview,
+    ResizePreview, StepPreview,
 };
 use orbyn_core::preview::OpenHow;
 use tokio::sync::broadcast::error::RecvError;
@@ -194,8 +195,9 @@ pub async fn input(
 pub async fn start_recording(
     State(state): State<AppState>,
     Path((id, tab)): Path<(String, String)>,
+    Query(options): Query<PreviewRecordingOptions>,
 ) -> ApiResult<StatusCode> {
-    state.core.start_preview_recording(&id, &tab)?;
+    state.core.start_preview_recording(&id, &tab, options)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -203,7 +205,7 @@ pub async fn stop_recording(
     State(state): State<AppState>,
     Path((id, tab)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    Ok(Json(state.core.previews.stop_recording(&id, &tab)?))
+    Ok(Json(state.core.previews.stop_recording(&id, &tab).await?))
 }
 
 pub async fn close(
@@ -261,4 +263,30 @@ pub async fn stop_server(
 ) -> ApiResult<StatusCode> {
     state.core.stop_server(&id, pid, LOCAL_USER).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Server-produced cues only; client messages never publish input events.
+pub async fn pointers(
+    State(state): State<AppState>,
+    Path((id, tab)): Path<(String, String)>,
+    upgrade: WebSocketUpgrade,
+) -> ApiResult<Response> {
+    let mut events = state.core.previews.subscribe_pointers(&id, &tab)?;
+    Ok(upgrade.on_upgrade(move |mut socket| async move {
+        loop {
+            tokio::select! {
+                event = events.recv() => match event {
+                    Ok(event) => {
+                        let Ok(text) = serde_json::to_string(&event) else { return };
+                        if socket.send(Message::Text(text.into())).await.is_err() { return; }
+                    },
+                    Err(RecvError::Lagged(_)) => {},
+                    Err(RecvError::Closed) => return,
+                },
+                message = socket.recv() => {
+                    if !matches!(message, Some(Ok(_))) { return; }
+                }
+            }
+        }
+    }))
 }

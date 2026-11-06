@@ -1365,12 +1365,12 @@ impl Core {
             }
             "orbyn_preview_recording_start" => {
                 let tab = self.own_preview(&own, args)?;
-                self.start_preview_recording(&own.id, &tab)?;
+                self.start_preview_recording(&own.id, &tab, Default::default())?;
                 json!({ "recording": true })
             }
             "orbyn_preview_recording_stop" => {
                 let tab = self.own_preview(&own, args)?;
-                json!(self.previews.stop_recording(&own.id, &tab)?)
+                json!(self.previews.stop_recording(&own.id, &tab).await?)
             }
             "orbyn_html_render" => {
                 // The caller's own thread, so a page lands in the timeline that asked

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { request } from "../../api/client";
-import { runHandlers } from "../../app/shortcuts";
+import { inDesktopApp } from "../../api/shell";
+import { formatShortcut, runHandlers } from "../../app/shortcuts";
 import type { KeybindingsView } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button } from "../../ui/controls";
@@ -50,6 +51,11 @@ export function KeybindingsSection() {
         value={filter}
         onChange={(event) => setFilter(event.target.value)}
       />
+      <p className="setting-line-desc">
+        {inDesktopApp()
+          ? `${formatShortcut("mod+w")} is reserved: it never closes the window.`
+          : `A browser closes the tab on ${formatShortcut("mod+w")}, so its bindings here also answer to ${formatShortcut("alt+w")}.`}
+      </p>
       {error ? (
         <p className="field-error" role="alert">
           {error}

@@ -109,7 +109,13 @@ interface Prefs {
   workingSection: boolean;
   /** Provider updates already dismissed, as `engine:version`. */
   dismissedProviderUpdates: string[];
+  /** The environment theme's `set_at` this viewer last applied; 0 is never. */
+  environmentThemeAppliedAt: number;
+  /** How the sidebar marks this environment's build: channel artwork, a version pill or nothing. */
+  environmentIdentification: EnvironmentIdentification;
 }
+
+export type EnvironmentIdentification = "artwork" | "pill" | "none";
 
 export interface Typography {
   uiFont: string;
@@ -217,6 +223,8 @@ const defaults: Prefs = {
   detailsHidden: ["usage"],
   workingSection: true,
   dismissedProviderUpdates: [],
+  environmentThemeAppliedAt: 0,
+  environmentIdentification: "artwork",
 };
 
 interface UiState extends Prefs {
@@ -374,6 +382,8 @@ const prefsOf = (state: Prefs): Prefs => ({
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
   dismissedProviderUpdates: state.dismissedProviderUpdates,
+  environmentThemeAppliedAt: state.environmentThemeAppliedAt,
+  environmentIdentification: state.environmentIdentification,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
