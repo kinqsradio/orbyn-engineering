@@ -1745,6 +1745,14 @@ button.detail-row:hover {
   font-size: var(--text-small);
   color: var(--color-textSoft);
 }
+/* A file's path takes the room, so its actions stay together at the end instead of spreading out. */
+.panel-bar > code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .diff-files {
   display: flex;
   flex-direction: column;
@@ -1930,6 +1938,24 @@ button.detail-row:hover {
   height: 100%;
   padding: 16px;
   text-align: center;
+}
+/* The welcome steps sit above home, which fills only the height left under them. */
+.home-stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.home-stack > * {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.home-stack > .welcome-wizard {
+  flex: none;
+}
+/* Centred content never shrinks, so none of it ends up above the scroll start. */
+.home-stack > .no-projects {
+  flex: 1 0 auto;
+  height: auto;
 }
 .no-projects h1 {
   font-size: var(--text-title);
@@ -2525,9 +2551,9 @@ button.detail-row:hover {
   min-height: 0;
   overflow: hidden;
 }
-.files-search {
+/* It borrows the pull request search, whose `flex: 1` loads later and would fill the column. */
+.files-panel > .files-search {
   flex: none;
-  flex-grow: 0;
   margin: 8px;
 }
 .file-tree {
@@ -3896,6 +3922,8 @@ button.context-meter:hover:not(:disabled) {
   gap: 6px;
 }
 .browser-recording-controls { gap: 8px; }
+/* Beside its label, not under it: controls are full width by default. */
+.browser-recording-controls select { width: auto; }
 .browser-recording-controls [role="status"] { color: var(--color-muted); }
 .browser-recording-result { margin-top: 6px; }
 .browser-recording-result label { flex: 1 1 180px; min-width: 0; }

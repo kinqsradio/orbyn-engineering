@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   Brain,
   CircleCheck,
   PanelBottom,
@@ -27,7 +26,7 @@ import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
 import { Button, IconButton, LinkButton } from "../../ui/controls";
-import { Empty, ErrorState, Loading } from "../../ui/states";
+import { Empty, ErrorState, Loading, NarrowBack } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
 import { TerminalDrawerBody } from "../panels/TerminalDrawerBody";
 import { threadRunState } from "../workspace/RunState";
@@ -69,9 +68,7 @@ function TopBar({
   return (
     <header className="topbar">
       {narrow ? (
-        <a className="icon-btn" href={routeHref({ name: "home" })} aria-label="Back to threads" title="Back to threads">
-          <ArrowLeft size={16} aria-hidden />
-        </a>
+        <NarrowBack />
       ) : collapsed ? (
         <IconButton label="Expand sidebar" onClick={toggleSidebar}>
           <PanelLeft size={16} aria-hidden />

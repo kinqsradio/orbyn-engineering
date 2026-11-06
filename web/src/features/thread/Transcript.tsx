@@ -99,7 +99,8 @@ export function Transcript({
     scrollMemory.delete(threadId);
   }, [threadId, items.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pinned means pinned: expanding content, late fonts and streaming all stay in view.
+  // Pinned means pinned: expanding content, late fonts and streaming all stay in view, and
+  // so does the end when the view itself shrinks, as when the composer grows or a question docks.
   useEffect(() => {
     const element = scroller.current;
     const content = inner.current;
@@ -108,6 +109,7 @@ export function Transcript({
       if (pinned.current) element.scrollTop = element.scrollHeight;
     });
     observer.observe(content);
+    observer.observe(element);
     return () => observer.disconnect();
   }, []);
 
@@ -138,12 +140,18 @@ export function Transcript({
     return () => clearTimeout(timer);
   }, [reveal, entries, clearReveal]);
 
+  // Only a move up lets go of the end. A scroll event can arrive after the view has shrunk,
+  // which leaves the end farther away without anyone having scrolled from it.
+  const lastTop = useRef(0);
   const onScroll = () => {
     const element = scroller.current;
     if (!element) return;
     const atEnd = element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM;
-    pinned.current = atEnd;
-    setShowJump(!atEnd);
+    const movedUp = element.scrollTop < lastTop.current - 1;
+    lastTop.current = element.scrollTop;
+    if (atEnd) pinned.current = true;
+    else if (movedUp) pinned.current = false;
+    setShowJump(!pinned.current);
   };
 
   const jump = () => {

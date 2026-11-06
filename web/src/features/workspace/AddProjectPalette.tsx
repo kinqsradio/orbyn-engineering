@@ -273,7 +273,8 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
       ) : null}
       <div className="palette-list">
         {listing.status === "error" ? <p className="sidebar-empty">{listing.error.message}</p> : null}
-        {listing.status === "ready" && rows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
+        {/* Until the home folder is known nothing was listed, so nothing is empty yet. */}
+        {listing.status === "ready" && listing.data !== null && rows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
         {rows > 0 ? <div className="palette-group">Directories</div> : null}
         {parent ? (
           <button

@@ -384,7 +384,7 @@ function EngineRow({ engine }: { engine: EngineStatus }) {
           <CopyCommand command={engine.sign_in_command} label="Copy sign-in command" />
         </div>
       ) : null}
-      {!engine.update_command && engine.manual_hint && !engine.compatibility ? <p className="muted">{engine.manual_hint}</p> : null}
+      {engine.installed && !engine.update_command && engine.manual_hint && !engine.compatibility ? <p className="muted">{engine.manual_hint}</p> : null}
       {removing ? (
         <ConfirmDialog
           title={`Remove ${engine.name}?`}

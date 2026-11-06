@@ -1,6 +1,7 @@
 import type { EngineStatus } from "../../api/types";
 import { PreferenceGroups } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
+import "./ProjectProviders.css";
 
 /**
  * Which providers new threads may use, per project. The list holds the ones turned

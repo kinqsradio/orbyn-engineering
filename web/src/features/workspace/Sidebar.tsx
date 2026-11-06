@@ -29,6 +29,7 @@ import type { Project, ServerSettings, Thread } from "../../api/types";
 import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import { toFailure } from "../../lib/useAsync";
+import { useLayoutWidth } from "../../lib/useLayout";
 import { DRAFT_KEY, useDraftStore } from "../../state/draftStore";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { threadToken } from "../../lib/skillMention";
@@ -96,13 +97,15 @@ function EmptyProjectRow({ project }: { project: Project }) {
       >
         <ProjectBadge name={project.name} project={project} />
         <span className="thread-row-title">{project.name}</span>
-        {project.trusted ? null : (
+        {/* One status at a time: trust comes first, and the row has room for one. */}
+        {project.trusted ? (
+          <span className="thread-row-empty">No threads yet</span>
+        ) : (
           <span className="row-status tone-warn" title="Folder not trusted">
             <ShieldAlert size={14} aria-hidden />
             Not trusted
           </span>
         )}
-        <span className="thread-row-empty">No threads yet</span>
       </a>
     </li>
   );
@@ -273,38 +276,41 @@ function UndoNotice() {
 
 function SidebarFoot({ route }: { route: Route }) {
   return (
-    <div className="sidebar-foot">
-      <a
-        className="icon-btn"
-        href={routeHref({ name: "settings", section: null })}
-        aria-label="Settings"
-        title="Settings"
-        aria-current={route.name === "settings" ? "page" : undefined}
-      >
-        <Settings size={16} aria-hidden />
-      </a>
-      <a
-        className="icon-btn"
-        href={routeHref({ name: "pulls" })}
-        aria-label="Pull requests"
-        title="Pull requests"
-        aria-current={route.name === "pulls" ? "page" : undefined}
-      >
-        <GitPullRequest size={16} aria-hidden />
-      </a>
-      <a
-        className="icon-btn"
-        href={routeHref({ name: "usage" })}
-        aria-label="Usage"
-        title="Usage"
-        aria-current={route.name === "usage" ? "page" : undefined}
-      >
-        <ChartColumn size={16} aria-hidden />
-      </a>
-      <UndoNotice />
+    <>
+      {/* Its own row: the footer has no room left for a readable label. */}
       <ProviderUpdatePill />
-      <UpdatePill />
-    </div>
+      <div className="sidebar-foot">
+        <a
+          className="icon-btn"
+          href={routeHref({ name: "settings", section: null })}
+          aria-label="Settings"
+          title="Settings"
+          aria-current={route.name === "settings" ? "page" : undefined}
+        >
+          <Settings size={16} aria-hidden />
+        </a>
+        <a
+          className="icon-btn"
+          href={routeHref({ name: "pulls" })}
+          aria-label="Pull requests"
+          title="Pull requests"
+          aria-current={route.name === "pulls" ? "page" : undefined}
+        >
+          <GitPullRequest size={16} aria-hidden />
+        </a>
+        <a
+          className="icon-btn"
+          href={routeHref({ name: "usage" })}
+          aria-label="Usage"
+          title="Usage"
+          aria-current={route.name === "usage" ? "page" : undefined}
+        >
+          <ChartColumn size={16} aria-hidden />
+        </a>
+        <UndoNotice />
+        <UpdatePill />
+      </div>
+    </>
   );
 }
 
@@ -440,6 +446,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     (state) => Object.values(state.threadIds).find((ids) => ids.error && !ids.data)?.error,
   );
   const toggleSidebar = useUi((state) => state.toggleSidebar);
+  const narrow = useLayoutWidth() === "narrow";
   const toggleGroup = useUi((state) => state.toggleGroup);
   const closedGroups = useUi((state) => state.groups);
   const projectFilter = useUi((state) => state.projectFilter);
@@ -895,12 +902,15 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   return (
     <nav ref={nav} className="sidebar" aria-label="Workspace">
       <div className="sidebar-top">
-        <IconButton label="Collapse sidebar" onClick={toggleSidebar}>
-          <PanelLeft size={16} aria-hidden />
-        </IconButton>
-        <a className="brand" href={routeHref({ name: "home" })}>
+        {/* A narrow window shows the list on its own page, so there is nothing to collapse. */}
+        {narrow ? null : (
+          <IconButton label="Collapse sidebar" onClick={toggleSidebar}>
+            <PanelLeft size={16} aria-hidden />
+          </IconButton>
+        )}
+        <a className="brand" href={routeHref({ name: "home" })} title="Orbyn Engineering">
           <OrbynMark />
-          Orbyn Engineering
+          <span className="brand-name">Orbyn Engineering</span>
         </a>
         <EnvironmentIdentity />
       </div>

@@ -59,7 +59,12 @@ type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
     case "home":
-      return <><WelcomeHost />{needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}</>;
+      return (
+        <div className="home-stack">
+          <WelcomeHost />
+          {needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}
+        </div>
+      );
     case "pulls":
       return <PullsPage />;
     case "thread":

@@ -31,10 +31,11 @@ export function SettingRow({
   );
 }
 
-export function SettingGroup({ title, children }: { title: string; children: ReactNode }) {
+export function SettingGroup({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
     <section className="setting-group">
       <h2>{title}</h2>
+      {description ? <div className="setting-group-desc">{description}</div> : null}
       <div className="setting-list">{children}</div>
     </section>
   );

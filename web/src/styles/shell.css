@@ -4,7 +4,8 @@
   height: 100dvh;
   background: var(--color-sidebar);
 }
-.shell[data-nav="hidden"] {
+.shell[data-nav="hidden"],
+.shell[data-layout="narrow"] {
   grid-template-columns: minmax(0, 1fr);
 }
 .skip-link {
@@ -69,6 +70,11 @@
   letter-spacing: -0.01em;
   text-decoration: none;
   white-space: nowrap;
+}
+.brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .brand-mark {
   width: 12px;
@@ -969,22 +975,38 @@ li[data-file-over] .thread-row {
   cursor: pointer;
 }
 .provider-update {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  flex: none;
   min-width: 0;
-  border-radius: 999px;
+  margin: 0 8px 4px;
+  border-radius: var(--radius-md);
   background: var(--color-rowHover);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 .provider-update button {
-  overflow: hidden;
-  padding: 2px 6px;
+  min-width: 0;
+  padding: 0;
   border: 0;
   background: none;
   color: inherit;
+  cursor: pointer;
+}
+.provider-update button:first-child {
+  flex: 1;
+  overflow: hidden;
+  padding: 4px 8px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
+}
+.provider-update button:last-child {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--color-muted);
 }
 .environment-identity {
   display: inline-flex;
@@ -1053,6 +1075,17 @@ li[data-file-over] .thread-row {
 .welcome-wizard h2 {
   margin: 0 0 4px;
   font-size: var(--text-title);
+}
+/* The card already insets its content, so its groups line up with its own title. */
+.welcome-wizard .setting-group {
+  margin-top: 12px;
+}
+.welcome-wizard .setting-group h2,
+.welcome-wizard .setting-group-desc {
+  padding: 0;
+}
+.welcome-wizard .setting-group h2 {
+  font-size: var(--text-body);
 }
 .welcome-wizard-actions {
   display: flex;

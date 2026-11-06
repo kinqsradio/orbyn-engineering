@@ -7,9 +7,13 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Pill } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
-/** What a person needs to do before an engine can run, in the order they'd do it. */
-export function engineReadiness(engine: EngineStatus): { label: string; tone: "accent" | "warn"; next: string | null } {
-  if (!engine.installed) return { label: "Not installed", tone: "warn", next: engine.manual_hint };
+/**
+ * What a person needs to do before an engine can run, in the order they'd do it. `next`
+ * is a command to copy. The service sends no install command, and its manual hint is
+ * about updating, so a missing engine gets a plain step instead.
+ */
+export function engineReadiness(engine: EngineStatus): { label: string; tone: "accent" | "warn"; next: string | null; step?: string } {
+  if (!engine.installed) return { label: "Not installed", tone: "warn", next: null, step: `Install ${engine.name}, then check again.` };
   if (engine.auth === "logged_out") return { label: "Sign in needed", tone: "warn", next: engine.sign_in_command };
   return { label: "Ready", tone: "accent", next: null };
 }
@@ -19,13 +23,19 @@ function AgentsStep() {
   const refresh = useWorkspace((state) => state.refreshEngines);
   const known = engines.filter((engine) => engine.tier !== "acp" || engine.installed);
   return (
-    <SettingGroup title="Agents on this computer">
-      <p className="setting-line-desc">Orbyn runs the agents you already have, with their own sign-in.</p>
-      {known.length === 0 ? <p className="setting-line-desc" role="status">Looking for agents…</p> : null}
+    <SettingGroup
+      title="Agents on this computer"
+      description={
+        <>
+          <p>Orbyn runs the agents you already have, with their own sign-in.</p>
+          {known.length === 0 ? <p role="status">Looking for agents…</p> : null}
+        </>
+      }
+    >
       {known.map((engine) => {
         const ready = engineReadiness(engine);
         return (
-          <SettingRow key={engine.id} title={engine.name} description={engine.version ? `Version ${engine.version}` : undefined}>
+          <SettingRow key={engine.id} title={engine.name} description={ready.step ?? (engine.version ? `Version ${engine.version}` : undefined)}>
             <Pill tone={ready.tone}>{ready.label}</Pill>
             {ready.next ? <CopyCommand command={ready.next} label={`Copy the ${engine.name} step`} /> : null}
           </SettingRow>

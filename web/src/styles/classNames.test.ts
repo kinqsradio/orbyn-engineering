@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(process.cwd(), "src");
@@ -47,8 +47,18 @@ export function classTokens(source: string): string[] {
 }
 
 const files = walk(ROOT);
-const css = files
-  .filter((file) => file.endsWith(".css"))
+const sources = files.filter((file) => /\.tsx?$/.test(file) && !/\.test\./.test(file));
+/** Stylesheets some module imports. One nothing imports never reaches the page. */
+const imported = new Set(
+  sources.flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(/import\s+["'](\.{1,2}\/[^"']+\.css)["']/g)].map((match) =>
+      resolve(dirname(file), match[1] ?? ""),
+    ),
+  ),
+);
+const stylesheets = files.filter((file) => file.endsWith(".css"));
+const css = stylesheets
+  .filter((file) => imported.has(file))
   .map((file) => readFileSync(file, "utf8"))
   .join("\n");
 const defined = definedClasses(css);
@@ -92,6 +102,10 @@ describe("class names", () => {
           .map((token) => `${relative(ROOT, file)}: ${token}`),
       );
     expect([...new Set(missing)]).toEqual([]);
+  });
+
+  it("imports every stylesheet somewhere", () => {
+    expect(stylesheets.filter((file) => !imported.has(file)).map((file) => relative(ROOT, file))).toEqual([]);
   });
 
   it("keeps the allowlist free of classes that now have a rule", () => {

@@ -554,6 +554,10 @@ function TriageRow() {
   );
 }
 
+/** The service reports Rust's OS id, such as `macos`. */
+const PLATFORM_NAMES: Record<string, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
+export const platformName = (id: string) => PLATFORM_NAMES[id] ?? id;
+
 export function AboutSection() {
   const info = useAsync("about-info", (signal) => api.info(signal));
   return (
@@ -561,7 +565,7 @@ export function AboutSection() {
       {heading("About")}
       <SettingGroup title="Orbyn Engineering">
         <SettingRow title="Version">{info.data?.version ?? "Unknown"}</SettingRow>
-        <SettingRow title="Platform">{info.data?.platform ?? "Unknown"}</SettingRow>
+        <SettingRow title="Platform">{info.data ? platformName(info.data.platform) : "Unknown"}</SettingRow>
         <TriageRow />
       </SettingGroup>
       <OpenSourceLicenses />
