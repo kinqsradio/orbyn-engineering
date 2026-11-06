@@ -34,6 +34,7 @@ use super::{
     ItemRecord, MCP_SERVER_NAME, ModelCatalog, ProbeDir, RunHandle, RunKind, RunSpec, UpdatePlan,
     effort_option, proposed_plan_events,
 };
+use crate::console::{ConsoleCommand, ConsoleSpec};
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
 use crate::error::{CoreError, Result};
@@ -110,6 +111,23 @@ pub fn run_args(spec: &RunSpec, mcp_config: &Path, window: Option<u32>) -> Vec<O
     if let Some(session) = &spec.resume {
         args.push("--resume".into());
         args.push(session.into());
+    }
+    args
+}
+
+/// Claude's interactive command line on a run's session. Runs start at the
+/// library, where Claude keeps the session, and reach the checkout with `--add-dir`.
+pub fn console_args(console: &ConsoleSpec<'_>) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec!["--resume".into(), console.session.into()];
+    if let Some(model) = console.model {
+        args.extend(["--model".into(), model.into()]);
+    }
+    args.extend([
+        "--permission-mode".into(),
+        if console.plan { "plan" } else { "default" }.into(),
+    ]);
+    if console.checkout != console.root {
+        args.extend(["--add-dir".into(), console.checkout.into()]);
     }
     args
 }
@@ -212,6 +230,15 @@ impl EngineDriver for ClaudeDriver {
 
     fn resolves_from_checkout(&self) -> bool {
         false
+    }
+
+    fn console(&self, console: &ConsoleSpec<'_>) -> Option<ConsoleCommand> {
+        Some(ConsoleCommand {
+            program: self.program.clone(),
+            args: console_args(console),
+            cwd: console.root.to_path_buf(),
+            title: "Claude console".into(),
+        })
     }
 
     fn sign_in_command(&self) -> Option<&str> {

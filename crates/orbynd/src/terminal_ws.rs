@@ -14,7 +14,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
-use orbyn_contracts::{OpenTerminal, RenameTerminal, RunScript, TerminalScrollback};
+use orbyn_contracts::{OpenConsole, OpenTerminal, RenameTerminal, RunScript, TerminalScrollback};
 use orbyn_core::CoreError;
 use orbyn_core::store::AuditRecord;
 use orbyn_core::terminal::{
@@ -164,6 +164,24 @@ pub async fn open(
             rows: body.rows.unwrap_or(32),
         },
     )?;
+    Ok((StatusCode::CREATED, Json(info)))
+}
+
+/// The engine's own CLI resumed on this thread's session, in a terminal of its own.
+pub async fn console(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    ApiJson(body): ApiJson<OpenConsole>,
+) -> ApiResult<impl IntoResponse> {
+    trusted_thread(&state, &id)?;
+    let info = state
+        .core
+        .open_engine_console(
+            &id,
+            (body.cols.unwrap_or(120), body.rows.unwrap_or(32)),
+            LOCAL_USER,
+        )
+        .await?;
     Ok((StatusCode::CREATED, Json(info)))
 }
 

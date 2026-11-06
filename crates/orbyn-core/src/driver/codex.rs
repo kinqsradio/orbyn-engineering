@@ -24,6 +24,7 @@ use super::{
     ask_question, diff_activity, effort_option, proposed_plan_events,
 };
 use crate::approvals::Verdict;
+use crate::console::{ConsoleCommand, ConsoleSpec};
 use crate::engines::maintenance;
 use crate::engines::probe::{probe_cli, read_login};
 use crate::error::{CoreError, Result};
@@ -125,6 +126,15 @@ impl EngineDriver for CodexDriver {
 
     fn sign_in_command(&self) -> Option<&str> {
         Some("codex login")
+    }
+
+    fn console(&self, console: &ConsoleSpec<'_>) -> Option<ConsoleCommand> {
+        Some(ConsoleCommand {
+            program: self.program.clone(),
+            args: console_args(console, &self.sandbox),
+            cwd: console.checkout.to_path_buf(),
+            title: "Codex console".into(),
+        })
     }
 
     fn manual_hint(&self) -> Option<String> {
@@ -739,6 +749,25 @@ fn sandbox_policy(sandbox: &str, checkout: &std::path::Path, mode: PermissionMod
             "networkAccess": mode == PermissionMode::FullAccess,
         }),
     }
+}
+
+/// Codex's interactive command line on a run's session, in the thread's checkout.
+/// Plan mode stays read-only, and Codex asks before anything else, as it would
+/// for a person: Orbyn's approval gate does not reach this console.
+pub fn console_args(console: &ConsoleSpec<'_>, sandbox: &str) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec!["resume".into(), console.session.into()];
+    if let Some(model) = console.model {
+        args.extend(["--model".into(), model.into()]);
+    }
+    args.extend([
+        "--sandbox".into(),
+        if console.plan { "read-only" } else { sandbox }.into(),
+        "--ask-for-approval".into(),
+        "on-request".into(),
+        "--cd".into(),
+        console.checkout.into(),
+    ]);
+    args
 }
 
 /// Codex has no edits-only policy, so the lesser modes keep asking and the gate

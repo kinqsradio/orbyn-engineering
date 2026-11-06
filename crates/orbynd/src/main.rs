@@ -639,6 +639,7 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/terminals",
             get(terminal_ws::list).post(terminal_ws::open),
         )
+        .route("/api/threads/{id}/console", post(terminal_ws::console))
         .route(
             "/api/threads/{id}/terminals/{terminal}",
             axum::routing::patch(terminal_ws::rename).delete(terminal_ws::close),
