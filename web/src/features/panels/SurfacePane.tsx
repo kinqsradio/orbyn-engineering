@@ -230,7 +230,7 @@ export function SurfacePane({
               tabIndex={stop === id ? 0 : -1}
               aria-controls={tab === id ? `context-${id}` : undefined}
               aria-label={text === label ? undefined : label}
-              {...(tab === id ? { "aria-description": "Opens all surfaces" } : {})}
+              {...(tab === id ? { "aria-description": "Opens all surfaces", title: "Click again for all surfaces" } : {})}
               onClick={() => {
                 if (tab !== id) toggle(id);
                 else showLauncher();
