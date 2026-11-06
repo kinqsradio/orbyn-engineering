@@ -5,10 +5,12 @@ import { PageView } from "./BrowserPanel";
 
 class FakeSocket {
   static last: FakeSocket | null = null;
+  static all: FakeSocket[] = [];
   onmessage: ((event: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   constructor(readonly url: string) {
     FakeSocket.last = this;
+    FakeSocket.all.push(this);
   }
   close() {}
 }
@@ -49,6 +51,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   FakeSocket.last = null;
+  FakeSocket.all = [];
   Observer.all = [];
 });
 
@@ -81,4 +84,22 @@ it("maps a click to the size the page was just fitted to, before the tab list ca
   expect(resized).toEqual({ width: 400, height: 300 });
   // Half way across and a sixth of the way down the page it now is, not the 1280 by 800 it was.
   expect(click).toMatchObject({ kind: "click", x: 200, y: 50 });
+});
+
+it("keeps the pointer stream and its cue across a navigation of the tab", async () => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
+  vi.stubGlobal("WebSocket", FakeSocket);
+  vi.stubGlobal("ResizeObserver", Observer);
+  const { rerender, container } = render(<PageView threadId="t" tab={tab} />);
+  await waitFor(() => expect(FakeSocket.last?.onmessage).toBeTypeOf("function"));
+  act(() => FakeSocket.all.find((socket) => !socket.url.includes("/pointer"))?.onmessage?.({ data: "frame" }));
+  await screen.findByRole("img", { name: /^Page at/ });
+  const pointers = () => FakeSocket.all.filter((socket) => socket.url.includes("/pointer"));
+  expect(pointers()).toHaveLength(1);
+  act(() => pointers()[0]?.onmessage?.({ data: JSON.stringify({ sequence: 1, phase: "click", x: 20, y: 30, width: 1280, height: 800 }) }));
+  expect(container.querySelector("[data-agent-browser-cursor]")).not.toBeNull();
+  // The tab list catches up with the new address after the page has moved on.
+  rerender(<PageView threadId="t" tab={{ ...tab, url: "http://localhost:3000/next" }} />);
+  expect(pointers()).toHaveLength(1);
+  expect(container.querySelector("[data-agent-browser-cursor]")).not.toBeNull();
 });
