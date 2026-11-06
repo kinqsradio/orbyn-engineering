@@ -9,7 +9,7 @@ import { chipId, fileExcerpt, languageForPath } from "../thread/composerContext"
 import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
 import { FILE_MENTION_TYPE } from "../thread/skillMention";
-import { ErrorState, Loading } from "../../ui/states";
+import { Empty, ErrorState, Loading } from "../../ui/states";
 import { DocumentViewer, officeKind } from "./DocumentViewer";
 import { FileBytes, FileMedia, mediaKind, rawUrl } from "./FileMedia";
 import { FilePreview, previewKind } from "./FilePreview";
@@ -198,6 +198,9 @@ export function Viewer({ threadId, path, line, onBack }: { threadId: string; pat
         <FileMedia kind={media} threadId={threadId} path={path} />
       ) : file.status === "loading" ? (
         <Loading label="Loading file" rows={6} />
+      ) : file.status === "error" && file.error.status === 404 ? (
+        // A moved thread reads its files from the new checkout, which may not have this one.
+        <Empty title="This file isn't in this checkout." />
       ) : file.status === "error" ? (
         <ErrorState compact title="Couldn't read this file" failure={file.error} onRetry={file.reload} />
       ) : !file.data ? null : zip ? (
