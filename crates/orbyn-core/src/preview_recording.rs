@@ -21,6 +21,9 @@ const MAX_FRAMES: u64 = 3000;
 const MAX_DURATION: Duration = Duration::from_secs(300);
 // Total size of all recordings kept under the artifact folder.
 pub(super) const TOTAL_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
+const PUBLISH_FAILED: &str = "Could not publish the recording summary. Try finishing again.";
+// A pump tick that lands this close before a frame's slot still takes it.
+const SLOT_SLACK: Duration = Duration::from_millis(10);
 // All recordings in production share this gate so decoded images and encoding
 // never run concurrently. Only a recording's own drain task ever waits on it.
 #[cfg_attr(test, allow(dead_code))]
@@ -39,13 +42,14 @@ pub(super) struct CapturedFrame {
     at: Instant,
     #[cfg(test)]
     worker_started: Option<tokio::sync::oneshot::Sender<()>>,
+    #[cfg(test)]
+    gate_waiting: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 struct Writer {
     frames: u64,
     bytes: u64,
     timestamps: Vec<u64>,
-    last: Option<Instant>,
 }
 
 /// Newest-wins hand-off slot: at most one captured frame waits for the writer.
@@ -67,6 +71,9 @@ pub(super) struct Recording {
     finalized: AtomicBool,
     queue: Mutex<Queue>,
     gate: Arc<tokio::sync::Semaphore>,
+    // When the next frame is due. Frames keep to this schedule rather than to
+    // when each one was captured, so capture latency does not halve the rate.
+    next: Mutex<Option<Instant>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -110,12 +117,12 @@ impl Recording {
                 frames: 0,
                 bytes: 0,
                 timestamps: Vec::new(),
-                last: None,
             }),
             error: Mutex::new(None),
             finalized: AtomicBool::new(false),
             queue: Mutex::new(Queue::default()),
             gate,
+            next: Mutex::new(None),
         }))
     }
 
@@ -169,6 +176,10 @@ impl Recording {
     }
 
     pub async fn due(self: &Arc<Self>) -> bool {
+        self.due_at(Instant::now()).await
+    }
+
+    async fn due_at(self: &Arc<Self>, now: Instant) -> bool {
         if self.stop.is_cancelled() {
             return false;
         }
@@ -176,12 +187,21 @@ impl Recording {
             self.fail("Recording duration limit reached.").await;
             return false;
         }
-        let Ok(writer) = self.writer.try_lock() else {
+        if self.writer.try_lock().is_err() {
             return false;
-        };
-        writer.last.is_none_or(|last| {
-            last.elapsed() >= Duration::from_secs_f64(1.0 / f64::from(self.options.fps))
-        })
+        }
+        let every = Duration::from_secs_f64(1.0 / f64::from(self.options.fps));
+        let mut next = lock(&self.next);
+        if next.is_some_and(|next| now + SLOT_SLACK < next) {
+            return false;
+        }
+        // Keep to the schedule, but a recording that fell a whole frame behind
+        // starts again from now instead of bursting to catch up.
+        *next = Some(match *next {
+            Some(slot) if now < slot + every => slot + every,
+            _ => now + every,
+        });
+        true
     }
 
     /// Snapshot input under the same page-session lock as the screenshot.
@@ -192,6 +212,8 @@ impl Recording {
             at: Instant::now(),
             #[cfg(test)]
             worker_started: None,
+            #[cfg(test)]
+            gate_waiting: None,
         }
     }
 
@@ -224,9 +246,13 @@ impl Recording {
         });
     }
 
-    pub async fn frame(self: &Arc<Self>, captured: CapturedFrame) {
+    pub async fn frame(self: &Arc<Self>, #[allow(unused_mut)] mut captured: CapturedFrame) {
         if self.stop.is_cancelled() {
             return;
+        }
+        #[cfg(test)]
+        if let Some(waiting) = captured.gate_waiting.take() {
+            let _ = waiting.send(());
         }
         let Ok(permit) = self.gate.clone().acquire_owned().await else {
             return;
@@ -290,7 +316,6 @@ impl Recording {
             Ok(bytes) => {
                 writer.frames += 1;
                 writer.bytes += bytes;
-                writer.last = Some(at);
                 writer.timestamps.push(
                     u64::try_from(at.saturating_duration_since(self.started).as_millis())
                         .unwrap_or(u64::MAX),
@@ -317,7 +342,7 @@ impl Recording {
             let mut writer = lock(&recording.writer);
             if !recording.published() {
                 let mut error = lock(&recording.error);
-                if error.is_none() {
+                if error.is_none() || error.as_deref() == Some(PUBLISH_FAILED) {
                     *error = reason;
                 }
             }
@@ -329,6 +354,12 @@ impl Recording {
 
     fn summary(&self, writer: &mut Writer) -> Result<PreviewRecording> {
         if !self.published() {
+            // A summary that failed to publish before is being retried now.
+            let mut stored = lock(&self.error);
+            if stored.as_deref() == Some(PUBLISH_FAILED) {
+                *stored = None;
+            }
+            drop(stored);
             let summary = serde_json::json!({
                 "fps": self.options.fps, "frames": writer.frames, "bytes": writer.bytes,
                 "timestamps_ms": writer.timestamps, "error": self.error(),
@@ -343,9 +374,7 @@ impl Recording {
                 Ok(())
             })();
             if let Err(error) = publication {
-                lock(&self.error).get_or_insert_with(|| {
-                    "Could not publish the recording summary. Try finishing again.".into()
-                });
+                lock(&self.error).get_or_insert_with(|| PUBLISH_FAILED.into());
                 return Err(error);
             }
             self.finalized.store(true, Ordering::Release);
@@ -519,8 +548,23 @@ mod tests {
         }
     }
 
-    fn folder() -> PathBuf {
-        std::env::temp_dir().join(format!("recording-{}", crate::util::new_id()))
+    /// A recording folder that is removed when the test ends, pass or fail.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new() -> Self {
+            Self(std::env::temp_dir().join(format!("recording-{}", crate::util::new_id())))
+        }
+
+        fn path(&self) -> PathBuf {
+            self.0.clone()
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 
     fn black() -> Vec<u8> {
@@ -596,8 +640,9 @@ mod tests {
 
     #[tokio::test]
     async fn captured_input_stays_with_its_frame_and_uncertain_focus_cannot_label_keys() {
+        let dir = Scratch::new();
         let recording = Recording::start(
-            folder(),
+            dir.path(),
             PreviewRecordingOptions {
                 show_key_presses: true,
                 show_mouse_presses: true,
@@ -628,7 +673,8 @@ mod tests {
 
     #[tokio::test]
     async fn manifest_write_failure_is_retryable_without_rewriting_frames() {
-        let path = folder();
+        let dir = Scratch::new();
+        let path = dir.path();
         let recording = Recording::start(path.clone(), options()).unwrap();
         recording.frame(recording.capture(black())).await;
         let first = std::fs::read(path.join("000000.jpg")).unwrap();
@@ -645,6 +691,14 @@ mod tests {
         recording.frame(recording.capture(black())).await;
         let done = recording.finish(None).await.unwrap();
         assert_eq!(done.frames, 1);
+        assert!(
+            done.error.is_none(),
+            "a successful retry clears the publish error"
+        );
+        assert!(recording.error().is_none());
+        let summary: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path.join("recording.json")).unwrap()).unwrap();
+        assert!(summary["error"].is_null());
         assert!(recording.published());
         assert_eq!(std::fs::read(path.join("000000.jpg")).unwrap(), first);
         assert!(!path.join("000001.jpg").exists());
@@ -653,19 +707,20 @@ mod tests {
 
     #[test]
     fn a_full_artifact_folder_refuses_a_new_recording() {
-        let root = folder();
+        let dir = Scratch::new();
+        let root = dir.path();
         assert!(ensure_room(&root, 10).is_ok(), "missing folder is empty");
         let nested = root.join("one");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::write(nested.join("000000.jpg"), [0u8; 8]).unwrap();
         assert!(ensure_room(&root, 9).is_ok());
         assert!(ensure_room(&root, 8).is_err());
-        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
     async fn readers_never_depend_on_the_writer_lock() {
-        let path = folder();
+        let dir = Scratch::new();
+        let path = dir.path();
         let recording = Recording::start(path, options()).unwrap();
         *lock(&recording.error) = Some("synthetic".into());
         let held = lock(&recording.writer);
@@ -683,7 +738,8 @@ mod tests {
 
     #[tokio::test]
     async fn submit_never_waits_and_keeps_only_the_newest_frame() {
-        let path = folder();
+        let dir = Scratch::new();
+        let path = dir.path();
         let recording = Recording::start(path.clone(), options()).unwrap();
         let held = recording.gate.clone().acquire_owned().await.unwrap();
         for _ in 0..5 {
@@ -703,7 +759,8 @@ mod tests {
 
     #[tokio::test]
     async fn duration_and_byte_quotas_finish_with_an_error() {
-        let mut recording = Recording::start(folder(), options()).unwrap();
+        let (first, second) = (Scratch::new(), Scratch::new());
+        let mut recording = Recording::start(first.path(), options()).unwrap();
         Arc::get_mut(&mut recording).unwrap().started = Instant::now() - MAX_DURATION;
         assert!(!recording.due().await);
         assert!(
@@ -715,7 +772,7 @@ mod tests {
                 .unwrap()
                 .contains("duration")
         );
-        let recording = Recording::start(folder(), options()).unwrap();
+        let recording = Recording::start(second.path(), options()).unwrap();
         lock(&recording.writer).bytes = MAX_BYTES;
         recording.frame(recording.capture(black())).await;
         let done = recording.finish(None).await.unwrap();
@@ -725,15 +782,16 @@ mod tests {
 
     #[tokio::test]
     async fn stop_fences_a_frame_waiting_for_the_compositor() {
-        let path = folder();
+        let dir = Scratch::new();
+        let path = dir.path();
         let recording = Recording::start(path.clone(), options()).unwrap();
         let permit = recording.gate.acquire().await.unwrap();
         let pending = recording.clone();
+        let mut captured = recording.capture(black());
         let (started, waiting) = tokio::sync::oneshot::channel();
-        let write = tokio::spawn(async move {
-            started.send(()).unwrap();
-            pending.frame(pending.capture(black())).await
-        });
+        captured.gate_waiting = Some(started);
+        let write = tokio::spawn(async move { pending.frame(captured).await });
+        // The frame is past the early stop check and waits on the compositor.
         waiting.await.unwrap();
         let done = recording.finish(None).await.unwrap();
         assert_eq!(done.frames, 0);
@@ -749,7 +807,8 @@ mod tests {
 
     #[tokio::test]
     async fn cancelling_the_awaiting_caller_keeps_the_actual_writer_and_count_owned() {
-        let path = folder();
+        let dir = Scratch::new();
+        let path = dir.path();
         let recording = Recording::start(path.clone(), options()).unwrap();
         let held = recording.clone();
         let (locked, lock_seen) = tokio::sync::oneshot::channel();
@@ -794,7 +853,8 @@ mod tests {
 
     #[tokio::test]
     async fn only_successful_writes_count_and_errors_survive_stop() {
-        let path = folder();
+        let dir = Scratch::new();
+        let path = dir.path();
         let recording = Recording::start(path.clone(), options()).unwrap();
         recording.frame(recording.capture(black())).await;
         assert!(path.join("000000.jpg").exists());
@@ -815,8 +875,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ten_fps_keeps_its_rate_when_capture_lags_the_pump_tick() {
+        let dir = Scratch::new();
+        let recording = Recording::start(
+            dir.path(),
+            PreviewRecordingOptions {
+                fps: 10,
+                ..options()
+            },
+        )
+        .unwrap();
+        let start = Instant::now();
+        let mut frames = 0;
+        // The pump ticks every 100 ms; each screenshot lands 30 ms after its tick.
+        for tick in 0..20 {
+            let now = start + Duration::from_millis(100 * tick);
+            if recording.due_at(now).await {
+                let mut captured = recording.capture(black());
+                captured.at = now + Duration::from_millis(30);
+                recording.frame(captured).await;
+                frames += 1;
+            }
+        }
+        assert_eq!(frames, 20, "every 100 ms tick takes a frame at 10 FPS");
+        recording.finish(None).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn quotas_and_off_default_labels_are_enforced_at_the_writer() {
-        let recording = Recording::start(folder(), options()).unwrap();
+        let dir = Scratch::new();
+        let recording = Recording::start(dir.path(), options()).unwrap();
         recording.mouse(20.0, 30.0);
         recording.key("Enter", true);
         assert!(lock(&recording.overlay).mouse.is_none());
@@ -834,7 +922,7 @@ mod tests {
         );
         assert!(
             Recording::start(
-                folder(),
+                Scratch::new().path(),
                 PreviewRecordingOptions {
                     fps: 100,
                     ..options()

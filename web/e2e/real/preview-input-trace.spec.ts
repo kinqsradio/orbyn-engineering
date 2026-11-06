@@ -8,9 +8,17 @@ type Cue = { phase: string; sequence: number; [key: string]: unknown };
 let service: Service;
 let projectId: string;
 let origin: string;
-const site = createServer((_request, response) => {
+let loads = 0;
+const site = createServer((request, response) => {
+  if (request.url === "/favicon.ico") {
+    response.statusCode = 404;
+    response.end();
+    return;
+  }
   response.setHeader("Content-Type", "text/html");
-  response.end("<!doctype html><body style='margin:0'><button id=go style='position:absolute;left:100px;top:100px;width:100px;height:40px' onclick=\"document.title='clicked'\">Go</button><input id=secret type=password><button id=mark>Mark</button><a id=link href='/next'>Next</a><button id=reload onclick='location.reload()'>Reload</button></body>");
+  // Each served document names itself, so a test can wait for the one it navigated to.
+  loads += 1;
+  response.end(`<!doctype html><title>load ${loads}</title><body style='margin:0'><button id=go style='position:absolute;left:100px;top:100px;width:100px;height:40px' onclick="document.title='clicked'">Go</button><input id=secret type=password><button id=mark>Mark</button><a id=link href='/next'>Next</a><button id=reload onclick='location.reload()'>Reload</button></body>`);
 });
 
 test.beforeAll(async () => {
@@ -121,8 +129,11 @@ test("link navigation and same-URL reload clear the cursor and allow later legit
   await withPreview(page, info, async ({ base, cues, act }) => {
     for (const selector of ["#link", "#reload"]) {
       const before = cues.at(-1)?.sequence ?? 0;
+      const served = loads;
       await act({ action: "click", selector });
       await expect.poll(() => cues.some((cue) => cue.sequence > before && cue.phase === "clear")).toBe(true);
+      // The next click needs the new document, not the one being unloaded.
+      await expect.poll(async () => (await service.api<{ title: string }[]>("GET", `${base}/previews`))[0]?.title, { timeout: 20_000 }).toBe(`load ${served + 1}`);
       expect(cues.at(-1)?.phase).toBe("clear");
       await expect(page.locator("[data-agent-browser-cursor]")).toHaveCount(0);
       const cleared = cues.at(-1)?.sequence ?? 0;
