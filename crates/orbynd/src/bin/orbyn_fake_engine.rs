@@ -719,10 +719,14 @@ fn codex() {
                 codex_finish(&state, "interrupted");
             }
             "account/rateLimits/read" => {
-                send(&json!({ "id": id, "result": { "rateLimits": {
-                    "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1800000000 },
-                    "secondary": { "usedPercent": 40, "windowDurationMins": 10080 },
-                }}}));
+                send(&json!({ "id": id, "result": {
+                    "accountId": "acct-SECRET-MARKER",
+                    "rateLimitUpsell": { "text": "SECRET-MARKER upsell" },
+                    "rateLimits": {
+                        "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1800000000 },
+                        "secondary": { "usedPercent": 40, "windowDurationMins": 10080 },
+                    },
+                }}));
             }
             "account/read" => {
                 send(&json!({ "id": id, "result": {

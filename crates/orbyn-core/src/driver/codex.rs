@@ -160,10 +160,12 @@ impl EngineDriver for CodexDriver {
     /// the plan: a failure there leaves the limits standing.
     async fn limits(&self) -> Result<Option<Value>> {
         let session = self.short_session().await?;
-        let mut limits = session
-            .rpc
-            .call("account/rateLimits/read", Value::Null, CALL_TIMEOUT)
-            .await?;
+        let mut limits = limit_fields(
+            session
+                .rpc
+                .call("account/rateLimits/read", Value::Null, CALL_TIMEOUT)
+                .await?,
+        );
         if let Ok(account) = session
             .rpc
             .call(
@@ -1524,6 +1526,21 @@ fn tool_output(item: &Value) -> String {
 }
 
 /// The latest reset among windows at their limit.
+/// Only the subscription windows and the plan leave the driver. The reply also
+/// carries an account ID, upsell copy and reset-credit offers, which are dropped.
+fn limit_fields(report: Value) -> Value {
+    const KEPT: [&str; 3] = ["rateLimits", "rateLimitsByLimitId", "planType"];
+    match report {
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .filter(|(key, _)| KEPT.contains(&key.as_str()))
+                .collect(),
+        ),
+        _ => Value::Null,
+    }
+}
+
 fn spent_window_reset(params: &Value) -> Option<i64> {
     ["primary", "secondary"]
         .iter()
@@ -1541,6 +1558,23 @@ fn spent_window_reset(params: &Value) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn limits_keep_only_windows_and_the_plan() {
+        let kept = super::limit_fields(serde_json::json!({
+            "accountId": "acct-SECRET-MARKER",
+            "rateLimitUpsell": { "text": "Upgrade" },
+            "rateLimitResetCredits": { "available": 1 },
+            "planType": "free",
+            "rateLimits": { "primary": { "usedPercent": 1 } },
+            "rateLimitsByLimitId": { "codex": { "primary": { "usedPercent": 1 } } },
+        }));
+        assert!(!kept.to_string().contains("SECRET-MARKER"));
+        let mut keys: Vec<&String> = kept.as_object().unwrap().keys().collect();
+        keys.sort();
+        assert_eq!(keys, ["planType", "rateLimits", "rateLimitsByLimitId"]);
+        assert!(super::limit_fields(serde_json::json!("odd")).is_null());
+    }
+
     use super::*;
 
     #[test]
