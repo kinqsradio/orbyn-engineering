@@ -55,6 +55,24 @@
   flex: none;
   gap: 8px;
 }
+.titlebar-diff {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+  font-size: var(--text-nav);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.titlebar-diff[aria-pressed="true"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
 .titlebar-waiting {
   display: inline-flex;
   align-items: center;
@@ -732,6 +750,9 @@ details[open] > summary > .chev {
   display: none;
 }
 /* Rows under a project, and Ledger's sections. */
+.sidebar-shelf {
+  margin-bottom: 4px;
+}
 .folder-needs {
   flex: none;
   color: var(--color-warn);

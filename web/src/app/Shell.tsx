@@ -20,6 +20,7 @@ import {
 import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../features/workspace/threadUndo";
 import { CloneJobs } from "../features/workspace/CloneJobs";
 import { Sidebar } from "../features/workspace/Sidebar";
+import { useDrawnOrder } from "../features/workspace/drawnOrder";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { ScheduledTasksPage } from "../features/settings/ScheduledTasks";
 import { UsagePage } from "../features/usage/UsagePage";
@@ -100,6 +101,13 @@ const openThread = (route: Route) => {
 
 function jumpRows() {
   const { threads } = useWorkspace.getState();
+  // The sidebar's own order, when it is on screen: jumps must match the numbers it shows.
+  const drawn = useDrawnOrder.getState().ids;
+  if (drawn) {
+    return drawn
+      .map((id) => threads[id])
+      .filter((thread): thread is Thread => thread !== undefined && !thread.lifecycle?.settled_at);
+  }
   return threadsFlat(arrangeThreads(Object.values(threads), Date.now())).filter(
     (thread) => !thread.lifecycle?.settled_at,
   );
@@ -456,6 +464,44 @@ function useGlobalKeys(route: Route) {
   }, [route, rules]);
 }
 
+/**
+ * Keeps the toast stack clear of the composer: `--toast-lift` is how far its top edge stands
+ * above the window's bottom, so the stack sits just above it. Only the composer is watched,
+ * so a streaming reply costs nothing here.
+ */
+function useToastClearance(key: string) {
+  useEffect(() => {
+    const root = document.documentElement;
+    let composer: Element | null = null;
+    let frame = 0;
+    const apply = () => {
+      const rect = composer?.getBoundingClientRect();
+      const lift = rect && rect.height > 0 ? Math.max(0, window.innerHeight - rect.top + 8) : 0;
+      root.style.setProperty("--toast-lift", `${lift}px`);
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    // A screen's composer mounts a little after the route changes; look for it for a second.
+    let tries = 0;
+    const find = () => {
+      composer = document.querySelector(".composer");
+      if (composer) observer?.observe(composer);
+      apply();
+      if (!composer && ++tries < 60) frame = requestAnimationFrame(find);
+    };
+    find();
+    // The composer glides to the bottom when a first message is sent; its size need not change.
+    window.addEventListener("resize", apply);
+    window.addEventListener("transitionend", apply, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("transitionend", apply, true);
+      root.style.removeProperty("--toast-lift");
+    };
+  }, [key]);
+}
+
 /** Moves focus into the new screen, so keyboard and screen reader users follow it. */
 function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<HTMLElement | null>) {
   const first = useRef(true);
@@ -515,6 +561,7 @@ export function Shell() {
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);
+  useToastClearance(`${routeKey}:${threadReady}`);
 
   useEffect(() => {
     void loadAll();
@@ -545,6 +592,7 @@ export function Shell() {
       data-nav={showNav ? "shown" : "hidden"}
       data-layout={layout}
       data-reading-nav={readingNav ? "open" : undefined}
+      data-page={underneath.name}
       style={{ "--sidebar-w": `${sidebarWidth}px` } as CSSProperties}
     >
       <a className="skip-link" href="#main" onClick={(event) => {

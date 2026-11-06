@@ -1,9 +1,10 @@
 import { PanelLeft } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { inDesktopApp, onShellChange, readShellStatus } from "../api/shell";
 import { attentionRank } from "../features/workspace/groups";
 import { EnvironmentIdentity } from "../features/workspace/EnvironmentIdentity";
+import { useThreadLogs } from "../features/thread/threadLogs";
 import { useAsync } from "../lib/useAsync";
 import { labels } from "../features/settings/SettingsPage";
 import { routeHref, type Route } from "../state/route";
@@ -46,6 +47,30 @@ function useWaitingCount(): number {
   );
 }
 
+/** Reading's way to the changes: the diff opens in the side drawer. */
+function ReadingDiff({ threadId }: { threadId: string }) {
+  const version = useThreadLogs((state) => state.diffVersion[threadId] ?? 0);
+  const diff = useAsync(`details-diff:${threadId}`, (signal) => api.diff(threadId, signal));
+  const { reload } = diff;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) first.current = false;
+    else void reload();
+  }, [version, reload]);
+  const showing = useUi((state) => state.panelOpen === true && state.panelTab === "diff");
+  const togglePanel = useUi((state) => state.togglePanel);
+  const closePanel = useUi((state) => state.closePanel);
+  const files = diff.data ?? [];
+  if (files.length === 0) return null;
+  const added = files.reduce((sum, file) => sum + file.additions, 0);
+  const removed = files.reduce((sum, file) => sum + file.deletions, 0);
+  return (
+    <button type="button" className="titlebar-diff" aria-pressed={showing} onClick={() => (showing ? closePanel() : togglePanel("diff"))}>
+      Diff <span className="diff-add">+{added}</span> <span className="diff-del">−{removed}</span>
+    </button>
+  );
+}
+
 /** The window's top line: the brand, the page it is on and page-level status. */
 export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
   const lights = useTrafficLights();
@@ -74,12 +99,25 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
                 ? "Trust folder"
                 : "New thread";
   const shown = reading ? readingNav : !collapsed;
+  // Folding the sidebar away must not strand focus on a row that no longer exists.
+  const wasShown = useRef(shown);
+  useEffect(() => {
+    if (wasShown.current && !shown && (!document.activeElement || document.activeElement === document.body)) {
+      document.querySelector<HTMLElement>("[data-sidebar-toggle]")?.focus();
+    }
+    wasShown.current = shown;
+  }, [shown]);
 
   return (
     <header className="titlebar" data-tauri-drag-region>
       {lights ? <span className="titlebar-lights" aria-hidden /> : null}
       {narrow ? null : (
-        <IconButton label={shown ? "Collapse sidebar" : "Expand sidebar"} onClick={reading ? toggleReadingNav : toggleSidebar}>
+        <IconButton
+          label={shown ? "Collapse sidebar" : "Expand sidebar"}
+          aria-expanded={shown}
+          data-sidebar-toggle
+          onClick={reading ? toggleReadingNav : toggleSidebar}
+        >
           <PanelLeft size={16} aria-hidden />
         </IconButton>
       )}
@@ -91,6 +129,7 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
       </span>
       <span className="titlebar-end">
         <EnvironmentIdentity />
+        {reading && route.name === "thread" ? <ReadingDiff threadId={route.id} /> : null}
         {ledger && waiting > 0 ? (
           <span className="titlebar-waiting" role="status">
             <span className="status-dot" aria-hidden />
