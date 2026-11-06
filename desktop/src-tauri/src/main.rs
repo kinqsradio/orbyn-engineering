@@ -3,6 +3,7 @@
 mod activity;
 mod core_process;
 mod desktop_origin;
+mod image_picker;
 mod links;
 mod menu;
 mod shell_state;
@@ -106,6 +107,9 @@ fn launch_core(app: &AppHandle) {
             }
         }
         ServiceMessage::Activity(now) => activity::apply(&messages, now),
+        ServiceMessage::ChooseProjectImage { request_id } => {
+            image_picker::choose(&messages, request_id)
+        }
     };
     let on_exit = move |reason: String| {
         watcher.state::<Core>().0.lock().expect("core slot").take();
@@ -374,6 +378,7 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Core(Mutex::new(None)))

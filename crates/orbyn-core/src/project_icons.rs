@@ -540,7 +540,7 @@ fn icon_href(text: &str) -> Option<&str> {
     None
 }
 
-fn icns_png(bytes: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn icns_png(bytes: &[u8]) -> Option<Vec<u8>> {
     if bytes.get(..4)? != b"icns" {
         return None;
     }
@@ -597,6 +597,9 @@ impl Core {
         let project = self.store.project(project_id)?;
         let mut scope = ImageScope::new(&project, &library)?;
         let saved = match project.favicon_path.as_deref() {
+            Some(hint) if crate::project_image_import::imported_name(hint).is_some() => {
+                self.imported_image(hint)?
+            }
             Some(path) if !Path::new(path).is_absolute() => {
                 scope.image(path, ProjectIconSource::SavedImage).await?
             }
@@ -677,6 +680,87 @@ async fn icns_extent(reader: &mut tokio::fs::File, file_size: u64) -> Result<Opt
 }
 
 impl Core {
+    /// An imported copy, read whole: the inline form the badge shows.
+    fn imported_image(&self, hint: &str) -> Result<Option<ProjectIconImageData>> {
+        let Some(name) = crate::project_image_import::imported_name(hint) else {
+            return Ok(None);
+        };
+        let Some((file, metadata)) =
+            crate::project_image_import::open(&self.config.data_dir, name)?
+        else {
+            return Ok(None);
+        };
+        if metadata.len() > IMAGE_LIMIT as u64 {
+            return Ok(None);
+        }
+        let Some((media_type, mime)) = media_type(name) else {
+            return Ok(None);
+        };
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        std::io::Read::read_to_end(
+            &mut std::io::Read::take(file, IMAGE_LIMIT as u64 + 1),
+            &mut bytes,
+        )?;
+        if bytes.len() as u64 != metadata.len() {
+            return Err(CoreError::StaleOwner);
+        }
+        let mut digest = Sha256::new();
+        digest.update(mime.as_bytes());
+        digest.update([0]);
+        digest.update(&bytes);
+        Ok(Some(ProjectIconImageData {
+            source: ProjectIconSource::SavedImage,
+            relative_path: hint.to_owned(),
+            revision: hex(&digest.finalize()),
+            media_type,
+            data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        }))
+    }
+
+    /// An imported copy as a streamed file, for the raw image route.
+    fn imported_raw(&self, hint: &str) -> Result<Option<ResolvedImage>> {
+        let Some(name) = crate::project_image_import::imported_name(hint) else {
+            return Ok(None);
+        };
+        let Some((file, metadata)) =
+            crate::project_image_import::open(&self.config.data_dir, name)?
+        else {
+            return Ok(None);
+        };
+        let Some((media_type, mime)) = media_type(name) else {
+            return Ok(None);
+        };
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(
+            &mut std::io::Read::take(file.try_clone()?, metadata.len() + 1),
+            &mut bytes,
+        )?;
+        if bytes.len() as u64 != metadata.len() {
+            return Err(CoreError::StaleOwner);
+        }
+        let mut digest = Sha256::new();
+        digest.update(mime.as_bytes());
+        digest.update([0]);
+        digest.update(&bytes);
+        let revision = hex(&digest.finalize());
+        Ok(Some(ResolvedImage {
+            raw: crate::file_bytes::RawFile {
+                file,
+                name: name.to_owned(),
+                offset: 0,
+                size: metadata.len(),
+                tag: format!("\"{revision}\""),
+                content_type: mime,
+                inline: true,
+                sandbox: true,
+            },
+            relative_path: hint.to_owned(),
+            revision,
+            media_type,
+            source: ProjectIconSource::SavedImage,
+        }))
+    }
+
     async fn selected_project_image(
         &self,
         id: &str,
@@ -685,9 +769,14 @@ impl Core {
         let _reader = self.workspace.library_reader().await;
         let project = self.store.project(id)?;
         let mut scope = ImageScope::new(&project, &self.workspace.root()?)?;
-        let image = match candidate {
-            Some(path) => scope.raw_image(path, ProjectIconSource::SavedImage).await?,
-            None => scope.resolve_raw(project.favicon_path.as_deref()).await?,
+        let imported = project
+            .favicon_path
+            .as_deref()
+            .filter(|hint| crate::project_image_import::imported_name(hint).is_some());
+        let image = match (candidate, imported) {
+            (Some(path), _) => scope.raw_image(path, ProjectIconSource::SavedImage).await?,
+            (None, Some(hint)) => self.imported_raw(hint)?,
+            (None, None) => scope.resolve_raw(project.favicon_path.as_deref()).await?,
         };
         let current = self.store.project(id)?;
         if current.path != project.path

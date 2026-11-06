@@ -209,6 +209,24 @@ pub async fn change_project_image(
     Ok(Json(state.core.change_project_image(&body).await?))
 }
 
+/// Opens the desktop app's image dialog and applies the chosen image. `204` means the
+/// person cancelled. The path never comes from the caller, only from the shell.
+pub async fn choose_project_image(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<orbyn_contracts::ChooseProjectImage>,
+) -> ApiResult<axum::response::Response> {
+    // A dialog opens on the computer the app runs on; a remote viewer can't answer it.
+    if state.remote {
+        return Err(
+            CoreError::Invalid("Choose an image on the computer the app runs on.".into()).into(),
+        );
+    }
+    let Some(path) = state.core.shell.choose_image().await? else {
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    };
+    Ok(Json(state.core.import_project_image(&body, &path).await?).into_response())
+}
+
 pub async fn project_scopes(
     State(state): State<AppState>,
     ApiJson(query): ApiJson<orbyn_contracts::ProjectScopesQuery>,

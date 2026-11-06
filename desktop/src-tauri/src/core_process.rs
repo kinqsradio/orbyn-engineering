@@ -26,9 +26,18 @@ struct Ready {
 pub enum ServiceMessage {
     CheckAppUpdate,
     InstallAppUpdate,
-    ShellAction { action: ShellAction },
-    PreviewWindow { thread_id: String, tab_id: String },
+    ShellAction {
+        action: ShellAction,
+    },
+    PreviewWindow {
+        thread_id: String,
+        tab_id: String,
+    },
     Activity(Activity),
+    /// Show the native image dialog; the answer names this request.
+    ChooseProjectImage {
+        request_id: String,
+    },
 }
 
 /// Running work, and whether the machine should stay awake for it.

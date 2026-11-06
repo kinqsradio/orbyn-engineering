@@ -45,6 +45,7 @@ pub mod process;
 pub mod project_file;
 pub mod project_icon_override;
 pub mod project_icons;
+pub(crate) mod project_image_import;
 pub mod project_image_picker;
 pub mod project_scopes;
 mod project_setup;

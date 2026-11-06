@@ -477,6 +477,10 @@ fn router(state: AppState) -> Router {
             "/api/settings/projects/image",
             post(api::change_project_image),
         )
+        .route(
+            "/api/settings/projects/image/choose",
+            post(api::choose_project_image),
+        )
         .route("/api/settings/project-scopes", post(api::project_scopes))
         .route(
             "/api/settings/projects/icon",

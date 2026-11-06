@@ -7,7 +7,7 @@ import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import type { ProjectScopeCheckout } from "../../generated/ProjectScopeCheckout";
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
 import { invalidateProjectImages } from "../../lib/projectImages";
-import { toFailure } from "../../lib/useAsync";
+import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
@@ -16,6 +16,8 @@ import { Button, IconButton } from "../../ui/controls";
 import { ProjectIconPicker } from "./ProjectIconPicker";
 import { ProjectImagePicker, type ProjectImagePickerScope } from "./ProjectImagePicker";
 
+/** How the service names a copy of an image chosen outside the project. */
+const IMPORTED_PREFIX = "./.orbyn-imported/";
 const hasRevision = (member: ProjectScopeCheckout) => iconRevision(member.metadata_revision) !== null;
 // Display freshness never changes a dialog's frozen catalog write baseline.
 function iconRevision(value: unknown): bigint | null {
@@ -70,8 +72,12 @@ export function ProjectIconSetting({ query, catalog, members, projectName, disab
   const shown = members.map((member) => newestIconMetadata(member, candidates));
   const current = shown[0];
   const icon = current?.project_icon ?? null;
+  const imported = current?.favicon_path?.startsWith(IMPORTED_PREFIX) ?? false;
   const description = icon?.kind === "lucide" ? `${icon.name} · ${icon.color}` : icon?.kind === "monogram" ? `${icon.text} · ${icon.color}`
-    : icon?.kind === "emoji" ? icon.emoji : current?.favicon_path ?? "Automatic";
+    : icon?.kind === "emoji" ? icon.emoji : imported ? "Image from this computer" : current?.favicon_path ?? "Automatic";
+  // The native dialog lives in the desktop app; a browser on a plain server has none.
+  const shell = useAsync("project-icon-shell", (signal) => api.shell(signal));
+  const desktop = shell.data?.attached === true;
   const representative = projects?.find((project) => project.id === members[0]?.project_id);
   const preview = representative && current ? { ...representative, project_icon: current.project_icon, favicon_path: current.favicon_path, metadata_revision: current.metadata_revision } : representative;
   const change = async (next: ProjectIconOverride | null, baseline: ReturnType<typeof observed>) => {
@@ -94,6 +100,29 @@ export function ProjectIconSetting({ query, catalog, members, projectName, disab
       pending.current = false;
       if (mounted.current) setSaving(false);
       // Read failure is independent of a known committed metadata change.
+      if (refresh && mounted.current) reload();
+    }
+  };
+  const chooseFromComputer = async () => {
+    if (!writable || pending.current) return;
+    const baseline = observed(catalog, members);
+    pending.current = true; setSaving(true);
+    let refresh = false;
+    try {
+      const rows = await api.chooseProjectImage({ scope: query, membership_version: baseline.membership, expected_revisions: baseline.revisions });
+      if (rows && mounted.current) {
+        for (const project of rows) { invalidateProjectImages(project.id); putProject(project); }
+        setCommitted({ source: catalog, projects: rows });
+        refresh = true;
+      }
+    } catch (error) {
+      if (mounted.current) {
+        pushToast(toFailure(error).message);
+        if (toFailure(error).status === 409) refresh = true;
+      }
+    } finally {
+      pending.current = false;
+      if (mounted.current) setSaving(false);
       if (refresh && mounted.current) reload();
     }
   };
@@ -133,6 +162,8 @@ export function ProjectIconSetting({ query, catalog, members, projectName, disab
           const baseline = observed(catalog, members);
           setImageDialog({ baseline, projectName, input: { scope: query, membership_version: baseline.membership, project_id: member.project_id, project_path: member.path } });
         }}>Choose file</Button>
+        {desktop ? <Button small aria-label="Choose a project icon from this computer" disabled={!writable || saving}
+          onClick={() => { void chooseFromComputer(); }}>Choose from computer</Button> : null}
       </div>
     </SettingRow>
     {imageDialog ? <ProjectImagePicker input={imageDialog.input} projectName={imageDialog.projectName} onClose={() => setImageDialog(null)} onSelect={(path) => {

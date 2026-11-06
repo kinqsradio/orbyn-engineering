@@ -207,6 +207,18 @@ pub struct ChangeProjectImage {
 }
 
 wire! {
+#[serde(deny_unknown_fields)]
+/// Asks the desktop app's own file dialog for an image outside the project. The
+/// service, not the caller, receives the chosen path and copies the image into its
+/// data directory before applying it to the observed selected members.
+pub struct ChooseProjectImage {
+    pub scope: ProjectScopesQuery,
+    pub membership_version: String,
+    pub expected_revisions: BTreeMap<String, String>,
+}
+}
+
+wire! {
 pub struct ProjectIconResourceData {
     pub source: ProjectIconSource,
     pub relative_path: String,
