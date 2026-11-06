@@ -243,6 +243,13 @@ fn target_of(raw: &str, fence: &Fence) -> Result<PathBuf> {
 /// the handle actually names, so a folder swapped for a link after the first check
 /// cannot point this read into the checkout or Orbyn's data.
 fn read_target(target: &Path, fence: &Fence) -> Result<OutsideFile> {
+    // Windows will not open a folder as a file, so judge the kind first; the handle is
+    // checked again below for anything that changed in between.
+    match std::fs::metadata(target) {
+        Ok(meta) if meta.is_dir() => return Err(refused("That path is not a file.")),
+        Ok(_) => {}
+        Err(_) => return Err(CoreError::NotFound("file".into())),
+    }
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
