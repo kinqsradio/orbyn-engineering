@@ -15,6 +15,9 @@ pub struct KnownEngine {
     pub env: &'static [(&'static str, &'static str)],
     /// False for an agent that cannot ask before an edit, which rule 8 must label.
     pub asks: bool,
+    /// Packages that install a different CLI under the same program name. A program
+    /// whose resolved file lies inside one of these is not this engine.
+    pub not_from: &'static [&'static str],
 }
 
 pub const KNOWN_ENGINES: &[KnownEngine] = &[
@@ -25,6 +28,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &[],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "cline",
@@ -33,6 +37,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["--acp"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "commandcode",
@@ -41,6 +46,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["acp"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "copilot",
@@ -49,6 +55,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["--no-auto-update", "--acp", "--stdio"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "cursor",
@@ -57,6 +64,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["acp"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "deepseek",
@@ -65,6 +73,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["--profile", "acp"],
         env: &[("DSH_PERMISSION_MODE", "workspace-write")],
         asks: false,
+        not_from: &[],
     },
     KnownEngine {
         id: "devin",
@@ -73,6 +82,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["acp"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "grok",
@@ -88,6 +98,8 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         ],
         env: &[],
         asks: true,
+        // An unrelated npm CLI, with no ACP mode, also installs itself as `grok`.
+        not_from: &["@vibe-kit/grok-cli"],
     },
     KnownEngine {
         id: "hermes",
@@ -96,6 +108,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["acp"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "kilo",
@@ -104,6 +117,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["acp"],
         env: &[("KILO_DISABLE_AUTOUPDATE", "true")],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "kimi",
@@ -112,6 +126,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         args: &["acp"],
         env: &[],
         asks: true,
+        not_from: &[],
     },
     KnownEngine {
         id: "opencode",
@@ -121,6 +136,7 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         // Its defaults allow edits. Inline settings outrank the person's own file.
         env: &[("OPENCODE_CONFIG_CONTENT", r#"{"permission":{"*":"ask"}}"#)],
         asks: true,
+        not_from: &[],
     },
 ];
 
@@ -131,14 +147,26 @@ impl KnownEngine {
         self.programs
             .iter()
             .copied()
-            .find(|program| crate::process::resolve(program).is_some())
+            .find(|program| self.found(program))
             .unwrap_or(self.programs[0])
     }
 
     pub fn is_installed(&self) -> bool {
-        self.programs
-            .iter()
-            .any(|program| crate::process::resolve(program).is_some())
+        self.programs.iter().any(|program| self.found(program))
+    }
+
+    /// Found on this machine, and not another CLI that shares the name.
+    fn found(&self, program: &str) -> bool {
+        crate::process::resolve(program).is_some_and(|command| !self.is_other(&command))
+    }
+
+    fn is_other(&self, command: &crate::process::ResolvedCommand) -> bool {
+        let mut files = vec![command.path.clone(), command.program.clone()];
+        files.extend(command.prefix.iter().map(std::path::PathBuf::from));
+        if let Ok(real) = std::fs::canonicalize(&command.path) {
+            files.push(real);
+        }
+        files.iter().any(|file| inside_any(file, self.not_from))
     }
 
     pub fn as_custom(&self) -> CustomEngine {
@@ -150,6 +178,21 @@ impl KnownEngine {
             args: self.args.iter().map(|arg| (*arg).to_owned()).collect(),
         }
     }
+}
+
+/// True when `file` has the components of one of `packages` (an npm scope and name
+/// such as `@scope/name`) in a row, on either platform's separators.
+fn inside_any(file: &std::path::Path, packages: &[&str]) -> bool {
+    let parts: Vec<String> = file
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    packages.iter().any(|package| {
+        let wanted: Vec<String> = package.split('/').map(str::to_lowercase).collect();
+        parts
+            .windows(wanted.len())
+            .any(|window| window == wanted.as_slice())
+    })
 }
 
 pub fn known_engine(id: &str) -> Option<&'static KnownEngine> {
@@ -177,6 +220,27 @@ mod tests {
         assert_eq!(copilot.args, ["--no-auto-update", "--acp", "--stdio"]);
         assert_eq!(known_engine("cursor").unwrap().programs, ["cursor-agent"]);
         assert!(known_engine("nothing").is_none());
+    }
+
+    #[test]
+    fn a_same_named_cli_from_another_package_is_not_the_engine() {
+        let other = std::path::Path::new("lib")
+            .join("node_modules")
+            .join("@vibe-kit")
+            .join("grok-cli")
+            .join("dist")
+            .join("index.js");
+        let grok = known_engine("grok").unwrap();
+        assert!(inside_any(&other, grok.not_from));
+        let real = std::path::Path::new("bin").join("grok");
+        assert!(!inside_any(&real, grok.not_from));
+        let near = std::path::Path::new("node_modules")
+            .join("@vibe-kit")
+            .join("grok-cli-fork");
+        assert!(!inside_any(&near, grok.not_from));
+        let unix =
+            std::path::Path::new("/usr/local/lib/node_modules/@vibe-kit/grok-cli/dist/index.js");
+        assert!(inside_any(unix, grok.not_from));
     }
 
     #[test]

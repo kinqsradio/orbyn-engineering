@@ -1366,10 +1366,13 @@ driver), `agui` (one shared driver, also the OpenBot connector) and `terminal`
 `engines/known.rs` lists CLIs that speak ACP from their own binary, with what each needs
 to start: Antigravity, Cline, Command Code, GitHub Copilot, Cursor, DeepSeek, Devin, Grok
 Build, Hermes, Kilo, Kimi and OpenCode. One is listed only when its program is found, and
-a custom engine of the same id wins. Grok is started with `--permission-mode default` and
+a custom engine of the same id wins. A program that resolves into a package known to put a
+different CLI under the same name is not that engine: `@vibe-kit/grok-cli` installs a `grok`
+with no ACP mode. Grok is started with `--permission-mode default` and
 OpenCode with `{"permission":{"*":"ask"}}`, since either can otherwise act without asking.
 DeepSeek cannot ask before an edit, so it is labelled unmanaged under rule 8. Each keeps its
-own login, and only the launch has been tested, with the fake agent under those names.
+own login, and only the launch has been tested, with the fake agent under those names, except
+OpenCode 2.2.5, which ran real turns through `orbynd` on macOS.
 
 Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
