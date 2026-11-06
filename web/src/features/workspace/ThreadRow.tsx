@@ -180,7 +180,7 @@ export function ThreadRow({
   thread,
   section,
   selected,
-  compact,
+  compact: _compact,
   multiline,
   multiSelected,
   renaming,
@@ -224,7 +224,6 @@ export function ThreadRow({
   const pinned = Boolean(lifecycle?.pinned_at);
   const unread = lifecycle?.unread === true;
   const status = useRowStatus(thread);
-  const showProject = !compact || section === "settled" || section === "snoozed";
   const details = [
     projectName,
     branch,
@@ -415,8 +414,6 @@ export function ThreadRow({
         {pinMark}
         {unmanaged ? (
           <span className="thread-row-project">Unmanaged</span>
-        ) : showProject ? (
-          <span className="thread-row-project">{projectName}</span>
         ) : null}
         {trailing}
       </a>
