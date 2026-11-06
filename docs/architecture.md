@@ -1727,6 +1727,22 @@ page, up to three times in 30 seconds after 1, 2 and 4 seconds, and then the tab
 `crashed`. This only runs while someone watches. `enable_agent_browser_access`, off
 globally or for a project, refuses every `orbyn_preview_*` tool.
 
+A previewed page is untrusted, so what crosses between it and the person waits for
+the person's own action and stays inside the tab's folder, `<data>/preview-files/<tab>`,
+which ends with the tab. Copy (Cmd or Ctrl+C on the page a person holds) reads the
+selection in the focused field, or else the page's, and nothing from a password field,
+into the person's own clipboard; a page's own clipboard writes stay in its browser.
+Paste is the person's paste event, typed into the page as text. A file chooser the
+page opens is held, not failed: the panel asks the person, who picks files through
+their own system picker; each, at most 50 MiB and 256 MiB a tab, is uploaded to the
+tab's folder and handed only to the input that asked, and Cancel hands nothing.
+Downloads save to the tab's folder under the browser's own id, never the page's name
+or path; a download past 1 GiB is stopped, and a tab keeps 20, dropping the oldest
+finished one. Saving one serves its bytes as an `application/octet-stream`
+attachment, `nosniff` and sandboxed, under the page's name made safe for Windows and
+macOS, and the person's browser chooses where it goes. Handing files to a page and
+saving a download are audited.
+
 Back and forward step through web pages only, so the blank page a browser starts on
 and anything else not `http` or `https` is passed over, and at either end nothing
 happens. A link clicked in the page changes where a tab is with nobody telling this

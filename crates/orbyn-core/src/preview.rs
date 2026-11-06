@@ -27,6 +27,7 @@ use crate::computer::cdp::{
     BrowserSession, HistoryState, LaunchOptions, find_browser, normalize_url,
 };
 use crate::error::{CoreError, Result};
+use crate::preview_bridge::{self, Bridge};
 use crate::store::AuditRecord;
 use crate::util::new_id;
 
@@ -404,9 +405,9 @@ struct Recording {
     frames: Arc<AtomicU64>,
 }
 
-struct Tab {
-    info: Mutex<PreviewTab>,
-    session: tokio::sync::Mutex<BrowserSession>,
+pub(crate) struct Tab {
+    pub(crate) info: Mutex<PreviewTab>,
+    pub(crate) session: tokio::sync::Mutex<BrowserSession>,
     frames: broadcast::Sender<Arc<str>>,
     recording: Mutex<Option<Recording>>,
     stop: CancellationToken,
@@ -415,6 +416,10 @@ struct Tab {
     keep_profile: bool,
     browser: PathBuf,
     options: LaunchOptions,
+    /// Clipboard, file chooser and downloads; see `preview_bridge`.
+    pub(crate) bridge: Mutex<Bridge>,
+    /// The tab's own folder for chosen and downloaded files, gone with the tab.
+    pub(crate) files: PathBuf,
 }
 
 #[derive(Default)]
@@ -433,6 +438,9 @@ impl Tab {
         let mut info = lock(&self.info).clone();
         info.viewers = self.frames.receiver_count();
         info.recording = lock(&self.recording).is_some();
+        let bridge = lock(&self.bridge);
+        info.file_chooser = bridge.chooser();
+        info.downloads = bridge.downloads();
         info
     }
 
@@ -557,6 +565,7 @@ async fn bring_back(tab: &Tab, crashes: &mut Crashes) {
             .set_view(view.width, view.height, view.zoom, view.mobile)
             .await?;
         session.set_appearance(&view.appearance).await?;
+        preview_bridge::enable(&mut session, &tab.files).await?;
         session.navigate(&view.url).await?;
         Ok::<_, CoreError>(session)
     };
@@ -580,11 +589,13 @@ async fn pump(tab: Arc<Tab>) {
                 // Dropping the last handle ends the browser; only then is its
                 // profile finished with.
                 let (profile, keep) = (tab.profile.clone(), tab.keep_profile);
+                let files = tab.files.clone();
                 drop(tab);
                 tokio::time::sleep(PROFILE_GRACE).await;
                 if !keep {
                     let _ = std::fs::remove_dir_all(profile);
                 }
+                let _ = std::fs::remove_dir_all(files);
                 return;
             }
             _ = ticks.tick() => {}
@@ -627,6 +638,7 @@ async fn pump(tab: Arc<Tab>) {
             }
             continue;
         };
+        preview_bridge::settle(&tab.bridge, &mut *tab.session.lock().await, &tab.files).await;
         let digest = Sha256::digest(frame.as_bytes()).to_vec();
         if digest == last {
             continue;
@@ -644,7 +656,18 @@ async fn pump(tab: Arc<Tab>) {
 }
 
 impl PreviewManager {
-    fn tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
+    /// A tab a person holds, for crossings that must be theirs.
+    pub(crate) fn held_tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
+        let tab = self.tab(thread_id, id)?;
+        if lock(&tab.info).control != "human" {
+            return Err(CoreError::Invalid(
+                "Take control of this page first.".into(),
+            ));
+        }
+        Ok(tab)
+    }
+
+    pub(crate) fn tab(&self, thread_id: &str, id: &str) -> Result<Arc<Tab>> {
         lock(&self.tabs)
             .get(id)
             .filter(|tab| lock(&tab.info).thread_id == thread_id)
@@ -1140,9 +1163,11 @@ impl Core {
             headless: true,
             in_process_gpu: self.config.browser_in_process_gpu,
         };
+        let files = self.config.data_dir.join("preview-files").join(&id);
         let mut session = BrowserSession::launch(&browser, &profile, options).await?;
         session.set_view(width, height, zoom, false).await?;
         session.set_appearance(&appearance).await?;
+        preview_bridge::enable(&mut session, &files).await?;
         session.navigate(&url).await?;
         let title = session.title().await.unwrap_or_default();
         let favicon_url = session
@@ -1176,6 +1201,8 @@ impl Core {
                     "person".to_owned()
                 },
                 crashed: false,
+                file_chooser: None,
+                downloads: Vec::new(),
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
@@ -1185,6 +1212,8 @@ impl Core {
             keep_profile: how.profile.is_some(),
             browser,
             options,
+            bridge: Mutex::new(Bridge::default()),
+            files,
         });
         lock(&self.previews.tabs).insert(id, tab.clone());
         let view = tab.view();

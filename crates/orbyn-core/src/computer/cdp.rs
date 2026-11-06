@@ -171,6 +171,37 @@ pub struct BrowserSession {
     session_id: String,
     next_id: u64,
     _child: Option<ManagedChild>,
+    /// Events a caller asked to keep, which would otherwise pass unread between replies.
+    kept: Vec<Value>,
+}
+
+/// The events a preview's bridge reads: a file chooser and a download's progress.
+const KEPT_EVENTS: [&str; 3] = [
+    "Page.fileChooserOpened",
+    "Browser.downloadWillBegin",
+    "Browser.downloadProgress",
+];
+/// Bounds the kept events; progress of one download only keeps its latest.
+const MAX_KEPT: usize = 256;
+
+/// Keeps one bridge event. A download's progress replaces its earlier progress, so a
+/// large file cannot fill the list, and past the bound the oldest goes.
+fn keep_event(kept: &mut Vec<Value>, event: Value) {
+    let method = event.get("method").and_then(Value::as_str).unwrap_or("");
+    if !KEPT_EVENTS.contains(&method) {
+        return;
+    }
+    if method == "Browser.downloadProgress" {
+        let guid = event.pointer("/params/guid").cloned();
+        kept.retain(|old| {
+            old.get("method").and_then(Value::as_str) != Some(method)
+                || old.pointer("/params/guid").cloned() != guid
+        });
+    }
+    if kept.len() >= MAX_KEPT {
+        kept.remove(0);
+    }
+    kept.push(event);
 }
 
 impl BrowserSession {
@@ -210,6 +241,7 @@ impl BrowserSession {
             session_id: String::new(),
             next_id: 0,
             _child: child,
+            kept: Vec::new(),
         };
         let targets = session.browser_call("Target.getTargets", json!({})).await?;
         let page = targets
@@ -284,6 +316,7 @@ impl BrowserSession {
                     continue;
                 };
                 if reply.get("id").and_then(Value::as_u64) != Some(id) {
+                    keep_event(&mut self.kept, reply);
                     continue;
                 }
                 if let Some(error) = reply.get("error") {
@@ -344,13 +377,14 @@ impl BrowserSession {
         let _ = tokio::time::timeout(limit, async {
             while let Some(Ok(frame)) = self.socket.next().await {
                 let Ok(text) = frame.to_text() else { continue };
-                if let Ok(event) = serde_json::from_str::<Value>(text)
-                    && matches!(
+                if let Ok(event) = serde_json::from_str::<Value>(text) {
+                    if matches!(
                         event.get("method").and_then(Value::as_str),
                         Some("Page.loadEventFired" | "Page.navigatedWithinDocument")
-                    )
-                {
-                    return;
+                    ) {
+                        return;
+                    }
+                    keep_event(&mut self.kept, event);
                 }
             }
         })
@@ -498,6 +532,16 @@ impl BrowserSession {
         self.evaluate(expression).await
     }
 
+    /// The bridge events seen since the last look, oldest first.
+    pub fn take_events(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.kept)
+    }
+
+    /// A browser-wide DevTools call, such as where downloads go.
+    pub async fn browser_command(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.browser_call(method, params).await
+    }
+
     /// A DevTools input call, for a person driving a preview.
     pub async fn input(&mut self, method: &str, params: Value) -> Result<()> {
         self.call(method, params).await.map(|_| ())
@@ -546,6 +590,26 @@ async fn read_port_file(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_bridge_events_are_kept_and_progress_coalesces() {
+        let mut kept = Vec::new();
+        keep_event(&mut kept, json!({ "method": "Page.frameNavigated" }));
+        assert!(kept.is_empty(), "other events pass");
+        let progress = |guid: &str, bytes: u64| {
+            json!({ "method": "Browser.downloadProgress",
+                    "params": { "guid": guid, "receivedBytes": bytes } })
+        };
+        keep_event(&mut kept, progress("a", 1));
+        keep_event(&mut kept, progress("b", 1));
+        keep_event(&mut kept, progress("a", 2));
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[1].pointer("/params/receivedBytes"), Some(&json!(2)));
+        for _ in 0..MAX_KEPT + 5 {
+            keep_event(&mut kept, json!({ "method": "Page.fileChooserOpened" }));
+        }
+        assert_eq!(kept.len(), MAX_KEPT);
+    }
 
     #[test]
     fn only_the_headless_shell_gets_the_gpu_switch() {
