@@ -195,7 +195,7 @@ sends, and a picker on the opening line names or clears the language. Tab outsid
 block keeps the list and focus rules.
 
 Context can sit above the draft as a chip: a cited reply, a terminal selection, a
-review comment on a stacked diff line, a picked page element, or the open file at
+review comment on a diff line or range, a picked page element, or the open file at
 its revealed line. A chip is not engine protocol; when the message is sent, each
 chip becomes a readable block at the top of the prompt and the typed draft follows.
 Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
@@ -268,6 +268,16 @@ reported as `remembered`. A new thread takes the request's model, then the proje
 `default_model` (when `default_engine` is empty or matches), then the remembered one,
 and effort and options carry only along with their model. A project's
 `default_permission_mode` also applies there.
+
+The new-thread draft resolves that physical project's effective model preferences
+before sending an implicit selection. A model picked in the draft wins over a
+late defaults response. A disabled or missing configured provider requires an
+explicit replacement; it never silently selects another provider. Draft effort
+and options remain attached to their project and model, without adding persisted
+effort or option defaults. Settings opens over the
+still-mounted draft, so every successful preference save bumps a session-only
+revision that makes the draft read its defaults again; an explicit draft choice
+stays.
 
 Admission refuses a value the model does not offer with `422 unsupported_option`, and
 stores nothing. A model the engine did not list may be custom, so only engine-wide
@@ -801,6 +811,14 @@ project. The catalog holds no secret: provider environments and tokens stay out 
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
 
+The project settings Model control writes `default_engine` and `default_model`
+together, fencing both preference revisions and the selected membership. Automatic
+sets an empty pair; Inherit removes the selected project overrides. A conflict
+retains the choice and requires an explicit reload before retrying. Reset all
+removes only the captured project overrides and leaves environment defaults alone.
+Its model picker stays in the owning settings dialog's top layer. Escape closes
+the picker and returns focus to its trigger before another Escape closes Settings.
+
 `POST /api/settings/project-scopes` is a full-app read of registered local checkout
 groups and a typed selection. It accepts the client's `repository`, `repository_path`
 or `separate` grouping recipe and per-physical-project overrides. Repository identity
@@ -1328,6 +1346,21 @@ complete prompt limit. Their annotation positions belong to the displayed revisi
 and checkout; a reload or edited revision never transfers those positions to new
 source. Submitted chips keep their captured context when the file changes, and
 only the ordinary send action passes that context to the engine.
+
+Diff comments are the same review chips. A new-side line in the stacked or split
+diff takes a comment on one line or a Shift-selected range, with the shown added and
+unchanged lines as the excerpt and the same limits. The comment shows under the
+range's last line for as long as its chip exists, only in the diff view it was made
+on (source, run, base or commit, and checkout); editing or removing the chip edits or
+removes the annotation, and the annotation's Remove removes the chip. Removed lines
+take no comment, since a chip names new-side lines only.
+
+A large diff mounts its files a page at a time: 50 files or about 4,000 patch
+lines, never less than one file. The next page loads as the end of the list
+scrolls into view, or from its Load more button. The file count and line totals
+cover the whole diff; Find counts matches in loaded files only and says so while
+files remain. Revealing a file loads the pages up to it first. The service still
+returns the whole diff in one response.
 
 `GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
 byte range at a time; a form it does not serve gets the whole file. A checkout holds
