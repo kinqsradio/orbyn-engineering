@@ -972,13 +972,14 @@ details[open] > summary > .chev {
 }
 .update-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   min-height: 32px;
   font-size: var(--text-small);
 }
 .update-name {
-  flex: 1;
+  flex: 1 0 150px;
   min-width: 0;
   overflow: hidden;
   color: var(--color-text);
