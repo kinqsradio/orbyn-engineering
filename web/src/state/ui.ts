@@ -156,7 +156,7 @@ const MAX_LAYOUTS = 200;
 
 export type PaletteStart = "root" | "add-project" | "files" | "search";
 
-export const DEFAULT_SIDEBAR_WIDTH = 208;
+export const DEFAULT_SIDEBAR_WIDTH = 224;
 const TOAST_MS = 4000;
 let toastCounter = 0;
 
@@ -180,7 +180,7 @@ const defaults: Prefs = {
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   groups: {},
   projectFilter: [],
-  projectFolders: false,
+  projectFolders: true,
   projectGrouping: "separate",
   projectGroupingOverrides: {},
   multilineRows: false,
@@ -668,8 +668,11 @@ export function applyTheme(choice: ThemeChoice): void {
   const { lightPreset, darkPreset, customColors, typography, contrast, fontSmoothing, workspaceLayout } = useUi.getState();
   root.dataset.workspace = LAYOUT_CHOICES.includes(workspaceLayout) ? workspaceLayout : "console";
   const preset = presetById(scheme === "dark" ? darkPreset : lightPreset);
+  if (preset) root.dataset.preset = preset.id;
+  else delete root.dataset.preset;
   for (const [token] of THEME_TOKENS) {
-    const value = customColors[token] ?? preset?.colors[token];
+    // A preset with a full token set in tokens.css is styled there; only custom colours override it.
+    const value = customColors[token] ?? (preset?.tokens ? undefined : preset?.colors[token]);
     if (value) root.style.setProperty(token, value);
     else root.style.removeProperty(token);
   }
