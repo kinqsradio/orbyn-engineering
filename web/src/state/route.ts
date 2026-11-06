@@ -34,7 +34,8 @@ export type Route =
     }
   | { name: "usage" }
   | { name: "tasks" }
-  | { name: "pulls" };
+  /** The list, or one pull request of one project. */
+  | { name: "pulls"; project?: string; number?: number };
 
 const enc = encodeURIComponent;
 
@@ -53,7 +54,7 @@ export function routeHref(route: Route): string {
     case "tasks":
       return "#/tasks";
     case "pulls":
-      return "#/pulls";
+      return route.project !== undefined && route.number !== undefined ? `#/pulls/${enc(route.project)}/${route.number}` : "#/pulls";
     case "settings": {
       const path = route.section ? `#/settings/${route.section}` : "#/settings";
       const params = new URLSearchParams();
@@ -94,8 +95,10 @@ export function parseRoute(hash: string): Route {
       return { name: "usage" };
     case "tasks":
       return { name: "tasks" };
-    case "pulls":
-      return { name: "pulls" };
+    case "pulls": {
+      const number = Number(second);
+      return first && Number.isInteger(number) && number > 0 ? { name: "pulls", project: first, number } : { name: "pulls" };
+    }
     case "settings": {
       // Presence matters: stale and empty IDs remain explicit instead of widening scope.
       const selection: ProjectSettingsSelection | undefined = params.has("checkout")

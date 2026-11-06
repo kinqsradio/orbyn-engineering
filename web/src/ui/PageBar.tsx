@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import "./PageBar.css";
 import { NarrowBack } from "./states";
 
 /** The heading line of a page: its title and sub line on the left, its actions on the right. */

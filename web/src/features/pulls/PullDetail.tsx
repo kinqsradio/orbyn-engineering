@@ -1,7 +1,8 @@
 import { ArrowLeft, Check, CircleDashed, EllipsisVertical, ExternalLink, GitMerge, Layers, MessageSquare, Pencil, Plus, X } from "lucide-react";
 import "./pulls.css";
-import { useEffect, useMemo, useState } from "react";
-import { useLayoutWidth } from "../../lib/useLayout";
+import { useEffect, useId, useMemo, useState } from "react";
+import { useMedia } from "../../lib/useMedia";
+import { tabKeys } from "../../ui/tabKeys";
 import { usePageLabel } from "../../state/pageLabel";
 import type { PullCheck, PullRequestDetail } from "../../api/types";
 import { relativeTime } from "../../lib/format";
@@ -368,7 +369,9 @@ export function PullDetail({
   const pushToast = useUi((state) => state.pushToast);
   const refreshAll = useWorkspace((state) => state.refreshAll);
   const engines = useWorkspace((state) => state.engines.data);
-  const layoutWidth = useLayoutWidth();
+  /** The same width at which the columns stack, so the actions never land under the conversation. */
+  const stacked = useMedia("(max-width: 899px)");
+  const tabsId = useId();
   const setPageLabel = usePageLabel((state) => state.set);
   const shownTitle = detail.status === "ready" ? detail.data.pull.title : null;
   useEffect(() => {
@@ -506,13 +509,17 @@ export function PullDetail({
       <EllipsisVertical size={14} aria-hidden />
     </IconButton>
   );
-  const tabs = (["summary", "guide", "timeline", "code"] as const).map((entry) => (
+  const order = ["summary", "guide", "timeline", "code"] as const;
+  const tabs = order.map((entry) => (
     <button
       key={entry}
       type="button"
       role="tab"
+      id={`${tabsId}-${entry}`}
+      aria-controls={`${tabsId}-panel`}
       aria-checked={page ? undefined : tab === entry}
       aria-selected={tab === entry}
+      tabIndex={tab === entry ? 0 : -1}
       onClick={() => setTab(entry)}
     >
       {TAB_LABELS[entry]}
@@ -587,10 +594,10 @@ export function PullDetail({
           </span>
         </header>
         <Stack projectId={projectId} number={number} onOpen={onOpen} />
-        <div className="pull-tabs segment" role="tablist" aria-label="Pull request">
+        <div className="pull-tabs segment" role="tablist" aria-label="Pull request" onKeyDown={(event) => tabKeys(event, (at) => setTab(order[at] ?? "summary"))}>
           {tabs}
         </div>
-        <div className="pull-body">
+        <div className="pull-body" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
           {tab === "summary" ? (
             <>
               {description}
@@ -633,7 +640,7 @@ export function PullDetail({
     );
   }
 
-  const inHeading = layoutWidth === "narrow" || tab !== "summary";
+  const inHeading = stacked || tab !== "summary";
   const forgeLink = (
     <a className="icon-btn" href={pull.url} target="_blank" rel="noreferrer" aria-label="Open on the forge" title="Open on the forge">
       <ExternalLink size={14} aria-hidden />
@@ -703,10 +710,10 @@ export function PullDetail({
         </span>
       </p>
       <Stack projectId={projectId} number={number} onOpen={onOpen} />
-      <div className="pull-page-tabs" role="tablist" aria-label="Pull request">
+      <div className="pull-page-tabs" role="tablist" aria-label="Pull request" onKeyDown={(event) => tabKeys(event, (at) => setTab(order[at] ?? "summary"))}>
         {tabs}
       </div>
-      <div className="pull-page-body">
+      <div className="pull-page-body" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
         {tab === "summary" ? (
           <div className="pull-cols">
             <div className="pull-main">

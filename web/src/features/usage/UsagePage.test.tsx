@@ -195,3 +195,24 @@ it("says what the local scan read, including engines with no history and unreada
   expect(status).toHaveTextContent("claude: 3 files, 1 unreadable");
   expect(status).toHaveTextContent("codex: no local history");
 });
+
+it("moves between the Usage and Limits tabs with the arrow keys and reads a meter as what is left", async () => {
+  vi.spyOn(api, "limits").mockResolvedValue({
+    pooled: [{ label: "5 hours", used_percent: 85, resets_at: null }],
+    engines: [],
+    unavailable: [],
+  } as never);
+  render(<UsagePage />);
+  await screen.findByRole("row", { name: /local-model/ });
+  const usage = screen.getByRole("tab", { name: "Usage" });
+  const limits = screen.getByRole("tab", { name: "Limits" });
+  expect(usage).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", usage.id);
+  usage.focus();
+  await userEvent.keyboard("{ArrowRight}");
+  expect(limits).toHaveAttribute("aria-selected", "true");
+  expect(limits).toHaveFocus();
+  expect(await screen.findByRole("meter", { name: "5 hours" })).toHaveAttribute("aria-valuetext", "15% left");
+  await userEvent.keyboard("{Home}");
+  expect(usage).toHaveAttribute("aria-selected", "true");
+});

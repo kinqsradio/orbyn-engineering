@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PullListEntry } from "../../api/types";
-import { noFilters, parseSearch, visiblePulls } from "./pullModel";
+import { checksOf, noFilters, parseSearch, visiblePulls } from "./pullModel";
 
 const entry = (number: number, over: Partial<PullListEntry["pull"]> = {}, project = "p"): PullListEntry => ({
   project_id: project,
@@ -32,5 +32,18 @@ describe("pull list", () => {
     expect(visiblePulls(list, { ...noFilters, checks: "failing" }, [], "newest").map((e) => e.pull.number)).toEqual([2]);
     expect(visiblePulls(list, noFilters, ["bug"], "oldest").map((e) => e.pull.number)).toEqual([3]);
     expect(visiblePulls(list, { ...noFilters, project: "q" }, [], "oldest")).toHaveLength(1);
+  });
+
+  it.each([
+    ["pass", "pass"],
+    ["passing", "pass"],
+    ["fail", "fail"],
+    ["failing", "fail"],
+    ["pending", "pending"],
+    ["none", "none"],
+    [null, "none"],
+    ["something new", "none"],
+  ] as const)("reads check state %j as %s", (state, word) => {
+    expect(checksOf(state)).toBe(word);
   });
 });

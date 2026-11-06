@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { PullListEntry } from "../../api/types";
 import { compactAge } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
@@ -45,7 +46,10 @@ export function PullsPage() {
   const [sort, setSort] = useState<PullSort>("updated");
   const [filters, setFilters] = useState<PullFilters>(noFilters);
   const [menu, setMenu] = useState<Open | null>(null);
-  const [selected, setSelected] = useState<{ project: string; number: number } | null>(null);
+  const route = useRoute();
+  const selected = route.name === "pulls" && route.project !== undefined && route.number !== undefined ? { project: route.project, number: route.number } : null;
+  const setSelected = (next: { project: string; number: number } | null) =>
+    navigate(next ? { name: "pulls", project: next.project, number: next.number } : { name: "pulls" });
   const [nonce, setNonce] = useState(0);
   const [picked, setPicked] = useState<PullListEntry[]>([]);
   const [merging, setMerging] = useState<PullListEntry | null>(null);
@@ -141,14 +145,20 @@ export function PullsPage() {
     {
       label: "Open",
       n: count((pull) => pull.state === "open"),
-      on: filters.draft !== "only",
-      set: () => setFilters({ ...filters, draft: "all" }),
+      on: state === "open" && filters.draft === "all",
+      set: () => {
+        setState("open");
+        setFilters({ ...filters, draft: "all" });
+      },
     },
     {
       label: "Drafts",
       n: count((pull) => pull.draft),
-      on: filters.draft === "only",
-      set: () => setFilters({ ...filters, draft: "only" }),
+      on: state === "open" && filters.draft === "only",
+      set: () => {
+        setState("open");
+        setFilters({ ...filters, draft: "only" });
+      },
     },
   ];
 
@@ -298,7 +308,10 @@ export function PullsPage() {
                       {checks === "pass" ? <Check size={12} aria-hidden /> : null}
                       {checks === "fail" ? <X size={12} aria-hidden /> : null}
                       {checks === "pending" ? <span className="pull-spin spin" aria-hidden /> : null}
-                      {CHECKS[checks]}
+                      <span className="pull-checks-word">
+                        <span className="sr-only">Checks </span>
+                        {CHECKS[checks]}
+                      </span>
                     </span>
                     <span className="pull-review-cell" data-tone={pull.review_state === "changes_requested" && !pull.draft ? "warn" : undefined}>
                       {review}

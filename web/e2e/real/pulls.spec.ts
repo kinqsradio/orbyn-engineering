@@ -104,9 +104,39 @@ test("the list filters by author, label, checks and draft, and sorts", async ({ 
   await expect(rows).toHaveCount(1);
   await filter("Review", "All");
   await expect(rows).toHaveCount(3);
+  await filter("Checks", "Passing");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("#1 ");
+  await filter("Checks", "All");
+  await expect(rows).toHaveCount(3);
   await page.getByLabel("Search pull requests").fill("label:docs");
   await page.getByLabel("Search pull requests").press("Enter");
   await expect(rows).toHaveCount(1);
+  await page.getByLabel("Search pull requests").fill("");
+  await page.getByLabel("Search pull requests").press("Enter");
+
+  const open = page.getByRole("button", { name: /^Open · / });
+  const drafts = page.getByRole("button", { name: /^Drafts · / });
+  await expect(open).toHaveAttribute("aria-pressed", "true");
+  await drafts.click();
+  await expect(drafts).toHaveAttribute("aria-pressed", "true");
+  await expect(open).toHaveAttribute("aria-pressed", "false");
+  await expect(rows).toHaveCount(1);
+  await filter("Draft", "Hide drafts");
+  await expect(open).toHaveAttribute("aria-pressed", "false");
+  await expect(drafts).toHaveAttribute("aria-pressed", "false");
+  await open.click();
+  await expect(rows).toHaveCount(3);
+  await filter("State", "Closed");
+  await expect(open).toHaveAttribute("aria-pressed", "false");
+  await filter("State", "Open");
+
+  // A pull request is a page of its own in history: Back returns to the list.
+  await page.getByRole("button", { name: /First layer/ }).click();
+  await expect(page).toHaveURL(/#\/pulls\/[^/]+\/1$/);
+  await expect(page.getByRole("article", { name: "First layer" })).toBeVisible();
+  await page.goBack();
+  await expect(rows).toHaveCount(3);
 });
 
 test("summary edits the title, description, base, reviewers and labels", async ({ page }) => {

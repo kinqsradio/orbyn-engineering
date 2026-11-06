@@ -1,6 +1,7 @@
 import { ChevronDown, RefreshCw } from "lucide-react";
 import "./usage.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { tabKeys } from "../../ui/tabKeys";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
 import type { EngineLimits, LimitsOverview, ModelUsage, UsageReport } from "../../api/types";
@@ -169,6 +170,7 @@ function LimitRow({ label, used, resets }: { label: string; used: number; resets
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={left}
+        aria-valuetext={`${left}% left`}
       >
         <span style={{ width: `${left}%` }} data-low={left < 15 || undefined} />
       </div>
@@ -554,6 +556,7 @@ export function UsagePage() {
   const [days, setDays] = useState<UsageDays>(saved?.days ?? 30);
   const [metric, setMetric] = useState<UsageMetric>(saved?.metric ?? "tokens");
   const [only, setOnly] = useState<string | null>(null);
+  const tabsId = useId();
   const lastMetric = useRef<"cost" | "tokens">(saved?.metric && saved.metric !== "limits" ? saved.metric : "tokens");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -624,13 +627,21 @@ export function UsagePage() {
           Usage
         </h1>
       </PageBar>
-      <div className="usage-tabs" role="tablist" aria-label="Usage view">
+      <div
+        className="usage-tabs"
+        role="tablist"
+        aria-label="Usage view"
+        onKeyDown={(event) => tabKeys(event, (at) => setMetric(at === 1 ? "limits" : lastMetric.current))}
+      >
         {(["usage", "limits"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
             role="tab"
+            id={`${tabsId}-${tab}`}
+            aria-controls={`${tabsId}-panel`}
             aria-selected={(metric === "limits") === (tab === "limits")}
+            tabIndex={(metric === "limits") === (tab === "limits") ? 0 : -1}
             onClick={() => setMetric(tab === "limits" ? "limits" : lastMetric.current)}
           >
             {tab === "limits" ? "Limits" : "Usage"}
@@ -665,7 +676,7 @@ export function UsagePage() {
           />
         </div>
       )}
-      <div className="usage-scroll">
+      <div className="usage-scroll" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${metric === "limits" ? "limits" : "usage"}`}>
         {metric === "limits" ? (
           limits.status === "error" ? (
             <ErrorState title="Couldn't load limits" failure={limits.error} onRetry={limits.reload} />

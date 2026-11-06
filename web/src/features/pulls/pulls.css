@@ -241,13 +241,24 @@
     padding-inline: 16px;
   }
   .pulls-table {
-    --pulls-cols: 18px minmax(0, 1fr) auto;
+    --pulls-cols: 18px minmax(0, 1fr) 14px auto;
   }
   .pulls-head,
-  .pull-checks-cell,
   .pull-review-cell,
   .pull-age {
     display: none;
+  }
+  /* The state word gives way to its icon; it stays for assistive technology. */
+  .pull-checks-cell {
+    position: relative;
+  }
+  .pull-checks-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .pulls-find {
     max-width: none;
@@ -263,9 +274,6 @@
 }
 .pull-back {
   padding: 10px 24px 0;
-}
-.page-bar .icon-btn {
-  align-self: center;
 }
 .pull-meta {
   display: flex;
