@@ -119,8 +119,6 @@ interface Prefs {
   environmentIdentification: EnvironmentIdentification;
   /** The welcome steps were finished or skipped on this device. */
   welcomeDone: boolean;
-  /** Which saved-preference migrations have run; see `migratePrefs`. */
-  prefsVersion: number;
 }
 
 export type EnvironmentIdentification = "artwork" | "pill" | "none";
@@ -163,8 +161,8 @@ const TOAST_MS = 4000;
 let toastCounter = 0;
 
 const PREFS_KEY = "orbyn.prefs.v1";
-/** Version 1 is the frame: a 224px sidebar and project folders on. */
-const PREFS_VERSION = 1;
+/** Own key, so a stale tab from an older build that rewrites the prefs cannot undo the migration. */
+const MIGRATED_KEY = "orbyn.prefs.migrated";
 const OLD_SIDEBAR_WIDTH = 208;
 
 /** Set when this load's migration turned project folders on; the notice offers to undo it. */
@@ -241,7 +239,6 @@ const defaults: Prefs = {
   environmentThemeAppliedAt: 0,
   environmentIdentification: "artwork",
   welcomeDone: false,
-  prefsVersion: PREFS_VERSION,
 };
 
 interface UiState extends Prefs {
@@ -413,27 +410,40 @@ const prefsOf = (state: Prefs): Prefs => ({
   environmentThemeAppliedAt: state.environmentThemeAppliedAt,
   environmentIdentification: state.environmentIdentification,
   welcomeDone: state.welcomeDone,
-  prefsVersion: state.prefsVersion,
 });
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
- * Runs each migration once, guarded by `prefsVersion` stored with the prefs, and saves the
- * result at once so a second load finds the marker. Only the previous default width moves.
+ * The frame's one-time migration: the previous default sidebar width (exactly 208) becomes
+ * 224 and project folders turn on. It records itself under its own key, and only after the
+ * migrated prefs were saved: a failed write leaves it to run again, without a notice.
  */
 function migratePrefs(saved: Partial<Prefs>): Partial<Prefs> {
-  if ((saved.prefsVersion ?? 0) >= PREFS_VERSION) return saved;
+  try {
+    if (localStorage.getItem(MIGRATED_KEY) === "1") return saved;
+  } catch {
+    return saved;
+  }
   const existing = Object.keys(saved).length > 0;
-  const next: Partial<Prefs> = { ...saved, prefsVersion: PREFS_VERSION, projectFolders: true };
+  const next: Partial<Prefs> = { ...saved, projectFolders: true };
   if (saved.sidebarWidth === OLD_SIDEBAR_WIDTH) next.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    localStorage.setItem(MIGRATED_KEY, "1");
+  } catch {
+    return saved;
+  }
   // A first run starts on the new defaults; only someone with saved prefs is told.
   foldersMigrated = existing && saved.projectFolders !== true;
-  writeJson(PREFS_KEY, next);
   return next;
 }
 
 /** Saved preferences may predate a field or carry a removed value. */
 function savedPrefs(): Partial<Prefs> {
-  const saved = migratePrefs(readJson<Partial<Prefs>>(PREFS_KEY) ?? {});
+  const stored = readJson<unknown>(PREFS_KEY);
+  const saved = migratePrefs(isPlainObject(stored) ? (stored as Partial<Prefs>) : {});
   const panelTab =
     saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls" || saved.panelTab === "side"
       ? saved.panelTab

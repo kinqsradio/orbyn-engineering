@@ -834,6 +834,19 @@ input[type="radio"] {
   flex-direction: column;
   gap: 8px;
 }
+/* A page with a composer keeps the stack off the composer and the details card: at the sheet's
+   left edge, above the composer's top edge (--toast-lift, measured by the shell). */
+.shell[data-page="thread"] .toasts,
+.shell[data-page="new"] .toasts,
+.shell[data-page="home"] .toasts {
+  right: auto;
+  bottom: calc(var(--toast-lift, 0px) + 16px);
+  left: calc(var(--sidebar-w) + 16px);
+}
+.shell[data-nav="hidden"][data-page] .toasts,
+.shell[data-layout="narrow"][data-page] .toasts {
+  left: 16px;
+}
 .toast {
   display: flex;
   align-items: center;
@@ -1097,7 +1110,9 @@ input[type="radio"] {
   }
 }
 
-:root[data-contrast="more"] {
+:root[data-contrast="more"],
+/* Dim sets its own colours at a higher specificity, so it needs its own selector. */
+:root[data-contrast="more"][data-theme="dark"][data-preset="dim"] {
   --color-muted: var(--color-textSoft);
   --color-border: var(--color-outline);
 }

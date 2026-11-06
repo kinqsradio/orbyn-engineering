@@ -27,6 +27,9 @@ interface RowStatus {
   glyph: ReactNode;
   /** Trailing text: a short status word, or the relative age. */
   text: ReactNode;
+  /** Why the person is needed, for lists that show only that: lower case, or null. */
+  reason: "approval" | "question" | "limit" | null;
+  running: boolean;
 }
 
 function useRowStatus(thread: Thread): RowStatus {
@@ -39,6 +42,8 @@ function useRowStatus(thread: Thread): RowStatus {
       return {
         glyph: <span className="status-dot tone-warn" aria-hidden />,
         text: <span className="row-status tone-warn">{asking ? "Question" : "Approval"}</span>,
+        reason: asking ? "question" : "approval",
+        running: false,
       };
     }
     const label = active.state === "admitted" ? "Queued" : thread.goal ? "Goal" : "Working";
@@ -49,12 +54,16 @@ function useRowStatus(thread: Thread): RowStatus {
           {label} {elapsed(active.started_at, now)}
         </span>
       ),
+      reason: null,
+      running: true,
     };
   }
   if (thread.lifecycle?.limit) {
     return {
       glyph: <span className="status-dot tone-warn" aria-hidden />,
       text: <span className="row-status tone-warn">Limited</span>,
+      reason: "limit",
+      running: false,
     };
   }
   const state = thread.last_run_state;
@@ -62,15 +71,17 @@ function useRowStatus(thread: Thread): RowStatus {
     return {
       glyph: <X size={14} className="tone-danger" aria-hidden />,
       text: <span className="row-status tone-danger">Failed</span>,
+      reason: null,
+      running: false,
     };
   }
   if (state === "interrupted") {
-    return { glyph: null, text: <span className="row-status">Interrupted</span> };
+    return { glyph: null, text: <span className="row-status">Interrupted</span>, reason: null, running: false };
   }
   const fresh =
     thread.lifecycle?.unread ?? Date.now() - new Date(thread.updated_at).getTime() < DONE_WINDOW_MS;
   if (state === "completed" && fresh) {
-    return { glyph: null, text: <span className="row-status">Done</span> };
+    return { glyph: null, text: <span className="row-status">Done</span>, reason: null, running: false };
   }
   return {
     glyph: null,
@@ -79,6 +90,8 @@ function useRowStatus(thread: Thread): RowStatus {
         {compactAge(thread.updated_at)}
       </time>
     ),
+    reason: null,
+    running: false,
   };
 }
 
@@ -189,6 +202,7 @@ export function ThreadRow({
   highlighted,
   nested = false,
   showProject = false,
+  ledger = false,
   verb,
   actions,
   jumpHint,
@@ -197,6 +211,8 @@ export function ThreadRow({
   nested?: boolean;
   /** Names the project beside the title, for lists that are not grouped by project. */
   showProject?: boolean;
+  /** Ledger's short form: the reason in lower case, a spinner for running, otherwise the project. */
+  ledger?: boolean;
   /** Shown while the jump modifier is held. */
   jumpHint?: number | null;
   thread: Thread;
@@ -261,7 +277,11 @@ export function ThreadRow({
                 {compactAge(lifecycle.snoozed_until)}
               </time>
             ) : (
-              status.text
+              ledger
+                ? status.reason
+                  ? <span className="row-status tone-warn">{status.reason}</span>
+                  : null
+                : status.text
             )}
           </span>
           <span className="row-actions">
@@ -430,7 +450,7 @@ export function ThreadRow({
         {pinMark}
         {unmanaged ? (
           <span className="thread-row-project">Unmanaged</span>
-        ) : thread.scratch || showProject ? (
+        ) : thread.scratch || showProject || (ledger && !status.reason && !status.running) ? (
           <span className="thread-row-project">{projectName}</span>
         ) : null}
         {trailing}

@@ -44,12 +44,14 @@ import { ProjectActionShortcuts } from "./ProjectActionShortcuts";
 
 function TopBar({
   thread,
+  project,
   detailsShown,
   paneShown,
   onToggleDetails,
   onTogglePane,
 }: {
   thread: Thread;
+  project: Project | null;
   detailsShown: boolean;
   paneShown: boolean;
   onToggleDetails(): void;
@@ -77,6 +79,11 @@ function TopBar({
             <span className="page-sub-item">
               <GitBranch size={13} aria-hidden />
               {branch}
+            </span>
+          ) : null}
+          {project ? (
+            <span className="page-sub-item" title={project.path}>
+              {project.name}
             </span>
           ) : null}
           {thread.active_run && state ? <span className="page-sub-item">{runStateLabels[state]}</span> : null}
@@ -417,6 +424,7 @@ export function ThreadView({ id }: { id: string }) {
       >
         <TopBar
           thread={thread}
+          project={project}
           detailsShown={detailsShown}
           paneShown={panelOpen && wide}
           onToggleDetails={() => (cardDocked ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}

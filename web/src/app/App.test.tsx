@@ -53,8 +53,6 @@ describe("App against the mock API", () => {
 
   it("pins Working open and keeps Settled collapsed behind a count", async () => {
     const user = userEvent.setup();
-    // The Working shelf belongs to the flat arrangement; project folders list those threads under their project.
-    useUi.setState({ projectFolders: false });
     for (const thread of mock.threads.slice(10)) {
       thread.lifecycle = { ...thread.lifecycle!, settled_at: "2026-10-30T10:00:00Z" };
     }
