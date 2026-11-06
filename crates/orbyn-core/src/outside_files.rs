@@ -52,45 +52,76 @@ pub(crate) fn names_remote(path: &Path) -> bool {
 /// Links followed before giving up, like the systems' own limits.
 const MAX_LINK_HOPS: u32 = 32;
 
-/// True when `path`, or any link along it, names another machine. Each part is
-/// looked at in order and a link is read, never followed, so a local link to a
-/// share is caught before anything resolves through it.
+/// True when `path`, or any link along it, names another machine. The path is
+/// resolved here one part at a time, the way the system would: `..` steps back from
+/// the folder actually reached and a link is read, never followed. Each folder is
+/// judged before it is looked at, so `/x/../net/host` or a link to a share is caught
+/// before anything contacts the host.
 pub(crate) fn reaches_remote(path: &Path) -> bool {
-    let mut hops = 0;
-    reaches_remote_from(path, &mut hops)
-}
-
-fn reaches_remote_from(path: &Path, hops: &mut u32) -> bool {
     if names_remote(path) {
         return true;
     }
-    let mut walked = PathBuf::new();
-    for part in path.components() {
-        walked.push(part);
-        if !matches!(part, Component::Normal(_)) {
+    let mut pending: Vec<PathBuf> = path
+        .components()
+        .rev()
+        .map(|part| PathBuf::from(part.as_os_str()))
+        .collect();
+    let mut reached = PathBuf::new();
+    let mut hops = 0;
+    while let Some(next) = pending.pop() {
+        let Some(part) = next.components().next() else {
             continue;
+        };
+        match part {
+            Component::CurDir => continue,
+            Component::ParentDir => {
+                // `reached` holds no links, so stepping back by name is exact.
+                reached.pop();
+                continue;
+            }
+            Component::Prefix(_) | Component::RootDir => {
+                if matches!(part, Component::Prefix(_)) {
+                    reached = PathBuf::new();
+                }
+                reached.push(part.as_os_str());
+                if names_remote(&reached) {
+                    return true;
+                }
+                continue;
+            }
+            Component::Normal(_) => {}
         }
-        let Ok(meta) = std::fs::symlink_metadata(&walked) else {
+        let candidate = reached.join(part.as_os_str());
+        if names_remote(&candidate) {
+            return true;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(&candidate) else {
             // Nothing further exists; resolving fails without contacting anyone.
             return false;
         };
         if !meta.file_type().is_symlink() {
+            reached = candidate;
             continue;
         }
-        *hops += 1;
-        if *hops > MAX_LINK_HOPS {
+        hops += 1;
+        if hops > MAX_LINK_HOPS {
             return true;
         }
-        let Ok(target) = std::fs::read_link(&walked) else {
+        let Ok(target) = std::fs::read_link(&candidate) else {
             return true;
         };
-        let target = match walked.parent() {
-            Some(parent) if target.is_relative() => parent.join(target),
-            _ => target,
-        };
-        if reaches_remote_from(&target, hops) {
+        if names_remote(&target) {
             return true;
         }
+        if target.has_root() {
+            reached = PathBuf::new();
+        }
+        pending.extend(
+            target
+                .components()
+                .rev()
+                .map(|part| PathBuf::from(part.as_os_str())),
+        );
     }
     false
 }
@@ -448,6 +479,34 @@ mod tests {
         assert!(error.to_string().contains("another computer"), "{error}");
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn dot_dot_into_an_automount_is_caught_where_it_lands() {
+        let fixture = fixture();
+        for raw in [
+            "/Users/../net/host.invalid/x",
+            "/../net/host.invalid/x",
+            "/private/../Network/Servers/x",
+        ] {
+            assert!(reaches_remote(Path::new(raw)), "{raw}");
+            let error = target_of(raw, &fixture.fence).unwrap_err();
+            assert!(
+                error.to_string().contains("another computer"),
+                "{raw}: {error}"
+            );
+        }
+        // A relative link whose `..` climbs to the automount.
+        let deep = fixture.root.join("elsewhere");
+        let climb = "../".repeat(deep.components().count() - 1);
+        std::os::unix::fs::symlink(format!("{climb}net/host.invalid"), deep.join("up")).unwrap();
+        assert!(reaches_remote(&deep.join("up/x")));
+        // `..` after a link steps back from where the link landed, not by name.
+        std::fs::create_dir_all(fixture.root.join("elsewhere/real/inner")).unwrap();
+        std::os::unix::fs::symlink(fixture.root.join("elsewhere/real/inner"), deep.join("in"))
+            .unwrap();
+        assert!(!reaches_remote(&deep.join("in/../inner")));
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_link_loop_stops() {
@@ -503,6 +562,24 @@ mod tests {
         for relative in [r"C:a.txt", r"\Users\x\a.txt"] {
             assert!(target_of(relative, &fixture.fence).is_err(), "{relative}");
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn streams_and_device_names_never_reach_fenced_or_device_bytes() {
+        let fixture = fixture();
+        // A stream of a checkout file is still the checkout file.
+        let inside = fixture.root.join("checkout/a.txt");
+        std::fs::write(&inside, "in").unwrap();
+        let stream = format!("{}:hidden", inside.to_string_lossy());
+        std::fs::write(&stream, "secret").unwrap();
+        assert!(read(&fixture, Path::new(&stream)).is_err(), "{stream}");
+        // Device names are a device or nothing, never a file to show.
+        for device in ["NUL", "CON", "aux.txt", "COM1"] {
+            let path = fixture.root.join("elsewhere").join(device);
+            assert!(read(&fixture, &path).is_err(), "{device}");
+        }
+        assert!(read(&fixture, Path::new(r"\\.\NUL")).is_err());
     }
 
     #[cfg(windows)]

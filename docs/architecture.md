@@ -1365,8 +1365,10 @@ a full path, Core canonicalizes it with links resolved and then decides; `orbynd
 routes and the web holds no rule. It refuses the thread's own checkout (those files keep
 the checkout routes and their rules), Orbyn's data folder (the service token and every
 thread's records), a path on another machine (on Windows a UNC, `\\?\UNC\` or device
-path; on macOS the `/net` and `/Network` automounts) and a local link to one. Every link
-along the path is read, not followed, before canonicalizing, so no host is contacted:
+path; on macOS the `/net` and `/Network` automounts) and a local link to one. Before canonicalizing,
+Core resolves the path itself one part at a time, `..` stepping back from the folder
+actually reached and every link read, not followed, and judges each folder before it
+looks at it, so no host is contacted:
 on Windows that contact would send the person's credentials. Path resolution for message
 links applies the same check. The file is opened without following a final link, the
 path its handle names is checked again with `\\?\` and plain drives compared as one, and
