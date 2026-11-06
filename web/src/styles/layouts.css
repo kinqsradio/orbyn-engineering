@@ -47,12 +47,33 @@
   outline-offset: 2px;
 }
 
-/* Reading: one calm column with larger line spacing. */
-:root[data-workspace="reading"] .thread-main[data-chat-width="comfortable"] {
+/* Reading: one calm column of about 680px with larger line spacing. */
+:root[data-workspace="reading"] .thread-main,
+:root[data-workspace="reading"] .thread-main[data-chat-width] {
   --reading-w: 680px;
+}
+:root[data-workspace="reading"] .thread-stage {
+  --details-reserve: 0px;
 }
 :root[data-workspace="reading"] .transcript-inner {
   line-height: 1.7;
+}
+/* The sidebar folds away; the title bar toggle opens it (data-reading-nav). */
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]) > .sidebar {
+  display: none;
+}
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]) > .main {
+  grid-area: 2 / 1;
+  border-top: 0;
+  border-left: 0;
+  border-top-left-radius: 0;
+}
+/* The docked details card has no place in the column. When asked for, it floats over the thread. */
+:root[data-workspace="reading"] .thread-main[data-details="reserved"] > .details {
+  display: none;
 }
 /* On a wide window the side panel floats over the thread as a drawer instead of
    taking a column; on medium and narrow windows it already replaces the thread. */
@@ -96,4 +117,16 @@
 }
 :root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
   width: var(--drawer-w);
+}
+
+/* Ledger rows give the title the room: the spinner says running, so the elapsed time waits for the thread. */
+:root[data-workspace="ledger"] .sidebar .thread-row .row-status:not(.tone-warn):not(.tone-danger) {
+  display: none;
+}
+/* The heading sits on the reading column, not at the window's edge. */
+:root[data-workspace="reading"] .thread-main > .topbar {
+  box-sizing: border-box;
+  width: min(calc(var(--reading-w) + 32px), 100%);
+  margin: 0 auto;
+  padding-inline: 16px;
 }

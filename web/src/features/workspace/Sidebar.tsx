@@ -1066,7 +1066,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
                             <span>{group.label}</span>
                             <span className="group-count">{group.rows.length}</span>
                           </li>,
-                          ...group.rows.map((thread) => row(thread, "active", false, false, false, true)),
+                          ...group.rows.map((thread) => row(thread, "active", false)),
                         ],
                   )
                 : foldersView

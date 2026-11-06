@@ -28,7 +28,7 @@ import {
 import { ScheduledTasksSection } from "./ScheduledTasks";
 import { ThreadsSection } from "./Threads";
 
-const labels: Record<SettingsSection, string> = {
+export const labels: Record<SettingsSection, string> = {
   general: "General",
   appearance: "Appearance",
   chat: "Chat",

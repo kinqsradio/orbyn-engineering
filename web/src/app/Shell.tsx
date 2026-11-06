@@ -36,6 +36,7 @@ import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { TitleBar } from "./TitleBar";
+import { useReadingNav } from "./readingNav";
 
 const HIDDEN_POLL_EVERY = 3;
 const POLL_MS = 4000;
@@ -119,7 +120,8 @@ function runShellCommand(command: string, route: Route): boolean {
   }
   switch (command) {
     case "sidebar.toggle":
-      ui.toggleSidebar();
+      if (ui.workspaceLayout === "reading") useReadingNav.getState().toggle();
+      else ui.toggleSidebar();
       return true;
     case "commandPalette.toggle":
       ui.setPalette(ui.palette ? null : "root");
@@ -527,13 +529,16 @@ export function Shell() {
   const underneath = overlay ? behindSettings.current : route;
   if (!overlay) behindSettings.current = route;
   const onHome = underneath.name === "home" && !needsProject;
-  const showNav = layout === "narrow" ? onHome : !collapsed;
+  const reading = useUi((state) => state.workspaceLayout === "reading");
+  const readingNav = useReadingNav((state) => state.open);
+  const showNav = layout === "narrow" ? onHome : reading ? readingNav : !collapsed;
 
   return (
     <div
       className="shell"
       data-nav={showNav ? "shown" : "hidden"}
       data-layout={layout}
+      data-reading-nav={readingNav ? "open" : undefined}
       style={{ "--sidebar-w": `${sidebarWidth}px` } as CSSProperties}
     >
       <a className="skip-link" href="#main" onClick={(event) => {

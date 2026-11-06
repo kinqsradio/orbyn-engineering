@@ -324,6 +324,7 @@ export function ThreadView({ id }: { id: string }) {
   const chatWidth = useUi((state) => state.chatWidth);
   const layout = useLayoutWidth();
   const wide = isWide(layout);
+  const reading = useUi((state) => state.workspaceLayout === "reading");
   const [detailsOverlay, setDetailsOverlay] = useState(false);
   const [finding, setFinding] = useState(false);
   useCommand("chat.find", () => setFinding(true));
@@ -386,7 +387,9 @@ export function ThreadView({ id }: { id: string }) {
   const swapped = panelOpen && (!wide || maximized);
   const terminalTakesOver = terminalOpen && layout === "narrow";
   const detailsFit = layout === "xwide" || !panelOpen;
-  const detailsShown = wide ? detailsPref && detailsFit : detailsOverlay;
+  // Reading keeps the column clear: the details card opens on request, over the thread.
+  const cardDocked = wide && !reading;
+  const detailsShown = cardDocked ? detailsPref && detailsFit : detailsOverlay;
 
   const beforeSend = async () => {
     if (!hero) return;
@@ -402,14 +405,14 @@ export function ThreadView({ id }: { id: string }) {
         className="thread-main"
         hidden={swapped}
         aria-label={thread.title}
-        data-details={wide && detailsShown ? "reserved" : undefined}
+        data-details={cardDocked && detailsShown ? "reserved" : undefined}
         data-chat-width={chatWidth}
       >
         <TopBar
           thread={thread}
           detailsShown={detailsShown}
           paneShown={panelOpen && wide}
-          onToggleDetails={() => (wide ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
+          onToggleDetails={() => (cardDocked ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
           onTogglePane={() => setPanelOpen(true)}
         />
         {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
@@ -467,7 +470,7 @@ export function ThreadView({ id }: { id: string }) {
           <DetailsCard
             thread={thread}
             engine={engine}
-            compact={!wide}
+            compact={!cardDocked}
             onClose={() => setDetailsOverlay(false)}
           />
         ) : null}
