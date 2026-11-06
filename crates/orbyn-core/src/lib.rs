@@ -20,6 +20,7 @@ pub mod file_changes;
 pub mod files;
 pub mod forge;
 pub mod git;
+pub mod history_import;
 pub mod jj;
 pub mod keybindings;
 pub mod local_trace;

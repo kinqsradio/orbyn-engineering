@@ -1,3 +1,4 @@
+import { WelcomeHost } from "../features/onboarding/WelcomeWizard";
 import { QuitConfirmation } from "../features/workspace/QuitConfirmation";
 import { PanelLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
@@ -44,7 +45,7 @@ type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
     case "home":
-      return needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />;
+      return <><WelcomeHost />{needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}</>;
     case "pulls":
       return <PullsPage />;
     case "thread":

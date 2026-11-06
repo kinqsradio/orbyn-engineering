@@ -113,6 +113,8 @@ interface Prefs {
   environmentThemeAppliedAt: number;
   /** How the sidebar marks this environment's build: channel artwork, a version pill or nothing. */
   environmentIdentification: EnvironmentIdentification;
+  /** The welcome steps were finished or skipped on this device. */
+  welcomeDone: boolean;
 }
 
 export type EnvironmentIdentification = "artwork" | "pill" | "none";
@@ -225,6 +227,7 @@ const defaults: Prefs = {
   dismissedProviderUpdates: [],
   environmentThemeAppliedAt: 0,
   environmentIdentification: "artwork",
+  welcomeDone: false,
 };
 
 interface UiState extends Prefs {
@@ -237,6 +240,9 @@ interface UiState extends Prefs {
   toasts: { id: number; text: string }[];
   pushToast(text: string): void;
   dismissToast(id: number): void;
+  /** The open welcome step, or null; not saved, so it lasts while the app runs. */
+  welcomeStep: number | null;
+  setWelcomeStep(step: number | null): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   /** A file the Files surface should open next, with the line to reveal. */
@@ -384,6 +390,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   dismissedProviderUpdates: state.dismissedProviderUpdates,
   environmentThemeAppliedAt: state.environmentThemeAppliedAt,
   environmentIdentification: state.environmentIdentification,
+  welcomeDone: state.welcomeDone,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
@@ -417,6 +424,10 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    welcomeStep: null,
+    setWelcomeStep(welcomeStep) {
+      set({ welcomeStep });
+    },
     terminalReveal: null,
     revealTerminal(threadId, group) {
       set((state) => ({ terminalOpen: true, terminalReveal: { threadId, group, nonce: (state.terminalReveal?.nonce ?? 0) + 1 } }));

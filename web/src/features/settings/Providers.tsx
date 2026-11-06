@@ -15,6 +15,7 @@ import { AcpRegistry } from "./AcpRegistry";
 import { ErrorState, Loading } from "../../ui/states";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ProviderInstances } from "./ProviderInstances";
+import { HistoryImport } from "./HistoryImport";
 import { NativeSessions } from "./NativeSessions";
 
 const POLL_WHILE_UPDATING_MS = 1500;
@@ -483,6 +484,7 @@ export function ProvidersSection() {
           <UpdateAction engine={engine} />
         </>} renderInstance={(engine) => engine.installed ? <><EngineModelList engine={engine} /><NativeSessions engine={engine} /></> : null} />
       )}
+      <HistoryImport />
       <AcpRegistry />
     </>
   );

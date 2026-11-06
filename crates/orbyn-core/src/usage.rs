@@ -58,7 +58,7 @@ fn tier_of(name: Option<&str>) -> String {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Engine {
+pub(crate) enum Engine {
     Claude,
     Codex,
 }
@@ -206,7 +206,7 @@ fn home() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn history_root(engine: Engine) -> Option<PathBuf> {
+pub(crate) fn history_root(engine: Engine) -> Option<PathBuf> {
     match engine {
         Engine::Claude => std::env::var_os("CLAUDE_CONFIG_DIR")
             .map(PathBuf::from)

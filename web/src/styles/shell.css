@@ -1057,3 +1057,22 @@ li[data-file-over] .thread-row {
     transform: scaleX(1);
   }
 }
+.welcome-wizard {
+  width: min(560px, 100%);
+  margin: 16px auto;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-raised);
+  text-align: left;
+}
+.welcome-wizard h2 {
+  margin: 0 0 4px;
+  font-size: var(--text-title);
+}
+.welcome-wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

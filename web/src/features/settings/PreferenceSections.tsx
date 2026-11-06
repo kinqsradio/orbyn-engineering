@@ -18,6 +18,9 @@ import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
 import { WorktreeCleanup } from "./WorktreeCleanup";
 import { SourceControlWriting } from "./SourceControlWriting";
+import type { TriagePlaybook } from "../../generated/TriagePlaybook";
+import { navigate } from "../../state/route";
+import { DRAFT_KEY, SCRATCH } from "../onboarding/draftStore";
 
 const heading = (title: string) => (
   <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -540,6 +543,27 @@ function OpenSourceLicenses() {
   );
 }
 
+/** Opens a draft holding the service's triage playbook; the person picks an agent and sends it. */
+function TriageRow() {
+  const pushToast = useUi((state) => state.pushToast);
+  const start = async () => {
+    try {
+      const playbook = await request<TriagePlaybook>("GET", "/api/triage/playbook");
+      useUi.getState().setDraft(DRAFT_KEY, playbook.prompt);
+      navigate({ name: "new", projectId: SCRATCH });
+    } catch (failure) {
+      pushToast(`Couldn't start triage: ${toFailure(failure).message}`);
+    }
+  };
+  return (
+    <SettingRow title={settingsLabel("about-triage")} description="Starts a thread with a support playbook for this version. Nothing is sent until you send it.">
+      <Button small onClick={() => void start()}>
+        Start triage
+      </Button>
+    </SettingRow>
+  );
+}
+
 export function AboutSection() {
   const info = useAsync("about-info", (signal) => api.info(signal));
   return (
@@ -548,6 +572,7 @@ export function AboutSection() {
       <SettingGroup title="Orbyn Engineering">
         <SettingRow title="Version">{info.data?.version ?? "Unknown"}</SettingRow>
         <SettingRow title="Platform">{info.data?.platform ?? "Unknown"}</SettingRow>
+        <TriageRow />
       </SettingGroup>
       <OpenSourceLicenses />
     </>
