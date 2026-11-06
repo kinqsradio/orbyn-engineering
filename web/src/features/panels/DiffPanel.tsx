@@ -1,5 +1,5 @@
 import { ChevronRight, Copy, MessageSquare, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { FileDiff } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
@@ -7,13 +7,12 @@ import { useWorkspace } from "../../state/workspace";
 import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useComposerChips } from "../../state/composerChips";
-import { chipId } from "../thread/composerContext";
+import { CHIP_EXCERPT_LIMIT, charactersOver, chipId, chipLabel, promptWithChips, type ReviewChip } from "../thread/composerContext";
 import { Button, IconButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 
 const LINE_LIMIT = 2000;
-
 export type DiffLine = { kind: "hunk" | "add" | "del" | "ctx" | "meta"; text: string };
 
 export function parsePatch(patch: string): DiffLine[] {
@@ -82,11 +81,13 @@ interface SplitRow {
   right: DiffLine | null;
 }
 
-/** Pairs each run of removals with the additions after it. */
-export function splitRows(lines: DiffLine[]): SplitRow[] {
-  const rows: SplitRow[] = [];
-  let removed: DiffLine[] = [];
-  let added: DiffLine[] = [];
+type Numbered = { line: DiffLine; number: number | null };
+
+/** Pairs each run of removals with the additions after it, keeping new-side numbers. */
+export function splitNumbered(entries: readonly Numbered[]): { left: Numbered | null; right: Numbered | null }[] {
+  const rows: { left: Numbered | null; right: Numbered | null }[] = [];
+  let removed: Numbered[] = [];
+  let added: Numbered[] = [];
   const flush = () => {
     for (let at = 0; at < Math.max(removed.length, added.length); at += 1) {
       rows.push({ left: removed[at] ?? null, right: added[at] ?? null });
@@ -94,110 +95,195 @@ export function splitRows(lines: DiffLine[]): SplitRow[] {
     removed = [];
     added = [];
   };
-  for (const line of lines) {
-    if (line.kind === "del") {
+  for (const entry of entries) {
+    if (entry.line.kind === "del") {
       if (added.length > 0) flush();
-      removed.push(line);
-    } else if (line.kind === "add") {
-      added.push(line);
+      removed.push(entry);
+    } else if (entry.line.kind === "add") {
+      added.push(entry);
     } else {
       flush();
-      rows.push({ left: line, right: line });
+      rows.push({ left: entry, right: entry });
     }
   }
   flush();
   return rows;
 }
 
-function LineCell({ line, find, onComment }: { line: DiffLine | null; find: string; onComment?(): void }) {
+/** Pairs each run of removals with the additions after it. */
+export function splitRows(lines: DiffLine[]): SplitRow[] {
+  return splitNumbered(lines.map((line) => ({ line, number: null }))).map((row) => ({
+    left: row.left?.line ?? null,
+    right: row.right?.line ?? null,
+  }));
+}
+
+/**
+ * The new-side text a diff comment covers: the added and unchanged lines from
+ * `start` to `end`, as shown. Removed lines have no new number and stay out.
+ */
+export function diffCommentRange(entries: readonly Numbered[], start: number, end: number) {
+  const line = Math.min(start, end);
+  const endLine = Math.max(start, end);
+  const covered = entries.filter((entry) => entry.number !== null && entry.number >= line && entry.number <= endLine);
+  if (covered.length === 0) return null;
+  const excerpt = covered.map((entry) => entry.line.text.slice(1)).join("\n");
+  if (excerpt.length > CHIP_EXCERPT_LIMIT) return null;
+  return { line, endLine, excerpt };
+}
+
+function LineCell({ line, find, number, selected, onComment }: {
+  line: DiffLine | null; find: string; number?: number | null; selected?: boolean; onComment?(shift: boolean): void;
+}) {
   if (!line) return <div className="patch-line patch-empty"> </div>;
   const marker = markers[line.kind];
   const hit = find !== "" && line.text.toLowerCase().includes(find);
   return (
-    <div className={`patch-line patch-${line.kind}`} data-hit={hit || undefined}>
+    <div className={`patch-line patch-${line.kind}`} data-hit={hit || undefined} data-selected={selected || undefined}>
       {marker ? <span className="sr-only">{marker}: </span> : null}
       {line.text || " "}
-      {onComment ? (
-        <button type="button" className="patch-line-number" aria-label="Comment on this line" onClick={onComment}>
+      {onComment && number ? (
+        <button
+          type="button"
+          className="patch-line-number"
+          aria-label={`Comment on line ${number}`}
+          aria-pressed={Boolean(selected)}
+          onClick={(event) => onComment(event.shiftKey)}
+        >
           <MessageSquare size={12} aria-hidden />
-          Comment
+          {number}
         </button>
       ) : null}
     </div>
   );
 }
 
-function Patch({ patch, find, path, threadId }: { patch: string; find: string; path: string; threadId: string }) {
+/**
+ * A diff comment is a review chip: the composer owns it, and the patch shows it
+ * under the line it ends on for as long as the chip exists. Removing either
+ * removes both. `origin` ties it to this diff view, as a file comment is tied
+ * to the source it was made on.
+ */
+function Patch({ patch, find, path, threadId, origin }: {
+  patch: string; find: string; path: string; threadId: string; origin: string;
+}) {
   const ignoreSpace = useUi((state) => state.diffIgnoreWhitespace);
   const layout = useUi((state) => state.diffLayout);
   const pushToast = useUi((state) => state.pushToast);
+  const cwd = useWorkspace((state) => state.threads[threadId]?.cwd);
+  const chips = useComposerChips((state) => state.chips[threadId]);
   const lines = useMemo(() => {
     const parsed = parsePatch(patch);
     return ignoreSpace ? withoutWhitespaceChanges(parsed) : parsed;
   }, [patch, ignoreSpace]);
   const [all, setAll] = useState(false);
-  const [commenting, setCommenting] = useState<{ number: number; excerpt: string; text: string } | null>(null);
+  const [selection, setSelection] = useState<{ anchor: number; end: number } | null>(null);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const visible = all ? lines : lines.slice(0, LINE_LIMIT);
   const numbered = useMemo(() => numberedLines(visible), [visible]);
   if (lines.length === 0) return <p className="muted diff-binary">No text changes to show.</p>;
+  const comments = (chips ?? []).filter((chip): chip is ReviewChip => chip.kind === "review" && chip.path === path
+    && chip.sourceRevision === origin && (chip.sourceCwd ?? "") === (cwd ?? ""));
+  const low = selection ? Math.min(selection.anchor, selection.end) : 0;
+  const high = selection ? Math.max(selection.anchor, selection.end) : 0;
+  const range = selection ? diffCommentRange(numbered, selection.anchor, selection.end) : null;
+  const cancel = () => { setSelection(null); setText(""); setError(null); };
+  const pick = (number: number, shift: boolean) => {
+    setSelection((current) => ({ anchor: shift && current ? current.anchor : number, end: number }));
+    setError(null);
+  };
   const add = () => {
-    if (!commenting || commenting.text.trim() === "") return;
-    useComposerChips.getState().add(threadId, {
-      id: chipId(),
-      kind: "review",
-      path,
-      line: commenting.number,
-      comment: commenting.text.trim(),
-      excerpt: commenting.excerpt,
-    });
+    if (!range || text.trim() === "") return;
+    const chip: ReviewChip = {
+      id: chipId(), kind: "review", path, ...range, comment: text.trim(), sourceRevision: origin,
+      ...(cwd ? { sourceCwd: cwd } : {}),
+    };
+    if (chip.endLine === chip.line) delete chip.endLine;
+    const current = useComposerChips.getState().chips[threadId] ?? [];
+    if (charactersOver(promptWithChips(useUi.getState().drafts[threadId] ?? "", [...current, chip]))) {
+      setError("This comment would make your message too long. Shorten it before adding it.");
+      return;
+    }
+    useComposerChips.getState().add(threadId, chip);
     pushToast("Review comment added to your message");
-    setCommenting(null);
+    cancel();
+  };
+  const selected = (number: number | null | undefined) => selection !== null && number != null && number >= low && number <= high;
+  const after = (number: number | null | undefined) => {
+    if (number == null) return null;
+    const here = comments.filter((chip) => (chip.endLine ?? chip.line) === number);
+    const form = selection !== null && number === high;
+    if (here.length === 0 && !form) return null;
+    return (
+      <div className="diff-annotations">
+        {here.map((chip) => (
+          <div key={chip.id} className="diff-comment" role="note" aria-label={`Review comment ${chipLabel(chip)}`}>
+            <strong>{chipLabel(chip)}</strong>
+            <p>{chip.comment}</p>
+            <Button small tone="quiet" onClick={() => useComposerChips.getState().remove(threadId, chip.id)}>
+              Remove comment
+            </Button>
+          </div>
+        ))}
+        {form ? (
+          <form className="review-comment" onSubmit={(event) => { event.preventDefault(); add(); }}>
+            <label htmlFor={`diff-comment-${path}`}>
+              Comment on {path}:{low}{high !== low ? `–${high}` : ""}
+            </label>
+            <textarea
+              id={`diff-comment-${path}`}
+              aria-label={`Review comment on ${path} line ${low}${high !== low ? `–${high}` : ""}`}
+              value={text}
+              maxLength={20000}
+              autoFocus
+              onChange={(event) => setText(event.target.value)}
+            />
+            {!range ? <p role="alert">Select at most 4,000 characters of the diff for a comment.</p> : null}
+            {error ? <p role="alert">{error}</p> : null}
+            <div>
+              <Button small tone="quiet" onClick={cancel}>Cancel</Button>
+              <Button small tone="primary" type="submit" disabled={!range || text.trim() === ""}>Add to message</Button>
+            </div>
+          </form>
+        ) : null}
+      </div>
+    );
   };
   return (
     <>
       <div className="patch" tabIndex={0} role="group" aria-label="Patch" data-layout={layout}>
         <div className="patch-inner">
           {layout === "split"
-            ? splitRows(visible).map((row, at) => (
-                <div key={at} className="patch-split">
-                  <LineCell line={row.left} find={find} />
-                  <LineCell line={row.right} find={find} />
-                </div>
+            ? splitNumbered(numbered).map((row, at) => (
+                <Fragment key={at}>
+                  <div className="patch-split">
+                    <LineCell line={row.left?.line ?? null} find={find} />
+                    <LineCell
+                      line={row.right?.line ?? null}
+                      find={find}
+                      number={row.right?.number}
+                      selected={selected(row.right?.number)}
+                      onComment={(shift) => row.right?.number && pick(row.right.number, shift)}
+                    />
+                  </div>
+                  {after(row.right?.number)}
+                </Fragment>
               ))
             : numbered.map(({ line, number }, at) => (
-                <LineCell
-                  key={at}
-                  line={line}
-                  find={find}
-                  onComment={
-                    number === null || commenting !== null
-                      ? undefined
-                      : () => setCommenting({ number, excerpt: line.text.slice(1), text: "" })
-                  }
-                />
+                <Fragment key={at}>
+                  <LineCell
+                    line={line}
+                    find={find}
+                    number={number}
+                    selected={selected(number)}
+                    onComment={(shift) => number && pick(number, shift)}
+                  />
+                  {after(number)}
+                </Fragment>
               ))}
         </div>
       </div>
-      {commenting ? (
-        <div className="review-comment">
-          <label>
-            Comment on {path}:{commenting.number}
-          </label>
-          <textarea
-            aria-label={`Review comment on ${path} line ${commenting.number}`}
-            value={commenting.text}
-            onChange={(event) => setCommenting({ ...commenting, text: event.target.value })}
-          />
-          <div>
-            <Button small tone="quiet" onClick={() => setCommenting(null)}>
-              Cancel
-            </Button>
-            <Button small tone="primary" disabled={commenting.text.trim() === ""} onClick={add}>
-              Add to message
-            </Button>
-          </div>
-        </div>
-      ) : null}
       {lines.length > visible.length ? (
         <Button small tone="quiet" onClick={() => setAll(true)}>
           Show {lines.length - visible.length} more lines
@@ -225,12 +311,14 @@ function FileRow({
   open,
   find,
   threadId,
+  origin,
   onToggle,
 }: {
   file: FileDiff;
   open: boolean;
   find: string;
   threadId: string;
+  origin: string;
   onToggle(): void;
 }) {
   const pushToast = useUi((state) => state.pushToast);
@@ -255,7 +343,7 @@ function FileRow({
           <Copy size={14} aria-hidden />
         </IconButton>
       </div>
-      {open ? <Patch patch={file.patch} find={find} path={file.path} threadId={threadId} /> : null}
+      {open ? <Patch patch={file.patch} find={find} path={file.path} threadId={threadId} origin={origin} /> : null}
     </li>
   );
 }
@@ -338,6 +426,12 @@ export function DiffPanel({ threadId }: { threadId: string }) {
             ? `commit&sha=${encodeURIComponent(sha)}`
             : null
           : source;
+  // Which diff a comment was made on, so it shows only there.
+  const origin =
+    source === "turn" ? `diff:turn:${latestRun ?? ""}`
+      : source === "branch" ? `diff:branch:${base}`
+        : source === "commit" ? `diff:commit:${sha ?? ""}`
+          : `diff:${source}`;
   const diff = useAsync(`diff:${threadId}:${scope ?? "none"}`, (signal) =>
     scope ? api.diff(threadId, signal, scope) : Promise.resolve([]),
   );
@@ -449,6 +543,7 @@ export function DiffPanel({ threadId }: { threadId: string }) {
               file={file}
               find={needle}
               threadId={threadId}
+              origin={origin}
               open={collapsed === toggled.has(file.path)}
               onToggle={() => {
                 const next = new Set(toggled);

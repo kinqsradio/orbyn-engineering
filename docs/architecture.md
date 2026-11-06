@@ -195,7 +195,7 @@ sends, and a picker on the opening line names or clears the language. Tab outsid
 block keeps the list and focus rules.
 
 Context can sit above the draft as a chip: a cited reply, a terminal selection, a
-review comment on a stacked diff line, a picked page element, or the open file at
+review comment on a diff line or range, a picked page element, or the open file at
 its revealed line. A chip is not engine protocol; when the message is sent, each
 chip becomes a readable block at the top of the prompt and the typed draft follows.
 Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
@@ -1328,6 +1328,14 @@ complete prompt limit. Their annotation positions belong to the displayed revisi
 and checkout; a reload or edited revision never transfers those positions to new
 source. Submitted chips keep their captured context when the file changes, and
 only the ordinary send action passes that context to the engine.
+
+Diff comments are the same review chips. A new-side line in the stacked or split
+diff takes a comment on one line or a Shift-selected range, with the shown added and
+unchanged lines as the excerpt and the same limits. The comment shows under the
+range's last line for as long as its chip exists, only in the diff view it was made
+on (source, run, base or commit, and checkout); editing or removing the chip edits or
+removes the annotation, and the annotation's Remove removes the chip. Removed lines
+take no comment, since a chip names new-side lines only.
 
 `GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
 byte range at a time; a form it does not serve gets the whole file. A checkout holds

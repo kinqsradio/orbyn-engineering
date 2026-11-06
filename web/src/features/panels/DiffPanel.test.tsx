@@ -1,10 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { useComposerChips } from "../../state/composerChips";
-import { DiffPanel } from "./DiffPanel";
-afterEach(() => vi.restoreAllMocks());
+import { useUi } from "../../state/ui";
+import { DiffPanel, diffCommentRange, numberedLines, parsePatch } from "./DiffPanel";
+afterEach(() => {
+  vi.restoreAllMocks();
+  useComposerChips.setState({ chips: {} });
+  useUi.getState().setPrefs({ diffLayout: "stacked" });
+});
 it("shows a historical turn diff without exposing a per-file restore action", async () => {
   const user = userEvent.setup();
   const diff = vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1,
@@ -27,10 +32,69 @@ it("numbers new lines and adds a review comment chip for one", async () => {
   vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1,
     deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new\n" }]);
   render(<DiffPanel threadId="t" />);
-  await user.click(await screen.findByRole("button", { name: "Comment on this line" }));
+  await user.click(await screen.findByRole("button", { name: "Comment on line 1" }));
   await user.type(screen.getByLabelText("Review comment on notes.txt line 1"), "Please rename");
   await user.click(screen.getByRole("button", { name: "Add to message" }));
   expect(useComposerChips.getState().chips.t?.[0]).toMatchObject({
     kind: "review", path: "notes.txt", line: 1, comment: "Please rename", excerpt: "new",
   });
+});
+
+const PATCH = "@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n";
+
+it("a diff range comment stays under its last line as long as its chip exists", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1, deletions: 1, patch: PATCH }]);
+  render(<DiffPanel threadId="t" />);
+  await user.click(await screen.findByRole("button", { name: "Comment on line 1" }));
+  const two = screen.getByRole("button", { name: "Comment on line 2" });
+  await user.keyboard("{Shift>}");
+  await user.click(two);
+  await user.keyboard("{/Shift}");
+  await user.type(screen.getByLabelText("Review comment on notes.txt line 1–2"), "Check both");
+  await user.click(screen.getByRole("button", { name: "Add to message" }));
+  const chip = useComposerChips.getState().chips.t?.[0];
+  expect(chip).toMatchObject({ kind: "review", path: "notes.txt", line: 1, endLine: 2, comment: "Check both",
+    excerpt: "one\nTWO", sourceRevision: "diff:worktree" });
+  const note = screen.getByRole("note", { name: "Review comment notes.txt:1–2" });
+  expect(note).toHaveTextContent("Check both");
+  // The annotation follows the chip: editing the chip changes it, removing it removes it.
+  act(() => useComposerChips.getState().update("t", { ...chip!, comment: "Edited" } as never));
+  expect(screen.getByRole("note", { name: "Review comment notes.txt:1–2" })).toHaveTextContent("Edited");
+  await user.click(screen.getByRole("button", { name: "Remove comment" }));
+  expect(useComposerChips.getState().chips.t ?? []).toHaveLength(0);
+  expect(screen.queryByRole("note", { name: /Review comment/ })).toBeNull();
+});
+
+it("a diff comment shows only on the diff it was made on", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1, deletions: 1, patch: PATCH }]);
+  vi.spyOn(api, "commits").mockResolvedValue([{ sha: "a".repeat(40), author: "", date: "", subject: "First" }]);
+  useComposerChips.getState().add("t", { id: "c", kind: "review", path: "notes.txt", line: 3, comment: "Here",
+    excerpt: "three", sourceRevision: "diff:worktree" });
+  render(<DiffPanel threadId="t" />);
+  expect(await screen.findByRole("note", { name: "Review comment notes.txt:3" })).toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: "Commit" }));
+  await screen.findByRole("combobox", { name: "Commit" });
+  await waitFor(() => expect(screen.queryByRole("note", { name: "Review comment notes.txt:3" })).toBeNull());
+});
+
+it("split layout comments on the new side", async () => {
+  const user = userEvent.setup();
+  useUi.getState().setPrefs({ diffLayout: "split" });
+  vi.spyOn(api, "diff").mockResolvedValue([{ path: "notes.txt", status: "modified", additions: 1, deletions: 1, patch: PATCH }]);
+  render(<DiffPanel threadId="t" />);
+  await user.click(await screen.findByRole("button", { name: "Comment on line 2" }));
+  await user.type(screen.getByLabelText("Review comment on notes.txt line 2"), "New side");
+  await user.click(screen.getByRole("button", { name: "Add to message" }));
+  expect(useComposerChips.getState().chips.t?.[0]).toMatchObject({ line: 2, excerpt: "TWO", comment: "New side" });
+  expect(screen.getByRole("note", { name: "Review comment notes.txt:2" })).toBeInTheDocument();
+});
+
+it("a diff comment range covers only shown new-side lines and stays within the chip limit", () => {
+  const numbered = numberedLines(parsePatch(PATCH));
+  expect(diffCommentRange(numbered, 3, 1)).toEqual({ line: 1, endLine: 3, excerpt: "one\nTWO\nthree" });
+  expect(diffCommentRange(numbered, 9, 12)).toBeNull();
+  const long = numberedLines(parsePatch(`@@ -0,0 +1 @@\n+${"x".repeat(5000)}\n`));
+  expect(diffCommentRange(long, 1, 1)).toBeNull();
 });

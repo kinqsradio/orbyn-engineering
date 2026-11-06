@@ -296,7 +296,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [x] E7 Diff layout: stacked or split | packages/contracts/src/settings.ts | w d | S
 - [x] E8 Diff preferences: collapse files, ignore whitespace, color scheme | packages/contracts/src/settings.ts | w d | S
 - [x] E9 Diff file tree: navigable with hide-tests filter | apps/web/src/components/diffs/DiffFileTree.tsx | w d | M
-- [ ] E10 Inline diff comments: annotations to composer chips | apps/web/src/components/diffs/DiffCommentAnnotation.tsx | w d m | L
+- [x] E10 Inline diff comments: annotations to composer chips | apps/web/src/components/diffs/DiffCommentAnnotation.tsx | w d m | L | web done | scope: mixed | local: new-side line and Shift-range comments in stacked and split diffs become the same review chips as D19 file comments, shown inline under their last line and paired with the chip for edit and removal, scoped to the diff view and checkout | excludes: comments on removed lines; mobile (m) stays with E16 | evidence: DiffPanel unit cases for range, pairing, view scoping and split layout; real-service browser case adds, edits, removes and sends a diff comment | remaining: packaged macOS/Windows observation
 - [x] E11 Find in diff: search within diff | docs/user/keybindings.md | w d | M
 - [x] E12 Copy diff path: per-file button | apps/web/src/components/DiffFilePathCopyButton.tsx | w d | S
 - [x] E13 Restore workspace: rollback with shared-directory refusal | packages/contracts/src/orchestrationV2.ts | w d s | L | server done | web done

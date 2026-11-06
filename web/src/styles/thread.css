@@ -108,7 +108,7 @@
 }
 .item[data-revealed] {
   border-radius: var(--radius-md);
-  outline: 1px solid var(--color-accent);
+  outline: 1px solid var(--color-accentText);
   outline-offset: 6px;
 }
 .item {
@@ -3890,4 +3890,34 @@ div.browser-bridge-row {
 @media (prefers-reduced-motion: reduce) {
   .browser-agent-cursor { transition: none; }
   .browser-agent-click { animation: none; }
+}
+.patch-line[data-selected] {
+  box-shadow: inset 3px 0 0 var(--color-accentText);
+}
+.diff-annotations {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 10px;
+  white-space: normal;
+  font-family: var(--font-sans);
+}
+.diff-comment {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--color-accentText);
+  border-radius: var(--radius-sm);
+  background: var(--color-raised);
+}
+.diff-comment p {
+  grid-column: 1;
+  margin: 0;
+  white-space: pre-wrap;
+}
+.diff-comment button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
 }
