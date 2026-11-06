@@ -124,6 +124,10 @@ select:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
+/* A select picked with the mouse is still `:focus-visible` in Chrome; the ring is for keys. */
+:root[data-input="pointer"] select:focus-visible {
+  outline: none;
+}
 input::placeholder,
 textarea::placeholder {
   color: var(--color-muted);

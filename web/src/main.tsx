@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { captureToken } from "./api/token";
 import { App } from "./app/App";
+import { trackInputModality } from "./lib/inputModality";
 import { applyTheme, useUi } from "./state/ui";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -15,6 +16,7 @@ import "./styles/layouts.css";
 
 captureToken();
 applyTheme(useUi.getState().theme);
+trackInputModality();
 
 const root = document.getElementById("root");
 if (root) {
