@@ -212,8 +212,9 @@ test("the code tab marks files viewed and submits line comments as one review", 
   await expect(article.getByRole("status")).toHaveText("0 of 2 files viewed");
   await article.getByRole("checkbox", { name: "Viewed src/b.ts" }).click();
   await expect(article.getByRole("status")).toHaveText("1 of 2 files viewed");
+  // The pull request is in the address, so a reload stays on it, back on its Summary tab.
   await page.reload();
-  await page.getByRole("button", { name: /First layer/ }).click();
+  await expect(page).toHaveURL(/#\/pulls\/[^/]+\/1$/);
   await page.getByRole("article", { name: "First layer" }).getByRole("tab", { name: "Code" }).click();
   const again = page.getByRole("article", { name: "First layer" });
   await expect(again.getByRole("status")).toHaveText("1 of 2 files viewed");
