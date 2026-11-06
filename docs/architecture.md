@@ -1357,6 +1357,32 @@ show sandboxed. An image or video element cannot set a header, so this route tak
 `?token=` as the streams do, with `no-referrer` to keep it out of anything a file links
 to.
 
+### Files outside the checkout
+
+A person can open one file outside the thread's checkout to read it: a full-path link
+in a message, or a full path typed into Files. `GET .../files/outside?path=` takes only
+a full path, Core canonicalizes it with links resolved and then decides; `orbynd` only
+routes and the web holds no rule. It refuses the thread's own checkout (those files keep
+the checkout routes and their rules), Orbyn's data folder (the service token and every
+thread's records), a path on another machine (on Windows a UNC, `\\?\UNC\` or device
+path; on macOS the `/net` and `/Network` automounts) and a local link to one. Every link
+along the path is read, not followed, before canonicalizing, so no host is contacted:
+on Windows that contact would send the person's credentials. Path resolution for message
+links applies the same check. The file is opened without following a final link, the
+path its handle names is checked again with `\\?\` and plain drives compared as one, and
+a file with more than one name is refused because a second name can hide where it lives.
+A folder is refused, never listed. Reads run off the service's runtime and give up after
+15 seconds. The cap is the checkout read's
+4 MiB; past it the size is reported without bytes. The answer has no revision and says
+`outside: true, read_only: true`; there is no write, rename, delete or listing route for
+these paths, and the viewer offers no edit, save, download, editor launch or composer
+attachment. The thread's folder must be trusted like any file route; the file's own folder needs no
+trust, because a person reading a file runs nothing in it. This is a person's view,
+not a tool: no engine, MCP tool or agent route reaches it. HTML from outside renders only
+in a `sandbox=""` frame (no scripts, no same origin, no forms or top navigation) whose
+document starts with a `default-src 'none'` CSP, so it cannot reach the app, its token,
+the API or the network.
+
 ## Renders
 
 An agent's page is stored in app data, never in the checkout:
