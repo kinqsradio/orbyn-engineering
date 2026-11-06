@@ -780,7 +780,7 @@ async fn an_action_edit_is_audited_by_name_without_its_command() {
     let add = edit_body(
         &environment,
         json!({}),
-        json!({KEY:{"op":"add_project_script","script":{"name":"Deploy","command":"deploy --token=s3cret"}}}),
+        json!({KEY:{"op":"add_project_script","script":{"name":"Deploy","command":"deploy --marker=command-text-two"}}}),
     );
     let (status, body) = put(&service, "/api/settings/preferences", add).await;
     assert_eq!(status, 200, "{body}");
@@ -812,6 +812,6 @@ async fn an_action_edit_is_audited_by_name_without_its_command() {
             .expect("each checkout written is audited");
         assert_eq!(row["detail"]["actions"], json!([]));
     }
-    assert!(!audit.to_string().contains("s3cret"));
+    assert!(!audit.to_string().contains("command-text-two"));
     service.stop().await;
 }

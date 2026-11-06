@@ -240,7 +240,7 @@ fn concurrent_commit_does_not_mix_snapshot_tables_or_reuse_a_stale_read() {
 fn project_action_edits_are_audited_before_they_are_written_without_commands() {
     let (_dir, store, a, _) = fixture();
     let actions = json!([
-        { "id": "a1", "name": "Dev", "command": "npm run dev -- --token=hunter2" },
+        { "id": "a1", "name": "Dev", "command": "npm run dev -- --marker=command-text-one" },
         { "id": "a2", "name": "Test", "command": "npm test" },
     ]);
     store
@@ -279,7 +279,7 @@ fn project_action_edits_are_audited_before_they_are_written_without_commands() {
         project_row.detail["actions"],
         json!([{ "id": "a1", "name": "Dev" }, { "id": "a2", "name": "Test" }])
     );
-    assert!(!project_row.detail.to_string().contains("hunter2"));
+    assert!(!project_row.detail.to_string().contains("command-text-one"));
     let global_row = saved
         .iter()
         .find(|row| row.target == "all_projects")
