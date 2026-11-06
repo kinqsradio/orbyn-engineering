@@ -89,7 +89,7 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
 - Needs you: an approval or question is an amber card (`--color-warnSoft`, 16px radius) with
   the label "Needs you · command" or "The agent asks". An approval shows the exact command
   in a mono box, then Why and Reaches or Runs in rows when the engine reports them, and
-  ends with More (always allow, cancel), Decline and Approve. A question lists numbered
+  ends with More (cancel the run), Deny, Always allow and Allow. A question lists numbered
   options (keys 1-9 pick one, Enter submits when every question has an answer and focus is
   not in a field) and keeps Dismiss and Submit answers.
 - Subagents the engine reports show as chips above the composer while a turn runs; queued

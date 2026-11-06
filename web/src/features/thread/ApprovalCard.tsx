@@ -19,7 +19,7 @@ const kindIcon = (kind: Approval["kind"]) =>
 
 const kindLabel: Partial<Record<Approval["kind"], string>> = { command: "command", file_change: "file change" };
 
-/** An approval as a work row: what it would do, then Decline, Approve and More. */
+/** An approval as a work row: what it would do, then More, Deny, Always allow and Allow. */
 export function ApprovalCard({ approval, minimapKey }: { approval: Approval; minimapKey?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,10 +120,13 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
             More
           </button>
           <button type="button" disabled={busy} onClick={() => void decide(false, false)}>
-            Decline
+            Deny
+          </button>
+          <button type="button" disabled={busy} onClick={() => void decide(true, true)}>
+            Always allow
           </button>
           <button type="button" className="approval-primary" disabled={busy} onClick={() => void decide(true, false)}>
-            Approve
+            Allow
           </button>
         </div>
       )}
@@ -133,7 +136,6 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
           label="More approval options"
           onClose={() => setMore(null)}
           items={[
-            { label: "Always allow", onSelect: () => void decide(true, true) },
             { label: "Cancel", onSelect: cancelRun },
           ]}
         />

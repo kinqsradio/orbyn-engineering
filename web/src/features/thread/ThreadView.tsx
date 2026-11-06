@@ -215,8 +215,15 @@ function PlanBanner({ thread }: { thread: Thread }) {
     <div className="plan-banner" role="status">
       <strong>Plan ready</strong>
       <span>{planTitle(plan)}</span>
+      <Button
+        small
+        tone="quiet"
+        onClick={() => document.querySelector<HTMLTextAreaElement>("form.composer textarea")?.focus()}
+      >
+        Suggest changes
+      </Button>
       <Button small onClick={() => void implement()}>
-        Implement plan
+        Approve and start
       </Button>
     </div>
   );
