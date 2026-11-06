@@ -1623,7 +1623,7 @@ button.detail-row:hover {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 12px 8px 8px;
+  padding: 12px 6px 8px;
   flex: none;
 }
 .context-head .layout-toggles .icon-btn[aria-pressed="false"],
@@ -1673,7 +1673,7 @@ button.detail-row:hover {
   display: flex;
   flex: none;
   gap: 0;
-  margin-left: 6px;
+  margin-left: 2px;
 }
 .context-head .end .icon-btn {
   width: 24px;

@@ -8,7 +8,6 @@ import {
   MessagesSquare,
   Minimize2,
   PanelBottom,
-  Plus,
   SquareTerminal,
   ArrowLeft,
   X,
@@ -20,7 +19,7 @@ import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
 import { useThreadLogs } from "../thread/threadLogs";
-import { useUi, type ContextTab } from "../../state/ui";
+import { useUi, type ContextTab, type RightTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ActivityPanel } from "./ActivityPanel";
 import { BrowserPanel } from "./BrowserPanel";
@@ -39,7 +38,7 @@ interface LauncherAction {
   available: boolean;
 }
 
-function Launcher({ thread }: { thread: Thread }) {
+function Launcher({ thread, back }: { thread: Thread; back: RightTab | null }) {
   const toggle = useUi((state) => state.togglePanel);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const activity = useThreadLogs((state) => (state.logs[thread.id]?.timeline.length ?? 0) > 0);
@@ -49,6 +48,12 @@ function Launcher({ thread }: { thread: Thread }) {
   useEffect(() => {
     if (version > 0) reload();
   }, [version, reload]);
+
+  const root = useRef<HTMLDivElement>(null);
+  // Reached from a tab: take focus so Escape can return to it.
+  useEffect(() => {
+    if (back) root.current?.focus();
+  }, [back]);
 
   const actions: LauncherAction[] = [
     { id: "browser", label: "Browser", icon: AppWindow, shortcut: "B", available: true },
@@ -67,6 +72,11 @@ function Launcher({ thread }: { thread: Thread }) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && back) {
+      event.preventDefault();
+      toggle(back);
+      return;
+    }
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const action = actions.find((entry) => entry.shortcut === event.key.toUpperCase());
     if (action?.available) {
@@ -76,7 +86,7 @@ function Launcher({ thread }: { thread: Thread }) {
   };
 
   return (
-    <div className="launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
+    <div ref={root} className="launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
       <div className="launcher-inner">
         <h2>Open a surface</h2>
         <ul>
@@ -154,6 +164,9 @@ export function SurfacePane({
   const terminalOpen = useUi((state) => state.terminalOpen);
   const width = useUi((state) => state.panelWidth);
 
+  // The tab the list was opened from, for Escape to return to.
+  const lastTab = useRef<RightTab | null>(null);
+  if (tab !== null) lastTab.current = tab;
   const list = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => {
@@ -217,8 +230,10 @@ export function SurfacePane({
               tabIndex={stop === id ? 0 : -1}
               aria-controls={tab === id ? `context-${id}` : undefined}
               aria-label={text === label ? undefined : label}
+              {...(tab === id ? { "aria-description": "Opens all surfaces" } : {})}
               onClick={() => {
                 if (tab !== id) toggle(id);
+                else showLauncher();
               }}
             >
               {text}
@@ -226,9 +241,6 @@ export function SurfacePane({
           ))}
         </div>
         <div className="layout-toggles end">
-          <IconButton label="All surfaces" onClick={showLauncher}>
-            <Plus size={16} aria-hidden />
-          </IconButton>
           {overlay ? null : (
             <IconButton label={maximized ? "Restore pane" : "Maximize pane"} onClick={onToggleMaximize}>
               {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
@@ -244,7 +256,7 @@ export function SurfacePane({
       </header>
       <div className="context-body">
         {tab === null ? (
-          <Launcher thread={thread} />
+          <Launcher thread={thread} back={lastTab.current} />
         ) : (
           <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">
             {tab === "browser" ? (

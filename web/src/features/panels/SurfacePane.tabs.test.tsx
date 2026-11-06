@@ -41,7 +41,7 @@ describe("surface tabs", () => {
     expect(screen.queryByRole("button", { name: /^Close (Files|Diff)/ })).not.toBeInTheDocument();
   });
 
-  it("opens a surface from its tab and keeps it when selected again", async () => {
+  it("opens a surface from its tab and its list when selected again", async () => {
     const user = userEvent.setup();
     pane();
     expect(screen.getByLabelText("Open a surface")).toBeInTheDocument();
@@ -49,7 +49,8 @@ describe("surface tabs", () => {
     expect(screen.getByText("Files content")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("tab", { name: "Files" }));
-    expect(screen.getByText("Files content")).toBeInTheDocument();
+    expect(screen.queryByText("Files content")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Open a surface")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Pull requests" }));
     expect(screen.getByText("Linked pulls content")).toBeInTheDocument();
     expect(useUi.getState().panelTab).toBe("pulls");
@@ -97,14 +98,22 @@ describe("surface tabs", () => {
     expect(useUi.getState().panelTab).toBe("diff");
   });
 
-  it("reaches the launcher again from the plus after a tab is chosen", async () => {
+  it("reaches the launcher again from the chosen tab, and Escape returns to it", async () => {
     const user = userEvent.setup();
     pane();
+    expect(screen.queryByRole("button", { name: "All surfaces" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Files" }));
-    await user.click(screen.getByRole("button", { name: "All surfaces" }));
+    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-description", "Opens all surfaces");
+    expect(screen.getByRole("tab", { name: "Diff" })).not.toHaveAttribute("aria-description");
+    await user.click(screen.getByRole("tab", { name: "Files" }));
     expect(useUi.getState().panelTab).toBeNull();
-    expect(screen.getByLabelText("Open a surface")).toBeInTheDocument();
+    expect(screen.getByLabelText("Open a surface")).toHaveFocus();
     expect(screen.getByRole("button", { name: /Browser/ })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(useUi.getState().panelTab).toBe("files");
+    screen.getByRole("tab", { name: "Files" }).focus();
+    await user.keyboard("{Enter}");
+    expect(useUi.getState().panelTab).toBeNull();
   });
 
   it("opens a surface with its launcher shortcut", async () => {

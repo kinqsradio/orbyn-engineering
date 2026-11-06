@@ -78,11 +78,11 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
 - Side panel: 380px (`--context-w`; a dragged width still wins), `--color-background`, 1px
   left border, and six fixed text tabs without icons (30px, 8px radius, 12.5px; the
   selected tab has the selected fill): Diff, Files, Browser, Activity, PRs ("Pull
-  requests" to a screen reader) and Side chat. A + (All surfaces), maximise, the terminal toggle and Close end
+  requests" to a screen reader) and Side chat. Maximise, the terminal toggle and Close end
   the row. Several of a kind live one level down, as 24px pills above the content: the
   Browser's pages (each closable, plus New tab) over its address bar, and a thread's side
   chats (plus New side chat). The terminal is a drawer under the thread with its own tabs.
-  The + (or no tab chosen) shows the "Open a surface" list with its letter shortcuts. The tab row is one tablist (arrow keys, Home, End) and fades at its edge when it overflows.
+  Choosing the selected tab again, or "Open a surface…" in the command palette, shows the "Open a surface" list with its letter shortcuts; Escape returns to the tab. The tab row is one tablist (arrow keys, Home, End) and fades at its edge when it overflows.
 
 ## Surfaces
 
