@@ -4,7 +4,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use orbyn_core::triage::{self, Agent, Choice};
+use orbyn_core::agents::triage::{self, Agent, Choice};
 
 pub fn run(data: &Path, agent: Option<Agent>, model: Option<&str>) -> Result<i32, String> {
     let session = triage::prepare(data)
@@ -47,7 +47,7 @@ pub fn run(data: &Path, agent: Option<Agent>, model: Option<&str>) -> Result<i32
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-    orbyn_core::child_env::for_tool(&mut command);
+    orbyn_core::host::child_env::for_tool(&mut command);
     let status = command
         .status()
         .map_err(|_| format!("Could not start {}.", selected.name()))?;

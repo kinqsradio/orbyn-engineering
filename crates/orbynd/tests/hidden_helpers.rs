@@ -68,9 +68,12 @@ fn claude_history_reads_one_session_and_refuses_to_fork() {
     } else {
         "/work/app"
     };
-    let folder = config
-        .join("projects")
-        .join(orbyn_core::claude_history::project_folder_name(work));
+    let folder =
+        config
+            .join("projects")
+            .join(orbyn_core::agents::claude_history::project_folder_name(
+                work,
+            ));
     std::fs::create_dir_all(&folder).unwrap();
     let id = "5b6c7d8e-0000-4000-8000-000000000001";
     let lines = [

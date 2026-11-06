@@ -1,5 +1,5 @@
 //! The durable first-turn setup fence. No setup process is owned by SQLite.
-use crate::project_setup::PreparationCapture;
+use crate::project::project_setup::PreparationCapture;
 use orbyn_contracts::{ModelSelection, ProjectScript, Run};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 

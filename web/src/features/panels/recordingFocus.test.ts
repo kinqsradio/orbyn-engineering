@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 // Exercise the exact production CDP expression, not a second copy of its rules.
 // This is a predicate contract test; real closed-shadow focus stays in the real
 // browser spec and is not qualified by these synthetic document objects.
-const source = readFileSync(resolve(process.cwd(), "../crates/orbyn-core/src/preview.rs"), "utf8");
+const source = readFileSync(resolve(process.cwd(), "../crates/orbyn-core/src/browser/preview.rs"), "utf8");
 const expression = source.match(/const RECORDING_SAFE_FOCUS: &str = r"([\s\S]*?)";/)?.[1];
 if (!expression) throw new Error("Missing production recording focus predicate");
 

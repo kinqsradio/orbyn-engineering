@@ -225,11 +225,12 @@ impl Store {
                 .query_row("SELECT * FROM projects WHERE id=?1", [id], project_row)
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound("project".into()))?;
-            let revision = crate::project_icon_override::revision(&project.metadata_revision)?
-                .checked_add(1)
-                .ok_or_else(|| {
-                    CoreError::Invalid("Project metadata revision is exhausted.".into())
-                })?;
+            let revision =
+                crate::project::project_icon_override::revision(&project.metadata_revision)?
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        CoreError::Invalid("Project metadata revision is exhausted.".into())
+                    })?;
             tx.execute(
                 "UPDATE projects SET name=?2, metadata_revision=?3 WHERE id=?1",
                 params![id, name, revision],
@@ -258,11 +259,12 @@ impl Store {
                 },
             )?;
             if !project.trusted {
-                let revision = crate::project_icon_override::revision(&project.metadata_revision)?
-                    .checked_add(1)
-                    .ok_or_else(|| {
-                        CoreError::Invalid("Project metadata revision is exhausted.".into())
-                    })?;
+                let revision =
+                    crate::project::project_icon_override::revision(&project.metadata_revision)?
+                        .checked_add(1)
+                        .ok_or_else(|| {
+                            CoreError::Invalid("Project metadata revision is exhausted.".into())
+                        })?;
                 tx.execute(
                     "UPDATE projects SET trusted=1, metadata_revision=?2 WHERE id=?1",
                     params![id, revision],
@@ -372,11 +374,12 @@ impl Store {
                 )
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound("project".into()))?;
-            let revision = crate::project_icon_override::revision(&project.metadata_revision)?
-                .checked_add(1)
-                .ok_or_else(|| {
-                    CoreError::Invalid("Project metadata revision is exhausted.".into())
-                })?;
+            let revision =
+                crate::project::project_icon_override::revision(&project.metadata_revision)?
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        CoreError::Invalid("Project metadata revision is exhausted.".into())
+                    })?;
             tx.execute(
                 "UPDATE projects SET scratch = 0, name = ?2, metadata_revision = ?3 WHERE id = ?1",
                 params![project_id, name, revision],
@@ -756,7 +759,7 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
     let stored_icon: Option<String> = row.get("project_icon")?;
     let project_icon = stored_icon
         .as_deref()
-        .map(crate::project_icon_override::read_stored)
+        .map(crate::project::project_icon_override::read_stored)
         .transpose()
         .map_err(|error| {
             rusqlite::Error::FromSqlConversionFailure(

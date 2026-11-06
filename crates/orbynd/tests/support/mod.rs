@@ -256,7 +256,7 @@ impl Service {
         let response = request.send().await.unwrap();
         assert_eq!(response.status(), 200);
         let mut body = response.bytes_stream();
-        let mut parser = orbyn_core::sse::SseParser::default();
+        let mut parser = orbyn_core::agents::sse::SseParser::default();
         let mut events = Vec::new();
         loop {
             let chunk = tokio::time::timeout(Duration::from_secs(15), body.next())

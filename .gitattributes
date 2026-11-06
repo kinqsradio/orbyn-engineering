@@ -1,5 +1,5 @@
 # The signature covers these exact bytes, so Git must never convert them.
-crates/orbyn-core/src/engines/tested-versions.* -text
+crates/orbyn-core/src/agents/engines/tested-versions.* -text
 
 # Embedded or generated: every checkout gets the same bytes on every platform.
 crates/**/fixtures/** text eol=lf

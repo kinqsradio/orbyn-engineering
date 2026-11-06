@@ -9,8 +9,8 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde_json::json;
 
 use super::{ACTIVE_STATES, AuditRecord, Store, insert_audit, project_row};
-use crate::approvals::RunScope;
 use crate::error::{CoreError, Result};
+use crate::governance::approvals::RunScope;
 use crate::util::{new_id, now};
 
 const MAX_PROJECT_THREADS: usize = 256;

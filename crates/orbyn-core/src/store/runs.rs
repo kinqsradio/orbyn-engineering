@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::approvals::{activity_event, approval_row};
 use super::{Appended, AuditRecord, Store, insert_audit, insert_event, run_row, wire_name};
-use crate::driver::ItemRecord;
+use crate::agents::driver::ItemRecord;
 use crate::error::{CoreError, Result};
 use crate::util::{new_id, now};
 

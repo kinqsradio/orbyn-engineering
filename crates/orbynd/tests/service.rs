@@ -354,7 +354,7 @@ async fn replay_then_live_has_no_gap_or_duplicate() {
                 .await
                 .unwrap();
             let mut body = response.bytes_stream();
-            let mut parser = orbyn_core::sse::SseParser::default();
+            let mut parser = orbyn_core::agents::sse::SseParser::default();
             let mut events: Vec<Value> = Vec::new();
             use futures_util::StreamExt;
             while let Some(Ok(chunk)) = body.next().await {
@@ -757,7 +757,7 @@ async fn agui_stream(service: &Service, thread: &str, input: Value) -> (Vec<Valu
         .unwrap();
     let status = response.status().as_u16();
     let mut body = response.bytes_stream();
-    let mut parser = orbyn_core::sse::SseParser::default();
+    let mut parser = orbyn_core::agents::sse::SseParser::default();
     let mut frames = Vec::new();
     use futures_util::StreamExt;
     loop {

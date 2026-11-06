@@ -1354,7 +1354,7 @@ that left something out. Archived threads are searched only when asked.
 
 ## Automatic requests
 
-`GET /api/network` and `crates/orbyn-core/src/network.rs` list every outbound request
+`GET /api/network` and `crates/orbyn-core/src/governance/network.rs` list every outbound request
 Orbyn makes without being asked, with host, cadence, what turns it off, the key that does
 and whether it is on now. A new one is added there in the same change, with a switch.
 The two-minute pull request poll has its own, `poll_pull_requests`. Engines make their own requests under their own terms.

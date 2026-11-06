@@ -212,7 +212,7 @@ async fn update_events_send_the_status_then_each_change() {
         .unwrap();
     assert_eq!(response.status(), 200);
     let mut body = response.bytes_stream();
-    let mut parser = orbyn_core::sse::SseParser::default();
+    let mut parser = orbyn_core::agents::sse::SseParser::default();
     use futures_util::StreamExt;
     say(
         &mut service,

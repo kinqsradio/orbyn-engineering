@@ -57,7 +57,7 @@ async fn capture_async(
     drop(command);
     let pid = child.id().unwrap();
     #[cfg(unix)]
-    let tree = orbyn_core::process::ProcessTree::from_group(pid as i32);
+    let tree = orbyn_core::host::process::ProcessTree::from_group(pid as i32);
     #[cfg(windows)]
     let tree = match windows::Job::attach(&child) {
         Ok(tree) => tree,

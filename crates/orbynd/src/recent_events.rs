@@ -26,6 +26,10 @@ impl<S: Subscriber> Layer<S> for RecentEvents {
         let mut text = Text::default();
         event.record(&mut text);
         let meta = event.metadata();
-        orbyn_core::diagnostics::note_event(meta.level().as_str(), meta.target(), text.0);
+        orbyn_core::operations::diagnostics::note_event(
+            meta.level().as_str(),
+            meta.target(),
+            text.0,
+        );
     }
 }

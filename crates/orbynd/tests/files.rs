@@ -530,7 +530,7 @@ async fn raw_bytes_refuse_a_file_past_the_limit() {
     let root = checkout(&service, &thread).await;
     // A sparse file, so this takes no disk.
     let huge = std::fs::File::create(root.join("huge.mp4")).unwrap();
-    huge.set_len(orbyn_core::file_bytes::MAX_RAW_BYTES + 1)
+    huge.set_len(orbyn_core::project::file_bytes::MAX_RAW_BYTES + 1)
         .unwrap();
     let response = raw(&service, &thread, "huge.mp4")
         .await

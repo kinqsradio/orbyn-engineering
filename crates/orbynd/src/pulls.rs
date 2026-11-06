@@ -11,7 +11,7 @@ use orbyn_contracts::{
     MergePull, PullAction, ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople,
     StackAction, SubmitReview, UpdatePull, WorkOnPull,
 };
-use orbyn_core::forge::PullFilter;
+use orbyn_core::source_control::forge::PullFilter;
 
 use crate::api::{ApiJson, ApiResult, AppState, LOCAL_USER};
 
