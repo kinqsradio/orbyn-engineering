@@ -165,7 +165,6 @@ function FragmentRow({ separator, children }: { separator: boolean; children: Re
   );
 }
 
-/** A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work. */
 const isModal = (dialog: HTMLDialogElement) => {
   try {
     return dialog.matches(":modal");
@@ -174,12 +173,17 @@ const isModal = (dialog: HTMLDialogElement) => {
   }
 };
 
-/** A modal dialog sits in the top layer, above anything in the body, so a menu opened from one has to live inside it. */
+/**
+ * A modal dialog sits in the top layer, above anything in the body, so a menu opened from one
+ * has to live inside it. The last open modal in document order stands in for the topmost; the
+ * app never opens a second modal that sits earlier in the document than the first.
+ */
 function menuHost(): HTMLElement {
   const modals = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].filter(isModal);
   return modals.at(-1) ?? document.body;
 }
 
+/** A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work. */
 export function Menu({
   x,
   y,
@@ -203,8 +207,10 @@ export function Menu({
     return () => document.removeEventListener("mousedown", close);
   }, [onClose]);
 
+  // Chosen once, so a dialog opening or closing behind the menu doesn't remount it.
+  const [host] = useState(menuHost);
   return createPortal(
     <MenuList x={x} y={y} origin={origin} label={label} items={items} onClose={onClose} />,
-    menuHost(),
+    host,
   );
 }
