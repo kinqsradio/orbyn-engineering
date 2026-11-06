@@ -14,7 +14,8 @@ use tokio_util::io::ReaderStream;
 use crate::api::{ApiResult, AppState};
 
 /// Stops anything a file holds from running, even opened directly in a tab.
-const SANDBOX: &str = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+pub(crate) const SANDBOX: &str =
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Wanted {
@@ -76,7 +77,7 @@ fn parse_range(header: Option<&str>, size: u64) -> Wanted {
 
 /// A name for `Content-Disposition`, percent-encoded so nothing in it can break out
 /// of the header.
-fn encoded_name(name: &str) -> String {
+pub(crate) fn encoded_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for byte in name.bytes() {
         if byte.is_ascii_alphanumeric() || b".-_~".contains(&byte) {

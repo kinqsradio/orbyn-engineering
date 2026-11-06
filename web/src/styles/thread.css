@@ -574,6 +574,36 @@
   align-self: flex-start;
   font-size: var(--text-caption);
 }
+.workflow-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 6px 22px;
+  min-width: 0;
+  font-size: var(--text-small);
+}
+.workflow-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.workflow-state {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.workflow-state[data-state="failed"] {
+  color: var(--color-danger);
+}
+.workflow-path {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  overflow-wrap: anywhere;
+}
+.workflow-error {
+  flex-basis: 100%;
+  color: var(--color-danger);
+  font-size: var(--text-caption);
+}
 .trace-body {
   display: flex;
   flex-direction: column;
@@ -3756,6 +3786,52 @@ button.context-meter:hover:not(:disabled) {
 .browser-bar input {
   flex: 1 1 120px;
   min-width: 120px;
+}
+.browser-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+.browser-bridge-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-bridge-row > span,
+.browser-bridge-row li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+div.browser-bridge-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.browser-bridge-row li > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-bridge-row li > span:nth-child(2) {
+  color: var(--color-muted);
+}
+.browser-bridge button {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
 }
 
 /* Agent input remains a viewer cue; it cannot intercept a person's page input. */

@@ -115,6 +115,7 @@ impl EngineDriver for ScriptDriver {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

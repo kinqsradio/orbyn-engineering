@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -23,6 +24,7 @@ import { SiteIcon } from "./SiteIcon";
 import { AgentCursor } from "./AgentCursor";
 import { BrowserRecording } from "./BrowserRecording";
 import { PreviewRecordings } from "./previewRecording";
+import { PageBridge, copyFromPage } from "./PageBridge";
 import { useBrowserPanels } from "./browserPanels";
 import { inDesktopApp } from "../../api/shell";
 import {
@@ -323,9 +325,25 @@ export function PageView({
   };
   const onKey = (event: KeyboardEvent) => {
     if (!human) return;
+    const shortcut = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+    const letter = event.key.toLowerCase();
+    // Pasting arrives as its own event, with the text the person chose to paste.
+    if (shortcut && letter === "v") return;
     event.preventDefault();
+    if (shortcut && letter === "c") {
+      copyFromPage(threadId, tab.id).catch((failure: unknown) =>
+        pushToast(`Couldn't copy from the page. ${toFailure(failure).message}`),
+      );
+      return;
+    }
     if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) send({ kind: "text", text: event.key });
     else send({ kind: "key", text: event.key });
+  };
+  const onPaste = (event: ClipboardEvent) => {
+    if (!human) return;
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    if (text) send({ kind: "text", text });
   };
   const onWheel = (event: WheelEvent) => send({ kind: "scroll", ...point(event), delta_y: event.deltaY });
   const fitted = useRef({ width: tab.width, height: tab.height });
@@ -389,6 +407,7 @@ export function PageView({
       src={`data:image/jpeg;base64,${frame}`}
       onClick={click}
       onKeyDown={onKey}
+      onPaste={onPaste}
       onWheel={onWheel}
     />
   ) : null;
@@ -854,6 +873,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           {error}
         </p>
       ) : null}
+      {active ? <PageBridge threadId={threadId} tab={active} onChanged={reload} /> : null}
       {active ? (
         <PageView
           threadId={threadId}
