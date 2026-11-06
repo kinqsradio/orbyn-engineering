@@ -204,15 +204,14 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
         summaryClassName="trace-summary"
         summary={
           <>
-            {failed ? (
-              <X size={14} className="trace-failed" role="img" aria-label="Tool call failed" />
-            ) : (
-              <Icon size={14} aria-hidden />
-            )}
+            {failed ? null : <Icon size={14} aria-hidden />}
             <span className={running ? "trace-label text-sweep" : "trace-label"} title={trace.label}>
               {trace.label}
             </span>
             {running ? <span className="sr-only">Running</span> : null}
+            {failed ? (
+              <X size={14} className="trace-failed trace-lead" role="img" aria-label="Tool call failed" />
+            ) : null}
             {failed ? (
               <span className="trace-output" aria-hidden>
                 Output
