@@ -324,6 +324,10 @@ async fn limits_come_from_the_engine_and_only_where_it_reports_them() {
     let (service, _) = setup(&dir, Options::default(), "codex").await;
     let limits = service.json("/api/engines/codex/limits").await;
     assert_eq!(limits["limits"]["rateLimits"]["primary"]["usedPercent"], 12);
+    assert!(
+        !limits.to_string().contains("SECRET-MARKER"),
+        "no account ID or upsell leaves the driver: {limits}"
+    );
     let again = service.json("/api/engines/codex/limits").await;
     assert_eq!(
         again["checked_at"], limits["checked_at"],

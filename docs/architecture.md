@@ -362,7 +362,9 @@ after 150 ms while the scan is pending. A failed refresh keeps those figures and
 offers Retry. Changing the period clears them, and an earlier response cannot
 replace the new period or clear its pending state. Subscription
 limits appear only where an engine reports them itself, as Codex does through
-`account/rateLimits/read`, cached for five minutes; `?force=true` reads again and
+`account/rateLimits/read`, cached for five minutes. Only Codex's `rateLimits`,
+`rateLimitsByLimitId` and plan leave the driver; its account ID, upsell copy and
+reset-credit offers are dropped; `?force=true` reads again and
 spends no model usage. `/api/limits` also gives one number per window length across
 engines, the highest used percentage, since that engine stops first.
 Windows with an unknown duration remain separate, because an absent duration does
