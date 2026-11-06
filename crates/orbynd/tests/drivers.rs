@@ -645,6 +645,15 @@ async fn the_next_claude_turn_adopts_a_process_started_for_it_only_when_inputs_m
         ..Options::default()
     };
     let (service, thread) = setup(&dir, options, "claude").await;
+    let response = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": { "warm_next_turn": true } }))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
     service.admit(&thread, "say hi").await;
     assert_eq!(service.finished(&thread).await, "completed");
     // The completed turn starts the next one's process, which waits unprompted.

@@ -500,6 +500,19 @@ pub struct WarmProcess {
     pub(crate) dir: ProbeDir,
 }
 
+/// A long-lived stand-in process, for tests of what happens to a warm one.
+#[cfg(all(test, unix))]
+pub(crate) fn stand_in_warm(key: &str) -> Result<WarmProcess> {
+    let command = crate::process::resolve("sh")
+        .ok_or_else(|| crate::error::CoreError::Internal("no sh".into()))?;
+    let args = [std::ffi::OsString::from("-c"), "sleep 60".into()];
+    Ok(WarmProcess {
+        key: key.to_owned(),
+        process: pipes::spawn_engine(&command, &args, &std::env::temp_dir())?,
+        dir: ProbeDir::new()?,
+    })
+}
+
 impl WarmProcess {
     /// False once the process has ended on its own.
     pub fn is_alive(&mut self) -> bool {

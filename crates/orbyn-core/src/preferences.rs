@@ -83,6 +83,7 @@ const DEFINITIONS: &[Definition] = defs![
     "default_project_scripts" Kind::List, [], true;
     "default_model" Kind::Text, "", true;
     "prefer_saved_login" Kind::Bool, false, false;
+    "warm_next_turn" Kind::Bool, false, false;
     "app_update_mode" Kind::OneOf(&["automatic", "notify", "off"]), "notify", false;
     "keep_awake_during_runs" Kind::Bool, true, false;
     "default_engine" Kind::Text, "", true;

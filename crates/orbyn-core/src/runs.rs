@@ -988,6 +988,12 @@ impl RunManager {
     }
 
     async fn try_warm_next(self: &Arc<Self>, thread_id: &str, after_run: String) -> Result<()> {
+        // Off unless asked for: Claude runs SessionStart hooks and starts MCP servers
+        // as soon as it launches, so a process never adopted would run them for nothing.
+        let wanted = crate::preferences::stored_preference(&self.store, "warm_next_turn", None)?;
+        if wanted != json!(true) {
+            return Ok(());
+        }
         let thread = self.store.thread(thread_id)?;
         let driver = self.engines.driver(&thread.engine)?;
         let lifecycle = thread.lifecycle.as_ref();
@@ -1020,7 +1026,12 @@ impl RunManager {
             thread_id: thread.id.clone(),
             engine: thread.engine.clone(),
             family: driver.family(),
-            write_scope: None,
+            // The same limit the thread's runs get, while this token is live unadopted.
+            write_scope: Some(write_scope(
+                &root,
+                Path::new(&thread.cwd),
+                driver.resolves_from_checkout(),
+            )),
             mode,
             plan,
         };
@@ -1052,6 +1063,12 @@ impl RunManager {
             resume: self.store.engine_session(&thread.id)?,
             mcp_url: Some(url.clone()),
             run_dir: PathBuf::new(),
+        };
+        // No update may begin while this process starts and is parked: it would hold
+        // the binary being replaced, which Windows refuses.
+        let Some(_starting) = self.engines.begin_warm() else {
+            self.mcp.revoke(&token);
+            return Ok(());
         };
         let started = driver.start_warm(spec).await;
         let process = match started {

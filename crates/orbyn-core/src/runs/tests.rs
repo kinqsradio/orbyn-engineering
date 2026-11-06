@@ -24,6 +24,8 @@ type Script = Arc<
 struct ScriptDriver {
     script: Script,
     capabilities: EngineCapabilities,
+    /// Starts a stand-in process ahead of the next turn, as Claude does.
+    warms: bool,
     update_script: String,
     probes: std::sync::atomic::AtomicU64,
     start_failure: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
@@ -80,6 +82,21 @@ impl EngineDriver for ScriptDriver {
         })
     }
 
+    fn can_warm(&self) -> bool {
+        self.warms
+    }
+
+    fn warm_key(&self, _spec: &RunSpec) -> Option<String> {
+        self.warms.then(|| "script".to_owned())
+    }
+
+    async fn start_warm(&self, _spec: RunSpec) -> Result<Option<crate::driver::WarmProcess>> {
+        #[cfg(unix)]
+        return crate::driver::stand_in_warm("script").map(Some);
+        #[cfg(not(unix))]
+        Ok(None)
+    }
+
     async fn start_run(
         &self,
         spec: RunSpec,
@@ -128,6 +145,7 @@ async fn fixture_with_start_failure(
         update_timeout,
         start_failure,
         capabilities(),
+        false,
     )
     .await
 }
@@ -138,6 +156,7 @@ async fn fixture_full(
     update_timeout: Duration,
     start_failure: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     capabilities: EngineCapabilities,
+    warms: bool,
 ) -> Fixture {
     let dir = TempDir::new();
     let root = crate::testing::library(&dir.path().join("library"));
@@ -148,6 +167,7 @@ async fn fixture_full(
     core.engines.register(Arc::new(ScriptDriver {
         script,
         capabilities,
+        warms,
         update_script: update.to_owned(),
         probes: Default::default(),
         start_failure,
@@ -261,7 +281,15 @@ async fn a_saved_mode_the_engine_lacks_runs_supervised() {
     });
     let mut caps = capabilities();
     caps.permission_modes = crate::permission_modes::offered("pi");
-    let f = fixture_full(script, "echo updated", Duration::from_secs(30), None, caps).await;
+    let f = fixture_full(
+        script,
+        "echo updated",
+        Duration::from_secs(30),
+        None,
+        caps,
+        false,
+    )
+    .await;
     for (saved, ran) in [(Auto, Supervised), (FullAccess, FullAccess)] {
         let patch = orbyn_contracts::UpdateThread {
             permission_mode: Some(saved),
@@ -924,6 +952,50 @@ async fn an_updater_that_changed_nothing_is_a_failed_update() {
         Err(CoreError::UpdateFailed(message)) => assert!(message.contains("1.0.0"), "{message}"),
         other => panic!("{:?}", other.map(|status| status.version)),
     }
+}
+
+async fn until_warm(core: &Core, thread: &str, wanted: bool) {
+    for _ in 0..2000 {
+        if core.engines.has_warm(thread) == wanted {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    panic!("warm stayed {}", !wanted);
+}
+
+/// Warming is off by default; once on, an update start ends the waiting process so
+/// it cannot hold the binary being replaced.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_update_ends_the_process_kept_for_the_next_turn() {
+    let f = fixture_full(
+        finished(),
+        "echo updated",
+        Duration::from_secs(30),
+        None,
+        capabilities(),
+        true,
+    )
+    .await;
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!f.core.engines.has_warm(&f.thread), "off by default");
+
+    f.core
+        .set_preferences(
+            None,
+            &std::collections::BTreeMap::from([("warm_next_turn".into(), json!(true))]),
+        )
+        .unwrap();
+    let run = f.core.runs.admit(&f.thread, "go", "t").unwrap();
+    assert_eq!(until_terminal(&f.core, &run.id).await, RunState::Completed);
+    until_warm(&f.core, &f.thread, true).await;
+    assert!(f.core.engines.update("script", "t").await.is_ok());
+    assert!(!f.core.engines.has_warm(&f.thread));
+    // Nothing can be started while an update runs.
+    assert!(f.core.engines.begin_warm().is_some());
 }
 
 /// The provider card's recommended-version action needs a signed recommendation.

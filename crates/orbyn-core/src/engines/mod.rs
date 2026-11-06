@@ -96,6 +96,18 @@ pub struct EngineManager {
     catalog: CatalogCache,
     /// Processes started ahead of each thread's next turn, by thread.
     warm: Mutex<HashMap<String, warm::WarmEntry>>,
+    /// Warm processes being started. An update cannot begin while any is.
+    warming: Arc<Mutex<usize>>,
+}
+
+/// A warm process being started; updates wait until it is dropped.
+pub struct WarmStart(Arc<Mutex<usize>>);
+
+impl Drop for WarmStart {
+    fn drop(&mut self) {
+        let mut count = lock(&self.0);
+        *count = count.saturating_sub(1);
+    }
 }
 
 struct CachedModels {
@@ -130,6 +142,7 @@ impl EngineManager {
             native_operations: Arc::default(),
             installer_locks: Mutex::new(HashMap::new()),
             warm: Mutex::new(HashMap::new()),
+            warming: Arc::new(Mutex::new(0)),
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
             known_models: Mutex::new(HashMap::new()),
@@ -304,6 +317,22 @@ impl EngineManager {
             }
         }
         Ok(drivers)
+    }
+
+    /// Holds off every engine update while a warm process starts, or refuses while
+    /// one is running.
+    pub fn begin_warm(&self) -> Option<WarmStart> {
+        let updating = lock(&self.updating);
+        if !updating.is_empty() {
+            return None;
+        }
+        *lock(&self.warming) += 1;
+        Some(WarmStart(self.warming.clone()))
+    }
+
+    /// True while `thread` has a process waiting for its next turn.
+    pub fn has_warm(&self, thread: &str) -> bool {
+        lock(&self.warm).contains_key(thread)
     }
 
     /// Keeps a process for `thread`'s next turn, replacing any earlier one. Refused
@@ -728,7 +757,10 @@ impl EngineManager {
     fn begin_update(&self, id: &str) -> Result<UpdateMarker<'_>> {
         let mut updating = lock(&self.updating);
         let operations = lock(&self.native_operations);
-        if updating.contains(id) || !operations.is_empty() || !self.store.active_runs()?.is_empty()
+        if updating.contains(id)
+            || !operations.is_empty()
+            || *lock(&self.warming) > 0
+            || !self.store.active_runs()?.is_empty()
         {
             return Err(CoreError::EngineBusy(id.to_owned()));
         }
