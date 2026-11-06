@@ -271,16 +271,20 @@ the running turn alone and applies from the next. A fork keeps the selection. An
 switch takes what was asked for, then what was last chosen on that engine, and never
 keeps the old engine's values. The last selection used on an engine is remembered and
 reported as `remembered`. A new thread takes the request's model, then the project's
-`default_model` (when `default_engine` is empty or matches), then the remembered one,
-and effort and options carry only along with their model. A project's
-`default_permission_mode` also applies there.
+`default_model` (when `default_engine` is empty or matches), then the remembered one.
+Effort and options carry only along with their model: the request's own, then the
+project's `default_effort` and `default_model_options` when the thread's model is that
+default model, then the remembered ones for the same model. `default_model_options`
+holds option ids with one string value each and never `effort`, which has its own key.
+A project's `default_permission_mode` also applies there.
 
 The new-thread draft resolves that physical project's effective model preferences
 before sending an implicit selection. A model picked in the draft wins over a
 late defaults response. A disabled or missing configured provider requires an
 explicit replacement; it never silently selects another provider. Draft effort
-and options remain attached to their project and model, without adding persisted
-effort or option defaults. Settings opens over the
+and options remain attached to their project and model; when the draft's model is
+the project's default model, its default effort wins over the remembered one, and
+the service fills the default options. Settings opens over the
 still-mounted draft, so every successful preference save bumps a session-only
 revision that makes the draft read its defaults again; an explicit draft choice
 stays.
@@ -291,7 +295,8 @@ options are checked for it. `PATCH` does not check, because a model and its effo
 change in two steps. A run's start checks again, which is what catches a queued message
 that outlived a model; that run fails with the same message.
 
-`fallback_model` covers a model that went away. When the engine's own list, not a stand-in,
+`fallback_model` covers a model that went away. It may be set per project, and a turn
+reads it in its thread's project. When the engine's own list, not a stand-in,
 no longer has the thread's model, the model is not a custom one and the list has the
 fallback, that turn runs on it with no effort or options and logs `engine.warning`. The
 thread keeps its choice, so the model is used again when it returns.
@@ -843,9 +848,13 @@ project. The catalog holds no secret: provider environments and tokens stay out 
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
 
-The project settings Model control writes `default_engine` and `default_model`
-together, fencing both preference revisions and the selected membership. Automatic
-sets an empty pair; Inherit removes the selected project overrides. A conflict
+The project settings Model control writes `default_engine`, `default_model`,
+`default_effort` and `default_model_options` together as one tuple, fencing all four
+preference revisions and the selected membership. Effort and option selects show the
+default model's own options; choosing another model clears them, and any of the four
+differing across the selection shows Mixed without a write. Automatic sets an empty
+tuple; Inherit removes the selected project overrides of all four. The fallback model
+is its own scoped row beside it. A conflict
 retains the choice and requires an explicit reload before retrying. Reset all
 removes only the captured project overrides and leaves environment defaults alone.
 Its model picker stays in the owning settings dialog's top layer. Escape closes

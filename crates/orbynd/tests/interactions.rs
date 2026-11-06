@@ -537,6 +537,110 @@ async fn a_project_default_model_and_mode_reach_a_new_thread() {
     service.stop().await;
 }
 
+async fn set_project_preferences(service: &Service, project: &str, values: Value) -> u16 {
+    service
+        .client
+        .put(format!(
+            "{}/api/projects/{project}/preferences",
+            service.url
+        ))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": values }))
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
+}
+
+#[tokio::test]
+async fn a_project_default_effort_and_options_come_only_with_its_default_model() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(false, &dir.path().join("l")), "codex").await;
+    let saved = service.json(&format!("/api/threads/{thread}")).await;
+    let project = saved["project_id"].as_str().unwrap().to_owned();
+    let code = set_project_preferences(
+        &service,
+        &project,
+        json!({
+            "default_engine": "codex", "default_model": "fake-small",
+            "default_effort": "low", "default_model_options": { "service_tier": "fast" },
+        }),
+    )
+    .await;
+    assert_eq!(code, 200);
+    let create = |body: Value| {
+        let mut body = body;
+        body["project_id"] = json!(project);
+        body["engine"] = json!("codex");
+        body["title"] = json!("Defaults");
+        body["worktree"] = Value::Null;
+        body["skill_profile"] = Value::Null;
+        service.send("/api/threads", body)
+    };
+    let (code, defaulted) = create(json!({ "model": null })).await;
+    assert!(code < 300, "{defaulted}");
+    assert_eq!(defaulted["model"], "fake-small");
+    assert_eq!(defaulted["effort"], "low");
+    assert_eq!(defaulted["options"]["service_tier"], "fast");
+    // Naming the default model still takes its default effort and options.
+    let (_, named) = create(json!({ "model": "fake-small" })).await;
+    assert_eq!(named["effort"], "low", "{named}");
+    // A person's own effort wins, and another model carries none of the defaults.
+    let (_, chosen) = create(json!({ "model": "fake-small", "effort": "high" })).await;
+    assert_eq!(chosen["effort"], "high");
+    let (_, other) = create(json!({ "model": "another-model" })).await;
+    assert!(other.get("effort").is_none_or(Value::is_null), "{other}");
+    assert!(
+        other
+            .get("options")
+            .is_none_or(|options| options.as_object().is_none_or(|o| o.is_empty())),
+        "{other}"
+    );
+    // Effort is its own setting, never an option.
+    let refused = set_project_preferences(
+        &service,
+        &project,
+        json!({
+            "default_model_options": { "effort": "high" },
+        }),
+    )
+    .await;
+    assert_eq!(refused, 400);
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_project_fallback_model_applies_to_that_project_alone() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let shown = service.json(&format!("/api/threads/{thread}")).await;
+    let project = shown["project_id"].as_str().unwrap().to_owned();
+    let code = set_project_preferences(
+        &service,
+        &project,
+        json!({ "fallback_model": "fake-small" }),
+    )
+    .await;
+    assert_eq!(code, 200);
+    let global = service.json("/api/preferences").await;
+    let fallback = global
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|view| view["key"] == "fallback_model")
+        .unwrap();
+    assert_eq!(fallback["value"], "", "the environment keeps no fallback");
+    service.patch(&thread, json!({ "model": "gone" })).await;
+    service.admit(&thread, "hello").await;
+    assert_eq!(service.finished(&thread).await, "completed");
+    assert_eq!(
+        selection_of(&service.all_events(&thread).await)["model"],
+        "fake-small"
+    );
+    service.stop().await;
+}
+
 #[tokio::test]
 async fn acp_models_come_from_a_session_and_a_choice_reaches_the_agent() {
     let dir = TempDir::new();

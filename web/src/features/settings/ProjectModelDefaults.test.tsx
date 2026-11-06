@@ -19,13 +19,23 @@ vi.mock("../thread/ModelPicker", () => ({ ModelPickerTrigger: ({ selected, onPic
   {triggerLabel ?? `Choose model (${selected.engine}/${selected.model ?? "automatic"})`}</button> }));
 const mocked = vi.mocked(request);
 const checkout: ProjectScopesQuery = { selection: { kind: "checkout", group_key: "group-a", project_id: "a" } };
-const views = (engine = "codex", model = "old", source = "project"): PreferenceView[] =>
+const views = (engine = "codex", model = "old", source = "project", effort = "", options: Record<string, string> = {}): PreferenceView[] =>
   [{ key: "default_engine", value: engine, default: "", source, project_scoped: true },
-    { key: "default_model", value: model, default: "", source, project_scoped: true }];
+    { key: "default_model", value: model, default: "", source, project_scoped: true },
+    { key: "default_effort", value: effort, default: "", source, project_scoped: true },
+    { key: "default_model_options", value: options, default: {}, source, project_scoped: true }];
+const tuple = (engine: string, model: string, effort = "", options: Record<string, string> = {}) => ({
+  default_engine: { op: "set", value: engine }, default_model: { op: "set", value: model },
+  default_effort: { op: "set", value: effort }, default_model_options: { op: "set", value: options } });
+const every = (edit: unknown) => ({ default_engine: edit, default_model: edit, default_effort: edit, default_model_options: edit });
 let data: ScopedPreferencesResult, writes: ScopedPreferencesChange[], failure: boolean;
 beforeEach(() => {
   useModelStore.setState({ byEngine: { codex: { engine: "codex", source: "engine", checked_at: "fixture", error: null, fallback: false,
-    models: ["old", "chosen", "b-model", "old-reply"].map((id) => ({ id, label: id, description: null, is_default: id === "old", custom: false, options: [] })),
+    models: ["old", "chosen", "b-model", "old-reply"].map((id) => ({ id, label: id, description: null, is_default: id === "old", custom: false,
+      options: id === "old" ? [
+        { id: "effort", label: "Effort", values: [{ id: "low", label: "Low", default: false }, { id: "high", label: "High", default: true }] },
+        { id: "service_tier", label: "Speed", values: [{ id: "fast", label: "Fast", default: false }] },
+      ] : [] })),
     options: [], agents: [], output_styles: [] } satisfies EngineModels } });
   data = scopedFixture(views(), views("", "", "default"), "a"); writes = []; failure = false;
   mocked.mockReset(); mocked.mockImplementation(async (method, _path, body) => {
@@ -45,7 +55,7 @@ it("commits one version-fenced provider/model tuple and leaves opening the contr
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]).toEqual({ scope: checkout, membership_version: "catalog",
     if_match: Object.fromEntries(data.rows.map((row) => [row.key, row.revision])),
-    edits: { default_engine: { op: "set", value: "codex" }, default_model: { op: "set", value: "chosen" } } });
+    edits: tuple("codex", "chosen") });
 });
 
 it("retains a conflicting model draft and requires explicit reload before retry with fresh revisions", async () => {
@@ -62,31 +72,32 @@ it("retains a conflicting model draft and requires explicit reload before retry 
   expect(writes).toHaveLength(1);
   await user.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(writes).toHaveLength(2));
-  expect(writes[1]?.if_match).toEqual({ default_engine: "new-default_engine", default_model: "new-default_model" });
+  expect(writes[1]?.if_match).toEqual({ default_engine: "new-default_engine", default_model: "new-default_model",
+    default_effort: "new-default_effort", default_model_options: "new-default_model_options" });
   expect(writes[1]?.edits.default_model).toEqual({ op: "set", value: "chosen" });
 });
 
-it("inherits both keys together while Automatic sets both keys explicitly", async () => {
+it("inherits the whole tuple together while Automatic sets every key explicitly", async () => {
   const user = userEvent.setup(); render(<ProjectModelDefaults query={checkout} />);
   await user.click(await screen.findByRole("button", { name: "Inherit" }));
   await waitFor(() => expect(writes).toHaveLength(1));
-  expect(writes[0]?.edits).toEqual({ default_engine: { op: "inherit" }, default_model: { op: "inherit" } });
+  expect(writes[0]?.edits).toEqual(every({ op: "inherit" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Automatic" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Automatic" }));
   await waitFor(() => expect(writes).toHaveLength(2));
-  expect(writes[1]?.edits).toEqual({ default_engine: { op: "set", value: "" }, default_model: { op: "set", value: "" } });
+  expect(writes[1]?.edits).toEqual(tuple("", ""));
 });
 
 it("does not write Mixed values on read and resets only captured tuple overrides", async () => {
   data = scopedFixture(views("codex", "old", "global"));
   data.rows = data.rows.map((row) => ({ ...row, mixed: true,
     overrides: [{ project_id: row.key === "default_engine" ? "a" : "b", name: "Overridden", value: "old" }] }));
+  // Mixed effort alone still shows Mixed rather than one checkout's value.
   const user = userEvent.setup(); render(<ProjectModelDefaults query={{}} />);
-  expect(await screen.findByText("Mixed")).toBeVisible(); expect(writes).toHaveLength(0);
+  expect(await screen.findByRole("button", { name: "Mixed" })).toBeVisible(); expect(writes).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "Reset all" }));
   await waitFor(() => expect(writes).toHaveLength(1));
-  expect(writes[0]?.edits).toEqual({ default_engine: { op: "reset_overrides", project_ids: ["a", "b"] },
-    default_model: { op: "reset_overrides", project_ids: ["a", "b"] } });
+  expect(writes[0]?.edits).toEqual(every({ op: "reset_overrides", project_ids: ["a", "b"] }));
 });
 
 it("never applies a late old-scope save to a different mounted selection", async () => {
@@ -114,5 +125,37 @@ it("names an unavailable saved provider instead of presenting the representative
   data = scopedFixture(views("removed-provider", "saved-model"), undefined, "a");
   render(<ProjectModelDefaults query={checkout} />);
   expect(await screen.findByRole("button", { name: "removed-provider / saved-model" })).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
+
+it("saves effort and options with the default model and clears them when the model changes", async () => {
+  data = scopedFixture(views("codex", "old", "project", "low", { service_tier: "fast" }), undefined, "a");
+  const user = userEvent.setup(); render(<ProjectModelDefaults query={checkout} />);
+  const effort = await screen.findByRole("combobox", { name: "Default Effort" });
+  expect(effort).toHaveValue("low");
+  expect(screen.getByRole("combobox", { name: "Default Speed" })).toHaveValue("fast");
+  await user.selectOptions(effort, "high");
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]?.edits).toEqual(tuple("codex", "old", "high", { service_tier: "fast" }));
+  await waitFor(() => expect(screen.getByRole("combobox", { name: "Default Speed" })).toBeEnabled());
+  await user.selectOptions(screen.getByRole("combobox", { name: "Default Speed" }), "");
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]?.edits).toEqual(tuple("codex", "old", "low", {}));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Choose model/ })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: /Choose model/ }));
+  await waitFor(() => expect(writes).toHaveLength(3));
+  expect(writes[2]?.edits).toEqual(tuple("codex", "chosen"));
+});
+
+it("offers no effort or options until a model is chosen, and shows Mixed effort without writing", async () => {
+  data = scopedFixture(views("codex", ""), undefined, "a");
+  const { unmount } = render(<ProjectModelDefaults query={checkout} />);
+  expect(await screen.findByText("Choose a model to set its effort and options.")).toBeVisible();
+  expect(screen.queryByRole("combobox", { name: "Default Effort" })).not.toBeInTheDocument();
+  unmount();
+  data = scopedFixture(views("codex", "old", "global", "low"));
+  data.rows = data.rows.map((row) => ({ ...row, mixed: row.key === "default_effort" }));
+  render(<ProjectModelDefaults query={{}} />);
+  expect(await screen.findByRole("combobox", { name: "Default Effort" })).toHaveValue("__mixed__");
   expect(writes).toHaveLength(0);
 });

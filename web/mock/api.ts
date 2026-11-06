@@ -76,7 +76,7 @@ export function createMockApi(options: MockOptions = {}) {
   let preferenceValues: Record<string, JsonValue> = {};
   let preferenceOverrides: Record<string, Record<string, JsonValue>> = {};
   const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat",
-    default_engine: "", default_model: "", disabled_engines: [] };
+    default_engine: "", default_model: "", default_effort: "", default_model_options: {}, fallback_model: "", disabled_engines: [] };
   const subscribers = new Map<string, Set<Subscriber>>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;

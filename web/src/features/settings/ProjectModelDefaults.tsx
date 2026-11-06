@@ -9,8 +9,8 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
-import { useModelStore } from "../thread/modelStore";
-import { PreferenceInheritance } from "./PreferenceRows";
+import { useEngineModels, useModelStore } from "../thread/modelStore";
+import { PreferenceGroups, PreferenceInheritance } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { MODEL_DEFAULT_KEYS, modelDefaultChange, type DefaultModelChoice } from "./modelDefaultChange";
 
@@ -35,8 +35,8 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const data = result.data;
   const rows = MODEL_DEFAULT_KEYS.map((key) => data?.rows.find((row) => row.key === key));
-  const engineRow = rows[0], modelRow = rows[1];
-  const unavailable = !data || !engineRow || !modelRow || data.catalog.selection.kind === "unavailable";
+  const [engineRow, modelRow, effortRow, optionsRow] = rows;
+  const unavailable = !data || rows.some((row) => !row) || data.catalog.selection.kind === "unavailable";
   const blocked = disabled || saving || result.status !== "ready" || result.refreshing || unavailable || conflict;
   const commit = async (edit: Edit) => {
     if (pending.current || blocked || !data) return;
@@ -59,33 +59,41 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
   };
   if (result.status === "loading") return <Loading label="Loading model defaults" rows={1} />;
   if (result.status === "error" && !data) return <ErrorState title="Couldn't load model defaults" failure={result.error} onRetry={result.reload} />;
-  if (!data || !engineRow || !modelRow) return <p className="field-error" role="alert">Model defaults are unavailable.</p>;
+  if (!data || !engineRow || !modelRow || !effortRow || !optionsRow) return <p className="field-error" role="alert">Model defaults are unavailable.</p>;
   const all = data.catalog.selection.kind === "all_projects";
   const mixed = engineRow.mixed || modelRow.mixed;
-  const selected = draft !== null && typeof draft === "object" && "engine" in draft ? draft : {
-    engine: typeof engineRow.value === "string" ? engineRow.value : "",
-    model: typeof modelRow.value === "string" && modelRow.value ? modelRow.value : null,
-  };
+  const tuningMixed = mixed || effortRow.mixed || optionsRow.mixed;
+  const savedOptions = optionsRow.value && typeof optionsRow.value === "object" && !Array.isArray(optionsRow.value)
+    ? Object.fromEntries(Object.entries(optionsRow.value).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+    : {};
+  const selected: Required<DefaultModelChoice> = draft !== null && typeof draft === "object" && "engine" in draft
+    ? { effort: null, options: {}, ...draft } : {
+      engine: typeof engineRow.value === "string" ? engineRow.value : "",
+      model: typeof modelRow.value === "string" && modelRow.value ? modelRow.value : null,
+      effort: typeof effortRow.value === "string" && effortRow.value ? effortRow.value : null,
+      options: savedOptions,
+    };
   const representative = engines.find((engine) => engine.id === selected.engine) ?? engines.find((engine) => engine.installed);
   const missingProvider = selected.engine !== "" && !engines.some((engine) => engine.id === selected.engine);
   const listedModel = representative && modelsByEngine[representative.id]?.models.some((model) => model.id === selected.model);
   const triggerLabel = mixed && !draft ? "Mixed"
     : missingProvider ? [selected.engine, selected.model].filter(Boolean).join(" / ")
     : !selected.model ? "Automatic" : !listedModel ? selected.model : undefined;
+  const inheritance = (row: NonNullable<(typeof rows)[number]>, title: string) => <PreferenceInheritance key={row.key}
+    row={{ key: row.key, title }} view={row.members[0]?.view ?? row.environment} global={row.environment} members={row.members}
+    mixed={row.mixed} overrides={all ? row.overrides : []} disabled={blocked}
+    onResetOverrides={(ids) => { void commit({ reset: ids }); }}
+    onOpenOverride={(id) => {
+      const group = data.catalog.groups.find((entry) => entry.members.some((member) => member.project_id === id));
+      if (group) scope?.select({ kind: "checkout", group_key: group.key, project_id: id });
+    }} />;
   const overrides = [...new Set(rows.flatMap((row) => row?.overrides.map((entry) => entry.project_id) ?? []))];
   const hasOverride = rows.some((row) => row?.members.some((member) => member.view.source === "project"));
   return <SettingGroup title="New threads">
     <SettingRow title="Model" description={all ? "Default model for new threads. Projects can override it." : "Model for new threads in this project."} actions={
       <div className="setting-inheritance-actions">
-        {rows.map((row) => row ? <PreferenceInheritance key={row.key}
-          row={{ key: row.key, title: row.key === "default_engine" ? "Default provider" : "Default model" }}
-          view={row.members[0]?.view ?? row.environment} global={row.environment} members={row.members}
-          mixed={row.mixed} overrides={all ? row.overrides : []} disabled={blocked}
-          onResetOverrides={(ids) => { void commit({ reset: ids }); }}
-          onOpenOverride={(id) => {
-            const group = data.catalog.groups.find((entry) => entry.members.some((member) => member.project_id === id));
-            if (group) scope?.select({ kind: "checkout", group_key: group.key, project_id: id });
-          }} /> : null)}
+        {inheritance(engineRow, "Default provider")}
+        {inheritance(modelRow, "Default model")}
         {!all && hasOverride ? <Button small tone="quiet" disabled={blocked} onClick={() => { void commit("inherit"); }}>Inherit</Button> : null}
         {all && overrides.length > 0 ? <Button small tone="quiet" disabled={blocked}
           onClick={() => { void commit({ reset: overrides }); }}>Reset all</Button> : null}
@@ -94,11 +102,15 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
       <fieldset className="preference-control" disabled={blocked} aria-busy={saving || undefined}>
         {representative ? <ModelPickerTrigger engines={engines} selected={{ engine: representative.id, model: selected.model }} disabled={blocked}
           triggerLabel={triggerLabel}
-          onPick={(choice) => { void commit(choice); }} /> : <span>No providers available</span>}
+          onPick={(choice) => { void commit({ engine: choice.engine, model: choice.model, effort: null, options: {} }); }} />
+          : <span>No providers available</span>}
         {(selected.engine || selected.model || mixed) ? <Button small tone="quiet" disabled={blocked}
-          onClick={() => { void commit({ engine: "", model: null }); }}>Automatic</Button> : null}
+          onClick={() => { void commit({ engine: "", model: null, effort: null, options: {} }); }}>Automatic</Button> : null}
       </fieldset>
     </SettingRow>
+    <ModelTuning engine={representative?.id ?? null} selected={selected} mixed={tuningMixed} disabled={blocked}
+      inheritance={<>{inheritance(effortRow, "Default effort")}{inheritance(optionsRow, "Default model options")}</>}
+      onChange={(next) => { void commit(next); }} />
     {error || result.error ? <div className="field-error" role="alert">
       {error ?? result.error?.message}
       <Button small disabled={saving || result.refreshing} onClick={() => {
@@ -107,4 +119,54 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
       {draft ? <Button small disabled={blocked} onClick={() => { void commit(draft); }}>Retry</Button> : null}
     </div> : null}
   </SettingGroup>;
+}
+
+/**
+ * Effort and the other options the default model offers, each left to the model
+ * ("Automatic") or set. They are saved with the model, so choosing another model
+ * clears them.
+ */
+function ModelTuning({ engine, selected, mixed, disabled, inheritance, onChange }: {
+  engine: string | null;
+  selected: Required<DefaultModelChoice>;
+  mixed: boolean;
+  disabled: boolean;
+  inheritance: React.ReactNode;
+  onChange(choice: Required<DefaultModelChoice>): void;
+}) {
+  const catalog = useEngineModels(engine);
+  const model = selected.model ? catalog?.models.find((entry) => entry.id === selected.model) ?? null : null;
+  const choices = model?.options ?? [];
+  const description = !selected.model ? "Choose a model to set its effort and options."
+    : choices.length === 0 ? "This model offers no effort or options." : "Saved with the default model.";
+  return <SettingRow title="Effort and options" description={description} actions={
+    <div className="setting-inheritance-actions">{inheritance}</div>
+  }>
+    <fieldset className="preference-control" disabled={disabled || choices.length === 0}>
+      {choices.map((option) => {
+        const effort = option.id === "effort";
+        const value = effort ? selected.effort ?? "" : selected.options[option.id] ?? "";
+        return <select key={option.id} aria-label={`Default ${option.label}`} value={mixed ? "__mixed__" : value}
+          onChange={(event) => {
+            const next = event.target.value;
+            const options = { ...selected.options };
+            if (!effort) { if (next) options[option.id] = next; else delete options[option.id]; }
+            onChange({ ...selected, effort: effort ? next || null : selected.effort, options });
+          }}>
+          {mixed ? <option value="__mixed__" disabled>Mixed</option> : null}
+          <option value="">{`${option.label}: automatic`}</option>
+          {option.values.map((entry) => <option key={entry.id} value={entry.id}>{`${option.label}: ${entry.label}`}</option>)}
+        </select>;
+      })}
+    </fieldset>
+  </SettingRow>;
+}
+
+/** The model a turn runs on when its own has left the provider's list; empty means none. */
+export function FallbackModel({ disabled = false }: { disabled?: boolean }) {
+  return <fieldset className="preference-control" disabled={disabled}>
+    <PreferenceGroups groups={[{ title: "Fallback", rows: [{ key: "fallback_model", title: "Fallback model", inheritance: true,
+      description: "Runs a turn on this model when the thread's model is no longer offered by its provider. Leave empty to stop instead.",
+      parse: (value) => value.trim() }] }]} />
+  </fieldset>;
 }
