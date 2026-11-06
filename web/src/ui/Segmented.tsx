@@ -30,13 +30,13 @@ export function Segmented<T extends string>({
         requestAnimationFrame(() => group.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus());
       }}
     >
-      {options.map((option) => (
+      {options.map((option, at) => (
         <button
           key={option.value}
           type="button"
           role="radio"
           aria-checked={option.value === value}
-          tabIndex={option.value === value ? 0 : -1}
+          tabIndex={option.value === value || (at === 0 && !options.some((entry) => entry.value === value)) ? 0 : -1}
           onClick={() => onChange(option.value)}
         >
           {option.label}

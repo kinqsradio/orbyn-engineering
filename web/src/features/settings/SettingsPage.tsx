@@ -87,6 +87,23 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
   const current = section ?? "general";
   const View = views[current];
 
+  // Escape closes settings from anywhere, unless a dialog, menu or field is handling its own.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof Element) {
+        if (target.closest('dialog[open], [role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [contenteditable="true"]')) return;
+        if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+        if (target instanceof HTMLInputElement && !["checkbox", "radio", "range", "button"].includes(target.type)) return;
+      }
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const sectionResults = groups.flatMap((group) => group.sections).filter((entry) => labels[entry].toLowerCase().includes(query.trim().toLowerCase()));
   const reloadShell = shell.reload;
   useEffect(() => onShellChange(reloadShell), [reloadShell]);
@@ -138,13 +155,6 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
       className="settings-page"
       role="region"
       aria-label="Settings"
-      onKeyDown={(event) => {
-        // Escape closes the page, unless it was meant for a menu or dialog opened from a row.
-        if (event.key !== "Escape" || event.defaultPrevented) return;
-        if (event.target instanceof Element && event.target.closest('dialog[open], [role="dialog"], [role="menu"], [role="listbox"]')) return;
-        event.preventDefault();
-        onClose();
-      }}
     >
       <div className="settings-side">
         <div className="settings-search">

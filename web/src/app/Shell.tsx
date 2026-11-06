@@ -498,19 +498,36 @@ function useToastClearance(key: string) {
 }
 
 /** Moves focus into the new screen, so keyboard and screen reader users follow it. */
-function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<HTMLElement | null>) {
+function useRouteFocus(routeKey: string, routeName: string, ready: boolean, main: React.RefObject<HTMLElement | null>) {
   const first = useRef(true);
+  const previous = useRef({ key: routeKey, name: routeName });
+  // What had focus, and which page was showing, when settings opened.
+  const opener = useRef<{ element: Element | null; key: string } | null>(null);
   useEffect(() => {
     if (!ready) return;
     const root = main.current;
     if (!root) return;
+    const before = previous.current;
+    previous.current = { key: routeKey, name: routeName };
+    if (routeName === "settings" && before.name !== "settings") {
+      const active = document.activeElement;
+      opener.current = { element: active && active !== document.body ? active : null, key: before.key };
+    } else if (routeName !== "settings" && before.name === "settings") {
+      // Closing settings returns to what opened it, if it is still there and the page behind is showing.
+      const back = opener.current;
+      opener.current = null;
+      if (back?.element instanceof HTMLElement && back.element.isConnected && back.key === routeKey && !back.element.closest("[hidden]")) {
+        back.element.focus({ preventScroll: true });
+        return;
+      }
+    }
     // A page kept mounted behind settings is hidden, so it never takes the focus.
     const visible = (selector: string) => [...root.querySelectorAll<HTMLElement>(selector)].find((element) => !element.closest("[hidden]")) ?? null;
     const target = visible("[data-autofocus]") ?? (first.current ? null : visible("[data-page-title]"));
     first.current = false;
     (target ?? root).focus({ preventScroll: true });
     root.scrollTop = 0;
-  }, [routeKey, ready, main]);
+  }, [routeKey, routeName, ready, main]);
 }
 
 /** Links and menu items from the desktop shell, which behave like keys pressed here. */
@@ -555,7 +572,7 @@ export function Shell() {
   useGlobalKeys(route);
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
-  useRouteFocus(routeKey, threadReady, main);
+  useRouteFocus(routeKey, route.name, threadReady, main);
   useToastClearance(`${routeKey}:${threadReady}`);
 
   useEffect(() => {
