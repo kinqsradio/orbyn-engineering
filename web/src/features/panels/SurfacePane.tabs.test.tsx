@@ -16,7 +16,7 @@ vi.mock("./sideChat", () => ({ openSideChat: vi.fn(), closeSideChat: vi.fn() }))
 const thread = { id: "thread-1" } as Thread;
 
 beforeEach(() => {
-  useUi.setState({ panelOpen: true, panelTab: null, openSurfaces: [], terminalOpen: false, pullReveal: null });
+  useUi.setState({ panelOpen: true, panelTab: null, terminalOpen: false, pullReveal: null });
 });
 
 function pane(props: { overlay?: boolean; onReturn?: () => void; onToggleMaximize?: () => void; maximized?: boolean } = {}) {
@@ -73,6 +73,38 @@ describe("surface tabs", () => {
     expect(screen.getByRole("button", { name: "Back to thread" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Maximize pane" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(6);
+  });
+
+  it("is one tablist: one Tab stop, arrow keys, Home and End, and a panel for the chosen tab only", async () => {
+    const user = userEvent.setup();
+    pane();
+    const tabs = () => screen.getAllByRole("tab");
+    expect(tabs().filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+    await user.click(screen.getByRole("tab", { name: "Files" }));
+    expect(tabs().filter((tab) => tab.tabIndex === 0)).toEqual([screen.getByRole("tab", { name: "Files" })]);
+    expect(tabs().filter((tab) => tab.hasAttribute("aria-controls"))).toHaveLength(1);
+    expect(document.getElementById("context-files")).not.toBeNull();
+    screen.getByRole("tab", { name: "Files" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(useUi.getState().panelTab).toBe("browser");
+    await user.keyboard("{End}");
+    expect(useUi.getState().panelTab).toBe("side");
+    await user.keyboard("{ArrowRight}");
+    expect(useUi.getState().panelTab).toBe("diff");
+    await user.keyboard("{ArrowLeft}");
+    expect(useUi.getState().panelTab).toBe("side");
+    await user.keyboard("{Home}");
+    expect(useUi.getState().panelTab).toBe("diff");
+  });
+
+  it("reaches the launcher again from the plus after a tab is chosen", async () => {
+    const user = userEvent.setup();
+    pane();
+    await user.click(screen.getByRole("tab", { name: "Files" }));
+    await user.click(screen.getByRole("button", { name: "All surfaces" }));
+    expect(useUi.getState().panelTab).toBeNull();
+    expect(screen.getByLabelText("Open a surface")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Browser/ })).toBeInTheDocument();
   });
 
   it("opens a surface with its launcher shortcut", async () => {

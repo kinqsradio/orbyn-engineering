@@ -34,7 +34,14 @@ const PLANS: { label: string; plan: Plan; icon: typeof Upload }[] = [
   },
 ];
 
-export const CREATE_PULL_REQUEST: Plan = { title: "Create pull request", commit: false, push: true, pull: true };
+/** The menu's own "Create pull request" entry, for other places that offer it. */
+export const createPullRequestPlan = (): Plan => PLANS.find((entry) => entry.label === "Create pull request")!.plan;
+
+/** False when the checkout can't answer Git questions, where the header menu hides too. */
+export function useGitAvailable(threadId: string): boolean {
+  const branches = useAsync(`git-branches:${threadId}`, (signal) => api.branches(threadId, signal));
+  return branches.status !== "error";
+}
 
 const PHASE_NAMES: Record<string, string> = { commit: "Commit", push: "Push", pull_request: "Pull request" };
 

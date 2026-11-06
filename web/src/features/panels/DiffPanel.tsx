@@ -12,7 +12,7 @@ import { CHIP_EXCERPT_LIMIT, charactersOver, chipId, chipLabel, promptWithChips,
 import { Button, IconButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { RestoreFilesDialog } from "../thread/MessageActions";
-import { CREATE_PULL_REQUEST, GitActionDialog } from "../thread/GitControl";
+import { GitActionDialog, createPullRequestPlan, useGitAvailable } from "../thread/GitControl";
 import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 
 const LINE_LIMIT = 2000;
@@ -439,6 +439,8 @@ export function DiffPanel({ threadId }: { threadId: string }) {
   const latestRun = (pickedRun && turns.some((turn) => turn.run_id === pickedRun) ? pickedRun : turns.at(-1)?.run_id) ?? null;
   const thread = useWorkspace((state) => state.threads[threadId]);
   const linkedPulls = useAsync(`diff-linked:${threadId}`, (signal) => pullsApi.linked(threadId, signal));
+  const gitAvailable = useGitAvailable(threadId);
+  const canCreate = gitAvailable && linkedPulls.status === "ready" && linkedPulls.data.length === 0;
   const [restoring, setRestoring] = useState(false);
   const [creating, setCreating] = useState(false);
   const commits = useAsync(`commits:${threadId}:${source}`, (signal) =>
@@ -642,14 +644,14 @@ export function DiffPanel({ threadId }: { threadId: string }) {
           ) : null}
         </ul>
       )}
-      {thread && thread.active_run === null && ((source === "turn" && latestRun) || (linkedPulls.status === "ready" && linkedPulls.data.length === 0)) ? (
+      {thread && thread.active_run === null && ((source === "turn" && latestRun) || canCreate) ? (
         <div className="diff-foot">
           {source === "turn" && latestRun ? (
             <Button small tone="quiet" icon={<Undo2 size={14} aria-hidden />} onClick={() => setRestoring(true)}>
               Restore files to before this response
             </Button>
           ) : null}
-          {linkedPulls.status === "ready" && linkedPulls.data.length === 0 ? (
+          {canCreate ? (
             <Button small tone="quiet" icon={<GitPullRequest size={14} aria-hidden />} onClick={() => setCreating(true)}>
               Create pull request
             </Button>
@@ -657,7 +659,7 @@ export function DiffPanel({ threadId }: { threadId: string }) {
         </div>
       ) : null}
       {restoring && latestRun ? <RestoreFilesDialog threadId={threadId} runId={latestRun} onClose={() => setRestoring(false)} /> : null}
-      {creating && thread ? <GitActionDialog thread={thread} plan={CREATE_PULL_REQUEST} onClose={() => setCreating(false)} /> : null}
+      {creating && thread ? <GitActionDialog thread={thread} plan={createPullRequestPlan()} onClose={() => setCreating(false)} /> : null}
     </div>
   );
 }

@@ -11,11 +11,10 @@ export const sideChatsOf = (threads: Record<string, Thread>, parentId: string) =
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
 export function showSideChat(id: string) {
-  const { openSurfaces, setPrefs, setPanelOpen } = useUi.getState();
+  const { setPrefs, setPanelOpen } = useUi.getState();
   setPrefs({
     sideChat: id,
     panelTab: "side",
-    openSurfaces: openSurfaces.includes("side") ? openSurfaces : [...openSurfaces, "side"],
   });
   setPanelOpen(true);
 }

@@ -8,13 +8,14 @@ import {
   MessagesSquare,
   Minimize2,
   PanelBottom,
+  Plus,
   SquareTerminal,
   ArrowLeft,
   X,
   type LucideIcon,
 } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
@@ -149,8 +150,44 @@ export function SurfacePane({
 }) {
   const tab = useUi((state) => state.panelTab);
   const toggle = useUi((state) => state.togglePanel);
+  const showLauncher = useUi((state) => state.showLauncher);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const width = useUi((state) => state.panelWidth);
+
+  const list = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const row = list.current;
+    if (!row) return;
+    const measure = () => setOverflow(row.scrollWidth - row.clientWidth - row.scrollLeft > 1);
+    measure();
+    row.addEventListener("scroll", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(row);
+    return () => {
+      row.removeEventListener("scroll", measure);
+      observer?.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [tab]);
+  // One Tab stop: the chosen tab, or the first while none is chosen.
+  const stop = tab ?? RIGHT_TABS[0]?.id;
+  const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = RIGHT_TABS.findIndex(({ id }) => id === stop);
+    const next =
+      event.key === "ArrowRight" ? (at + 1) % RIGHT_TABS.length
+      : event.key === "ArrowLeft" ? (at - 1 + RIGHT_TABS.length) % RIGHT_TABS.length
+      : event.key === "Home" ? 0
+      : event.key === "End" ? RIGHT_TABS.length - 1
+      : -1;
+    const target = RIGHT_TABS[next];
+    if (!target) return;
+    event.preventDefault();
+    toggle(target.id);
+    requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`#context-tab-${target.id}`)?.focus());
+  };
 
   return (
     <aside
@@ -167,7 +204,7 @@ export function SurfacePane({
             Back to thread
           </Button>
         ) : null}
-        <div className="tabs" role="tablist" aria-label="Context">
+        <div ref={list} className="tabs" role="tablist" aria-label="Context" data-overflow={overflow || undefined} onKeyDown={onTabKey}>
           {RIGHT_TABS.map(({ id, label, text }) => (
             <button
               key={id}
@@ -177,7 +214,8 @@ export function SurfacePane({
               id={`context-tab-${id}`}
               data-selected={tab === id || undefined}
               aria-selected={tab === id}
-              aria-controls={`context-${id}`}
+              tabIndex={stop === id ? 0 : -1}
+              aria-controls={tab === id ? `context-${id}` : undefined}
               aria-label={text === label ? undefined : label}
               onClick={() => {
                 if (tab !== id) toggle(id);
@@ -188,6 +226,9 @@ export function SurfacePane({
           ))}
         </div>
         <div className="layout-toggles end">
+          <IconButton label="All surfaces" onClick={showLauncher}>
+            <Plus size={16} aria-hidden />
+          </IconButton>
           {overlay ? null : (
             <IconButton label={maximized ? "Restore pane" : "Maximize pane"} onClick={onToggleMaximize}>
               {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}

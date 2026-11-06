@@ -86,7 +86,7 @@ function SideChatChips({ parent, shown }: { parent: Thread; shown: string | null
           title={chat.title}
           onClick={() => showSideChat(chat.id)}
         >
-          {`Side chat ${chats.length - at}`}
+          {chat.title.trim() || `Side chat ${chats.length - at}`}
         </button>
       ))}
       <IconButton label="New side chat" onClick={() => void openSideChat(parent, null)}>
