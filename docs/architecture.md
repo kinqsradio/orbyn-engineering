@@ -69,6 +69,22 @@ admitted -> starting -> running <-> awaiting_approval
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.
+- A Claude Code workflow (the CLI's `Workflow` tool) runs in the background past the
+  turn that launched it, and closing the CLI's input would end it. So a Claude run whose
+  turn completes while a workflow it launched still runs stays `running`: it ends with
+  the follow-up turn the CLI starts when the workflow finishes, or five seconds after the
+  last one ends with no follow-up turn, as after a stop. A failed turn is not held. The
+  workflow's handles are kept as a `workflow` item beside the call, and its states
+  arrive as `CUSTOM workflow.state`. Stopping one sends the CLI's `stop_task` control
+  request through the live run after a `workflow.stop` audit row, and a stop that never
+  reaches the engine adds a `workflow.stop_failed` row; acceptance is not the end, which
+  the CLI reports as `stopped`. Stopping the run still ends everything, and a workflow
+  still running when its run ends is reported `stopped`. The delegated-run silence
+  watchdog does not count a run waiting on a running workflow as stuck.
+  The script view reads an inline script from the call, and otherwise only a `.js`
+  regular file whose resolved path is inside the CLI's own `projects` or `workflows`
+  folder or the thread's checkout, cut at 256 KiB. Nothing else in the CLI's config is
+  read, so hard rule 1 holds.
 - A forced stop (`POST /api/threads/:id/force-stop`) is for an engine that stopped
   answering, so it skips the wait for it: the stop is saved, the process tree and those
   of delegated threads are killed, and the run ends `cancelled` within seconds. If a stage
@@ -253,6 +269,16 @@ reported as `remembered`. A new thread takes the request's model, then the proje
 and effort and options carry only along with their model. A project's
 `default_permission_mode` also applies there.
 
+The new-thread draft resolves that physical project's effective model preferences
+before sending an implicit selection. A model picked in the draft wins over a
+late defaults response. A disabled or missing configured provider requires an
+explicit replacement; it never silently selects another provider. Draft effort
+and options remain attached to their project and model, without adding persisted
+effort or option defaults. Settings opens over the
+still-mounted draft, so every successful preference save bumps a session-only
+revision that makes the draft read its defaults again; an explicit draft choice
+stays.
+
 Admission refuses a value the model does not offer with `422 unsupported_option`, and
 stores nothing. A model the engine did not list may be custom, so only engine-wide
 options are checked for it. `PATCH` does not check, because a model and its effort
@@ -334,9 +360,37 @@ Mode is stated on every launch: Claude's `--permission-mode`, and Codex's approv
 and sandbox on `thread/start`, `thread/resume` and `turn/start`, because a saved session
 otherwise keeps the policy it last had.
 
+Each engine lists the modes it offers in `capabilities.permission_modes`, from
+`permission_modes::offered`: OpenCode offers Supervised, Auto-accept edits and Full access,
+since it has no classifier and its Auto would equal Supervised; fx would offer Supervised
+and Auto, Muse Supervised and Full access, and Pi Supervised, Auto-accept edits and Full
+access; every other engine offers all four. A thread keeps the mode it was given, but a
+run on an engine that does not offer it runs Supervised, never the nearest looser mode,
+and the composer shows and offers the same. Every run launches its own engine process
+with the mode stated, so a mode change takes effect from the next turn's process.
+
 Parsers are tested against recorded real frames in `driver/fixtures`, named by version.
 `cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
 with no prompt.
+
+## Warm next turn
+
+With `warm_next_turn` on (off by default, with no control of its own), a completed
+Claude turn starts the process the thread's next turn would launch, with the same
+arguments, folder, MCP URL, settings and mode, and leaves it idle on its input. No
+prompt is sent, but the CLI still does its launch work at once: Claude Code 2.1.318
+ran a `SessionStart` hook before any input, and it starts the person's MCP servers the
+same way, so a process that is never adopted runs them for nothing. That is why it
+is off unless asked for. The next run on that
+thread adopts it only when it is the run right after the one that started it, the
+process is still alive, and every launch input gives the same key, which also names
+the CLI's path, size and modified time and the `prefer_saved_login` state. Anything
+else ends it unused and launches as usual. Its MCP token carries the thread's write scope
+but no run until a run adopts it, and is revoked whenever the process goes unadopted:
+after five idle minutes, at shutdown, or when any engine update begins, since
+instances can share the binary and Windows cannot replace a running one. An update
+cannot begin while a warm process is being started, and none starts during an update. A run that adopts logs `CUSTOM
+engine.warm`. Other engines launch per run as before.
 
 ## Session recovery
 
@@ -353,13 +407,18 @@ under `~/.claude` (or `CLAUDE_CONFIG_DIR`) and `sessions/**/*.jsonl` under `~/.c
 credential file. Claude rewrites an entry as it streams, so each message counts once.
 Codex repeats its running total, so an unchanged total counts once. Costs come from
 configured `model_prices`, after `model_aliases`; a model with no price has an unknown
-cost and is never guessed. Unchanged files are served from memory. The Usage page keeps
+cost and is never guessed. History is kept by day, model and service tier (Claude's
+`speed`/`service_tier`, Codex's turn `service_tier`; unknown names are `other`). A
+price applies to one tier, absent meaning standard, and another tier never borrows the
+standard rate, so its tokens stay unpriced. Each estimate is also split by token type. Unchanged files are served from memory. The Usage page keeps
 the same period's figures and chart during an explicit local refresh, dimming them
 after 150 ms while the scan is pending. A failed refresh keeps those figures and
 offers Retry. Changing the period clears them, and an earlier response cannot
 replace the new period or clear its pending state. Subscription
 limits appear only where an engine reports them itself, as Codex does through
-`account/rateLimits/read`, cached for five minutes; `?force=true` reads again and
+`account/rateLimits/read`, cached for five minutes. Only Codex's `rateLimits`,
+`rateLimitsByLimitId` and plan leave the driver; its account ID, upsell copy and
+reset-credit offers are dropped; `?force=true` reads again and
 spends no model usage. `/api/limits` also gives one number per window length across
 engines, the highest used percentage, since that engine stops first.
 Windows with an unknown duration remain separate, because an absent duration does
@@ -481,6 +540,33 @@ or reviews; the viewer's own comments are not news. It ends at a merge or close,
 unlink, or when the thread settles or archives. A subagent thread cannot watch.
 Viewed-file marks are this service's own, per project, and never reach the forge.
 
+A review guide is an agent's stop-by-stop reading order for one pull request, also
+this service's own. Orbyn does not generate it itself: writing a guide starts an
+ordinary thread in the project root, linked to the pull request, whose first message
+asks the agent to read the change through the forge CLI, change nothing, and call
+`orbyn_pull_guide_write` with the head commit. The write goes through the approval
+gate like any other tool effect. Starting one is refused while the project's
+`review_guides_enabled` preference is off. The project's `review_guide_instructions`
+are appended to that message, and the thread runs on the asked model, else the
+project's `review_guide_model`, else the engine's default. A guide naming an older head commit than
+the pull request is shown as not covering the newer commits; nothing else checks it.
+Asking about one stop opens a new thread in the project root and hands the stop back
+as that thread's composer draft; nothing is sent until the person adds a question
+and sends it.
+
+A Jujutsu checkout that is not colocated with Git (a `.jj` folder with no `.git`
+beside it, found from the thread's folder upwards but never above the project
+folder, so a project inside a larger jj repository is not read as it) is a non-Git project, read
+through the person's installed `jj`; Orbyn ships, links and installs no jj, and a
+missing `jj` is `422 unsupported`. It reads the working-copy change (`jj log -r @`
+with a fixed template) and its diff (`jj diff --git -r @`, jj's built-in Git
+format, so no configured diff tool runs), always with `--no-pager`, no colour and
+the file monitor off. Like any jj command this snapshots the working copy into jj's
+operation log, so it needs a trusted folder. That is the whole jj surface: the
+worktree diff scope and `GET /api/threads/:id/jj`. Commits, bookmarks, worktrees
+(jj workspaces), checkpoints and forge actions stay Git-only; a colocated checkout
+is a Git project.
+
 A background clone is a job kept in memory until the service stops. Its staging
 folder removes itself when the job is cancelled. An SSH URL the server refuses is
 tried once over HTTPS, and the job says so.
@@ -494,6 +580,23 @@ socket opens and a terminal-tier run uses, and a plain one nobody returns to clo
 after a minute. Named terminals stay until closed. Settling or archiving closes them
 all. `?observe=true` attaches read-only: input and resizes are dropped. Fish starts
 with `no-query-term` so it does not wait on terminal replies.
+
+The engine console (`POST /api/threads/:id/console`) opens the engine's own
+interactive CLI, unmodified, in the thread's `engine-console` terminal on the session
+Orbyn's runs resume: `claude --resume <session> --permission-mode default|plan`, from
+the library like Claude's runs and with `--add-dir` for another checkout, or
+`codex resume <session> --sandbox <run sandbox>|read-only --ask-for-approval on-request
+--cd <checkout>`. The thread's model follows with `--model`. The program is the one runs
+use, an instance's override included, resolved through `PATH` and Windows shims and
+started without a shell; a session or model that could read as a flag is refused. The
+engine's own login and permission prompts apply: Orbyn reads no credential and nothing
+the console writes, and its approval gate and full-access modes do not reach it. Other
+engines have no resumable console and are refused with `422`, as is a thread with no
+session yet. The console owns the session while it runs: opening one is refused while
+a run is active, and while it is alive every run admission, queue drain and preparation
+retry is refused with `409 console_open`. Both checks take the workspace admission lock.
+A second open returns the live console. Queued messages wait for the next send or
+resume after it closes.
 
 A viewer attaches to a terminal ID and its process creation timestamp. Rerunning
 an action preserves the tab's stable ID but replaces its process; the viewer
@@ -615,6 +718,16 @@ until its captured setup is started; `async: false` also waits for exit code zer
 Engine title generation follows that same gate. Startup failure or unsuccessful
 synchronous setup fails the first turn; an async exit does not block it,
 and a later explicit user message does not implicitly execute project code again.
+The thread view shows the setup as a card: starting, running (saying when the first
+turn waits for it), finished with its exit code, or stopped. `stopped` means it
+ended with no exit code, by a cancel or a service restart. Its Output button selects
+the setup terminal, and a successful setup's card leaves after a few seconds. Cancel
+stops a setup this service is preparing or running, kills its process tree, is
+audited as `setup.cancel`, and is not a run cancel: a synchronous setup then fails
+the first turn as an unsuccessful preparation, which keeps its Retry, while a
+cancelled async setup leaves the thread free. Cancelling a finished or stopped
+setup changes nothing; a thread with no setup is `404`. An async setup's exit is read from its process; only the
+waiter of a synchronous setup records an exit.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic
 restart/limit continuation cannot bypass it. The failure's timeline Retry control
@@ -697,6 +810,14 @@ then environment, then the actual project file where supported, then default, an
 project. The catalog holds no secret: provider environments and tokens stay out under
 rule 1. `disabled_engines` is enforced when a thread is created, and custom, hidden
 and reordered models apply in `/api/engines/:id/models`.
+
+The project settings Model control writes `default_engine` and `default_model`
+together, fencing both preference revisions and the selected membership. Automatic
+sets an empty pair; Inherit removes the selected project overrides. A conflict
+retains the choice and requires an explicit reload before retrying. Reset all
+removes only the captured project overrides and leaves environment defaults alone.
+Its model picker stays in the owning settings dialog's top layer. Escape closes
+the picker and returns focus to its trigger before another Escape closes Settings.
 
 `POST /api/settings/project-scopes` is a full-app read of registered local checkout
 groups and a typed selection. It accepts the client's `repository`, `repository_path`
@@ -1027,6 +1148,7 @@ modules, direct modules only, or no modules, respectively. Earlier `top_level` a
 settings or project files; UI edits use the canonical values.
 A new draft waits for the selected checkout's effective mode; explicit checkout
 choices and reused worktrees win, and late responses cannot change another project.
+A folder outside Git shows "This folder" and offers no checkout choice.
 A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards
 a clean checkout on the remote's default branch every 30 minutes.
 
@@ -1110,7 +1232,8 @@ stamps that time, and clearing the theme clears it; a client cannot write the ti
 A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
 theme once, when its `set_at` is newer than the one it last applied, at startup and
 when the window takes focus; after that the viewer's own choice stays. An unknown id
-is recorded as applied and changes nothing. Remote environments publish nothing here.
+is recorded as applied and changes nothing. A theme saved before set times existed is
+published with `set_at` 1, so each viewer applies it once. Remote environments publish nothing here.
 
 `/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
 `stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
@@ -1121,6 +1244,27 @@ Appearance edits `default_theme` and `environment_icon` as environment settings 
 the scoped preference writer, showing when the theme was set. `environment_icon` is one
 of `laptop`, `desktop`, `tower` or `server`, or empty for the plain monitor; `/api/info`
 publishes it and the settings environment label draws it.
+
+## Agent history import
+
+`GET /api/history/sessions` lists Claude and Codex conversations from the engines' own
+history folders (`CLAUDE_CONFIG_DIR` or `~/.claude/projects`, `CODEX_HOME` or
+`~/.codex/sessions`), newest first. It runs only when a person asks. It reads at most
+400 files per engine, 4000 folders, and the first 64 KiB and 200 lines of each file,
+keeping only the session id, folder and first prompt (120 characters); it follows no
+symlink, writes nothing there and reads no other file. A session whose id is not a
+plain word or whose folder is not absolute is skipped. Each session names the registered
+project at exactly its folder and whether that project is trusted.
+
+`POST /api/history/import` takes only an engine and a session id; the service rescans
+and finds the file itself. It needs the session's project registered and trusted and
+the engine enabled there, then creates a thread whose engine session is that id, with
+no copied messages, so the next run resumes the engine's own conversation. A second
+import returns the same thread. Claude's `subagents` folders and `isSidechain`
+transcripts are skipped, and a session listed by several files appears once, from its
+newest file. A session whose folder is not a project offers Add folder, which registers
+it untrusted through the ordinary add path; trusting it is the ordinary trust page. Pi is not an engine Orbyn runs, so its history is not
+scanned.
 
 ## Message search
 
@@ -1335,12 +1479,29 @@ driver), `agui` (one shared driver, also the OpenBot connector) and `terminal`
 (PTY only, always unmanaged).
 
 `engines/known.rs` lists CLIs that speak ACP from their own binary, with what each needs
-to start: Antigravity, Cline, Command Code, GitHub Copilot, Cursor, DeepSeek, Devin, Grok
+to start: Antigravity, Cline, Command Code, GitHub Copilot, Cursor, DeepSeek, Devin, fx, Grok
 Build, Hermes, Kilo, Kimi and OpenCode. One is listed only when its program is found, and
-a custom engine of the same id wins. Grok is started with `--permission-mode default` and
+a custom engine of the same id wins. A program that resolves into a package known to put a
+different CLI under the same name is not that engine: `@vibe-kit/grok-cli` installs a `grok`
+with no ACP mode. Grok is started with `--permission-mode default` and
 OpenCode with `{"permission":{"*":"ask"}}`, since either can otherwise act without asking.
-DeepSeek cannot ask before an edit, so it is labelled unmanaged under rule 8. Each keeps its
-own login, and only the launch has been tested, with the fake agent under those names.
+DeepSeek cannot ask before an edit, so it is labelled unmanaged under rule 8, and so is fx
+until a run shows the mode it starts in, since its automatic mode writes without asking. The
+`fx` JSON viewer from npm or Homebrew is not fx. Each keeps its
+own login, and only the launch has been tested, with the fake agent under those names, except
+OpenCode 2.2.5, which ran real turns through `orbynd` on macOS.
+
+The ACP driver offers protocol version 1, the only one it speaks. An agent that answers 2
+in version 1's shape (`agentInfo`, `agentCapabilities`), as some shipped agents do, runs as
+version 1; a reply in version 2's own shape (`info`) is refused with a message saying so,
+not misread.
+
+The handshake tells an agent Orbyn can show a terminal sign-in (`auth.terminal`). The first
+`terminal` method an agent names becomes its sign-in command: the launch command followed by
+the method's arguments. The provider card shows it to copy, and a run that fails for want of a
+login names it. Orbyn never runs it, never calls `authenticate` or `logout`, and offers no
+`env_var` method, since that means collecting a key. A method that sets variables, or a word
+a Windows or Unix shell would read differently, gives no command.
 
 Skills come from the workspace, in place. Nothing is copied, packed or signed.
 
@@ -1450,7 +1611,8 @@ library. `repo/` is the exception, and a folder under it still has to meet the n
 rules: its own Git root, its Git data under `repo/`, and ignored by the library. A
 folder already registered is `409 project_exists` by its real path, so a link to it
 cannot make a second project. A folder outside Git is allowed, and works without
-worktrees, diffs, checkpoints or forge features. This differs on purpose from the
+worktrees, diffs, checkpoints or forge features, except that a non-colocated
+Jujutsu checkout shows its working-copy diff (Source control). This differs on purpose from the
 library's `workspace.py check --in-place`, which requires a Git root. The same check
 runs again before each run, because a folder can change between runs.
 
@@ -1543,6 +1705,12 @@ compare with the running version; with none, the app reports `unconfigured`. A
 server cannot replace itself, so `can_apply` stays false and `blocked_reason` says
 what to do.
 
+`POST /api/engines/update-all` updates, one at a time, every engine reporting a newer version
+that an owning installer can update. Instances and engines sharing one binary update once, an
+engine with a signed warning is left to its recommended install, and each goes through the
+single-engine update, so a busy engine or a failed installer is reported by name while the
+rest still run. Settings offers Update all when two or more engines qualify.
+
 ## Desktop shell
 
 The native product UI loads from the stable bundled asset origin (`tauri://localhost`
@@ -1591,7 +1759,10 @@ run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. 
 the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
 service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
 quits through the `quit` shell action after the key is held for one second, or pressed
-again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+again within 1.5 seconds. WebKit may send no keyup while Cmd stays down, so a hold counts
+only while key repeats keep arriving; a stop in repeats, lifting the key, blur or a late
+press starts over. The page reads the mode again as soon as Settings saves it. A service
+in remote mode refuses the `quit` action, so a remote viewer cannot stop the app. Clicking
 Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
@@ -1685,7 +1856,7 @@ parent's children read as not found. It uses the existing durable cancellation
 path, including running delegated descendants, and reports `stopped: true` when
 the request is accepted; this is not terminal completion. An idle child returns
 `stopped: false`, and cancellation errors are reported. This is a delegated-run
-control, not the unimplemented M13 workflow/script engine. `orbyn_thread_wait`
+control, not M13's Claude Code workflows, which the person stops from the timeline. `orbyn_thread_wait`
 then observes completion, accepts only non-negative integer seconds, clamps at
 40 seconds and reports `ended: false` when that bounded wait expires.
 The stop tool's entire call, including its approval wait, is capped at 45 seconds;
@@ -1821,6 +1992,22 @@ page, up to three times in 30 seconds after 1, 2 and 4 seconds, and then the tab
 `crashed`. This only runs while someone watches. `enable_agent_browser_access`, off
 globally or for a project, refuses every `orbyn_preview_*` tool.
 
+A previewed page is untrusted, so what crosses between it and the person waits for
+the person's own action and stays inside the tab's folder, `<data>/preview-files/<tab>`,
+which ends with the tab. Copy (Cmd or Ctrl+C on the page a person holds) reads the
+selection in the focused field, or else the page's, and nothing from a password field,
+into the person's own clipboard; a page's own clipboard writes stay in its browser.
+Paste is the person's paste event, typed into the page as text. A file chooser the
+page opens is held, not failed: the panel asks the person, who picks files through
+their own system picker; each, at most 50 MiB and 256 MiB a tab, is uploaded to the
+tab's folder and handed only to the input that asked, and Cancel hands nothing.
+Downloads save to the tab's folder under the browser's own id, never the page's name
+or path; a download past 1 GiB is stopped, and a tab keeps 20, dropping the oldest
+finished one. Saving one serves its bytes as an `application/octet-stream`
+attachment, `nosniff` and sandboxed, under the page's name made safe for Windows and
+macOS, and the person's browser chooses where it goes. Handing files to a page and
+saving a download are audited.
+
 Back and forward step through web pages only, so the blank page a browser starts on
 and anything else not `http` or `https` is passed over, and at either end nothing
 happens. A link clicked in the page changes where a tab is with nobody telling this
@@ -1924,7 +2111,8 @@ second account by config directory stays the CLI's own arrangement. `CODEX_SANDB
 session markers go always, and an AppImage's variables and its mount's entries in
 library, data and `PATH` lists go when `APPIMAGE` and `APPDIR` are both set. The
 `prefer_saved_login` preference also drops API keys and endpoint overrides from engines
-only, so they use their own login. `EngineStatus` reports inherited credentials by
+only, so they use their own login. Engine consoles and terminal engines count as
+engines; a plain shell terminal does not. `EngineStatus` reports inherited credentials by
 variable name and an endpoint by origin, never a value. No value is read for any other
 purpose, which keeps this inside rule 1.
 
@@ -1955,11 +2143,19 @@ support session in the selected data folder's `triage/<id>` directory. Core owns
 the provider choice, support files and literal launch arguments; the CLI owns
 foreground terminal I/O. The provider's own login and permissions apply: this is
 outside Orbyn governed runs, with no thread resume, project admission or MCP
-approval gate. It adds no generic resumed-engine console action. The files
+approval gate. Resuming a thread's session is the engine console under
+[Terminals](#terminals), not this command. The files
 contain only CLI build/platform/time metadata and original support instructions;
 no service handle, logs, database, environment dump or credentials are collected.
 Server status is explicitly not checked. Additional investigation, repairs,
 network retrieval and publication require the person's approval.
+
+In the app, `GET /api/triage/playbook` returns the opening message for a triage
+thread: the running service's version, channel and platform, a link to its source
+(the build's `ORBYN_SOURCE_REVISION`, or the main branch, marked as possibly different)
+and the same limits as the command line's prompt. About puts it in a new draft without
+a project; the person picks the agent and sends it, and the thread is an ordinary
+governed run. Orbyn fetches no source and reads no logs for it.
 
 One available provider is selected automatically; two require both input and
 output to be terminals for the picker, or an explicit `--agent`. With neither,
@@ -2178,9 +2374,14 @@ because browsers cannot set headers on them.
 | `POST /api/projects/:id/publish` | `PublishProject`: create the remote, with `gh` or `glab`, and push |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `POST /api/threads/:id/force-stop` | `ForcedStop`: end the run now; `run_id` is empty when nothing was running |
+| `GET /api/threads/:id/workflows/:call/script` | `WorkflowScript` of a Claude Code workflow the call launched; `404` for any other call |
+| `POST /api/threads/:id/workflows/:call/stop` | `WorkflowStop` (`202`): ask the running engine to stop that workflow; `400` once it has ended |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
+| `GET /api/threads/:id/jj` | `JjStatus` of a non-colocated Jujutsu checkout, or `null`; `422` without `jj` |
+| `GET /api/threads/:id/setup` | `ThreadSetup`, or `null` when the checkout ran no setup |
+| `POST /api/threads/:id/setup/cancel` | Stops a preparing or running setup; returns `ThreadSetup` |
 | `GET /api/threads/:id/commits` | `CommitInfo[]`, newest 100 |
 | `GET /api/threads/:id/checkpoints` | `Checkpoint[]` |
 | `POST /api/threads/:id/restore` | `RestoreWorkspace`; `409 shared_directory`, `409 thread_busy` |
@@ -2198,6 +2399,7 @@ because browsers cannot set headers on them.
 | `DELETE /api/browser-profiles/:id`, `POST .../clear` | Remove, or empty, a profile no tab has open |
 | `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
 | `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |
+| `POST /api/threads/:id/console` | Opens the engine's own console on the thread's session |
 | `GET /ws/terminal/:thread_id` | Main PTY: binary in/out, JSON text frame `{cols,rows}` resizes |
 | `GET /ws/terminal/:thread_id/:terminal?observe=` | Attach to a named terminal; `observe` is read-only |
 | `GET, POST /api/threads/:id/terminals` | `TerminalInfo[]`; `OpenTerminal` with `split_of` and `direction` |

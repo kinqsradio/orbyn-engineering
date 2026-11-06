@@ -38,6 +38,7 @@ import { runningTools } from "./timeline";
 import { implementPrompt, planTitle, proposedPlanIn } from "./proposedPlan";
 import { SubagentBar } from "./SubagentBar";
 import { LimitBanner, ThreadErrorBanner } from "./ThreadBanners";
+import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
 import { ProjectActionShortcuts } from "./ProjectActionShortcuts";
@@ -446,6 +447,7 @@ export function ThreadView({ id }: { id: string }) {
                 }
             />
           )}
+          <WorktreeSetupCard thread={thread} />
           <ThreadErrorBanner thread={thread} />
           <LimitBanner thread={thread} />
           <div className="composer-lane">

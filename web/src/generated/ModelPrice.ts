@@ -3,4 +3,9 @@
 /**
  * US dollars per million tokens.
  */
-export type ModelPrice = { model: string, input: number, output: number, cache_read: number, cache_write: number, };
+export type ModelPrice = { model: string, input: number, output: number, cache_read: number, cache_write: number, 
+/**
+ * The service tier these rates apply to, as the engine names it: `fast`,
+ * `priority`, `batch`, `flex` or `other`. Absent means the standard tier.
+ */
+tier?: string, };

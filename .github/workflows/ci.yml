@@ -8,26 +8,92 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels its older run. Runs on main never cancel.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Decides which checks a pull request can affect. A required job never skips as
+  # a whole (a skipped matrix job reports under its unexpanded name and blocks the
+  # merge): its heavy steps skip instead, and the job reports success at once.
+  # Pushes to main, and any path this does not recognise, run everything.
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      web: ${{ steps.scope.outputs.web }}
+      e2e: ${{ steps.scope.outputs.e2e }}
+      desktop: ${{ steps.scope.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: scope
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          all() { for k in rust web e2e desktop; do echo "$k=true" >> "$GITHUB_OUTPUT"; done; echo "Running every check: $1"; }
+          if [ "$EVENT" != "pull_request" ]; then all "not a pull request"; exit 0; fi
+          if ! files=$(git diff --name-only "$BASE"...HEAD); then all "could not compare with the base"; exit 0; fi
+          docs='^(docs/|[^/]+\.md$|\.github/ISSUE_TEMPLATE/|\.github/pull_request_template\.md$|\.github/(CODEOWNERS|labeler\.yml|labels\.json|dependabot\.yml)$)'
+          rust='^(crates/|Cargo\.(toml|lock)$|desktop/src-tauri/|scripts/|\.github/workflows/)'
+          web='^(web/|\.github/workflows/)'
+          desktop='^(desktop/|scripts/)'
+          code=$(printf '%s\n' "$files" | grep -Ev "$docs" | grep -v '^$' || true)
+          unknown=$(printf '%s\n' "$code" | grep -Ev "$rust|$web|$desktop" | grep -v '^$' || true)
+          if [ -n "$unknown" ]; then all "unrecognised paths: $(echo $unknown)"; exit 0; fi
+          has() { printf '%s\n' "$code" | grep -Eq "$1" && echo true || echo false; }
+          r=$(has "$rust"); w=$(has "$web"); d=$(has "$desktop")
+          e=false; [ "$r" = true ] || [ "$w" = true ] && e=true
+          k=false; [ "$e" = true ] || [ "$d" = true ] && k=true
+          printf 'rust=%s\nweb=%s\ne2e=%s\ndesktop=%s\n' "$r" "$w" "$e" "$k" >> "$GITHUB_OUTPUT"
+          echo "rust=$r web=$w e2e=$e desktop=$k"
+          printf '%s\n' "$files"
+
   rust:
     name: Rust (${{ matrix.os }})
+    needs: changes
     runs-on: ${{ matrix.os }}
+    env:
+      RUN: ${{ needs.changes.outputs.rust }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15, windows-2022]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.RUN != 'true'
+        run: echo "No Rust change in this pull request."
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - if: env.RUN == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --no-fail-fast
+      - if: env.RUN == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - if: env.RUN == 'true'
+        run: cargo fmt --all --check
+      - if: env.RUN == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - if: env.RUN == 'true'
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: cargo-nextest
+      # nextest runs the 51 test programs in parallel; cargo test ran them one at
+      # a time, which took over 20 minutes on Windows.
+      - if: env.RUN == 'true'
+        run: cargo nextest run --workspace --no-fail-fast
+      - if: env.RUN == 'true'
+        run: cargo test --workspace --doc
       - name: Generated wire types are committed
+        if: env.RUN == 'true'
         shell: bash
         run: |
           git add --intent-to-add web/src/generated
@@ -35,60 +101,108 @@ jobs:
 
   web:
     name: Web
+    needs: changes
     runs-on: ubuntu-24.04
+    env:
+      RUN: ${{ needs.changes.outputs.web }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.RUN != 'true'
+        run: echo "No web change in this pull request."
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: env.RUN == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - if: env.RUN == 'true'
+        run: npm ci
         working-directory: web
-      - run: npm run check
+      - if: env.RUN == 'true'
+        run: npm run check
         working-directory: web
-      - run: npm test
+      - if: env.RUN == 'true'
+        run: npm test
         working-directory: web
-      - run: npm run build
+      - if: env.RUN == 'true'
+        run: npm run build
         working-directory: web
 
-  e2e:
-    name: E2E
+  # The browser suite, split by file across four runners.
+  e2e-shard:
+    name: E2E shard ${{ matrix.shard }}/4
+    needs: changes
     runs-on: ubuntu-24.04
+    env:
+      RUN: ${{ needs.changes.outputs.e2e }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.RUN != 'true'
+        run: echo "No change the browser suite covers."
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: env.RUN == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - if: env.RUN == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - if: env.RUN == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - if: env.RUN == 'true'
+        run: npm ci
         working-directory: web
-      - run: cargo build -p orbynd --bin orbynd --bin orbyn-fake-engine
-      - run: npm run test:e2e:install
+      - if: env.RUN == 'true'
+        run: cargo build -p orbynd --bin orbynd --bin orbyn-fake-engine
+      - if: env.RUN == 'true'
+        run: npm run test:e2e:install
         working-directory: web
       - name: System libraries for the headless shell
+        if: env.RUN == 'true'
         run: sudo npx playwright install-deps chromium-headless-shell
         working-directory: web
-      - run: npm run test:e2e
+      - if: env.RUN == 'true'
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
         working-directory: web
       - name: Keep failure traces
-        if: failure()
+        if: failure() && env.RUN == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.shard }}
           path: web/test-results
           retention-days: 7
 
+  # The required "E2E" check: green only when every shard passed or had nothing to do.
+  e2e:
+    name: E2E
+    needs: [changes, e2e-shard]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: bash
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          SHARDS: ${{ needs.e2e-shard.result }}
+        run: |
+          echo "changes=$CHANGES shards=$SHARDS"
+          [ "$CHANGES" = success ] && [ "$SHARDS" = success ]
+
   desktop:
     name: Unsigned desktop build (${{ matrix.os }})
+    needs: changes
     runs-on: ${{ matrix.os }}
+    env:
+      RUN: ${{ needs.changes.outputs.desktop }}
     strategy:
       fail-fast: false
       matrix:
@@ -98,45 +212,61 @@ jobs:
           - os: windows-2022
             bundles: nsis
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.RUN != 'true'
+        run: echo "No change the desktop build covers."
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - if: env.RUN == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - if: env.RUN == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: |
             .
             desktop/src-tauri
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: env.RUN == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - run: npm ci
+      - if: env.RUN == 'true'
+        run: npm ci
         working-directory: web
-      - run: npm ci
+      - if: env.RUN == 'true'
+        run: npm ci
         working-directory: desktop
-      - run: npm run prepare-bundle
+      - if: env.RUN == 'true'
+        run: npm run prepare-bundle
         working-directory: desktop
-      - run: npx tauri build --bundles ${{ matrix.bundles }}
+      - if: env.RUN == 'true'
+        run: npx tauri build --bundles ${{ matrix.bundles }}
         working-directory: desktop
       - name: Release script tests
+        if: env.RUN == 'true'
         shell: bash
         run: node --test scripts/release-evidence.test.mjs scripts/smoke-service.test.mjs scripts/smoke-app-diagnostics.test.mjs scripts/smoke-app-environment.test.mjs scripts/smoke-app-providers.test.mjs scripts/verify-macos-release.test.mjs scripts/install.test.mjs
       - name: Load the packaged service
+        if: env.RUN == 'true'
         shell: bash
         run: node scripts/smoke-package.mjs
       - name: Shell tests
+        if: env.RUN == 'true'
         shell: bash
         working-directory: desktop/src-tauri
         run: cargo test
       - name: Install and start the app
+        if: env.RUN == 'true'
         shell: bash
         run: node scripts/smoke-app.mjs
       - name: Keep the bundle for packaged qualification
+        if: env.RUN == 'true'
         shell: bash
         # Relative paths: Windows tar reads a drive letter as a remote host.
         working-directory: desktop/src-tauri/target/release
         run: tar -cf ../../../../bundle.tar bundle/${{ matrix.bundles == 'app' && 'macos' || 'nsis' }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.RUN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bundle-${{ matrix.os }}
           path: bundle.tar
@@ -146,7 +276,7 @@ jobs:
   # against that real Codex, signed out, under the same private profile.
   packaged:
     name: Packaged app with signed-out Codex (${{ matrix.os }})
-    needs: desktop
+    needs: [changes, desktop]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -158,25 +288,34 @@ jobs:
             codex: codex.cmd
     env:
       CODEX_VERSION: 0.166.0
+      RUN: ${{ needs.changes.outputs.desktop }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.RUN != 'true'
+        run: echo "No desktop bundle was built for this pull request."
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: env.RUN == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - if: env.RUN == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bundle-${{ matrix.os }}
           path: ${{ runner.temp }}
       - name: Unpack the bundle
+        if: env.RUN == 'true'
         shell: bash
         working-directory: ${{ runner.temp }}
         run: mkdir -p release && tar -xf bundle.tar -C release
       - name: Install Codex without its install scripts
+        if: env.RUN == 'true'
         shell: bash
         run: npm install --prefix "$RUNNER_TEMP/codex" --no-save --no-audit --no-fund --ignore-scripts "@openai/codex@$CODEX_VERSION"
       - name: Install and start the app with a signed-out Codex
+        if: env.RUN == 'true'
         shell: bash
         env:
           ORBYN_SMOKE_CODEX_BIN: ${{ runner.temp }}/codex/node_modules/.bin/${{ matrix.codex }}

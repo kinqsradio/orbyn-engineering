@@ -388,6 +388,14 @@ fn router(state: AppState) -> Router {
             "/api/projects/{id}/pulls/{number}/work",
             post(pulls::work_on),
         )
+        .route(
+            "/api/projects/{id}/pulls/{number}/guide",
+            get(pulls::guide).post(pulls::generate_guide),
+        )
+        .route(
+            "/api/projects/{id}/pulls/{number}/guide/ask",
+            post(pulls::ask_about_stop),
+        )
         .route("/api/threads/{id}/watches", get(pulls::watches))
         .route("/api/watches/check", post(pulls::check_watches))
         .route(
@@ -418,6 +426,9 @@ fn router(state: AppState) -> Router {
             "/api/engines/{id}/native-sessions/delete",
             post(api::delete_native_session),
         )
+        .route("/api/history/sessions", get(api::history_sessions))
+        .route("/api/triage/playbook", get(api::triage_playbook))
+        .route("/api/history/import", post(api::import_history_session))
         .route("/api/threads/order", post(api::reorder_threads))
         .route("/api/threads/{id}/title", post(api::regenerate_title))
         .route(
@@ -566,6 +577,24 @@ fn router(state: AppState) -> Router {
             post(preview_routes::input),
         )
         .route(
+            "/api/threads/{id}/previews/{tab}/copy",
+            post(preview_routes::copy),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/uploads",
+            post(preview_routes::upload).layer(DefaultBodyLimit::max(
+                orbyn_core::preview_bridge::MAX_UPLOAD_BYTES + 1024,
+            )),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/chooser",
+            post(preview_routes::answer_chooser),
+        )
+        .route(
+            "/api/threads/{id}/previews/{tab}/downloads/{download}",
+            get(preview_routes::download),
+        )
+        .route(
             "/api/threads/{id}/previews/{tab}/recording",
             post(preview_routes::start_recording).delete(preview_routes::stop_recording),
         )
@@ -580,6 +609,9 @@ fn router(state: AppState) -> Router {
             post(preview_routes::stop_server),
         )
         .route("/api/threads/{id}/runs", post(api::start_run))
+        .route("/api/threads/{id}/jj", get(api::thread_jj_status))
+        .route("/api/threads/{id}/setup", get(api::thread_setup))
+        .route("/api/threads/{id}/setup/cancel", post(api::cancel_setup))
         .route("/api/threads/{id}/preparation", get(api::preparation_retry))
         .route(
             "/api/threads/{id}/preparation/retry",
@@ -587,6 +619,14 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/runs/{id}/cancel", post(api::cancel_run))
         .route("/api/threads/{id}/force-stop", post(api::force_stop))
+        .route(
+            "/api/threads/{id}/workflows/{item}/script",
+            get(api::workflow_script),
+        )
+        .route(
+            "/api/threads/{id}/workflows/{item}/stop",
+            post(api::stop_workflow),
+        )
         .route("/api/search/messages", get(api::search_messages))
         .route("/api/threads/{id}/events", get(stream::thread_events))
         .route("/api/approvals", get(api::list_approvals))
@@ -602,6 +642,7 @@ fn router(state: AppState) -> Router {
             "/api/engines/custom/{id}",
             axum::routing::delete(api::delete_custom_engine),
         )
+        .route("/api/engines/update-all", post(api::update_all_engines))
         .route("/api/engines/{id}/update", post(api::update_engine))
         .route(
             "/api/engines/{id}/install-recommended",
@@ -643,6 +684,7 @@ fn router(state: AppState) -> Router {
             "/api/threads/{id}/terminals",
             get(terminal_ws::list).post(terminal_ws::open),
         )
+        .route("/api/threads/{id}/console", post(terminal_ws::console))
         .route(
             "/api/threads/{id}/terminals/{terminal}",
             axum::routing::patch(terminal_ws::rename).delete(terminal_ws::close),

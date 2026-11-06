@@ -44,6 +44,23 @@ it("binds annotation source to cwd and waits for the new checkout's delayed read
   expect(useComposerChips.getState().chips.t?.[0]).toMatchObject({ excerpt: "NEW_CHECKOUT", sourceCwd: "/new", sourceRevision: "new" });
 });
 
+it("says a file is missing from the checkout a moved thread now reads", async () => {
+  useWorkspace.setState({ threads: { t: { id: "t", cwd: "/old" } as never } });
+  let reads = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    reads += 1;
+    return reads === 1
+      ? new Response(JSON.stringify({ path: "notes.txt", revision: "old", content: "OLD_CHECKOUT", size: 12, binary: false, truncated: false }))
+      : new Response(JSON.stringify({ code: "not_found", message: "file not found" }), { status: 404 });
+  }));
+  render(<Viewer threadId="t" path="notes.txt" line={null} onBack={() => undefined} />);
+  await screen.findByRole("button", { name: "Comment on line 1" });
+  act(() => useWorkspace.setState({ threads: { t: { id: "t", cwd: "/new" } as never } }));
+  expect(await screen.findByText("This file isn't in this checkout.")).toBeInTheDocument();
+  expect(screen.queryByText("OLD_CHECKOUT")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 it("captures a reversed source range as one comment and removes the paired chip", async () => {
   render(<FileComments threadId="t" cwd="/repo" path="src/a.ts" revision="r1" text={"one\n<script>\nthree"} revealedLine={null} />);
   await userEvent.click(screen.getByRole("button", { name: "Comment on line 3" }));

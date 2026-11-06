@@ -7,9 +7,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use orbyn_contracts::{
-    AddPullComment, BulkClosePulls, CheckoutPull, EditPullComment, MergePull, PullAction,
-    ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople, StackAction, SubmitReview,
-    UpdatePull, WorkOnPull,
+    AddPullComment, AskAboutStop, BulkClosePulls, CheckoutPull, EditPullComment, GeneratePullGuide,
+    MergePull, PullAction, ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople,
+    StackAction, SubmitReview, UpdatePull, WorkOnPull,
 };
 use orbyn_core::forge::PullFilter;
 
@@ -305,6 +305,38 @@ pub async fn work_on(
                 .work_on_pull(&id, number, &body, LOCAL_USER)
                 .await?,
         ),
+    ))
+}
+
+pub async fn guide(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.pull_guide_state(&id, number)?))
+}
+
+/// Starts the thread that writes the guide; the guide arrives when its agent
+/// calls the write tool.
+pub async fn generate_guide(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+    ApiJson(body): ApiJson<GeneratePullGuide>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.generate_pull_guide(&id, number, &body).await?),
+    ))
+}
+
+/// A new thread about one guide stop; the stop comes back as its draft.
+pub async fn ask_about_stop(
+    State(state): State<AppState>,
+    Path((id, number)): Path<(String, u64)>,
+    ApiJson(body): ApiJson<AskAboutStop>,
+) -> ApiResult<impl IntoResponse> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.ask_about_stop(&id, number, &body).await?),
     ))
 }
 

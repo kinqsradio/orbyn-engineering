@@ -842,3 +842,75 @@ async fn gitlab_azure_and_forgejo_list_and_merge_through_their_own_clis() {
         .await;
     assert_eq!((code, body["code"].as_str()), (422, Some("unsupported")));
 }
+
+/// The first message a thread was sent, as its prompt events carry it.
+async fn prompt_of(service: &Service, thread: &str) -> String {
+    service.finished(thread).await;
+    service
+        .all_events(thread)
+        .await
+        .iter()
+        .filter(|event| event["event"]["type"] == "TEXT_MESSAGE_CONTENT")
+        .filter(|event| {
+            event["event"]["messageId"]
+                .as_str()
+                .unwrap_or_default()
+                .ends_with(":prompt")
+        })
+        .filter_map(|event| event["event"]["delta"].as_str())
+        .collect()
+}
+
+async fn put_json(service: &Service, path: &str, body: Value) -> u16 {
+    service
+        .client
+        .put(format!("{}{path}", service.url))
+        .bearer_auth(&service.token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
+}
+
+#[tokio::test]
+async fn a_review_guide_is_written_by_a_linked_thread_that_reads_the_pull_request() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let guide = format!("/api/projects/{project}/pulls/12/guide");
+    let state = f.service.json(&guide).await;
+    assert_eq!(state, json!({ "enabled": false, "guide": null }));
+    let (code, refused) = f.service.send(&guide, json!({ "engine": "codex" })).await;
+    assert!((400..500).contains(&code), "{refused}");
+    assert!(refused.to_string().contains("Review guides are off"));
+
+    let preferences = format!("/api/projects/{project}/preferences");
+    let on = json!({ "values": {
+        "review_guides_enabled": true,
+        "review_guide_instructions": "Lead with the migration.",
+        "review_guide_model": "guide-model",
+    } });
+    assert_eq!(put_json(&f.service, &preferences, on).await, 200);
+    assert_eq!(f.service.json(&guide).await["enabled"], true);
+    let (code, thread) = f.service.send(&guide, json!({ "engine": "codex" })).await;
+    assert_eq!(code, 201, "{thread}");
+    let id = thread["id"].as_str().unwrap();
+    assert_eq!(thread["title"], "Review guide for #12");
+    assert_eq!(thread["project_id"], project.as_str());
+    assert!(thread["worktree"].is_null());
+    let linked = f.service.json(&format!("/api/threads/{id}/pulls")).await;
+    assert_eq!(linked[0]["number"], 12);
+    let prompt = prompt_of(&f.service, id).await;
+    assert!(
+        prompt.contains("pull request #12, \"T\" at commit abc"),
+        "{prompt}"
+    );
+    assert!(prompt.contains("with `gh`"), "{prompt}");
+    assert!(prompt.contains("`orbyn_pull_guide_write` once with number 12, head_sha \"abc\""));
+    assert!(
+        !f.log().contains("pr comment"),
+        "reading writes nothing to the forge"
+    );
+}

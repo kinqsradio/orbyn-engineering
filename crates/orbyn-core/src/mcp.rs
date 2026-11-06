@@ -89,6 +89,17 @@ impl McpService {
         Ok(token)
     }
 
+    /// Points an existing token at a new binding. False when the token is gone.
+    pub fn rebind(&self, token: &str, binding: McpBinding) -> bool {
+        match self.lock().get_mut(&sha256_hex(token.as_bytes())) {
+            Some(slot) => {
+                *slot = Arc::new(binding);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn revoke(&self, token: &str) {
         self.lock().remove(&sha256_hex(token.as_bytes()));
     }

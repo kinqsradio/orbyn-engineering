@@ -163,3 +163,41 @@ setTimeout(() => process.exit(71), 30000).unref();
     await expect(error.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
   } finally { await service.stop(); }
 });
+
+test("the setup card shows a running setup, its output, and Cancel stops it", async ({ page }, info) => {
+  const log = info.outputPath("launch.ndjson");
+  const { service, thread } = await fixture(log, false);
+  try {
+    await page.goto(`${service.page}#/threads/${thread.id}`);
+    const card = page.getByRole("status", { name: "Worktree setup" });
+    await expect(card).toContainText("Running setup: Setup. The first turn waits for it.");
+    await card.getByRole("button", { name: "Cancel setup" }).click();
+    await expect(card).toContainText("Setup Setup stopped before it finished");
+    await expect(card.getByRole("button", { name: "Cancel setup" })).toHaveCount(0);
+    await card.getByRole("button", { name: "Output" }).click();
+    await expect(page.locator(".terminal-drawer-body")).toBeVisible();
+    await expect.poll(async () => {
+      const terminals = await service.api<{ script: string | null; alive: boolean }[]>("GET", `/api/threads/${thread.id}/terminals`);
+      return terminals.find((terminal) => terminal.script === "Setup")?.alive;
+    }).toBe(false);
+    expect(existsSync(join(thread.cwd, "setup-finished"))).toBe(false);
+    await service.api("POST", `/api/threads/${thread.id}/runs`, { prompt: "after-cancelled-setup" });
+    await expect.poll(async () => (await current(service, thread.id)).active_run).toBeNull();
+    expect(turns(log)).toBe(0);
+    await expect(page.getByRole("log", { name: "Thread messages" }).getByRole("button", { name: "Retry" })).toBeVisible();
+  } finally { await service.stop(); }
+});
+
+test("a successful setup reports that it finished", async ({ page }, info) => {
+  const { service, thread } = await fixture(info.outputPath("launch.ndjson"), true);
+  try {
+    // Release first: the fixture exits by itself after 30 s, which a slow page load can reach.
+    writeFileSync(join(thread.cwd, "setup-release"), "go");
+    await expect.poll(async () => (await service.api<{ phase: string; exit_code: number | null }>("GET", `/api/threads/${thread.id}/setup`)))
+      .toEqual(expect.objectContaining({ phase: "finished", exit_code: 0 }));
+    await page.goto(`${service.page}#/threads/${thread.id}`);
+    const card = page.getByRole("status", { name: "Worktree setup" });
+    await expect(card).toContainText("Setup Setup finished");
+    await expect(card).toHaveCount(0, { timeout: 8000 });
+  } finally { await service.stop(); }
+});

@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -23,6 +24,7 @@ import { SiteIcon } from "./SiteIcon";
 import { AgentCursor } from "./AgentCursor";
 import { BrowserRecording } from "./BrowserRecording";
 import { PreviewRecordings } from "./previewRecording";
+import { PageBridge, copyFromPage } from "./PageBridge";
 import { useBrowserPanels } from "./browserPanels";
 import { inDesktopApp } from "../../api/shell";
 import {
@@ -313,19 +315,41 @@ export function PageView({
       pushToast(`Couldn't reach the page. ${toFailure(failure).message}`),
     );
   };
+  // The size the page has, or was last asked to take. The tab list only catches up
+  // on its next poll, and a click mapped from the old size lands somewhere else.
+  const sized = useRef({ width: tab.width, height: tab.height });
+  useEffect(() => {
+    sized.current = { width: tab.width, height: tab.height };
+  }, [tab.width, tab.height]);
   const point = (event: MouseEvent) => {
     const box = stage.current?.getBoundingClientRect();
     if (!box) return { x: 0, y: 0 };
     return {
-      x: ((event.clientX - box.left) / box.width) * tab.width,
-      y: ((event.clientY - box.top) / box.height) * tab.height,
+      x: ((event.clientX - box.left) / box.width) * sized.current.width,
+      y: ((event.clientY - box.top) / box.height) * sized.current.height,
     };
   };
   const onKey = (event: KeyboardEvent) => {
     if (!human) return;
+    const shortcut = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+    const letter = event.key.toLowerCase();
+    // Pasting arrives as its own event, with the text the person chose to paste.
+    if (shortcut && letter === "v") return;
     event.preventDefault();
+    if (shortcut && letter === "c") {
+      copyFromPage(threadId, tab.id).catch((failure: unknown) =>
+        pushToast(`Couldn't copy from the page. ${toFailure(failure).message}`),
+      );
+      return;
+    }
     if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) send({ kind: "text", text: event.key });
     else send({ kind: "key", text: event.key });
+  };
+  const onPaste = (event: ClipboardEvent) => {
+    if (!human) return;
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    if (text) send({ kind: "text", text });
   };
   const onWheel = (event: WheelEvent) => send({ kind: "scroll", ...point(event), delta_y: event.deltaY });
   const fitted = useRef({ width: tab.width, height: tab.height });
@@ -339,10 +363,14 @@ export function PageView({
       timer = setTimeout(() => {
         const size = pageSize(entry.contentRect.width, entry.contentRect.height);
         if (Math.abs(size.width - fitted.current.width) + Math.abs(size.height - fitted.current.height) < RESIZE_SLACK) return;
+        const before = sized.current;
         fitted.current = size;
-        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) =>
-          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`),
-        );
+        // Input sent from now on reaches the page after this resize, so it maps to the new size.
+        sized.current = size;
+        request("POST", `/api/threads/${q(threadId)}/previews/${q(tab.id)}/resize`, size).catch((failure: unknown) => {
+          if (sized.current === size) sized.current = before;
+          pushToast(`Couldn't resize the page. ${toFailure(failure).message}`);
+        });
       }, RESIZE_DELAY_MS);
     });
     observer.observe(element);
@@ -389,6 +417,7 @@ export function PageView({
       src={`data:image/jpeg;base64,${frame}`}
       onClick={click}
       onKeyDown={onKey}
+      onPaste={onPaste}
       onWheel={onWheel}
     />
   ) : null;
@@ -854,6 +883,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           {error}
         </p>
       ) : null}
+      {active ? <PageBridge threadId={threadId} tab={active} onChanged={reload} /> : null}
       {active ? (
         <PageView
           threadId={threadId}

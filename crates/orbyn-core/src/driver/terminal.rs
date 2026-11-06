@@ -45,6 +45,7 @@ impl EngineDriver for TerminalDriver {
                 skill_delivery: Vec::new(),
                 goal_control: false,
                 decline_feedback: false,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -77,6 +78,7 @@ impl EngineDriver for TerminalDriver {
                 cwd: spec.cwd.clone(),
                 cols: 120,
                 rows: 32,
+                engine: true,
             },
         )?;
         session.write(spec.user_prompt.as_bytes())?;
@@ -116,6 +118,7 @@ impl EngineDriver for TerminalDriver {
             cancel,
             task,
             input: None,
+            control: None,
         })
     }
 }

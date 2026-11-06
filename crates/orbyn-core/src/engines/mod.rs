@@ -7,6 +7,7 @@ pub mod known;
 pub mod maintenance;
 pub mod manifest;
 pub mod probe;
+pub mod warm;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -93,6 +94,20 @@ pub struct EngineManager {
     known_models: Mutex<HashMap<String, EngineModels>>,
     /// The same lists on disk, so a restart keeps what the engine last said.
     catalog: CatalogCache,
+    /// Processes started ahead of each thread's next turn, by thread.
+    warm: Mutex<HashMap<String, warm::WarmEntry>>,
+    /// Warm processes being started. An update cannot begin while any is.
+    warming: Arc<Mutex<usize>>,
+}
+
+/// A warm process being started; updates wait until it is dropped.
+pub struct WarmStart(Arc<Mutex<usize>>);
+
+impl Drop for WarmStart {
+    fn drop(&mut self) {
+        let mut count = lock(&self.0);
+        *count = count.saturating_sub(1);
+    }
 }
 
 struct CachedModels {
@@ -126,6 +141,8 @@ impl EngineManager {
             updating: Mutex::new(HashSet::new()),
             native_operations: Arc::default(),
             installer_locks: Mutex::new(HashMap::new()),
+            warm: Mutex::new(HashMap::new()),
+            warming: Arc::new(Mutex::new(0)),
             statuses: tokio::sync::Mutex::new(None),
             models: tokio::sync::Mutex::new(HashMap::new()),
             known_models: Mutex::new(HashMap::new()),
@@ -302,6 +319,54 @@ impl EngineManager {
         Ok(drivers)
     }
 
+    /// Holds off every engine update while a warm process starts, or refuses while
+    /// one is running.
+    pub fn begin_warm(&self) -> Option<WarmStart> {
+        let updating = lock(&self.updating);
+        if !updating.is_empty() {
+            return None;
+        }
+        *lock(&self.warming) += 1;
+        Some(WarmStart(self.warming.clone()))
+    }
+
+    /// True while `thread` has a process waiting for its next turn.
+    pub fn has_warm(&self, thread: &str) -> bool {
+        lock(&self.warm).contains_key(thread)
+    }
+
+    /// Keeps a process for `thread`'s next turn, replacing any earlier one. Refused
+    /// while an engine updates, since it would hold the binary being replaced.
+    pub fn park_warm(&self, thread: &str, entry: warm::WarmEntry) -> bool {
+        let updating = lock(&self.updating);
+        if !updating.is_empty() {
+            return false;
+        }
+        lock(&self.warm).insert(thread.to_owned(), entry);
+        true
+    }
+
+    /// The process kept for `thread`, which is no longer kept either way.
+    pub fn take_warm(&self, thread: &str) -> Option<warm::WarmEntry> {
+        lock(&self.warm).remove(thread)
+    }
+
+    /// Ends `thread`'s warm process if it is still the one named `id`.
+    pub fn expire_warm(&self, thread: &str, id: &str) {
+        let mut warm = lock(&self.warm);
+        if warm.get(thread).is_some_and(|entry| entry.id == id) {
+            let entry = warm.remove(thread);
+            drop(warm);
+            drop(entry);
+        }
+    }
+
+    /// Ends every warm process, as the service stops.
+    pub fn end_warm(&self) {
+        let warm = std::mem::take(&mut *lock(&self.warm));
+        drop(warm);
+    }
+
     /// Instances may share a binary, so no run starts during any engine update.
     pub fn admit_with<T>(&self, engine: &str, admit: impl FnOnce() -> Result<T>) -> Result<T> {
         let updating = lock(&self.updating);
@@ -363,6 +428,9 @@ impl EngineManager {
         let updating = lock(&self.updating);
         for status in &mut statuses {
             status.updating = updating.contains(&status.id);
+            if status.tier == EngineTier::Acp {
+                status.sign_in_command = crate::driver::acp::known_sign_in(&status.id);
+            }
         }
         Ok(statuses)
     }
@@ -592,6 +660,45 @@ impl EngineManager {
         self.update_to(id, actor, None).await
     }
 
+    /// Updates, one at a time, every engine reporting a newer version that an owning
+    /// installer can update. Instances and engines sharing one binary update once, and
+    /// an engine with a signed warning is left to its recommended install. Each one
+    /// goes through `update`, so a busy engine or a failed installer is reported and
+    /// the rest still run.
+    pub async fn update_all(
+        &self,
+        actor: &str,
+    ) -> Result<Vec<orbyn_contracts::EngineUpdateOutcome>> {
+        let mut binaries = std::collections::HashSet::new();
+        let mut outcomes = Vec::new();
+        for status in self.statuses(true).await? {
+            if !wants_update(&status) {
+                continue;
+            }
+            if let Some(path) = &status.path
+                && !binaries.insert(path.clone())
+            {
+                continue;
+            }
+            let outcome = match self.update(&status.id, actor).await {
+                Ok(after) => orbyn_contracts::EngineUpdateOutcome {
+                    id: status.id,
+                    name: status.name,
+                    version: after.version,
+                    error: None,
+                },
+                Err(error) => orbyn_contracts::EngineUpdateOutcome {
+                    id: status.id,
+                    name: status.name,
+                    version: None,
+                    error: Some(error.to_string()),
+                },
+            };
+            outcomes.push(outcome);
+        }
+        Ok(outcomes)
+    }
+
     /// Installs the version the signed manifest recommends, through the installer
     /// that owns the binary. Refused when the manifest recommends nothing, when
     /// that installer cannot install one exact version, or while a run is active.
@@ -692,11 +799,17 @@ impl EngineManager {
     fn begin_update(&self, id: &str) -> Result<UpdateMarker<'_>> {
         let mut updating = lock(&self.updating);
         let operations = lock(&self.native_operations);
-        if updating.contains(id) || !operations.is_empty() || !self.store.active_runs()?.is_empty()
+        if updating.contains(id)
+            || !operations.is_empty()
+            || *lock(&self.warming) > 0
+            || !self.store.active_runs()?.is_empty()
         {
             return Err(CoreError::EngineBusy(id.to_owned()));
         }
         updating.insert(id.to_owned());
+        // Instances can share the binary, and Windows cannot replace a running one.
+        let warm = std::mem::take(&mut *lock(&self.warm));
+        drop(warm);
         Ok(UpdateMarker {
             set: &self.updating,
             id: id.to_owned(),
@@ -835,8 +948,53 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// An engine `update_all` takes: not an instance, with an update an owning installer
+/// can run, a newer version than the installed one, and no signed warning.
+fn wants_update(status: &EngineStatus) -> bool {
+    status.instance_of.is_none()
+        && status.update_command.is_some()
+        && status.compatibility.is_none()
+        && status
+            .latest
+            .as_deref()
+            .is_some_and(|latest| status.version.as_deref() != Some(latest))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_all_takes_only_an_owned_newer_engine_that_is_not_an_instance() {
+        let base = serde_json::json!({
+            "id": "codex", "name": "Codex", "tier": "native",
+            "capabilities": {"streaming": true, "approvals": true, "resume": true, "mcp": true,
+                "sandbox": true, "managed": true, "skill_delivery": [], "goal_control": false,
+                "decline_feedback": false, "permission_modes": []},
+            "installed": true, "path": "/bin/codex", "version": "0.166.0", "auth": "unknown",
+            "installer": "npm", "latest": "0.167.0", "support": "unknown",
+            "update_command": "npm install -g @openai/codex@latest", "manual_hint": null,
+            "sign_in_command": null, "updating": false, "problem": null
+        });
+        let status = |change: serde_json::Value| -> EngineStatus {
+            let mut value = base.clone();
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(change.as_object().unwrap().clone());
+            serde_json::from_value(value).unwrap()
+        };
+        assert!(wants_update(&status(serde_json::json!({}))));
+        assert!(!wants_update(&status(
+            serde_json::json!({"latest": "0.166.0"})
+        )));
+        assert!(!wants_update(&status(serde_json::json!({"latest": null}))));
+        assert!(!wants_update(&status(
+            serde_json::json!({"update_command": null})
+        )));
+        assert!(!wants_update(&status(
+            serde_json::json!({"instance_of": "codex"})
+        )));
+    }
+
     use super::*;
     use crate::store::{Admission, NewProject, NewThread};
     use crate::testing::TempDir;
@@ -981,6 +1139,7 @@ mod tests {
                     skill_delivery: Vec::new(),
                     goal_control: false,
                     decline_feedback: false,
+                    permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
                 },
             }
         }

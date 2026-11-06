@@ -423,6 +423,20 @@ pub enum PermissionMode {
 }
 }
 
+impl PermissionMode {
+    /// Every mode, loosest last.
+    pub const ALL: [PermissionMode; 4] = [
+        PermissionMode::Supervised,
+        PermissionMode::AutoEdits,
+        PermissionMode::Auto,
+        PermissionMode::FullAccess,
+    ];
+}
+
+fn every_permission_mode() -> Vec<PermissionMode> {
+    PermissionMode::ALL.to_vec()
+}
+
 wire! {
 pub struct QueuedMessage {
     pub id: String,
@@ -1180,6 +1194,77 @@ pub struct WorkOnPull {
 }
 
 wire! {
+/// One file a guide stop covers, with what to look for in it.
+pub struct PullGuideFile {
+    pub path: String,
+    pub note: String,
+}
+}
+
+wire! {
+/// One stop of a review guide, in reading order.
+pub struct PullGuideStop {
+    pub title: String,
+    pub summary: String,
+    pub files: Vec<PullGuideFile>,
+    pub questions: Vec<String>,
+}
+}
+
+wire! {
+/// A review guide an agent wrote for one pull request. It is this service's own
+/// and never reaches the forge.
+pub struct PullGuide {
+    pub number: u64,
+    /// The commit the writing agent says it described.
+    pub head_sha: Option<String>,
+    pub stops: Vec<PullGuideStop>,
+    /// The thread that wrote it.
+    pub thread_id: Option<String>,
+    pub written_at: String,
+}
+}
+
+wire! {
+/// What the guide tab shows: whether guides are on for the project, and the
+/// stored guide if there is one.
+pub struct PullGuideState {
+    pub enabled: bool,
+    pub guide: Option<PullGuide>,
+}
+}
+
+wire! {
+/// Starts a thread that writes the guide. An absent model uses the project's
+/// review guide model, then the engine's default.
+pub struct GeneratePullGuide {
+    pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+}
+
+wire! {
+/// Opens a thread about one guide stop, counted from zero.
+pub struct AskAboutStop {
+    pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+    pub stop: u32,
+}
+}
+
+wire! {
+/// The new thread and the composer draft that carries the stop.
+pub struct AskedAboutStop {
+    pub thread: Thread,
+    pub draft: String,
+}
+}
+
+wire! {
 pub struct ForgeStatus {
     /// `github`, `gitlab`, `azure`, `forgejo` or `bitbucket`.
     pub id: String,
@@ -1496,6 +1581,32 @@ pub struct ModelPrice {
     pub output: f64,
     pub cache_read: f64,
     pub cache_write: f64,
+    /// The service tier these rates apply to, as the engine names it: `fast`,
+    /// `priority`, `batch`, `flex` or `other`. Absent means the standard tier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tier: Option<String>,
+}
+}
+
+wire! {
+/// Estimated dollars by token type.
+pub struct TokenCosts {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+}
+
+wire! {
+/// One service tier of a model, as its history records it.
+pub struct TierUsage {
+    /// `standard`, `fast`, `priority`, `batch`, `flex` or `other`.
+    pub tier: String,
+    pub tokens: u64,
+    /// `None` when this tier has no configured price.
+    pub estimated_cost: Option<f64>,
 }
 }
 
@@ -1513,8 +1624,19 @@ pub struct ModelUsage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
-    /// `None` when this model has no configured price.
+    /// `None` when no tier of this model has a configured price.
     pub estimated_cost: Option<f64>,
+    /// The priced part of `estimated_cost`, by token type.
+    #[serde(default)]
+    pub cost_split: Option<TokenCosts>,
+    #[serde(default)]
+    pub tiers: Vec<TierUsage>,
+    /// Tokens in tiers with no configured price, left out of the estimate.
+    #[serde(default)]
+    pub unpriced_tokens: u64,
+    /// This model's daily tokens in the period, oldest first.
+    #[serde(default)]
+    pub days: Vec<DailyUsage>,
 }
 }
 
@@ -1523,6 +1645,9 @@ pub struct DailyUsage {
     /// `YYYY-MM-DD`.
     pub date: String,
     pub tokens: u64,
+    /// The priced part of this day. `None` when nothing that day has a price.
+    #[serde(default)]
+    pub estimated_cost: Option<f64>,
 }
 }
 
@@ -1717,6 +1842,48 @@ pub struct RetryPreparation {
 }
 
 wire! {
+/// The working-copy change of a Jujutsu checkout that is not colocated with Git,
+/// as the installed `jj` reports it.
+pub struct JjStatus {
+    pub change_id: String,
+    pub commit_id: String,
+    pub bookmarks: Vec<String>,
+    /// The first line of the change's description; empty when undescribed.
+    pub description: String,
+    pub conflict: bool,
+    pub changed_files: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+}
+
+wire_enum! {
+/// Where a worktree's setup action stands. `stopped` means it ended without an
+/// exit code: cancelled, or cut off by a service restart.
+pub enum SetupPhase {
+    Preparing,
+    Running,
+    Finished,
+    Stopped,
+}
+}
+
+wire! {
+/// The setup action a new worktree runs, and where it stands.
+pub struct ThreadSetup {
+    pub name: String,
+    /// The first turn waits for this action to exit successfully.
+    pub blocking: bool,
+    pub phase: SetupPhase,
+    pub exit_code: Option<i32>,
+    /// The terminal that shows its output, once it has started.
+    pub terminal_id: Option<String>,
+    /// Only a setup this service is preparing or running can be cancelled.
+    pub cancellable: bool,
+}
+}
+
+wire! {
 pub struct Run {
     pub id: String,
     pub thread_id: String,
@@ -1836,6 +2003,18 @@ pub struct OpenTerminal {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub direction: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cols: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub rows: Option<u16>,
+}
+}
+
+wire! {
+/// Opens the engine's own console resumed on the thread's session.
+pub struct OpenConsole {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub cols: Option<u16>,
@@ -2363,6 +2542,49 @@ pub struct PreviewTab {
     pub opened_by: String,
     /// True once the page has crashed too often to bring back.
     pub crashed: bool,
+    /// `one` or `many` while the page waits for files a person chooses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub file_chooser: Option<String>,
+    /// What the page downloaded, oldest first, kept while the tab lives.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PreviewDownload>>", optional)]
+    pub downloads: Vec<PreviewDownload>,
+}
+}
+
+wire! {
+/// A file the page downloaded into the tab's own folder.
+pub struct PreviewDownload {
+    pub id: String,
+    /// The name the page suggested, made safe to save under.
+    pub name: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// `downloading`, `done` or `stopped`.
+    pub state: String,
+}
+}
+
+wire! {
+/// Text a person copied out of the page they hold.
+pub struct PreviewCopy {
+    pub text: String,
+}
+}
+
+wire! {
+/// A file a person chose for the page, waiting in the tab's own folder.
+pub struct PreviewUpload {
+    pub id: String,
+}
+}
+
+wire! {
+/// Answers the page's file chooser with uploaded files; none cancels it.
+pub struct AnswerFileChooser {
+    #[serde(default)]
+    pub files: Vec<String>,
 }
 }
 
@@ -2790,6 +3012,10 @@ pub struct EngineCapabilities {
     /// A denied action can carry your words back to the engine.
     #[serde(default)]
     pub decline_feedback: bool,
+    /// The modes this engine offers. A thread's saved mode outside them runs
+    /// Supervised and is shown that way.
+    #[serde(default = "every_permission_mode")]
+    pub permission_modes: Vec<PermissionMode>,
 }
 }
 
@@ -2923,6 +3149,21 @@ pub struct EngineStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub accent: Option<String>,
+}
+}
+
+wire! {
+/// One engine's outcome in an update of every engine with a newer version.
+pub struct EngineUpdateOutcome {
+    pub id: String,
+    pub name: String,
+    /// The version it reports afterwards, when the update worked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
 }
 }
 
@@ -3234,6 +3475,59 @@ pub struct ApiError {
 }
 
 wire! {
+/// The opening message for a triage thread, built by the running service.
+pub struct TriagePlaybook {
+    pub prompt: String,
+    /// The source tree for this build, for reading, never fetched by Orbyn.
+    pub source_url: String,
+    /// False when the build named no revision and the link is the main branch.
+    pub source_exact: bool,
+}
+}
+
+wire! {
+/// One saved conversation an engine keeps in its own history folder.
+pub struct HistorySession {
+    /// `claude` or `codex`.
+    pub engine: String,
+    pub session_id: String,
+    /// The first prompt, cut to 120 characters, or the session id.
+    pub title: String,
+    /// The folder the engine ran in, as its history recorded it.
+    pub cwd: String,
+    pub updated_at: String,
+    /// The registered project at exactly that folder, if any.
+    pub project_id: Option<String>,
+    /// Whether that project is trusted, so the session can be imported.
+    pub importable: bool,
+    /// The thread already holding this session.
+    pub thread_id: Option<String>,
+}
+}
+
+wire! {
+pub struct HistoryScan {
+    pub sessions: Vec<HistorySession>,
+    /// More files existed than the scan reads.
+    pub truncated: bool,
+}
+}
+
+wire! {
+pub struct ImportHistorySession {
+    pub engine: String,
+    pub session_id: String,
+}
+}
+
+wire! {
+pub struct HistorySessionImported {
+    pub thread_id: String,
+    pub imported: bool,
+}
+}
+
+wire! {
 pub struct ServerInfo {
     pub version: String,
     pub remote: bool,
@@ -3360,6 +3654,24 @@ pub enum SteerState {
 wire! {
 pub struct SteerResult {
     pub state: SteerState,
+}
+}
+
+wire! {
+/// The script a Claude Code workflow runs, read for display only.
+pub struct WorkflowScript {
+    /// Where the CLI keeps the script, when it reported one.
+    pub path: Option<String>,
+    pub contents: String,
+    /// The script was longer than the display cap and was cut.
+    pub truncated: bool,
+}
+}
+
+wire! {
+/// A workflow stop the running engine was asked for; its end arrives as an event.
+pub struct WorkflowStop {
+    pub requested: bool,
 }
 }
 

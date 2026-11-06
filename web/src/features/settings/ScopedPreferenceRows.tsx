@@ -12,6 +12,7 @@ import { Button } from "../../ui/controls";
 import { PreferenceInheritance, type PreferenceRow, type PreferenceControl, type PreferenceSaveResult } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { runHandlers } from "../../app/shortcuts";
+import { useUi } from "../../state/ui";
 
 /** Read and mutation identities stay attached to the scope that produced them. */
 export function ScopedRows({ groups, query }: {
@@ -42,8 +43,10 @@ export function ScopedRows({ groups, query }: {
         scope: query, membership_version: result.catalog.version,
         if_match: { [row.key]: row.revision }, edits: { [row.key]: edit },
       });
+      useUi.getState().bumpPreferencesRevision();
       if (mounted.current) list.reload();
       if (row.key === "default_project_scripts") runHandlers("projectActions.reload");
+      if (row.key === "quit_confirmation") runHandlers("quitConfirmation.reload");
       return { saved: true, row: changed.rows.find((value) => value.key === row.key) };
     } catch (failure) {
       const message = toFailure(failure).message;

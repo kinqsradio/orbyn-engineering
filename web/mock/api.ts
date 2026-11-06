@@ -75,7 +75,8 @@ export function createMockApi(options: MockOptions = {}) {
   let idCounter = 0;
   let preferenceValues: Record<string, JsonValue> = {};
   let preferenceOverrides: Record<string, Record<string, JsonValue>> = {};
-  const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat" };
+  const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat",
+    default_engine: "", default_model: "", disabled_engines: [] };
   const subscribers = new Map<string, Set<Subscriber>>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
@@ -423,8 +424,13 @@ export function createMockApi(options: MockOptions = {}) {
           return { status: 202 };
         }
         break;
-      case "GET /api/preferences":
-        return { status: 200, body: [{ key: "default_thread_env_mode", value: "local", default: "local", source: "default", project_scoped: true }] };
+      case "GET /api/preferences": {
+        const projectId = query.get("project_id");
+        const scope: ProjectScopesQuery = projectId ? { selection: { kind: "checkout", group_key: `mock:${projectId}`, project_id: projectId } } : {};
+        const result = scopedPreferences(scope, Object.keys(preferenceDefaults));
+        if (result.catalog.selection.kind === "unavailable") return err(404, "not_found", "Project not found.");
+        return { status: 200, body: result.rows.map((row) => row.members[0]?.view ?? row.environment) };
+      }
       case "POST /api/settings":
         if (seg[2] === "project-scopes") return { status: 200, body: scopeCatalog(data as ProjectScopesQuery) };
         if (seg[2] === "preferences" && seg[3] === "query") {
@@ -613,6 +619,8 @@ export function createMockApi(options: MockOptions = {}) {
           const thread = threads.find((t) => t.id === seg[2]);
           if (!thread) return err(404, "not_found", "Thread not found.");
           if (seg[3] === "diff") return { status: 200, body: fixtures.diffs[thread.id] ?? [] };
+          // Mock threads are Git checkouts with no worktree setup.
+          if (seg[3] === "jj" || seg[3] === "setup") return { status: 200, body: null };
           return { status: 200, body: thread };
         }
         const id = query.get("project_id");
@@ -725,6 +733,7 @@ export function createMockApi(options: MockOptions = {}) {
             streaming: tier !== "terminal",
             goal_control: false,
             decline_feedback: false,
+            permission_modes: ["supervised", "auto_edits", "auto", "full_access"],
             approvals: tier !== "terminal",
             resume: false,
             mcp: false,

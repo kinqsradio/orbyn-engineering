@@ -86,6 +86,7 @@ const DEFINITIONS: &[Definition] = defs![
     "default_project_scripts" Kind::List, [], true;
     "default_model" Kind::Text, "", true;
     "prefer_saved_login" Kind::Bool, false, false;
+    "warm_next_turn" Kind::Bool, false, false;
     "app_update_mode" Kind::OneOf(&["automatic", "notify", "off"]), "notify", false;
     "keep_awake_during_runs" Kind::Bool, true, false;
     "quit_confirmation" Kind::OneOf(QUIT), "direct", false;
@@ -106,6 +107,7 @@ const DEFINITIONS: &[Definition] = defs![
     "source_control_writing_style" Kind::Object, {}, true;
     "review_guides_enabled" Kind::Bool, false, true;
     "review_guide_instructions" Kind::Text, "", true;
+    "review_guide_model" Kind::Text, "", true;
     "pull_request_merge_method" Kind::OneOf(MERGE), "", true;
     "compact_idle_threads" Kind::Bool, false, false;
     "idle_compaction" Kind::OneOf(IDLE), "never", false;
