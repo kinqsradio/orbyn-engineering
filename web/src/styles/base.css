@@ -847,6 +847,19 @@ input[type="radio"] {
   max-width: 360px;
   padding: 14px;
 }
+.folders-notice {
+  align-items: flex-start;
+  max-width: 360px;
+  padding: 14px;
+}
+.folders-notice-body {
+  min-width: 0;
+  flex: 1;
+}
+.folders-notice-body p {
+  margin: 6px 0 12px;
+  color: var(--color-muted);
+}
 .star-prompt-icon {
   flex: none;
   color: var(--color-warn);

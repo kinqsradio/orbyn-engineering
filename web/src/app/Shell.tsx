@@ -25,6 +25,7 @@ import { UsagePage } from "../features/usage/UsagePage";
 import { PreviewFloat } from "../features/panels/PreviewFloat";
 import { Toasts } from "../ui/Toasts";
 import { GitHubStarPrompt } from "../features/workspace/GitHubStarPrompt";
+import { FoldersNotice } from "../features/workspace/FoldersNotice";
 import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
@@ -552,7 +553,14 @@ export function Shell() {
       <BackgroundAnnouncer />
       <QuitConfirmation />
       <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
-      <Toasts lead={<GitHubStarPrompt />} />
+      <Toasts
+        lead={
+          <>
+            <FoldersNotice />
+            <GitHubStarPrompt />
+          </>
+        }
+      />
       <CloneJobs />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
       {layout === "narrow" && onHome && !overlay ? (

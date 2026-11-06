@@ -119,6 +119,8 @@ interface Prefs {
   environmentIdentification: EnvironmentIdentification;
   /** The welcome steps were finished or skipped on this device. */
   welcomeDone: boolean;
+  /** Which saved-preference migrations have run; see `migratePrefs`. */
+  prefsVersion: number;
 }
 
 export type EnvironmentIdentification = "artwork" | "pill" | "none";
@@ -161,6 +163,12 @@ const TOAST_MS = 4000;
 let toastCounter = 0;
 
 const PREFS_KEY = "orbyn.prefs.v1";
+/** Version 1 is the frame: a 224px sidebar and project folders on. */
+const PREFS_VERSION = 1;
+const OLD_SIDEBAR_WIDTH = 208;
+
+/** Set when this load's migration turned project folders on; the notice offers to undo it. */
+let foldersMigrated = false;
 const DRAFTS_KEY = "orbyn.drafts.v1";
 
 const defaults: Prefs = {
@@ -233,6 +241,7 @@ const defaults: Prefs = {
   environmentThemeAppliedAt: 0,
   environmentIdentification: "artwork",
   welcomeDone: false,
+  prefsVersion: PREFS_VERSION,
 };
 
 interface UiState extends Prefs {
@@ -251,6 +260,10 @@ interface UiState extends Prefs {
   /** The open welcome step, or null; not saved, so it lasts while the app runs. */
   welcomeStep: number | null;
   setWelcomeStep(step: number | null): void;
+  /** True once, when the migration turned project folders on; not saved. */
+  foldersNotice: boolean;
+  /** Closes the notice; with `undo`, also turns project folders back off. */
+  closeFoldersNotice(undo: boolean): void;
   setTheme(theme: ThemeChoice): void;
   /** Opens `tab`, or closes its surface if `tab` is already showing. */
   /** A file the Files surface should open next, with the line to reveal. */
@@ -400,11 +413,27 @@ const prefsOf = (state: Prefs): Prefs => ({
   environmentThemeAppliedAt: state.environmentThemeAppliedAt,
   environmentIdentification: state.environmentIdentification,
   welcomeDone: state.welcomeDone,
+  prefsVersion: state.prefsVersion,
 });
+
+/**
+ * Runs each migration once, guarded by `prefsVersion` stored with the prefs, and saves the
+ * result at once so a second load finds the marker. Only the previous default width moves.
+ */
+function migratePrefs(saved: Partial<Prefs>): Partial<Prefs> {
+  if ((saved.prefsVersion ?? 0) >= PREFS_VERSION) return saved;
+  const existing = Object.keys(saved).length > 0;
+  const next: Partial<Prefs> = { ...saved, prefsVersion: PREFS_VERSION, projectFolders: true };
+  if (saved.sidebarWidth === OLD_SIDEBAR_WIDTH) next.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+  // A first run starts on the new defaults; only someone with saved prefs is told.
+  foldersMigrated = existing && saved.projectFolders !== true;
+  writeJson(PREFS_KEY, next);
+  return next;
+}
 
 /** Saved preferences may predate a field or carry a removed value. */
 function savedPrefs(): Partial<Prefs> {
-  const saved = readJson<Partial<Prefs>>(PREFS_KEY) ?? {};
+  const saved = migratePrefs(readJson<Partial<Prefs>>(PREFS_KEY) ?? {});
   const panelTab =
     saved.panelTab === "diff" || saved.panelTab === "files" || saved.panelTab === "activity" || saved.panelTab === "pulls" || saved.panelTab === "side"
       ? saved.panelTab
@@ -434,6 +463,11 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...defaults,
     ...savedPrefs(),
+    foldersNotice: foldersMigrated,
+    closeFoldersNotice(undo) {
+      set({ foldersNotice: false });
+      if (undo) get().setPrefs({ projectFolders: false });
+    },
     welcomeStep: null,
     setWelcomeStep(welcomeStep) {
       set({ welcomeStep });
