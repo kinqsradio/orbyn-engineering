@@ -7,6 +7,7 @@ import { navigate } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
 import { dropTrailingSlash, expandHome, replaceHomePrefix, shortenHome, splitPath, withSlash } from "./pathInput";
 import { trackClone } from "./CloneJobs";
+import "./addProject.css";
 
 type View = "sources" | "browse" | "new" | "clone";
 
@@ -57,10 +58,12 @@ function Head({
   placeholder,
   chip,
   label,
+  mono,
   onChange,
   onKeyDown,
   onBack,
 }: {
+  mono?: boolean;
   value: string;
   placeholder: string;
   chip: { label: string; onClick(): void; disabled?: boolean } | null;
@@ -76,6 +79,7 @@ function Head({
       </button>
       <input
         autoFocus
+        className={mono ? "add-project-path" : undefined}
         aria-label={label}
         placeholder={placeholder}
         value={value}
@@ -163,10 +167,8 @@ function Sources({ onPick, onBack }: { onPick(view: View): void; onBack(): void 
             onClick={() => onPick(item.view)}
           >
             {item.icon}
-            <span className="palette-title">
-              {item.title}
-              <small>{item.description}</small>
-            </span>
+            <span className="palette-title">{item.title}</span>
+            <span className="add-project-hint">{item.description}</span>
           </button>
         ))}
       </div>
@@ -243,6 +245,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
         value={value}
         placeholder="Enter a folder path"
         label="Folder path"
+        mono
         chip={{ label: "Add", onClick: addTyped, disabled: busy }}
         onBack={onBack}
         onChange={(next) => {
@@ -275,7 +278,7 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
         {listing.status === "error" ? <p className="sidebar-empty">{listing.error.message}</p> : null}
         {/* Until the home folder is known nothing was listed, so nothing is empty yet. */}
         {listing.status === "ready" && listing.data !== null && rows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
-        {rows > 0 ? <div className="palette-group">Directories</div> : null}
+        {rows > 0 ? <div className="palette-group">Folders</div> : null}
         {parent ? (
           <button
             type="button"
@@ -299,6 +302,9 @@ function Browse({ onBack, onClose }: { onBack(): void; onClose(): void }) {
             >
               {entry.is_git ? <GitBranch size={16} aria-hidden /> : <Folder size={16} aria-hidden />}
               <span className="palette-title">{entry.name}</span>
+              <span className="add-project-hint" aria-hidden>
+                {entry.is_git ? "Git" : "Folder"}
+              </span>
             </button>
           );
         })}
