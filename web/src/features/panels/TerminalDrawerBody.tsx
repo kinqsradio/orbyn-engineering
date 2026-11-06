@@ -100,6 +100,7 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
     <div className="terminal-drawer-body">
       <div className="terminal-tabs" role="tablist" aria-label="Terminals">
         <button type="button" role="tab" aria-selected={active === MAIN} onClick={() => setActive(MAIN)}>
+          <SquareTerminal size={14} aria-hidden />
           Terminal
         </button>
         {tabs.map((group) => {
