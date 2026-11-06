@@ -1590,7 +1590,8 @@ button.detail-row:hover {
   display: flex;
   flex-direction: column;
   flex: none;
-  width: var(--context-w);
+  /* The fixed --context-w arrives with the side panel work. */
+  width: clamp(360px, calc(100% - 1112px), 539px);
   min-height: 0;
   border-left: 1px solid var(--color-border);
   background: var(--color-background);

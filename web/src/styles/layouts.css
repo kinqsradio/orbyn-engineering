@@ -59,13 +59,13 @@
   line-height: 1.7;
 }
 /* The sidebar folds away; the title bar toggle opens it (data-reading-nav). */
-:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]) {
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) {
   grid-template-columns: minmax(0, 1fr);
 }
-:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]) > .sidebar {
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) > .sidebar {
   display: none;
 }
-:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]) > .main {
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) > .main {
   grid-area: 2 / 1;
   border-top: 0;
   border-left: 0;
@@ -118,15 +118,12 @@
 :root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
   width: var(--drawer-w);
 }
-
-/* Ledger rows give the title the room: the spinner says running, so the elapsed time waits for the thread. */
-:root[data-workspace="ledger"] .sidebar .thread-row .row-status:not(.tone-warn):not(.tone-danger) {
-  display: none;
-}
-/* The heading sits on the reading column, not at the window's edge. */
+/* Reading sets the title as the column's own 26px heading. */
 :root[data-workspace="reading"] .thread-main > .topbar {
-  box-sizing: border-box;
-  width: min(calc(var(--reading-w) + 32px), 100%);
-  margin: 0 auto;
-  padding-inline: 16px;
+  height: auto;
+  min-height: var(--topbar-h);
+}
+:root[data-workspace="reading"] .thread-main > .topbar .crumbs h1 {
+  font-size: var(--text-display);
+  line-height: 1.2;
 }

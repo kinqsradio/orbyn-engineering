@@ -292,3 +292,29 @@ test("the pull requests page lists and filters", async ({ page }) => {
   await page.getByLabel("Search pull requests").press("Enter");
   await expect(page.getByRole("heading", { name: "No pull requests" })).toBeVisible();
 });
+
+test("Reading folds the sidebar away on a wide window, but a narrow home is still the thread list", async ({ page }) => {
+  const reading = () =>
+    page.addInitScript(() => {
+      localStorage.setItem("orbyn.prefs.migrated", "1");
+      localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ workspaceLayout: "reading", sidebarCollapsed: true }));
+    });
+  await reading();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/#/");
+  const nav = page.getByRole("navigation", { name: "Workspace" });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole("link", { name: "New thread", exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto("/#/threads/t-done");
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+  const toggle = page.getByRole("button", { name: "Expand sidebar" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(page.locator(".sidebar")).toBeVisible();
+  await page.locator(".sidebar a").first().focus();
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeFocused();
+});

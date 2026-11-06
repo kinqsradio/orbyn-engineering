@@ -826,6 +826,13 @@ input[type="radio"] {
   flex-direction: column;
   gap: 8px;
 }
+/* A page with a composer keeps the stack clear of the send button: below the heading, top right. */
+.shell[data-page="thread"] .toasts,
+.shell[data-page="new"] .toasts,
+.shell[data-page="home"] .toasts {
+  top: calc(var(--titlebar-h) + var(--topbar-h) + 8px);
+  bottom: auto;
+}
 .toast {
   display: flex;
   align-items: center;
@@ -1086,7 +1093,9 @@ input[type="radio"] {
   }
 }
 
-:root[data-contrast="more"] {
+:root[data-contrast="more"],
+/* Dim sets its own colours at a higher specificity, so it needs its own selector. */
+:root[data-contrast="more"][data-theme="dark"][data-preset="dim"] {
   --color-muted: var(--color-textSoft);
   --color-border: var(--color-outline);
 }
