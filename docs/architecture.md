@@ -10,9 +10,9 @@ credentials.
 | Owner | Path | Owns |
 | --- | --- | --- |
 | Wire contract | `crates/orbyn-contracts` | Serialized types shared with the UI; generated TS in `web/src/generated` |
-| Core | `crates/orbyn-core` | Store, run lifecycle, policy, audit, skills, engines, git, terminal, computer gateway |
+| Core | `crates/orbyn-core` | Store, run lifecycle, policy, audit, skills, engines, git, terminal, computer gateway, in the capability groups its [README](../crates/orbyn-core/README.md#groups) lists |
 | Service | `crates/orbynd` | HTTP/SSE/WebSocket transport, static UI, access control, CLI entry point |
-| Workspace | `crates/orbyn-core` `workspace`, `projects` | Library checkout, target boundaries, library updates, project intake |
+| Workspace | `crates/orbyn-core` `project::workspace`, `project::projects` | Library checkout, target boundaries, library updates, project intake |
 | UI | `web` | Task flows only; it holds no authority and no lifecycle rules |
 | Desktop shell | `desktop/src-tauri` | Spawns `orbynd`, loads stable bundled UI assets, tray, app updates and what only the OS can do |
 
