@@ -1154,8 +1154,8 @@
 .composer-mirror {
   position: absolute;
   inset: 0;
-  min-height: 62px;
-  padding: 17px 16px 8px;
+  min-height: 52px;
+  padding: 14px 14px 6px;
   overflow: hidden;
   color: var(--color-text);
   font: inherit;
