@@ -131,7 +131,7 @@ jobs:
         run: npm run build
         working-directory: web
 
-  # The browser suite, split by file across four runners.
+  # The browser suite, split by file across eight runners.
   e2e-shard:
     name: E2E shard ${{ matrix.shard }}/8
     needs: changes
