@@ -113,6 +113,8 @@ interface Prefs {
   environmentThemeAppliedAt: number;
   /** How the sidebar marks this environment's build: channel artwork, a version pill or nothing. */
   environmentIdentification: EnvironmentIdentification;
+  /** The welcome steps were finished or skipped on this device. */
+  welcomeDone: boolean;
 }
 
 export type EnvironmentIdentification = "artwork" | "pill" | "none";
@@ -225,6 +227,7 @@ const defaults: Prefs = {
   dismissedProviderUpdates: [],
   environmentThemeAppliedAt: 0,
   environmentIdentification: "artwork",
+  welcomeDone: false,
 };
 
 interface UiState extends Prefs {
@@ -384,6 +387,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   dismissedProviderUpdates: state.dismissedProviderUpdates,
   environmentThemeAppliedAt: state.environmentThemeAppliedAt,
   environmentIdentification: state.environmentIdentification,
+  welcomeDone: state.welcomeDone,
 });
 
 /** Saved preferences may predate a field or carry a removed value. */
