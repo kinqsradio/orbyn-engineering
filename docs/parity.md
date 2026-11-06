@@ -475,7 +475,7 @@ no row of their own are in I62. A CLI that speaks ACP is found and launched by i
 - [ ] I24 Antigravity runtime: managed install and removal | apps/server/src/provider/AntigravityInstallation.ts | w d s | M
 - [ ] I25 Pi provider: RPC integration with MCP injection | packages/provider-pi/src/adapter.ts | s | L
 - [ ] I26 Muse Code provider: opt-in, Supervised and Full access | packages/provider-muse/src/adapter.ts | s | L | [auth-risk] | scope: mixed | local: Muse CLI or protocol integration and supported permission modes | excludes: engine credentials and login
-- [ ] I27 fx provider: Supervised and Auto with effort | packages/provider-fx/src/adapter.ts | s | M
+- [ ] I27 fx provider: Supervised and Auto with effort | packages/provider-fx/src/adapter.ts | s | M | note (#174): fx runs over ACP as `fx acp` (from T3's fx adapter) and is now a known engine, listed only when an `fx` outside the npm and Homebrew `fx` JSON viewer packages is found; its starting mode is unobserved and its Auto mode writes without asking, so it is labelled unmanaged under rule 8 | remaining: no `fx` program on the build host, so its launch, Supervised `ask` mode, effort option and `fx status` default model are unobserved; Windows unobserved
 - [x] I28 ACP Registry search: find and add agents | apps/web/src/components/settings/AcpRegistrySearchStep.tsx | w d s | L | web done
 - [x] I29 ACP install: checksummed binaries, npx/uvx prefixes | packages/provider-acp-registry/src/AcpRegistrySupport.ts | s | L | server done
 - [x] I30 Local ACP command: executable with literal arguments | apps/web/src/components/settings/AddProviderInstanceDialog.tsx | w d s | M | server done, as a custom engine | web done

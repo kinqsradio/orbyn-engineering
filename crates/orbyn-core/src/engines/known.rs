@@ -85,6 +85,18 @@ pub const KNOWN_ENGINES: &[KnownEngine] = &[
         not_from: &[],
     },
     KnownEngine {
+        id: "fx",
+        name: "fx",
+        programs: &["fx"],
+        args: &["acp"],
+        env: &[],
+        // Its starting mode is unobserved, and its automatic mode writes without
+        // asking, so it stays labelled until a run shows it asks.
+        asks: false,
+        // The `fx` JSON viewer from npm or Homebrew has the same name.
+        not_from: &["node_modules/fx", "Cellar/fx"],
+    },
+    KnownEngine {
         id: "grok",
         name: "Grok Build",
         programs: &["grok"],
@@ -241,12 +253,22 @@ mod tests {
         let unix =
             std::path::Path::new("/usr/local/lib/node_modules/@vibe-kit/grok-cli/dist/index.js");
         assert!(inside_any(unix, grok.not_from));
+        let fx = known_engine("fx").unwrap();
+        let viewer = std::path::Path::new("/opt/homebrew/Cellar/fx/39.1.0/bin/fx");
+        assert!(inside_any(viewer, fx.not_from));
+        let npm = std::path::Path::new("C:\\npm\\node_modules\\fx\\index.js");
+        assert_eq!(inside_any(npm, fx.not_from), cfg!(windows));
+        let agent = std::path::Path::new("/Users/me/.fx/bin/fx");
+        assert!(!inside_any(agent, fx.not_from));
     }
 
     #[test]
-    fn the_engine_that_cannot_ask_is_the_only_one_marked() {
-        let silent: Vec<_> = KNOWN_ENGINES.iter().filter(|e| !e.asks).collect();
-        assert_eq!(silent.len(), 1);
-        assert_eq!(silent[0].id, "deepseek");
+    fn only_the_engines_that_may_not_ask_are_marked() {
+        let silent: Vec<_> = KNOWN_ENGINES
+            .iter()
+            .filter(|e| !e.asks)
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(silent, ["deepseek", "fx"]);
     }
 }
