@@ -51,7 +51,7 @@ function RouteView({ route, needsProject }: { route: PageRoute; needsProject: bo
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":
-      return <><WelcomeHost /><DraftView key={route.projectId ?? "draft"} projectId={route.projectId} /></>;
+      return <DraftView key={route.projectId ?? "draft"} projectId={route.projectId} />;
     case "trust":
       return <TrustFolder projectId={route.projectId} threadId={route.threadId} />;
   }

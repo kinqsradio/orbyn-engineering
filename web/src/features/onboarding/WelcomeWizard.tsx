@@ -103,8 +103,9 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
 }
 
 /**
- * Keeps the welcome steps open across the empty home, a new project's draft and the
- * trust page's return, so adding and trusting a folder doesn't end them.
+ * Shows the welcome steps on home only, so a draft or the trust page stays clear. The
+ * open step lives in the UI store, so adding or trusting a folder elsewhere doesn't
+ * end them: they are back when home is.
  */
 export function WelcomeHost() {
   const step = useUi((state) => state.welcomeStep);
