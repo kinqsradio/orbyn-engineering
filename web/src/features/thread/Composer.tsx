@@ -1,5 +1,5 @@
 import { composerMarkup } from "./composerMarkup";
-import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
+import { recordUserPrompt } from "../../ui/starPrompt/GitHubStarPrompt";
 import { ArrowUp, Archive, Folder, GitBranch, ListChecks, Paperclip, ShieldOff, SlidersHorizontal, Square, X,
   RotateCcw,
 } from "lucide-react";
@@ -20,7 +20,7 @@ import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useDraftStore } from "../../state/draftStore";
 import { navigate } from "../../state/route";
-import { useThreadLogs } from "./threadLogs";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
@@ -40,10 +40,10 @@ import { ModelPickerTrigger } from "./ModelPicker";
 import { QuestionPanel } from "./QuestionPanel";
 import { effortOption, effortValue, resolveModel, useEngineModels } from "../../state/modelStore";
 import { QueuedMessages } from "./QueuedMessages";
-import { openSideChat } from "../panels/sideChat";
+import { openSideChat } from "../../state/sideChat";
 import { pullsApi } from "../../api/pulls";
 import { FILE_MENTION_TYPE, insertToken, pullToken, threadToken, triggerAt } from "../../lib/skillMention";
-import { useComposerChips } from "./composerChipStore";
+import { useComposerChips } from "../../state/composer/composerChipStore";
 import { CODE_LANGUAGES, exitCodeBlock, indentCodeLines, openFenceAt, setFenceLanguage } from "./composerCodeBlock";
 import { ComposerChipShelf, copyChips } from "./ComposerChips";
 import {
@@ -56,7 +56,7 @@ import {
   promptWithChips,
   refillExcerpts,
   type ComposerChip,
-} from "./composerContext";
+} from "../../state/composer/composerContext";
 
 interface Suggestion {
   value: string;

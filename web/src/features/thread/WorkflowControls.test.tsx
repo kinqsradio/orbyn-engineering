@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { applyEvents, emptyLog, type ToolItem } from "./projection";
+import { applyEvents, emptyLog, type ToolItem } from "../../state/thread/projection";
 import { WorkflowControls } from "./WorkflowControls";
 import type { AgUiEvent, WireThreadEvent } from "../../api/types";
 

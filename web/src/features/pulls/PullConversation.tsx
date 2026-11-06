@@ -6,7 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
-import { Markdown } from "../thread/Markdown";
+import { Markdown } from "../../ui/markdown/Markdown";
 import { pullsApi } from "../../api/pulls";
 
 const REACTIONS: [string, string][] = [

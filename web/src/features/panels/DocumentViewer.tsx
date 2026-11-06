@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ApiFailure } from "../../api/client";
 import { useAsync } from "../../lib/useAsync";
 import { ErrorState, Loading } from "../../ui/states";
-import { BytesFallback, rawUrl } from "./FileMedia";
+import { BytesFallback, rawUrl } from "../../ui/FileMedia";
 import { MAX_ARCHIVE_BYTES, formatBytes } from "./zipArchive";
 import {
   MAX_COLUMNS_PER_SHEET,

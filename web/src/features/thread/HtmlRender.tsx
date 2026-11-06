@@ -4,7 +4,7 @@ import { resolveTheme, useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { isHtmlRenderTool, renderFrameFrom, type RenderFrame } from "./renderFrame";
-import type { ToolItem } from "./projection";
+import type { ToolItem } from "../../state/thread/projection";
 
 /** Zoom is a percentage of the frame's own layout: 50% to 200%. */
 const MIN_ZOOM = 50;

@@ -4,13 +4,13 @@ import { api } from "../../api/client";
 import type { FileDiff } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
-import { useThreadLogs } from "../thread/threadLogs";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { useUi } from "../../state/ui";
-import { useComposerChips } from "../thread/composerChipStore";
-import { CHIP_EXCERPT_LIMIT, charactersOver, chipId, chipLabel, promptWithChips, type ReviewChip } from "../thread/composerContext";
+import { useComposerChips } from "../../state/composer/composerChipStore";
+import { CHIP_EXCERPT_LIMIT, charactersOver, chipId, chipLabel, promptWithChips, type ReviewChip } from "../../state/composer/composerContext";
 import { Button, IconButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading } from "../../ui/states";
-import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
+import { useResolvedThreadPath } from "../../lib/useResolvedThreadPath";
 
 const LINE_LIMIT = 2000;
 /** A large diff renders files in pages, so a huge change set never mounts at once. */

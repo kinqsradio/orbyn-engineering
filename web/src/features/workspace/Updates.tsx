@@ -13,7 +13,7 @@ import {
 } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
-import { Markdown } from "../thread/Markdown";
+import { Markdown } from "../../ui/markdown/Markdown";
 
 const short = (value: string | null) =>
   value && /^[0-9a-f]{12,}$/.test(value) ? value.slice(0, 8) : (value ?? "Unknown");

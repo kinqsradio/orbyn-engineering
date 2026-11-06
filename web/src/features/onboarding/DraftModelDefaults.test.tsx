@@ -13,7 +13,7 @@ vi.mock("../../api/client", async (original) => {
   return { ...actual, request: vi.fn(), api: { ...actual.api, createThread: vi.fn(), startRun: vi.fn() } };
 });
 vi.mock("../../app/shortcuts", () => ({ useCommand: () => undefined }));
-vi.mock("../workspace/GitHubStarPrompt", () => ({ recordUserPrompt: () => undefined }));
+vi.mock("../../ui/starPrompt/GitHubStarPrompt", () => ({ recordUserPrompt: () => undefined }));
 vi.mock("./useDraftCheckout", () => ({ useDraftCheckout: () => ({ worktree: null, setWorktree: () => undefined, loading: false, error: null }) }));
 vi.mock("../../state/modelStore", () => ({ useEngineModels: () => null, resolveModel: () => null }));
 vi.mock("../thread/ComposerTraits", () => ({

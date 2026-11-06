@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EngineStatus } from "../../api/types";
+import type { EngineStatus } from "../api/types";
 import { chooseDraftEngine } from "./draftEngine";
 
 const engine = (id: string, auth: EngineStatus["auth"], managed = true) =>

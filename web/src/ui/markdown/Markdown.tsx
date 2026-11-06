@@ -3,8 +3,8 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { IconButton } from "../../ui/controls";
-import { Collapsible } from "../../ui/Collapsible";
+import { IconButton } from "../controls";
+import { Collapsible } from "../Collapsible";
 import { CodeBlock } from "./CodeBlock";
 import { MarkdownMedia, MarkdownThreadContext } from "./MarkdownMedia";
 import { safeHref } from "./mediaSource";

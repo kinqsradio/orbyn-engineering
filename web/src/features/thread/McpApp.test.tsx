@@ -2,10 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { useUi } from "../../state/ui";
-import { applyEvents, emptyLog, type ToolItem } from "./projection";
+import { applyEvents, emptyLog, type ToolItem } from "../../state/thread/projection";
 import type { AgUiEvent, WireThreadEvent } from "../../api/types";
 import { McpApp } from "./McpApp";
-import { answerApp, readAppMessage, readMcpAppMarker, type AppHost } from "./mcpAppBridge";
+import { answerApp, readAppMessage, readMcpAppMarker, type AppHost } from "../../state/thread/mcpAppBridge";
 
 const THREAD = "01jc8xw9kq00000000000000aa";
 const RENDER = "01jc8xw9kq00000000000000bb";

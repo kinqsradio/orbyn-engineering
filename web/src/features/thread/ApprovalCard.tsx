@@ -6,7 +6,7 @@ import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { Menu } from "../../ui/Menu";
 import { touchesOf } from "./approvalDetail";
-import { approvalFromContent } from "./projection";
+import { approvalFromContent } from "../../state/thread/projection";
 
 const outcome = {
   allowed: { icon: CircleCheck, label: "Approved" },

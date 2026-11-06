@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { api, type ApiFailure } from "../../api/client";
-import type { ResolvedThreadPath } from "../../generated/ResolvedThreadPath";
-import type { ThreadPathBasis } from "../../generated/ThreadPathBasis";
-import { toFailure, useAsync } from "../../lib/useAsync";
-import { parseRoute } from "../../state/route";
-import { useWorkspace } from "../../state/workspace";
+import { api, type ApiFailure } from "../api/client";
+import type { ResolvedThreadPath } from "../generated/ResolvedThreadPath";
+import type { ThreadPathBasis } from "../generated/ThreadPathBasis";
+import { toFailure, useAsync } from "./useAsync";
+import { parseRoute } from "../state/route";
+import { useWorkspace } from "../state/workspace";
 
 interface Resolution {
   key: string;

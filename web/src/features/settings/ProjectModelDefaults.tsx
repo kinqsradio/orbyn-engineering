@@ -8,7 +8,7 @@ import { useWorkspace } from "../../state/workspace";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Button } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
-import { ModelPickerTrigger } from "../thread/ModelPicker";
+import { ModelPickerTrigger } from "../thread/public";
 import { useEngineModels, useModelStore } from "../../state/modelStore";
 import { PreferenceGroups, PreferenceInheritance } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";

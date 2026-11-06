@@ -1,4 +1,4 @@
-import type { ThreadItem } from "./projection";
+import type { ThreadItem } from "../../state/thread/projection";
 
 export const LARGE_PASTE_BYTES = 32 * 1024;
 

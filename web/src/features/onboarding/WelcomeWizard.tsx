@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import type { EngineStatus } from "../../api/types";
-import { HistoryImport } from "../settings/HistoryImport";
+import { HistoryImport } from "../settings/public";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";

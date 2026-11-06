@@ -3,12 +3,12 @@ import { createContext, useContext, useState } from "react";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
 import { navigate, parseRoute } from "../../state/route";
-import { useThreadLogs } from "./threadLogs";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { useComposerChips } from "./composerChipStore";
+import { useComposerChips } from "../../state/composer/composerChipStore";
 import { IconButton } from "../../ui/controls";
-import { chipId } from "./composerContext";
+import { chipId } from "../../state/composer/composerContext";
 import { ConfirmDialog } from "../../ui/Dialog";
 
 /** The thread these messages belong to, when it isn't the one the page is on. */

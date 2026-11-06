@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { arrangeTimeline, groupWork, type TimelineEntry } from "./timeline";
-import type { ThreadItem, ToolItem } from "./projection";
+import type { ThreadItem, ToolItem } from "../../state/thread/projection";
 
 const call = (n: number): ToolItem => ({ kind: "tool", key: `tool:${n}`, callId: `${n}`, seq: n,
   runId: "r", ts: "2026-11-04T00:00:00Z", name: "Read", args: JSON.stringify({ path: `file${n}` }),

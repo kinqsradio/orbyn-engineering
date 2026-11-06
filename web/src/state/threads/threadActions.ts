@@ -3,9 +3,9 @@ import type { Thread, UpdateThread } from "../../api/types";
 import { toFailure } from "../../lib/useAsync";
 import { pullsApi } from "../../api/pulls";
 import { threadToken } from "../../lib/skillMention";
-import { navigate, parseRoute } from "../../state/route";
-import { useUi } from "../../state/ui";
-import { useWorkspace } from "../../state/workspace";
+import { navigate, parseRoute } from "../route";
+import { useUi } from "../ui";
+import { useWorkspace } from "../workspace";
 import { arrangeThreads, threadsFlat } from "./groups";
 import { pushUndo } from "./threadUndo";
 

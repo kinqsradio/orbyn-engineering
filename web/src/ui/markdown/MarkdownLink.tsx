@@ -3,9 +3,9 @@ import { api } from "../../api/client";
 import { navigate, parseRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { Menu } from "../../ui/Menu";
-import { PullLinkPreview } from "../pulls/PullLinkPreview";
-import { pullNumberOf } from "../pulls/pullLink";
+import { Menu } from "../Menu";
+import { PullLinkPreview } from "../pullLink/PullLinkPreview";
+import { pullNumberOf } from "../pullLink/pullLink";
 
 const HOVER_DELAY_MS = 350;
 

@@ -16,12 +16,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, request } from "../../api/client";
 import type { EngineLimits, EngineStatus, ProjectFileView, Thread } from "../../api/types";
 import { compactAge, elapsed } from "../../lib/format";
-import { showSideChat, sideChatsOf } from "../panels/sideChat";
+import { showSideChat, sideChatsOf } from "../../state/sideChat";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { usageShare } from "./ComposerExtras";
 import { useNow } from "../../lib/useNow";
 import { navigate } from "../../state/route";
-import { useThreadLogs } from "./threadLogs";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
@@ -34,7 +34,7 @@ import { OpenInEditor } from "./OpenInEditor";
 import { ThreadAutomations } from "./ThreadAutomations";
 import { runningTools } from "./timeline";
 import type { ProjectScript } from "../../generated/ProjectScript";
-import { runProjectAction } from "./runProjectAction";
+import { runProjectAction } from "../../lib/projectActions/runProjectAction";
 import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
 function ThreadMenu({ thread }: { thread: Thread }) {

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Thread } from "../../api/types";
 import { parsePatch } from "../panels/DiffPanel";
-import { arrangeThreads } from "../workspace/groups";
+import { arrangeThreads } from "../../state/threads/groups";
 import { touchesOf } from "./approvalDetail";
 import { percentLabel } from "./ComposerExtras";
-import type { ThreadItem } from "./projection";
+import type { ThreadItem } from "../../state/thread/projection";
 import { insertToken, pullToken, threadToken, triggerAt } from "../../lib/skillMention";
 import { outputSpans } from "./ansi";
-import type { ToolItem } from "./projection";
+import type { ToolItem } from "../../state/thread/projection";
 import { arrangeTimeline, groupWork } from "./timeline";
 import { summarizeWork } from "./toolTrace";
 import { withLocalPrompts } from "./Transcript";

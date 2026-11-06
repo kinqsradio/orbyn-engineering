@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import type { WireThreadEvent } from "../api/types";
-import { useThreadLogs } from "../features/thread/threadLogs";
+import { useThreadLogs } from "./thread/threadLogs";
 import { useUi } from "./ui";
 import { permissionToasts, upgradeToast } from "./healthToasts";
 

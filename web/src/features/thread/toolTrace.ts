@@ -1,4 +1,4 @@
-import type { ReasoningItem, ToolItem } from "./projection";
+import type { ReasoningItem, ToolItem } from "../../state/thread/projection";
 
 /** What a tool call did, in the words the timeline uses for it. */
 export type ToolAction = "command" | "edit" | "read" | "web" | "code-search" | "browser" | "other";

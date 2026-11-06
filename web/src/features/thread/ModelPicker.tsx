@@ -5,7 +5,7 @@ import type { EngineStatus } from "../../api/types";
 import { useCommand } from "../../app/shortcuts";
 import { useUi } from "../../state/ui";
 import { EngineGlyph } from "../../ui/badges";
-import { modKeyLabel } from "../workspace/threadUndo";
+import { modKeyLabel } from "../../state/threads/threadUndo";
 import {
   arrangeModels,
   modelKey,

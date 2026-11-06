@@ -1,4 +1,4 @@
-import { mediaKind, rawUrl } from "../panels/FileMedia";
+import { mediaKind, rawUrl } from "../FileMedia";
 import { serviceUrl } from "../../api/origin";
 import { readToken } from "../../api/token";
 

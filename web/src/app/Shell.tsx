@@ -10,22 +10,22 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { ThreadView } from "../features/thread/ThreadView";
 import { CommandPalette } from "../features/workspace/CommandPalette";
 import type { ShellEvent, Thread } from "../api/types";
-import { arrangeThreads, threadsFlat } from "../features/workspace/groups";
+import { arrangeThreads, threadsFlat } from "../state/threads/groups";
 import {
   copyReference,
   pinThreads,
   settleThreads,
   unpinThreads,
   unsettleThreads,
-} from "../features/workspace/threadActions";
-import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../features/workspace/threadUndo";
+} from "../state/threads/threadActions";
+import { releaseUndoShortcut, undoHasShortcut, undoLatest, useUndoNotice } from "../state/threads/threadUndo";
 import { CloneJobs } from "../features/workspace/CloneJobs";
 import { Sidebar } from "../features/workspace/Sidebar";
 import { PullsPage } from "../features/pulls/PullsPage";
 import { UsagePage } from "../features/usage/UsagePage";
 import { PreviewFloat } from "../features/panels/PreviewFloat";
 import { Toasts } from "../ui/Toasts";
-import { GitHubStarPrompt } from "../features/workspace/GitHubStarPrompt";
+import { GitHubStarPrompt } from "../ui/starPrompt/GitHubStarPrompt";
 import { api, setSlowRequestHandler } from "../api/client";
 import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";

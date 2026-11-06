@@ -3,12 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
 import type { Run, SlashCommand, Thread } from "../../api/types";
-import { useComposerChips } from "./composerChipStore";
-import { useThreadLogs } from "./threadLogs";
+import { useComposerChips } from "../../state/composer/composerChipStore";
+import { useThreadLogs } from "../../state/thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Composer } from "./Composer";
-import { MAX_PROMPT_CHARS, type ReviewChip, type TerminalChip } from "./composerContext";
+import { MAX_PROMPT_CHARS, type ReviewChip, type TerminalChip } from "../../state/composer/composerContext";
 
 const thread: Thread = {
   id: "t1",

@@ -3,7 +3,7 @@ import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, 
 import { createPortal } from "react-dom";
 import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
-import { IconButton, LinkButton } from "../../ui/controls";
+import { IconButton, LinkButton } from "../controls";
 import {
   mediaAttribute,
   mediaCopyTarget,

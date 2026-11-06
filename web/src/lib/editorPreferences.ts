@@ -1,4 +1,4 @@
-import type { EditorInfo } from "../../api/types";
+import type { EditorInfo } from "../api/types";
 
 /** Editors that can open a file. The file manager only reveals a path. */
 export const launchableEditors = (editors: EditorInfo[]): EditorInfo[] =>

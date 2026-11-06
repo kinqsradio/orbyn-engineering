@@ -6,9 +6,9 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Dialog } from "../../ui/Dialog";
 import { TimelineThread } from "./items";
-import { Lightbox } from "./MarkdownMedia";
-import { fileLinkTarget } from "./MarkdownLink";
-import type { SentAttachment } from "./projection";
+import { Lightbox } from "../../ui/markdown/MarkdownMedia";
+import { fileLinkTarget } from "../../ui/markdown/MarkdownLink";
+import type { SentAttachment } from "../../state/thread/projection";
 
 /** A typed `@path` the message referred to. */
 const PATH_TOKEN = /(^|\s)@([^\s@]+)/g;

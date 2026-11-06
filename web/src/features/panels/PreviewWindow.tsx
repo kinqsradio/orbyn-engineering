@@ -4,7 +4,7 @@ import { matchesKey, runHandlers, whenHolds } from "../../app/shortcuts";
 import { useAsync } from "../../lib/useAsync";
 import { ErrorState } from "../../ui/states";
 import { Toasts } from "../../ui/Toasts";
-import { GitHubStarPrompt } from "../workspace/GitHubStarPrompt";
+import { GitHubStarPrompt } from "../../ui/starPrompt/GitHubStarPrompt";
 import { BrowserPane } from "./BrowserPanel";
 
 /** A native viewer has preview shortcuts, without the main chat's navigation/actions. */

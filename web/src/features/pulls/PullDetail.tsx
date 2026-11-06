@@ -10,7 +10,7 @@ import { Button, Field, IconButton, Pill } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { ErrorState, Loading } from "../../ui/states";
-import { Markdown } from "../thread/Markdown";
+import { Markdown } from "../../ui/markdown/Markdown";
 import { PullCode } from "./PullCode";
 import { PullConversation } from "./PullConversation";
 import { PullGuide } from "./PullGuide";
