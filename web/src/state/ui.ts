@@ -156,7 +156,7 @@ const MAX_LAYOUTS = 200;
 
 export type PaletteStart = "root" | "add-project" | "files" | "search";
 
-export const DEFAULT_SIDEBAR_WIDTH = 248;
+export const DEFAULT_SIDEBAR_WIDTH = 208;
 const TOAST_MS = 4000;
 let toastCounter = 0;
 
