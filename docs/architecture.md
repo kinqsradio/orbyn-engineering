@@ -1893,8 +1893,9 @@ place spelled as a route: `thread/<id>`, `new[/<project>]`, `settings[/<section>
 anything else, and a link that started the app waits in the shell until the service
 runs. A second launch hands its links to the first and exits.
 
-On macOS the bundle also declares `http` and `https` (`desktop/src-tauri/Info.plist`), so a
-person can pick the app as their default browser in System Settings. The app never sets
+On macOS the bundle also declares `http` and `https`, and HTML pages at Alternate rank
+(`desktop/src-tauri/Info.plist`), so a person can pick the app as their default browser in
+System Settings, which lists only apps that declare both. The app never sets
 itself as the default. The shell forwards such a link like an `orbyn://` one and decides
 nothing. The service drops anything that isn't a short `http` or `https` URL, and it holds
 at most eight waiting links. It opens a link only when `open_web_links_in_app` is on, which
