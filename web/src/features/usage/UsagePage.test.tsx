@@ -156,7 +156,7 @@ it("shows each model's cache hit, cost per million and trend", async () => {
     ...data.engines[0]!.models[0]!, input_tokens: 500_000, cache_read_tokens: 500_000,
     estimated_cost: 3, cost_split: { input: 3, output: 0, cache_read: 0, cache_write: 0 },
     tiers: [{ tier: "standard", tokens: 1_000_000, estimated_cost: 3 }], unpriced_tokens: 0,
-    days: [{ date: today, tokens: 1_000_000 }],
+    days: [{ date: today, tokens: 1_000_000, estimated_cost: 3 }],
   };
   vi.mocked(api.usage).mockResolvedValue(data);
   render(<UsagePage onClose={() => undefined} />);
@@ -164,4 +164,22 @@ it("shows each model's cache hit, cost per million and trend", async () => {
   expect(line).toHaveTextContent("50.0%");
   expect(line).toHaveTextContent("$3.00/M");
   expect(within(line).getByRole("img", { name: "local-model daily tokens" })).toBeInTheDocument();
+});
+
+it("draws a provider share bar and a daily cost chart for the period", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const data = report(300);
+  data.engines[0]!.models[0] = { ...data.engines[0]!.models[0]!, estimated_cost: 3, unpriced_tokens: 0 };
+  data.engines[0]!.days = [{ date: today, tokens: 300, estimated_cost: 3 }];
+  data.engines.push({ ...report(100, "second-model").engines[0]!, engine: "codex",
+    days: [{ date: today, tokens: 100, estimated_cost: null }] });
+  vi.mocked(api.usage).mockResolvedValue(data);
+  render(<UsagePage onClose={() => undefined} />);
+  await screen.findByRole("row", { name: /local-model/ });
+  const tokens = screen.getByRole("group", { name: "Share of tokens" });
+  expect(within(tokens).getByLabelText("claude 75.0%")).toBeInTheDocument();
+  expect(within(tokens).getByLabelText("codex 25.0%")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("radio", { name: "Cost" }));
+  expect(within(screen.getByRole("group", { name: "Share of priced cost" })).getByLabelText("claude 100.0%")).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Daily estimated cost by engine" })).toBeInTheDocument();
 });

@@ -44,6 +44,8 @@ export interface EngineTotals {
   unpriced: boolean;
   models: ModelRow[];
   daily: Map<string, number>;
+  /** The priced part of each day; a day with nothing priced is absent. */
+  dailyCost: Map<string, number>;
 }
 
 export const TIER_LABELS: Record<string, string> = {
@@ -128,6 +130,9 @@ export function usageTotals(reports: readonly EngineUsage[], days: number, today
         unpriced: priced.length < models.length || models.some((model) => model.unpriced_tokens > 0),
         models,
         daily: new Map(report.days.map((day) => [day.date, day.tokens])),
+        dailyCost: new Map(
+          report.days.flatMap((day) => (day.estimated_cost === null ? [] : [[day.date, day.estimated_cost] as const])),
+        ),
       };
     })
     .filter((engine) => engine.tokens > 0)
@@ -180,4 +185,20 @@ export function axisTicks(max: number): number[] {
   const ticks: number[] = [];
   for (let value = 0; value < max + step; value += step) ticks.push(value);
   return ticks;
+}
+
+export interface Share {
+  engine: string;
+  value: number;
+  share: number;
+}
+
+/** Each engine's part of the tokens, or of the priced cost. Unpriced engines drop out of a cost share. */
+export function engineShares(engines: readonly EngineTotals[], metric: "cost" | "tokens"): Share[] {
+  const values = engines.map((engine) => ({
+    engine: engine.engine,
+    value: metric === "cost" ? (engine.cost ?? 0) : engine.tokens,
+  }));
+  const total = values.reduce((sum, entry) => sum + entry.value, 0);
+  return values.filter((entry) => entry.value > 0).map((entry) => ({ ...entry, share: total > 0 ? entry.value / total : 0 }));
 }

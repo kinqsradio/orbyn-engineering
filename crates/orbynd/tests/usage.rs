@@ -306,9 +306,14 @@ async fn cost_splits_by_token_type_and_tier_and_a_tier_never_borrows_the_standar
     assert_eq!(
         model["days"],
         json!([
-            { "date": "2026-10-30", "tokens": 4_000_000 },
-            { "date": "2026-10-31", "tokens": 1_500_000 }
+            { "date": "2026-10-30", "tokens": 4_000_000, "estimated_cost": 12.0 },
+            { "date": "2026-10-31", "tokens": 1_500_000, "estimated_cost": 6.0 }
         ])
+    );
+    let engine = claude_of(&service.json("/api/usage").await);
+    assert_eq!(
+        engine["days"], model["days"],
+        "one model, so the engine's days match"
     );
     service.stop().await;
 }

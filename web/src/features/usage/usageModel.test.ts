@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineUsage } from "../../api/types";
-import { axisTicks, cacheHit, costBreakdown, costPerMillion, formatTokens, modelTrend, periodDates, usageTotals } from "./usageModel";
+import { axisTicks, cacheHit, engineShares, costBreakdown, costPerMillion, formatTokens, modelTrend, periodDates, usageTotals } from "./usageModel";
 
 const engine = (over: Partial<EngineUsage>): EngineUsage => ({
   engine: "codex",
@@ -22,7 +22,7 @@ const model = (name: string, tokens: number, cost: number | null) => ({
   cost_split: cost === null ? null : { input: cost, output: 0, cache_read: 0, cache_write: 0 },
   tiers: [{ tier: "standard", tokens, estimated_cost: cost }],
   unpriced_tokens: cost === null ? tokens : 0,
-  days: [] as { date: string; tokens: number }[],
+  days: [] as { date: string; tokens: number; estimated_cost: number | null }[],
 });
 
 describe("usage totals", () => {
@@ -98,12 +98,29 @@ describe("model breakdown", () => {
       output_tokens: 250_000,
       cache_read_tokens: 500_000,
       unpriced_tokens: 200_000,
-      days: [{ date: "2026-11-02", tokens: 9 }],
+      days: [{ date: "2026-11-02", tokens: 9, estimated_cost: null }],
     };
     expect(cacheHit(row)).toBeCloseTo(500_000 / 750_000);
     expect(costPerMillion(row)).toBe(5);
     expect(costPerMillion(model("x", 10, null))).toBeNull();
     expect(cacheHit({ ...model("y", 0, null), output_tokens: 3 })).toBeNull();
     expect(modelTrend(row, ["2026-11-01", "2026-11-02"])).toEqual([0, 9]);
+  });
+});
+
+describe("provider shares", () => {
+  it("shares tokens across engines and drops an unpriced engine from a cost share", () => {
+    const totals = usageTotals(
+      [
+        engine({ models: [model("a", 300, 3)], days: [{ date: "2026-11-01", tokens: 300, estimated_cost: 3 }] }),
+        engine({ engine: "claude", models: [model("c", 100, null)], days: [{ date: "2026-11-01", tokens: 100, estimated_cost: null }] }),
+      ],
+      7,
+      new Date("2026-11-02T00:00:00Z"),
+    );
+    expect(engineShares(totals.engines, "tokens").map((entry) => entry.share)).toEqual([0.75, 0.25]);
+    expect(engineShares(totals.engines, "cost")).toEqual([{ engine: "codex", value: 3, share: 1 }]);
+    expect(totals.engines[0]?.dailyCost.get("2026-11-01")).toBe(3);
+    expect(totals.engines[1]?.dailyCost.size).toBe(0);
   });
 });

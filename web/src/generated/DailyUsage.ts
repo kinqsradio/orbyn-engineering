@@ -4,4 +4,8 @@ export type DailyUsage = {
 /**
  * `YYYY-MM-DD`.
  */
-date: string, tokens: bigint, };
+date: string, tokens: bigint, 
+/**
+ * The priced part of this day. `None` when nothing that day has a price.
+ */
+estimated_cost: number | null, };

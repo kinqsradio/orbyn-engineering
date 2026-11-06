@@ -1560,6 +1560,9 @@ pub struct DailyUsage {
     /// `YYYY-MM-DD`.
     pub date: String,
     pub tokens: u64,
+    /// The priced part of this day. `None` when nothing that day has a price.
+    #[serde(default)]
+    pub estimated_cost: Option<f64>,
 }
 }
 

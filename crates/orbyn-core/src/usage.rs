@@ -307,10 +307,36 @@ fn price_for<'a>(settings: &'a ServerSettings, model: &str, tier: &str) -> Optio
         .find(|price| price.model == model && tier_of_price(price) == tier)
 }
 
+/// One day's tokens and the priced part of their cost.
+#[derive(Clone, Copy, Default)]
+struct Day {
+    tokens: u64,
+    cost: Option<f64>,
+}
+
+impl Day {
+    fn add(&mut self, tokens: Tokens, cost: Option<f64>) {
+        self.tokens += tokens.total();
+        if let Some(cost) = cost {
+            self.cost = Some(self.cost.unwrap_or(0.0) + cost);
+        }
+    }
+}
+
+fn daily(days: BTreeMap<String, Day>) -> Vec<DailyUsage> {
+    days.into_iter()
+        .map(|(date, day)| DailyUsage {
+            date,
+            tokens: day.tokens,
+            estimated_cost: day.cost,
+        })
+        .collect()
+}
+
 fn model_usage(
     model: String,
     tiers: BTreeMap<String, Tokens>,
-    days: BTreeMap<String, u64>,
+    days: BTreeMap<String, Day>,
     settings: &ServerSettings,
 ) -> ModelUsage {
     let mut tokens = Tokens::default();
@@ -348,10 +374,7 @@ fn model_usage(
         cost_split: split,
         tiers,
         unpriced_tokens: unpriced,
-        days: days
-            .into_iter()
-            .map(|(date, tokens)| DailyUsage { date, tokens })
-            .collect(),
+        days: daily(days),
         model,
         input_tokens: tokens.input,
         output_tokens: tokens.output,
@@ -380,25 +403,28 @@ fn summarize(
             .map_or_else(|| model.to_owned(), |alias| alias.counts_as.clone())
     };
     let mut models: BTreeMap<String, BTreeMap<String, Tokens>> = BTreeMap::new();
-    let mut model_days: BTreeMap<String, BTreeMap<String, u64>> = BTreeMap::new();
-    let mut days: BTreeMap<String, u64> = BTreeMap::new();
+    let mut model_days: BTreeMap<String, BTreeMap<String, Day>> = BTreeMap::new();
+    let mut days: BTreeMap<String, Day> = BTreeMap::new();
     for ((day, model, tier), tokens) in totals {
         if since.is_some_and(|since| day.as_str() < since) {
             continue;
         }
         let model = resolve(&model);
-        *model_days
+        let cost =
+            price_for(settings, &model, &tier).map(|price| split_total(&cost_split(tokens, price)));
+        model_days
             .entry(model.clone())
             .or_default()
             .entry(day.clone())
-            .or_default() += tokens.total();
+            .or_default()
+            .add(tokens, cost);
         models
             .entry(model)
             .or_default()
             .entry(tier)
             .or_default()
             .add(tokens);
-        *days.entry(day).or_default() += tokens.total();
+        days.entry(day).or_default().add(tokens, cost);
     }
     EngineUsage {
         engine: engine.to_owned(),
@@ -412,10 +438,7 @@ fn summarize(
                 model_usage(model, tiers, days, settings)
             })
             .collect(),
-        days: days
-            .into_iter()
-            .map(|(date, tokens)| DailyUsage { date, tokens })
-            .collect(),
+        days: daily(days),
     }
 }
 
@@ -851,6 +874,12 @@ mod tests {
             "each model keeps its own trend"
         );
         assert_eq!(usage.models[0].days[0].tokens, 3_000_000);
+        assert_eq!(
+            usage.days[0].estimated_cost,
+            Some(13.0),
+            "the priced part of the day"
+        );
+        assert_eq!(usage.models[1].days[0].estimated_cost, None);
     }
 
     #[test]

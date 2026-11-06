@@ -16,6 +16,7 @@ import { useUsageReport } from "./useUsageReport";
 import {
   cacheHit,
   costPerMillion,
+  engineShares,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -96,6 +97,35 @@ const hitText = (model: ModelUsage) => {
   const hit = cacheHit(model);
   return hit === null ? "—" : formatPercent(hit);
 };
+
+/** Each provider's part of the period, in one bar. */
+function ShareBar({
+  engines,
+  metric,
+  colorOf,
+  nameOf,
+}: {
+  engines: Parameters<typeof engineShares>[0];
+  metric: "cost" | "tokens";
+  colorOf(engine: string): string;
+  nameOf(engine: string): string;
+}) {
+  const shares = engineShares(engines, metric);
+  if (shares.length === 0) return null;
+  const label = metric === "cost" ? "Share of priced cost" : "Share of tokens";
+  return (
+    <div className="usage-sharebar" role="group" aria-label={label}>
+      {shares.map((entry) => (
+        <span
+          key={entry.engine}
+          title={`${nameOf(entry.engine)} ${formatPercent(entry.share)}`}
+          aria-label={`${nameOf(entry.engine)} ${formatPercent(entry.share)}`}
+          style={{ width: `${entry.share * 100}%`, background: colorOf(entry.engine) }}
+        />
+      ))}
+    </div>
+  );
+}
 
 function resetsIn(iso: string): string {
   const left = new Date(iso).getTime() - Date.now();
@@ -225,6 +255,9 @@ function UsageView({
               </span>
             ) : null}
           </div>
+          {totals.engines.length > 1 ? (
+            <ShareBar engines={totals.engines} metric={metric} colorOf={colorOf} nameOf={nameOf} />
+          ) : null}
           {totals.engines.map((engine) => {
             const share = totals.tokens > 0 ? engine.tokens / totals.tokens : 0;
             return (
@@ -245,14 +278,15 @@ function UsageView({
             );
           })}
         </div>
-        {metric === "tokens" && days > 1 ? (
+        {days > 1 && (metric === "tokens" || totals.cost !== null) ? (
           <div className="usage-plot">
-            <h2>Daily processed tokens</h2>
+            <h2>{metric === "cost" ? "Daily estimated cost" : "Daily processed tokens"}</h2>
             <UsageChart
               engines={totals.engines}
               dates={totals.dates}
               colorOf={colorOf}
               nameOf={nameOf}
+              metric={metric}
             />
           </div>
         ) : null}

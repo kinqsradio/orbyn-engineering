@@ -943,6 +943,20 @@ kbd {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.usage-sharebar {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--color-border);
+  gap: 1px;
+}
+
+.usage-sharebar > span {
+  display: block;
+  min-width: 2px;
+}
+
 .usage-spark {
   display: block;
   color: var(--color-muted);
