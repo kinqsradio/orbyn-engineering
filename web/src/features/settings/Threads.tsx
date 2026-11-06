@@ -107,7 +107,7 @@ export function ThreadsSection() {
             { value: "auto", label: "Auto" },
             { value: "full_access", label: "Full access" },
           ] },
-        { key: "response_streaming_mode", title: settingsLabel("threads-response-streaming"),
+        { key: "response_streaming_mode", title: settingsLabel("threads-response-streaming"), segmented: true,
           options: [
             { value: "paragraph", label: "By paragraph" },
             { value: "turn", label: "When the turn ends" },

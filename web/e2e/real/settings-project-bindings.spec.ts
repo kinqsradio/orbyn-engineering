@@ -58,9 +58,16 @@ test("default permissions and response streaming are set per project on the Thre
     ["response_streaming_mode", "Response streaming", "turn"],
   ] as const) {
     const environment = await pref(key);
-    const select = page.getByRole("combobox", { name: title, exact: true });
-    await expect(select).toBeEnabled();
-    await select.selectOption(value);
+    const group = page.getByRole("radiogroup", { name: title, exact: true });
+    const choice = key === "response_streaming_mode" ? group.getByRole("radio", { name: "When the turn ends", exact: true }) : null;
+    if (choice) {
+      await expect(choice).toBeEnabled();
+      await choice.click();
+    } else {
+      const select = page.getByRole("combobox", { name: title, exact: true });
+      await expect(select).toBeEnabled();
+      await select.selectOption(value);
+    }
     await expect.poll(async () => pref(key, projectId)).toMatchObject({ value, source: "project" });
     expect(await pref(key)).toEqual(environment);
     await page.getByRole("button", { name: `Reset ${title} to default`, exact: true }).click();

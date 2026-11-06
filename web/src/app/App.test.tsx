@@ -552,6 +552,16 @@ describe("App against the mock API", () => {
     expect(document.documentElement.dataset.preset).toBeUndefined();
   });
 
+  it("keeps the page behind settings mounted but hidden", async () => {
+    go("#/settings/appearance");
+    const { container } = render(<App />);
+    await screen.findByRole("region", { name: "Settings" });
+    const behind = container.querySelector(".main-view");
+    expect(behind).not.toBeNull();
+    expect(behind).toHaveAttribute("hidden");
+    expect(behind?.childElementCount).toBeGreaterThan(0);
+  });
+
   it("switches the workspace layout and remembers it", async () => {
     const user = userEvent.setup();
     go("#/settings/appearance");

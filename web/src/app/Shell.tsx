@@ -458,9 +458,9 @@ function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<H
     if (!ready) return;
     const root = main.current;
     if (!root) return;
-    const target =
-      root.querySelector<HTMLElement>("[data-autofocus]") ??
-      (first.current ? null : root.querySelector<HTMLElement>("[data-page-title]"));
+    // A page kept mounted behind settings is hidden, so it never takes the focus.
+    const visible = (selector: string) => [...root.querySelectorAll<HTMLElement>(selector)].find((element) => !element.closest("[hidden]")) ?? null;
+    const target = visible("[data-autofocus]") ?? (first.current ? null : visible("[data-page-title]"));
     first.current = false;
     (target ?? root).focus({ preventScroll: true });
     root.scrollTop = 0;
@@ -567,11 +567,11 @@ export function Shell() {
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">
-          {route.name === "settings" ? (
-            <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
-          ) : (
+          {route.name === "settings" ? <SettingsPage section={route.section} onClose={() => navigate(underneath)} /> : null}
+          {/* The page behind settings stays mounted, so a terminal, preview or scroll position survives. */}
+          <div className="main-view" hidden={route.name === "settings"}>
             <RouteView route={underneath} needsProject={needsProject} />
-          )}
+          </div>
         </main>
       )}
       {route.name === "usage" ? <UsagePage onClose={() => navigate(underneath)} /> : null}

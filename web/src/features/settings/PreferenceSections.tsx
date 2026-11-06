@@ -10,6 +10,7 @@ import { useVisibleProjects } from "../../state/workspace";
 import { Button, Pill } from "../../ui/controls";
 import licenses from "./licenses.json";
 import { Empty, ErrorState, Loading } from "../../ui/states";
+import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
 import { Menu } from "../../ui/Menu";
@@ -225,11 +226,16 @@ export function ChatSection() {
       {heading("Chat")}
       <SettingGroup title="Display">
         <SettingRow title={settingsLabel("chat-chat-width")}>
-          <select aria-label="Chat width" value={chatWidth} onChange={(event) => setPrefs({ chatWidth: event.target.value as "comfortable" | "wide" | "full" })}>
-            <option value="comfortable">Comfortable</option>
-            <option value="wide">Wide</option>
-            <option value="full">Full</option>
-          </select>
+          <Segmented
+            label="Chat width"
+            value={chatWidth}
+            options={[
+              { value: "comfortable", label: "Comfortable" },
+              { value: "wide", label: "Wide" },
+              { value: "full", label: "Full" },
+            ]}
+            onChange={(next) => setPrefs({ chatWidth: next })}
+          />
         </SettingRow>
         <SettingRow title={settingsLabel("chat-timestamp-format")}>
           <select aria-label="Timestamp format" value={timestampFormat} onChange={(event) => setPrefs({ timestampFormat: event.target.value as "locale" | "12-hour" | "24-hour" })}>
@@ -278,10 +284,15 @@ export function ChatSection() {
           </select>
         </SettingRow>
         <SettingRow title={settingsLabel("chat-follow-up-behavior")}>
-          <select aria-label="Follow-up behavior" value={followUpBehavior} onChange={(event) => setPrefs({ followUpBehavior: event.target.value as "queue" | "steer" })}>
-            <option value="queue">Queue</option>
-            <option value="steer">Steer</option>
-          </select>
+          <Segmented
+            label="Follow-up behavior"
+            value={followUpBehavior}
+            options={[
+              { value: "queue", label: "Queues" },
+              { value: "steer", label: "Steers" },
+            ]}
+            onChange={(next) => setPrefs({ followUpBehavior: next })}
+          />
         </SettingRow>
       </SettingGroup>
       <PreferenceGroups
