@@ -1122,6 +1122,24 @@ the scoped preference writer, showing when the theme was set. `environment_icon`
 of `laptop`, `desktop`, `tower` or `server`, or empty for the plain monitor; `/api/info`
 publishes it and the settings environment label draws it.
 
+## Agent history import
+
+`GET /api/history/sessions` lists Claude and Codex conversations from the engines' own
+history folders (`CLAUDE_CONFIG_DIR` or `~/.claude/projects`, `CODEX_HOME` or
+`~/.codex/sessions`), newest first. It runs only when a person asks. It reads at most
+400 files per engine, 4000 folders, and the first 64 KiB and 200 lines of each file,
+keeping only the session id, folder and first prompt (120 characters); it follows no
+symlink, writes nothing there and reads no other file. A session whose id is not a
+plain word or whose folder is not absolute is skipped. Each session names the registered
+project at exactly its folder and whether that project is trusted.
+
+`POST /api/history/import` takes only an engine and a session id; the service rescans
+and finds the file itself. It needs the session's project registered and trusted and
+the engine enabled there, then creates a thread whose engine session is that id, with
+no copied messages, so the next run resumes the engine's own conversation. A second
+import returns the same thread. Pi is not an engine Orbyn runs, so its history is not
+scanned.
+
 ## Message search
 
 A message is split over many events, so `thread_messages` keeps each one whole, written

@@ -29,6 +29,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "general-archive-confirmation", "title": "Archive confirmation", "section": "general"},
   {"id": "general-delete-confirmation", "title": "Delete confirmation", "section": "general"},
   {"id": "general-quit-confirmation", "title": "Quit confirmation", "section": "general"},
+  {"id": "providers-agent-history", "title": "Import agent history", "section": "providers"},
   {"id": "chat-chat-width", "title": "Chat width", "section": "chat"},
   {"id": "chat-timestamp-format", "title": "Timestamp format", "section": "chat"},
   {"id": "chat-word-wrap", "title": "Word wrap", "section": "chat"},
