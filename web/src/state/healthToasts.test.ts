@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from "vitest";
 import type { WireThreadEvent } from "../api/types";
-import { useThreadLogs } from "../state/threadLogs";
-import { useUi } from "../state/ui";
+import { useThreadLogs } from "../features/thread/threadLogs";
+import { useUi } from "./ui";
 import { permissionToasts, upgradeToast } from "./healthToasts";
 
 afterEach(() => window.localStorage.clear());

@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useThreadLogs, type LocalPrompt } from "../../state/threadLogs";
+import { useThreadLogs, type LocalPrompt } from "./threadLogs";
 import { useUi } from "../../state/ui";
 import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { Button } from "../../ui/controls";

@@ -1,4 +1,4 @@
-import { THEME_TOKENS } from "./themes";
+import { THEME_TOKENS } from "../../styles/themes";
 import type { SettingsSection } from "../../state/route";
 
 export interface SettingSearchItem {

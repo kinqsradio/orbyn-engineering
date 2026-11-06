@@ -4,7 +4,7 @@ import { deriveProjectIdentity, PROJECT_ICON_COLORS, type ProjectIconColor } fro
 import { toFailure } from "../../lib/useAsync";
 import { Dialog } from "../../ui/Dialog";
 import { Button } from "../../ui/controls";
-import { ProjectIconVisual } from "./ProjectIconVisual";
+import { ProjectIconVisual } from "../../ui/ProjectIconVisual";
 import { emojiChoices, iconChoiceLabel, pastedProjectEmoji, pickerMonogram, searchProjectIcons } from "./projectIconChoices";
 import "./ProjectIconPicker.css";
 

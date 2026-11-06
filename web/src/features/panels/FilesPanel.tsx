@@ -4,7 +4,7 @@ import { api, request } from "../../api/client";
 import type { FileContent, FileEntry, SearchHit } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
-import { useComposerChips } from "../../state/composerChips";
+import { useComposerChips } from "../thread/composerChipStore";
 import { chipId, fileExcerpt, languageForPath } from "../thread/composerContext";
 import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";

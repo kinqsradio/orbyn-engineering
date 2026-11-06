@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExterna
 import { useWorkspace } from "../state/workspace";
 import type { Project } from "../api/types";
 import { projectImageKey, readProjectImage, rejectProjectImage, subscribeProjectImage } from "../lib/projectImages";
-import { ProjectIconVisual } from "../features/settings/ProjectIconVisual";
+import { ProjectIconVisual } from "./ProjectIconVisual";
 import { deriveProjectIdentity } from "../lib/projectIdentity";
 
 /** Keep the last decoded image visible while a replacement loads. */

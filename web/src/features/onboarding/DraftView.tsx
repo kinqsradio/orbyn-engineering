@@ -9,7 +9,7 @@ import type { EngineStatus, PermissionMode, Project } from "../../api/types";
 import { slugify } from "../../lib/format";
 import { toFailure } from "../../lib/useAsync";
 import { navigate } from "../../state/route";
-import { useThreadLogs } from "../../state/threadLogs";
+import { useThreadLogs } from "../thread/threadLogs";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { SkillsNotice } from "./SkillsNotice";

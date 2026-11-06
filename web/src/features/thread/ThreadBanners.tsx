@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Thread, UpdateThread } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { useThreadLogs } from "../../state/threadLogs";
+import { useThreadLogs } from "./threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";

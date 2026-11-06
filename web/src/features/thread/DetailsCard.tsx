@@ -21,7 +21,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { usageShare } from "./ComposerExtras";
 import { useNow } from "../../lib/useNow";
 import { navigate } from "../../state/route";
-import { useThreadLogs } from "../../state/threadLogs";
+import { useThreadLogs } from "./threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
