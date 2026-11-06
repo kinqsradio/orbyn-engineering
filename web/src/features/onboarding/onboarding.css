@@ -340,7 +340,11 @@
   align-items: center;
   padding-top: 10px;
 }
+.draft-stage .composer-context {
+  flex-wrap: wrap;
+}
 .draft-stage .composer-context dl {
+  flex-wrap: wrap;
   gap: 8px;
 }
 .draft-stage .composer-context dd,
@@ -374,12 +378,14 @@
 .draft-stage.thread-stage[data-hero] .composer-group {
   display: flex;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 .draft-stage.thread-stage[data-hero] .composer-stack {
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 .draft-stage.thread-stage[data-hero] .hero {

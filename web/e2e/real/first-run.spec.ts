@@ -32,7 +32,7 @@ test("a folder is added where it is, and a thread can start without a project", 
   await page.setViewportSize(WINDOW);
   await page.goto(service.page);
   await page.getByRole("button", { name: "Start without a project" }).click();
-  await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
   await expect(page.getByRole("button", { name: "No project" })).toBeVisible();
   await page.getByRole("textbox", { name: "Message" }).fill("Keep this draft");
 
