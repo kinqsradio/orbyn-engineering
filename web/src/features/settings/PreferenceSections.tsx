@@ -28,7 +28,7 @@ const heading = (title: string) => (
   </h1>
 );
 
-function Toggle({ title, description, on, set }: { title: string; description?: string; on: boolean; set(on: boolean): void }) {
+export function Toggle({ title, description, on, set }: { title: string; description?: string; on: boolean; set(on: boolean): void }) {
   return (
     <SettingRow title={title} description={description}>
       <input type="checkbox" role="switch" aria-label={title} checked={on} onChange={(event) => set(event.target.checked)} />
@@ -113,7 +113,7 @@ export function GeneralSection() {
         />
         <SettingRow
           title={settingsLabel("general-project-grouping")}
-          description="How project folders combine checkouts of one repository. Used when Project folders is on."
+          description="How project folders combine checkouts of one repository. Used when threads are grouped by project."
         >
           <select
             aria-label="Project grouping"
@@ -475,7 +475,6 @@ export function SourceControlSection() {
 }
 
 export function LabsSection() {
-  const folders = useUi((state) => state.projectFolders);
   const multiline = useUi((state) => state.multilineRows);
   const plan = useUi((state) => state.planControls);
   const meter = useUi((state) => state.contextMeter);
@@ -484,12 +483,6 @@ export function LabsSection() {
     <>
       {heading("Labs")}
       <SettingGroup title="Sidebar">
-        <Toggle
-          title={settingsLabel("labs-project-folders")}
-          description="Group active threads by project."
-          on={folders}
-          set={(on) => setPrefs({ projectFolders: on })}
-        />
         <Toggle
           title={settingsLabel("labs-multiline-rows")}
           description="Let thread titles in folders wrap."

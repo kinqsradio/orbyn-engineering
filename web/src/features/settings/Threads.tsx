@@ -8,7 +8,9 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button, IconButton } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
+import { useUi } from "../../state/ui";
 import { PreferenceGroups } from "./PreferenceRows";
+import { Toggle } from "./PreferenceSections";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 const AFTER_DAYS: { value: number | null; label: string }[] = [
@@ -59,6 +61,8 @@ export function ThreadsSection() {
   const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [error, setError] = useState<string | null>(null);
   const scope = useSettingsScope();
+  const folders = useUi((state) => state.projectFolders);
+  const setPrefs = useUi((state) => state.setPrefs);
   const projectScoped = scope?.active && scope.query.selection && scope.query.selection.kind !== "all_projects";
 
   const save = (next: ServerSettings) => {
@@ -78,6 +82,14 @@ export function ThreadsSection() {
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Threads
       </h1>
+      <SettingGroup title="Sidebar">
+        <Toggle
+          title={settingsLabel("threads-group-by-project")}
+          description="List active threads under their project in the sidebar."
+          on={folders}
+          set={(on) => setPrefs({ projectFolders: on })}
+        />
+      </SettingGroup>
       <PreferenceGroups groups={[{ title: "Auto-settle", rows: [
         { key: "auto_settle_after_days", title: settingsLabel("threads-settle-idle-threads"),
           description: "Move finished threads into Settled after a quiet period.",

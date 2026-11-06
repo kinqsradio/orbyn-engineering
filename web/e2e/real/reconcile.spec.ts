@@ -137,8 +137,8 @@ test("new threads keep their project; the shelf pages; hover shows the card; lab
   await row(page, "Shelf 2").hover();
   await expect(page.getByRole("tooltip")).toBeVisible();
 
-  await page.goto(`${service.page}#/settings/labs`);
-  await page.getByRole("switch", { name: "Project folders" }).check();
+  await page.goto(`${service.page}#/settings/threads`);
+  await page.getByRole("switch", { name: "Group threads by project" }).check();
   await page.getByRole("switch", { name: "Multiline rows" }).check();
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.locator(".sidebar-scroll").getByText("my-repo").first()).toBeVisible();

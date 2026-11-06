@@ -40,8 +40,8 @@ function fixtureFolders(page: Page) {
 
 test("project folders group one repository, split on Separate and honor a checkout override", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${service.page}#/settings/labs`);
-  await page.getByRole("switch", { name: "Project folders" }).check();
+  await page.goto(`${service.page}#/settings/threads`);
+  await page.getByRole("switch", { name: "Group threads by project" }).check();
   await page.goto(`${service.page}#/settings/general`);
   await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
   await page.goto(service.page);
@@ -98,8 +98,8 @@ async function folderMembership(page: Page) {
 }
 
 test("Separate keeps explicit repository overrides and their thread membership after reload", async ({ page }) => {
-  await page.goto(`${service.page}#/settings/labs`);
-  await page.getByRole("switch", { name: "Project folders" }).check();
+  await page.goto(`${service.page}#/settings/threads`);
+  await page.getByRole("switch", { name: "Group threads by project" }).check();
   await page.goto(`${service.page}#/settings/general`);
   await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
   await page.goto(service.page);
