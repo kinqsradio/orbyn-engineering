@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { request } from "../../api/client";
+import { useUi } from "../../state/ui";
 import { ChatSection, DiffsSection } from "./PreferenceSections";
 import { scopedFixture } from "./scopedPreferenceFixture.test-support";
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
@@ -34,4 +35,18 @@ it("turns review guides on and sets the guide model", async () => {
   await user.type(screen.getByLabelText("Guide model"), "big-model");
   await user.tab();
   await waitFor(() => expect(request).toHaveBeenCalledWith("PUT", "/api/settings/preferences", expect.objectContaining({ edits: { review_guide_model: { op: "set", value: "big-model" } } })));
+});
+
+it("sets the diff view from settings and follows the diff panel's stored layout", async () => {
+  const user = userEvent.setup();
+  vi.mocked(request).mockReset();
+  vi.mocked(request).mockResolvedValue(scopedFixture([]));
+  useUi.getState().setPrefs({ diffLayout: "stacked" });
+  render(<DiffsSection />);
+  const group = await screen.findByRole("radiogroup", { name: "Diff view" });
+  expect(within(group).getByRole("radio", { name: "Unified" })).toBeChecked();
+  await user.click(within(group).getByRole("radio", { name: "Split" }));
+  expect(useUi.getState().diffLayout).toBe("split");
+  act(() => useUi.getState().setPrefs({ diffLayout: "stacked" }));
+  expect(within(group).getByRole("radio", { name: "Unified" })).toBeChecked();
 });

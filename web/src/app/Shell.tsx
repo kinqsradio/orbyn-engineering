@@ -498,19 +498,36 @@ function useToastClearance(key: string) {
 }
 
 /** Moves focus into the new screen, so keyboard and screen reader users follow it. */
-function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<HTMLElement | null>) {
+function useRouteFocus(routeKey: string, routeName: string, ready: boolean, main: React.RefObject<HTMLElement | null>) {
   const first = useRef(true);
+  const previous = useRef({ key: routeKey, name: routeName });
+  // What had focus, and which page was showing, when settings opened.
+  const opener = useRef<{ element: Element | null; key: string } | null>(null);
   useEffect(() => {
     if (!ready) return;
     const root = main.current;
     if (!root) return;
-    const target =
-      root.querySelector<HTMLElement>("[data-autofocus]") ??
-      (first.current ? null : root.querySelector<HTMLElement>("[data-page-title]"));
+    const before = previous.current;
+    previous.current = { key: routeKey, name: routeName };
+    if (routeName === "settings" && before.name !== "settings") {
+      const active = document.activeElement;
+      opener.current = { element: active && active !== document.body ? active : null, key: before.key };
+    } else if (routeName !== "settings" && before.name === "settings") {
+      // Closing settings returns to what opened it, if it is still there and the page behind is showing.
+      const back = opener.current;
+      opener.current = null;
+      if (back?.element instanceof HTMLElement && back.element.isConnected && back.key === routeKey && !back.element.closest("[hidden]")) {
+        back.element.focus({ preventScroll: true });
+        return;
+      }
+    }
+    // A page kept mounted behind settings is hidden, so it never takes the focus.
+    const visible = (selector: string) => [...root.querySelectorAll<HTMLElement>(selector)].find((element) => !element.closest("[hidden]")) ?? null;
+    const target = visible("[data-autofocus]") ?? (first.current ? null : visible("[data-page-title]"));
     first.current = false;
     (target ?? root).focus({ preventScroll: true });
     root.scrollTop = 0;
-  }, [routeKey, ready, main]);
+  }, [routeKey, routeName, ready, main]);
 }
 
 /** Links and menu items from the desktop shell, which behave like keys pressed here. */
@@ -555,7 +572,7 @@ export function Shell() {
   useGlobalKeys(route);
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
-  useRouteFocus(routeKey, threadReady, main);
+  useRouteFocus(routeKey, route.name, threadReady, main);
   useToastClearance(`${routeKey}:${threadReady}`);
 
   useEffect(() => {
@@ -579,7 +596,7 @@ export function Shell() {
   const onHome = underneath.name === "home" && !needsProject;
   const reading = useUi((state) => state.workspaceLayout === "reading");
   const readingNav = useReadingNav((state) => state.open);
-  const showNav = layout === "narrow" ? onHome : reading ? readingNav : !collapsed;
+  const showNav = layout === "narrow" ? onHome && route.name !== "settings" : reading ? readingNav : !collapsed;
 
   return (
     <div
@@ -615,13 +632,14 @@ export function Shell() {
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">
-          <RouteView route={underneath} needsProject={needsProject} />
+          {route.name === "settings" ? <SettingsPage section={route.section} onClose={() => navigate(underneath)} /> : null}
+          {/* The page behind settings stays mounted, so a terminal, preview or scroll position survives. */}
+          <div className="main-view" hidden={route.name === "settings"}>
+            <RouteView route={underneath} needsProject={needsProject} />
+          </div>
         </main>
       )}
       {route.name === "usage" ? <UsagePage onClose={() => navigate(underneath)} /> : null}
-      {route.name === "settings" ? (
-        <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
-      ) : null}
     </div>
   );
 }

@@ -537,20 +537,36 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     go("#/settings/appearance");
     render(<App />);
-    const theme = await screen.findByRole("combobox", { name: "Theme" });
-    expect(theme).toHaveValue("dark");
-    await user.selectOptions(theme, "light");
+    const theme = await screen.findByRole("radiogroup", { name: "Theme" });
+    expect(within(theme).getByRole("radio", { name: "Dark" })).toBeChecked();
+    await user.click(within(theme).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"theme":"light"');
+    await user.click(within(theme).getByRole("radio", { name: "Dim" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.preset).toBe("dim");
+    expect(within(theme).getByRole("radio", { name: "Dim" })).toBeChecked();
+    await user.click(within(theme).getByRole("radio", { name: "Dark" }));
+    expect(document.documentElement.dataset.preset).toBeUndefined();
+  });
+
+  it("keeps the page behind settings mounted but hidden", async () => {
+    go("#/settings/appearance");
+    const { container } = render(<App />);
+    await screen.findByRole("region", { name: "Settings" });
+    const behind = container.querySelector(".main-view");
+    expect(behind).not.toBeNull();
+    expect(behind).toHaveAttribute("hidden");
+    expect(behind?.childElementCount).toBeGreaterThan(0);
   });
 
   it("switches the workspace layout and remembers it", async () => {
     const user = userEvent.setup();
     go("#/settings/appearance");
     render(<App />);
-    const layout = await screen.findByRole("combobox", { name: "Layout" });
-    expect(layout).toHaveValue("console");
-    await user.selectOptions(layout, "reading");
+    const layout = await screen.findByRole("radiogroup", { name: "Layout" });
+    expect(within(layout).getByRole("radio", { name: /Console/ })).toBeChecked();
+    await user.click(within(layout).getByRole("radio", { name: /Reading/ }));
     expect(document.documentElement.dataset.workspace).toBe("reading");
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"workspaceLayout":"reading"');
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"sidebarCollapsed":true');

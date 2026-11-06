@@ -10,6 +10,7 @@ import { useVisibleProjects } from "../../state/workspace";
 import { Button, Pill } from "../../ui/controls";
 import licenses from "./licenses.json";
 import { Empty, ErrorState, Loading } from "../../ui/states";
+import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
 import { Menu } from "../../ui/Menu";
@@ -28,7 +29,7 @@ const heading = (title: string) => (
   </h1>
 );
 
-function Toggle({ title, description, on, set }: { title: string; description?: string; on: boolean; set(on: boolean): void }) {
+export function Toggle({ title, description, on, set }: { title: string; description?: string; on: boolean; set(on: boolean): void }) {
   return (
     <SettingRow title={title} description={description}>
       <input type="checkbox" role="switch" aria-label={title} checked={on} onChange={(event) => set(event.target.checked)} />
@@ -113,7 +114,7 @@ export function GeneralSection() {
         />
         <SettingRow
           title={settingsLabel("general-project-grouping")}
-          description="How project folders combine checkouts of one repository. Used when Project folders is on."
+          description="How project folders combine checkouts of one repository. Used when threads are grouped by project."
         >
           <select
             aria-label="Project grouping"
@@ -225,11 +226,16 @@ export function ChatSection() {
       {heading("Chat")}
       <SettingGroup title="Display">
         <SettingRow title={settingsLabel("chat-chat-width")}>
-          <select aria-label="Chat width" value={chatWidth} onChange={(event) => setPrefs({ chatWidth: event.target.value as "comfortable" | "wide" | "full" })}>
-            <option value="comfortable">Comfortable</option>
-            <option value="wide">Wide</option>
-            <option value="full">Full</option>
-          </select>
+          <Segmented
+            label="Chat width"
+            value={chatWidth}
+            options={[
+              { value: "comfortable", label: "Comfortable" },
+              { value: "wide", label: "Wide" },
+              { value: "full", label: "Full" },
+            ]}
+            onChange={(next) => setPrefs({ chatWidth: next })}
+          />
         </SettingRow>
         <SettingRow title={settingsLabel("chat-timestamp-format")}>
           <select aria-label="Timestamp format" value={timestampFormat} onChange={(event) => setPrefs({ timestampFormat: event.target.value as "locale" | "12-hour" | "24-hour" })}>
@@ -278,10 +284,15 @@ export function ChatSection() {
           </select>
         </SettingRow>
         <SettingRow title={settingsLabel("chat-follow-up-behavior")}>
-          <select aria-label="Follow-up behavior" value={followUpBehavior} onChange={(event) => setPrefs({ followUpBehavior: event.target.value as "queue" | "steer" })}>
-            <option value="queue">Queue</option>
-            <option value="steer">Steer</option>
-          </select>
+          <Segmented
+            label="Follow-up behavior"
+            value={followUpBehavior}
+            options={[
+              { value: "queue", label: "Queues" },
+              { value: "steer", label: "Steers" },
+            ]}
+            onChange={(next) => setPrefs({ followUpBehavior: next })}
+          />
         </SettingRow>
       </SettingGroup>
       <PreferenceGroups
@@ -320,12 +331,34 @@ export function ChatSection() {
   );
 }
 
+/** The same stored layout the diff panel's own switch uses. */
+function DiffViewRow() {
+  const layout = useUi((state) => state.diffLayout);
+  const setPrefs = useUi((state) => state.setPrefs);
+  return (
+    <SettingRow title={settingsLabel("diffs-diff-view")}>
+      <Segmented
+        label="Diff view"
+        value={layout}
+        options={[
+          { value: "stacked", label: "Unified" },
+          { value: "split", label: "Split" },
+        ]}
+        onChange={(next) => setPrefs({ diffLayout: next })}
+      />
+    </SettingRow>
+  );
+}
+
 export function DiffsSection() {
   const inApp = useUi((state) => state.pullLinksInApp);
   const setPrefs = useUi((state) => state.setPrefs);
   return (
     <>
       {heading("Diffs & pull requests")}
+      <SettingGroup title="Display">
+        <DiffViewRow />
+      </SettingGroup>
       <SettingGroup title="Links">
         <Toggle
           title={settingsLabel("diffs-open-pull-request-links-here")}
@@ -475,7 +508,6 @@ export function SourceControlSection() {
 }
 
 export function LabsSection() {
-  const folders = useUi((state) => state.projectFolders);
   const multiline = useUi((state) => state.multilineRows);
   const plan = useUi((state) => state.planControls);
   const meter = useUi((state) => state.contextMeter);
@@ -484,12 +516,6 @@ export function LabsSection() {
     <>
       {heading("Labs")}
       <SettingGroup title="Sidebar">
-        <Toggle
-          title={settingsLabel("labs-project-folders")}
-          description="Group active threads by project."
-          on={folders}
-          set={(on) => setPrefs({ projectFolders: on })}
-        />
         <Toggle
           title={settingsLabel("labs-multiline-rows")}
           description="Let thread titles in folders wrap."

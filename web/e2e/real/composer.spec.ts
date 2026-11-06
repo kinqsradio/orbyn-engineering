@@ -73,7 +73,7 @@ test("send shortcut modes follow the setting", async ({ page }) => {
   await page.goto(`${service.page}#/settings/chat`);
   await page.getByRole("combobox", { name: "Send shortcut" }).selectOption("mod-enter");
   await page.getByRole("button", { name: "Close settings" }).click();
-  await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
+  await expect(page.getByRole("region", { name: "Settings" })).toBeHidden();
   await expect(box(page)).toBeFocused();
   // Settings opened directly close onto a draft, which has to follow the setting too.
   await expect(page.locator("[data-model-trigger]")).toBeVisible();
