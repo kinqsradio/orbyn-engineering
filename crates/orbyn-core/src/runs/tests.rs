@@ -954,6 +954,7 @@ async fn an_updater_that_changed_nothing_is_a_failed_update() {
     }
 }
 
+#[cfg(unix)]
 async fn until_warm(core: &Core, thread: &str, wanted: bool) {
     for _ in 0..2000 {
         if core.engines.has_warm(thread) == wanted {
