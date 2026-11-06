@@ -146,7 +146,7 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
       }
     >
       <p className="update-intro">
-        Updates install one at a time; a running agent keeps going and picks up its CLI next turn.
+        Updates install one at a time. An agent with a run in progress updates once that run ends.
       </p>
       {blocked ? <p className="update-reason">{blocked}</p> : null}
       {run ? <Steps steps={run.steps} /> : null}

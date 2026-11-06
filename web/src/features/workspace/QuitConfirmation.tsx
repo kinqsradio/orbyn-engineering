@@ -81,7 +81,8 @@ export function QuitConfirmation() {
       {state.prompt === "hold" ? (
         <>
           <b>Hold to quit</b>
-          <span className="quit-note">{[note, "Or press ⌘Q again."].filter(Boolean).join(" ")}</span>
+          {/* A second press during a hold does nothing, so the hold prompt offers no shortcut. */}
+          {note ? <span className="quit-note">{note}</span> : null}
           <span className="quit-progress" style={{ animationDuration: `${HOLD_MS}ms` }} aria-hidden />
         </>
       ) : (
