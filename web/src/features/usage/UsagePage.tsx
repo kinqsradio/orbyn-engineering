@@ -127,6 +127,22 @@ function ShareBar({
   );
 }
 
+/** What the last local scan read, so a short or empty period can be explained. */
+function ScanStatus({ report, nameOf }: { report: UsageReport; nameOf(engine: string): string }) {
+  const at = new Date(report.scanned_at);
+  const when = Number.isNaN(at.getTime()) ? report.scanned_at : at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const parts = report.engines.map((engine) => {
+    if (engine.status === "no_history") return `${nameOf(engine.engine)}: no local history`;
+    const skipped = engine.files_skipped > 0 ? `, ${engine.files_skipped} unreadable` : "";
+    return `${nameOf(engine.engine)}: ${engine.files_scanned} ${engine.files_scanned === 1 ? "file" : "files"}${skipped}`;
+  });
+  return (
+    <p className="usage-note usage-scan" aria-label="Scan status">
+      Local history scanned at {when}. {parts.join(" · ")}
+    </p>
+  );
+}
+
 function resetsIn(iso: string): string {
   const left = new Date(iso).getTime() - Date.now();
   if (left <= 0) return "soon";
@@ -668,7 +684,10 @@ export function UsagePage({ onClose }: { onClose(): void }) {
             ) : null}
             <div aria-busy={usage.pending}>
               {usage.data ? (
-                <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => void usage.reload()} />
+                <>
+                  <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => void usage.reload()} />
+                  <ScanStatus report={usage.data} nameOf={nameOf} />
+                </>
               ) : usage.pending ? (
                 <div className="usage-body"><Loading label="Loading usage" rows={4} /></div>
               ) : null}

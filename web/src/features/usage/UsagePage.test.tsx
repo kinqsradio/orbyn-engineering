@@ -183,3 +183,14 @@ it("draws a provider share bar and a daily cost chart for the period", async () 
   expect(within(screen.getByRole("group", { name: "Share of priced cost" })).getByLabelText("claude 100.0%")).toBeInTheDocument();
   expect(screen.getByRole("img", { name: "Daily estimated cost by engine" })).toBeInTheDocument();
 });
+
+it("says what the local scan read, including engines with no history and unreadable files", async () => {
+  const data = report(5);
+  data.engines[0] = { ...data.engines[0]!, files_scanned: 3, files_skipped: 1 };
+  data.engines.push({ engine: "codex", status: "no_history", files_scanned: 0, files_skipped: 0, models: [], days: [] });
+  vi.mocked(api.usage).mockResolvedValue(data);
+  render(<UsagePage onClose={() => undefined} />);
+  const status = await screen.findByLabelText("Scan status");
+  expect(status).toHaveTextContent("claude: 3 files, 1 unreadable");
+  expect(status).toHaveTextContent("codex: no local history");
+});
