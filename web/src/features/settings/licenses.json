@@ -1,7 +1,12 @@
 {
   "scripts": [
     {
-      "name": "@fontsource-variable/inter",
+      "name": "@fontsource-variable/geist",
+      "version": "5.3.0",
+      "license": "OFL-1.1"
+    },
+    {
+      "name": "@fontsource/jetbrains-mono",
       "version": "5.3.0",
       "license": "OFL-1.1"
     },
@@ -63,13 +68,23 @@
       "license": "MIT"
     },
     {
+      "name": "base64",
+      "version": "0.22.1",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "base64",
+      "version": "0.23.1",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
       "name": "clap",
       "version": "4.6.7",
       "license": "MIT OR Apache-2.0"
     },
     {
       "name": "ed25519-dalek",
-      "version": "2.2.0",
+      "version": "3.0.0",
       "license": "BSD-3-Clause"
     },
     {
@@ -93,6 +108,21 @@
       "license": "MIT OR Apache-2.0"
     },
     {
+      "name": "icu_properties",
+      "version": "2.4.0",
+      "license": "Unicode-3.0"
+    },
+    {
+      "name": "ignore",
+      "version": "0.4.34",
+      "license": "Unlicense OR MIT"
+    },
+    {
+      "name": "image",
+      "version": "0.25.10",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
       "name": "libc",
       "version": "0.2.191",
       "license": "MIT OR Apache-2.0"
@@ -109,7 +139,7 @@
     },
     {
       "name": "rusqlite",
-      "version": "0.37.0",
+      "version": "0.41.1",
       "license": "MIT"
     },
     {
@@ -124,7 +154,17 @@
     },
     {
       "name": "sha2",
-      "version": "0.10.9",
+      "version": "0.11.1",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "sysinfo",
+      "version": "0.37.2",
+      "license": "MIT"
+    },
+    {
+      "name": "tar",
+      "version": "0.4.46",
       "license": "MIT OR Apache-2.0"
     },
     {
@@ -174,13 +214,18 @@
     },
     {
       "name": "ts-rs",
-      "version": "11.1.0",
+      "version": "12.0.1",
       "license": "MIT"
     },
     {
       "name": "ulid",
-      "version": "1.2.1",
+      "version": "3.0.0",
       "license": "MIT"
+    },
+    {
+      "name": "unicode-segmentation",
+      "version": "1.13.3",
+      "license": "MIT OR Apache-2.0"
     },
     {
       "name": "windows-sys",
