@@ -20,6 +20,22 @@ const message = (id, text) => [
   completed(item(id, "agentMessage", { text })),
 ];
 
+/** The render benchmark's reply: 50 KiB of seeded Markdown-like prose, always the same. */
+export const BENCH_DELTA_BYTES = 256;
+export const BENCH_DELTAS = 200;
+export const BENCH_DELTA_MS = 10;
+const WORDS = ["orbit", "render", "delta", "thread", "stream", "**bold**", "`code`", "list", "table", "token", "panel", "reply"];
+export const benchReply = (() => {
+  let seed = 183;
+  let text = "";
+  while (text.length < BENCH_DELTA_BYTES * BENCH_DELTAS) {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    const word = WORDS[seed % WORDS.length];
+    text += seed % 17 === 0 ? `${word}.\n\n` : `${word} `;
+  }
+  return text.slice(0, BENCH_DELTA_BYTES * BENCH_DELTAS - 4) + "END.";
+})();
+
 const MARKDOWN = `## Results
 
 | Planet | Moons |
@@ -140,6 +156,14 @@ ${Array.from({ length: 30 }, (_, at) => `- Step ${at + 1}`).join("\n")}
       { method: "item/agentMessage/delta", params: { itemId: `s${at}`, delta: `Tick ${at}.` } },
       completed(item(`s${at}`, "agentMessage", { text: `Tick ${at}.` })),
     ]).flat(),
+  ],
+  bench: [
+    started(item("bn", "agentMessage", { text: "" })),
+    ...Array.from({ length: BENCH_DELTAS }, (_, at) => [
+      { wait: BENCH_DELTA_MS },
+      { method: "item/agentMessage/delta", params: { itemId: "bn", delta: benchReply.slice(at * BENCH_DELTA_BYTES, (at + 1) * BENCH_DELTA_BYTES) } },
+    ]).flat(),
+    completed(item("bn", "agentMessage", { text: benchReply })),
   ],
   failure: [
     ...message("partial", "Starting."),
