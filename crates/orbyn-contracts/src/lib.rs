@@ -560,6 +560,23 @@ pub struct FileContent {
 }
 }
 
+wire! {
+/// A file outside the thread's checkout that the person opened to look at. It
+/// carries no revision because nothing can save it: `read_only` and `outside`
+/// are always true, so a client never offers edit or save.
+pub struct OutsideFile {
+    /// The canonical absolute path, with links resolved.
+    pub path: String,
+    /// Empty when `binary` or `truncated`.
+    pub content: String,
+    pub size: u64,
+    pub binary: bool,
+    pub truncated: bool,
+    pub outside: bool,
+    pub read_only: bool,
+}
+}
+
 wire_enum! {
 pub enum ThreadPathBasis {
     Thread,

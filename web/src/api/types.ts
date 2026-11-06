@@ -24,6 +24,7 @@ import type { PullGuideState as PullGuideStateWire } from "../generated/PullGuid
 import type { AskedAboutStop as AskedAboutStopWire } from "../generated/AskedAboutStop";
 import type { PullTimelineEvent as PullTimelineEventWire } from "../generated/PullTimelineEvent";
 import type { FileContent as FileContentWire } from "../generated/FileContent";
+import type { OutsideFile as OutsideFileWire } from "../generated/OutsideFile";
 import type { FileEntry as FileEntryWire } from "../generated/FileEntry";
 import type { Diagnostics as DiagnosticsWire } from "../generated/Diagnostics";
 import type { ScheduledTask as ScheduledTaskWire } from "../generated/ScheduledTask";
@@ -134,6 +135,7 @@ export type { ForgeStatus } from "../generated/ForgeStatus";
 export type { EditorInfo } from "../generated/EditorInfo";
 export type FileEntry = Wired<FileEntryWire>;
 export type FileContent = Wired<FileContentWire>;
+export type OutsideFile = Wired<OutsideFileWire>;
 export type { Checkpoint } from "../generated/Checkpoint";
 export type { ProjectFileView } from "../generated/ProjectFileView";
 export type { Question } from "../generated/Question";

@@ -454,11 +454,23 @@ impl Core {
                     let stripped = repeated_workspace_path(&scope.checkout, input)
                         .map(|path| scope.checkout.join(path));
                     stripped
-                        .filter(|path| navigation_file(&scope, path).is_some())
+                        .filter(|path| {
+                            !crate::outside_files::reaches_remote(path)
+                                && navigation_file(&scope, path).is_some()
+                        })
                         .unwrap_or_else(|| scope.checkout.join(input))
                 }
             }
         };
+        // A path on another machine, or a link to one, is never touched, not even to
+        // resolve it.
+        if crate::outside_files::reaches_remote(&target) {
+            return Ok(ResolvedThreadPath {
+                cwd: thread.cwd,
+                checkout_path: None,
+                repository_path: None,
+            });
+        }
         let target = crate::approvals::resolve_existing(&target);
         let excluded = target.as_ref().is_none_or(|path| {
             names_git(path)

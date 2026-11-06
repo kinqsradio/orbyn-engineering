@@ -255,6 +255,10 @@ fn router(state: AppState) -> Router {
             get(api::read_file).put(api::write_file),
         )
         .route("/api/threads/{id}/files/raw", get(raw_files::serve))
+        .route(
+            "/api/threads/{id}/files/outside",
+            get(api::read_outside_file),
+        )
         .route("/api/threads/{id}/files/open", post(api::open_in_editor))
         .route(
             "/api/threads/{id}/mcp-apps/{render_id}/tool-call",

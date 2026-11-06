@@ -541,3 +541,188 @@ async fn raw_bytes_refuse_a_file_past_the_limit() {
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["code"], "file_too_large");
 }
+
+async fn outside(service: &Service, thread: &str, path: &str) -> (u16, Value) {
+    let response = service
+        .get(&format!("/api/threads/{thread}/files/outside"))
+        .query(&[("path", path)])
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+fn full(path: &std::path::Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+#[tokio::test]
+async fn an_outside_file_is_shown_read_only_and_never_written() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let root = checkout(&service, &thread).await;
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let page = elsewhere.join("report.html");
+    std::fs::write(&page, "<script>parent.x=1</script><p>hi</p>").unwrap();
+
+    let (code, body) = outside(&service, &thread, &full(&page)).await;
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body["outside"], true);
+    assert_eq!(body["read_only"], true);
+    assert_eq!(body["content"], "<script>parent.x=1</script><p>hi</p>");
+    assert!(body.get("revision").is_none(), "nothing to save against");
+
+    // No route writes it: the checkout save refuses a full path, and the outside
+    // route has no write method.
+    let (code, _) = write(
+        &service,
+        &thread,
+        json!({ "path": full(&page), "content": "pwned", "base_revision": null }),
+    )
+    .await;
+    assert_eq!(code, 400);
+    let put = service
+        .client
+        .put(format!(
+            "{}/api/threads/{thread}/files/outside",
+            service.url
+        ))
+        .query(&[("path", full(&page))])
+        .bearer_auth(&service.token)
+        .json(&json!({ "content": "pwned" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 405);
+    assert_eq!(
+        std::fs::read_to_string(&page).unwrap(),
+        "<script>parent.x=1</script><p>hi</p>"
+    );
+
+    // A folder outside is neither read nor listed, by either route.
+    let (code, _) = outside(&service, &thread, &full(&elsewhere)).await;
+    assert_eq!(code, 400);
+    let listing = service
+        .get(&format!("/api/threads/{thread}/files"))
+        .query(&[("path", full(&elsewhere))])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listing.status(), 400);
+
+    // A relative path names nothing here; `..` lands where it lands.
+    let (code, _) = outside(&service, &thread, "../elsewhere/report.html").await;
+    assert_eq!(code, 400);
+    std::fs::write(root.join("inside.txt"), "in").unwrap();
+    let dotted = root
+        .join("..")
+        .join(root.file_name().unwrap())
+        .join("inside.txt");
+    let (code, body) = outside(&service, &thread, &full(&dotted)).await;
+    assert_eq!(code, 400, "{body}");
+
+    // Orbyn's own data, which holds the token, is never shown.
+    let data = dir.path().join("data");
+    let any = std::fs::read_dir(&data)
+        .unwrap()
+        .flatten()
+        .find(|entry| entry.path().is_file())
+        .unwrap()
+        .path();
+    let (code, _) = outside(&service, &thread, &full(&any)).await;
+    assert_eq!(code, 400);
+
+    // Missing is a 404 and the cap is the checkout read's 4 MiB.
+    let (code, _) = outside(&service, &thread, &full(&elsewhere.join("gone.txt"))).await;
+    assert_eq!(code, 404);
+    let big = elsewhere.join("big.log");
+    std::fs::File::create(&big)
+        .unwrap()
+        .set_len(4 * 1024 * 1024 + 1)
+        .unwrap();
+    let (code, body) = outside(&service, &thread, &full(&big)).await;
+    assert_eq!(code, 200);
+    assert_eq!(body["truncated"], true);
+    assert_eq!(body["content"], "");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_link_outside_is_judged_where_it_lands() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let root = checkout(&service, &thread).await;
+    std::fs::write(root.join("secret.txt"), "in").unwrap();
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::fs::write(elsewhere.join("real.txt"), "out").unwrap();
+    std::os::unix::fs::symlink(root.join("secret.txt"), elsewhere.join("into")).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("data"), elsewhere.join("data")).unwrap();
+    std::os::unix::fs::symlink(elsewhere.join("real.txt"), elsewhere.join("ok")).unwrap();
+    let (code, _) = outside(&service, &thread, &full(&elsewhere.join("into"))).await;
+    assert_eq!(code, 400);
+    let token = std::fs::read_dir(dir.path().join("data"))
+        .unwrap()
+        .flatten()
+        .find(|entry| entry.path().is_file())
+        .unwrap()
+        .file_name();
+    let through = elsewhere.join("data").join(token);
+    let (code, _) = outside(&service, &thread, &full(&through)).await;
+    assert_eq!(code, 400);
+    let (code, body) = outside(&service, &thread, &full(&elsewhere.join("ok"))).await;
+    assert_eq!(code, 200);
+    assert_eq!(body["content"], "out");
+    assert_eq!(body["path"], full(&elsewhere.join("real.txt")));
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn windows_path_forms_reach_an_outside_file() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let root = checkout(&service, &thread).await;
+    std::fs::write(root.join("inside.txt"), "in").unwrap();
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::fs::write(elsewhere.join("Notes.txt"), "out").unwrap();
+    let native = full(&elsewhere.join("Notes.txt"));
+    for spelling in [
+        native.clone(),
+        native.replace('\\', "/"),
+        native.to_lowercase(),
+        format!(r"\\?\{native}"),
+    ] {
+        let (code, body) = outside(&service, &thread, &spelling).await;
+        assert_eq!(code, 200, "{spelling}: {body}");
+        assert_eq!(body["content"], "out");
+    }
+    // The checkout in another case is still the checkout.
+    let shouted = full(&root.join("inside.txt")).to_uppercase();
+    let (code, _) = outside(&service, &thread, &shouted).await;
+    assert_eq!(code, 400);
+    // Another machine is refused before it is contacted.
+    for remote in [
+        r"\\server.invalid\share\a.txt",
+        r"\\?\UNC\server.invalid\share\a.txt",
+    ] {
+        let (code, body) = outside(&service, &thread, remote).await;
+        assert_eq!(code, 400, "{remote}: {body}");
+    }
+}
+
+#[tokio::test]
+async fn an_untrusted_folder_shows_nothing_outside_either() {
+    let dir = TempDir::new();
+    let service = Service::start(&dir.path().join("data"), Options::default());
+    let folder = dir.path().join("project");
+    std::fs::create_dir_all(&folder).unwrap();
+    let project = service.project(&folder, false).await;
+    let thread = service.thread(&project, "codex").await;
+    let file = dir.path().join("note.txt");
+    std::fs::write(&file, "x").unwrap();
+    let (code, _) = outside(&service, &thread, &full(&file)).await;
+    assert_eq!(code, 403);
+}

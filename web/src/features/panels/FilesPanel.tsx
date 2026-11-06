@@ -19,6 +19,7 @@ import { useResolvedThreadPath } from "../thread/useResolvedThreadPath";
 import { primaryEditor } from "../thread/editorPreferences";
 import { useWorkspace } from "../../state/workspace";
 import { FileComments } from "./FileComments";
+import { OutsideFileViewer, fullPathOf, isFullPath } from "./OutsideFileViewer";
 
 const q = encodeURIComponent;
 
@@ -301,6 +302,8 @@ function FolderList({
 /** The checkout's files. A search finds names and, with text, lines. */
 export function FilesPanel({ threadId }: { threadId: string }) {
   const [file, setFile] = useState<{ path: string; line: number | null } | null>(null);
+  // A full path outside the checkout, opened read-only.
+  const [outside, setOutside] = useState<string | null>(null);
   // A link in a message opens its file here, once per click.
   const reveal = useUi((state) => state.fileReveal);
   const resolved = useResolvedThreadPath(threadId, reveal ? { ...reveal, basis: "thread" } : null);
@@ -317,7 +320,11 @@ export function FilesPanel({ threadId }: { threadId: string }) {
     if (useUi.getState().fileReveal?.nonce !== reveal.nonce || reveal.threadId !== threadId
       || useWorkspace.getState().threads[threadId]?.cwd !== reveal.cwd) return;
     setSeen(referenceKey);
-    if (resolved.value?.checkout_path) setFile({ path: resolved.value.checkout_path, line: reveal.line });
+    const full = fullPathOf(reveal.path);
+    if (resolved.value?.checkout_path) {
+      setOutside(null);
+      setFile({ path: resolved.value.checkout_path, line: reveal.line });
+    } else if (resolved.value && isFullPath(full)) setOutside(full);
     else pushToast(resolved.error?.message ?? "That path is outside this checkout.");
     consume(reveal.nonce);
   }, [reveal, referenceKey, resolved.value, resolved.error, seen, pushToast, consume, threadId]);
@@ -325,7 +332,12 @@ export function FilesPanel({ threadId }: { threadId: string }) {
     setSeen(referenceKey);
     const current = useUi.getState().fileReveal;
     if (current) consume(current.nonce);
+    setOutside(null);
     setFile(file);
+  };
+  const chooseOutside = (path: string) => {
+    chooseFile(null);
+    setOutside(path);
   };
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
@@ -334,6 +346,7 @@ export function FilesPanel({ threadId }: { threadId: string }) {
       ? request<SearchHit[]>("GET", `/api/threads/${q(threadId)}/files/search?q=${q(query)}&content=true`, undefined, signal)
       : Promise.resolve([]),
   );
+  if (outside) return <OutsideFileViewer key={outside} threadId={threadId} path={outside} onBack={() => chooseFile(null)} />;
   if (file) return <Viewer threadId={threadId} path={file.path} line={file.line} onBack={() => chooseFile(null)} />;
   return (
     <div className="files-panel">
@@ -341,14 +354,18 @@ export function FilesPanel({ threadId }: { threadId: string }) {
         <Search size={14} aria-hidden />
         <input
           aria-label="Search files"
-          placeholder="Search files"
+          placeholder="Search files, or a full path to read"
           value={text}
           onChange={(event) => {
             setText(event.target.value);
             if (!event.target.value) setQuery("");
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") setQuery(text.trim());
+            if (event.key !== "Enter") return;
+            const typed = fullPathOf(text.trim());
+            // A full path opens that one file to read; anything else searches the checkout.
+            if (isFullPath(typed)) chooseOutside(typed);
+            else setQuery(text.trim());
           }}
         />
       </label>

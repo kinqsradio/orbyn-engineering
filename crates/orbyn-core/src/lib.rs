@@ -33,6 +33,7 @@ pub mod mcp_apps;
 pub mod mcp_tools;
 pub mod native_sessions;
 pub mod network;
+pub mod outside_files;
 pub mod permission_modes;
 pub mod policy;
 pub mod preferences;

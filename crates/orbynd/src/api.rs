@@ -605,6 +605,15 @@ pub async fn read_file(
     Ok(Json(state.core.read_file(&id, &query.path).await?))
 }
 
+/// A file outside the checkout, read-only; Core decides what may be shown.
+pub async fn read_outside_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<PathQuery>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.read_outside_file(&id, &query.path).await?))
+}
+
 pub async fn write_file(
     State(state): State<AppState>,
     Path(id): Path<String>,

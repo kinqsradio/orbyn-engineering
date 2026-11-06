@@ -37,6 +37,7 @@ import type {
   EngineStatus,
   FileDiff,
   FsListing,
+  OutsideFile,
   JsonValue,
   LibraryUpdateResult,
   LimitsOverview,
@@ -336,6 +337,8 @@ export const api = {
     request<WorkflowStop>("POST", `/api/threads/${q(threadId)}/workflows/${q(callId)}/stop`, {}),
   diff: (threadId: string, signal?: AbortSignal, scope?: string) =>
     request<FileDiff[]>("GET", `/api/threads/${q(threadId)}/diff${scope ? `?scope=${scope}` : ""}`, undefined, signal),
+  readOutsideFile: (threadId: string, path: string, signal?: AbortSignal) =>
+    request<OutsideFile>("GET", `/api/threads/${q(threadId)}/files/outside?path=${q(path)}`, undefined, signal),
   resolveThreadPath: (threadId: string, body: ResolveThreadPath, signal?: AbortSignal) =>
     request<ResolvedThreadPath>("POST", `/api/threads/${q(threadId)}/paths/resolve`, body, signal),
   checkpoints: (threadId: string, signal?: AbortSignal) =>
