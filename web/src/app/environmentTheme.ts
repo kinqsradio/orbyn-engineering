@@ -1,5 +1,5 @@
 import type { EnvironmentTheme } from "../generated/EnvironmentTheme";
-import { presetById } from "../features/settings/themes";
+import { presetById } from "../styles/themes";
 import { applyTheme, useUi } from "../state/ui";
 
 /**

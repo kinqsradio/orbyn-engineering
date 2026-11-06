@@ -5,7 +5,7 @@ import { readingKey } from "./terminalKeys";
 import { api } from "../../api/client";
 import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
-import { useComposerChips } from "../../state/composerChips";
+import { useComposerChips } from "../thread/composerChipStore";
 import { charactersOver, chipId, promptWithChips, terminalSelection } from "../thread/composerContext";
 import { Button, Pill } from "../../ui/controls";
 import { terminalUrl } from "./terminalSocket";

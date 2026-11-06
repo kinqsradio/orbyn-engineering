@@ -20,7 +20,7 @@ import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useDraftStore } from "../onboarding/draftStore";
 import { navigate } from "../../state/route";
-import { useThreadLogs } from "../../state/threadLogs";
+import { useThreadLogs } from "./threadLogs";
 import { useUi, type StashedPrompt } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
@@ -43,7 +43,7 @@ import { QueuedMessages } from "./QueuedMessages";
 import { openSideChat } from "../panels/sideChat";
 import { pullsApi } from "../pulls/pullsApi";
 import { FILE_MENTION_TYPE, insertToken, pullToken, threadToken, triggerAt } from "./skillMention";
-import { useComposerChips } from "../../state/composerChips";
+import { useComposerChips } from "./composerChipStore";
 import { CODE_LANGUAGES, exitCodeBlock, indentCodeLines, openFenceAt, setFenceLanguage } from "./composerCodeBlock";
 import { ComposerChipShelf, copyChips } from "./ComposerChips";
 import {

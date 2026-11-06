@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ComposerChip } from "../features/thread/composerContext";
+import type { ComposerChip } from "./composerContext";
 
 interface ComposerChipState {
   /** Chips waiting above each thread's composer. */

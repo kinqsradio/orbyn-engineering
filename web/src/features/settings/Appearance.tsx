@@ -4,11 +4,11 @@ import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
 import { applyTheme, useUi, type EnvironmentIdentification, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "./themes";
+import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
 import { api } from "../../api/client";
 import { fullTime } from "../../lib/format";
 import { useAsync } from "../../lib/useAsync";
-import { ENVIRONMENT_ICON_CHOICES } from "../../ui/EnvironmentIcon";
+import { ENVIRONMENT_ICON_CHOICES } from "./EnvironmentIcon";
 import { PreferenceGroups } from "./PreferenceRows";
 
 /** What this environment publishes to every viewer, and when its theme was set. */

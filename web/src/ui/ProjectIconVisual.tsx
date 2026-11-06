@@ -2,7 +2,7 @@ import { FolderCode, type LucideIcon } from "lucide-react";
 import dynamicIconImports from "lucide-react/dynamicIconImports";
 import { useEffect, useState } from "react";
 import "./ProjectIconVisual.css";
-import type { ProjectIconOverride } from "../../generated/ProjectIconOverride";
+import type { ProjectIconOverride } from "../generated/ProjectIconOverride";
 
 /** A received name selects a package-owned loader, never a URL or executable code. */
 function NamedProjectIcon({ name, size }: { name: string; size: number }) {

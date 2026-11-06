@@ -20,7 +20,7 @@ import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
 import { routeHref } from "../../state/route";
-import { useThreadLogs, useThreadStream } from "../../state/threadLogs";
+import { useThreadLogs, useThreadStream } from "./threadLogs";
 import { GitActions } from "./GitControl";
 import { LedgerPin } from "./LedgerPin";
 import { useUi } from "../../state/ui";

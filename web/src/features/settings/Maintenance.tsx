@@ -1,6 +1,6 @@
 import { settingsLabel } from "./settingsSearch";
 import { ChevronRight } from "lucide-react";
-import { EnvironmentIcon } from "../../ui/EnvironmentIcon";
+import { EnvironmentIcon } from "./EnvironmentIcon";
 import { useLayoutEffect, useRef, useState } from "react";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";

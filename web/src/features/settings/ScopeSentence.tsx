@@ -3,7 +3,7 @@ import { useAsync } from "../../lib/useAsync";
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/controls";
-import { EnvironmentIcon } from "../../ui/EnvironmentIcon";
+import { EnvironmentIcon } from "./EnvironmentIcon";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 interface Choice { key: string; label: string; path?: string; }

@@ -3,7 +3,7 @@ import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Dialog } from "../../ui/Dialog";
 import { Button } from "../../ui/controls";
-import { useComposerChips } from "../../state/composerChips";
+import { useComposerChips } from "./composerChipStore";
 import { chipLabel, chipsClipboard, type ComposerChip, type ReviewChip } from "./composerContext";
 
 const ICONS = {
