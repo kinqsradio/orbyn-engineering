@@ -459,6 +459,45 @@ function useGlobalKeys(route: Route) {
   }, [route, rules]);
 }
 
+/**
+ * Keeps the toast stack clear of the composer: `--toast-lift` is how far its top edge stands
+ * above the window's bottom, so the stack sits just above it.
+ */
+function useToastClearance(routeKey: string) {
+  useEffect(() => {
+    const root = document.documentElement;
+    let observed: Element | null = null;
+    let frame = 0;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => schedule());
+    const measure = () => {
+      frame = 0;
+      const composer = document.querySelector(".composer");
+      if (composer !== observed) {
+        if (observed) observer?.unobserve(observed);
+        observed = composer;
+        if (composer) observer?.observe(composer);
+      }
+      const rect = composer?.getBoundingClientRect();
+      const lift = rect && rect.height > 0 ? Math.max(0, window.innerHeight - rect.top + 8) : 0;
+      root.style.setProperty("--toast-lift", `${lift}px`);
+    };
+    function schedule() {
+      if (!frame) frame = requestAnimationFrame(measure);
+    }
+    measure();
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(document.getElementById("main") ?? document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      mutations.disconnect();
+      window.removeEventListener("resize", schedule);
+      root.style.removeProperty("--toast-lift");
+    };
+  }, [routeKey]);
+}
+
 /** Moves focus into the new screen, so keyboard and screen reader users follow it. */
 function useRouteFocus(routeKey: string, ready: boolean, main: React.RefObject<HTMLElement | null>) {
   const first = useRef(true);
@@ -518,6 +557,7 @@ export function Shell() {
   useThreadNotifications(route.name === "thread" ? route.id : null);
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, threadReady, main);
+  useToastClearance(routeKey);
 
   useEffect(() => {
     void loadAll();

@@ -118,10 +118,14 @@
 :root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
   width: var(--drawer-w);
 }
-/* Reading sets the title as the column's own 26px heading. */
+/* Reading sets the title as the column's own 26px heading, on the column. */
 :root[data-workspace="reading"] .thread-main > .topbar {
+  box-sizing: border-box;
+  width: min(calc(var(--reading-w) + 32px), 100%);
   height: auto;
   min-height: var(--topbar-h);
+  margin: 0 auto;
+  padding-inline: 16px;
 }
 :root[data-workspace="reading"] .thread-main > .topbar .crumbs h1 {
   font-size: var(--text-display);

@@ -58,12 +58,13 @@ function ReadingDiff({ threadId }: { threadId: string }) {
   }, [version, reload]);
   const showing = useUi((state) => state.panelOpen === true && state.panelTab === "diff");
   const togglePanel = useUi((state) => state.togglePanel);
+  const closePanel = useUi((state) => state.closePanel);
   const files = diff.data ?? [];
   if (files.length === 0) return null;
   const added = files.reduce((sum, file) => sum + file.additions, 0);
   const removed = files.reduce((sum, file) => sum + file.deletions, 0);
   return (
-    <button type="button" className="titlebar-diff" aria-pressed={showing} onClick={() => !showing && togglePanel("diff")}>
+    <button type="button" className="titlebar-diff" aria-pressed={showing} onClick={() => (showing ? closePanel() : togglePanel("diff"))}>
       Diff <span className="diff-add">+{added}</span> <span className="diff-del">−{removed}</span>
     </button>
   );

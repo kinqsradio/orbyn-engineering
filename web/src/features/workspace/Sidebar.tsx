@@ -51,6 +51,7 @@ import {
   sweepIds,
   drawnOrder,
   ledgerGroupsOf,
+  ledgerKey,
   type DropSection,
   type DropTarget,
   type DropVerb,
@@ -712,6 +713,14 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           pointerY.current = y;
           if (!reorder) return;
           target = dropTargetAt(list, y, thread.id, shownRef.current);
+          // Ledger draws its sections by state, so a row can only be placed inside its own.
+          if (ledger && target?.section === "active") {
+            const rows = sectionsRef.current.active.filter((row) => row.id !== thread.id);
+            const key = ledgerKey(thread);
+            const near = [rows[target.index - 1], rows[target.index]];
+            const fits = near.some((row) => row !== undefined && ledgerKey(row) === key);
+            if (!fits && rows.some((row) => ledgerKey(row) === key)) target = null;
+          }
           setDrag((current) =>
             current && sameTarget(current.target, target) ? current : current && { ...current, target },
           );

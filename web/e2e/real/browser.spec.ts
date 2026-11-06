@@ -17,7 +17,19 @@ test.beforeAll(async () => {
     if (request.url === "/clicked") clicks += 1;
     response.setHeader("Content-Type", "text/html");
     response.end(`<body style="margin:0;background:#2a6"><button style="width:100vw;height:100vh" onclick="fetch('/clicked')">${request.url}</button></body>`);
-  }).listen(SITE_PORT);
+  });
+  // The browser resolves `localhost` to ::1 or 127.0.0.1, whichever it tries first, so answer on both
+  // and wait until the port is open before the service is asked to load it.
+  await new Promise<void>((resolve, reject) => {
+    site.once("error", reject);
+    site.listen({ port: SITE_PORT, host: "::", ipv6Only: false }, resolve);
+  }).catch(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        site.once("error", reject);
+        site.listen({ port: SITE_PORT, host: "127.0.0.1" }, resolve);
+      }),
+  );
   const started = await startProject({ fakeEngines: true });
   service = started.service;
   const thread = await service.api<{ id: string }>("POST", "/api/threads", {
