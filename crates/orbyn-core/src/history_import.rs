@@ -363,7 +363,7 @@ mod tests {
                 .join("c1")
                 .join("subagents")
                 .join("agent-1.jsonl"),
-            &[subagent.clone()],
+            std::slice::from_ref(&subagent),
         );
         write(&claude.join("-work").join("side.jsonl"), &[subagent]);
         // A second file of the same session lists once.
