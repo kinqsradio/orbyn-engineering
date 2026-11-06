@@ -3193,6 +3193,24 @@ pub struct EngineUpdateOutcome {
 }
 
 wire! {
+/// One step of an engine update while it runs, sent on
+/// `GET /api/engines/update-events`. Every `started` is followed by one `finished`.
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EngineUpdateProgress {
+    /// The owning installer started this command.
+    Started { engine: String, command: String },
+    /// A line the installer printed, as it printed it.
+    Output { engine: String, line: String },
+    /// The update ended: `version` when it worked, `error` when it did not.
+    Finished {
+        engine: String,
+        version: Option<String>,
+        error: Option<String>,
+    },
+}
+}
+
+wire! {
 /// A named setup of an engine, which threads pick like any engine. It holds what
 /// launches and nothing about an account: no environment, no credential, no config
 /// folder.
