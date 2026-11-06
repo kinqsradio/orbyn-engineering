@@ -3,6 +3,8 @@
  * Stands in for the Codex binary. Everything goes to the repo's protocol double,
  * except a turn whose prompt names `[scene:<name>]`: that turn plays the notifications
  * in `scenes.mjs`, so the real service parses content the double has no scenario for.
+ * A `[question]` turn that also names `[open-question]` asks an ordinary question
+ * instead of the double's secret one, so a custom answer can carry files.
  */
 import { execFileSync, spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -26,11 +28,18 @@ if (args[0] !== "app-server") {
   let waiting = null;
   let deaf = false;
   let checkout = "";
+  let openQuestion = false;
 
   createInterface({ input: child.stdout }).on("line", (line) => {
     const message = JSON.parse(line);
     if (pending.get(message.id) === "thread" && message.result?.thread?.id) thread = message.result.thread.id;
     pending.delete(message.id);
+    if (openQuestion && message.method === "item/tool/requestUserInput") {
+      message.params.questions = [
+        { id: "q1", header: "Evidence", question: "Which file shows it?", isOther: true, isSecret: false, options: null },
+      ];
+      return process.stdout.write(`${JSON.stringify(message)}\n`);
+    }
     process.stdout.write(`${line}\n`);
   });
   child.on("exit", (code) => process.exit(code ?? 1));
@@ -68,6 +77,7 @@ if (args[0] !== "app-server") {
       return finish(`scene-${turn}`, "interrupted");
     }
     const scene = message.method === "turn/start" && /\[scene:([a-z-]+)\]/.exec(message.params?.input?.[0]?.text ?? "");
+    if (message.method === "turn/start") openQuestion = (message.params?.input?.[0]?.text ?? "").includes("[open-question]");
     if (!scene) {
       if (message.method === "thread/start" || message.method === "thread/resume") pending.set(message.id, "thread");
       child.stdin.write(`${line}\n`);

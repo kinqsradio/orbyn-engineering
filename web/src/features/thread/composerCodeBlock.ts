@@ -61,11 +61,16 @@ export function indentCodeLines(
   if (outdent) {
     if (!lines.some((line) => /^ {1,2}\S/.test(line) || /^ {1,2}$/.test(line))) return null;
     const lifted = lines.map((line) => line.replace(/^ {1,2}/, ""));
-    const removedFirst = lines[0]?.length ? lines[0].length - (lifted[0]?.length ?? 0) : 0;
+    const removed = lines.map((line, at) => line.length - (lifted[at]?.length ?? 0));
+    const removedFirst = removed[0] ?? 0;
+    // The end moves by every line lifted before its own, plus what its line lost before it.
+    const lastStart = to - (lines.at(-1)?.length ?? 0);
+    const removedBeforeEnd =
+      removed.slice(0, -1).reduce((sum, count) => sum + count, 0) + Math.min(removed.at(-1) ?? 0, end - lastStart);
     return {
       text: text.slice(0, from) + lifted.join("\n") + text.slice(to),
       start: Math.max(from, start - removedFirst),
-      end: Math.max(from, end - removedFirst),
+      end: Math.max(from, end - removedBeforeEnd),
     };
   }
   const nested = lines.map((line) => `  ${line}`);
