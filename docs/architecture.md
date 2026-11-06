@@ -69,6 +69,22 @@ admitted -> starting -> running <-> awaiting_approval
   left open with a note. A run still `admitted` never reached an engine, so its message
   returns to the front of the held queue, without attachments, and is not resent on its
   own. A later state may have reached the engine and is never resent.
+- A Claude Code workflow (the CLI's `Workflow` tool) runs in the background past the
+  turn that launched it, and closing the CLI's input would end it. So a Claude run whose
+  turn completes while a workflow it launched still runs stays `running`: it ends with
+  the follow-up turn the CLI starts when the workflow finishes, or five seconds after the
+  last one ends with no follow-up turn, as after a stop. A failed turn is not held. The
+  workflow's handles are kept as a `workflow` item beside the call, and its states
+  arrive as `CUSTOM workflow.state`. Stopping one sends the CLI's `stop_task` control
+  request through the live run after a `workflow.stop` audit row, and a stop that never
+  reaches the engine adds a `workflow.stop_failed` row; acceptance is not the end, which
+  the CLI reports as `stopped`. Stopping the run still ends everything, and a workflow
+  still running when its run ends is reported `stopped`. The delegated-run silence
+  watchdog does not count a run waiting on a running workflow as stuck.
+  The script view reads an inline script from the call, and otherwise only a `.js`
+  regular file whose resolved path is inside the CLI's own `projects` or `workflows`
+  folder or the thread's checkout, cut at 256 KiB. Nothing else in the CLI's config is
+  read, so hard rule 1 holds.
 - A forced stop (`POST /api/threads/:id/force-stop`) is for an engine that stopped
   answering, so it skips the wait for it: the stop is saved, the process tree and those
   of delegated threads are killed, and the run ends `cancelled` within seconds. If a stage
@@ -334,9 +350,37 @@ Mode is stated on every launch: Claude's `--permission-mode`, and Codex's approv
 and sandbox on `thread/start`, `thread/resume` and `turn/start`, because a saved session
 otherwise keeps the policy it last had.
 
+Each engine lists the modes it offers in `capabilities.permission_modes`, from
+`permission_modes::offered`: OpenCode offers Supervised, Auto-accept edits and Full access,
+since it has no classifier and its Auto would equal Supervised; fx would offer Supervised
+and Auto, Muse Supervised and Full access, and Pi Supervised, Auto-accept edits and Full
+access; every other engine offers all four. A thread keeps the mode it was given, but a
+run on an engine that does not offer it runs Supervised, never the nearest looser mode,
+and the composer shows and offers the same. Every run launches its own engine process
+with the mode stated, so a mode change takes effect from the next turn's process.
+
 Parsers are tested against recorded real frames in `driver/fixtures`, named by version.
 `cargo test -p orbyn-core live_ -- --ignored` reads each installed CLI's real catalog,
 with no prompt.
+
+## Warm next turn
+
+With `warm_next_turn` on (off by default, with no control of its own), a completed
+Claude turn starts the process the thread's next turn would launch, with the same
+arguments, folder, MCP URL, settings and mode, and leaves it idle on its input. No
+prompt is sent, but the CLI still does its launch work at once: Claude Code 2.1.318
+ran a `SessionStart` hook before any input, and it starts the person's MCP servers the
+same way, so a process that is never adopted runs them for nothing. That is why it
+is off unless asked for. The next run on that
+thread adopts it only when it is the run right after the one that started it, the
+process is still alive, and every launch input gives the same key, which also names
+the CLI's path, size and modified time and the `prefer_saved_login` state. Anything
+else ends it unused and launches as usual. Its MCP token carries the thread's write scope
+but no run until a run adopts it, and is revoked whenever the process goes unadopted:
+after five idle minutes, at shutdown, or when any engine update begins, since
+instances can share the binary and Windows cannot replace a running one. An update
+cannot begin while a warm process is being started, and none starts during an update. A run that adopts logs `CUSTOM
+engine.warm`. Other engines launch per run as before.
 
 ## Session recovery
 
@@ -481,6 +525,19 @@ or reviews; the viewer's own comments are not news. It ends at a merge or close,
 unlink, or when the thread settles or archives. A subagent thread cannot watch.
 Viewed-file marks are this service's own, per project, and never reach the forge.
 
+A Jujutsu checkout that is not colocated with Git (a `.jj` folder with no `.git`
+beside it, found from the thread's folder upwards but never above the project
+folder, so a project inside a larger jj repository is not read as it) is a non-Git project, read
+through the person's installed `jj`; Orbyn ships, links and installs no jj, and a
+missing `jj` is `422 unsupported`. It reads the working-copy change (`jj log -r @`
+with a fixed template) and its diff (`jj diff --git -r @`, jj's built-in Git
+format, so no configured diff tool runs), always with `--no-pager`, no colour and
+the file monitor off. Like any jj command this snapshots the working copy into jj's
+operation log, so it needs a trusted folder. That is the whole jj surface: the
+worktree diff scope and `GET /api/threads/:id/jj`. Commits, bookmarks, worktrees
+(jj workspaces), checkpoints and forge actions stay Git-only; a colocated checkout
+is a Git project.
+
 A background clone is a job kept in memory until the service stops. Its staging
 folder removes itself when the job is cancelled. An SSH URL the server refuses is
 tried once over HTTPS, and the job says so.
@@ -615,6 +672,16 @@ until its captured setup is started; `async: false` also waits for exit code zer
 Engine title generation follows that same gate. Startup failure or unsuccessful
 synchronous setup fails the first turn; an async exit does not block it,
 and a later explicit user message does not implicitly execute project code again.
+The thread view shows the setup as a card: starting, running (saying when the first
+turn waits for it), finished with its exit code, or stopped. `stopped` means it
+ended with no exit code, by a cancel or a service restart. Its Output button selects
+the setup terminal, and a successful setup's card leaves after a few seconds. Cancel
+stops a setup this service is preparing or running, kills its process tree, is
+audited as `setup.cancel`, and is not a run cancel: a synchronous setup then fails
+the first turn as an unsuccessful preparation, which keeps its Retry, while a
+cancelled async setup leaves the thread free. Cancelling a finished or stopped
+setup changes nothing; a thread with no setup is `404`. An async setup's exit is read from its process; only the
+waiter of a synchronous setup records an exit.
 Failed preparation keeps queued messages held, including messages added after the
 failure. A later user turn does not release that hold, and queue resume or automatic
 restart/limit continuation cannot bypass it. The failure's timeline Retry control
@@ -1027,6 +1094,7 @@ modules, direct modules only, or no modules, respectively. Earlier `top_level` a
 settings or project files; UI edits use the canonical values.
 A new draft waits for the selected checkout's effective mode; explicit checkout
 choices and reused worktrees win, and late responses cannot change another project.
+A folder outside Git shows "This folder" and offers no checkout choice.
 A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards
 a clean checkout on the remote's default branch every 30 minutes.
 
@@ -1110,7 +1178,8 @@ stamps that time, and clearing the theme clears it; a client cannot write the ti
 A theme is `system`, `light`, `dark` or a theme id. Each viewer applies a published
 theme once, when its `set_at` is newer than the one it last applied, at startup and
 when the window takes focus; after that the viewer's own choice stays. An unknown id
-is recorded as applied and changes nothing. Remote environments publish nothing here.
+is recorded as applied and changes nothing. A theme saved before set times existed is
+published with `set_at` 1, so each viewer applies it once. Remote environments publish nothing here.
 
 `/api/info` also names the build's `channel`: `dev` for a debug build, `nightly` or
 `stable` from `ORBYN_CHANNEL` at compile time, and `stable` otherwise. The sidebar
@@ -1471,7 +1540,8 @@ library. `repo/` is the exception, and a folder under it still has to meet the n
 rules: its own Git root, its Git data under `repo/`, and ignored by the library. A
 folder already registered is `409 project_exists` by its real path, so a link to it
 cannot make a second project. A folder outside Git is allowed, and works without
-worktrees, diffs, checkpoints or forge features. This differs on purpose from the
+worktrees, diffs, checkpoints or forge features, except that a non-colocated
+Jujutsu checkout shows its working-copy diff (Source control). This differs on purpose from the
 library's `workspace.py check --in-place`, which requires a Git root. The same check
 runs again before each run, because a folder can change between runs.
 
@@ -1612,7 +1682,10 @@ run. No item claims `Cmd+W` or `Cmd+N`: those are the page's, by its own rules. 
 the app menu's Quit keeps `Cmd+Q` only while `quit_confirmation` is `direct`, which the
 service sends with `activity`. For `hold` and `double_press` the page owns `Cmd+Q`: it
 quits through the `quit` shell action after the key is held for one second, or pressed
-again within 1.5 seconds, and lifting the key, blur or a late press starts over. Clicking
+again within 1.5 seconds. WebKit may send no keyup while Cmd stays down, so a hold counts
+only while key repeats keep arriving; a stop in repeats, lifting the key, blur or a late
+press starts over. The page reads the mode again as soon as Settings saves it. A service
+in remote mode refuses the `quit` action, so a remote viewer cannot stop the app. Clicking
 Quit in a menu or the tray always quits. Windows has no `Cmd+Q` and keeps tray Quit. The zoom
 of the main window is kept beside its window state in the app's config folder. Native
 Reload, Force Reload, DevTools, Zoom, Paste as Text and Close Window target the focused
@@ -1706,7 +1779,7 @@ parent's children read as not found. It uses the existing durable cancellation
 path, including running delegated descendants, and reports `stopped: true` when
 the request is accepted; this is not terminal completion. An idle child returns
 `stopped: false`, and cancellation errors are reported. This is a delegated-run
-control, not the unimplemented M13 workflow/script engine. `orbyn_thread_wait`
+control, not M13's Claude Code workflows, which the person stops from the timeline. `orbyn_thread_wait`
 then observes completion, accepts only non-negative integer seconds, clamps at
 40 seconds and reports `ended: false` when that bounded wait expires.
 The stop tool's entire call, including its approval wait, is capped at 45 seconds;
@@ -1841,6 +1914,22 @@ person to read before sending. A browser that dies is started again on the same 
 page, up to three times in 30 seconds after 1, 2 and 4 seconds, and then the tab reports
 `crashed`. This only runs while someone watches. `enable_agent_browser_access`, off
 globally or for a project, refuses every `orbyn_preview_*` tool.
+
+A previewed page is untrusted, so what crosses between it and the person waits for
+the person's own action and stays inside the tab's folder, `<data>/preview-files/<tab>`,
+which ends with the tab. Copy (Cmd or Ctrl+C on the page a person holds) reads the
+selection in the focused field, or else the page's, and nothing from a password field,
+into the person's own clipboard; a page's own clipboard writes stay in its browser.
+Paste is the person's paste event, typed into the page as text. A file chooser the
+page opens is held, not failed: the panel asks the person, who picks files through
+their own system picker; each, at most 50 MiB and 256 MiB a tab, is uploaded to the
+tab's folder and handed only to the input that asked, and Cancel hands nothing.
+Downloads save to the tab's folder under the browser's own id, never the page's name
+or path; a download past 1 GiB is stopped, and a tab keeps 20, dropping the oldest
+finished one. Saving one serves its bytes as an `application/octet-stream`
+attachment, `nosniff` and sandboxed, under the page's name made safe for Windows and
+macOS, and the person's browser chooses where it goes. Handing files to a page and
+saving a download are audited.
 
 Back and forward step through web pages only, so the blank page a browser starts on
 and anything else not `http` or `https` is passed over, and at either end nothing
@@ -2206,9 +2295,14 @@ because browsers cannot set headers on them.
 | `POST /api/projects/:id/publish` | `PublishProject`: create the remote, with `gh` or `glab`, and push |
 | `POST /api/runs/:id/cancel` | Cancel |
 | `POST /api/threads/:id/force-stop` | `ForcedStop`: end the run now; `run_id` is empty when nothing was running |
+| `GET /api/threads/:id/workflows/:call/script` | `WorkflowScript` of a Claude Code workflow the call launched; `404` for any other call |
+| `POST /api/threads/:id/workflows/:call/stop` | `WorkflowStop` (`202`): ask the running engine to stop that workflow; `400` once it has ended |
 | `GET /api/threads/:id/events` | SSE `ThreadEvent`, resumes from `Last-Event-ID` |
 | `GET /api/approvals?state=pending`, `POST /api/approvals/:id/decide` | Approvals |
 | `GET /api/threads/:id/diff?scope=` | `FileDiff[]`: `worktree`, `turn&run=`, `thread`, `branch&base=`, `commit&sha=` |
+| `GET /api/threads/:id/jj` | `JjStatus` of a non-colocated Jujutsu checkout, or `null`; `422` without `jj` |
+| `GET /api/threads/:id/setup` | `ThreadSetup`, or `null` when the checkout ran no setup |
+| `POST /api/threads/:id/setup/cancel` | Stops a preparing or running setup; returns `ThreadSetup` |
 | `GET /api/threads/:id/commits` | `CommitInfo[]`, newest 100 |
 | `GET /api/threads/:id/checkpoints` | `Checkpoint[]` |
 | `POST /api/threads/:id/restore` | `RestoreWorkspace`; `409 shared_directory`, `409 thread_busy` |

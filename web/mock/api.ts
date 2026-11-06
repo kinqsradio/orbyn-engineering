@@ -613,6 +613,8 @@ export function createMockApi(options: MockOptions = {}) {
           const thread = threads.find((t) => t.id === seg[2]);
           if (!thread) return err(404, "not_found", "Thread not found.");
           if (seg[3] === "diff") return { status: 200, body: fixtures.diffs[thread.id] ?? [] };
+          // Mock threads are Git checkouts with no worktree setup.
+          if (seg[3] === "jj" || seg[3] === "setup") return { status: 200, body: null };
           return { status: 200, body: thread };
         }
         const id = query.get("project_id");
@@ -725,6 +727,7 @@ export function createMockApi(options: MockOptions = {}) {
             streaming: tier !== "terminal",
             goal_control: false,
             decline_feedback: false,
+            permission_modes: ["supervised", "auto_edits", "auto", "full_access"],
             approvals: tier !== "terminal",
             resume: false,
             mcp: false,

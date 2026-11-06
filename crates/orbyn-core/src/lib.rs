@@ -21,6 +21,7 @@ pub mod files;
 pub mod forge;
 pub mod git;
 pub mod history_import;
+pub mod jj;
 pub mod keybindings;
 pub mod local_trace;
 pub mod maintenance;
@@ -28,9 +29,11 @@ pub mod mcp;
 pub mod mcp_tools;
 pub mod native_sessions;
 pub mod network;
+pub mod permission_modes;
 pub mod policy;
 pub mod preferences;
 pub mod preview;
+pub mod preview_bridge;
 mod preview_recording;
 mod preview_trace;
 pub mod process;
@@ -62,6 +65,7 @@ pub mod triage;
 pub mod updates;
 pub mod usage;
 pub mod util;
+pub mod workflow_scripts;
 pub mod workspace;
 
 #[cfg(test)]

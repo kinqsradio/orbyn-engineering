@@ -423,6 +423,20 @@ pub enum PermissionMode {
 }
 }
 
+impl PermissionMode {
+    /// Every mode, loosest last.
+    pub const ALL: [PermissionMode; 4] = [
+        PermissionMode::Supervised,
+        PermissionMode::AutoEdits,
+        PermissionMode::Auto,
+        PermissionMode::FullAccess,
+    ];
+}
+
+fn every_permission_mode() -> Vec<PermissionMode> {
+    PermissionMode::ALL.to_vec()
+}
+
 wire! {
 pub struct QueuedMessage {
     pub id: String,
@@ -1717,6 +1731,48 @@ pub struct RetryPreparation {
 }
 
 wire! {
+/// The working-copy change of a Jujutsu checkout that is not colocated with Git,
+/// as the installed `jj` reports it.
+pub struct JjStatus {
+    pub change_id: String,
+    pub commit_id: String,
+    pub bookmarks: Vec<String>,
+    /// The first line of the change's description; empty when undescribed.
+    pub description: String,
+    pub conflict: bool,
+    pub changed_files: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+}
+
+wire_enum! {
+/// Where a worktree's setup action stands. `stopped` means it ended without an
+/// exit code: cancelled, or cut off by a service restart.
+pub enum SetupPhase {
+    Preparing,
+    Running,
+    Finished,
+    Stopped,
+}
+}
+
+wire! {
+/// The setup action a new worktree runs, and where it stands.
+pub struct ThreadSetup {
+    pub name: String,
+    /// The first turn waits for this action to exit successfully.
+    pub blocking: bool,
+    pub phase: SetupPhase,
+    pub exit_code: Option<i32>,
+    /// The terminal that shows its output, once it has started.
+    pub terminal_id: Option<String>,
+    /// Only a setup this service is preparing or running can be cancelled.
+    pub cancellable: bool,
+}
+}
+
+wire! {
 pub struct Run {
     pub id: String,
     pub thread_id: String,
@@ -2363,6 +2419,49 @@ pub struct PreviewTab {
     pub opened_by: String,
     /// True once the page has crashed too often to bring back.
     pub crashed: bool,
+    /// `one` or `many` while the page waits for files a person chooses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub file_chooser: Option<String>,
+    /// What the page downloaded, oldest first, kept while the tab lives.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PreviewDownload>>", optional)]
+    pub downloads: Vec<PreviewDownload>,
+}
+}
+
+wire! {
+/// A file the page downloaded into the tab's own folder.
+pub struct PreviewDownload {
+    pub id: String,
+    /// The name the page suggested, made safe to save under.
+    pub name: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// `downloading`, `done` or `stopped`.
+    pub state: String,
+}
+}
+
+wire! {
+/// Text a person copied out of the page they hold.
+pub struct PreviewCopy {
+    pub text: String,
+}
+}
+
+wire! {
+/// A file a person chose for the page, waiting in the tab's own folder.
+pub struct PreviewUpload {
+    pub id: String,
+}
+}
+
+wire! {
+/// Answers the page's file chooser with uploaded files; none cancels it.
+pub struct AnswerFileChooser {
+    #[serde(default)]
+    pub files: Vec<String>,
 }
 }
 
@@ -2790,6 +2889,10 @@ pub struct EngineCapabilities {
     /// A denied action can carry your words back to the engine.
     #[serde(default)]
     pub decline_feedback: bool,
+    /// The modes this engine offers. A thread's saved mode outside them runs
+    /// Supervised and is shown that way.
+    #[serde(default = "every_permission_mode")]
+    pub permission_modes: Vec<PermissionMode>,
 }
 }
 
@@ -3413,6 +3516,24 @@ pub enum SteerState {
 wire! {
 pub struct SteerResult {
     pub state: SteerState,
+}
+}
+
+wire! {
+/// The script a Claude Code workflow runs, read for display only.
+pub struct WorkflowScript {
+    /// Where the CLI keeps the script, when it reported one.
+    pub path: Option<String>,
+    pub contents: String,
+    /// The script was longer than the display cap and was cut.
+    pub truncated: bool,
+}
+}
+
+wire! {
+/// A workflow stop the running engine was asked for; its end arrives as an event.
+pub struct WorkflowStop {
+    pub requested: bool,
 }
 }
 

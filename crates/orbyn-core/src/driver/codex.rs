@@ -87,6 +87,7 @@ impl EngineDriver for CodexDriver {
                 skill_delivery: vec![SkillDelivery::McpSkillServer],
                 goal_control: true,
                 decline_feedback: false,
+                permission_modes: orbyn_contracts::PermissionMode::ALL.to_vec(),
             },
         }
     }
@@ -262,6 +263,7 @@ impl EngineDriver for CodexDriver {
             cancel,
             task,
             input: Some(input),
+            control: None,
         })
     }
 }
