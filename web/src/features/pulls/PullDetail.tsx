@@ -1,4 +1,5 @@
-import { Check, CircleDashed, EllipsisVertical, ExternalLink, GitMerge, Layers, MessageSquare, Pencil, Plus, X } from "lucide-react";
+import { ArrowLeft, Check, CircleDashed, EllipsisVertical, ExternalLink, GitMerge, Layers, MessageSquare, Pencil, Plus, X } from "lucide-react";
+import "./pulls.css";
 import { useMemo, useState } from "react";
 import type { PullCheck, PullRequestDetail } from "../../api/types";
 import { relativeTime } from "../../lib/format";
@@ -9,6 +10,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, Field, IconButton, Pill } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { PageBar } from "../../ui/PageBar";
 import { ErrorState, Loading } from "../../ui/states";
 import { Markdown } from "../thread/Markdown";
 import { PullCode } from "./PullCode";
@@ -50,7 +52,7 @@ function Checks({ projectId, number }: { projectId: string; number: number }) {
     );
   };
   return (
-    <section className="pull-section">
+    <section className="pull-section pull-card">
       <h3>Checks</h3>
       <ul className="pull-checks">
         {checks.data.map((check) => {
@@ -105,8 +107,8 @@ function People({
     };
   });
   return (
-    <div className="pull-people">
-      <span className="muted">{title}</span>
+    <div className="pull-people pull-card">
+      <span className="pull-card-title">{title}</span>
       {chosen.map((name) => (
         <Pill key={name}>{name}</Pill>
       ))}
@@ -334,11 +336,18 @@ function Stack({ projectId, number, onOpen }: { projectId: string; number: numbe
 export function PullDetail({
   projectId,
   number,
+  layout = "panel",
+  onBack,
   onClose,
   onOpen,
 }: {
   projectId: string;
   number: number;
+  /** A page of its own, or the compact view inside a thread's side panel. */
+  layout?: "page" | "panel";
+  /** On the page: back to the list of pull requests. */
+  onBack?(): void;
+  /** In the panel: back to the thread's linked pull requests. */
   onClose?(): void;
   /** Moves to another pull request in the same stack. */
   onOpen?(number: number): void;
@@ -352,9 +361,29 @@ export function PullDetail({
   const refreshAll = useWorkspace((state) => state.refreshAll);
   const engines = useWorkspace((state) => state.engines.data);
 
-  if (detail.status === "loading") return <Loading label="Loading pull request" rows={5} />;
+  const page = layout === "page";
+  const back = page ? (
+    <div className="pull-back">
+      <Button small tone="quiet" icon={<ArrowLeft size={14} aria-hidden />} onClick={onBack}>
+        Pull requests
+      </Button>
+    </div>
+  ) : null;
+  if (detail.status === "loading") {
+    return (
+      <>
+        {back}
+        <Loading label="Loading pull request" rows={5} />
+      </>
+    );
+  }
   if (detail.status === "error") {
-    return <ErrorState title="Couldn't load this pull request" failure={detail.error} onRetry={detail.reload} />;
+    return (
+      <>
+        {back}
+        <ErrorState title="Couldn't load this pull request" failure={detail.error} onRetry={detail.reload} />
+      </>
+    );
   }
   const { pull, mergeable, additions, deletions, changed_files: files } = detail.data;
   const open = pull.state === "open";
@@ -419,147 +448,256 @@ export function PullDetail({
     },
   ];
 
-  return (
-    <article className="pull-detail" aria-label={pull.title}>
-      <header className="pull-detail-head">
-        <div>
-          {editing !== null ? (
-            <form
-              className="pull-title-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void update({ title: editing }, "Title saved").then(() => setEditing(null));
-              }}
-            >
-              <input aria-label="Title" value={editing} autoFocus onChange={(event) => setEditing(event.target.value)} />
-              <Button small tone="primary" type="submit" disabled={!editing.trim()}>
-                Save
-              </Button>
-              <Button small onClick={() => setEditing(null)}>
-                Cancel
-              </Button>
-            </form>
-          ) : (
-            <h2>
-              {pull.title}{" "}
-              <IconButton label="Edit title" onClick={() => setEditing(pull.title)}>
-                <Pencil size={12} aria-hidden />
-              </IconButton>
-            </h2>
-          )}
-          <p>
-            <Pill tone={open ? "info" : pull.state === "merged" ? "accent" : "neutral"}>
-              {pull.draft ? "Draft" : pull.state}
-            </Pill>{" "}
-            #{pull.number} · {pull.head} into{" "}
-            {open ? (
-              <input
-                className="pull-base"
-                aria-label="Base branch"
-                defaultValue={pull.base}
-                key={pull.base}
-                onBlur={(event) => {
-                  const base = event.target.value.trim();
-                  if (base && base !== pull.base) void update({ base }, "Base branch changed");
-                }}
-              />
-            ) : (
-              pull.base
-            )}
-            {additions !== null ? ` · +${additions} -${deletions ?? 0}, ${files ?? 0} files` : ""}
-            {detail.data.auto_merge ? " · Merges when checks pass" : ""}
-          </p>
-        </div>
-        <span className="pull-detail-actions">
-          <IconButton
-            label="More actions"
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              setMenu({ x: rect.left, y: rect.bottom + 4 });
-            }}
-          >
-            <EllipsisVertical size={14} aria-hidden />
-          </IconButton>
-          <a className="icon-btn" href={pull.url} target="_blank" rel="noreferrer" aria-label="Open on the forge">
-            <ExternalLink size={14} aria-hidden />
-          </a>
-          {onClose ? (
-            <IconButton label="Close pull request" onClick={onClose}>
-              <X size={14} aria-hidden />
-            </IconButton>
-          ) : null}
-        </span>
-      </header>
-      <Stack projectId={projectId} number={number} onOpen={onOpen} />
-      <div className="pull-tabs segment" role="tablist" aria-label="Pull request">
-        {(["summary", "guide", "timeline", "code"] as const).map((entry) => (
-          <button
-            key={entry}
-            type="button"
-            role="tab"
-            aria-checked={tab === entry}
-            aria-selected={tab === entry}
-            onClick={() => setTab(entry)}
-          >
-            {TAB_LABELS[entry]}
-          </button>
-        ))}
-      </div>
-      <div className="pull-body">
-        {tab === "summary" ? (
-          <>
-            <Description detail={detail.data} projectId={projectId} onSave={(body) => update({ body }, "Description saved")} />
-            <People
-              title="Reviewers"
-              chosen={detail.data.reviewers}
-              load={(signal) => pullsApi.reviewerCandidates(projectId, signal)}
-              save={(add, remove) => pullsApi.setReviewers(projectId, number, add, remove).then(detail.reload)}
-            />
-            <People
-              title="Labels"
-              chosen={pull.labels}
-              load={(signal) => pullsApi.labelCandidates(projectId, signal)}
-              save={(add, remove) => pullsApi.setLabels(projectId, number, add, remove).then(detail.reload)}
-            />
-            <Checks projectId={projectId} number={number} />
-            <PullConversation projectId={projectId} number={number} />
-          </>
-        ) : tab === "guide" ? (
-          <PullGuide projectId={projectId} number={number} headSha={detail.data.head_sha} />
-        ) : tab === "timeline" ? (
-          <Timeline projectId={projectId} number={number} />
-        ) : (
-          <PullCode projectId={projectId} number={number} onReviewed={detail.reload} />
-        )}
-      </div>
-      <footer className="pull-foot">
-        <Button small icon={<MessageSquare size={14} aria-hidden />} onClick={() => void work()}>
-          Work on this
-        </Button>
-        {open ? (
-          <>
-            <Button small onClick={() => void act("close", "Closed")}>
-              Close
-            </Button>
-            <Button
-              small
-              tone="primary"
-              icon={<GitMerge size={14} aria-hidden />}
-              disabled={mergeable === "conflicting"}
-              onClick={() => setMerging(true)}
-            >
-              Merge
-            </Button>
-          </>
-        ) : pull.state === "closed" ? (
-          <Button small onClick={() => void act("reopen", "Reopened")}>
-            Reopen
-          </Button>
-        ) : null}
-      </footer>
+  const titleForm = (
+    <form
+      className="pull-title-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void update({ title: editing ?? "" }, "Title saved").then(() => setEditing(null));
+      }}
+    >
+      <input aria-label="Title" value={editing ?? ""} autoFocus onChange={(event) => setEditing(event.target.value)} />
+      <Button small tone="primary" type="submit" disabled={!(editing ?? "").trim()}>
+        Save
+      </Button>
+      <Button small onClick={() => setEditing(null)}>
+        Cancel
+      </Button>
+    </form>
+  );
+  const baseBranch = open ? (
+    <input
+      className="pull-base"
+      aria-label="Base branch"
+      defaultValue={pull.base}
+      key={pull.base}
+      onBlur={(event) => {
+        const base = event.target.value.trim();
+        if (base && base !== pull.base) void update({ base }, "Base branch changed");
+      }}
+    />
+  ) : (
+    pull.base
+  );
+  const moreActions = (
+    <IconButton
+      label="More actions"
+      onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setMenu({ x: rect.left, y: rect.bottom + 4 });
+      }}
+    >
+      <EllipsisVertical size={14} aria-hidden />
+    </IconButton>
+  );
+  const tabs = (["summary", "guide", "timeline", "code"] as const).map((entry) => (
+    <button
+      key={entry}
+      type="button"
+      role="tab"
+      aria-checked={page ? undefined : tab === entry}
+      aria-selected={tab === entry}
+      onClick={() => setTab(entry)}
+    >
+      {TAB_LABELS[entry]}
+    </button>
+  ));
+  const reviewers = (
+    <People
+      title="Reviewers"
+      chosen={detail.data.reviewers}
+      load={(signal) => pullsApi.reviewerCandidates(projectId, signal)}
+      save={(add, remove) => pullsApi.setReviewers(projectId, number, add, remove).then(detail.reload)}
+    />
+  );
+  const labels = (
+    <People
+      title="Labels"
+      chosen={pull.labels}
+      load={(signal) => pullsApi.labelCandidates(projectId, signal)}
+      save={(add, remove) => pullsApi.setLabels(projectId, number, add, remove).then(detail.reload)}
+    />
+  );
+  const description = <Description detail={detail.data} projectId={projectId} onSave={(body) => update({ body }, "Description saved")} />;
+  const other =
+    tab === "guide" ? (
+      <PullGuide projectId={projectId} number={number} headSha={detail.data.head_sha} />
+    ) : tab === "timeline" ? (
+      <Timeline projectId={projectId} number={number} />
+    ) : (
+      <PullCode projectId={projectId} number={number} onReviewed={detail.reload} />
+    );
+  const dialogs = (
+    <>
       {merging ? <MergeDialog projectId={projectId} detail={detail.data} onClose={() => setMerging(false)} onMerged={detail.reload} /> : null}
       {menu ? <Menu x={menu.x} y={menu.y} label="Pull request actions" items={items} onClose={() => setMenu(null)} /> : null}
+    </>
+  );
+
+  if (!page) {
+    return (
+      <article className="pull-detail" aria-label={pull.title}>
+        <header className="pull-detail-head">
+          <div>
+            {editing !== null ? (
+              titleForm
+            ) : (
+              <h2>
+                {pull.title}{" "}
+                <IconButton label="Edit title" onClick={() => setEditing(pull.title)}>
+                  <Pencil size={12} aria-hidden />
+                </IconButton>
+              </h2>
+            )}
+            <p>
+              <Pill tone={open ? "info" : pull.state === "merged" ? "accent" : "neutral"}>
+                {pull.draft ? "Draft" : pull.state}
+              </Pill>{" "}
+              #{pull.number} · {pull.head} into {baseBranch}
+              {additions !== null ? ` · +${additions} -${deletions ?? 0}, ${files ?? 0} files` : ""}
+              {detail.data.auto_merge ? " · Merges when checks pass" : ""}
+            </p>
+          </div>
+          <span className="pull-detail-actions">
+            {moreActions}
+            <a className="icon-btn" href={pull.url} target="_blank" rel="noreferrer" aria-label="Open on the forge">
+              <ExternalLink size={14} aria-hidden />
+            </a>
+            {onClose ? (
+              <IconButton label="Close pull request" onClick={onClose}>
+                <X size={14} aria-hidden />
+              </IconButton>
+            ) : null}
+          </span>
+        </header>
+        <Stack projectId={projectId} number={number} onOpen={onOpen} />
+        <div className="pull-tabs segment" role="tablist" aria-label="Pull request">
+          {tabs}
+        </div>
+        <div className="pull-body">
+          {tab === "summary" ? (
+            <>
+              {description}
+              {reviewers}
+              {labels}
+              <Checks projectId={projectId} number={number} />
+              <PullConversation projectId={projectId} number={number} />
+            </>
+          ) : (
+            other
+          )}
+        </div>
+        <footer className="pull-foot">
+          <Button small icon={<MessageSquare size={14} aria-hidden />} onClick={() => void work()}>
+            Work on this
+          </Button>
+          {open ? (
+            <>
+              <Button small onClick={() => void act("close", "Closed")}>
+                Close
+              </Button>
+              <Button
+                small
+                tone="primary"
+                icon={<GitMerge size={14} aria-hidden />}
+                disabled={mergeable === "conflicting"}
+                onClick={() => setMerging(true)}
+              >
+                Merge
+              </Button>
+            </>
+          ) : pull.state === "closed" ? (
+            <Button small onClick={() => void act("reopen", "Reopened")}>
+              Reopen
+            </Button>
+          ) : null}
+        </footer>
+        {dialogs}
+      </article>
+    );
+  }
+
+  return (
+    <article className="pull-page" aria-label={pull.title}>
+      {back}
+      <PageBar
+        actions={
+          <>
+            <Button small icon={<MessageSquare size={14} aria-hidden />} onClick={() => void work()}>
+              Work on this
+            </Button>
+            {open ? (
+              <>
+                <Button small onClick={() => void act("close", "Closed")}>
+                  Close
+                </Button>
+                <Button
+                  small
+                  tone="primary"
+                  icon={<GitMerge size={14} aria-hidden />}
+                  disabled={mergeable === "conflicting"}
+                  onClick={() => setMerging(true)}
+                >
+                  Merge
+                </Button>
+              </>
+            ) : pull.state === "closed" ? (
+              <Button small onClick={() => void act("reopen", "Reopened")}>
+                Reopen
+              </Button>
+            ) : null}
+            {moreActions}
+            <a className="icon-btn" href={pull.url} target="_blank" rel="noreferrer" aria-label="Open on the forge" title="Open on the forge">
+              <ExternalLink size={14} aria-hidden />
+            </a>
+          </>
+        }
+      >
+        {editing !== null ? (
+          titleForm
+        ) : (
+          <>
+            <h1 tabIndex={-1} data-page-title>
+              {pull.title}
+            </h1>
+            <IconButton label="Edit title" onClick={() => setEditing(pull.title)}>
+              <Pencil size={12} aria-hidden />
+            </IconButton>
+          </>
+        )}
+      </PageBar>
+      <p className="pull-meta">
+        <Pill tone={open ? "info" : pull.state === "merged" ? "accent" : "neutral"}>
+          {pull.draft ? "Draft" : pull.state}
+        </Pill>
+        <span>
+          #{pull.number} · {pull.head} into {baseBranch}
+          {additions !== null ? ` · +${additions} -${deletions ?? 0}, ${files ?? 0} files` : ""}
+          {detail.data.auto_merge ? " · Merges when checks pass" : ""}
+        </span>
+      </p>
+      <Stack projectId={projectId} number={number} onOpen={onOpen} />
+      <div className="pull-page-tabs" role="tablist" aria-label="Pull request">
+        {tabs}
+      </div>
+      <div className="pull-page-body">
+        {tab === "summary" ? (
+          <div className="pull-cols">
+            <div className="pull-main">
+              {description}
+              <PullConversation projectId={projectId} number={number} />
+            </div>
+            <div className="pull-side">
+              <Checks projectId={projectId} number={number} />
+              {reviewers}
+              {labels}
+            </div>
+          </div>
+        ) : (
+          other
+        )}
+      </div>
+      {dialogs}
     </article>
   );
 }
-

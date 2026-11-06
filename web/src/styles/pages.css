@@ -1102,46 +1102,6 @@ kbd {
   height: 14px;
   min-height: 0;
 }
-
-/* Pull requests */
-.pulls-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-.pulls-columns {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-.pulls-list-column {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px 16px;
-  overflow-y: auto;
-}
-.pulls-detail-column {
-  flex: none;
-  width: min(560px, 55%);
-  min-height: 0;
-  border-left: 1px solid var(--color-divider);
-}
-.pulls-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.pulls-bar-actions {
-  display: flex;
-  align-items: center;
-  flex: none;
-  gap: 8px;
-}
 .pulls-search {
   display: flex;
   align-items: center;
@@ -1172,38 +1132,6 @@ kbd {
   background: transparent;
   color: var(--color-muted);
   cursor: pointer;
-}
-.pulls-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-chip);
-  color: var(--color-textSoft);
-  font-size: var(--text-small);
-  cursor: pointer;
-}
-.pulls-chip:hover {
-  background: var(--color-selected);
-}
-.pulls-empty {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-  color: var(--color-muted);
-  font-size: var(--text-small);
-}
-.pulls-empty h2 {
-  color: var(--color-text);
-  font-size: var(--text-body);
-  font-weight: 500;
 }
 .pulls-list {
   display: flex;
@@ -1398,15 +1326,6 @@ kbd {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-}
-@media (max-width: 767px) {
-  .pulls-columns {
-    flex-direction: column;
-  }
-  .pulls-detail-column {
-    width: 100%;
-    border-left: 0;
-  }
 }
 .keys-table {
   width: 100%;
@@ -1712,13 +1631,6 @@ kbd {
   flex: none;
   gap: 2px;
   padding-right: 4px;
-}
-.pulls-bulk {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 16px;
-  font-size: var(--text-meta);
 }
 
 .setting-line-control:has(> :nth-child(2)) {

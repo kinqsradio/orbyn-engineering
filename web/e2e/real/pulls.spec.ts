@@ -82,7 +82,7 @@ test.beforeEach(({ page }) => page.setViewportSize({ width: 1500, height: 1000 }
 
 test("the list filters by author, label, checks and draft, and sorts", async ({ page }) => {
   await page.goto(`${service.page}#/pulls`);
-  const rows = page.locator(".pulls-list > li");
+  const rows = page.locator(".pull-rows > li");
   await expect(rows).toHaveCount(3);
   const filter = async (group: string, value: string) => {
     await page.getByRole("button", { name: "Filters" }).click();
@@ -253,6 +253,7 @@ test("merge takes a method, strips credits and can wait for checks; a row merges
   await expect(article.getByText("Merges when checks pass")).toBeVisible();
   expect(service.ghPull(2).mergeBody).toBe("Second layer");
 
+  await page.getByRole("button", { name: "Pull requests", exact: true }).click();
   await page.getByRole("button", { name: "Merge #3" }).click();
   await page.getByRole("dialog", { name: "Merge #3?" }).getByRole("button", { name: "Merge" }).click();
   await expect.poll(() => service.ghPull(3).state).toBe("MERGED");
