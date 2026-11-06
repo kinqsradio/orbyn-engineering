@@ -556,7 +556,8 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   // A renamed, added or re-iconed project changes the catalog's labels and members too.
   const projectsKey = list.map((project) => `${project.id}:${project.name}:${project.metadata_revision ?? ""}`).join("|");
   useEffect(() => {
-    if (!projectFolders) {
+    // Separate grouping with no overrides is one folder per project, which needs no catalog.
+    if (!projectFolders || (projectGrouping === "separate" && overridesKey === "[]")) {
       setGroupingCatalog(null);
       return;
     }
