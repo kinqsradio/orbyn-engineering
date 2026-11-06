@@ -1,4 +1,5 @@
 import type { EngineUsage, ModelUsage } from "../../api/types";
+import type { TokenCosts } from "../../generated/TokenCosts";
 
 export type UsageMetric = "cost" | "tokens" | "limits";
 export const USAGE_PERIODS = [
@@ -27,6 +28,48 @@ export interface EngineTotals {
   daily: Map<string, number>;
 }
 
+export const TIER_LABELS: Record<string, string> = {
+  standard: "Standard",
+  fast: "Fast",
+  priority: "Priority",
+  batch: "Batch",
+  flex: "Flex",
+  other: "Other",
+};
+
+export interface TierTotal {
+  tier: string;
+  tokens: number;
+  /** Null when no model in this tier has a price for it. */
+  cost: number | null;
+  unpricedTokens: number;
+}
+
+const zeroCosts = (): TokenCosts => ({ input: 0, output: 0, cache_read: 0, cache_write: 0 });
+
+/** Sums the priced part by token type and the tiers history records. */
+export function costBreakdown(models: readonly ModelUsage[]): { split: TokenCosts | null; tiers: TierTotal[] } {
+  let split: TokenCosts | null = null;
+  const tiers = new Map<string, TierTotal>();
+  for (const model of models) {
+    if (model.cost_split) {
+      split ??= zeroCosts();
+      split.input += model.cost_split.input;
+      split.output += model.cost_split.output;
+      split.cache_read += model.cost_split.cache_read;
+      split.cache_write += model.cost_split.cache_write;
+    }
+    for (const tier of model.tiers) {
+      const known = tiers.get(tier.tier) ?? { tier: tier.tier, tokens: 0, cost: null, unpricedTokens: 0 };
+      known.tokens += tier.tokens;
+      if (tier.estimated_cost === null) known.unpricedTokens += tier.tokens;
+      else known.cost = (known.cost ?? 0) + tier.estimated_cost;
+      tiers.set(tier.tier, known);
+    }
+  }
+  return { split, tiers: [...tiers.values()].sort((a, b) => b.tokens - a.tokens) };
+}
+
 export interface UsageTotals {
   engines: EngineTotals[];
   tokens: number;
@@ -38,6 +81,9 @@ export interface UsageTotals {
   cacheWrites: number;
   /** Every day in the period, oldest first. */
   dates: string[];
+  /** The priced part of the cost by token type, or null when nothing is priced. */
+  costSplit: TokenCosts | null;
+  tiers: TierTotal[];
 }
 
 export function periodDates(days: number, today: Date): string[] {
@@ -61,7 +107,7 @@ export function usageTotals(reports: readonly EngineUsage[], days: number, today
         engine: report.engine,
         tokens: models.reduce((sum, model) => sum + model.tokens, 0),
         cost: priced.length > 0 ? priced.reduce((sum, model) => sum + (model.estimated_cost ?? 0), 0) : null,
-        unpriced: priced.length < models.length,
+        unpriced: priced.length < models.length || models.some((model) => model.unpriced_tokens > 0),
         models,
         daily: new Map(report.days.map((day) => [day.date, day.tokens])),
       };
@@ -70,6 +116,7 @@ export function usageTotals(reports: readonly EngineUsage[], days: number, today
     .sort((a, b) => b.tokens - a.tokens);
   const models = engines.flatMap((engine) => engine.models);
   const costs = engines.flatMap((engine) => (engine.cost === null ? [] : [engine.cost]));
+  const breakdown = costBreakdown(models);
   return {
     engines,
     tokens: engines.reduce((sum, engine) => sum + engine.tokens, 0),
@@ -80,6 +127,8 @@ export function usageTotals(reports: readonly EngineUsage[], days: number, today
     cached: models.reduce((sum, model) => sum + model.cache_read_tokens, 0),
     cacheWrites: models.reduce((sum, model) => sum + model.cache_write_tokens, 0),
     dates: periodDates(days, today),
+    costSplit: breakdown.split,
+    tiers: breakdown.tiers,
   };
 }
 

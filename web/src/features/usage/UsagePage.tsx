@@ -17,6 +17,7 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
+  TIER_LABELS,
   USAGE_PERIODS,
   usageTotals,
   type UsageDays,
@@ -238,6 +239,35 @@ function UsageView({
           <Stat label="Output" value={formatTokens(totals.output)} />
         </div>
       </section>
+      {metric === "cost" ? (
+        <section className="usage-section" aria-label="Cost split">
+          <h2>Cost by token type</h2>
+          {totals.costSplit ? (
+            <div className="usage-stats">
+              <Stat label="Uncached input" value={formatUsd(totals.costSplit.input)} />
+              <Stat label="Output" value={formatUsd(totals.costSplit.output)} />
+              <Stat label="Cached input" value={formatUsd(totals.costSplit.cache_read)} />
+              <Stat label="Cache write" value={formatUsd(totals.costSplit.cache_write)} />
+            </div>
+          ) : (
+            <p className="usage-note">No model in this period has a price.</p>
+          )}
+          <h2>Cost by tier</h2>
+          <div className="usage-stats">
+            {totals.tiers.map((tier) => (
+              <Stat
+                key={tier.tier}
+                label={`${TIER_LABELS[tier.tier] ?? tier.tier} · ${formatTokens(tier.tokens)} tokens`}
+                value={
+                  tier.cost === null
+                    ? "Unpriced"
+                    : `${formatUsd(tier.cost)}${tier.unpricedTokens > 0 ? ` + ${formatTokens(tier.unpricedTokens)} unpriced` : ""}`
+                }
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section className="usage-section">
         <div className="usage-section-head">
           <h2>Breakdown</h2>
@@ -317,10 +347,14 @@ const RATES = [
   { key: "cache_write", label: "Cache write" },
 ] as const;
 
-/** A model's rates per million tokens, or another model it counts as. */
+const PRICE_TIERS = ["standard", "fast", "priority", "batch", "flex", "other"] as const;
+const sameTier = (tier: string | undefined, wanted: string) => (tier ?? "standard") === wanted;
+
+/** A model's rates per million tokens for one tier, or another model it counts as. */
 function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(): void; onSaved(): void }) {
   const settings = useAsync("usage-settings", (signal) => api.settings(signal));
-  const current = settings.data?.model_prices?.find((price) => price.model === model);
+  const [tier, setTier] = useState<string>("standard");
+  const current = settings.data?.model_prices?.find((price) => price.model === model && sameTier(price.tier, tier));
   const alias = settings.data?.model_aliases?.find((entry) => entry.model === model);
   const [rates, setRates] = useState<Record<string, string>>({});
   const [countsAs, setCountsAs] = useState<string | null>(null);
@@ -338,9 +372,16 @@ function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(
       await api.putSettings({
         ...settings.data,
         model_prices: [
-          ...(settings.data.model_prices ?? []).filter((price) => price.model !== model),
+          ...(settings.data.model_prices ?? []).filter((price) => price.model !== model || !sameTier(price.tier, tier)),
           ...(priced
-            ? [{ model, input: number("input"), output: number("output"), cache_read: number("cache_read"), cache_write: number("cache_write") }]
+            ? [{
+                model,
+                input: number("input"),
+                output: number("output"),
+                cache_read: number("cache_read"),
+                cache_write: number("cache_write"),
+                ...(tier === "standard" ? {} : { tier }),
+              }]
             : []),
         ],
         model_aliases: [
@@ -371,7 +412,25 @@ function ModelPriceDialog({ model, onClose, onSaved }: { model: string; onClose(
         </>
       }
     >
-      <p>Dollars per million tokens.</p>
+      <p>Dollars per million tokens. Another tier never borrows the standard rate.</p>
+      <Field label="Tier">
+        {(props) => (
+          <select
+            {...props}
+            value={tier}
+            onChange={(event) => {
+              setTier(event.target.value);
+              setRates({});
+            }}
+          >
+            {PRICE_TIERS.map((entry) => (
+              <option key={entry} value={entry}>
+                {TIER_LABELS[entry]}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
       {RATES.map((rate) => (
         <Field key={rate.key} label={rate.label}>
           {(props) => (

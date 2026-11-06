@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineUsage } from "../../api/types";
-import { axisTicks, formatTokens, periodDates, usageTotals } from "./usageModel";
+import { axisTicks, costBreakdown, formatTokens, periodDates, usageTotals } from "./usageModel";
 
 const engine = (over: Partial<EngineUsage>): EngineUsage => ({
   engine: "codex",
@@ -19,6 +19,9 @@ const model = (name: string, tokens: number, cost: number | null) => ({
   cache_read_tokens: 0,
   cache_write_tokens: 0,
   estimated_cost: cost,
+  cost_split: cost === null ? null : { input: cost, output: 0, cache_read: 0, cache_write: 0 },
+  tiers: [{ tier: "standard", tokens, estimated_cost: cost }],
+  unpriced_tokens: cost === null ? tokens : 0,
 });
 
 describe("usage totals", () => {
@@ -60,5 +63,28 @@ describe("usage formatting", () => {
   it("steps the axis past the largest value", () => {
     expect(axisTicks(1_800)).toEqual([0, 500, 1000, 1500, 2000]);
     expect(axisTicks(0)).toEqual([0]);
+  });
+});
+
+describe("cost split", () => {
+  it("adds token-type costs and keeps an unpriced tier unknown", () => {
+    const fast = {
+      ...model("f", 30, 6),
+      cost_split: { input: 4, output: 2, cache_read: 0, cache_write: 0 },
+      tiers: [
+        { tier: "standard", tokens: 10, estimated_cost: 1 },
+        { tier: "fast", tokens: 20, estimated_cost: 5 },
+        { tier: "priority", tokens: 7, estimated_cost: null },
+      ],
+      unpriced_tokens: 7,
+    };
+    const { split, tiers } = costBreakdown([model("a", 100, 2), fast]);
+    expect(split).toEqual({ input: 6, output: 2, cache_read: 0, cache_write: 0 });
+    expect(tiers).toEqual([
+      { tier: "standard", tokens: 110, cost: 3, unpricedTokens: 0 },
+      { tier: "fast", tokens: 20, cost: 5, unpricedTokens: 0 },
+      { tier: "priority", tokens: 7, cost: null, unpricedTokens: 7 },
+    ]);
+    expect(costBreakdown([model("b", 5, null)]).split).toBeNull();
   });
 });

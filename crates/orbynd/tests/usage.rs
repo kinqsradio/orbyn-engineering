@@ -218,6 +218,94 @@ async fn usage_comes_from_history_alone_and_never_from_credentials() {
     assert_eq!(priced["engines"][0]["models"][0]["estimated_cost"], 10.0);
 }
 
+/// One Claude history with a standard and a fast message, through the real service.
+async fn history_service(dir: &TempDir) -> support::Service {
+    let claude = dir.path().join("claude-home");
+    write(
+        claude.join("projects/p/s.jsonl"),
+        &[
+            r#"{"timestamp":"2026-10-30T01:00:00Z","message":{"id":"a","model":"opus","usage":{"input_tokens":1000000,"output_tokens":1000000,"cache_read_input_tokens":2000000,"speed":"standard","service_tier":"standard"}}}"#,
+            r#"{"timestamp":"2026-10-31T01:00:00Z","message":{"id":"b","model":"opus","usage":{"input_tokens":1000000,"speed":"fast","service_tier":"standard"}}}"#,
+            r#"{"timestamp":"2026-10-31T02:00:00Z","message":{"id":"c","model":"opus","usage":{"input_tokens":500000,"service_tier":"priority"}}}"#,
+        ]
+        .join("\n"),
+    );
+    let options = Options {
+        env: vec![
+            (
+                "CLAUDE_CONFIG_DIR".into(),
+                claude.to_string_lossy().into_owned(),
+            ),
+            (
+                "CODEX_HOME".into(),
+                dir.path().join("codex-home").to_string_lossy().into_owned(),
+            ),
+        ],
+        ..Options::default()
+    };
+    setup(dir, options, "claude").await.0
+}
+
+async fn put_prices(service: &support::Service, prices: Value) {
+    let mut settings = service.json("/api/settings").await;
+    settings["model_prices"] = prices;
+    let response = service
+        .client
+        .put(format!("{}/api/settings", service.url))
+        .bearer_auth(&service.token)
+        .json(&settings)
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success(), "{}", response.status());
+}
+
+fn claude_of(report: &Value) -> Value {
+    report["engines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["engine"] == "claude")
+        .unwrap()
+        .clone()
+}
+
+#[tokio::test]
+async fn cost_splits_by_token_type_and_tier_and_a_tier_never_borrows_the_standard_rate() {
+    let dir = TempDir::new();
+    let service = history_service(&dir).await;
+    put_prices(
+        &service,
+        json!([
+            { "model": "opus", "input": 1.0, "output": 10.0, "cache_read": 0.5, "cache_write": 0.0 },
+            { "model": "opus", "input": 6.0, "output": 60.0, "cache_read": 3.0, "cache_write": 0.0, "tier": "fast" }
+        ]),
+    )
+    .await;
+    let model = claude_of(&service.json("/api/usage").await)["models"][0].clone();
+    assert_eq!(model["model"], "opus");
+    // Standard: 1 + 10 + 1; fast: 6. Priority has no rate of its own.
+    assert_eq!(model["estimated_cost"], 18.0);
+    assert_eq!(
+        model["cost_split"],
+        json!({ "input": 7.0, "output": 10.0, "cache_read": 1.0, "cache_write": 0.0 })
+    );
+    assert_eq!(model["unpriced_tokens"], 500_000);
+    let tier = |name: &str| {
+        model["tiers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tier| tier["tier"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(tier("standard")["tokens"], 4_000_000);
+    assert_eq!(tier("fast")["estimated_cost"], 6.0);
+    assert!(tier("priority")["estimated_cost"].is_null());
+    service.stop().await;
+}
+
 #[tokio::test]
 async fn limits_come_from_the_engine_and_only_where_it_reports_them() {
     let dir = TempDir::new();

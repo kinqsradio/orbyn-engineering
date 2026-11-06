@@ -353,7 +353,10 @@ under `~/.claude` (or `CLAUDE_CONFIG_DIR`) and `sessions/**/*.jsonl` under `~/.c
 credential file. Claude rewrites an entry as it streams, so each message counts once.
 Codex repeats its running total, so an unchanged total counts once. Costs come from
 configured `model_prices`, after `model_aliases`; a model with no price has an unknown
-cost and is never guessed. Unchanged files are served from memory. The Usage page keeps
+cost and is never guessed. History is kept by day, model and service tier (Claude's
+`speed`/`service_tier`, Codex's turn `service_tier`; unknown names are `other`). A
+price applies to one tier, absent meaning standard, and another tier never borrows the
+standard rate, so its tokens stay unpriced. Each estimate is also split by token type. Unchanged files are served from memory. The Usage page keeps
 the same period's figures and chart during an explicit local refresh, dimming them
 after 150 ms while the scan is pending. A failed refresh keeps those figures and
 offers Retry. Changing the period clears them, and an earlier response cannot

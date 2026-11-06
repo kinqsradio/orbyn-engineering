@@ -17,7 +17,8 @@ function report(tokens: number, model = "local-model"): UsageReport {
     host_id: "local", scanned_at: "2026-11-05T00:00:00Z",
     engines: [{ engine: "claude", status: "scanned", files_scanned: 1, files_skipped: 0,
       models: [{ model, input_tokens: tokens, output_tokens: 0, cache_read_tokens: 0,
-        cache_write_tokens: 0, estimated_cost: null }], days: [] }],
+        cache_write_tokens: 0, estimated_cost: null, cost_split: null,
+        tiers: [{ tier: "standard", tokens, estimated_cost: null }], unpriced_tokens: tokens }], days: [] }],
   };
 }
 
@@ -123,4 +124,27 @@ it("keeps provider selection when the same-period report refreshes", async () =>
   await waitFor(() => expect(row()).toHaveTextContent("202"));
   expect(screen.queryByRole("row", { name: /second-model/ })).toBeNull();
   expect(screen.getByRole("button", { name: "claude" })).toBeVisible();
+});
+
+it("splits cost by token type and tier and keeps an unpriced tier unknown", async () => {
+  const priced = report(300);
+  priced.engines[0]!.models[0] = {
+    ...priced.engines[0]!.models[0]!, estimated_cost: 18,
+    cost_split: { input: 7, output: 10, cache_read: 1, cache_write: 0 },
+    tiers: [
+      { tier: "standard", tokens: 200, estimated_cost: 12 },
+      { tier: "fast", tokens: 50, estimated_cost: 6 },
+      { tier: "priority", tokens: 50, estimated_cost: null },
+    ],
+    unpriced_tokens: 50,
+  };
+  vi.mocked(api.usage).mockResolvedValue(priced);
+  render(<UsagePage onClose={() => undefined} />);
+  await screen.findByRole("row", { name: /local-model/ });
+  await userEvent.click(screen.getByRole("radio", { name: "Cost" }));
+  const split = screen.getByRole("region", { name: "Cost split" });
+  expect(split).toHaveTextContent("Output$10.00");
+  expect(split).toHaveTextContent("Fast · 50 tokens$6.00");
+  expect(split).toHaveTextContent("Priority · 50 tokensUnpriced");
+  expect(split).toHaveTextContent("Standard · 200 tokens$12.00");
 });
