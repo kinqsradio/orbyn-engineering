@@ -332,6 +332,16 @@
   color: var(--color-textSoft);
   font-size: var(--text-small);
 }
+/* An installer's latest line: one line, cut short rather than wrapping. */
+.update-progress {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
 .facts {
   display: flex;
   flex-wrap: wrap;

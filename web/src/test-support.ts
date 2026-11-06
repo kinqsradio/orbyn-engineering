@@ -10,6 +10,17 @@ export function installMockFetch(options: { stepMs?: number } = {}): MockApi {
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
+      if (input.startsWith("/api/engines/update-events")) {
+        // No engine update runs in the mock, so the stream stays open and quiet.
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener("abort", () =>
+              controller.error(new DOMException("Aborted", "AbortError")),
+            );
+          },
+        });
+        return new Response(body, { status: 200 });
+      }
       const events = /^\/api\/threads\/([^/?]+)\/events/.exec(input);
       if (events) {
         const id = decodeURIComponent(events[1] ?? "");
