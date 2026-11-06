@@ -1019,6 +1019,7 @@ modules, direct modules only, or no modules, respectively. Earlier `top_level` a
 settings or project files; UI edits use the canonical values.
 A new draft waits for the selected checkout's effective mode; explicit checkout
 choices and reused worktrees win, and late responses cannot change another project.
+A folder outside Git shows "This folder" and offers no checkout choice.
 A new worktree without an entered purpose gets a unique prompt-derived purpose. `auto_pull` fast-forwards
 a clean checkout on the remote's default branch every 30 minutes.
 

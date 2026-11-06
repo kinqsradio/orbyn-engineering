@@ -489,16 +489,24 @@ export function DraftView({ projectId }: { projectId: string | null }) {
                     <div>
                       <dt className="sr-only">Checkout</dt>
                       <dd>
-                        <button
-                          ref={checkoutButton}
-                          type="button"
-                          className="context-action"
-                          aria-haspopup="menu"
-                          onClick={(event) => open("checkout", event.currentTarget)}
-                        >
-                          <Folder size={12} aria-hidden />
-                          {worktree === null ? "Current checkout" : worktree === reused ? "This worktree" : "New worktree"}
-                        </button>
+                        {project.is_git ? (
+                          <button
+                            ref={checkoutButton}
+                            type="button"
+                            className="context-action"
+                            aria-haspopup="menu"
+                            onClick={(event) => open("checkout", event.currentTarget)}
+                          >
+                            <Folder size={12} aria-hidden />
+                            {worktree === null ? "Current checkout" : worktree === reused ? "This worktree" : "New worktree"}
+                          </button>
+                        ) : (
+                          // Worktrees need Git, so a plain folder offers no choice.
+                          <span title="Worktrees need a Git repository">
+                            <Folder size={12} aria-hidden />
+                            This folder
+                          </span>
+                        )}
                       </dd>
                     </div>
                     {worktree === null && branch ? (
