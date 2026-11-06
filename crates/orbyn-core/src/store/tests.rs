@@ -1221,10 +1221,11 @@ fn only_an_upgraded_database_reports_its_upgrade() {
         "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
     )
     .unwrap();
-    for (version, sql) in super::migrations::MIGRATIONS
-        .iter()
-        .filter(|(version, _)| *version <= 18)
-    {
+    // Every migration but the newest, so this never goes stale as migrations are added.
+    let (applied, _) =
+        super::migrations::MIGRATIONS.split_at(super::migrations::MIGRATIONS.len() - 1);
+    let previous = applied.last().unwrap().0;
+    for (version, sql) in applied {
         conn.execute_batch(sql).unwrap();
         conn.execute(
             "INSERT INTO schema_migrations VALUES (?1, 'fixture')",
@@ -1238,7 +1239,7 @@ fn only_an_upgraded_database_reports_its_upgrade() {
     assert_eq!(
         store.upgrade(),
         Some(orbyn_contracts::DatabaseUpgrade {
-            from: 18,
+            from: previous,
             to: latest,
         })
     );
