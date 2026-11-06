@@ -26,7 +26,16 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (22, PROJECT_IMAGE_HISTORY),
     (23, QUESTION_ATTACHMENTS),
     (24, PULL_GUIDES),
+    (25, RUN_ENGINE_TURNS),
 ];
+
+// The engine session and turn a run spoke in, so a rewind can ask the engine to
+// drop that turn and everything after it from the same session. Nullable: a run
+// written before this, or by an engine without turn ids, simply cannot.
+const RUN_ENGINE_TURNS: &str = r#"
+ALTER TABLE runs ADD COLUMN engine_session TEXT;
+ALTER TABLE runs ADD COLUMN engine_turn TEXT;
+"#;
 
 // A review guide is this service's own, per project and pull request number, like
 // viewed-file marks. It never reaches the forge. The writer thread may be deleted.

@@ -179,6 +179,8 @@ pub enum EngineEvent {
     },
     /// The engine's resumable session id.
     Session(String),
+    /// The engine's own id for the turn this run started, for a native revert.
+    Turn(String),
     Permission(PermissionRequest),
     /// A raw item for the inspector.
     Item(ItemRecord),
@@ -417,6 +419,20 @@ pub trait EngineDriver: Send + Sync {
     async fn feedback(&self, _request: &EngineFeedbackRequest) -> Result<EngineFeedbackReceipt> {
         Err(crate::error::CoreError::Unsupported(
             "This engine has no feedback route.".into(),
+        ))
+    }
+
+    /// Drops `before_turn` and every later turn from `session`'s own history, for a
+    /// rewind that keeps the session. Files are not touched. The default says this
+    /// engine has no native rollback, and the rewind leaves a handoff instead.
+    async fn revert_session(
+        &self,
+        _cwd: &std::path::Path,
+        _session: &str,
+        _before_turn: &str,
+    ) -> Result<()> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine has no native rollback.".into(),
         ))
     }
 

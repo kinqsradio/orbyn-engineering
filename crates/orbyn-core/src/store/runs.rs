@@ -145,8 +145,53 @@ impl Store {
                    AND engine = (SELECT engine FROM runs WHERE id = ?3)",
                 params![guard.thread_id, session, run_id],
             )?;
+            // A turn belongs to the session it was taken in.
+            tx.execute(
+                "UPDATE runs SET engine_turn = CASE WHEN engine_session IS ?2
+                     THEN engine_turn ELSE NULL END, engine_session = ?2 WHERE id = ?1",
+                params![run_id, session],
+            )?;
             Ok(())
         })
+    }
+
+    /// The engine's own id for the turn this run started. The first one stays.
+    pub fn set_engine_turn(&self, run_id: &str, turn: &str) -> Result<()> {
+        self.commit(|tx, _| {
+            guard_active(tx, &self.epoch, run_id)?;
+            tx.execute(
+                "UPDATE runs SET engine_turn = ?2 WHERE id = ?1 AND engine_turn IS NULL",
+                params![run_id, turn],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// The session and turn to revert natively to undo `run` and every later run:
+    /// only while the thread still speaks in the session that run used, on the
+    /// same engine, with no handoff waiting, and when an earlier run spoke in that
+    /// session too. A session's first run may have carried a handoff, which a
+    /// revert to nothing would lose.
+    pub(crate) fn native_revert_point(
+        &self,
+        thread_id: &str,
+        run_id: &str,
+    ) -> Result<Option<(String, String)>> {
+        Ok(self
+            .reader()
+            .query_row(
+                "SELECT r.engine_session, r.engine_turn FROM runs r
+                   JOIN threads t ON t.id = r.thread_id
+                  WHERE r.id = ?2 AND r.thread_id = ?1 AND t.engine = r.engine
+                    AND t.handoff IS NULL AND r.engine_turn IS NOT NULL
+                    AND t.engine_session = r.engine_session
+                    AND EXISTS (SELECT 1 FROM runs p WHERE p.thread_id = r.thread_id
+                        AND p.engine_session = r.engine_session
+                        AND p.rowid < r.rowid)",
+                params![thread_id, run_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?)
     }
 
     /// Keeps an engine item for the inspector. Later reports replace earlier ones.

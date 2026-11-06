@@ -1246,3 +1246,54 @@ fn only_an_upgraded_database_reports_its_upgrade() {
     // The next start finds nothing to do.
     assert!(Store::open(&path, "c").unwrap().upgrade().is_none());
 }
+
+#[test]
+fn a_native_revert_needs_the_runs_own_turn_in_the_threads_session() {
+    let f = fixture();
+    let first = running(&f.store, &f.thread);
+    f.store.set_engine_session(&first, "session-1").unwrap();
+    f.store.set_engine_turn(&first, "turn-a").unwrap();
+    f.store
+        .finish_run(&first, RunState::Completed, None)
+        .unwrap();
+    let second = running(&f.store, &f.thread);
+    f.store.set_engine_session(&second, "session-1").unwrap();
+    assert!(
+        f.store
+            .native_revert_point(&f.thread, &second)
+            .unwrap()
+            .is_none(),
+        "no turn yet"
+    );
+    f.store.set_engine_turn(&second, "turn-b").unwrap();
+    f.store.set_engine_turn(&second, "turn-c").unwrap();
+    f.store
+        .finish_run(&second, RunState::Completed, None)
+        .unwrap();
+    assert_eq!(
+        f.store.native_revert_point(&f.thread, &second).unwrap(),
+        Some(("session-1".to_owned(), "turn-b".to_owned())),
+        "the first turn stays"
+    );
+    // A session's first run may have carried a handoff; reverting it would lose that.
+    assert!(
+        f.store
+            .native_revert_point(&f.thread, &first)
+            .unwrap()
+            .is_none()
+    );
+    f.store
+        .writer()
+        .execute(
+            "UPDATE threads SET engine_session = 'session-2' WHERE id = ?1",
+            [&f.thread],
+        )
+        .unwrap();
+    assert!(
+        f.store
+            .native_revert_point(&f.thread, &second)
+            .unwrap()
+            .is_none(),
+        "the thread moved to another session"
+    );
+}

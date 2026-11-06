@@ -247,6 +247,26 @@ pub struct RunManager {
     app_notes: Mutex<HashMap<String, crate::mcp_apps::AppNote>>,
     /// A taken note's timeline record, per run, written once the run is active.
     notes_sent: Mutex<HashMap<String, AgUiEvent>>,
+    /// Threads being rewound. An engine rollback rewrites the session a run would
+    /// resume, so no run is admitted until the rewind ends.
+    rewinding: Mutex<HashSet<String>>,
+}
+
+/// Keeps runs off a thread while it is rewound; dropping it lets them in again.
+pub(crate) struct RewindHold {
+    runs: Arc<RunManager>,
+    thread_id: String,
+}
+
+impl Drop for RewindHold {
+    fn drop(&mut self) {
+        self.runs
+            .rewinding
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.thread_id);
+        self.runs.drain(&self.thread_id);
+    }
 }
 
 /// How a run is asked to end. `cancel` lets the engine stop itself; `force` ends it
@@ -305,6 +325,7 @@ impl RunManager {
             limit_signals: Mutex::new(HashMap::new()),
             app_notes: Mutex::new(HashMap::new()),
             notes_sent: Mutex::new(HashMap::new()),
+            rewinding: Mutex::new(HashSet::new()),
         }
     }
 
@@ -579,7 +600,36 @@ impl RunManager {
         if crate::console::console_alive(&self.terminals, thread_id) {
             return Err(CoreError::ConsoleOpen);
         }
+        if self
+            .rewinding
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(thread_id)
+        {
+            return Err(CoreError::ThreadBusy);
+        }
         Ok(())
+    }
+
+    /// Holds a thread for a rewind. Taken under the admission lock, so a run
+    /// cannot start between the idle check and the hold.
+    pub(crate) fn hold_for_rewind(self: &Arc<Self>, thread_id: &str) -> Result<RewindHold> {
+        self.workspace.admit_with(|| {
+            if self.store.thread(thread_id)?.active_run.is_some() {
+                return Err(CoreError::ThreadBusy);
+            }
+            let mut rewinding = self
+                .rewinding
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !rewinding.insert(thread_id.to_owned()) {
+                return Err(CoreError::ThreadBusy);
+            }
+            Ok(RewindHold {
+                runs: self.clone(),
+                thread_id: thread_id.to_owned(),
+            })
+        })
     }
 
     /// Starts the next queued message if the thread is free. A failure leaves
@@ -1746,6 +1796,11 @@ impl RunManager {
                         EngineEvent::Session(session) => {
                             if let Err(error) = self.store.set_engine_session(&scope.run_id, &session) {
                                 tracing::warn!(%error, "could not store the engine session");
+                            }
+                        }
+                        EngineEvent::Turn(turn) => {
+                            if let Err(error) = self.store.set_engine_turn(&scope.run_id, &turn) {
+                                tracing::debug!(%error, "could not keep the engine turn");
                             }
                         }
                         EngineEvent::Item(item) => {
