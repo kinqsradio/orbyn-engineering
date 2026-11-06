@@ -139,6 +139,10 @@ export function QuestionPanel({ threadId, waiting }: { threadId: string; waiting
 
   return (
     <section className="question-panel" aria-label="Question from the agent">
+      <p className="ask-label">
+        <span className="status-dot" aria-hidden />
+        Needs you
+      </p>
       {open.questions.map((question) => (
         <Fragment key={question.id}>
         <QuestionRow

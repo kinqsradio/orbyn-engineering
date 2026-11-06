@@ -59,7 +59,13 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
 
   const decided = approval.state === "pending" ? null : outcome[approval.state];
   return (
-    <article className="approval" aria-label={approval.summary}>
+    <article className="approval" data-pending={decided ? undefined : ""} aria-label={approval.summary}>
+      {decided ? null : (
+        <p className="ask-label">
+          <span className="status-dot" aria-hidden />
+          Needs you
+        </p>
+      )}
       <p className="approval-target">
         <Icon size={14} aria-hidden />
         <code>{touches[0] ?? approval.summary}</code>
@@ -76,9 +82,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         </p>
       ) : (
         <div className="approval-line">
-          <span className="status-dot tone-warn" aria-hidden />
-          <span className="tone-warn">Waiting for approval</span>
-          <span aria-hidden>·</span>
+          <span className="approval-wait">Waiting for approval</span>
           <button type="button" disabled={busy} onClick={() => void decide(false, false)}>
             Decline
           </button>
