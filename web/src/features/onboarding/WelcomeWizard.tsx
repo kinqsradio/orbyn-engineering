@@ -26,7 +26,8 @@ const OVERVIEW = [
 ] as const;
 
 function Overview() {
-  const unavailable = useWorkspace((state) => state.managed.data?.configured === false);
+  // Only a confirmed library earns the claim; unknown or failed shows nothing.
+  const ready = useWorkspace((state) => state.managed.data?.configured === true);
   return (
     <>
       <ol className="welcome-steps">
@@ -38,7 +39,7 @@ function Overview() {
           </li>
         ))}
       </ol>
-      {unavailable ? null : (
+      {!ready ? null : (
         <p className="welcome-note">
           <Check size={14} aria-hidden />
           Skills are built in and ready
@@ -143,7 +144,7 @@ function AccessStep() {
 const STEPS = [
   { title: "Welcome to Orbyn Engineering", lede: "Agents that work in your projects while you stay in control. Ready in a minute." },
   { title: "Connect an agent", lede: "Pick at least one. You can add more in Settings · Providers. Signing in happens in the agent's own CLI; Orbyn never sees the password." },
-  { title: "Add a project", lede: "Add any folder in place; nothing is copied or installed into it." },
+  { title: "Add a project", lede: "Add any folder in place; adding it copies nothing." },
   { title: "Choose how agents ask", lede: "Each thread can change it from its composer." },
 ] as const;
 

@@ -93,10 +93,10 @@
   place-items: center;
   width: 20px;
   height: 20px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-chip);
   color: var(--color-textSoft);
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 500;
 }
 .welcome-agent-name {
@@ -315,7 +315,7 @@
   height: 32px;
   padding: 0 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--color-chip);
   color: var(--color-textSoft);
   font-size: var(--text-nav);
