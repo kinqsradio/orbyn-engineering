@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { Viewer } from "./FilesPanel";
@@ -6,6 +6,9 @@ import { useUi } from "../../state/ui";
 import { buildZipArchive } from "./zipArchive.test-support";
 import { formatBytes } from "./zipArchive";
 import { buildDocx, buildXlsx, docxParagraph, stubWorker, worksheet } from "./office.test-support";
+import { useComposerChips } from "../../state/composerChips";
+import { FileComments } from "./FileComments";
+import { useWorkspace } from "../../state/workspace";
 
 /** The toast the last action raised. */
 const lastToast = () => useUi.getState().toasts.at(-1)?.text;
@@ -15,8 +18,67 @@ function setClipboard(writeText: (text: string) => Promise<void>) {
 }
 
 afterEach(() => {
+  useComposerChips.setState({ chips: {} });
   vi.restoreAllMocks();
   Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+});
+
+it("binds annotation source to cwd and waits for the new checkout's delayed read", async () => {
+  useWorkspace.setState({ threads: { t: { id: "t", cwd: "/old" } as never } });
+  let finish!: (value: Response) => void;
+  const second = new Promise<Response>((done) => { finish = done; });
+  let reads = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    reads += 1;
+    return reads === 1 ? new Response(JSON.stringify({ path: "a.txt", revision: "old", content: "OLD_CHECKOUT", size: 12, binary: false, truncated: false })) : second;
+  }));
+  render(<Viewer threadId="t" path="a.txt" line={null} onBack={() => undefined} />);
+  await screen.findByRole("button", { name: "Comment on line 1" });
+  act(() => useWorkspace.setState({ threads: { t: { id: "t", cwd: "/new" } as never } }));
+  await waitFor(() => expect(reads).toBe(2));
+  expect(screen.queryByRole("button", { name: "Comment on line 1" })).not.toBeInTheDocument();
+  await act(async () => finish(new Response(JSON.stringify({ path: "a.txt", revision: "new", content: "NEW_CHECKOUT", size: 12, binary: false, truncated: false }))));
+  await userEvent.click(await screen.findByRole("button", { name: "Comment on line 1" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "File comment" }), "new source only");
+  await userEvent.click(screen.getByRole("button", { name: "Add comment" }));
+  expect(useComposerChips.getState().chips.t?.[0]).toMatchObject({ excerpt: "NEW_CHECKOUT", sourceCwd: "/new", sourceRevision: "new" });
+});
+
+it("captures a reversed source range as one comment and removes the paired chip", async () => {
+  render(<FileComments threadId="t" cwd="/repo" path="src/a.ts" revision="r1" text={"one\n<script>\nthree"} revealedLine={null} />);
+  await userEvent.click(screen.getByRole("button", { name: "Comment on line 3" }));
+  fireEvent.click(screen.getByRole("button", { name: "Comment on line 1" }), { shiftKey: true });
+  await userEvent.type(screen.getByRole("textbox", { name: "File comment" }), "check this");
+  await userEvent.click(screen.getByRole("button", { name: "Add comment" }));
+  expect(useComposerChips.getState().chips.t).toEqual([expect.objectContaining({
+    kind: "review", path: "src/a.ts", line: 1, endLine: 3, comment: "check this",
+    excerpt: "one\n<script>\nthree", sourceRevision: "r1", sourceCwd: "/repo",
+  })]);
+  expect(screen.getByRole("list", { name: "File comments" })).toHaveTextContent("check this");
+  await userEvent.click(screen.getByRole("button", { name: "Remove comment" }));
+  expect(useComposerChips.getState().chips.t).toEqual([]);
+});
+
+it("scrolls to the revealed line once, not on each selection or keystroke", async () => {
+  const scroll = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scroll, configurable: true, writable: true });
+  render(<FileComments threadId="t" cwd="/repo" path="a.ts" revision="r1" text={"one\ntwo\nthree"} revealedLine={2} />);
+  expect(scroll).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole("button", { name: "Comment on line 3" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "File comment" }), "abc");
+  expect(scroll).toHaveBeenCalledTimes(1);
+});
+
+it("cancel leaves no chip and another revision never inherits stale annotation positions", async () => {
+  const view = render(<FileComments threadId="t" cwd="/repo" path="a.ts" revision="r1" text="one" revealedLine={null} />);
+  await userEvent.click(screen.getByRole("button", { name: "Comment on line 1" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "File comment" }), "draft");
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(useComposerChips.getState().chips.t).toBeUndefined();
+  act(() => useComposerChips.getState().add("t", { id: "c", kind: "review", path: "a.ts", line: 1, comment: "old", excerpt: "one", sourceRevision: "r1", sourceCwd: "/repo" }));
+  view.rerender(<FileComments key="r2" threadId="t" cwd="/repo" path="a.ts" revision="r2" text="new" revealedLine={null} />);
+  expect(screen.queryByRole("list", { name: "File comments" })).not.toBeInTheDocument();
+  expect(useComposerChips.getState().chips.t?.[0]).toMatchObject({ comment: "old", excerpt: "one" });
 });
 
 interface ServedFile {

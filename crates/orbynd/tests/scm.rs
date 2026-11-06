@@ -239,15 +239,16 @@ async fn a_failed_phase_stops_the_rest() {
 
     std::fs::write(f.checkout.join("work.txt"), "x").unwrap();
     std::fs::write(f._dir.path().join("gh-fail"), "").unwrap();
-    let (_, result) = act(
+    let (code, result) = act(
         &f,
         json!({
             "commit_message": "Work",
             "push": true,
-            "pull_request": { "title": "T" },
+            "pull_request": { "title": "T", "body": "Manual failure-path fixture" },
         }),
     )
     .await;
+    assert_eq!(code, 200);
     assert_eq!(
         phases(&result).last().unwrap(),
         &("pull_request".to_owned(), false)

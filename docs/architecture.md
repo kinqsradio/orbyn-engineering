@@ -186,6 +186,14 @@ Copying a chip writes Orbyn's JSON, an HTML form and plain prompt blocks, so a
 paste into a composer restores the chips and refetches a file whose text was not
 carried. Ordinary text, broken JSON and half-known chips never become chips.
 
+File source annotations use review chips with a captured line range, source excerpt
+and comment. The chip opens its captured details for editing or removal; neither
+action changes the file. A successful send, queue or steer consumes only chips whose
+values still match the submitted snapshot, so editing a chip with the same ID while
+the request is in flight preserves that edit. New chips and newer draft text stay.
+Review comments, like terminal context, cannot be consumed by local commands,
+compact/goal commands, side chats or approval replies that do not carry context.
+
 A terminal selection also records the one-based buffer rows it covered, so its
 chip and prompt block name those lines instead of the whole terminal. Chips count
 as part of the message, not as text beside it: the 120,000-character limit covers
@@ -427,6 +435,45 @@ run's own two versions is reported as `conflict` and left alone. An added file i
 by a restore to the start.
 
 ## Source control
+
+An explicitly confirmed Git action may leave its commit message, pull request
+title or description blank to generate that field from bounded local change
+context. Nonempty user text is kept unchanged. Opening, typing, cancelling and
+push-only actions never generate text. Every missing field is parsed and validated
+before staging, pushing or creating a pull request. Changed branch/base or working
+files, revoked project trust and an active run refuse the action after generation;
+existing phase receipts still describe any earlier completed effects. There is no
+automatic rollback of user work.
+
+Writing uses the selected thread engine and the configured text-generation model,
+or the thread's explicit model when that setting is empty. It never chooses another
+provider or guesses a smaller model. Only the guarded Claude one-shot path supports
+repository-derived text: an owned temporary folder, empty tools, strict empty MCP
+configuration, disabled hooks/cloud MCP/IDE connections and slash commands,
+`dontAsk`, and no session persistence. Rejected flags fail without a retry.
+The guarded path is a separate driver call (`write_text`); the shared one-shot used
+for thread titles keeps its original flags. Codex and unproven drivers never
+generate: blank fields keep manual behavior there (a blank pull request title falls
+back to the thread title, a blank description stays blank, a blank commit message is
+refused). With a writing engine, a typed pull request title is kept and only the
+blank description is generated. Pull request context diffs against the upstream
+remote's tracking ref (the branch's configured remote, else `origin`) when it
+exists, else the local base branch; the staleness check uses the same ref. The
+checked snapshot includes the symbolic branch name (a fixed marker on a detached
+HEAD), so switching branches at the same commit during generation is refused.
+Existing title calls retain their separate model policy and
+Codex path; this change does not qualify that path as tool-free. No credential
+configuration or MCP server list is read to implement writing. Prompts and patches
+are not saved by the generation audit, which records purpose, engine and model.
+
+The inherited `source_control_writing_style` preference selects repository
+conventions, Conventional Commits or custom instructions, and whether to follow
+change-request templates. The empty legacy object keeps repository conventions and
+templates enabled. Repository mode reads bounded recent subjects and checkout-root
+AGENTS.md; custom mode uses only the person's writing instructions. Templates come
+from a regular file in the selected base tree, never a remote fetch or a symlink.
+Oversized context, unsafe references and malformed settings fail with a manual
+path rather than silently omitting required writing context.
 
 Forge work goes through the forge's own CLI, chosen from the origin host: `gh`,
 `glab`, `az` and `tea`. Orbyn holds no forge credential and reads none, so an unknown
@@ -1148,6 +1195,13 @@ different spelling of it on a case-insensitive disk is refused too. These saves 
 user's own edits, audited, and differ from rule 4, which covers what Orbyn adds on its
 own.
 
+The source viewer offers comments on one line or a Shift-selected range. Comments
+capture at most 4,000 source characters and 20,000 comment characters, within the
+complete prompt limit. Their annotation positions belong to the displayed revision
+and checkout; a reload or edited revision never transfers those positions to new
+source. Submitted chips keep their captured context when the file changes, and
+only the ordinary send action passes that context to the engine.
+
 `GET .../files/raw` serves bytes from that same checked handle, up to 1 GiB, with one
 byte range at a time; a form it does not serve gets the whole file. A checkout holds
 code nobody here wrote, so nothing in it may run in this origin. The type comes from
@@ -1638,6 +1692,15 @@ copied, the stored size and the height. It carries an effect, so the gate asks. 
 it returns has no query; a client builds the frame URL with `?render=`. Nothing measures
 the page yet, so the height the call asks for is the height it gets, and the tool
 says so.
+
+`orbyn_pull_guide_write` stores a review guide the calling agent wrote, one per project
+and pull request number, replacing the earlier one; `orbyn_pull_guide_read` returns it
+or `null`. Like viewed-file marks, a guide is this service's own and never reaches the
+forge. The write carries an effect, so the gate asks, and it fails while the project's
+`review_guides_enabled` preference is off. Its stops are rebuilt with only their known
+fields (title, summary, files with a path and note, questions) and are bounded: 30
+stops, a stored size of 128 KiB. Neither tool checks that the number names a real pull
+request, and `head_sha` is the agent's own claim.
 
 ## Computer gateway
 

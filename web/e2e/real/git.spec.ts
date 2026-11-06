@@ -35,7 +35,9 @@ test("the Git menu commits, pushes and opens a pull request, phase by phase", as
   await page.getByRole("button", { name: "Git", exact: true }).click();
   await page.getByRole("menuitem", { name: "Commit, push and create pull request" }).click();
   const dialog = page.getByRole("dialog", { name: "Commit, push and create pull request" });
-  await expect(dialog.getByRole("button", { name: "Commit, push and create pull request" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Commit, push and create pull request" })).toBeEnabled();
+  await expect(dialog.getByLabel("Commit message")).toHaveValue("");
+  await expect(dialog.getByText(/Leave text blank to auto-generate/)).toBeVisible();
   await dialog.getByLabel("Commit message").fill("Add the change");
   await dialog.getByLabel("Pull request title").fill("Add the change");
   await dialog.getByLabel("Description").fill("Why it matters");

@@ -195,7 +195,10 @@ export function foldersOf(
       .map((id) => visible.get(id))
       .filter((project): project is Project => project !== undefined);
     if (members.length === 0) continue;
-    collected.set(group.key, { label: group.label, projects: members });
+    // A one-checkout group keeps the project ID key it has without a catalog,
+    // so its saved open state survives Separate, overrides and catalog failure.
+    const key = group.projectIds.length === 1 ? group.projectIds[0]! : group.key;
+    collected.set(key, { label: group.label, projects: members });
     for (const member of members) placed.add(member.id);
   }
   for (const project of projects) {

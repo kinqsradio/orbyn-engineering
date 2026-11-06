@@ -3,6 +3,7 @@
 
 use std::ffi::OsString;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use futures_util::stream::Stream;
@@ -18,6 +19,7 @@ use crate::util::tail;
 const MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 const STDERR_TAIL_BYTES: usize = 8 * 1024;
 const ONE_SHOT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+const ONE_SHOT_BYTES: usize = 64 * 1024;
 
 pub(crate) struct EngineProcess {
     pub child: ManagedChild,
@@ -34,6 +36,7 @@ const STDERR_DRAIN: std::time::Duration = std::time::Duration::from_millis(500);
 pub(crate) struct StderrTail {
     buffer: Arc<Mutex<String>>,
     drained: tokio::sync::watch::Sender<bool>,
+    overflowed: Arc<AtomicBool>,
 }
 
 impl Default for StderrTail {
@@ -41,6 +44,7 @@ impl Default for StderrTail {
         Self {
             buffer: Arc::default(),
             drained: tokio::sync::watch::channel(false).0,
+            overflowed: Arc::default(),
         }
     }
 }
@@ -49,11 +53,17 @@ impl StderrTail {
     fn start(self, mut stderr: impl AsyncRead + Unpin + Send + 'static) -> Self {
         let tail_buffer = self.buffer.clone();
         let drained = self.drained.clone();
+        let overflowed = self.overflowed.clone();
         tokio::spawn(async move {
             let mut chunk = [0u8; 4096];
+            let mut total = 0usize;
             while let Ok(read) = stderr.read(&mut chunk).await {
                 if read == 0 {
                     break;
+                }
+                total = total.saturating_add(read);
+                if total > ONE_SHOT_BYTES {
+                    overflowed.store(true, Ordering::Relaxed);
                 }
                 let mut buffer = tail_buffer
                     .lock()
@@ -123,32 +133,58 @@ pub(crate) fn spawn_engine_with(
     })
 }
 
-/// Runs a CLI once from a neutral folder with the prompt on stdin, so no
-/// repository config or hooks load and the prompt stays out of argv.
+/// Runs a CLI once from a fresh neutral folder with the prompt on stdin.
+/// Drivers must separately suppress user-level hooks, tools and MCP servers.
 pub(crate) async fn one_shot_cli(program: &str, args: &[&str], prompt: &str) -> Result<String> {
+    let dir = super::ProbeDir::new()?;
+    one_shot_at(program, args, prompt, dir.path(), &[]).await
+}
+
+/// The caller owns this private directory through process completion. Per-call
+/// configuration stays here, while engine login remains owned by the CLI.
+pub(crate) async fn one_shot_at(
+    program: &str,
+    args: &[&str],
+    prompt: &str,
+    cwd: &Path,
+    env: &[(&str, &str)],
+) -> Result<String> {
     let command = resolve_engine(program)?;
     let args: Vec<OsString> = args.iter().map(OsString::from).collect();
-    let mut process = spawn_engine(&command, &args, &std::env::temp_dir())?;
-    let mut stdout = process.stdout;
+    let mut process = spawn_engine_with(&command, &args, cwd, env)?;
+    let stdout = process.stdout;
     let mut stdin = process.stdin;
     let child = &mut process.child;
     let work = async {
         stdin.write_all(prompt.as_bytes()).await?;
         drop(stdin);
-        let mut output = String::new();
-        stdout.read_to_string(&mut output).await?;
+        let mut output = Vec::new();
+        stdout
+            .take((ONE_SHOT_BYTES + 1) as u64)
+            .read_to_end(&mut output)
+            .await?;
+        if output.len() > ONE_SHOT_BYTES {
+            return Err(std::io::Error::other("The engine returned too much text."));
+        }
         let status = child.wait().await?;
         Ok::<_, std::io::Error>((status, output))
     };
     let (status, output) = tokio::time::timeout(ONE_SHOT_TIMEOUT, work)
         .await
         .map_err(|_| CoreError::EngineUnavailable("The engine did not answer in time.".into()))??;
+    process.stderr.drained().await;
+    if process.stderr.overflowed.load(Ordering::Relaxed) {
+        return Err(CoreError::EngineUnavailable(
+            "The engine returned too much diagnostic output.".into(),
+        ));
+    }
     if !status.success() {
         return Err(CoreError::EngineUnavailable(
             exit_message(Some(status), &process.stderr).await,
         ));
     }
-    Ok(output)
+    String::from_utf8(output)
+        .map_err(|_| CoreError::EngineUnavailable("The engine returned invalid text.".into()))
 }
 
 pub(crate) fn lines(
@@ -176,5 +212,63 @@ pub(crate) async fn exit_message(
         format!("The engine exited with {code} before finishing.")
     } else {
         format!("The engine exited with {code}: {detail}")
+    }
+}
+
+#[cfg(test)]
+mod one_shot_tests {
+    use super::*;
+
+    // A portable executable double: the test binary itself, with one exact
+    // ignored entrypoint. It never starts a real provider or reads its config.
+    #[test]
+    #[ignore = "subprocess fixture only"]
+    fn synthetic_child() {
+        use std::io::{Read, Write};
+        let mut prompt = String::new();
+        std::io::stdin().read_to_string(&mut prompt).unwrap();
+        if prompt == "stdout-overflow" {
+            std::io::stdout()
+                .write_all(&vec![b'x'; ONE_SHOT_BYTES + 10])
+                .unwrap();
+        } else if prompt == "stderr-overflow" {
+            std::io::stderr()
+                .write_all(&vec![b'x'; ONE_SHOT_BYTES + 10])
+                .unwrap();
+        } else {
+            println!("PRIVATE_CWD={}", std::env::current_dir().unwrap().display());
+        }
+        std::process::exit(0);
+    }
+
+    #[tokio::test]
+    async fn one_shot_owns_a_fresh_cwd_and_rejects_output_overflow() {
+        let executable = std::env::current_exe().unwrap();
+        let program = executable.to_str().unwrap();
+        let args = [
+            "--exact",
+            "driver::pipes::one_shot_tests::synthetic_child",
+            "--ignored",
+            "--nocapture",
+        ];
+        let output = one_shot_cli(program, &args, "cwd").await.unwrap();
+        let cwd = output
+            .lines()
+            .find_map(|line| line.strip_prefix("PRIVATE_CWD="))
+            .unwrap();
+        assert!(
+            !Path::new(cwd).exists(),
+            "the request directory must retire with the call"
+        );
+        assert!(
+            one_shot_cli(program, &args, "stdout-overflow")
+                .await
+                .is_err()
+        );
+        assert!(
+            one_shot_cli(program, &args, "stderr-overflow")
+                .await
+                .is_err()
+        );
     }
 }

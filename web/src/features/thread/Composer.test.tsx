@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiFailure, api } from "../../api/client";
@@ -8,7 +8,7 @@ import { useThreadLogs } from "../../state/threadLogs";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Composer } from "./Composer";
-import { MAX_PROMPT_CHARS, type TerminalChip } from "./composerContext";
+import { MAX_PROMPT_CHARS, type ReviewChip, type TerminalChip } from "./composerContext";
 
 const thread: Thread = {
   id: "t1",
@@ -37,9 +37,11 @@ const terminalChip: TerminalChip = {
   lineEnd: 5,
 };
 const withTerminalChip = () => useComposerChips.setState({ chips: { t1: [terminalChip] } });
+const reviewChip: ReviewChip = { id: "review", kind: "review", path: "a.ts", line: 1, endLine: 2,
+  comment: "original comment", excerpt: "captured\nsource", sourceRevision: "r", sourceCwd: "/r" };
 
 beforeEach(() => {
-  useComposerChips.setState({ chips: {} });
+  useComposerChips.setState({ chips: {}, reviewDrafts: {} });
   useUi.setState({ drafts: {} });
   useWorkspace.setState({ approvals: { data: [], error: null, loading: false } });
 });
@@ -51,6 +53,69 @@ function setup(over: Partial<Thread> = {}) {
 }
 
 describe("Composer", () => {
+  it.each(["send", "queue", "steer"])("keeps an unsaved review detail draft after late %s success", async (mode) => {
+    let resolve!: (value: never) => void;
+    const pending = new Promise<never>((done) => { resolve = done; });
+    const start = vi.spyOn(api, "startRun").mockReturnValue(pending);
+    const enqueue = vi.spyOn(api, "enqueue").mockReturnValue(pending);
+    const steer = vi.spyOn(api, "steer").mockReturnValue(pending);
+    useComposerChips.setState({ chips: { t1: [reviewChip] } });
+    useUi.setState({ drafts: { t1: "sent" }, followUpBehavior: mode === "steer" ? "steer" : "queue" });
+    setup(mode === "send" ? {} : { active_run: { ...run, state: "running" } as Run });
+    await userEvent.type(box(), "{Enter}");
+    await waitFor(() => expect(mode === "send" ? start : mode === "queue" ? enqueue : steer).toHaveBeenCalled());
+    act(() => useComposerChips.getState().setReviewDraft("t1", { chipId: reviewChip.id, text: "unsaved edit" }));
+    await act(async () => resolve((mode === "send" ? run : mode === "steer" ? { state: "delivered" } : {}) as never));
+    expect(useComposerChips.getState().chips.t1).toEqual([reviewChip]);
+    expect(screen.getByRole("textbox", { name: "Review comment" })).toHaveValue("unsaved edit");
+    start.mockRestore(); enqueue.mockRestore(); steer.mockRestore();
+  });
+  it.each(["send", "queue", "steer"])("retains a same-ID edited review, new chips/text and another thread after late %s success", async (mode) => {
+    let resolve!: (value: never) => void;
+    const pending = new Promise<never>((done) => { resolve = done; });
+    const start = vi.spyOn(api, "startRun").mockReturnValue(pending);
+    const enqueue = vi.spyOn(api, "enqueue").mockReturnValue(pending);
+    const steer = vi.spyOn(api, "steer").mockReturnValue(pending);
+    useComposerChips.setState({ chips: { t1: [reviewChip, terminalChip], t2: [reviewChip] } });
+    useUi.setState({ drafts: { t1: "sent", t2: "other" }, followUpBehavior: mode === "steer" ? "steer" : "queue" });
+    setup(mode === "send" ? {} : { active_run: { ...run, state: "running" } as Run });
+    await userEvent.type(box(), "{Enter}");
+    await waitFor(() => expect(mode === "send" ? start : mode === "queue" ? enqueue : steer).toHaveBeenCalled());
+    act(() => {
+      useComposerChips.getState().update("t1", { ...reviewChip, comment: "edited during send" });
+      useComposerChips.getState().add("t1", { ...terminalChip, id: "new-chip" });
+      useUi.getState().setDraft("t1", "new text");
+    });
+    await act(async () => resolve((mode === "send" ? run : mode === "steer" ? { state: "delivered" } : {}) as never));
+    await waitFor(() => expect(useComposerChips.getState().chips.t1?.map((chip) => chip.id)).toEqual(["review", "new-chip"]));
+    expect(useComposerChips.getState().chips.t1?.[0]).toMatchObject({ comment: "edited during send" });
+    expect(useComposerChips.getState().chips.t2).toEqual([reviewChip]);
+    expect(useUi.getState().drafts).toMatchObject({ t1: "new text", t2: "other" });
+    start.mockRestore(); enqueue.mockRestore(); steer.mockRestore();
+  });
+
+  it.each(["/plan", "/compact", "/goal resume", "/side explain"])("keeps review context when %s cannot carry it", async (command) => {
+    const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
+    useComposerChips.setState({ chips: { t1: [reviewChip] } });
+    setup();
+    await userEvent.type(box(), `${command}{Enter}`);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Remove the review comments");
+    expect(useComposerChips.getState().chips.t1).toEqual([reviewChip]);
+    expect(box()).toHaveValue(command);
+    expect(start).not.toHaveBeenCalled();
+    start.mockRestore();
+  });
+
+  it("keeps review context after a failed send", async () => {
+    const start = vi.spyOn(api, "startRun").mockRejectedValue(new ApiFailure("offline", "offline", 503));
+    useComposerChips.setState({ chips: { t1: [reviewChip] } });
+    setup();
+    await userEvent.type(box(), "keep this{Enter}");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("offline"));
+    expect(useComposerChips.getState().chips.t1).toEqual([reviewChip]);
+    expect(box()).toHaveValue("keep this");
+    start.mockRestore();
+  });
   it("sends a terminal selection as labelled rows before the typed draft", async () => {
     const start = vi.spyOn(api, "startRun").mockResolvedValue(run);
     withTerminalChip();

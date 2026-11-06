@@ -162,7 +162,7 @@ export function Composer({
   const chips = useComposerChips((state) => state.chips[thread.id] ?? NO_CHIPS);
   const addChips = useComposerChips((state) => state.addMany);
   const removeChip = useComposerChips((state) => state.remove);
-  const clearChips = useComposerChips((state) => state.clear);
+  const consumeChips = useComposerChips((state) => state.consume);
   const log = useThreadLogs((state) => state.logs[thread.id]);
   const history = useMemo(() => promptHistory(log?.items ?? []), [log]);
   const [stopping, setStopping] = useState(false);
@@ -264,13 +264,15 @@ export function Composer({
 
   /** A terminal selection is evidence, not a command; it is never consumed by one. */
   const hasTerminalContext = chips.some((chip) => chip.kind === "terminal");
+  const hasReviewContext = chips.some((chip) => chip.kind === "review");
+  const contextName = hasTerminalContext ? "terminal context" : "review comments";
 
   /** Handles what the composer does itself; the agent never sees these. */
   const runLocal = (text: string): boolean => {
     const command = localCommand(text);
     if (!command) return false;
-    if (hasTerminalContext) {
-      setError(`Remove the terminal context before using /${command}. Your message stays here.`);
+    if (hasTerminalContext || hasReviewContext) {
+      setError(`Remove the ${contextName} before using /${command}. Your message stays here.`);
       return true;
     }
     setDraft(thread.id, "");
@@ -285,17 +287,17 @@ export function Composer({
     const typed = draft;
     const prompt = promptWithChips(draft, chips);
     const serviceCommand = /^\/(compact|goal)(?:\s|$)/.exec(typed.trim());
-    if (hasTerminalContext && serviceCommand) {
-      setError(`Remove the terminal context before using /${serviceCommand[1]}. Your message stays here.`);
+    if ((hasTerminalContext || hasReviewContext) && serviceCommand) {
+      setError(`Remove the ${contextName} before using /${serviceCommand[1]}. Your message stays here.`);
       return false;
     }
     if (runLocal(typed)) return false;
     const sideChat = side ? null : /^\/(?:side|btw)(?:\s+([\s\S]*))?$/.exec(typed.trim());
-    if (hasTerminalContext && (sideChat || pendingHere.length > 0)) {
+    if ((hasTerminalContext || hasReviewContext) && (sideChat || pendingHere.length > 0)) {
       setError(
         sideChat
-          ? "Side chats take text only. Remove the terminal context, then send again."
-          : "Remove the terminal context before replying to an approval. Your message stays here.",
+          ? `Side chats take text only. Remove the ${contextName}, then send again.`
+          : `Remove the ${contextName} before replying to an approval. Your message stays here.`,
       );
       return false;
     }
@@ -326,7 +328,7 @@ export function Composer({
         if (steered.state === "queued") useUi.getState().pushToast("This engine reads it on its next turn");
       } else if (busy) await api.enqueue(thread.id, prompt.trim(), ids);
       setAttachments([]);
-      clearChips(thread.id);
+      consumeChips(thread.id, chips);
       setRecall(null);
       // Text typed after pressing Send stays; only what was sent is removed.
       const current = useUi.getState().drafts[thread.id] ?? "";
@@ -739,7 +741,15 @@ export function Composer({
           </ul>
         ) : null}
         <ComposerChipShelf
+          threadId={thread.id}
           chips={chips}
+          onUpdate={(chip) => {
+            const state = useComposerChips.getState();
+            const next = (state.chips[thread.id] ?? []).map((current) => current.id === chip.id ? chip : current);
+            if (charactersOver(promptWithChips(useUi.getState().drafts[thread.id] ?? "", next))) return false;
+            state.update(thread.id, chip);
+            return true;
+          }}
           onRemove={(id) => removeChip(thread.id, id)}
           onCopy={(copy) =>
             void copyChips(copy).then((ok) =>

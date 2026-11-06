@@ -434,12 +434,26 @@ pub trait EngineDriver: Send + Sync {
         self.start_run(spec, events).await
     }
 
+    /// Whether repository-derived text may enter this driver's strict tool-free
+    /// one-shot path. Unsupported drivers retain manual source control text.
+    fn supports_writing(&self) -> bool {
+        false
+    }
+
     /// One prompt, one reply, no tools and no session. This spends the user's
     /// engine usage, so a caller that does so unasked needs a setting and a row in
     /// the network list.
     async fn one_shot(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
         Err(crate::error::CoreError::Unsupported(
             "This engine cannot answer a one-off request.".into(),
+        ))
+    }
+
+    /// A hardened one-shot for repository-derived text, used only when
+    /// `supports_writing` is true. Title generation keeps `one_shot`.
+    async fn write_text(&self, _prompt: &str, _model: Option<&str>) -> Result<String> {
+        Err(crate::error::CoreError::Unsupported(
+            "This engine cannot safely generate source control text. Enter text manually.".into(),
         ))
     }
 }
@@ -500,7 +514,15 @@ pub(crate) struct ProbeDir(PathBuf);
 impl ProbeDir {
     pub(crate) fn new() -> Result<Self> {
         let path = std::env::temp_dir().join(format!("orbyn-probe-{}", crate::util::new_id()));
-        std::fs::create_dir_all(&path)?;
+        let builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        let builder = {
+            use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
+            builder.mode(0o700);
+            builder
+        };
+        builder.create(&path)?;
         Ok(Self(path))
     }
 
