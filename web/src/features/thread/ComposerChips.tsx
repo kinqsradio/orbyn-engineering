@@ -79,6 +79,13 @@ export function ComposerChipShelf({
           </li>
         );
       })}
+      {chips.length > 1 ? (
+        <li className="context-chips-all">
+          <button type="button" aria-label="Copy all chips" onClick={() => onCopy(chips)}>
+            Copy all
+          </button>
+        </li>
+      ) : null}
     </ul>
       {review && draft ? <ReviewDetails key={review.id} threadId={threadId} chip={review} comment={draft.text}
         onComment={(text) => setDraft({ chipId: review.id, text })} onClose={() => setDraft(undefined)}

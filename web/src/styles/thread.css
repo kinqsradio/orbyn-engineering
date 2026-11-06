@@ -1192,6 +1192,10 @@
   background: var(--color-chip);
   font-size: var(--text-meta);
 }
+.context-chips li.context-chips-all {
+  padding: 0 4px;
+  background: transparent;
+}
 .context-chips li > span {
   min-width: 0;
   overflow: hidden;

@@ -114,7 +114,7 @@ test("diff, file, terminal and page-element chips are sent as labelled blocks", 
   await frame.click();
   await expect(chips(page).locator("li[data-kind=annotation]")).toContainText("target");
 
-  await expect(chips(page).locator("li")).toHaveCount(4);
+  await expect(chips(page).locator("li[data-kind]")).toHaveCount(4);
   const box = page.getByRole("textbox", { name: /^Message/ });
   await box.fill("Review all of it");
   const request = page.waitForRequest((sent) => sent.method() === "POST" && sent.url().endsWith(`/api/threads/${threadId}/runs`));
