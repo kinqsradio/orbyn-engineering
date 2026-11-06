@@ -129,7 +129,7 @@ test("Escape closes only the model picker inside native modal settings, includin
   try {
     for (const focus of ["search", "provider"]) {
       await page.goto(await projectSettingsUrl(service, projectId));
-      const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+      const settings = page.getByRole("region", { name: "Settings", exact: true });
       await expect(settings).toBeVisible();
       expect(await settings.evaluate((element) => element.matches(":modal"))).toBe(true);
       const trigger = modelRow(page).locator("[data-model-trigger]");

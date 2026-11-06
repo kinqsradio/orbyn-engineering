@@ -567,13 +567,14 @@ export function Shell() {
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">
-          <RouteView route={underneath} needsProject={needsProject} />
+          {route.name === "settings" ? (
+            <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
+          ) : (
+            <RouteView route={underneath} needsProject={needsProject} />
+          )}
         </main>
       )}
       {route.name === "usage" ? <UsagePage onClose={() => navigate(underneath)} /> : null}
-      {route.name === "settings" ? (
-        <SettingsPage section={route.section} onClose={() => navigate(underneath)} />
-      ) : null}
     </div>
   );
 }

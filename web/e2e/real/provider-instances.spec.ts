@@ -138,7 +138,7 @@ test("a pending accent write keeps Escape owned by the popup and restores focus 
     const hex = popup.getByRole("textbox", { name: "Custom hex accent color", exact: true });
     await hex.fill("#2468ab"); await expect.poll(() => committed).toBe(true); await expect(hex).toBeDisabled();
     await page.keyboard.press("Escape");
-    await expect(popup).toBeHidden(); await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible(); expect(mutations).toBe(1);
+    await expect(popup).toBeHidden(); await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible(); expect(mutations).toBe(1);
     release();
     const trigger = page.getByRole("button", { name: "Change accent color for Work", exact: true });
     await expect(trigger).toBeEnabled(); await expect(trigger).toBeFocused();

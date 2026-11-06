@@ -64,8 +64,8 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
   faint) with three small tools (search the list, filter by project, add project); then
   the thread list; Settings pinned at the bottom with the update, provider-update and
   undo notices above it. The selected row has the `--color-selected` fill.
-- Project folders is the default arrangement ("Project folders" in Settings › Labs keeps
-  working). A folder row shows the project badge, its name and an amber count of threads
+- Project folders is the default arrangement ("Group threads by project" in Settings › Threads
+  keeps working). A folder row shows the project badge, its name and an amber count of threads
   waiting on you. Its threads are nested rows (25px, 32px left padding, 12.5px) with the
   status at the right: spinner, amber dot, age or "Failed" in red. The flat arrangement
   still has pinned rows, the Working shelf, snoozed and settled groups, and drag and drop.
@@ -109,4 +109,16 @@ Layout rules live in `web/src/styles/layouts.css`; ordering lives in `attentionR
 Saved preferences carry a `prefsVersion`. Version 1 (the frame) moves a saved sidebar width
 of exactly 208px to 224px and turns project folders on, once; a custom width stays. Someone
 with saved preferences gets a one-time notice with Turn off; the option lives in Settings ›
-Labs.
+Threads.
+
+## Settings
+
+Settings is a page in the frame's main area, not a dialog. A 260px section list sits on
+the left: "Find a setting" search (it lists matching settings and reveals the chosen
+row), then General to Keybindings, the Agents group (Providers, Threads, Scheduled tasks), the Code group (Projects, Source control, Worktrees), then Maintenance, Labs, About and Archive.
+The open section shows a 22px title with a close button, an optional scope line ("Applying settings for"
+a project, or "Applies to this computer" in General), then rows: 52px, a label with a small
+description at the left, the control at the right, one hairline between rows. Toggles are 30x18
+switches; Theme is System, Light, Dark and Dim (Dim is the dark theme with the Dim preset);
+Layout is three cards (Console, Ledger, Reading) with a small plan of each. Escape or the
+close button returns to the page behind. The page is a labelled region, not a dialog.

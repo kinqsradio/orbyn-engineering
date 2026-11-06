@@ -8,17 +8,20 @@ export function SettingRow({
   settingId: explicitId,
   description,
   actions,
+  stacked,
   children,
 }: {
   title: string;
   settingId?: string;
   description?: string;
   actions?: ReactNode;
+  /** Puts the control under the label, for one that needs the full width. */
+  stacked?: boolean;
   children?: ReactNode;
 }) {
   const settingId = useContext(SettingRowIds)(title) ?? explicitId;
   return (
-    <div className="setting-line" id={settingId} tabIndex={settingId ? -1 : undefined}>
+    <div className={stacked ? "setting-line setting-line-stacked" : "setting-line"} id={settingId} tabIndex={settingId ? -1 : undefined}>
       <div className="setting-line-text">
         <div className="setting-line-heading">
           <span className="setting-line-title">{title}</span>

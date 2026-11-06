@@ -9,7 +9,7 @@ let service: Service;
 let projectId = "";
 
 const box = (page: Page) => page.getByRole("textbox", { name: /^Message/ });
-const settings = (page: Page) => page.getByRole("dialog", { name: "Settings" });
+const settings = (page: Page) => page.getByRole("region", { name: "Settings" });
 const fresh = async (page: Page, prompt = "[scene:usage] hello") => {
   await page.goto(`${service.page}#/new/${projectId}`);
   await send(page, prompt);

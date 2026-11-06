@@ -98,7 +98,7 @@ test("a watched thread goes to the Working shelf, unless that is off", async ({ 
   await page.goto(`${service.page}#/new/${projectId}`);
   await expect(row(page, id)).toHaveAttribute("data-section", "working");
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("dialog", { name: "Settings" }).getByRole("switch", { name: "Working section" }).click();
+  await page.getByRole("region", { name: "Settings" }).getByRole("switch", { name: "Working section" }).click();
   await page.goto(`${service.page}#/new/${projectId}`);
   await expect(row(page, id)).toHaveAttribute("data-section", "active");
 });
