@@ -78,6 +78,7 @@ impl EngineDriver for TerminalDriver {
                 cwd: spec.cwd.clone(),
                 cols: 120,
                 rows: 32,
+                engine: true,
             },
         )?;
         session.write(spec.user_prompt.as_bytes())?;

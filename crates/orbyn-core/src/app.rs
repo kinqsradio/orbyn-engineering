@@ -192,6 +192,7 @@ impl Core {
             base_url: config.base_url.clone(),
             runs_dir: config.data_dir.join("runs"),
             setups: setups.clone(),
+            terminals: terminals.clone(),
         }));
         clean_stale_run_dirs(&config.data_dir.join("runs"));
         let usage = Arc::new(UsageCenter::new(&config.data_dir)?);

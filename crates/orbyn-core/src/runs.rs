@@ -217,6 +217,7 @@ pub(crate) struct RunServices {
     pub base_url: String,
     pub runs_dir: PathBuf,
     pub setups: Arc<crate::project_setup::SetupManager>,
+    pub terminals: Arc<crate::terminal::TerminalManager>,
 }
 
 pub struct RunManager {
@@ -230,6 +231,8 @@ pub struct RunManager {
     base_url: String,
     runs_dir: PathBuf,
     setups: Arc<crate::project_setup::SetupManager>,
+    /// A live engine console owns its thread's session, so no run is admitted.
+    terminals: Arc<crate::terminal::TerminalManager>,
     active: Mutex<HashMap<String, ActiveRun>>,
     /// Runs stopped because their parent was. Reporting back would start the parent
     /// again, undoing the Stop.
@@ -273,6 +276,7 @@ impl RunManager {
             base_url,
             runs_dir,
             setups,
+            terminals,
         } = services;
         Self {
             store,
@@ -285,6 +289,7 @@ impl RunManager {
             base_url,
             runs_dir,
             setups,
+            terminals,
             active: Mutex::new(HashMap::new()),
             stopped_with_parent: Mutex::new(HashSet::new()),
             limit_signals: Mutex::new(HashMap::new()),
@@ -312,6 +317,7 @@ impl RunManager {
             .check_selection(&thread.engine, &selection::of_thread(&thread))?;
         let root = self.workspace.root()?;
         let run = self.workspace.admit_with(|| {
+            self.check_console(thread_id)?;
             self.engines.admit_with(&thread.engine, || {
                 self.store.admit_prepared_run(
                     Admission {
@@ -346,6 +352,7 @@ impl RunManager {
             .check_selection(&thread.engine, &selection::of_thread(&thread))?;
         let root = self.workspace.root()?;
         let retry = self.workspace.admit_with(|| {
+            self.check_console(thread_id)?;
             self.engines.admit_with(&capture.engine, || {
                 self.engines.check_enabled(&capture.engine)?;
                 self.engines
@@ -555,6 +562,14 @@ impl RunManager {
         }
     }
 
+    /// Called under the workspace admission lock, which opening a console also takes.
+    fn check_console(&self, thread_id: &str) -> Result<()> {
+        if crate::console::console_alive(&self.terminals, thread_id) {
+            return Err(CoreError::ConsoleOpen);
+        }
+        Ok(())
+    }
+
     /// Starts the next queued message if the thread is free. A failure leaves
     /// the message queued, so nothing typed is lost.
     pub fn drain(self: &Arc<Self>, thread_id: &str) {
@@ -567,6 +582,7 @@ impl RunManager {
         let thread = self.store.thread(thread_id)?;
         let root = self.workspace.root()?;
         let next = self.workspace.admit_with(|| {
+            self.check_console(thread_id)?;
             self.engines
                 .admit_with(&thread.engine, || self.store.admit_next(thread_id, "user"))
         })?;

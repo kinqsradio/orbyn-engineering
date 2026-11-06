@@ -2013,6 +2013,18 @@ pub struct OpenTerminal {
 }
 
 wire! {
+/// Opens the engine's own console resumed on the thread's session.
+pub struct OpenConsole {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cols: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub rows: Option<u16>,
+}
+}
+
+wire! {
 pub struct RenameTerminal {
     pub title: String,
 }

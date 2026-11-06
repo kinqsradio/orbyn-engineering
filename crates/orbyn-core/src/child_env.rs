@@ -144,11 +144,16 @@ pub fn for_engine(command: &mut Command) {
     apply(command, true);
 }
 
-/// Names to drop and values to set on a terminal, which is the person's own shell:
-/// the login preference does not reach it.
-pub fn for_terminal() -> EnvPlan {
+/// Names to drop and values to set on a terminal. A shell is the person's own, so
+/// the login preference does not reach it; an engine's console (`engine`) is an
+/// engine, so it does.
+pub fn for_terminal(engine: bool) -> EnvPlan {
     let vars: Vec<(OsString, OsString)> = std::env::vars_os().collect();
-    let mut changes = plan(&vars, false, false);
+    let mut changes = plan(
+        &vars,
+        engine,
+        engine && PREFER_SAVED_LOGIN.load(Ordering::Relaxed),
+    );
     changes.set.retain(|(name, _)| name != "PATH");
     let base = std::env::var_os("PATH");
     changes.set.push(("PATH".into(), widened(base.as_deref())));

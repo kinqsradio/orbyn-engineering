@@ -61,10 +61,26 @@ fn main() {
         }
         "agui" => agui(&args),
         "pty" => pty(),
+        "--resume" => console("claude-console", &args),
+        "resume" => console("codex-console", &args),
         other => {
             eprintln!("unknown mode {other}");
             std::process::exit(2);
         }
+    }
+}
+
+/// An interactive console on a session: says which, then echoes lines until input ends.
+fn console(mode: &str, args: &[String]) {
+    record_launch(mode, args);
+    println!("fake console on {}", args.get(1).map_or("", String::as_str));
+    let mut line = String::new();
+    while std::io::stdin()
+        .read_line(&mut line)
+        .is_ok_and(|read| read > 0)
+    {
+        println!("console heard {}", line.trim());
+        line.clear();
     }
 }
 

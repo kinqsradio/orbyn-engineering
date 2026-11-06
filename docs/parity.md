@@ -380,7 +380,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [x] G2 Splits and tabs: horizontal, vertical, new, close | packages/contracts/src/keybindings.ts | w d | M
 - [x] G3 Scrollback: 5,000 lines and 8 MiB retained on server | docs/user/terminal.md | s | M | server done
 - [x] G4 Scroll and selection keys: page, jump, select all | docs/user/terminal.md | w d | S | web done
-- [ ] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M
+- [x] G5 Terminal context: excerpt becomes composer chip | apps/web/src/components/chat/TerminalContextInlineChip.tsx | w d m | M | web done: Add selection makes a removable chip with its line range above the draft, kept per thread and sent as a fenced block before the typed text (`web/e2e/real/terminal-context.spec.ts`); chips sit above the textarea rather than inline in an editor; mobile is out of scope
 - [x] G6 Link opening: terminal links open in preview | apps/web/src/components/preview/openTerminalLinkInPreview.ts | w d | S | web done: follows the Chat link setting
 - [x] G7 Terminal observe: read-only watcher of a running terminal | packages/contracts/src/rpc.ts | w d m s | M | server done | web done
 - [ ] G8 Native mobile terminal: dedicated surface with paste and menu | apps/mobile/src/features/terminal/NativeTerminalSurface.tsx | m | L | scope: excluded | reason: mobile client only
@@ -389,7 +389,7 @@ not-doable decision; this scope reconciliation does not mark them done.
 - [ ] G11 Mobile terminal preferences: font size 6 to 14 in half steps, theme, paste handling, session menu with status labels, exit navigation | apps/mobile/src/features/terminal/terminalPreferences.ts | m | S | scope: excluded | reason: mobile client only
 - [x] G12 Windows shell choice: native PowerShell executable first, then ComSpec; ignore a POSIX `SHELL`; flags as arguments | src-tauri/src/terminal.rs | s | S | server done: stops servers in the checkout, run on the Windows CI matrix
 - [x] G13 Terminal close order: end the process tree before closing the pseudo console so the close cannot hang | src-tauri/src/terminal.rs | s | S | server done
-- [ ] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3 | scope: excluded | reason: no generic open-resumed-engine-console action in inspected T3 thread actions; provider authentication terminals and Pi interactive sessions remain separate features
+- [x] G14 Engine console: open the engine's own terminal UI resumed on the thread's session with the same model and mode, where the engine supports it | src-tauri/src/terminal.rs | w d s | M | beyond T3 | server done: `POST /api/threads/:id/console` runs `claude --resume` or `codex resume` unmodified in an Orbyn terminal with the thread's model and plan mode, no shell, the engine's own login; runs wait while it is open (`crates/orbynd/tests/console.rs`) | web done: Open engine console in the terminal drawer (`web/e2e/real/engine-console.spec.ts`) | refused: ACP, AG-UI and terminal engines have no resumable console, and Orbyn's full-access mode is not carried into the ungoverned console | not observed: a live Claude Code 2.1.318 or Codex 0.166.0 session, and a Windows run outside CI
 
 ## H. Browser preview and devices
 - [x] H1 Browser panel: embedded tabs per thread | apps/web/src/components/preview/PreviewPanel.tsx | w d m | L

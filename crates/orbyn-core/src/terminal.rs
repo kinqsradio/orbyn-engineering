@@ -53,6 +53,8 @@ pub struct PtySpec {
     pub cwd: PathBuf,
     pub cols: u16,
     pub rows: u16,
+    /// Runs a coding engine, so the engine's login preference applies.
+    pub engine: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -372,7 +374,7 @@ fn spawn(spec: PtySpec) -> Result<Arc<PtySession>> {
     if let Some(features) = fish_features(&spec.program) {
         command.env("fish_features", features);
     }
-    let inherited = crate::child_env::for_terminal();
+    let inherited = crate::child_env::for_terminal(spec.engine);
     for name in &inherited.remove {
         command.env_remove(name);
     }
@@ -563,6 +565,7 @@ mod tests {
             cwd: dir.path().to_owned(),
             cols: 80,
             rows: 24,
+            engine: false,
         })
         .unwrap();
         let mut exit = session.exited();

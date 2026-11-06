@@ -410,6 +410,15 @@ pub trait EngineDriver: Send + Sync {
         None
     }
 
+    /// The engine's own interactive console resumed on `console.session`, when its
+    /// CLI has one. Orbyn starts it unmodified in a terminal and reads nothing from it.
+    fn console(
+        &self,
+        _console: &crate::console::ConsoleSpec<'_>,
+    ) -> Option<crate::console::ConsoleCommand> {
+        None
+    }
+
     /// The vendor's own sign-in command, to name when a run fails for want of a login.
     fn sign_in_command(&self) -> Option<String> {
         None

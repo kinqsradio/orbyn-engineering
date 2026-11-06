@@ -571,6 +571,23 @@ after a minute. Named terminals stay until closed. Settling or archiving closes 
 all. `?observe=true` attaches read-only: input and resizes are dropped. Fish starts
 with `no-query-term` so it does not wait on terminal replies.
 
+The engine console (`POST /api/threads/:id/console`) opens the engine's own
+interactive CLI, unmodified, in the thread's `engine-console` terminal on the session
+Orbyn's runs resume: `claude --resume <session> --permission-mode default|plan`, from
+the library like Claude's runs and with `--add-dir` for another checkout, or
+`codex resume <session> --sandbox <run sandbox>|read-only --ask-for-approval on-request
+--cd <checkout>`. The thread's model follows with `--model`. The program is the one runs
+use, an instance's override included, resolved through `PATH` and Windows shims and
+started without a shell; a session or model that could read as a flag is refused. The
+engine's own login and permission prompts apply: Orbyn reads no credential and nothing
+the console writes, and its approval gate and full-access modes do not reach it. Other
+engines have no resumable console and are refused with `422`, as is a thread with no
+session yet. The console owns the session while it runs: opening one is refused while
+a run is active, and while it is alive every run admission, queue drain and preparation
+retry is refused with `409 console_open`. Both checks take the workspace admission lock.
+A second open returns the live console. Queued messages wait for the next send or
+resume after it closes.
+
 A viewer attaches to a terminal ID and its process creation timestamp. Rerunning
 an action preserves the tab's stable ID but replaces its process; the viewer
 reattaches even when that tab stays selected. Ordinary metadata refreshes preserve
@@ -2076,7 +2093,8 @@ second account by config directory stays the CLI's own arrangement. `CODEX_SANDB
 session markers go always, and an AppImage's variables and its mount's entries in
 library, data and `PATH` lists go when `APPIMAGE` and `APPDIR` are both set. The
 `prefer_saved_login` preference also drops API keys and endpoint overrides from engines
-only, so they use their own login. `EngineStatus` reports inherited credentials by
+only, so they use their own login. Engine consoles and terminal engines count as
+engines; a plain shell terminal does not. `EngineStatus` reports inherited credentials by
 variable name and an endpoint by origin, never a value. No value is read for any other
 purpose, which keeps this inside rule 1.
 
@@ -2107,7 +2125,8 @@ support session in the selected data folder's `triage/<id>` directory. Core owns
 the provider choice, support files and literal launch arguments; the CLI owns
 foreground terminal I/O. The provider's own login and permissions apply: this is
 outside Orbyn governed runs, with no thread resume, project admission or MCP
-approval gate. It adds no generic resumed-engine console action. The files
+approval gate. Resuming a thread's session is the engine console under
+[Terminals](#terminals), not this command. The files
 contain only CLI build/platform/time metadata and original support instructions;
 no service handle, logs, database, environment dump or credentials are collected.
 Server status is explicitly not checked. Additional investigation, repairs,
@@ -2362,6 +2381,7 @@ because browsers cannot set headers on them.
 | `DELETE /api/browser-profiles/:id`, `POST .../clear` | Remove, or empty, a profile no tab has open |
 | `GET /ws/preview/:thread_id/:tab` | Base64 JPEG text frames |
 | `GET /api/threads/:id/servers`, `POST .../servers/:pid/stop` | `LocalServer[]`; stop one in this checkout, otherwise `404` |
+| `POST /api/threads/:id/console` | Opens the engine's own console on the thread's session |
 | `GET /ws/terminal/:thread_id` | Main PTY: binary in/out, JSON text frame `{cols,rows}` resizes |
 | `GET /ws/terminal/:thread_id/:terminal?observe=` | Attach to a named terminal; `observe` is read-only |
 | `GET, POST /api/threads/:id/terminals` | `TerminalInfo[]`; `OpenTerminal` with `split_of` and `direction` |

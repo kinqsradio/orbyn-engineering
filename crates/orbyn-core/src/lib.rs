@@ -10,6 +10,7 @@ pub mod child_env;
 pub mod claude_skills;
 pub mod composer;
 pub mod computer;
+pub mod console;
 pub mod diagnostics;
 pub mod driver;
 pub mod engines;
