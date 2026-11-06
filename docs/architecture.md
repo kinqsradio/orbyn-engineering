@@ -341,9 +341,11 @@ reaches Codex as an empty answer set and Claude as a denial. Questions are logge
 `ACTIVITY_SNAPSHOT` with `activityType: "question"`, whose content isthe `QuestionRequest`. A secret answer goes to the engine and is stored only as
 `[hidden]`, so it never reaches the database or the event log. A custom answer may
 carry files already uploaded to its thread, keyed by question; they stay with the
-settled question record and are refused when they belong to another thread. An
-engine's answer payload has no attachment field, so the typed answer reaches the
-engine and the files stay in the record.
+settled question record and are refused when they belong to another thread. No
+engine's answer has a place for files: Codex takes a list of strings per question
+id, Claude's `AskUserQuestion` takes one string per question, and an ACP agent asks
+no questions, only permissions answered with an option. So the typed answer reaches
+the engine and the files stay in the record.
 
 Question Markdown uses a question-only remote-image link policy: a remote media
 URL becomes an ordinary link without mounting an image or video. General message
