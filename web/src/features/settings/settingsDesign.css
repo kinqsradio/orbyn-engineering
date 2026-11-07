@@ -562,3 +562,92 @@
   font-family: var(--font-mono);
   font-size: 11.5px;
 }
+
+/* Banner and empty state, as the settings frames draw them. */
+.set-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-14);
+  background: var(--color-sunken);
+  color: var(--color-text);
+  font-size: var(--text-nav);
+}
+.set-banner.err {
+  background: var(--color-dangerSoft);
+}
+.set-banner > svg {
+  flex: none;
+}
+.set-banner-end {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.set-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+}
+.set-empty h3 {
+  margin: 0;
+  font-size: var(--text-section);
+  font-weight: 500;
+  color: var(--color-text);
+}
+.set-empty p {
+  margin: 0;
+  color: var(--color-muted);
+}
+/* A grey card of facts, one per line, label left and value right (.card, .kv). */
+.set-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
+}
+.set-facts > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 26px;
+  color: var(--color-muted);
+}
+.set-facts b {
+  font-weight: 400;
+  color: var(--color-text);
+}
+.set-time {
+  color: var(--color-muted);
+}
+.set-facts > .set-facts-end {
+  justify-content: flex-end;
+}
+.set-checking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+}
+/* OpenTelemetry endpoints: mono, 300px; a failed check outlines red and says so (s-x-maint-otel). */
+.settings-page .set-endpoint-input {
+  width: 300px;
+  font-family: var(--font-mono);
+}
+.settings-page .set-endpoint-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+.settings-page .setting-line:has(.set-endpoint-input[aria-invalid="true"]) .setting-line-desc {
+  color: var(--color-danger);
+}
+.set-muted {
+  color: var(--color-muted);
+}

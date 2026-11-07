@@ -24,6 +24,7 @@ import type {
   WorkspaceStatus,
 } from "../src/api/types.ts";
 import * as fixtures from "./fixtures.ts";
+import { cleanupPreview, diagnostics } from "./maintenance.ts";
 import { preferenceCatalog, projectPreferenceKeys } from "./preferenceCatalog.ts";
 
 export interface MockResponse {
@@ -479,6 +480,14 @@ export function createMockApi(options: MockOptions = {}) {
             : { status: 200, body: result };
         }
         break;
+      case "GET /api/diagnostics":
+        return { status: 200, body: diagnostics(Date.now()) };
+      case "POST /api/diagnostics":
+        return seg[2] === "otlp" ? { status: 200, body: { ok: true, status: 200, message: null } } : { status: 204 };
+      case "GET /api/storage":
+        return { status: 200, body: null };
+      case "POST /api/storage":
+        return { status: 200, body: query.get("dry_run") === "true" ? cleanupPreview(Date.now()) : { ...cleanupPreview(Date.now()), dry_run: false } };
       case "GET /api/settings":
         return { status: 200, body: settings };
       case "PUT /api/settings":

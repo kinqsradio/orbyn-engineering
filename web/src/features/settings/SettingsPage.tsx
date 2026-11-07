@@ -215,6 +215,7 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
           <div className="settings-body">
             {SCOPE_LINE_SECTIONS.has(current) ? <ScopeSentence /> : null}
             {current === "general" ? <p className="settings-scope"><Info size={13} aria-hidden />{shell.data?.attached ? "Desktop app · applies to this computer" : "Applies to this computer"}</p> : null}
+            {current === "maintenance" ? <p className="settings-scope"><Info size={13} aria-hidden />Applies to this computer</p> : null}
             <SettingRowIds.Provider value={(title) => settingSearchId(current, title)}>
               <View key={current} />
             </SettingRowIds.Provider>

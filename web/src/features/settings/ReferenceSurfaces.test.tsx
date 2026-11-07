@@ -43,6 +43,9 @@ it("asks before deleting old files and runs the cleanup only on confirm", async 
       { key: "worktree_cleanup", value: {}, default: {}, source: "default", project_scoped: false },
     ]) as never;
     if (method === "GET" && path === "/api/storage/cleanup") return null as never;
+    if (method === "POST" && path === "/api/storage/cleanup?dry_run=true") return { dry_run: true, ran_at: "2026-11-07T00:00:00Z", entries: [
+      { kind: "artifact", path: "/data/a.png", removed: false, reason: "Older than 14 days" },
+      { kind: "artifact", path: "/data/b.png", removed: false, reason: "Older than 14 days" }] } as never;
     if (method === "POST" && path === "/api/storage/cleanup") return { dry_run: false, ran_at: "2026-11-07T00:00:00Z", entries: [] } as never;
     return [] as never;
   });
@@ -50,6 +53,9 @@ it("asks before deleting old files and runs the cleanup only on confirm", async 
   await user.click(await screen.findByRole("button", { name: "Delete now…" }));
   const ask = await screen.findByRole("dialog", { name: "Delete old files now?" });
   expect(vi.mocked(request)).not.toHaveBeenCalledWith("POST", "/api/storage/cleanup");
+  expect(within(ask).getByText("Browser artifacts older than 14 days")).toBeVisible();
+  expect(within(ask).getByText("2")).toBeVisible();
+  expect(screen.getByText("Would delete 2 browser artifacts")).toBeVisible();
   await user.click(within(ask).getByRole("button", { name: "Delete now" }));
   await waitFor(() => expect(vi.mocked(request)).toHaveBeenCalledWith("POST", "/api/storage/cleanup"));
 });
