@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { captureFocusReturn, moveFocus, type CloseCause } from "../../ui/focusReturn";
 import { closingProps } from "../../ui/Presence";
 
 /** The longest the exit may take: --m-base-out is 140ms, so the fallback never cuts it short. */
@@ -41,11 +42,16 @@ export function ToolbarPopover({
     closed.current = true;
     onClose();
   };
-  const leave = (refocus: boolean) => {
-    if (refocus && !closed.current) anchor.focus();
+  // The trigger button is where focus returns; `captureFocusReturn` falls back from it if it is gone.
+  const [focusReturn] = useState(() => captureFocusReturn(anchor));
+  const leaving = useRef(false);
+  const leave = (cause: CloseCause, target?: EventTarget | null) => {
+    if (leaving.current) return;
+    leaving.current = true;
+    moveFocus(focusReturn, cause, target);
     setClosing(true);
   };
-  const dismiss = () => leave(true);
+  const dismiss = () => leave("select");
 
   useEffect(() => {
     if (!closing) return;
@@ -74,23 +80,32 @@ export function ToolbarPopover({
     const away = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (target && (ref.current?.contains(target) || anchor.contains(target))) return;
-      leave(false);
+      leave("outside", event.target);
     };
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        leave(true);
+        leave("escape");
+      } else if (event.key === "Tab" && !event.shiftKey && role === "menu" && ref.current?.contains(event.target as Node)) {
+        event.preventDefault();
+        leave("tab");
       }
     };
+    // A window blur or a route change closes the popover and leaves focus alone.
+    const elsewhere = () => leave("window");
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", key, true);
+    window.addEventListener("blur", elsewhere);
+    window.addEventListener("hashchange", elsewhere);
     return () => {
       document.removeEventListener("mousedown", away);
       document.removeEventListener("keydown", key, true);
+      window.removeEventListener("blur", elsewhere);
+      window.removeEventListener("hashchange", elsewhere);
     };
     // `leave` only reads refs and props that cannot change while the panel is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchor]);
+  }, [anchor, role]);
 
   // Dragging the sheet's top (grab bar and title) down past a threshold dismisses it.
   const drag = useRef<{ y: number; dy: number } | null>(null);
@@ -113,7 +128,7 @@ export function ToolbarPopover({
     drag.current = null;
     event.currentTarget.style.transition = "";
     event.currentTarget.style.translate = "";
-    if (state.dy > DRAG_DISMISS_PX) leave(true);
+    if (state.dy > DRAG_DISMISS_PX) leave("escape");
   };
 
   const arrows = (event: React.KeyboardEvent) => {

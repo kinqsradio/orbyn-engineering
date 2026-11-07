@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { captureFocusReturn, moveFocus, type CloseCause } from "./focusReturn";
 import { closingProps } from "./Presence";
 
 export interface MenuItem {
@@ -44,7 +45,7 @@ function MenuList({
   items: MenuItem[];
   submenu?: boolean;
   closing?: boolean;
-  onClose(): void;
+  onClose(cause: CloseCause): void;
   onBack?(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -72,7 +73,11 @@ function MenuList({
     if (event.key === "Escape") {
       event.stopPropagation();
       event.preventDefault();
-      (onBack ?? onClose)();
+      if (onBack) onBack();
+      else onClose("escape");
+    } else if (event.key === "Tab" && !event.shiftKey) {
+      event.preventDefault();
+      onClose("tab");
     } else if (event.key === "ArrowLeft" && submenu) {
       event.preventDefault();
       event.stopPropagation();
@@ -128,7 +133,8 @@ function MenuList({
                   openSubmenu(item, event.currentTarget);
                   return;
                 }
-                onClose();
+                // Focus is back on the opener before the action runs, so a dialog it opens returns there.
+                onClose("select");
                 item.onSelect?.();
               }}
             >
@@ -209,20 +215,48 @@ export function Menu({
   closing?: boolean;
   onClose(): void;
 }) {
+  // Taken as the menu opens, before it takes focus.
+  const [focusReturn] = useState(() => captureFocusReturn());
+  const moved = useRef(false);
+  const dismiss = (cause: CloseCause, target?: EventTarget | null) => {
+    if (closing || moved.current) return;
+    moved.current = true;
+    moveFocus(focusReturn, cause, target);
+    onClose();
+  };
+  const latest = useRef(dismiss);
+  latest.current = dismiss;
+
   useEffect(() => {
     // A menu that is leaving must not close the one that replaced it.
     if (closing) return;
-    const close = (event: MouseEvent) => {
-      if (!(event.target as Element | null)?.closest?.("[data-menu-root]")) onClose();
+    const outside = (event: MouseEvent) => {
+      if (!(event.target as Element | null)?.closest?.("[data-menu-root]")) latest.current("outside", event.target);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [onClose, closing]);
+    // A window blur or a route change closes the menu and leaves focus alone.
+    const leave = () => latest.current("window");
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("blur", leave);
+    window.addEventListener("hashchange", leave);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("blur", leave);
+      window.removeEventListener("hashchange", leave);
+    };
+  }, [closing]);
+
+  // Closed from outside (the trigger toggling it): the same as Escape, unless focus moved on already.
+  useLayoutEffect(() => {
+    if (!closing || moved.current) return;
+    moved.current = true;
+    const active = document.activeElement;
+    if (!active || active === document.body || active.closest("[data-menu-root]")) focusReturn.restore();
+  }, [closing, focusReturn]);
 
   // Chosen once, so a dialog opening or closing behind the menu doesn't remount it.
   const [host] = useState(menuHost);
   return createPortal(
-    <MenuList x={x} y={y} origin={origin} label={label} items={items} closing={closing} onClose={onClose} />,
+    <MenuList x={x} y={y} origin={origin} label={label} items={items} closing={closing} onClose={dismiss} />,
     host,
   );
 }

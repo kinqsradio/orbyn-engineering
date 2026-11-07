@@ -7,7 +7,7 @@ import { Presence } from "./Presence";
 
 beforeEach(() => {
   vi.useFakeTimers();
-  window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} })) as typeof window.matchMedia;
+  window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
 });
 afterEach(() => vi.useRealTimers());
 
