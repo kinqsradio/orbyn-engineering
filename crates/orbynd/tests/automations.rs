@@ -239,6 +239,44 @@ async fn a_webhook_needs_its_token_and_its_values_arrive_as_data() {
 }
 
 #[tokio::test]
+async fn a_tasks_webhook_address_is_readable_without_its_token_and_deliveries_say_who_sent_them() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, engines(), "codex").await;
+    let project = project_of(&service, &thread).await;
+    let (code, task) = service
+        .send(
+            "/api/tasks",
+            json!({ "project_id": project, "name": "Hook", "engine": "codex",
+                    "prompt": "go", "schedule": { "kind": "webhook" } }),
+        )
+        .await;
+    assert_eq!(code, 200, "{task}");
+    let id = task["id"].as_str().unwrap();
+    let before = service.json(&format!("/api/tasks/{id}/webhook")).await;
+    assert_eq!(before["configured"], false);
+
+    let (code, endpoint) = service
+        .send(&format!("/api/tasks/{id}/webhook"), json!({}))
+        .await;
+    assert_eq!(code, 200, "{endpoint}");
+    let after = service.json(&format!("/api/tasks/{id}/webhook")).await;
+    assert_eq!(after["configured"], true);
+    assert_eq!(after["path_prefix"], format!("/hooks/{id}/"));
+    assert!(after.get("token").is_none(), "{after}");
+
+    let path = endpoint["path"].as_str().unwrap();
+    hook(
+        &service,
+        path,
+        &[("x-github-event", "push".to_owned())],
+        "{}",
+    )
+    .await;
+    assert_eq!(deliveries(&service, id).await[0]["from"], "GitHub");
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn signatures_filters_replays_and_stale_requests_stop_before_a_thread() {
     let dir = TempDir::new();
     let (service, thread) = setup(&dir, engines(), "codex").await;

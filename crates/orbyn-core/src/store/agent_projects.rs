@@ -148,7 +148,7 @@ impl Store {
         library_path: &str,
         scope: &RunScope,
     ) -> Result<Vec<String>> {
-        let deleted = self.commit(|tx, _| {
+        let deleted = self.commit(|tx, appended| {
             let caller_project = active_caller(tx, self, scope)?;
             let project = tx
                 .query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)
@@ -186,15 +186,10 @@ impl Store {
                 &agent_audit(scope, "project.remove", &project.path,
                     json!({ "project_id": id, "thread_count": threads.len(), "files_removed": false })),
             )?;
-            // The project FK is restrictive; delete its threads first. The edge
-            // check keeps the parent-thread cascade inside the selected project.
-            tx.execute("DELETE FROM threads WHERE project_id = ?1", [id])?;
-            tx.execute("DELETE FROM projects WHERE id = ?1", [id])?;
+            // The threads stay, archived under the project's name.
+            super::tombstone_project(tx, appended, &project)?;
             Ok(threads)
         })?;
-        for thread in &deleted {
-            self.hub.remove(thread);
-        }
         Ok(deleted)
     }
 }
@@ -382,8 +377,15 @@ mod tests {
         let other_thread = thread(&f.store, &other.id, None);
         let preview = f.store.agent_project_threads(&target.id).unwrap();
         assert_eq!(remove(&f, &target, &preview, "/library").unwrap(), preview);
-        assert!(f.store.project(&target.id).is_err());
-        assert!(f.store.thread(&one).is_err() && f.store.thread(&two).is_err());
+        assert!(
+            f.store
+                .list_projects()
+                .unwrap()
+                .iter()
+                .all(|p| p.id != target.id)
+        );
+        assert!(f.store.thread(&one).unwrap().project_removed);
+        assert!(f.store.thread(&two).unwrap().project_removed);
         assert!(f.store.thread(&other_thread).is_ok());
         let (actor, run, detail): (String, String, String) = f.store.reader().query_row(
             "SELECT actor, run_id, detail FROM audit_events WHERE action = 'project.remove' AND target = '/target'",
@@ -463,7 +465,7 @@ mod tests {
         let removed = remove(&f, &target, &preview, "/library");
         let admitted = worker.join().unwrap();
         match (removed, admitted) {
-            (Ok(_), Err(_)) => assert!(f.store.thread(&target_thread).is_err()),
+            (Ok(_), Err(_)) => assert!(f.store.thread(&target_thread).unwrap().project_removed),
             (Err(CoreError::ThreadBusy), Ok(run)) => {
                 assert!(f.store.thread(&target_thread).is_ok());
                 f.store

@@ -10,4 +10,9 @@ status: string, received_at: string,
 /**
  * With credentials removed.
  */
-headers: JsonValue, body: string, prompt: string | null, thread_id: string | null, };
+headers: JsonValue, body: string, prompt: string | null, thread_id: string | null, 
+/**
+ * Who sent it, from the request's headers: a known service such as `GitHub`, or
+ * the sender's `User-Agent`. Absent when the request names none.
+ */
+from?: string, };

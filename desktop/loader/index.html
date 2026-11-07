@@ -25,8 +25,13 @@
       <button id="retry" hidden>Try again</button>
     </main>
     <script>
-      const failure = new URLSearchParams(location.search).get("error");
-      if (failure) {
+      const query = new URLSearchParams(location.search);
+      const failure = query.get("error");
+      if (query.get("state") === "restarting") {
+        document.getElementById("title").textContent = "Restarting the local service";
+        document.getElementById("detail").textContent =
+          (query.get("detail") || "It stopped.") + " Restarting it now. Your threads are saved.";
+      } else if (failure) {
         document.getElementById("title").textContent = "The local service stopped";
         document.getElementById("detail").textContent =
           failure + " Your threads are saved. Interrupted runs stay in their thread.";

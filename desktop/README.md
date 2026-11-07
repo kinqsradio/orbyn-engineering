@@ -11,7 +11,9 @@ app updates. Its rules are in
   stdin and stdout. The product UI never calls the shell directly.
 - The product UI comes from `build/ui`, which `npm run prepare-bundle` fills.
   `loader/index.html` is the embedded startup page, the only document allowed to
-  call `restart_core`.
+  call `restart_core`. The product UI restarts the service through the service's
+  `restart_service` shell action instead. A service that crashes is started again
+  once by itself (`src/restart_policy.rs`).
 
 ## Consumers
 

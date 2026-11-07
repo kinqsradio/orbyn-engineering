@@ -518,7 +518,7 @@ impl UsageCenter {
             .map(|(_, limits)| limits.clone())
     }
 
-    fn keep_limits(&self, limits: &EngineLimits) {
+    pub(crate) fn keep_limits(&self, limits: &EngineLimits) {
         self.limits
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

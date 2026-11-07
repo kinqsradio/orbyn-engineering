@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use orbyn_contracts::ModelSelection;
 use orbyn_contracts::{
-    BatchThread, BatchThreadResult, CreateThread, DelegateTask, ScheduledTask, TaskSchedule,
-    Thread, UpsertTask, WebhookDelivery, WebhookEndpoint, WebhookFilter, WebhookSignature,
+    BatchThread, BatchThreadResult, CreateThread, DelegateTask, ScheduledTask, TaskRun,
+    TaskSchedule, Thread, UpsertTask, WebhookAddress, WebhookDelivery, WebhookEndpoint,
+    WebhookFilter, WebhookSignature,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -21,6 +22,8 @@ use crate::store::{AuditRecord, NewThread};
 use crate::util::{hex, new_id, now, parse_time, random_bytes, random_token, sha256_hex, unix_now};
 
 const MAX_FILTERS: usize = 16;
+/// A clock-fired task waits when its engine has used this much of any limit window.
+const NEAR_LIMIT_PERCENT: f64 = 90.0;
 const MAX_STORED_BODY: usize = 64 * 1024;
 const MAX_RESULT_CHARS: usize = 8_000;
 const MIN_INTERVAL_MINUTES: u32 = 1;
@@ -421,6 +424,9 @@ impl Core {
 
     pub fn set_task_enabled(&self, id: &str, enabled: bool) -> Result<ScheduledTask> {
         let mut task = self.store.task(id)?;
+        if enabled {
+            self.store.project(&task.project_id)?;
+        }
         task.enabled = enabled;
         let next = if enabled {
             next_run(&task.schedule, unix_now())?
@@ -450,13 +456,28 @@ impl Core {
         })
     }
 
+    /// Whether the address takes requests, and the part of it that is not secret.
+    pub fn webhook_address(&self, id: &str) -> Result<WebhookAddress> {
+        let (digest, _) = self.store.task_keys(id)?;
+        Ok(WebhookAddress {
+            configured: digest.is_some(),
+            path_prefix: format!("/hooks/{id}/"),
+        })
+    }
+
+    /// The task's last 50 firings, newest first.
+    pub fn task_runs(&self, id: &str) -> Result<Vec<TaskRun>> {
+        self.store.task(id)?;
+        self.store.task_runs(id)
+    }
+
     pub fn deliveries(&self, id: &str) -> Result<Vec<WebhookDelivery>> {
         self.store.task(id)?;
         self.store.deliveries(id)
     }
 
     /// Starts a task: in its thread, or in a new thread with its own engine.
-    async fn fire(&self, task: &ScheduledTask, prompt: &str) -> Result<String> {
+    async fn fire(&self, task: &ScheduledTask, prompt: &str) -> Result<(String, String)> {
         if !self.store.project(&task.project_id)?.trusted {
             return Err(CoreError::FolderUntrusted);
         }
@@ -478,19 +499,78 @@ impl Core {
                 .id
             }
         };
-        self.runs.enqueue(&thread, prompt, &[])?;
-        Ok(thread)
+        let queued = self.runs.enqueue(&thread, prompt, &[])?;
+        Ok((thread, queued.id))
     }
 
     /// Fires now and records how that went.
     pub async fn run_task(&self, id: &str) -> Result<String> {
         let task = self.store.task(id)?;
         let prompt = task.prompt.clone();
-        self.fire_recorded(task, &prompt).await
+        self.fire_recorded(task, &prompt, "manual").await
     }
 
-    async fn fire_recorded(&self, mut task: ScheduledTask, prompt: &str) -> Result<String> {
+    /// Whether a clock-fired task should wait: the preference is on and the task's
+    /// engine reports a limit window nearly used up. An engine that reports nothing
+    /// never holds a task back.
+    async fn near_limit(&self, task: &ScheduledTask) -> bool {
+        if self.preference("task_skip_near_limit", None).ok() != Some(json!(true)) {
+            return false;
+        }
+        self.engine_limits(&task.engine, false)
+            .await
+            .is_ok_and(|limits| {
+                limits
+                    .windows
+                    .iter()
+                    .any(|window| window.used_percent >= NEAR_LIMIT_PERCENT)
+            })
+    }
+
+    /// A firing from the clock, which `task_skip_near_limit` may put off to the next one.
+    async fn fire_scheduled(&self, mut task: ScheduledTask, source: &str) -> Result<()> {
+        if self.near_limit(&task).await {
+            "skipped: near the usage limit".clone_into(&mut task.last_status);
+            let next = if task.enabled {
+                next_run(&task.schedule, unix_now())?
+            } else {
+                None
+            };
+            task.next_run_at = next.and_then(rfc3339);
+            self.store.save_task(&task, next, None)?;
+            return self
+                .store
+                .record_task_run(&task.id, source, None, "skipped", None);
+        }
+        let prompt = task.prompt.clone();
+        self.fire_recorded(task, &prompt, source).await.map(|_| ())
+    }
+
+    async fn fire_recorded(
+        &self,
+        mut task: ScheduledTask,
+        prompt: &str,
+        source: &str,
+    ) -> Result<String> {
+        // Noted first: the run `fire` queues must not be older than its history row.
+        let began = self.store.begin_task_run(&task.id, source);
         let fired = self.fire(&task, prompt).await;
+        let (status, thread, queued, error) = match &fired {
+            Ok((thread, queued)) => (
+                "started",
+                Some(thread.as_str()),
+                Some(queued.as_str()),
+                None,
+            ),
+            Err(error) => ("refused", None, None, Some(error.public_message())),
+        };
+        let settled = began.and_then(|id| {
+            self.store
+                .finish_task_run(&id, thread, queued, status, error.as_deref())
+        });
+        if let Err(error) = settled {
+            tracing::warn!(%error, "could not record a task run");
+        }
         task.last_run_at = Some(now());
         task.last_status = match &fired {
             Ok(_) => "started".to_owned(),
@@ -503,14 +583,13 @@ impl Core {
         };
         task.next_run_at = next.and_then(rfc3339);
         self.store.save_task(&task, next, None)?;
-        fired
+        fired.map(|(thread, _)| thread)
     }
 
     /// One pass of the clock. A failed task keeps its reason and tries next time.
     pub async fn run_due_tasks(&self) {
         for task in self.store.due_tasks(unix_now()).unwrap_or_default() {
-            let prompt = task.prompt.clone();
-            if let Err(error) = self.fire_recorded(task, &prompt).await {
+            if let Err(error) = self.fire_scheduled(task, "schedule").await {
                 tracing::debug!(%error, "a scheduled task did not start");
             }
         }
@@ -540,8 +619,7 @@ impl Core {
         if task.schedule.only_on_success && run.state != orbyn_contracts::RunState::Completed {
             return self.store.save_task(&task, None, None);
         }
-        let prompt = task.prompt.clone();
-        self.fire_recorded(task, &prompt).await.map(|_| ())
+        self.fire_scheduled(task, "after_thread").await
     }
 
     /// Handles a webhook request. A wrong token looks exactly like an unknown task;
@@ -586,11 +664,12 @@ impl Core {
             body: String::from_utf8_lossy(&raw[..raw.len().min(MAX_STORED_BODY)]).into_owned(),
             prompt: None,
             thread_id: None,
+            from: sender(headers),
         };
         if status == "accepted" {
             let tag = random_bytes::<8>().map_or_else(|_| new_id(), |bytes| hex(&bytes));
             let prompt = render(&task.prompt, headers, &body, &format!("webhook-data-{tag}"));
-            match self.fire_recorded(task, &prompt).await {
+            match self.fire_recorded(task, &prompt, "webhook").await {
                 Ok(thread) => delivery.thread_id = Some(thread),
                 Err(error) => {
                     tracing::debug!(%error, "a webhook did not start its task");
@@ -727,6 +806,28 @@ impl Core {
     }
 }
 
+/// Who a webhook request says it is from: the service its own headers name, else the
+/// `User-Agent`, shortened. This is what the sender claims, not proof of who it is.
+fn sender(headers: &BTreeMap<String, String>) -> Option<String> {
+    const KNOWN: &[(&str, &str)] = &[
+        ("x-github-event", "GitHub"),
+        ("x-gitlab-event", "GitLab"),
+        ("x-slack-signature", "Slack"),
+        ("stripe-signature", "Stripe"),
+        ("x-linear-delivery", "Linear"),
+    ];
+    let has = |name: &str| headers.keys().any(|key| key.eq_ignore_ascii_case(name));
+    if let Some((_, label)) = KNOWN.iter().find(|(header, _)| has(header)) {
+        return Some((*label).to_owned());
+    }
+    let agent = headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("user-agent"))?
+        .1
+        .trim();
+    (!agent.is_empty()).then(|| agent.chars().take(80).collect())
+}
+
 pub(crate) fn rfc3339(unix: i64) -> Option<String> {
     OffsetDateTime::from_unix_timestamp(unix)
         .ok()?
@@ -753,6 +854,18 @@ mod tests {
             .iter()
             .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
             .collect()
+    }
+
+    #[test]
+    fn a_sender_is_a_known_service_else_the_shortened_user_agent_else_nothing() {
+        assert_eq!(
+            sender(&headers(&[("X-GitHub-Event", "push"), ("user-agent", "x")])).as_deref(),
+            Some("GitHub")
+        );
+        let long = "a".repeat(200);
+        let named = sender(&headers(&[("User-Agent", &long)])).unwrap();
+        assert_eq!(named.chars().count(), 80);
+        assert_eq!(sender(&headers(&[("content-type", "json")])), None);
     }
 
     #[test]

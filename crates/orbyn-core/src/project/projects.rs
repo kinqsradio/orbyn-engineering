@@ -2,7 +2,7 @@
 //! Orbyn clones or creates, by default at `<workspace>/repo/<slug>`. Registering
 //! writes nothing into the folder, and only a folder Orbyn made can ever be deleted.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -389,7 +389,7 @@ impl Core {
         self.register_project(&resolved, &slug, true)
     }
 
-    /// Forgets a project and its threads. The folder stays, always, unless Orbyn
+    /// Forgets a project and archives its threads, which stay. The folder stays, always, unless Orbyn
     /// made it, `delete_files` asks, and it holds nothing to lose. Dirty or unpushed
     /// work then needs `confirm`, and even that only keeps the folder.
     pub async fn remove_project(
@@ -446,20 +446,12 @@ impl Core {
             &project.path,
             json!({ "confirmed": confirm, "delete_files": delete_files }),
         )?;
-        // A deleted family's descendants may still appear later in this list.
-        let mut deleted_threads = HashSet::new();
-        for thread in threads {
-            if deleted_threads.contains(&thread.id) {
-                continue;
-            }
-            for deleted in self.store.delete_thread(&thread.id, "user")? {
-                if deleted_threads.insert(deleted.clone()) {
-                    self.setups.forget(&deleted);
-                    self.terminals.close(&deleted);
-                }
-            }
+        let kept = self.store.remove_project_keeping_threads(id, "user")?;
+        for thread in &kept {
+            self.setups.forget(thread);
+            self.terminals.close(thread);
+            self.previews.close_thread(thread);
         }
-        self.store.delete_project(id)?;
         let holds_work = !(dirty.is_empty() && unpushed.is_empty() && ignored.is_empty())
             || !worktrees.is_empty()
             || !git_ok;

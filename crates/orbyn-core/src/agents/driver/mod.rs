@@ -51,6 +51,8 @@ pub struct EngineProbe {
     pub path: Option<PathBuf>,
     pub version: Option<String>,
     pub auth: Option<AuthState>,
+    /// Who is signed in, when the CLI says.
+    pub account: Option<String>,
     pub problem: Option<String>,
     pub sign_in_command: Option<String>,
 }

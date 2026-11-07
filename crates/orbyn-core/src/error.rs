@@ -31,6 +31,8 @@ pub enum CoreError {
     EngineUnavailable(String),
     #[error("this thread is archived")]
     ThreadArchived,
+    #[error("The project \"{0}\" was removed. Add its folder back to use it again.")]
+    ProjectRemoved(String),
     #[error("set up the workspace first")]
     WorkspaceRequired,
     #[error("{0}")]
@@ -110,6 +112,7 @@ impl CoreError {
             Self::EngineBusy(_) => "engine_busy",
             Self::EngineUnavailable(_) => "engine_unavailable",
             Self::ThreadArchived => "thread_archived",
+            Self::ProjectRemoved(_) => "project_removed",
             Self::WorkspaceRequired => "workspace_required",
             Self::WorkspaceRefused(_) => "workspace_refused",
             Self::LibraryDirty(_) => "library_dirty",
@@ -154,6 +157,7 @@ impl CoreError {
             | Self::QuestionClosed(_)
             | Self::ProjectExists(_)
             | Self::ThreadArchived
+            | Self::ProjectRemoved(_)
             | Self::WorkspaceRequired
             | Self::LibraryDirty(_)
             | Self::NotFastForward(_)

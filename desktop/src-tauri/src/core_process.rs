@@ -90,6 +90,8 @@ pub enum ShellAction {
     OpenAccessibilitySettings,
     OpenScreenRecordingSettings,
     Quit,
+    RestartService,
+    ShowLog,
 }
 
 pub struct CoreProcess {
@@ -112,7 +114,7 @@ fn sidecar_path() -> Result<PathBuf, String> {
     Ok(dir.join(name))
 }
 
-fn service_log(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn service_log(app: &AppHandle) -> Result<PathBuf, String> {
     let folder = app
         .path()
         .app_log_dir()

@@ -2,6 +2,7 @@
   "name": "orbyn-engineering-web",
   "private": true,
   "version": "0.1.0",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "packageManager": "npm@11.4.0",
   "engines": {

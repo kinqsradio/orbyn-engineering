@@ -236,7 +236,9 @@ test("registered checkout removal counts archived threads, cancels without write
     await expect(removalDialog(page)).toHaveCount(0);
     await expect.poll(() => projects(service)).not.toContainEqual(expect.objectContaining({ id: one.id }));
     expect((await projects(service)).map((entry) => entry.id)).toEqual(expect.arrayContaining([two.id, unrelatedId]));
-    // The removed checkout's threads (deleted today, kept in Archive after the service change) are not asserted until the service PR lands.
+    // Removal keeps the threads: both now sit in Archive under the removed project.
+    expect(await threadRows(service, one.id)).toEqual([]);
+    expect(await threadRows(service, one.id, true)).toHaveLength(2);
     expect(await threadRows(service, two.id)).toContainEqual(expect.objectContaining({ id: peerThread }));
     await expect(page.getByRole("button", { name: "Project scope: Unavailable project", exact: true })).toBeVisible();
     expect(deletes.map((request) => request.pathname)).toEqual([`/api/projects/${one.id}`]);

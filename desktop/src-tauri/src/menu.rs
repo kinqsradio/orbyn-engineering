@@ -103,6 +103,8 @@ pub fn on_action(app: &AppHandle, action: ShellAction) {
         | ShellAction::OpenAccessibilitySettings
         | ShellAction::OpenScreenRecordingSettings => crate::system::on_action(app, action),
         ShellAction::Quit => app.exit(0),
+        ShellAction::RestartService => crate::restart_service(app),
+        ShellAction::ShowLog => crate::show_service_log(app),
     }
 }
 

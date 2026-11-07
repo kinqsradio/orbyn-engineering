@@ -127,7 +127,7 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-No license has been chosen yet. Until one is added, the code is all rights
-reserved by its owner, even though the repository is public. Third-party
-packages keep their own licenses; see [web/NOTICE](web/NOTICE) and
-[UPSTREAM.md](UPSTREAM.md).
+Source-available under the [PolyForm Strict License 1.0.0](LICENSE): the source is
+readable, but the license allows personal, non-commercial use only, with no copies,
+changes or resale. Third-party packages keep their own licenses; see
+[web/NOTICE](web/NOTICE) and [UPSTREAM.md](UPSTREAM.md).

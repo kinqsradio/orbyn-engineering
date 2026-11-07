@@ -83,6 +83,7 @@ const DEFINITIONS: &[Definition] = defs![
     "auto_settle_on_merge" Kind::Bool, true, true;
     "auto_settle_keep_pull_requests" Kind::Bool, false, true;
     "auto_pull" Kind::Bool, false, true;
+    "task_skip_near_limit" Kind::Bool, false, false;
     "poll_pull_requests" Kind::Bool, true, false;
     "default_project_scripts" Kind::List, [], true;
     "default_model" Kind::Text, "", true;
@@ -323,6 +324,9 @@ impl Core {
         project_id: Option<&str>,
         values: &BTreeMap<String, Value>,
     ) -> Result<()> {
+        if let Some(id) = project_id {
+            self.store.project(id)?;
+        }
         for (key, value) in values {
             let definition = writable(key)?;
             if project_id.is_some() && !definition.project {

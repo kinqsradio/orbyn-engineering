@@ -140,7 +140,8 @@ missing cleanup rules and scheduling. The former 365/573 calculation is not a
 valid completion percentage.
 
 Required checks remain Rust on macos-15 and windows-2022, Web, unsigned desktop
-builds on both, and E2E. The repository is public and has no license yet.
+builds on both, and E2E. The repository is public and licensed under PolyForm
+Strict 1.0.0 (see `LICENSE`).
 
 ### Current local section
 
@@ -690,7 +691,6 @@ These block release, not development. Do not work around them.
 
 - `claude auth login` on a test machine, for a live Claude turn.
 - A real Windows machine for a hands-on run.
-- A license choice.
 - Apple Developer ID, Azure Trusted Signing, update hosting and an updater key.
 
 The tested-versions signing key is not in the repository. It lives only on the
