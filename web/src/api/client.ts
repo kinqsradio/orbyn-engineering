@@ -180,6 +180,9 @@ export async function attachmentBlob(id: string, signal?: AbortSignal): Promise<
 const q = encodeURIComponent;
 
 export const api = {
+  /** What Delete now, or Delete settled worktrees, would remove: counts and sizes. Changes nothing. */
+  storageCleanupPreview: (signal?: AbortSignal) =>
+    request<import("../generated/CleanupPreview").CleanupPreview>("GET", "/api/storage/cleanup/preview", undefined, signal),
   /** A task's last 50 firings, newest first. */
   taskRuns: (taskId: string, signal?: AbortSignal) =>
     request<import("../generated/TaskRun").TaskRun[]>("GET", `/api/tasks/${q(taskId)}/runs`, undefined, signal),

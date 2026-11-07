@@ -1278,8 +1278,9 @@ disabling stores null, and numeric drafts commit on blur or Enter. A conflicting
 write refreshes the snapshot while retaining the draft for an explicit retry; it
 never replays the edit. Scope disposal fences late writes and reports. Unmentioned
 fields, including legacy project cleanup objects, remain untouched. Maintenance has
-no worktree-age control or Preview action; the dry-run API remains available for
-verification. Delete now invokes the existing environment cleanup operation, and
+no worktree-age control or Preview action; the dry-run API and `GET
+/api/storage/cleanup/preview` (counts and sizes, which Delete now and Delete settled
+worktrees share, since both run the one cleanup) remain available. Delete now invokes the existing environment cleanup operation, and
 Last run reports its actual removed/kept entries. Action eligibility also reads the
 distinct worktree policy: explicit environment Off suppresses legacy defaults,
 empty environment policy retains a valid global age including zero, and project
@@ -2570,6 +2571,7 @@ because browsers cannot set headers on them.
 | `GET /api/diagnostics`, `POST /api/diagnostics/repair` | `Diagnostics`; `409 runs_active` |
 | `POST /api/diagnostics/otlp` | `OtlpCheck` to `OtlpResult` |
 | `GET, POST /api/storage/cleanup?dry_run=` | Last `CleanupReport`; apply the retention rules |
+| `GET /api/storage/cleanup/preview` | `CleanupPreview`: counts and bytes per kind that a run now would remove, and what it would hold back (uncommitted or shared worktrees). Changes and records nothing |
 | `GET /api/shell` | `ShellStatus` |
 | `GET /api/shell/events` | SSE `ShellEvent`, with events held for the first window |
 | `POST /api/shell/actions` | `ShellRequest` (`202`, `422` with no shell) |

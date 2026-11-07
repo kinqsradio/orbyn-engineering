@@ -527,6 +527,7 @@ fn router(state: AppState) -> Router {
             "/api/storage/cleanup",
             get(api::cleanup_report).post(api::storage_cleanup),
         )
+        .route("/api/storage/cleanup/preview", get(api::storage_preview))
         .route("/api/tasks", get(api::tasks).post(api::save_task))
         .route(
             "/api/tasks/{id}",

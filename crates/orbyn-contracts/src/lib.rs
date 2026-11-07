@@ -2372,6 +2372,40 @@ pub struct CleanupEntry {
     pub path: String,
     pub removed: bool,
     pub reason: String,
+    /// A run now would remove it. False for one the rules name but cannot touch, such as
+    /// a worktree with uncommitted work or another live thread in it.
+    #[serde(default)]
+    #[ts(as = "Option<bool>", optional)]
+    pub eligible: bool,
+    /// Its size, measured only by a preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bytes: Option<u64>,
+}
+}
+
+wire! {
+pub struct CleanupGroup {
+    /// `worktree`, `artifact` or `log`.
+    pub kind: String,
+    /// What a run now would remove.
+    pub count: u64,
+    pub bytes: u64,
+    /// Named by the rules but kept: uncommitted work, or in use.
+    pub held: u64,
+}
+}
+
+wire! {
+/// What Delete now, or Delete settled worktrees, would remove if run this moment.
+/// Nothing is changed to produce it.
+pub struct CleanupPreview {
+    pub groups: Vec<CleanupGroup>,
+    pub count: u64,
+    pub bytes: u64,
+    /// A worktree was too large to measure in full, so `bytes` is a floor.
+    pub partial: bool,
+    pub entries: Vec<CleanupEntry>,
 }
 }
 

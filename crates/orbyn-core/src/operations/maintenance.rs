@@ -6,7 +6,10 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use orbyn_contracts::{CleanupEntry, CleanupReport, DatabaseStorage, Diagnostics, OtlpResult};
+use orbyn_contracts::{
+    CleanupEntry, CleanupGroup, CleanupPreview, CleanupReport, DatabaseStorage, Diagnostics,
+    OtlpResult,
+};
 use serde_json::{Value, json};
 
 use crate::app::Core;
@@ -19,6 +22,37 @@ const REPAIR_THRESHOLD: u64 = 1024 * 1024 * 1024;
 const OTLP_TIMEOUT: Duration = Duration::from_secs(5);
 const REPORT_SETTING: &str = "storage_cleanup_report";
 const DAY: i64 = 24 * 60 * 60;
+/// A preview stops measuring one worktree after this many files.
+const MEASURE_LIMIT: usize = 200_000;
+const PARTIAL_REASON: &str = "Settled; measured only in part";
+
+/// The bytes under `path`, counting files only and following no link, and whether
+/// the walk stopped early at `MEASURE_LIMIT` files.
+fn tree_size(path: &Path) -> (u64, bool) {
+    let mut total = 0;
+    let mut seen = 0;
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        let Ok(items) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for item in items.flatten() {
+            seen += 1;
+            if seen > MEASURE_LIMIT {
+                return (total, true);
+            }
+            let Ok(kind) = item.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                pending.push(item.path());
+            } else if kind.is_file() {
+                total += item.metadata().map_or(0, |meta| meta.len());
+            }
+        }
+    }
+    (total, false)
+}
 
 fn days(rules: &Value, key: &str) -> Option<i64> {
     rules.get(key).and_then(Value::as_i64)
@@ -44,6 +78,8 @@ fn sweep(folder: &Path, kind: &str, age: i64, dry_run: bool, entries: &mut Vec<C
                 path: item.path().to_string_lossy().into_owned(),
                 removed,
                 reason: format!("Older than {age} days"),
+                eligible: true,
+                bytes: dry_run.then(|| item.metadata().map_or(0, |meta| meta.len())),
             });
         }
     }
@@ -191,6 +227,40 @@ impl Core {
         Ok(report)
     }
 
+    /// What a cleanup run now would remove, with counts and sizes. It reads and
+    /// changes nothing, so it is safe to ask at any time.
+    pub async fn storage_preview(&self) -> Result<CleanupPreview> {
+        let entries = self.storage_cleanup(true).await?.entries;
+        let mut groups: Vec<CleanupGroup> = Vec::new();
+        for entry in &entries {
+            let index = groups
+                .iter()
+                .position(|group| group.kind == entry.kind)
+                .unwrap_or_else(|| {
+                    groups.push(CleanupGroup {
+                        kind: entry.kind.clone(),
+                        count: 0,
+                        bytes: 0,
+                        held: 0,
+                    });
+                    groups.len() - 1
+                });
+            if entry.eligible {
+                groups[index].count += 1;
+                groups[index].bytes += entry.bytes.unwrap_or(0);
+            } else {
+                groups[index].held += 1;
+            }
+        }
+        Ok(CleanupPreview {
+            count: groups.iter().map(|group| group.count).sum(),
+            bytes: groups.iter().map(|group| group.bytes).sum(),
+            partial: entries.iter().any(|entry| entry.reason == PARTIAL_REASON),
+            groups,
+            entries,
+        })
+    }
+
     pub fn cleanup_report(&self) -> Result<Option<CleanupReport>> {
         Ok(self
             .store
@@ -243,10 +313,28 @@ impl Core {
                     path: worktree.path.clone(),
                     removed: false,
                     reason: format!("Settled over {age} days ago"),
+                    eligible: !shared,
+                    bytes: None,
                 };
                 if shared {
                     "Another active thread uses it".clone_into(&mut entry.reason);
-                } else if !dry_run {
+                } else if dry_run {
+                    // Git refuses to remove a worktree with uncommitted work, and a
+                    // run would leave it, so the preview does not count it.
+                    let dirty = git(Path::new(&worktree.path), &["status", "--porcelain"])
+                        .await
+                        .map_or(true, |out| !text(&out).is_empty());
+                    if dirty {
+                        entry.eligible = false;
+                        "Has uncommitted work, which Git keeps".clone_into(&mut entry.reason);
+                    } else {
+                        let (bytes, cut) = tree_size(Path::new(&worktree.path));
+                        entry.bytes = Some(bytes);
+                        if cut {
+                            PARTIAL_REASON.clone_into(&mut entry.reason);
+                        }
+                    }
+                } else {
                     let removed = git(
                         Path::new(&project.path),
                         &["worktree", "remove", &worktree.path],
@@ -261,5 +349,60 @@ impl Core {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CoreConfig;
+    use crate::testing::TempDir;
+
+    #[test]
+    fn a_tree_is_measured_by_its_files_in_every_folder() {
+        let dir = TempDir::new();
+        std::fs::write(dir.path().join("a"), "12345").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/b"), "123").unwrap();
+        assert_eq!(tree_size(dir.path()), (8, false));
+    }
+
+    #[tokio::test]
+    async fn the_preview_counts_and_sizes_what_a_run_would_remove_and_removes_nothing() {
+        let dir = TempDir::new();
+        let core = Core::open(CoreConfig::new(
+            dir.path().join("data"),
+            "http://127.0.0.1:1".into(),
+        ))
+        .unwrap();
+        let logs = dir.path().join("data/logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("a.log"), "1234").unwrap();
+        std::fs::write(logs.join("b.log"), "123456").unwrap();
+        core.set_preferences(
+            None,
+            &std::collections::BTreeMap::from([(
+                "storage_cleanup".to_owned(),
+                json!({ "logs_after_days": 0 }),
+            )]),
+        )
+        .unwrap();
+
+        let preview = core.storage_preview().await.unwrap();
+
+        assert_eq!(preview.bytes, 10);
+        assert!(
+            preview
+                .entries
+                .iter()
+                .any(|entry| entry.path.ends_with("b.log") && entry.bytes == Some(6))
+        );
+        assert_eq!(preview.groups[0].kind, "log");
+        assert!(!preview.partial);
+        assert!(logs.join("a.log").exists() && logs.join("b.log").exists());
+        assert!(
+            core.cleanup_report().unwrap().is_none(),
+            "no report is kept"
+        );
     }
 }

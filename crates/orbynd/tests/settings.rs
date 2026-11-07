@@ -375,6 +375,13 @@ async fn worktrees_follow_the_prefix_the_chosen_base_and_a_settled_one_is_cleane
     )
     .await;
     std::fs::write(path.join("unsaved.txt"), "keep").unwrap();
+    let held = service.json("/api/storage/cleanup/preview").await;
+    assert_eq!(held["count"], 0, "{held}");
+    assert_eq!(held["groups"][0]["kind"], "worktree");
+    assert_eq!(
+        held["groups"][0]["held"], 1,
+        "uncommitted work is held back"
+    );
     let (_, kept) = service.send("/api/storage/cleanup", json!({})).await;
     assert_eq!(kept["entries"][0]["removed"], false, "{kept}");
     assert!(
@@ -382,6 +389,10 @@ async fn worktrees_follow_the_prefix_the_chosen_base_and_a_settled_one_is_cleane
         "Git keeps uncommitted work"
     );
     std::fs::remove_file(path.join("unsaved.txt")).unwrap();
+    let ready = service.json("/api/storage/cleanup/preview").await;
+    assert_eq!(ready["groups"][0]["count"], 1, "{ready}");
+    assert!(ready["bytes"].as_u64().unwrap() > 0, "{ready}");
+    assert!(path.exists(), "a preview removes nothing");
     let (_, gone) = service.send("/api/storage/cleanup", json!({})).await;
     assert_eq!(gone["entries"][0]["removed"], true, "{gone}");
     assert!(!path.exists());

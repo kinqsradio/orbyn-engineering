@@ -1067,6 +1067,10 @@ pub async fn storage_cleanup(
     Ok(Json(state.core.storage_cleanup(dry_run).await?))
 }
 
+pub async fn storage_preview(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.storage_preview().await?))
+}
+
 pub async fn cleanup_report(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.cleanup_report()?))
 }
