@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHmac } from "node:crypto";
-import { startProject, type Service } from "./service";
+import { openDetails, startProject, type Service } from "./service";
 
 /** Webhook tasks and the after-thread trigger, set up in Settings and fired for real. */
 
@@ -9,8 +9,10 @@ let projectId = "";
 
 const tasksPage = async (page: Page) => {
   await page.goto(`${service.page}#/settings/tasks`);
-  await expect(page.getByRole("button", { name: "New task" })).toBeVisible();
+  await expect(newTask(page)).toBeVisible();
 };
+// The page bar and the empty list each offer one; the bar's comes first.
+const newTask = (page: Page) => page.getByRole("button", { name: "New task" }).first();
 
 test.beforeAll(async () => {
   ({ service, projectId } = await startProject({ scenes: true }));
@@ -20,10 +22,10 @@ test.afterAll(() => service.stop());
 test("a webhook task filters, verifies, drops repeats and logs each delivery", async ({ page }) => {
   await page.setViewportSize({ width: 1300, height: 1000 });
   await tasksPage(page);
-  await page.getByRole("button", { name: "New task" }).click();
+  await newTask(page).click();
   const dialog = page.getByRole("dialog", { name: "New scheduled task" });
   await dialog.getByLabel("Name").fill("On pushes");
-  await dialog.getByLabel("Prompt").fill("Look at {{body.action}}");
+  await dialog.getByLabel("What should the agent do?").fill("Look at {{body.action}}");
   await dialog.getByLabel("Schedule").selectOption("webhook");
   await dialog.getByLabel("Header").fill("X-Sig");
   await dialog.getByLabel("Prefix").fill("sha256=");
@@ -35,11 +37,9 @@ test("a webhook task filters, verifies, drops repeats and logs each delivery", a
   await dialog.getByRole("button", { name: "Save task" }).click();
   await expect(dialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Webhook address for On pushes" }).click();
-  const address = page.getByRole("dialog", { name: "Webhook address" });
-  await address.getByRole("button", { name: "Issue address" }).click();
-  const url = new URL((await address.locator(".command code").innerText()).trim());
-  await address.getByRole("button", { name: "Close", exact: true }).first().click();
+  await page.getByRole("button", { name: "Open On pushes" }).click();
+  await page.getByRole("button", { name: "Create address" }).click();
+  const url = new URL((await page.locator("main code").first().innerText()).trim());
 
   const post = (body: string, signed = true) =>
     fetch(`${service.url}${url.pathname}`, {
@@ -55,22 +55,26 @@ test("a webhook task filters, verifies, drops repeats and logs each delivery", a
   await post(JSON.stringify({ action: "opened", delivery: "one" }));
   await post(JSON.stringify({ action: "opened", delivery: "three" }), false);
 
-  await page.getByRole("button", { name: "Deliveries for On pushes" }).click();
-  const log = page.getByRole("dialog", { name: "Deliveries for On pushes" });
-  const rows = log.getByRole("list", { name: "Deliveries" }).getByRole("listitem");
-  await expect(rows).toHaveCount(4);
-  for (const state of ["Accepted", "Filtered out", "Duplicate", "Bad signature"]) {
-    await expect(log.getByText(state, { exact: true })).toBeVisible();
+  // The deliveries load when the task opens, so open it again after the calls arrived.
+  await page.getByRole("button", { name: "Scheduled tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Open On pushes" }).click();
+  await page.getByRole("tab", { name: "Webhook deliveries" }).click();
+  const rows = page.getByRole("table", { name: "Deliveries" }).getByRole("row");
+  // The header row and the four calls.
+  await expect(rows).toHaveCount(5);
+  for (const state of ["202 Accepted", "200 Filtered out", "200 Duplicate", "200 Bad signature"]) {
+    await expect(page.getByRole("table", { name: "Deliveries" }).getByText(state, { exact: true })).toBeVisible();
   }
-  await log.getByText("Accepted", { exact: true }).click();
-  await expect(log.getByText(/Look at <webhook-data-[0-9a-f]+>opened/)).toBeVisible();
-  await log.getByRole("button", { name: "Close", exact: true }).first().click();
+  // The accepted call started a thread whose prompt carries the body as marked data.
+  await page.getByRole("button", { name: "Open thread" }).click();
+  await expect(page.getByText(/Look at <webhook-data-[0-9a-f]+>opened/)).toBeVisible();
 
+  await page.goto(`${service.page}#/settings/tasks`);
   await page.getByRole("button", { name: "Edit On pushes" }).click();
   const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
   await expect(edit.getByText("Saved. Leave empty to keep it.")).toBeVisible();
   await expect(edit.getByLabel("Filter 1 value")).toHaveValue("opened");
-  await edit.getByRole("button", { name: "Save task" }).click();
+  await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(edit).toBeHidden();
   const saved = await service.api<{ id: string; has_secret: boolean; filters: unknown[] }[]>("GET", "/api/tasks");
   expect(saved[0]).toMatchObject({ has_secret: true, filters: [{ path: "action", op: "equals", value: "opened" }] });
@@ -87,10 +91,10 @@ test("an after-thread task names the thread it follows", async ({ page }) => {
     skill_profile: null,
   });
   await tasksPage(page);
-  await page.getByRole("button", { name: "New task" }).click();
+  await newTask(page).click();
   const dialog = page.getByRole("dialog", { name: "New scheduled task" });
   await dialog.getByLabel("Name").fill("Review after");
-  await dialog.getByLabel("Prompt").fill("Review it");
+  await dialog.getByLabel("What should the agent do?").fill("Review it");
   await dialog.getByLabel("Schedule").selectOption("after_thread");
   await expect(dialog.getByRole("button", { name: "Save task" })).toBeDisabled();
   await dialog.getByLabel("Thread").selectOption(thread.id);
@@ -103,10 +107,10 @@ test("an after-thread task names the thread it follows", async ({ page }) => {
 
 test("a task pauses, runs now, edits and goes", async ({ page }) => {
   await tasksPage(page);
-  await page.getByRole("button", { name: "New task" }).click();
+  await newTask(page).click();
   const dialog = page.getByRole("dialog", { name: "New scheduled task" });
   await dialog.getByLabel("Name").fill("Hourly");
-  await dialog.getByLabel("Prompt").fill("[scene:usage] check");
+  await dialog.getByLabel("What should the agent do?").fill("[scene:usage] check");
   await dialog.getByRole("button", { name: "Save task" }).click();
   await expect(dialog).toBeHidden();
   const task = async () => (await service.api<{ name: string; enabled: boolean; last_status: string }[]>("GET", "/api/tasks")).find((entry) => entry.name.startsWith("Hourly"));
@@ -114,14 +118,18 @@ test("a task pauses, runs now, edits and goes", async ({ page }) => {
   await expect.poll(async () => (await task())?.enabled).toBe(false);
   await page.getByRole("switch", { name: "Enable Hourly" }).click();
   await expect.poll(async () => (await task())?.enabled).toBe(true);
-  await page.getByRole("button", { name: "Run Hourly" }).click();
+  await page.getByRole("button", { name: "Open Hourly" }).click();
+  await page.getByRole("button", { name: "Run now", exact: true }).click();
   await expect.poll(async () => (await task())?.last_status).not.toBe("never");
-  await page.getByRole("button", { name: "Edit Hourly" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
   await edit.getByLabel("Name").fill("Hourly check");
-  await edit.getByRole("button", { name: "Save task" }).click();
-  await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeVisible();
-  await page.getByRole("button", { name: "Delete Hourly check" }).click();
+  await edit.getByRole("button", { name: "Save changes" }).click();
+  await expect(edit).toBeHidden();
+  await page.getByRole("button", { name: "Scheduled tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Hourly check" }).click();
+  await edit.getByRole("button", { name: "Delete task…" }).click();
+  await page.getByRole("dialog", { name: "Delete Hourly check?" }).getByRole("button", { name: "Delete task", exact: true }).click();
   await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeHidden();
 });
 
@@ -150,11 +158,11 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
     );
 
   await page.goto(`${service.page}#/threads/${thread.id}`);
-  const details = page.getByRole("complementary", { name: "Thread details" });
-  const automations = details.getByRole("list", { name: "Automations" });
-  await expect(automations).toContainText("Nightly review");
-  await expect(automations.getByRole("listitem")).toHaveCount(1);
-  await expect(automations).not.toContainText("On pushes");
+  let details = await openDetails(page);
+  const automations = () => details.getByRole("list", { name: "Automations" });
+  await expect(automations()).toContainText("Nightly review");
+  await expect(automations().getByRole("listitem")).toHaveCount(1);
+  await expect(automations()).not.toContainText("On pushes");
 
   // The mutation reaches the real service; only the browser's subsequent read
   // fails. The switch and schedule must keep the confirmed saved pause state.
@@ -168,7 +176,7 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
   await expect(details.getByRole("alert")).toContainText(/Paused Nightly review.*refresh/);
   await expect(details.getByRole("switch", { name: "Enable Nightly review" })).toBeEnabled();
   await expect(details.getByRole("switch", { name: "Enable Nightly review" })).not.toBeChecked();
-  await expect(automations).toContainText("paused");
+  await expect(automations()).toContainText("paused");
   await page.unroute("**/api/tasks");
   await details.getByRole("switch", { name: "Enable Nightly review" }).click();
   await expect.poll(async () => (await stored())?.enabled).toBe(true);
@@ -179,17 +187,18 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
   await expect.poll(async () => (await stored())?.last_status).toBe("started");
 
   await details.getByRole("button", { name: "Edit Nightly review" }).click();
-  await expect(page).toHaveURL((url) => url.hash === `#/settings/tasks?task=${task.id}`);
+  await expect(page).toHaveURL((url) => url.hash === `#/settings/tasks?task=${task.id}&edit=1`);
   const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
   await expect(edit.getByLabel("Name")).toHaveValue("Nightly review");
   await edit.getByLabel("Name").fill("Nightly check");
-  await edit.getByRole("button", { name: "Save task" }).click();
+  await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(edit).toBeHidden();
   await expect(page).toHaveURL((url) => url.hash === "#/settings/tasks");
 
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page).toHaveURL((url) => url.hash === `#/threads/${thread.id}`);
-  await expect(automations).toContainText("Nightly check");
+  details = await openDetails(page);
+  await expect(automations()).toContainText("Nightly check");
   await details.getByRole("button", { name: "Manage scheduled tasks" }).click();
   await expect(page).toHaveURL((url) => url.hash === "#/settings/tasks");
   // The thread details behind Settings has an Edit button with the same name.

@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { openDetails, openPanelTab, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** The chat, the panels and the sidebar scroll on their own. */
 
@@ -58,7 +58,7 @@ test("each panel scrolls alone, past both ends, with the chat parked mid-way", a
   await page.waitForTimeout(100);
 
   const parked = await chatTop(page);
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   await page.locator("[data-diff-file='big.txt']").waitFor();
   expect(await chatTop(page)).toBe(parked);
   await expectChatUntouched(page, page.locator(".patch-line").nth(20));
@@ -113,7 +113,7 @@ test("a historical turn shows file changes without per-file restore", async ({ p
   await settled(service, threadIdOf(page));
   expect(readFileSync(notes, "utf8")).toBe("changed by the agent\n");
 
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   await page.getByRole("radiogroup", { name: "Diff source" }).getByRole("radio", { name: "Turn" }).click();
   await expect(page.getByRole("button", { name: "Copy path notes.txt" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Restore notes.txt to before this turn" })).toHaveCount(0);
@@ -132,7 +132,7 @@ test("the details card and terminal keep the wheel to themselves", async ({ page
   await chat(page).evaluate((element) => {
     element.scrollTop = 600;
   });
-  await expectChatUntouched(page, page.getByRole("complementary", { name: "Thread details" }));
+  await expectChatUntouched(page, await openDetails(page));
 
   await page.keyboard.press("ControlOrMeta+j");
   const terminal = page.getByRole("region", { name: "Terminal" });
@@ -163,8 +163,7 @@ test("the Browser panel and the sidebar keep the wheel to themselves", async ({ 
   });
   await expectChatUntouched(page, page.locator(".sidebar-scroll"));
 
-  await page.getByRole("button", { name: "Surfaces" }).click();
-  await page.locator(".launcher").getByRole("button", { name: /^Browser/ }).click();
+  await openPanelTab(page, "Browser");
   await expect(page.locator(".browser-panel")).toBeVisible();
   await expectChatUntouched(page, page.locator(".browser-panel"));
 });
@@ -173,7 +172,7 @@ test("wheeling a panel during a run leaves the chat stuck to the bottom", async 
   test.setTimeout(45_000);
   await longThread(page, "[scene:stream]");
   await expect(page.getByText("Streamed line 60.")).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   await page.locator(".patch-line").nth(20).waitFor();
   await wheelBothEnds(page, page.locator(".patch-line").nth(20));
   await expect(page.getByText("Tick 30.")).toBeAttached({ timeout: 15_000 });

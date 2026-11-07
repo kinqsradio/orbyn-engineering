@@ -5,6 +5,7 @@ import type { ProjectImageSearchResult } from "../../generated/ProjectImageSearc
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
 import { projectImageCandidateUrl } from "../../lib/projectImages";
 import { toFailure } from "../../lib/useAsync";
+import { closingProps } from "../../ui/Presence";
 import "./ProjectImagePicker.css";
 
 export interface ProjectImagePickerScope {
@@ -38,9 +39,11 @@ function CandidateThumbnail({ projectId, path }: { projectId: string; path: stri
 type Observation = { generation: number; query: string; result: ProjectImageSearchResult | null; error: string | null };
 
 /** One open owns its selection snapshot; neither a later query nor scope can reuse it. */
-export function ProjectImagePicker({ input, projectName, onClose, onSelect }: {
+export function ProjectImagePicker({ input, projectName, closing, onClose, onSelect }: {
   input: ProjectImagePickerScope;
   projectName: string;
+  /** Set by `Presence` while the dialog fades out: it is already closed, and focus is back. */
+  closing?: boolean;
   onClose(): void;
   onSelect(path: string): void;
 }) {
@@ -54,17 +57,32 @@ export function ProjectImagePicker({ input, projectName, onClose, onSelect }: {
   const [observation, setObservation] = useState<Observation | null>(null);
   const [cursor, setCursor] = useState({ query: "", index: 0 });
   const selected = useRef(false);
+  const opener = useRef<HTMLElement | null>(null);
+  const restored = useRef(false);
+  const restoreFocus = () => {
+    if (restored.current) return;
+    restored.current = true;
+    const from = opener.current;
+    const available = from?.isConnected && from.offsetParent !== null && !(from instanceof HTMLButtonElement && from.disabled);
+    (available ? from : document.querySelector<HTMLElement>("[data-page-title]"))?.focus();
+  };
   useLayoutEffect(() => {
     const dialog = popup.current;
     if (!dialog) return;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.showModal(); search.current?.focus();
     return () => {
       if (dialog.open) dialog.close();
-      const available = opener?.isConnected && opener.offsetParent !== null && !(opener instanceof HTMLButtonElement && opener.disabled);
-      (available ? opener : document.querySelector<HTMLElement>("[data-page-title]"))?.focus();
+      restoreFocus();
     };
   }, []);
+  // Closing ends the modal and returns focus at once; the closed dialog then fades out on its own.
+  useLayoutEffect(() => {
+    if (!closing) return;
+    const dialog = popup.current;
+    if (dialog?.open) dialog.close();
+    restoreFocus();
+  }, [closing]);
   useLayoutEffect(() => {
     let current = true;
     const abort = new AbortController();
@@ -92,7 +110,7 @@ export function ProjectImagePicker({ input, projectName, onClose, onSelect }: {
   }, [list, active, current]);
   const empty = current?.error ?? (!current ? query.trim() ? "Searching project files…" : "Indexing project files…"
     : query.trim() ? "No matching image files." : "No image files found.");
-  return <dialog ref={popup} className="project-image-dialog" aria-label="Choose project icon"
+  return <dialog ref={popup} className="project-image-dialog" aria-label="Choose project icon" {...closingProps(closing)}
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onPointerDown={(event) => {
       if (event.target !== event.currentTarget) return;

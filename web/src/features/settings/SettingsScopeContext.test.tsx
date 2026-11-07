@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { ApiFailure, request } from "../../api/client";
@@ -78,7 +78,7 @@ it("uses the ordinary menu for exactly six projects", async () => {
   const user = userEvent.setup(); render(<Harness />);
   await user.click(await screen.findByRole("button", { name: "Project scope: All projects" }));
   expect(screen.getAllByRole("menuitemradio")).toHaveLength(7);
-  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "Search projects" })).not.toBeInTheDocument();
 });
 
 it("uses a searchable picker only above six projects and Tab advances without a focus reset", async () => {
@@ -88,7 +88,7 @@ it("uses a searchable picker only above six projects and Tab advances without a 
   await user.click(await screen.findByRole("button", { name: "Project scope: All projects" }));
   const search = screen.getByRole("combobox", { name: "Search projects" });
   await user.type(search, "Project 6");
-  expect(screen.getAllByRole("option")).toHaveLength(1);
+  expect(within(screen.getByRole("listbox", { name: "Projects" })).getAllByRole("option")).toHaveLength(1);
   await user.keyboard("{Enter}");
   await waitFor(() => expect(screen.getByRole("button", { name: "Project scope: Project 6" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Project scope: Project 6" }));

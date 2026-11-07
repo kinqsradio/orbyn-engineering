@@ -1,0 +1,748 @@
+/* Settings frames (Engineer Designs s-*): row anatomy, controls and the table rows the frames draw.
+   Scoped to the settings page so it adds to the shared rules in pages.css without touching them. */
+.settings-page {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-opacity='.92' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] .settings-page {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-opacity='.94' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
+}
+.settings-page .settings-title {
+  font-size: var(--text-section);
+}
+.settings-page .setting-group h2 {
+  padding: 12px 0 6px;
+}
+.settings-page .setting-line-title {
+  font-size: var(--text-small);
+}
+.settings-page .setting-line-desc {
+  font-size: var(--text-meta);
+  line-height: 1.45;
+}
+.settings-page .settings-scope svg {
+  flex: none;
+}
+.settings-page .settings-main select {
+  appearance: none;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 29px 0 10px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-sunken);
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 13px;
+  color: var(--color-text);
+  font-size: var(--text-nav);
+  line-height: 28px;
+}
+.settings-page .settings-main .btn-small {
+  height: 30px;
+}
+.settings-page .settings-main .btn-danger {
+  color: var(--color-danger);
+}
+
+/* A block heading inside a section, such as Layout or Actions. */
+.set-bh {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 0 6px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.set-bh > b {
+  color: var(--color-text);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+/* The find field above a table. */
+.set-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 4px 0 8px;
+  padding: 0 10px;
+  border-radius: var(--radius-9);
+  background: var(--color-sunken);
+  color: var(--color-faint);
+}
+.set-find input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: inherit;
+}
+.set-find input::placeholder {
+  color: var(--color-faint);
+}
+.set-find:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.set-find input:focus-visible {
+  outline: none;
+}
+
+/* Table rows */
+.set-tbl {
+  display: flex;
+  flex-direction: column;
+}
+.set-tr {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  padding: 0 4px;
+  border-top: 1px solid var(--color-border);
+}
+.set-tr.h {
+  min-height: 26px;
+  border-top: 0;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.set-tr:last-child {
+  border-bottom: 1px solid var(--color-border);
+}
+.set-tr .t3 {
+  color: var(--color-muted);
+}
+.set-tr .sub {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.set-tr .name {
+  font-weight: 500;
+}
+.set-tr .mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.set-tr .row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Key caps */
+.kc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  box-shadow: inset 0 -1px 0 var(--color-borderStrong);
+  color: var(--color-textSoft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.kc.warn {
+  color: var(--color-warnText);
+  box-shadow: inset 0 0 0 1px var(--color-warnBorder);
+}
+
+/* Status pill and provider mark */
+.set-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-label);
+}
+.set-pill.warn {
+  background: var(--color-warnSoft);
+  color: var(--color-warnText);
+}
+.set-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-5);
+  background: var(--color-selected);
+  color: var(--color-text);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.keycaps {
+  display: inline-flex;
+  gap: 4px;
+}
+.set-clash {
+  color: var(--color-warnText);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.set-tr .icon-btn {
+  color: var(--color-faint);
+}
+.set-tools {
+  display: flex;
+  gap: 6px;
+  padding-top: 12px;
+}
+.set-tr .mono.t3 {
+  color: var(--color-textSoft);
+}
+/* Two untitled lists in a row read as one list. */
+.setting-group:not(:has(> h2)) + .setting-group:not(:has(> h2)) > .setting-list > .setting-line:first-child {
+  border-top: 0;
+}
+.set-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
+}
+.set-card b {
+  font-weight: 500;
+}
+.set-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-11);
+  background: var(--color-primary);
+  color: var(--color-onAccent);
+  font-weight: 500;
+}
+/* Layout reads as a block heading above its cards. */
+.settings-page .setting-line-stacked {
+  gap: 0;
+  padding: 12px 0 0;
+  border-top: 0;
+}
+.settings-page .setting-line-stacked .setting-line-title {
+  font-weight: 500;
+}
+.settings-page .setting-line-stacked .layout-cards {
+  padding: 6px 0 14px;
+}
+.settings-page .setting-line-stacked + .setting-line,
+.setting-group:has(.setting-line-stacked) + .setting-group:not(:has(> h2)) > .setting-list > .setting-line:first-child {
+  border-top: 1px solid var(--color-border);
+}
+.settings-page .setting-line-stacked:last-child {
+  border-bottom: 0;
+}
+.set-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-page .project-actions {
+  display: block;
+}
+.set-tr,
+.set-find {
+  font-size: var(--text-small);
+}
+
+/* Search results float under the find field, over the open section. */
+.settings-page {
+  position: relative;
+}
+.settings-search-menu {
+  position: absolute;
+  z-index: 5;
+  top: 56px;
+  left: 256px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px;
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  box-shadow: 0 10px 30px var(--color-shadow), 0 0 0 1px var(--color-borderStrong);
+  font-size: var(--text-nav);
+}
+.settings-search-menu .mh {
+  margin: 0;
+  padding: 6px 9px 3px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.settings-search-menu a {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: var(--radius-md);
+  color: var(--color-textSoft);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.settings-search-menu a:hover,
+.settings-search-menu .mh + a {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.settings-search-menu a small {
+  margin-left: auto;
+  padding-left: 18px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-kbd);
+}
+.settings-search-menu [role="status"] {
+  margin: 0;
+  padding: 8px 9px;
+  color: var(--color-muted);
+}
+@media (max-width: 599px) {
+  .settings-search-menu {
+    left: 10px;
+    width: calc(100% - 20px);
+    top: 50px;
+  }
+}
+
+/* A group label between lists, and a number with its unit. */
+.set-grp {
+  margin: 0;
+  padding: 18px 0 4px;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.unit-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.unit-field input[type="number"] {
+  width: 64px;
+}
+.unit-field .t3 {
+  color: var(--color-muted);
+}
+.range-note {
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.set-preview {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 14px;
+}
+.set-card.set-preview .mono {
+  font-family: var(--font-mono);
+  color: var(--color-textSoft);
+}
+
+/* Titled groups read as a quiet label between lists. */
+.settings-page .setting-group > h2 {
+  padding: 18px 0 4px;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  font-weight: 400;
+}
+.set-hosts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 8px;
+}
+.set-hosts-head b {
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+.set-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+}
+.set-add input {
+  width: 160px;
+}
+.settings-page .setting-line-control .t3 {
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.settings-page .banner-err {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.set-issues {
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.set-grp-tight {
+  padding-top: 10px;
+}
+.set-back {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.set-back-title {
+  margin: 0;
+  font-size: var(--text-section);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.set-licence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+.set-licence-bar .set-find {
+  flex: 1;
+  margin: 0;
+}
+.set-card .sub {
+  font-size: var(--text-meta);
+}
+
+/* Theme editor: one row per colour token. */
+.tokg {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 24px;
+}
+.tkn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px 150px;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+}
+.tkn b {
+  font-weight: 400;
+}
+.tkn .swc {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-5);
+  box-shadow: inset 0 0 0 1px var(--color-borderStrong);
+}
+.tkn input {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.tkn.error input {
+  border-color: var(--color-danger);
+}
+.tkn .err {
+  grid-column: 1 / -1;
+  color: var(--color-danger);
+  font-size: 11.5px;
+}
+@media (max-width: 599px) {
+  .tokg { grid-template-columns: 1fr; }
+}
+
+/* The scope bar: two inline selects under the page title. */
+.settings-page .settings-scope-line select {
+  width: auto;
+  max-width: 220px;
+}
+.set-inuse-head {
+  white-space: nowrap;
+}
+
+/* Where a value comes from sits left of the control, ten pixels from it (s-x-inherit). */
+.setting-line-control:has(> .setting-inheritance-actions) {
+  gap: 10px;
+}
+
+/* Confirm dialog card: .card and .kv in the design. */
+.set-dlg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
+}
+.set-dlg-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 26px;
+  color: var(--color-muted);
+}
+.set-dlg-kv b {
+  min-width: 0;
+  font-weight: 400;
+  color: var(--color-text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.set-dlg-kv b.mono {
+  font-family: var(--font-mono);
+}
+/* The Danger row's action reads as red text, not a button. */
+.set-red-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-danger);
+  font: inherit;
+  cursor: pointer;
+}
+.set-red-link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.set-red-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+/* Checkouts: a column of folders, right-aligned, under a top-aligned label (s-x-projects-general). */
+.setting-line:has(.set-checkouts) {
+  align-items: flex-start;
+}
+.set-checkouts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+.set-checkouts .mono {
+  color: var(--color-text);
+}
+.settings-page .setting-line-control input.set-name-input {
+  width: 200px;
+}
+
+/* A table cell holding the inheritance icon and a switch, ten pixels apart. */
+.set-inline-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.settings-page .setting-line-control .mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* Banner and empty state, as the settings frames draw them. */
+.set-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-14);
+  background: var(--color-sunken);
+  color: var(--color-text);
+  font-size: var(--text-nav);
+}
+.set-banner.err {
+  background: var(--color-dangerSoft);
+}
+.set-banner > svg {
+  flex: none;
+}
+.set-banner-end {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.set-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+}
+.set-empty h3 {
+  margin: 0;
+  font-size: var(--text-section);
+  font-weight: 500;
+  color: var(--color-text);
+}
+.set-empty p {
+  margin: 0;
+  color: var(--color-muted);
+}
+/* A grey card of facts, one per line, label left and value right (.card, .kv). */
+.set-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
+}
+.set-facts > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 26px;
+  color: var(--color-muted);
+}
+.set-facts b {
+  font-weight: 400;
+  color: var(--color-text);
+}
+.set-time {
+  color: var(--color-muted);
+}
+.set-facts > .set-facts-end {
+  justify-content: flex-end;
+}
+.set-checking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+}
+/* OpenTelemetry endpoints: mono, 300px; a failed check outlines red and says so (s-x-maint-otel). */
+.settings-page .setting-line-control input.set-endpoint-input {
+  width: 300px;
+  font-family: var(--font-mono);
+}
+.settings-page .setting-line-control input.set-endpoint-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+.settings-page .setting-line:has(.set-endpoint-input[aria-invalid="true"]) .setting-line-desc {
+  color: var(--color-danger);
+}
+.set-muted {
+  color: var(--color-muted);
+}
+/* A custom model's arrows sit together, then Remove, then its switch (s-x-provider-detail). */
+.set-model-moves {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 2px;
+}
+.setting-line-control:has(> .set-model-moves, > * > .set-model-moves) {
+  gap: 10px;
+}
+.set-grp .set-pill {
+  margin-left: 8px;
+}
+/* The model id field under a fallback model's Other… (s-x-projects-fallback-other). */
+.set-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.set-fallback-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.settings-page .setting-line-control .set-fallback-id input {
+  width: 240px;
+}
+.set-facts-head {
+  margin-bottom: 4px;
+}
+.set-facts-head > b {
+  flex: 1;
+  font-weight: 500;
+}
+.set-facts-foot {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+.set-prog {
+  display: inline-block;
+  width: 140px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-sunken);
+  overflow: hidden;
+}
+.set-prog > i {
+  display: block;
+  height: 100%;
+  background: var(--color-text);
+}
+.set-pct {
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Task page: header buttons, prompt summary and the in-page tab bar. */
+.set-task-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.set-task-prompt {
+  max-width: 420px;
+  color: var(--color-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.set-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 8px;
+}
+.set-tabs [role="tab"] {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-10);
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.set-tabs [role="tab"][aria-selected="true"] {
+  background: var(--color-sunken);
+  color: var(--color-text);
+}
+.set-naming {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.set-naming-note {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}

@@ -16,7 +16,7 @@ test("an ACP agent's saved sessions are listed, imported and deleted from Settin
     writeFileSync(join(native, "sessions.json"), JSON.stringify([row("a1", project!.path, "Alpha chat"), row("b2", project!.path, "Beta chat"), row("c3", project!.path, "Gamma chat"), row("z9", "/not/this/project", "Elsewhere")]));
     await service.api("PUT", "/api/preferences", { values: { provider_instances: [{ id: "agent", driver: "_local_acp", name: "Saved agent", program: executable, args: ["acp"] }] } });
     await page.goto(`${service.page}#/settings/providers`);
-    await page.getByRole("button", { name: "Select Saved agent", exact: true }).click();
+    await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Saved agent", exact: true }).click();
     await page.getByRole("button", { name: "List sessions", exact: true }).click();
     await expect(page.getByText("Alpha chat")).toBeVisible();
     await expect(page.getByText("Beta chat")).toBeVisible();
@@ -50,8 +50,8 @@ test("an agent that cannot list sessions shows no session controls", async ({ pa
   try {
     await service.api("PUT", "/api/preferences", { values: { provider_instances: [{ id: "plain", driver: "_local_acp", name: "Plain agent", program: executable, args: ["acp"] }] } });
     await page.goto(`${service.page}#/settings/providers`);
-    await page.getByRole("button", { name: "Select Plain agent", exact: true }).click();
-    await expect(page.getByRole("button", { name: /^Models \(/ })).toBeVisible();
+    await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Plain agent", exact: true }).click();
+    await expect(page.getByText("Models", { exact: true })).toBeVisible();
     await expect(page.getByText("Native sessions")).toHaveCount(0);
   } finally { await service.stop(); }
 });

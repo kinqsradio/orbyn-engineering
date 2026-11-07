@@ -43,7 +43,7 @@ test("project folders group one repository, split on Separate and honor a checko
   await page.goto(`${service.page}#/settings/threads`);
   await page.getByRole("switch", { name: "Group threads by project" }).check();
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
+  await page.getByRole("radiogroup", { name: "Project grouping" }).getByRole("radio", { name: "Repository", exact: true }).click();
   await page.goto(service.page);
 
   await expect(fixtureFolders(page)).toHaveCount(1);
@@ -53,7 +53,7 @@ test("project folders group one repository, split on Separate and honor a checko
   await expect(page.getByText("grouped-three thread", { exact: true })).toBeVisible();
 
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("separate");
+  await page.getByRole("radiogroup", { name: "Project grouping" }).getByRole("radio", { name: "Separate", exact: true }).click();
   await page.goto(service.page);
   await expect(fixtureFolders(page)).toHaveCount(3);
   await expect(fixtureFolders(page).filter({ hasText: "grouped-one" })).toHaveCount(1);
@@ -61,7 +61,7 @@ test("project folders group one repository, split on Separate and honor a checko
   await expect(fixtureFolders(page).filter({ hasText: "grouped-three" })).toHaveCount(1);
 
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
+  await page.getByRole("radiogroup", { name: "Project grouping" }).getByRole("radio", { name: "Repository", exact: true }).click();
   await page.goto(service.page);
   await fixtureFolders(page).filter({ hasText: "Owner/Grouped" }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Grouping", exact: true }).hover();
@@ -101,7 +101,7 @@ test("Separate keeps explicit repository overrides and their thread membership a
   await page.goto(`${service.page}#/settings/threads`);
   await page.getByRole("switch", { name: "Group threads by project" }).check();
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("repository");
+  await page.getByRole("radiogroup", { name: "Project grouping" }).getByRole("radio", { name: "Repository", exact: true }).click();
   await page.goto(service.page);
   await expect(fixtureFolders(page)).toHaveCount(1);
 
@@ -113,7 +113,7 @@ test("Separate keeps explicit repository overrides and their thread membership a
   }
 
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("combobox", { name: "Project grouping" }).selectOption("separate");
+  await page.getByRole("radiogroup", { name: "Project grouping" }).getByRole("radio", { name: "Separate", exact: true }).click();
   await page.goto(service.page);
 
   const expected = [

@@ -70,7 +70,7 @@ const MERGE: &[&str] = &["", "merge", "squash", "rebase"];
 const IDLE: &[&str] = &["on_return", "before_cache_expiry", "never"];
 
 const DEFINITIONS: &[Definition] = defs![
-    "response_streaming_mode" Kind::OneOf(STREAMING), "paragraph", true;
+    "response_streaming_mode" Kind::OneOf(STREAMING), "paragraph", false;
     "enable_provider_update_checks" Kind::Bool, true, false;
     "continue_threads_after_update" Kind::Bool, true, true;
     "enable_agent_browser_access" Kind::Bool, true, true;
@@ -96,8 +96,8 @@ const DEFINITIONS: &[Definition] = defs![
     "default_effort" Kind::Text, "", true;
     "default_model_options" Kind::Object, {}, true;
     "fallback_model" Kind::Text, "", true;
-    "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", true;
-    "default_thread_env_mode" Kind::OneOf(ENV_MODE), "local", true;
+    "default_permission_mode" Kind::OneOf(&["supervised", "auto_edits", "auto", "full_access"]), "supervised", false;
+    "default_thread_env_mode" Kind::OneOf(ENV_MODE), "local", false;
     "new_worktrees_start_from_origin" Kind::Bool, true, true;
     "worktree_submodules" Kind::OneOf(SUBMODULES), "recursive", true;
     "add_project_base_directory" Kind::Text, "", false;
@@ -525,6 +525,65 @@ mod scoped_consumer_tests {
         store::{NewProject, NewThread},
         testing::TempDir,
     };
+
+    #[test]
+    fn an_old_project_override_of_a_device_only_key_no_longer_applies() {
+        let dir = TempDir::new();
+        let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());
+        config.engines.lookup_latest = false;
+        let core = Core::open(config).unwrap();
+        let path = dir.path().join("one");
+        std::fs::create_dir_all(&path).unwrap();
+        let project = core
+            .store
+            .add_project(NewProject {
+                path: path.to_str().unwrap(),
+                name: "one",
+                is_git: false,
+                managed: false,
+                scratch: false,
+            })
+            .unwrap();
+        core.set_preferences(
+            None,
+            &BTreeMap::from([("default_permission_mode".into(), json!("auto_edits"))]),
+        )
+        .unwrap();
+        core.store
+            .change_settings(|_| {
+                Ok((
+                    (),
+                    vec![crate::store::scoped_settings::SettingWrite::Project {
+                        project_id: project.id.clone(),
+                        key: "default_permission_mode".into(),
+                        value: Some(json!("full_access").to_string()),
+                    }],
+                ))
+            })
+            .unwrap();
+        assert_eq!(
+            core.preference("default_permission_mode", Some(&project.id))
+                .unwrap(),
+            json!("auto_edits")
+        );
+        let view = core
+            .preferences(Some(&project.id))
+            .unwrap()
+            .into_iter()
+            .find(|view| view.key == "default_permission_mode")
+            .unwrap();
+        assert_eq!(
+            (view.source.as_str(), view.project_scoped),
+            ("global", false)
+        );
+        assert!(
+            core.set_preferences(
+                Some(&project.id),
+                &BTreeMap::from([("default_permission_mode".into(), json!("auto"))]),
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn lifecycle_uses_each_projects_nullable_window_and_keeps_global_defaults_separate() {

@@ -1,9 +1,11 @@
-import { Check, Folder, ListFilter, Settings } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Folder, Settings } from "lucide-react";
+import { SlidersIcon } from "../../ui/SlidersIcon";
+import { useMemo, useRef, useState } from "react";
 import type { Project } from "../../api/types";
 import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { ProjectBadge } from "../../ui/badges";
+import { usePopover } from "../../ui/usePopover";
 
 /** Limits the thread list to one or several projects. Shift adds or removes one. */
 export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
@@ -12,16 +14,9 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  const popover = usePopover({ kind: "fields", root: popup, active: open, trigger: () => trigger.current, onClose: () => setOpen(false) });
 
   const scoped = projects.filter((project) => filter.includes(project.id));
   const matches = useMemo(() => {
@@ -43,10 +38,10 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
     } else {
       setPrefs({ projectFilter: [project.id] });
     }
-    setOpen(false);
+    popover.dismiss("select");
   };
   const projectSettings = () => {
-    setOpen(false);
+    popover.dismiss("select");
     navigate({ name: "settings", section: "projects" });
   };
 
@@ -56,8 +51,9 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
       : "Filter threads by project";
 
   return (
-    <div className="project-filter" ref={root}>
+    <div className="project-filter">
       <button
+        ref={trigger}
         type="button"
         className="icon-btn"
         aria-label={label}
@@ -78,11 +74,11 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
         ) : scoped[0] ? (
           <ProjectBadge name={scoped[0].name} project={scoped[0]} />
         ) : (
-          <ListFilter size={16} aria-hidden />
+          <SlidersIcon size={14} />
         )}
       </button>
       {open ? (
-        <div className="filter-popup">
+        <div className="filter-popup" ref={popup}>
           <input
             autoFocus
             aria-label="Search projects"
@@ -93,10 +89,7 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
               setAt(0);
             }}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                setOpen(false);
-              } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 const step = event.key === "ArrowDown" ? 1 : -1;
                 setAt((current) => Math.min(items.length - 1, Math.max(0, current + step)));

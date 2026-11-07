@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useCommand } from "../../app/shortcuts";
 import { api, request } from "../../api/client";
 import { inDesktopApp, readShellStatus } from "../../api/shell";
@@ -70,25 +70,50 @@ export function QuitConfirmation() {
     };
   }, [pushToast]);
 
-  if (!state.prompt) return null;
-  const note =
-    working > 0
-      ? `${working} ${working === 1 ? "agent is" : "agents are"} working.`
-      : null;
+  // The bar fills linearly while the key is held. A release before the end lets the overlay
+  // stay for the short reset, so the bar visibly runs back to empty.
+  const holding = state.prompt === "hold";
+  const [fill, setFill] = useState<"idle" | "holding" | "releasing">("idle");
+  const bar = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!holding) {
+      setFill((current) => (current === "holding" ? "releasing" : "idle"));
+      return;
+    }
+    const frame = requestAnimationFrame(() => setFill("holding"));
+    return () => cancelAnimationFrame(frame);
+  }, [holding]);
+  useEffect(() => {
+    if (fill !== "releasing") return;
+    const seconds = bar.current ? Number.parseFloat(getComputedStyle(bar.current).transitionDuration) : 0;
+    const timer = setTimeout(() => setFill("idle"), Number.isFinite(seconds) ? seconds * 1000 : 0);
+    return () => clearTimeout(timer);
+  }, [fill]);
+
+  const prompt = state.prompt ?? (fill === "releasing" ? "hold" : null);
+  if (!prompt) return null;
+  const agents = `${working} ${working === 1 ? "agent is" : "agents are"} working`;
+  const holdNote = `${working > 0 ? `${agents}. ` : ""}Keep holding ⌘Q.`;
+  const againNote = working > 0 ? `${agents} and will stop.` : null;
   return (
     <div className="quit-overlay" role="status" aria-live="assertive">
       <kbd className="quit-key">⌘ Q</kbd>
-      {state.prompt === "hold" ? (
+      {prompt === "hold" ? (
         <>
           <b>Hold to quit</b>
-          {/* A second press during a hold does nothing, so the hold prompt offers no shortcut. */}
-          {note ? <span className="quit-note">{note}</span> : null}
-          <span className="quit-progress" style={{ animationDuration: `${HOLD_MS}ms` }} aria-hidden />
+          <span className="quit-note">{holdNote}</span>
+          <span
+            ref={bar}
+            className="quit-progress"
+            data-holding={fill === "holding" || undefined}
+            style={{ "--hold-ms": `${HOLD_MS}ms` } as CSSProperties}
+            aria-hidden
+          />
         </>
       ) : (
         <>
           <b>Press ⌘Q again to quit</b>
-          {note ? <span className="quit-note">{note}</span> : null}
+          {againNote ? <span className="quit-note">{againNote}</span> : null}
         </>
       )}
     </div>

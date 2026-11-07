@@ -9,7 +9,9 @@ const desktop = JSON.parse(readFileSync(new URL("../../desktop/src-tauri/tauri.c
 const policies: Record<string, string> = { service: servicePolicy, desktop: desktop.app.security.csp };
 
 for (const [name, policy] of Object.entries(policies)) {
-  test(`${name} policy loads proxied images and refuses direct remote resources`, async ({ page }) => {
+  test(`${name} policy loads proxied images and refuses direct remote resources`, async ({ page, baseURL }) => {
+    // The dev server's own origin, whatever port the run was given.
+    const origin = new URL(baseURL ?? "http://localhost:5274").origin;
     const requested: string[] = [];
     await page.route("https://media.example/**", async (route) => {
       requested.push(route.request().url());
@@ -19,11 +21,11 @@ for (const [name, policy] of Object.entries(policies)) {
       requested.push(route.request().url());
       await route.abort();
     });
-    await page.route("http://localhost:5274/api/media/image?**", (route) => route.fulfill({
+    await page.route(`${origin}/api/media/image?**`, (route) => route.fulfill({
       contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2" />',
     }));
     // Use the two production policies, with no Vite development-policy substitution.
-    await page.route("http://localhost:5274/policy-probe", (route) => route.fulfill({
+    await page.route(`${origin}/policy-probe`, (route) => route.fulfill({
       contentType: "text/html",
       headers: { "Content-Security-Policy": policy },
       body: '<!doctype html><img id="proxied" src="/api/media/image?url=https%3A%2F%2Fmedia.example%2Fimage.png"><img id="secure" src="https://media.example/image.svg"><img id="insecure" src="http://media.example/image.svg"><video src="https://media.example/video.mp4" preload="auto"></video><iframe src="https://media.example/frame"></iframe><script src="https://media.example/script.js"></script>',

@@ -1,9 +1,14 @@
-import { Plus, Settings2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectScript } from "../../generated/ProjectScript";
 import type { PreferenceEdit } from "../../generated/PreferenceEdit";
 import { ACTION_ICONS, ProjectActionIcon } from "../../ui/ProjectActionIcon";
-import { Button, IconButton } from "../../ui/controls";
+import { Button } from "../../ui/controls";
+import { formatShortcut } from "../../app/shortcuts";
+import { actionCommand } from "../../lib/actionCommand";
+import { request } from "../../api/client";
+import type { KeybindingsView } from "../../api/types";
+import { useAsync } from "../../lib/useAsync";
 import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import type { PreferenceControl, PreferenceSaveResult } from "./PreferenceRows";
 import { useActionKeybinding } from "./actionKeybinding";
@@ -43,17 +48,25 @@ export function ProjectActions({ value, control }: { value: unknown; control: Pr
     target?.focus();
   }, [editing, control.disabled]);
   const actions = actionsFrom(value);
+  const keys = useAsync("action-keybindings", (signal) => request<KeybindingsView>("GET", "/api/keybindings", undefined, signal));
+  const shortcut = (id: string | null) => id === null ? undefined
+    : [...(keys.data?.rules ?? [])].reverse().find((rule) => !rule.remove && rule.command === actionCommand(id))?.key;
   return <div ref={root} className="project-actions">
-    <Button small icon={<Plus size={14} aria-hidden />} disabled={control.disabled}
-      onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: null, draft: empty() }); }}>Add action</Button>
+    <div className="set-bh"><b>Actions</b><span>
+      <Button small icon={<Plus size={13} aria-hidden />} disabled={control.disabled}
+        onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: null, draft: empty() }); }}>Add action</Button>
+    </span></div>
     {!control.mixed && (actions.length === 0 ? <p className="field-hint">No actions configured.</p> :
-      <ul className="project-action-list">{actions.map((action) => <li key={action.name}>
-        <ProjectActionIcon icon={action.icon} />
-        <div className="project-action-summary"><strong>{action.name}</strong><code>{action.command}</code>
-          <span>{action.run_on_worktree_create ? "setup" : ""}{action.run_on_worktree_create && action.run_on_settle ? " · " : ""}{action.run_on_settle ? "on settle" : ""}</span></div>
-        <IconButton label={`Edit ${action.name}`} disabled={control.disabled}
-          onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: action.name, draft: { ...action } }); }}><Settings2 size={14} aria-hidden /></IconButton>
-      </li>)}</ul>)}
+      <div className="set-tbl" role="table" aria-label="Actions">{actions.map((action) => {
+        const key = shortcut(action.id);
+        return <div key={action.name} role="row" className="set-tr" style={{ gridTemplateColumns: "28px minmax(0, 1fr) minmax(0, 1.2fr) auto" }}>
+          <span role="cell"><ProjectActionIcon icon={action.icon} /></span>
+          <span role="cell"><button type="button" className="set-link" aria-label={`Edit ${action.name}`} disabled={control.disabled}
+            onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: action.name, draft: { ...action } }); }}>{action.name}</button></span>
+          <span role="cell"><span className="mono">{action.command}</span></span>
+          <span role="cell">{key ? <span className="kc">{formatShortcut(key).replace(/\+/g, "")}</span> : <span className="t3">—</span>}</span>
+        </div>;
+      })}</div>)}
     {editing && <ActionDialog key={editing.original ?? "new"} initial={editing.draft} original={editing.original}
       disabled={control.disabled} commit={control.commit} onClose={() => { restoreFocus.current = true; setEditing(null); }} />}
   </div>;

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { libraryReady, send, startService, type Service } from "./service";
+import { libraryReady, openPanelTab, send, startService, type Service } from "./service";
 
 /** Real runs through the real service, against the protocol double. */
 
@@ -32,7 +32,7 @@ test("a draft sends, then forks, rewinds and shows the turn's diff", async ({ pa
   await expect.poll(async () => (await service.api<Thread>("GET", `/api/threads/${id}`)).active_run, { timeout: 15_000 }).toBeNull();
   await expect(page.getByRole("navigation", { name: "Workspace" }).getByText("A fresh title")).toBeVisible();
 
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   const sources = page.getByRole("radiogroup", { name: "Diff source" });
   await expect(sources).toBeVisible();
   for (const name of ["Turn", "Thread", "Branch", "Working tree"]) {
@@ -117,7 +117,7 @@ test("a thread archives, comes back from Archive, and deletes", async ({ page })
   await expect(row).toHaveCount(1);
   await row.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.getByRole("dialog", { name: "Delete thread?" }).getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("dialog", { name: "Delete “Throwaway”?" }).getByRole("button", { name: "Delete" }).click();
   await expect(row).toHaveCount(0);
   await expect(service.api("GET", `/api/threads/${made.id}`)).rejects.toThrow("404");
 });

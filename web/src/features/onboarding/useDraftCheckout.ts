@@ -15,7 +15,8 @@ export function useDraftCheckout(project: Pick<Project, "id" | "is_git"> | null,
   useEffect(() => {
     if (!scope || !git) return;
     const controller = new AbortController();
-    request<PreferenceView[]>("GET", `/api/preferences?project_id=${encodeURIComponent(scope)}`, undefined, controller.signal)
+    // A device setting: a project never overrides where new threads start.
+    request<PreferenceView[]>("GET", "/api/preferences", undefined, controller.signal)
       .then((views) => {
         if (controller.signal.aborted) return;
         const value = views.find((view) => view.key === "default_thread_env_mode")?.value;

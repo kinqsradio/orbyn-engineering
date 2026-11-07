@@ -24,6 +24,10 @@ import type {
   WorkspaceStatus,
 } from "../src/api/types.ts";
 import * as fixtures from "./fixtures.ts";
+import { acpRegistry, historyScan } from "./history.ts";
+import { customModels, instanceEngines, providerInstances } from "./instances.ts";
+import { cleanupPreview, cleanupSummary, diagnostics } from "./maintenance.ts";
+import { preferenceCatalog, projectPreferenceKeys } from "./preferenceCatalog.ts";
 
 export interface MockResponse {
   status: number;
@@ -69,14 +73,18 @@ export function createMockApi(options: MockOptions = {}) {
   let failStep: string | null = null;
   let queued: QueuedMessage[] = [];
   let tasks: ScheduledTask[] = [];
+  /** Tasks whose webhook has an address; the token itself is never kept, as in the service. */
+  const hooks = new Set<string>(["task-hook"]);
   let failures: Failure[] = [];
   let clones: unknown[] = [];
   let delayMs = 0;
   let idCounter = 0;
   let preferenceValues: Record<string, JsonValue> = {};
   let preferenceOverrides: Record<string, Record<string, JsonValue>> = {};
-  const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat",
-    default_engine: "", default_model: "", default_effort: "", default_model_options: {}, fallback_model: "", disabled_engines: [] };
+  const preferenceDefaults: Record<string, JsonValue> = { ...preferenceCatalog, default_thread_env_mode: "local", branch_name_prefix: "feat",
+    default_engine: "", default_model: "", default_effort: "", default_model_options: {}, fallback_model: "", disabled_engines: [],
+    auto_thread_titles: true, default_permission_mode: "supervised", response_streaming_mode: "paragraph", pull_request_merge_method: "squash",
+    source_control_writing_style: { mode: "conventional_commits", custom_instructions: "", follow_templates: true } };
   const subscribers = new Map<string, Set<Subscriber>>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
@@ -112,7 +120,8 @@ export function createMockApi(options: MockOptions = {}) {
     settings = fixtures.serverSettings();
     failStep = null;
     if (next === "no-skills") managed = fixtures.workspaceStatus([], false);
-    engines = structuredClone(fixtures.engines);
+    engines = structuredClone([...fixtures.engines, ...instanceEngines(fixtures.engines)]);
+    if (!blank) preferenceValues = { ...preferenceValues, provider_instances: structuredClone(providerInstances), custom_models: structuredClone(customModels) };
   }
   reset();
 
@@ -362,13 +371,13 @@ export function createMockApi(options: MockOptions = {}) {
     return { catalog, rows: keys.filter((key) => Object.hasOwn(preferenceDefaults, key)).map((key) => {
       const fallback = preferenceDefaults[key] ?? null;
       const environment = { key, value: preferenceValues[key] ?? fallback, default: fallback,
-        source: Object.hasOwn(preferenceValues, key) ? "global" : "default", project_scoped: true };
+        source: Object.hasOwn(preferenceValues, key) ? "global" : "default", project_scoped: projectPreferenceKeys.has(key) };
       const members = ids.map((id) => ({ project_id: id, name: projects.find((project) => project.id === id)?.name ?? id,
         view: { ...environment, value: preferenceOverrides[id]?.[key] ?? environment.value,
           source: Object.hasOwn(preferenceOverrides[id] ?? {}, key) ? "project" : environment.source } }));
       const value = members[0]?.view.value ?? environment.value;
       return { key, value, mixed: members.some((member) => JSON.stringify(member.view.value) !== JSON.stringify(value)),
-        default: fallback, project_scoped: true, revision: JSON.stringify([environment, members]), environment, members,
+        default: fallback, project_scoped: projectPreferenceKeys.has(key), revision: JSON.stringify([environment, members]), environment, members,
         overrides: projects.filter((project) => Object.hasOwn(preferenceOverrides[project.id] ?? {}, key)).map((project) => ({
           project_id: project.id, name: project.name, value: preferenceOverrides[project.id]?.[key] ?? null,
         })) };
@@ -411,6 +420,14 @@ export function createMockApi(options: MockOptions = {}) {
       if (seg[5] === "stack") return { status: 200, body: { layers: [], position: 0 } };
     }
 
+    // The pull requests linked to a thread, and a refresh of them: arrays, as the side panel maps them.
+    if (method === "GET" && seg[1] === "threads" && seg[3] === "pulls" && !seg[4]) {
+      return { status: 200, body: fixtures.pulls().map((entry) => entry.pull) };
+    }
+    if (method === "POST" && seg[1] === "threads" && seg[3] === "pulls" && seg[4] === "refresh") {
+      return { status: 200, body: fixtures.pulls().map((entry) => entry.pull) };
+    }
+
     switch (key) {
       case "GET /api/source-control":
         if (seg[2] === "repository-star") return { status: 200, body: { starred: true } };
@@ -418,7 +435,9 @@ export function createMockApi(options: MockOptions = {}) {
       case "GET /api/updates":
         return { status: 200, body: updatesBody() };
       case "GET /api/tasks":
-        if (seg.length === 4 && seg[3] === "deliveries") return { status: 200, body: [] };
+        if (seg.length === 4 && seg[3] === "deliveries") return { status: 200, body: fixtures.webhookDeliveries(seg[2] ?? "") };
+        if (seg.length === 4 && seg[3] === "runs") return tasks.some((entry) => entry.id === seg[2]) ? { status: 200, body: fixtures.taskRuns(seg[2] ?? "") } : err(404, "not_found", "Task not found.");
+        if (seg.length === 4 && seg[3] === "webhook") return { status: 200, body: { configured: hooks.has(seg[2] ?? ""), path_prefix: `/hooks/${seg[2]}/` } };
         if (seg.length !== 2) break;
         // Copy on read: callers hold this snapshot until their next reload.
         return { status: 200, body: structuredClone(tasks) };
@@ -429,6 +448,11 @@ export function createMockApi(options: MockOptions = {}) {
           task.enabled = data.enabled === true;
           task.next_run_at = task.enabled ? fixtures.iso(600) : null;
           return { status: 200, body: task };
+        }
+        if (seg[3] === "webhook") {
+          const token = `tok${++idCounter}x9f`;
+          hooks.add(task.id);
+          return { status: 200, body: { path: `/hooks/${task.id}/${token}`, token } };
         }
         if (seg[3] === "run") {
           task.last_status = "started";
@@ -468,6 +492,21 @@ export function createMockApi(options: MockOptions = {}) {
             : { status: 200, body: result };
         }
         break;
+      case "GET /api/history":
+        return { status: 200, body: historyScan(Date.now()) };
+      case "POST /api/history":
+        return { status: 200, body: { thread_id: nextId("t"), imported: true } };
+      case "GET /api/acp":
+        return { status: 200, body: acpRegistry };
+      case "GET /api/diagnostics":
+        return { status: 200, body: diagnostics(Date.now()) };
+      case "POST /api/diagnostics":
+        return seg[2] === "otlp" ? { status: 200, body: { ok: true, status: 200, message: null } } : { status: 204 };
+      case "GET /api/storage":
+        if (seg[2] === "cleanup" && seg[3] === "preview") return { status: 200, body: cleanupSummary() };
+        return { status: 200, body: null };
+      case "POST /api/storage":
+        return { status: 200, body: query.get("dry_run") === "true" ? cleanupPreview(Date.now()) : { ...cleanupPreview(Date.now()), dry_run: false } };
       case "GET /api/settings":
         return { status: 200, body: settings };
       case "PUT /api/settings":
@@ -486,7 +525,11 @@ export function createMockApi(options: MockOptions = {}) {
               for (const id of edit.project_ids) delete preferenceOverrides[id]?.[row.key];
             } else for (const id of targets) {
               const values = id === null ? preferenceValues : (preferenceOverrides[id] ??= {});
-              if (edit.op === "set") values[row.key] = edit.value;
+              // The service merges a retention rule into the stored object; it replaces nothing else.
+              if (edit.op === "set" && row.key === "storage_cleanup" && typeof edit.value === "object" && edit.value !== null && !Array.isArray(edit.value)) {
+                const kept = values[row.key];
+                values[row.key] = { ...(kept !== null && typeof kept === "object" && !Array.isArray(kept) ? kept : {}), ...edit.value };
+              } else if (edit.op === "set") values[row.key] = edit.value;
               else delete values[row.key];
             }
           }
@@ -535,6 +578,8 @@ export function createMockApi(options: MockOptions = {}) {
         threads = threads.filter((thread) => thread.project_id !== project.id);
         return { status: 200, body: { files_removed: deleteFiles, kept_path: deleteFiles ? null : project.path } };
       }
+      case "GET /api/keybindings":
+        return { status: 200, body: keybindingsView() };
       case "GET /api/info":
         return { status: 200, body: { ...fixtures.info, remote: scenario === "remote" } };
       case "POST /auth/session":
@@ -673,10 +718,11 @@ export function createMockApi(options: MockOptions = {}) {
           return { status: 200, body: thread };
         }
         const id = query.get("project_id");
+        const archived = query.get("archived") === "true";
         return {
           status: 200,
           body: threads
-            .filter((t) => !id || t.project_id === id)
+            .filter((t) => (!id || t.project_id === id) && (!archived || Boolean(t.lifecycle?.archived_at)))
             .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
         };
       }
@@ -685,8 +731,29 @@ export function createMockApi(options: MockOptions = {}) {
         return { status: 204 };
       case "GET /api/approvals":
         return { status: 200, body: approvals };
+      case "GET /api/skills":
+        return {
+          status: 200,
+          body: {
+            version: "0.15",
+            digest: "0".repeat(40),
+            signature_valid: true,
+            source: null,
+            skills: Array.from({ length: 64 }, (_, at) => ({ name: `skill-${at + 1}`, category: "core", description: "", enabled: true })),
+          },
+        };
       case "GET /api/engines":
-        if (seg[3] === "models") return { status: 200, body: fixtures.engineModels(seg[2] ?? "") };
+        if (seg[3] === "native-sessions" && seg[4] === "count") {
+          return { status: 200, body: { engine: seg[2], count: fixtures.nativeSessionCounts[seg[2] ?? ""] ?? 0, truncated: false } };
+        }
+        if (seg[3] === "models") {
+          // The service merges the person's custom models into the list it returns.
+          const listing = fixtures.engineModels(seg[2] ?? "");
+          const custom = (Array.isArray(preferenceValues.custom_models) ? preferenceValues.custom_models : [])
+            .flatMap((entry) => entry && typeof entry === "object" && !Array.isArray(entry) && entry.engine === seg[2] && typeof entry.id === "string"
+              ? [{ id: entry.id, label: typeof entry.label === "string" ? entry.label : entry.id, description: null, is_default: false, custom: true, options: [] }] : []);
+          return { status: 200, body: { ...listing, models: [...listing.models, ...custom] } };
+        }
         return { status: 200, body: engines };
       default:
         break;
@@ -791,6 +858,11 @@ export function createMockApi(options: MockOptions = {}) {
         return decide(approval, data.allow === true);
       }
       if (seg[1] === "engines" && seg[2] === "refresh") return { status: 200, body: engines };
+      if (seg[1] === "engines" && seg[2] === "probe-binary") {
+        const path = String(data.path ?? "");
+        return { status: 200, body: path.endsWith("/claude") ? { exists: true, path, version: "2.1.318", problem: null } : { exists: false, path: null, version: null, problem: "No file at this path." } };
+      }
+      if (seg[1] === "shell" && seg[2] === "actions") return { status: 202 };
       if (seg[1] === "engines" && seg[2] === "custom") {
         const tier = data.tier as EngineStatus["tier"];
         const engine: EngineStatus = {
@@ -914,3 +986,18 @@ export function createMockApi(options: MockOptions = {}) {
 }
 
 export type MockApi = ReturnType<typeof createMockApi>;
+
+/** Fixed shortcuts for the Keybindings page: one clash, no issues. */
+function keybindingsView() {
+  const rule = (key: string, command: string) => ({ key, command, when: null, remove: false });
+  return {
+    path: "~/.orbyn/keybindings.json",
+    rules: [
+      rule("mod+n", "thread.new"), rule("mod+k", "commandPalette.toggle"), rule("mod+shift+b", "threadPanel.toggle"),
+      rule("ctrl+`", "terminal.toggle"), rule("mod+enter", "approval.allow"), rule("alt+down", "thread.nextNeedsYou"),
+      rule("mod+f", "chat.find"), rule("mod+backspace", "thread.archive"),
+    ],
+    issues: [],
+    conflicts: [{ key: "mod+backspace", when: null, commands: ["thread.archive", "Delete"] }],
+  };
+}

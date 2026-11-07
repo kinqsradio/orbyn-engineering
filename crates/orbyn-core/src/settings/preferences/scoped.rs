@@ -101,8 +101,10 @@ pub(super) fn resolved_views_from_file(
                 .filter(|_| definition.project)
                 .and_then(|id| snapshot.overrides.get(id))
                 .and_then(|own| own.get(definition.key));
+            // Device-only keys never read a project's file or stored override.
             let project_file = checkout_file
                 .or_else(|| project_id.and_then(|id| files.get(id)))
+                .filter(|_| definition.project)
                 .and_then(|file| {
                     let contents = file.file.as_ref()?;
                     let value = match definition.key {

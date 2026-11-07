@@ -521,12 +521,30 @@ async fn a_project_default_model_and_mode_reach_a_new_thread() {
         .bearer_auth(&service.token)
         .json(&json!({ "values": {
             "default_model": "fake-small", "default_engine": "codex",
-            "default_permission_mode": "auto",
         }}))
         .send()
         .await
         .unwrap();
     assert!(response.status().is_success(), "{}", response.status());
+    // The access mode is a device choice: only the global value applies.
+    assert_eq!(
+        set_project_preferences(
+            &service,
+            &project,
+            json!({"default_permission_mode":"auto"})
+        )
+        .await,
+        400
+    );
+    let global = service
+        .client
+        .put(format!("{}/api/preferences", service.url))
+        .bearer_auth(&service.token)
+        .json(&json!({ "values": { "default_permission_mode": "auto" }}))
+        .send()
+        .await
+        .unwrap();
+    assert!(global.status().is_success(), "{}", global.status());
     let codex = service.thread(&project, "codex").await;
     let codex = service.json(&format!("/api/threads/{codex}")).await;
     assert_eq!(codex["model"], "fake-small");

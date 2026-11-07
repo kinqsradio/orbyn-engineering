@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { openDetails, openPanelTab, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Side chats through the real service: asked beside a thread, then brought back. */
 
@@ -50,8 +50,8 @@ test("/side asks in a tab while the row list stays as it was, and it can be foun
   // The chip carries the side chat's own title, or "Side chat N" while it has none.
   const [kept] = await sideOf(id);
   await expect(page.getByRole("group", { name: "Side chats" }).getByRole("button", { name: kept?.title?.trim() || "Side chat 1", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Close surfaces" }).click();
-  await page.getByRole("complementary", { name: "Thread details" }).getByRole("button", { name: /Side chat/ }).click();
+  await page.getByRole("button", { name: "Close side panel" }).click();
+  await (await openDetails(page)).getByRole("button", { name: kept?.title?.trim() || "Side chat 1" }).click();
   await expect(pane(page).getByText("what did it find?")).toBeVisible();
   await pane(page).getByRole("button", { name: "Delete" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
@@ -61,8 +61,8 @@ test("/side asks in a tab while the row list stays as it was, and it can be foun
 test("a side chat opens from the launcher while the thread works, and an unused one goes with its tab", async ({ page }) => {
   const id = await started(page, "[hang]");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
-  await page.locator(".launcher").getByRole("button", { name: /Side chat/ }).click();
+  await openPanelTab(page, "Side chat");
+  await page.getByRole("button", { name: "Start a side chat" }).click();
   await expect(pane(page)).toBeVisible();
   await expect.poll(async () => (await sideOf(id)).length).toBe(1);
   await expect(pane(page).getByRole("button", { name: "Bring back" })).toBeDisabled();

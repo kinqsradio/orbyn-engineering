@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { openDetails, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** The favorite editor is the first launchable one, and its shortcut opens it. */
 
@@ -47,7 +47,7 @@ test("the details card opens the favorite editor and shows its shortcut", async 
   const id = threadIdOf(page);
   await settled(service, id);
 
-  const details = page.getByRole("complementary", { name: "Thread details" });
+  const details = await openDetails(page);
   await expect(details.getByRole("button", { name: "Open in VS Code" })).toBeVisible();
 
   await details.getByRole("button", { name: "Choose editor" }).click();

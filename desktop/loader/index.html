@@ -5,44 +5,81 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Orbyn Engineering</title>
     <style>
-      :root { color-scheme: light dark; --bg: #fafafa; --text: #202124; --muted: #67676f; --accent: #2563eb; }
+      :root { color-scheme: light dark; --bg: #ffffff; --text: rgba(0, 0, 0, .92); --muted: rgba(0, 0, 0, .56); --line: rgba(0, 0, 0, .12);
+        --button: #111111; --button-text: #ffffff; --raise: rgba(0, 0, 0, .035); }
       @media (prefers-color-scheme: dark) {
-        :root { --bg: #171717; --text: #f4f4f5; --muted: #a1a1aa; --accent: #93c5fd; }
+        :root { --bg: #0a0a0a; --text: rgba(255, 255, 255, .94); --muted: rgba(255, 255, 255, .56); --line: rgba(255, 255, 255, .12);
+          --button: #ffffff; --button-text: #0a0a0a; --raise: rgba(255, 255, 255, .05); }
       }
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; box-sizing: border-box;
-        background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
-      main { max-width: 420px; }
-      h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
-      p { margin: 0 0 16px; color: var(--muted); overflow-wrap: anywhere; }
-      button { height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--accent); color: var(--bg); font: inherit; font-size: 13px; cursor: pointer; }
+        background: var(--bg); color: var(--text); font: 13px/1.5 system-ui, sans-serif; }
+      main { max-width: 420px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
+      h1 { font-size: 18px; font-weight: 500; margin: 0; color: var(--text); }
+      p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+      .ring { width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid var(--line); border-top-color: var(--muted);
+        animation: turn .9s linear infinite; }
+      @keyframes turn { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
+      .actions { display: flex; gap: 8px; margin-top: 6px; }
+      button { height: 30px; padding: 0 13px; border: 0; border-radius: 9px; background: var(--button); color: var(--button-text);
+        font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+      button.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+      button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+      button:disabled { opacity: .45; cursor: default; }
       [hidden] { display: none; }
     </style>
   </head>
   <body>
     <main role="status">
-      <h1 id="title">Starting Orbyn Engineering</h1>
-      <p id="detail">Opening the local service.</p>
-      <button id="retry" hidden>Try again</button>
+      <i id="ring" class="ring" aria-hidden="true"></i>
+      <h1 id="title">Starting Orbyn…</h1>
+      <p id="detail" hidden></p>
+      <div id="actions" class="actions" hidden>
+        <button id="log" class="ghost">Show log</button>
+        <button id="retry">Try again</button>
+        <button id="quit" class="ghost">Quit</button>
+      </div>
     </main>
     <script>
       const query = new URLSearchParams(location.search);
-      const failure = query.get("error");
-      if (query.get("state") === "restarting") {
-        document.getElementById("title").textContent = "Restarting the local service";
-        document.getElementById("detail").textContent =
-          (query.get("detail") || "It stopped.") + " Restarting it now. Your threads are saved.";
-      } else if (failure) {
-        document.getElementById("title").textContent = "The local service stopped";
-        document.getElementById("detail").textContent =
-          failure + " Your threads are saved. Interrupted runs stay in their thread.";
-        const retry = document.getElementById("retry");
-        retry.hidden = false;
-        retry.addEventListener("click", () => {
-          retry.disabled = true;
-          window.__TAURI_INTERNALS__.invoke("restart_core").catch(() => {
-            retry.disabled = false;
-          });
+      const state = query.get("state");
+      const show = (title, detail) => {
+        document.getElementById("title").textContent = title;
+        const line = document.getElementById("detail");
+        line.textContent = detail || "";
+        line.hidden = !detail;
+      };
+      // Every command takes no argument: the shell decides what each one does.
+      const command = (button, name) => button.addEventListener("click", () => {
+        button.disabled = true;
+        window.__TAURI_INTERNALS__.invoke(name).catch(() => {
+          button.disabled = false;
+        }).then(() => {
+          // Show log and Quit leave this page in place, so they can be used again.
+          if (name === "show_core_log") button.disabled = false;
         });
+      });
+      if (state === "restarting") {
+        show("Restarting the service…", "Orbyn restarts the service once on its own.");
+      } else if (state === "failed" || state === "repeated") {
+        document.getElementById("ring").hidden = true;
+        if (state === "repeated") {
+          show("Orbyn restarted once and stopped again", "The service keeps stopping, so Orbyn can’t open.");
+        } else {
+          show("Orbyn couldn’t start", "The service didn’t start.");
+          // The shell sends one short line, already stripped of paths. It is shown as text.
+          const reason = query.get("reason");
+          if (reason) {
+            const line = document.createElement("p");
+            line.textContent = reason;
+            line.style.fontSize = "12.5px";
+            document.getElementById("detail").after(line);
+          }
+        }
+        document.getElementById("actions").hidden = false;
+        command(document.getElementById("log"), "show_core_log");
+        command(document.getElementById("retry"), "restart_core");
+        command(document.getElementById("quit"), "quit_core");
       }
     </script>
   </body>

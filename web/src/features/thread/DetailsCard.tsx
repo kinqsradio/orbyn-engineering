@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { api, request } from "../../api/client";
 import type { EngineLimits, EngineStatus, ProjectFileView, Thread } from "../../api/types";
 import { compactAge, elapsed } from "../../lib/format";
@@ -26,6 +26,8 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { closingProps, Presence } from "../../ui/Presence";
+import { usePopover } from "../../ui/usePopover";
 import { pullsApi } from "../../api/pulls";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
@@ -37,48 +39,42 @@ import type { ProjectScript } from "../../generated/ProjectScript";
 import { runProjectAction } from "./runProjectAction";
 import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
 
+function ThreadActions({ deletable, closing, panelRef, onDelete }: { deletable: boolean; closing?: boolean; panelRef: RefObject<HTMLDivElement | null>; onDelete(): void }) {
+  return (
+    <div className="menu" ref={panelRef} {...closingProps(closing)}>
+      <Button tone="quiet" small icon={<Trash2 size={16} aria-hidden />} disabled={!deletable} onClick={onDelete}>
+        Delete thread
+      </Button>
+    </div>
+  );
+}
+
 function ThreadMenu({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const dropThread = useWorkspace((state) => state.dropThread);
   const menu = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-      if (event instanceof MouseEvent && menu.current?.contains(event.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
+  const panel = useRef<HTMLDivElement>(null);
+  const popover = usePopover({ kind: "readonly", root: panel, active: open, trigger: () => menu.current?.querySelector("button"), onClose: () => setOpen(false) });
 
   return (
     <div className="menu-anchor" ref={menu}>
       <IconButton label="Thread actions" aria-expanded={open} onClick={() => setOpen(!open)}>
         <EllipsisVertical size={14} aria-hidden />
       </IconButton>
-      {open ? (
-        <div className="menu">
-          <Button
-            tone="quiet"
-            small
-            icon={<Trash2 size={16} aria-hidden />}
-            disabled={thread.active_run !== null}
-            onClick={() => {
-              setOpen(false);
+      <Presence>
+        {open ? (
+          <ThreadActions
+            deletable={thread.active_run === null}
+            panelRef={panel}
+            onDelete={() => {
+              popover.dismiss("select");
               setConfirming(true);
             }}
-          >
-            Delete thread
-          </Button>
-        </div>
-      ) : null}
+          />
+        ) : null}
+      </Presence>
       {confirming ? (
         <ConfirmDialog
           title="Delete thread?"
@@ -336,7 +332,7 @@ export function DetailsCard({
         setMenu({ x: event.clientX, y: event.clientY });
       }}
     >
-      {menu ? <Menu {...menu} label="Thread details rows" items={detailsMenuItems()} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu ? <Menu {...menu} label="Thread details rows" items={detailsMenuItems()} onClose={() => setMenu(null)} /> : null}</Presence>
       <div className="details-section">
         <div className="detail-row detail-row-static">
           <Monitor size={16} aria-hidden />

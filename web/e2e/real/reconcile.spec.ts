@@ -76,6 +76,9 @@ test("the header toggles the details card, terminal and surfaces", async ({ page
   await page.goto(service.page);
   await row(page, "Header").click();
   const details = page.getByRole("complementary", { name: "Thread details" });
+  // With the side panel closed the card opens as a popover under the Details button.
+  await expect(details).toBeHidden();
+  await page.getByRole("button", { name: "Details" }).click();
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Details" }).click();
   await expect(details).toBeHidden();
@@ -150,7 +153,7 @@ test("new threads keep their project; the shelf pages; hover shows the card; lab
   await page.goto(`${service.page}#/threads/${held.id}`);
   await expect(page.locator(".thread-main").getByRole("textbox", { name: /^Message/ })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+b");
-  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show sidebar" })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+b");
 });
 
@@ -159,7 +162,7 @@ test("scheduled tasks: create, pause, run and delete through the form", async ({
   await page.getByRole("button", { name: /New/ }).first().click();
   const form = page.getByRole("dialog", { name: "New scheduled task" });
   await form.getByLabel("Name").fill("Nightly");
-  await form.getByLabel("Prompt").fill("check things");
+  await form.getByLabel("What should the agent do?").fill("check things");
   await form.getByLabel("Schedule").selectOption("fixed_time");
   await form.getByLabel("Time").fill("07:30");
   await form.getByLabel("Mon").check();
@@ -169,22 +172,25 @@ test("scheduled tasks: create, pause, run and delete through the form", async ({
   await expect.poll(async () => (await list()).length).toBe(1);
   await page.getByRole("switch", { name: "Enable Nightly" }).click();
   await expect.poll(async () => (await list())[0]?.enabled).toBe(false);
-  await page.getByRole("button", { name: "Run Nightly" }).click();
+  await page.getByRole("button", { name: "Open Nightly" }).click();
+  await page.getByRole("button", { name: "Run now" }).click();
   await expect(page.getByText(/Couldn't/)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Edit Nightly" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
   await expect(edit.getByLabel("Time")).toHaveValue("07:30");
   await expect(edit.getByLabel("Mon")).toBeChecked();
   await edit.getByLabel("Name").fill("Weekly");
   await edit.getByLabel("Time").fill("08:15");
-  await edit.getByRole("button", { name: "Save task" }).click();
+  await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(edit).toBeHidden();
   const saved = () => service.api<{ name: string; schedule: { time: string } }[]>("GET", "/api/tasks");
   await expect.poll(async () => (await saved())[0]?.name).toBe("Weekly");
   expect((await saved())[0]?.schedule.time).toBe("08:15");
 
-  await page.getByRole("button", { name: "Delete Weekly" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await edit.getByRole("button", { name: "Delete task…" }).click();
+  await page.getByRole("dialog", { name: "Delete Weekly?" }).getByRole("button", { name: "Delete task", exact: true }).click();
   await expect.poll(async () => (await list()).length).toBe(0);
 });
 
@@ -196,10 +202,7 @@ test("the keybindings page rebinds and the new key runs", async ({ page }) => {
 
 test("project defaults, scripts and the worktree settings save", async ({ page }) => {
   await page.goto(`${service.page}#/settings/worktrees`);
-  const branchDisclosure = page.locator(".collapsible-panel")
-    .filter({ has: page.locator("#worktrees-naming") }).locator("..");
-  await branchDisclosure.getByRole("button", { name: "Advanced", exact: true }).click();
-  await page.getByRole("combobox", { name: "Naming" }).selectOption("semantic");
+  await page.getByRole("radio", { name: "From the thread", exact: true }).click();
   await expect
     .poll(async () => {
       const prefs = await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences");
@@ -217,9 +220,12 @@ test("appearance: presets, editor, typography, contrast and settings search", as
   await expect.poll(() => color("--color-primary")).toBe("#7aa2f7");
   await page.getByRole("spinbutton", { name: "Chat size" }).fill("16");
   await expect.poll(() => color("--chat-size")).toBe("16px");
-  await page.getByRole("combobox", { name: "Contrast" }).selectOption("more");
+  await page.getByRole("radiogroup", { name: "Contrast", exact: true }).getByRole("radio", { name: "Higher", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-contrast", "more");
-  await page.getByLabel("Accent").fill("#ff0000");
+  await page.getByRole("button", { name: "Edit…", exact: true }).click();
+  const accent = page.getByLabel("Accent", { exact: true });
+  await accent.fill("#ff0000");
+  await accent.press("Enter");
   await expect.poll(() => color("--color-primary")).toBe("#ff0000");
   await page.getByLabel("Import theme file").setInputFiles({
     name: "theme.json",
@@ -232,7 +238,7 @@ test("appearance: presets, editor, typography, contrast and settings search", as
   await page.reload();
   await expect.poll(() => color("--color-primary")).toBe("#7aa2f7");
   await page.getByRole("searchbox", { name: "Search settings" }).fill("Code font");
-  const results = page.getByRole("navigation", { name: "Settings sections" });
+  const results = page.getByLabel("Search results", { exact: true });
   await expect(results.getByRole("link")).toHaveCount(1);
   await expect(results.getByRole("link")).toHaveAccessibleName("Code font · Appearance");
   await results.getByRole("link", { name: "Code font · Appearance", exact: true }).click();

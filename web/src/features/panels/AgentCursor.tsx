@@ -3,6 +3,8 @@ import { useEffect, useState, type RefObject } from "react";
 import { serviceSocketUrl } from "../../api/origin";
 import { readToken } from "../../api/token";
 import type { PreviewPointer } from "../../generated/PreviewPointer";
+import { MOTION } from "../../lib/motion";
+import { usePrefersReducedMotion } from "../../lib/useLayout";
 
 /** Validate at the transport boundary; old or malformed cues never move the mark. */
 export function readPointer(text: string, previous: number): PreviewPointer | null {
@@ -29,6 +31,10 @@ export function AgentCursor({ threadId, tabId, image }: {
 }) {
   const [event, setEvent] = useState<PreviewPointer | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  // The cue lasts the dwell plus the ring (400 + 300 ms). Reduced motion keeps a static
+  // ring for the dwell alone.
+  const reduced = usePrefersReducedMotion();
+  const lifeMs = reduced ? MOTION.wait : MOTION.wait + MOTION.slow;
   useEffect(() => {
     const element = image.current;
     if (!element) return;
@@ -50,7 +56,7 @@ export function AgentCursor({ threadId, tabId, image }: {
       sequence = next.sequence;
       clearTimeout(timer);
       setEvent(next.phase === "clear" ? null : next);
-      timer = setTimeout(() => setEvent(null), 700);
+      timer = setTimeout(() => setEvent(null), lifeMs);
     };
     socket.onclose = () => setEvent(null);
     return () => {
@@ -59,7 +65,7 @@ export function AgentCursor({ threadId, tabId, image }: {
       socket.onclose = null;
       socket.close();
     };
-  }, [threadId, tabId]);
+  }, [threadId, tabId, lifeMs]);
   if (!event) return null;
   const point = cursorPoint(event, size.width, size.height);
   return <span className="browser-agent-cursor" data-agent-browser-cursor aria-hidden style={point}>

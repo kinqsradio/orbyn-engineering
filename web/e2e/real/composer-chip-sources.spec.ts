@@ -5,7 +5,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { openPanelTab, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /**
  * B40: a review comment on a diff line, the file a reply revealed at its line, a
@@ -70,7 +70,7 @@ test("diff, file, terminal and page-element chips are sent as labelled blocks", 
   await settled(service, threadId);
 
   // Review comment: both diff layouts offer one on the new side of a line; this one is made in split.
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   const patch = page.locator("[data-diff-file='notes.txt']");
   await expect(patch.locator(".patch-line").first()).toBeVisible();
   await expect(patch.getByRole("button", { name: "Comment on line 2", exact: true })).toBeAttached();

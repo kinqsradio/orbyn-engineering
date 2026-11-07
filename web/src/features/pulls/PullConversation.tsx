@@ -6,6 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { Markdown } from "../thread/Markdown";
 import { pullsApi } from "../../api/pulls";
 
@@ -84,7 +85,7 @@ function Comment({
           </div>
         </>
       )}
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           x={menu.x}
           y={menu.y}
@@ -92,7 +93,7 @@ function Comment({
           items={REACTIONS.map(([content, emoji]) => ({ label: `${emoji} ${content}`, onSelect: () => react(content) }))}
           onClose={() => setMenu(null)}
         />
-      ) : null}
+      ) : null}</Presence>
     </article>
   );
 }

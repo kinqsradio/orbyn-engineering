@@ -58,8 +58,8 @@ test("a new worktree is made beside the primary clone, on its purpose", async ({
   expect(thread.worktree?.branch).toMatch(/env-choice$/);
 });
 
-test("the project's default checkout mode chooses the draft's starting choice", async ({ page }) => {
-  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_thread_env_mode: "worktree" } });
+test("the device's default checkout mode chooses the draft's starting choice", async ({ page }) => {
+  await service.api("PUT", "/api/preferences", { values: { default_thread_env_mode: "worktree" } });
   try {
     await openDraft(page);
     await expect(checkout(page).getByRole("button", { name: "New worktree" })).toBeVisible();
@@ -67,7 +67,7 @@ test("the project's default checkout mode chooses the draft's starting choice", 
     await page.getByRole("menuitem", { name: "Current checkout" }).click();
     await expect(checkout(page).getByRole("button", { name: "Current checkout" })).toBeVisible();
   } finally {
-    await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_thread_env_mode: null } });
+    await service.api("PUT", "/api/preferences", { values: { default_thread_env_mode: null } });
   }
 });
 

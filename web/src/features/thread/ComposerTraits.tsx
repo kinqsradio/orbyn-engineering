@@ -5,6 +5,8 @@ import { FloatingPanel } from "./ModelPicker";
 import { effortOption, effortValue } from "../../state/modelStore";
 import { EffortGlyph } from "./EffortGlyph";
 import { useUi } from "../../state/ui";
+import { Presence } from "../../ui/Presence";
+import { usePopover } from "../../ui/usePopover";
 
 export const ACCESS: Record<PermissionMode, { label: string; description: string; icon: LucideIcon }> = {
   supervised: { label: "Supervised", description: "Ask before commands and file changes.", icon: Lock },
@@ -42,6 +44,8 @@ function TraitsMenu({
   modes,
   anchor,
   toAccess,
+  trigger,
+  closing,
   onEffort,
   onOption,
   onAccess,
@@ -54,6 +58,8 @@ function TraitsMenu({
   modes: PermissionMode[];
   anchor: DOMRect;
   toAccess: boolean;
+  trigger: HTMLElement;
+  closing?: boolean;
   onEffort(value: string): void;
   onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
@@ -66,16 +72,13 @@ function TraitsMenu({
       : (extras[option.id] ?? option.values.find((value) => value.default)?.id);
   const section = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const popover = usePopover({ kind: "fields", root: panel, trigger: () => trigger, closing, onClose });
   useEffect(() => {
     if (toAccess) section.current?.scrollIntoView({ block: "end" });
     body.current?.querySelector<HTMLElement>("[role^=menuitemradio][aria-checked=true]")?.focus();
   }, [toAccess]);
   const onKey = (event: React.KeyboardEvent) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      onClose();
-      return;
-    }
     const items = [...(body.current?.querySelectorAll<HTMLElement>("[role^=menuitemradio]") ?? [])];
     const at = items.indexOf(document.activeElement as HTMLElement);
     const down = event.key === "ArrowDown" || event.key === "ArrowRight";
@@ -85,7 +88,7 @@ function TraitsMenu({
     }
   };
   return (
-    <FloatingPanel anchor={anchor} label="Composer options" className="traits-menu" onClose={onClose}>
+    <FloatingPanel anchor={anchor} label="Composer options" className="traits-menu" closing={closing} panelRef={panel}>
       <div ref={body} className="traits-body" role="menu" aria-label="Composer options" onKeyDown={onKey}>
         {options.map((option, index) => (
           <div key={option.id} role="group" aria-label={option.label}>
@@ -99,9 +102,9 @@ function TraitsMenu({
                 aria-checked={value.id === chosen(option)}
                 className="traits-item"
                 onClick={() => {
+                  popover.dismiss("select");
                   if (option.id === "effort") onEffort(value.id);
                   else onOption(option.id, value.id);
-                  onClose();
                 }}
               >
                 <span>{value.label}</span>
@@ -143,6 +146,7 @@ function TraitsMenu({
 interface Open {
   anchor: DOMRect;
   toAccess: boolean;
+  trigger: HTMLElement;
 }
 
 /** The effort control beside the model and the access control under the composer share a menu. */
@@ -161,10 +165,14 @@ export function useTraitsMenu(input: {
   const [open, setOpen] = useState<Open | null>(null);
   const close = useCallback(() => setOpen(null), []);
   const openAt = (element: HTMLElement, toAccess: boolean) =>
-    setOpen(open ? null : { anchor: element.getBoundingClientRect(), toAccess });
-  const menu = open ? (
-    <TraitsMenu {...input} modes={input.modes ?? MODES} anchor={open.anchor} toAccess={open.toAccess} onClose={close} />
-  ) : null;
+    setOpen(open ? null : { anchor: element.getBoundingClientRect(), toAccess, trigger: element });
+  const menu = (
+    <Presence>
+      {open ? (
+        <TraitsMenu {...input} modes={input.modes ?? MODES} anchor={open.anchor} toAccess={open.toAccess} trigger={open.trigger} onClose={close} />
+      ) : null}
+    </Presence>
+  );
   return { openAt, menu };
 }
 

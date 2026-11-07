@@ -31,6 +31,8 @@ export type Route =
       selection?: ProjectSettingsSelection;
       machine?: string;
       task?: string;
+      /** With `task`: open the editor instead of the task page. */
+      edit?: boolean;
     }
   | { name: "usage" }
   | { name: "tasks" }
@@ -62,6 +64,7 @@ export function routeHref(route: Route): string {
       if (route.selection?.kind === "project_group" || route.selection?.kind === "checkout") params.set("project", route.selection.group_key);
       if (route.selection?.kind === "checkout") params.set("checkout", route.selection.project_id);
       if (route.task !== undefined) params.set("task", route.task);
+      if (route.task !== undefined && route.edit) params.set("edit", "1");
       return params.size ? `${path}?${params}` : path;
     }
   }
@@ -109,7 +112,7 @@ export function parseRoute(hash: string): Route {
         section: SETTINGS_SECTIONS.find((section) => section === first) ?? null,
         ...(selection ? { selection } : {}),
         ...(params.has("machine") ? { machine: params.get("machine") ?? "" } : {}),
-        ...(params.has("task") ? { task: params.get("task") ?? "" } : {}),
+        ...(params.has("task") ? { task: params.get("task") ?? "", ...(params.get("edit") === "1" ? { edit: true } : {}) } : {}),
       };
     }
     default:
@@ -121,7 +124,22 @@ export function navigate(route: Route): void {
   const current = parseRoute(window.location.hash);
   const next = route.name === "settings" && !("selection" in route) && current.name === "settings"
     ? { ...route, selection: current.selection, machine: current.machine } : route;
-  window.location.hash = routeHref(next).slice(1);
+  goToHash(routeHref(next).slice(1));
+}
+
+/**
+ * Moves to a hash route. While a modal sheet holds its history entry (`history.state.sheet`), the
+ * navigation replaces that entry instead of pushing one, and the sheet closes with it: the stack
+ * [list, list + sheet] becomes [list, destination]. Typed addresses and links out can't be seen.
+ */
+export function goToHash(hash: string): void {
+  if ((window.history.state as { sheet?: boolean } | null)?.sheet === true) {
+    window.history.replaceState(null, "", `#${hash}`);
+    // replaceState says nothing, so tell the router and the sheet.
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    return;
+  }
+  window.location.hash = hash;
 }
 
 const subscribe = (notify: () => void) => {

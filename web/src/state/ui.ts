@@ -1,11 +1,17 @@
 import { create } from "zustand";
 import { presetById, THEME_TOKENS, type ThemeColors } from "../styles/themes";
 import type { ProjectGroupingMode } from "../generated/ProjectGroupingMode";
+import { MOTION } from "../lib/motion";
 import { readJson, writeJson } from "../lib/storage";
 import { useWorkspace } from "./workspace";
 
 export type ThemeChoice = "system" | "light" | "dark";
 /** How the workspace is arranged: by project, by what needs you, or as one reading column. */
+/** What a toast leads with: a thread needs you, finished or failed, or a copy was made. Others are text only. */
+export type ToastKind = "needs" | "done" | "failed" | "copied";
+/** A button on a toast, such as View. Using it closes the toast. */
+export interface ToastAction { label: string; run(): void }
+
 export type LayoutChoice = "console" | "ledger" | "reading";
 export const LAYOUT_CHOICES: readonly LayoutChoice[] = ["console", "ledger", "reading"];
 export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
@@ -16,9 +22,9 @@ interface Prefs {
   theme: ThemeChoice;
   /** The surface pane. Null follows the layout: open only when there's room. */
   panelOpen: boolean | null;
-  /** The surface showing; null is the launcher. */
+  /** The surface showing; null when none is. */
   panelTab: RightTab | null;
-  /** Panel and hero motion in ms, 0 to 400. 0 is off, upstream's default. */
+  /** Panel and hero motion in ms, 0 to 400. 0 is off; the default is the --m-slow token. */
   panelAnimationMs: number;
   /** The floating details card on wide layouts. */
   detailsOpen: boolean;
@@ -97,6 +103,8 @@ interface Prefs {
   /** A short tone for the same events, with or without the system alert. */
   threadSound: boolean;
   inAppNotifications: boolean;
+  /** Tells you when a scheduled task's run finishes or fails. The service keeps no such setting, so it lives here. */
+  taskRunNotifications: boolean;
   confirmUnpin: boolean;
   confirmArchive: boolean;
   confirmDelete: boolean;
@@ -111,7 +119,6 @@ interface Prefs {
   /** Moves working threads, and ones waiting on delegated work, to their own shelf. */
   workingSection: boolean;
   /** Provider updates already dismissed, as `engine:version`. */
-  dismissedProviderUpdates: string[];
   /** The environment theme's `set_at` this viewer last applied; 0 is never. */
   environmentThemeAppliedAt: number;
   /** How the sidebar marks this environment's build: channel artwork, a version pill or nothing. */
@@ -152,7 +159,7 @@ export interface ThreadLayout {
 export const DRAFT_LAYOUT = "draft";
 const MAX_LAYOUTS = 200;
 
-export type PaletteStart = "root" | "add-project" | "add-project-url" | "files" | "search";
+export type PaletteStart = "root" | "add-project" | "add-project-url" | "add-project-new" | "files" | "search";
 
 export const DEFAULT_SIDEBAR_WIDTH = 224;
 const TOAST_MS = 4000;
@@ -171,7 +178,7 @@ const defaults: Prefs = {
   theme: "dark",
   panelOpen: null,
   panelTab: null,
-  panelAnimationMs: 0,
+  panelAnimationMs: MOTION.slow,
   detailsOpen: true,
   terminalOpen: false,
   panelMaximized: false,
@@ -224,6 +231,7 @@ const defaults: Prefs = {
   threadNotifications: false,
   threadSound: false,
   inAppNotifications: false,
+  taskRunNotifications: true,
   confirmUnpin: false,
   confirmArchive: false,
   confirmDelete: true,
@@ -232,7 +240,6 @@ const defaults: Prefs = {
   pullLinksInApp: true,
   detailsHidden: ["usage"],
   workingSection: true,
-  dismissedProviderUpdates: [],
   environmentThemeAppliedAt: 0,
   environmentIdentification: "artwork",
   welcomeDone: false,
@@ -248,8 +255,8 @@ interface UiState extends Prefs {
   palette: PaletteStart | null;
   setPalette(palette: PaletteStart | null): void;
   lastThreadId: string | null;
-  toasts: { id: number; text: string }[];
-  pushToast(text: string): void;
+  toasts: { id: number; text: string; kind?: ToastKind; action?: ToastAction }[];
+  pushToast(text: string, kind?: ToastKind, action?: ToastAction): void;
   dismissToast(id: number): void;
   /** The open welcome step, or null; not saved, so it lasts while the app runs. */
   welcomeStep: number | null;
@@ -287,8 +294,6 @@ interface UiState extends Prefs {
   showInBrowser(url: string | { tabId: string } | null): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
-  /** Back to the launcher, keeping open surfaces. */
-  showLauncher(): void;
   setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
   setPanelMaximized(maximized: boolean): void;
@@ -391,6 +396,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   threadNotifications: state.threadNotifications,
   threadSound: state.threadSound,
   inAppNotifications: state.inAppNotifications,
+  taskRunNotifications: state.taskRunNotifications,
   confirmUnpin: state.confirmUnpin,
   confirmArchive: state.confirmArchive,
   confirmDelete: state.confirmDelete,
@@ -399,7 +405,6 @@ const prefsOf = (state: Prefs): Prefs => ({
   pullLinksInApp: state.pullLinksInApp,
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
-  dismissedProviderUpdates: state.dismissedProviderUpdates,
   environmentThemeAppliedAt: state.environmentThemeAppliedAt,
   environmentIdentification: state.environmentIdentification,
   welcomeDone: state.welcomeDone,
@@ -486,9 +491,9 @@ export const useUi = create<UiState>((set, get) => {
     },
     lastThreadId: null,
     toasts: [],
-    pushToast(text) {
+    pushToast(text, kind, action) {
       const id = ++toastCounter;
-      set((state) => ({ toasts: [...state.toasts, { id, text }] }));
+      set((state) => ({ toasts: [...state.toasts, { id, text, kind, ...(action ? { action } : {}) }] }));
       setTimeout(() => get().dismissToast(id), TOAST_MS);
     },
     dismissToast(id) {
@@ -587,10 +592,6 @@ export const useUi = create<UiState>((set, get) => {
     },
     setPanelOpen(open) {
       set({ panelOpen: open });
-      savePrefs();
-    },
-    showLauncher() {
-      set({ panelOpen: true, panelTab: null });
       savePrefs();
     },
     setPanelAnimationMs(ms) {

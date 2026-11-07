@@ -27,10 +27,11 @@ async function cloneFrom(page: Page, url: string) {
   await page.goto(`${service.page}#/new/scratch`);
   await page.getByRole("button", { name: "Add project" }).first().click();
   const palette = page.getByRole("dialog", { name: "Command palette" });
-  await palette.getByRole("button", { name: /Git URL/ }).click();
-  await palette.getByLabel("Git clone URL").fill(url);
-  await palette.getByLabel("Git clone URL").press("Enter");
-  await expect(palette).toBeHidden();
+  await palette.getByRole("button", { name: /Clone a repository/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Clone a repository" });
+  await dialog.getByLabel("Git URL or owner/name").fill(url);
+  await dialog.getByLabel("Git URL or owner/name").press("Enter");
+  await expect(dialog).toBeHidden();
 }
 
 test("a running clone can be cancelled", async ({ page }) => {

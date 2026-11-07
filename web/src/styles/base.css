@@ -149,7 +149,7 @@ input[type="checkbox"][role="switch"] {
   border-radius: var(--radius-pill);
   background: var(--color-borderStrong);
   cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--m-fast) var(--m-io);
 }
 input[type="checkbox"][role="switch"]::after {
   content: "";
@@ -160,7 +160,7 @@ input[type="checkbox"][role="switch"]::after {
   height: 14px;
   border-radius: 50%;
   background: var(--color-background);
-  transition: left var(--motion-fast) var(--ease-out);
+  transition: left var(--m-fast) var(--m-io);
 }
 input[type="checkbox"][role="switch"]:checked {
   background: var(--color-primary);
@@ -202,7 +202,7 @@ input[type="checkbox"][role="switch"]:disabled {
   min-height: var(--button-h);
   padding: 0 14px;
   border: 1px solid var(--color-borderStrong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
   background: transparent;
   color: var(--color-text);
   font-size: var(--button-fs);
@@ -212,8 +212,8 @@ input[type="checkbox"][role="switch"]:disabled {
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color var(--motion-fast) var(--ease-out),
-    border-color var(--motion-fast) var(--ease-out);
+    background-color var(--m-fast) var(--m-io),
+    border-color var(--m-fast) var(--m-io);
 }
 .btn:hover:not(:disabled) {
   background: var(--color-hover);
@@ -264,7 +264,7 @@ input[type="checkbox"][role="switch"]:disabled {
   background: transparent;
   color: var(--color-textSoft);
   cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--m-fast) var(--m-io);
 }
 .icon-btn:hover:not(:disabled) {
   background: var(--color-hover);
@@ -307,7 +307,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .pill-warn {
   background: var(--color-warnSoft);
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .pill-danger {
   background: var(--color-dangerSoft);
@@ -343,6 +343,10 @@ input[type="checkbox"][role="switch"]:disabled {
   color: var(--color-info);
 }
 .tone-warn {
+  color: var(--color-warnText);
+}
+/* dots keep the fill amber */
+.status-dot.tone-warn {
   color: var(--color-warn);
 }
 .tone-danger {
@@ -449,7 +453,6 @@ input[type="checkbox"][role="switch"]:disabled {
   width: 62%;
   border-radius: var(--radius-sm);
   background: var(--color-chip);
-  animation: loading-breathe 2.4s infinite;
 }
 .skeleton:nth-child(4n + 3) {
   width: 88%;
@@ -517,7 +520,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .banner-warn {
   background: var(--color-warnSoft);
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .banner-warn a {
   color: inherit;
@@ -543,13 +546,12 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .dialog::backdrop {
   background: var(--color-backdrop);
-  backdrop-filter: blur(4px);
-  transition: opacity 200ms;
+  transition: opacity var(--m-base);
 }
 .dialog {
   transition:
-    scale 150ms,
-    opacity 150ms;
+    scale var(--m-fast),
+    opacity var(--m-fast);
 }
 @starting-style {
   .dialog[open] {
@@ -565,7 +567,7 @@ input[type="checkbox"][role="switch"]:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 14px 4px 22px;
+  padding: 20px 22px 0;
 }
 .dialog-head h2 {
   font-size: 16px;
@@ -576,22 +578,29 @@ input[type="checkbox"][role="switch"]:disabled {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 22px 16px;
+  padding: 12px 22px 0;
   overflow: auto;
   color: var(--color-muted);
   overflow-wrap: anywhere;
+}
+/* A dialog with no footer ends on its body, so the body carries the bottom padding. */
+.dialog-body:last-child {
+  padding-bottom: 20px;
 }
 .dialog-foot {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 4px 22px 20px;
+  padding: 12px 22px 20px;
 }
 /* Dialog actions: Cancel is a quiet ghost, the confirm is solid, only danger is red. */
 .dialog-foot .btn {
+  min-height: 30px;
+  padding: 0 12px;
   border-color: transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
+  font-size: var(--text-nav);
   background: var(--color-sunken);
   color: var(--color-textSoft);
 }
@@ -600,6 +609,7 @@ input[type="checkbox"][role="switch"]:disabled {
   background: var(--color-selected);
 }
 .dialog-foot .btn-primary {
+  padding: 0 13px;
   background: var(--color-primary);
   color: var(--color-onAccent);
 }
@@ -607,12 +617,14 @@ input[type="checkbox"][role="switch"]:disabled {
   background: var(--color-primaryHover);
 }
 .dialog-foot .btn-danger {
-  background: var(--color-danger);
-  color: var(--color-onDanger);
+  background: var(--color-dangerFill);
+  color: var(--color-onDangerFill);
 }
 .dialog-foot .btn-danger:hover:not(:disabled) {
-  background: var(--color-danger);
-  filter: brightness(1.08);
+  background: var(--color-dangerFillHover);
+}
+.dialog-foot .btn-danger:active:not(:disabled) {
+  background: var(--color-dangerFillPress);
 }
 .command {
   display: flex;
@@ -638,78 +650,15 @@ input[type="checkbox"][role="switch"]:disabled {
   right: 0;
   padding: 4px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-raised);
   box-shadow: 0 8px 24px var(--color-shadow);
 }
 
 .spin {
-  animation: spin 1s linear infinite;
+  animation: spin 900ms linear infinite;
 }
-/* Loops use a few discrete steps per cycle rather than one frame per vsync, and
-   read --loop-state, so nothing runs off screen. */
-@keyframes loading-breathe {
-  0%,
-  42% {
-    opacity: 1;
-    animation-timing-function: steps(4);
-  }
-  50%,
-  92% {
-    opacity: 0.55;
-    animation-timing-function: steps(4);
-  }
-  100% {
-    opacity: 1;
-  }
-}
-@keyframes dot-breathe {
-  0%,
-  40% {
-    opacity: 1;
-    animation-timing-function: steps(6);
-  }
-  50%,
-  90% {
-    opacity: 0.5;
-    animation-timing-function: steps(6);
-  }
-  100% {
-    opacity: 1;
-  }
-}
-@keyframes dot-ripple {
-  0% {
-    opacity: 0.9;
-    scale: 0.75;
-    animation-timing-function: steps(8);
-  }
-  40%,
-  100% {
-    opacity: 0;
-    scale: 2;
-  }
-}
-@keyframes text-sweep {
-  from {
-    background-position:
-      -4.5rem 0,
-      0 0;
-  }
-  to {
-    background-position:
-      calc(100% + 4.5rem) 0,
-      0 0;
-  }
-}
-@keyframes band-sweep {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
+/* Running work spins; content waiting to load is a static block. Nothing else loops. */
 .status-dot {
   position: relative;
   display: inline-block;
@@ -718,38 +667,11 @@ input[type="checkbox"][role="switch"]:disabled {
   flex: none;
   border-radius: 50%;
   background: currentColor;
-  animation: dot-breathe 2s infinite;
-  animation-play-state: var(--loop-state, paused);
-}
-.status-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: currentColor;
-  animation: dot-ripple 2s infinite;
-  animation-play-state: var(--loop-state, paused);
-}
-@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-  .text-sweep {
-    color: transparent;
-    background-image:
-      linear-gradient(to right, transparent, var(--color-text), transparent),
-      linear-gradient(var(--color-muted), var(--color-muted));
-    background-size:
-      4.5rem 100%,
-      100% 100%;
-    background-repeat: no-repeat;
-    background-clip: text;
-    -webkit-background-clip: text;
-    animation: text-sweep 2.2s steps(30) infinite;
-    animation-play-state: var(--loop-state, paused);
-  }
 }
 .collapsible-panel {
   height: var(--collapsible-panel-height, auto);
   overflow: clip;
-  transition: height 200ms;
+  transition: height var(--m-base);
 }
 .collapsible-panel[data-collapsed] {
   height: 0;
@@ -770,15 +692,19 @@ input[type="checkbox"][role="switch"]:disabled {
     0 10px 30px var(--color-shadow),
     0 0 0 1px var(--color-borderStrong);
   transition:
-    scale 100ms,
-    opacity 100ms;
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out),
+    opacity var(--m-base) var(--m-out);
 }
+/* Enter: fade, rise 4px and settle from .98 at the trigger. */
 @starting-style {
   .popup-menu {
+    translate: 0 -4px;
     scale: 0.98;
     opacity: 0;
   }
 }
+
 .popup-menu button {
   display: flex;
   align-items: center;
@@ -809,7 +735,7 @@ input[type="checkbox"][role="switch"]:disabled {
 .popup-menu .menu-shortcut {
   margin-left: auto;
   padding-left: 18px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-label);
 }
@@ -825,6 +751,17 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .popup-menu button[aria-current] {
   color: var(--color-text);
+}
+/* Leaving: a menu or popover stays mounted, inert, and fades out over --m-base-out with --m-io,
+   opacity only. Reduced motion keeps the same fade over --m-fast (the global block below). */
+.popup-menu[data-closing],
+.menu[data-closing],
+.mention-menu[data-closing],
+.model-picker[data-closing],
+.traits-menu[data-closing] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--m-base-out) var(--m-io);
 }
 .hover-card {
   position: fixed;
@@ -843,8 +780,8 @@ input[type="checkbox"][role="switch"]:disabled {
   font-size: var(--text-meta);
   pointer-events: none;
   transition:
-    scale 150ms,
-    opacity 150ms;
+    scale var(--m-fast),
+    opacity var(--m-fast);
   transform-origin: left top;
 }
 @starting-style {
@@ -905,7 +842,7 @@ input[type="checkbox"][role="switch"]:disabled {
   left: calc(var(--sidebar-w) + 16px);
 }
 .shell[data-nav="hidden"][data-page] .toasts,
-.shell[data-layout="narrow"][data-page] .toasts {
+.shell[data-layout="phone"][data-page] .toasts {
   left: 16px;
 }
 .toast {
@@ -923,8 +860,26 @@ input[type="checkbox"][role="switch"]:disabled {
     0 0 0 1px var(--color-borderStrong);
   font-size: var(--text-nav);
   transition:
-    translate 200ms var(--ease-drawer),
-    opacity 200ms;
+    translate var(--m-base) var(--ease-drawer),
+    opacity var(--m-base);
+}
+.toast > svg {
+  flex: none;
+  margin-right: -2px;
+}
+.toast-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: 0 3px 0 1px;
+  border-radius: 50%;
+  background: var(--color-warn);
+}
+.toast-action {
+  margin-left: auto;
+}
+.toast-failed {
+  color: var(--color-danger);
 }
 .star-prompt {
   align-items: flex-start;
@@ -1070,8 +1025,7 @@ input[type="checkbox"][role="switch"]:disabled {
   flex-direction: column;
 }
 .palette::backdrop {
-  background: var(--color-backdrop);
-  backdrop-filter: blur(4px);
+  background: transparent;
 }
 .palette-search {
   display: flex;
@@ -1100,7 +1054,7 @@ input[type="checkbox"][role="switch"]:disabled {
   height: 28px;
   padding: 0 9px;
   margin-top: 4px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
 }
 .palette-list button {
@@ -1124,7 +1078,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .palette-list button span:last-child:not(:first-child, .palette-title) {
   margin-left: auto;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-label);
 }
@@ -1136,9 +1090,11 @@ input[type="checkbox"][role="switch"]:disabled {
 .menu,
 .mention-menu {
   transition:
-    scale 100ms,
-    opacity 100ms;
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out),
+    opacity var(--m-base) var(--m-out);
 }
+
 .menu {
   transform-origin: top right;
 }
@@ -1148,6 +1104,7 @@ input[type="checkbox"][role="switch"]:disabled {
 @starting-style {
   .menu,
   .mention-menu {
+    translate: 0 -4px;
     scale: 0.98;
     opacity: 0;
   }
@@ -1157,18 +1114,21 @@ input[type="checkbox"][role="switch"]:disabled {
     transform: rotate(360deg);
   }
 }
-@keyframes pulse {
-  50% {
-    opacity: 0.5;
-  }
-}
+/* Reduced motion, following the Motion Designs reduced-motion section: only fades
+   remain (opacity and colour properties at --m-fast with --m-io, no delay). Slides, pops
+   and scales are not in the transition list, so they jump to their end state and the
+   element simply fades; the spinner and every other keyframe stop (the spinner then shows
+   as a static ring beside its label). Hold-to-quit is the one exception, because its fill
+   is progress: .quit-progress restores its own linear width transition. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-property: opacity, color, background-color, border-color, box-shadow, fill, stroke !important;
+    transition-duration: var(--m-fast) !important;
+    transition-timing-function: var(--m-io) !important;
+    transition-delay: 0s !important;
+    animation: none !important;
     scroll-behavior: auto !important;
   }
 }
@@ -1207,3 +1167,8 @@ input[type="checkbox"][role="switch"]:disabled {
 .project-color-fuchsia { --tint: var(--project-color-fuchsia); }
 .project-color-pink { --tint: var(--project-color-pink); }
 .project-color-rose { --tint: var(--project-color-rose); }
+.menu-heading {
+  padding: 6px 9px 3px;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}

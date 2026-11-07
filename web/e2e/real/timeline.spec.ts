@@ -98,7 +98,7 @@ test("rich Markdown renders: table, math, diagram, links, image and details", as
   await expect(page.locator(".md table th").nth(1)).toHaveCSS("text-align", "right");
   await expect(page.getByText("Inline math $e^{i\\pi} + 1 = 0$", { exact: false })).toBeVisible();
   await page.goto(`${service.page}#/settings/chat`);
-  await page.getByRole("switch", { name: "Math rendering" }).check();
+  await page.getByRole("switch", { name: "Render maths" }).check();
   await page.goBack();
   await expect(page.locator(".katex").first()).toBeVisible();
   await expect(page.locator(".md-math .katex-display")).toBeVisible();

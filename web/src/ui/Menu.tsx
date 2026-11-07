@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { captureFocusReturn, moveFocus, watchOutside, type CloseCause } from "./focusReturn";
+import { closingProps } from "./Presence";
 
 export interface MenuItem {
   label: string;
@@ -30,8 +32,10 @@ function MenuList({
   y,
   origin,
   label,
+  heading,
   items,
   submenu,
+  closing,
   onClose,
   onBack,
 }: {
@@ -39,9 +43,11 @@ function MenuList({
   y: number;
   origin: string;
   label: string;
+  heading?: string;
   items: MenuItem[];
   submenu?: boolean;
-  onClose(): void;
+  closing?: boolean;
+  onClose(cause: CloseCause): void;
   onBack?(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -69,7 +75,11 @@ function MenuList({
     if (event.key === "Escape") {
       event.stopPropagation();
       event.preventDefault();
-      (onBack ?? onClose)();
+      if (onBack) onBack();
+      else onClose("escape");
+    } else if (event.key === "Tab") {
+      event.preventDefault();
+      onClose(event.shiftKey ? "shiftTab" : "tab");
     } else if (event.key === "ArrowLeft" && submenu) {
       event.preventDefault();
       event.stopPropagation();
@@ -99,7 +109,9 @@ function MenuList({
         style={{ left: x, top: y, transformOrigin: origin }}
         data-origin={origin}
         onKeyDown={onKeyDown}
+        {...closingProps(closing)}
       >
+        {heading ? <div className="menu-heading" role="presentation">{heading}</div> : null}
         {items.map((item, index) => (
           <FragmentRow key={item.label} separator={item.separatorBefore === true && index > 0}>
             <button
@@ -124,7 +136,8 @@ function MenuList({
                   openSubmenu(item, event.currentTarget);
                   return;
                 }
-                onClose();
+                // Focus is back on the opener before the action runs, so a dialog it opens returns there.
+                onClose("select");
                 item.onSelect?.();
               }}
             >
@@ -144,6 +157,7 @@ function MenuList({
           label={open.item.label}
           items={open.item.children}
           submenu
+          closing={closing}
           onClose={onClose}
           onBack={() => {
             const label = open.item.label;
@@ -183,34 +197,65 @@ function menuHost(): HTMLElement {
   return modals.at(-1) ?? document.body;
 }
 
-/** A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work. */
+/**
+ * A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work.
+ * Wrap it in `Presence` to fade out on close; `closing` is set by that wrapper.
+ */
 export function Menu({
   x,
   y,
   origin = "top left",
   label,
+  heading,
   items,
+  closing,
   onClose,
 }: {
   x: number;
   y: number;
   origin?: "top left" | "bottom left" | "bottom right";
   label: string;
+  /** A small caption above the items, such as "Hidden tabs". */
+  heading?: string;
   items: MenuItem[];
+  closing?: boolean;
   onClose(): void;
 }) {
+  // Taken as the menu opens, before it takes focus.
+  const [focusReturn] = useState(() => captureFocusReturn());
+  const moved = useRef(false);
+  const dismiss = (cause: CloseCause, target?: EventTarget | null) => {
+    if (closing || moved.current) return;
+    moved.current = true;
+    moveFocus(focusReturn, cause, target);
+    onClose();
+  };
+  const latest = useRef(dismiss);
+  latest.current = dismiss;
+
   useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!(event.target as Element | null)?.closest?.("[data-menu-root]")) onClose();
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [onClose]);
+    // A menu that is leaving must not close the one that replaced it.
+    if (closing) return;
+    // Only a real user action outside closes it: a pointer press or a key pressed elsewhere, or a
+    // route change. A window blur or a programmatic focus change does not.
+    return watchOutside(
+      (target) => !!(target as Element | null)?.closest?.("[data-menu-root]"),
+      (cause, target) => latest.current(cause, target),
+    );
+  }, [closing]);
+
+  // Closed from outside (the trigger toggling it): the same as Escape, unless focus moved on already.
+  useLayoutEffect(() => {
+    if (!closing || moved.current) return;
+    moved.current = true;
+    const active = document.activeElement;
+    if (!active || active === document.body || active.closest("[data-menu-root]")) focusReturn.restore();
+  }, [closing, focusReturn]);
 
   // Chosen once, so a dialog opening or closing behind the menu doesn't remount it.
   const [host] = useState(menuHost);
   return createPortal(
-    <MenuList x={x} y={y} origin={origin} label={label} items={items} onClose={onClose} />,
+    <MenuList x={x} y={y} origin={origin} label={label} heading={heading} items={items} closing={closing} onClose={dismiss} />,
     host,
   );
 }

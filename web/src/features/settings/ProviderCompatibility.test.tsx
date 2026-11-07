@@ -22,7 +22,6 @@ vi.mock("../../state/workspace", () => ({
       projects: { data: [], error: null },
     }),
 }));
-vi.mock("./AcpRegistry", () => ({ AcpRegistry: () => null }));
 vi.mock("./SettingsScopeContext", () => ({ useSettingsScope: () => null }));
 
 const rangeWarning =
@@ -79,6 +78,7 @@ describe("provider compatibility warning", () => {
       },
     })];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
 
     expect(await screen.findByText(rangeWarning)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
@@ -96,6 +96,7 @@ describe("provider compatibility warning", () => {
       compatibility: { status: "unsupported", message: rangeWarning, recommended_version: "0.166.0" },
     })];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
 
     expect(await screen.findByText(rangeWarning)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Install 0.166.0" })).toBeNull();
@@ -109,6 +110,7 @@ describe("provider compatibility warning", () => {
   it("says nothing about a version the signed manifest does not flag", async () => {
     mock.engines = [engine({ version: "0.166.0", support: "tested", latest: "0.170.0" })];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
 
     expect(await screen.findByRole("button", { name: "Update to 0.170.0" })).toBeVisible();
     expect(screen.queryByText(rangeWarning)).toBeNull();

@@ -8,6 +8,9 @@ import { startProject, type Service } from "./service";
 
 const INITIAL = { logs_after_days: 8, browser_artifacts_after_days: 10, opaque: { keep: true } };
 const logs = (page: Page) => page.getByRole("spinbutton", { name: "Delete old rotated logs in days", exact: true });
+// The Delete now row opens a confirmation; its own button carries the plain label.
+const deleteNow = (page: Page) => page.getByRole("button", { name: "Delete now…", exact: true });
+const confirmDelete = (page: Page) => page.getByRole("dialog", { name: "Delete old files now?" }).getByRole("button", { name: "Delete now", exact: true });
 const artifacts = (page: Page) => page.getByRole("spinbutton", { name: "Delete old browser artifacts in days", exact: true });
 const snapshot = (service: Service) => service.api<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: {}, keys: ["storage_cleanup"] });
 const saved = async (service: Service) => (await snapshot(service)).rows.find((row) => row.key === "storage_cleanup")?.value;
@@ -44,8 +47,8 @@ test("cleanup is environment-only and changes only its touched rule", async ({ p
     for (const url of [project, `${project}&checkout=${encodeURIComponent(projectId)}`, `${service.page}#/settings/maintenance?project=missing-project`]) {
       await page.goto(url);
       await expect(page.getByText("Choose one environment to configure its telemetry exports.")).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Artifacts and logs", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Delete now", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Retention", exact: true })).toHaveCount(0);
+      await expect(deleteNow(page)).toHaveCount(0);
     }
     expect(await saved(service)).toEqual(INITIAL);
     expect(mutations).toEqual([]);
@@ -57,11 +60,14 @@ test("cleanup is environment-only and changes only its touched rule", async ({ p
     await logs(page).press("Enter");
     await expect.poll(() => saved(service)).toEqual({ ...INITIAL, logs_after_days: 5 });
     await expect(logs(page)).toBeEnabled();
-    await page.getByRole("switch", { name: "Delete old rotated logs", exact: true }).click();
-    await expect(logs(page)).toHaveCount(0);
+    // An empty days field is the rule's Off state; there is no switch.
+    await logs(page).fill("");
+    await logs(page).press("Enter");
     await expect.poll(() => saved(service)).toEqual({ ...INITIAL, logs_after_days: null });
-    await expect(page.getByRole("switch", { name: "Delete old rotated logs", exact: true })).toBeEnabled();
-    await page.getByRole("switch", { name: "Delete old rotated logs", exact: true }).click();
+    await expect(logs(page)).toHaveValue("");
+    await expect(logs(page)).toBeEnabled();
+    await logs(page).fill("8");
+    await logs(page).press("Enter");
     await expect(logs(page)).toHaveValue("8");
     await expect.poll(() => saved(service)).toEqual(INITIAL);
     expect(mutations).toEqual([5, null, 8].map((value) => expect.objectContaining({ scope: {}, membership_version: expect.any(String),
@@ -69,9 +75,9 @@ test("cleanup is environment-only and changes only its touched rule", async ({ p
     expect(legacyWrites).toEqual([]);
     const legacy = await service.api<{ key: string; project_id: string | null; value: unknown }[]>("GET", `/api/preferences?project_id=${projectId}`);
     expect(legacy.find((entry) => entry.key === "storage_cleanup")?.value).toEqual({ logs_after_days: 1, opaque: "legacy-project" });
-    await page.getByRole("heading", { name: "Artifacts and logs", exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", { name: "Retention", exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("environment-cleanup.png") });
-    await page.getByRole("button", { name: "Delete now", exact: true }).scrollIntoViewIfNeeded();
+    await deleteNow(page).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("environment-cleanup-action.png") });
   } finally { await service.stop(); }
 });
@@ -90,14 +96,13 @@ test("stale retention edits keep the draft and preserve concurrent fields", asyn
     expect((await conflict).status()).toBe(409);
     await expect(logs(page)).toHaveValue("5");
     await expect(artifacts(page)).toHaveValue("21");
-    await expect(page.getByRole("switch", { name: "Delete old rotated logs", exact: true })).not.toBeChecked();
     expect(await saved(service)).toEqual({ ...INITIAL, logs_after_days: null, browser_artifacts_after_days: 21, opaque: { keep: "external" } });
     await expect(logs(page)).toBeEnabled();
-    await expect(page.getByRole("button", { name: "Delete now", exact: true })).toBeDisabled();
+    await expect(deleteNow(page)).toBeDisabled();
     await logs(page).focus();
     await logs(page).press("Enter");
     await expect.poll(() => saved(service)).toEqual({ logs_after_days: 5, browser_artifacts_after_days: 21, opaque: { keep: "external" } });
-    await expect(page.getByRole("button", { name: "Delete now", exact: true })).toBeEnabled();
+    await expect(deleteNow(page)).toBeEnabled();
   } finally { await service.stop(); }
 });
 
@@ -122,11 +127,10 @@ test("a delayed cleanup setting response cannot replace a new scope draft", asyn
     await logs(page).fill("5");
     await logs(page).blur();
     await written;
-    await page.getByRole("button", { name: "Project scope: All projects", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: group.label, exact: true }).click();
+    // Maintenance shows no scope picker; a project scope is reached through the address.
+    await page.evaluate((key) => { location.hash = `#/settings/maintenance?project=${encodeURIComponent(key)}`; }, group.key);
     await expect(logs(page)).toHaveCount(0);
-    await page.getByRole("button", { name: `Project scope: ${group.label}`, exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "All projects", exact: true }).click();
+    await page.evaluate(() => { location.hash = "#/settings/maintenance"; });
     await expect(logs(page)).toHaveValue("5");
     await logs(page).fill("12");
     release();
@@ -168,18 +172,20 @@ test("a delayed deletion response cannot replace a later environment report", as
   });
   try {
     await page.goto(`${service.page}#/settings/maintenance`);
-    await page.getByRole("button", { name: "Delete now", exact: true }).click();
+    await deleteNow(page).click();
+    await confirmDelete(page).click();
     await written;
     expect(existsSync(firstFile)).toBe(false);
-    await page.getByRole("button", { name: "Project scope: All projects", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: group.label, exact: true }).click();
-    await expect(page.getByRole("button", { name: "Delete now", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: `Project scope: ${group.label}`, exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "All projects", exact: true }).click();
+    // The confirmation stays modal while the answer is held, so the scope changes through the address.
+    await page.evaluate((key) => { location.hash = `#/settings/maintenance?project=${encodeURIComponent(key)}`; }, group.key);
+    await expect(deleteNow(page)).toHaveCount(0);
+    await page.evaluate(() => { location.hash = "#/settings/maintenance"; });
+    await expect(deleteNow(page)).toBeVisible();
     const secondFile = expired("second-private.log");
-    await page.getByRole("button", { name: "Delete now", exact: true }).click();
+    await deleteNow(page).click();
+    await confirmDelete(page).click();
     await expect.poll(() => existsSync(secondFile)).toBe(false);
-    await expect(page.getByRole("button", { name: "Delete now", exact: true })).toBeEnabled();
+    await expect(deleteNow(page)).toBeEnabled();
     await page.getByRole("button", { name: "Last run", exact: true }).click();
     const report = page.getByRole("list", { name: "Cleanup report" });
     await expect(report).toContainText("second-private.log");
@@ -194,7 +200,7 @@ test("a delayed deletion response cannot replace a later environment report", as
 
 test("Delete now reflects explicit worktree policy and preserves legacy isolation", async ({ page }) => {
   const { service, projectId } = await fixture();
-  const button = page.getByRole("button", { name: "Delete now", exact: true });
+  const button = deleteNow(page);
   const seed = async (environment: unknown, project: unknown, legacyAge: number | null = 0) => {
     await service.api("PUT", "/api/preferences", { values: { storage_cleanup: { logs_after_days: null, browser_artifacts_after_days: null,
       worktree_settled_after_days: legacyAge }, worktree_cleanup: environment } });
@@ -202,19 +208,20 @@ test("Delete now reflects explicit worktree policy and preserves legacy isolatio
       storage_cleanup: { worktree_settled_after_days: 0, logs_after_days: 1 } } });
     await page.goto(`${service.page}#/settings/maintenance`);
     await page.reload();
-    await expect(page.getByRole("switch", { name: "Delete old rotated logs", exact: true })).toBeVisible();
+    await expect(logs(page)).toBeVisible();
   };
   try {
     await seed({ mode: "off" }, {});
     await expect(button).toBeDisabled(); // Explicit environment Off suppresses legacy global0.
     await seed({ mode: "off" }, { mode: "custom", rules: { settled_after_days: 0 } });
     await expect(button).toBeEnabled(); // A project can enable immediate cleanup independently.
-    const switchControl = page.getByRole("switch", { name: "Delete old rotated logs", exact: true });
-    await switchControl.click();
+    await logs(page).fill("8");
+    await logs(page).press("Enter");
     await expect(logs(page)).toHaveValue("8");
-    await expect(switchControl).toBeEnabled();
-    await switchControl.click();
-    await expect(logs(page)).toHaveCount(0);
+    await expect(logs(page)).toBeEnabled();
+    await logs(page).fill("");
+    await logs(page).press("Enter");
+    await expect(logs(page)).toHaveValue("");
     await expect(button).toBeEnabled(); // A retention patch must preserve the other queried policy row.
     await seed({ mode: "off" }, { mode: "off" });
     await expect(button).toBeDisabled();

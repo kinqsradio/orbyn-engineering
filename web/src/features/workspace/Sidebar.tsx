@@ -4,9 +4,9 @@ import {
   Clock,
   Copy,
   FilePen,
-  FolderPlus,
   GitPullRequest,
   Layers,
+  Plus,
   Search,
   Settings,
   ShieldAlert,
@@ -29,16 +29,17 @@ import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import { toFailure } from "../../lib/useAsync";
 import { DRAFT_KEY, useDraftStore } from "../../state/draftStore";
-import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { threadToken } from "../../lib/skillMention";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
+import { deriveProjectIdentity } from "../../lib/projectIdentity";
 import { Collapsible } from "../../ui/Collapsible";
 import { IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { ErrorState, Loading } from "../../ui/states";
 import {
   arrangeThreads,
@@ -71,11 +72,11 @@ import {
   unsettleThreads,
   wakeThreads,
 } from "./threadActions";
-import { bulkMenuItems, CustomSnoozeDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
+import { bulkMenuItems, CustomSnoozeDialog, RenameThreadDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
 import { ThreadRow, type RowActions } from "./ThreadRow";
 import { useDrawnOrder } from "./drawnOrder";
 import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
-import { ProviderUpdatePill, UpdatePill } from "./Updates";
+import { UpdatePill } from "./Updates";
 
 const SETTLED_PAGE = 10;
 
@@ -336,8 +337,6 @@ function SidebarNav({ route, ledger }: { route: Route; ledger: boolean }) {
 function SidebarFoot({ route, ledger }: { route: Route; ledger: boolean }) {
   return (
     <div className="sidebar-foot">
-      {/* Their own rows: the footer has no room left for a readable label. */}
-      <ProviderUpdatePill />
       <UndoNotice />
       <UpdatePill />
       {ledger ? <SidebarNav route={route} ledger /> : null}
@@ -370,7 +369,7 @@ function FolderHeader({
   onMenu(event: React.MouseEvent): void;
 }) {
   return (
-    <li className="folder-head">
+    <li className="folder-head" data-count={needs > 0 || (collapsed && count > 0) ? "" : undefined}>
       <button
         type="button"
         className="folder-toggle"
@@ -381,7 +380,12 @@ function FolderHeader({
           onMenu(event);
         }}
       >
-        <ProjectBadge name={project.name} project={project} />
+        <ChevronRight size={12} className="chev folder-chev" aria-hidden />
+        {project.project_icon ? (
+          <ProjectBadge name={project.name} project={project} />
+        ) : (
+          <span className={`project-swatch project-color-${deriveProjectIdentity(project.name).color}`} aria-hidden />
+        )}
         <span className="folder-name">{label}</span>
         {needs > 0 ? (
           <span className="folder-needs">
@@ -390,7 +394,6 @@ function FolderHeader({
           </span>
         ) : null}
         {collapsed && count > 0 ? <span className="group-count">{count}</span> : null}
-        <ChevronRight size={12} className="chev" aria-hidden />
       </button>
       <a
         className="icon-btn folder-new"
@@ -398,7 +401,7 @@ function FolderHeader({
         aria-label={`New thread in ${project.name}`}
         title={`New thread in ${project.name}`}
       >
-        <SquarePen size={14} aria-hidden />
+        <Plus size={14} aria-hidden />
       </a>
     </li>
   );
@@ -515,6 +518,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [anchorId, setAnchorId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const renamingThread = renaming ? threads[renaming] : undefined;
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [snoozing, setSnoozing] = useState<Thread[] | null>(null);
   const [deleting, setDeletingState] = useState<Thread[] | null>(null);
@@ -531,7 +535,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const tree = useRef<HTMLDivElement>(null);
   const pointerY = useRef(0);
   const grabOffset = useRef(0);
-  useLoopsWhileVisible(nav);
   const selectedThread = route.name === "thread" ? route.id : null;
   const list = useMemo(() => visibleProjects ?? [], [visibleProjects]);
 
@@ -693,7 +696,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     },
     onPressStart(event, thread, section) {
       if (event.button !== 0 || section === "working") return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || renaming === thread.id) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey) return;
       const row = event.currentTarget.closest("li");
       if (!row || !tree.current) return;
       const list = tree.current;
@@ -797,7 +800,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         }),
       });
     },
-    onRenameDone: () => setRenaming(null),
     onSettle: (thread) => void settleThreads([thread]),
     onUnsettle: (thread) => void unsettleThreads([thread]),
     onWake: (thread) => void wakeThreads([thread]),
@@ -919,7 +921,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         compact={compact}
         multiline={multilineRows}
         multiSelected={selection.has(thread.id)}
-        renaming={renaming === thread.id}
         focusable={thread.id === rovingId}
         dragging={dragged}
         highlighted={highlighted}
@@ -1029,7 +1030,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           </IconButton>
           <ProjectFilter projects={list} />
           <IconButton label="Add project" onClick={() => setPalette("add-project")}>
-            <FolderPlus size={14} aria-hidden />
+            <Plus size={14} aria-hidden />
           </IconButton>
         </span>
       </div>
@@ -1170,17 +1171,22 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       </div>
       <SidebarFoot route={route} ledger={ledger} />
       <SidebarRail />
-      {menu ? <Menu {...menu} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu ? <Menu {...menu} onClose={() => setMenu(null)} /> : null}</Presence>
+      {renamingThread ? <RenameThreadDialog thread={renamingThread} onClose={() => setRenaming(null)} /> : null}
       {snoozing ? <CustomSnoozeDialog threads={snoozing} onClose={() => setSnoozing(null)} /> : null}
       {deleting ? (
         <ConfirmDialog
-          title={deleting.length === 1 ? "Delete thread?" : `Delete ${deleting.length} threads?`}
+          title={deleting.length === 1 ? `Delete “${deleting[0]?.title ?? "thread"}”?` : `Delete ${deleting.length} threads?`}
           confirmLabel="Delete"
           tone="danger"
           onClose={() => setDeletingState(null)}
           onConfirm={() => deleteThreads(deleting)}
         >
-          <p>This also removes side chats and cannot be undone.</p>
+          <p>
+            {deleting.length === 1
+              ? "Its messages and checkpoints are deleted. Code changes in its worktree stay."
+              : "Their messages and checkpoints are deleted. Code changes in their worktrees stay."}
+          </p>
         </ConfirmDialog>
       ) : null}
     </nav>

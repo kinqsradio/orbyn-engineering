@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import { useThreadLogs } from "./features/thread/threadLogs";
+import { useConnection } from "./state/connection";
 import { useUi } from "./state/ui";
 import { useWorkspace } from "./state/workspace";
 
@@ -10,6 +11,7 @@ afterEach(() => {
   useWorkspace.setState(useWorkspace.getInitialState(), true);
   useThreadLogs.setState(useThreadLogs.getInitialState(), true);
   useUi.setState(useUi.getInitialState(), true);
+  useConnection.setState(useConnection.getInitialState(), true);
   localStorage.clear();
   sessionStorage.clear();
   window.location.hash = "";

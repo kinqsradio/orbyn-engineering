@@ -6,12 +6,18 @@ import type { ProjectSettingsSelection } from "../../generated/ProjectSettingsSe
 import { useAsync, toFailure } from "../../lib/useAsync";
 import { navigate, useRoute, type SettingsSection } from "../../state/route";
 
-// T3's local device pages deliberately edit this client's/environment's defaults.
+// Device pages deliberately edit this client's/environment's defaults.
 export const DEVICE_SETTINGS_SECTIONS: ReadonlySet<SettingsSection> = new Set([
-  "general", "appearance", "chat", "diffs", "about",
+  "general", "appearance", "chat", "about",
 ]);
 
+/** Pages that show the scope line under the title (Applying settings for a project on a device). */
+export const SCOPE_LINE_SECTIONS: ReadonlySet<SettingsSection> = new Set(["diffs", "providers", "threads", "worktrees", "projects", "source-control"]);
+/** Pages that hold project-scoped keys; a row shows where its value comes from only when the service scopes its key per project. */
+export const INHERITANCE_SECTIONS: ReadonlySet<SettingsSection> = new Set(["diffs", "providers", "threads", "worktrees", "projects", "source-control"]);
+
 export interface SettingsScopeContextValue {
+  inheritance: boolean;
   query: ProjectScopesQuery;
   catalog: ProjectScopeCatalog | null;
   loading: boolean;
@@ -44,6 +50,7 @@ export function SettingsScopeProvider({ section, children }: { section: Settings
     navigate({ name: "settings", section, selection: next, machine: undefined });
   }, [section]);
   const value: SettingsScopeContextValue = {
+    inheritance: INHERITANCE_SECTIONS.has(section),
     query,
     catalog: current ? result.data!.catalog : null,
     loading: !current || result.refreshing,

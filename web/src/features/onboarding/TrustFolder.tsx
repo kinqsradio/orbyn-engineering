@@ -1,7 +1,5 @@
-import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
-import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure } from "../../lib/useAsync";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
@@ -13,7 +11,6 @@ export function TrustFolder({ projectId, threadId }: { projectId: string; thread
   const project = useWorkspace((state) => state.projects.data?.find((p) => p.id === projectId));
   const loaded = useWorkspace((state) => state.projects.data !== null);
   const putProject = useWorkspace((state) => state.putProject);
-  const narrow = useLayoutWidth() === "narrow";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,42 +46,35 @@ export function TrustFolder({ projectId, threadId }: { projectId: string; thread
   return (
     <div className="trust">
       <div className="trust-card" role="group" aria-labelledby="trust-title">
-        <header>
-          {narrow || threadId ? (
-            <a className="trust-back" href={routeHref(leave)}>
-              <ArrowLeft size={14} aria-hidden />
-              {threadId ? "Back to thread" : "Threads"}
-            </a>
-          ) : null}
-          <h1 id="trust-title" tabIndex={-1} data-page-title>
-            Trust {project.name}?
-          </h1>
-        </header>
-        <p>
-          Engines run real commands here. They can execute this repository's hooks and load its configuration, including
-          MCP servers, without asking again. Only trust folders whose contents you know.
-        </p>
+        <h1 id="trust-title" tabIndex={-1} data-page-title>
+          Trust {project.name}?
+        </h1>
+        <p>Agents can read files, run commands and edit code in this folder. Only trust folders you know.</p>
         <dl className="trust-facts">
           <div>
             <dt>Path</dt>
             <dd>
-              <code className="trust-path">{project.path}</code>
+              <code className="trust-path">{homeRelative(project.path)}</code>
             </dd>
           </div>
         </dl>
-        <p>Nothing runs until you do.</p>
         {error ? (
           <p className="field-error" role="alert">
             {error}
           </p>
         ) : null}
         <div className="trust-actions">
-          <LinkButton href={routeHref(leave)}>Not now</LinkButton>
-          <Button tone="primary" busy={busy} icon={<ShieldCheck size={16} aria-hidden />} onClick={() => void trust()}>
+          <LinkButton href={routeHref(leave)}>Don’t trust</LinkButton>
+          <Button tone="primary" busy={busy} onClick={() => void trust()}>
             Trust folder
           </Button>
         </div>
       </div>
     </div>
   );
+}
+
+/** The folder as the person writes it: the home directory shortened to ~. */
+export function homeRelative(path: string): string {
+  return path.replace(/^(?:\/Users|\/home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:\\Users\\[^\\]+/, "~");
 }

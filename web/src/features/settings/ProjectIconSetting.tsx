@@ -14,10 +14,10 @@ import { ProjectBadge } from "../../ui/badges";
 import { SettingRow } from "../../ui/SettingRow";
 import { Button, IconButton } from "../../ui/controls";
 import { ProjectIconPicker } from "./ProjectIconPicker";
+import { Presence } from "../../ui/Presence";
 import { ProjectImagePicker, type ProjectImagePickerScope } from "./ProjectImagePicker";
 
 /** How the service names a copy of an image chosen outside the project. */
-const IMPORTED_PREFIX = "./.orbyn-imported/";
 const hasRevision = (member: ProjectScopeCheckout) => iconRevision(member.metadata_revision) !== null;
 // Display freshness never changes a dialog's frozen catalog write baseline.
 function iconRevision(value: unknown): bigint | null {
@@ -72,9 +72,7 @@ export function ProjectIconSetting({ query, catalog, members, projectName, disab
   const shown = members.map((member) => newestIconMetadata(member, candidates));
   const current = shown[0];
   const icon = current?.project_icon ?? null;
-  const imported = current?.favicon_path?.startsWith(IMPORTED_PREFIX) ?? false;
-  const description = icon?.kind === "lucide" ? `${icon.name} · ${icon.color}` : icon?.kind === "monogram" ? `${icon.text} · ${icon.color}`
-    : icon?.kind === "emoji" ? icon.emoji : imported ? "Image from this computer" : current?.favicon_path ?? "Automatic";
+  const description = "Emoji, an icon or your own image";
   // The native dialog lives in the desktop app; a browser on a plain server has none.
   const shell = useAsync("project-icon-shell", (signal) => api.shell(signal));
   const desktop = shell.data?.attached === true;
@@ -166,11 +164,11 @@ export function ProjectIconSetting({ query, catalog, members, projectName, disab
           onClick={() => { void chooseFromComputer(); }}>Choose from computer</Button> : null}
       </div>
     </SettingRow>
-    {imageDialog ? <ProjectImagePicker input={imageDialog.input} projectName={imageDialog.projectName} onClose={() => setImageDialog(null)} onSelect={(path) => {
+    <Presence>{imageDialog ? <ProjectImagePicker input={imageDialog.input} projectName={imageDialog.projectName} onClose={() => setImageDialog(null)} onSelect={(path) => {
       const selection = imageDialog;
       setImageDialog(null);
       void changeImage(path, selection);
-    }} /> : null}
+    }} /> : null}</Presence>
     {dialog ? <ProjectIconPicker current={dialog.current} projectName={projectName} disabled={!writable || dialog.rebase}
       onClose={() => setDialog(null)} reloadPending={loading} onReload={dialog.rebase ? () => {
         setDialog((previous) => previous ? { ...previous, reloadSource: catalog } : previous);

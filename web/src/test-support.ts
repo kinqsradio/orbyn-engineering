@@ -54,3 +54,26 @@ export function installMockFetch(options: { stepMs?: number } = {}): MockApi {
   );
   return mock;
 }
+
+/**
+ * Makes `matchMedia` answer the width queries as a window this wide would, and sets
+ * `innerWidth`. The test setup restores the plain stub after each test.
+ */
+export function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width });
+  vi.stubGlobal("matchMedia", (query: string) => {
+    const max = /\(max-width:\s*(\d+)px\)/.exec(query);
+    const min = /\(min-width:\s*(\d+)px\)/.exec(query);
+    const matches = max ? width <= Number(max[1]) : min ? width >= Number(min[1]) : false;
+    return {
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    };
+  });
+}

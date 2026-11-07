@@ -24,7 +24,6 @@ vi.mock("../../state/workspace", () => ({
       projects: { data: [], error: null },
     }),
 }));
-vi.mock("./AcpRegistry", () => ({ AcpRegistry: () => null }));
 vi.mock("./SettingsScopeContext", () => ({ useSettingsScope: () => null }));
 
 const catalog: EngineModels = {
@@ -94,6 +93,7 @@ describe("provider update progress", () => {
     const updates = stream();
     mock.engines = [engine()];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
     await waitFor(() => expect(updates.fetch).toHaveBeenCalled());
     expect(await screen.findByRole("button", { name: "Update to 0.167.0" })).toBeVisible();
 
@@ -116,6 +116,7 @@ describe("provider update progress", () => {
     actions.updateEngine.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
     mock.engines = [engine()];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
     await waitFor(() => expect(updates.fetch).toHaveBeenCalled());
     await user.click(await screen.findByRole("button", { name: "Update to 0.167.0" }));
     const dialog = await screen.findByRole("dialog");
@@ -134,6 +135,7 @@ describe("provider update progress", () => {
     const updates = stream();
     mock.engines = [engine()];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
     await waitFor(() => expect(updates.fetch).toHaveBeenCalled());
     await updates.event({ kind: "output", engine: "claude", line: "changed 3 packages" });
     expect(screen.queryByText("changed 3 packages")).toBeNull();

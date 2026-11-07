@@ -1,6 +1,7 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { SkillPackStatus } from "../generated/SkillPackStatus";
 import type { EngineUpdateOutcome } from "../generated/EngineUpdateOutcome";
 import type { WorkflowScript } from "../generated/WorkflowScript";
 import type { WorkflowStop } from "../generated/WorkflowStop";
@@ -188,16 +189,26 @@ export const api = {
     request<import("../generated/BinaryProbe").BinaryProbe>("POST", "/api/engines/probe-binary", { path } satisfies import("../generated/ProbeBinary").ProbeBinary),
   /** How many conversations an engine keeps in its own history folder. */
   nativeSessionCount: (engineId: string, signal?: AbortSignal) =>
-    request<import("../generated/NativeSessionCount").NativeSessionCount>("GET", `/api/engines/${q(engineId)}/native-sessions/count`, undefined, signal),
+    request<import("./types").NativeSessionCount>("GET", `/api/engines/${q(engineId)}/native-sessions/count`, undefined, signal),
   /** What Delete now, or Delete settled worktrees, would remove: counts and sizes. Changes nothing. */
   storageCleanupPreview: (signal?: AbortSignal) =>
-    request<import("../generated/CleanupPreview").CleanupPreview>("GET", "/api/storage/cleanup/preview", undefined, signal),
+    request<import("./types").CleanupPreview>("GET", "/api/storage/cleanup/preview", undefined, signal),
   /** A task's last 50 firings, newest first. */
   taskRuns: (taskId: string, signal?: AbortSignal) =>
     request<import("../generated/TaskRun").TaskRun[]>("GET", `/api/tasks/${q(taskId)}/runs`, undefined, signal),
   /** Whether the webhook takes requests and its address up to the token, which is never returned. */
   taskWebhook: (taskId: string, signal?: AbortSignal) =>
     request<import("../generated/WebhookAddress").WebhookAddress>("GET", `/api/tasks/${q(taskId)}/webhook`, undefined, signal),
+  /** Every scheduled task, with when it last ran. */
+  tasks: (signal?: AbortSignal) => request<import("./types").ScheduledTask[]>("GET", "/api/tasks", undefined, signal),
+  /** Starts a task's run now, outside its schedule. */
+  runTask: (taskId: string) => request<void>("POST", `/api/tasks/${q(taskId)}/run`),
+  /** What a task's webhook received, newest first, each with the sender the headers name when they name one. */
+  taskDeliveries: (taskId: string, signal?: AbortSignal) =>
+    request<import("../generated/WebhookDelivery").WebhookDelivery[]>("GET", `/api/tasks/${q(taskId)}/deliveries`, undefined, signal),
+  /** Issues a new webhook address. The old one stops working, and the new one is returned only here. */
+  rotateTaskWebhook: (taskId: string) =>
+    request<import("../generated/WebhookEndpoint").WebhookEndpoint>("POST", `/api/tasks/${q(taskId)}/webhook`),
   repositoryStar: (signal?: AbortSignal) => request<import("../generated/RepositoryStarStatus").RepositoryStarStatus>("GET", "/api/source-control/repository-star", undefined, signal),
   /** An MCP App's tool call, after the person confirmed it in the host's dialog. */
   mcpAppToolCall: (threadId: string, renderId: string, name: string, args: Record<string, unknown>) =>
@@ -251,8 +262,8 @@ export const api = {
     request<unknown>("GET", `/api/threads/${q(threadId)}/items/${q(itemId)}`, undefined, signal),
   regenerateTitle: (id: string) => request<Thread>("POST", `/api/threads/${q(id)}/title`),
   reorderThreads: (ids: string[]) => request<void>("POST", "/api/threads/order", { ids }),
-  archivedThreads: (projectId: string, signal?: AbortSignal) =>
-    request<Thread[]>("GET", `/api/threads?project_id=${q(projectId)}&archived=true`, undefined, signal),
+  /** Every archived thread, including those of a project that was removed. */
+  archivedThreads: (signal?: AbortSignal) => request<Thread[]>("GET", "/api/threads?archived=true", undefined, signal),
   mentions: (threadId: string, query: string, signal?: AbortSignal) =>
     request<Mentions>("GET", `/api/threads/${q(threadId)}/mentions?q=${q(query)}`, undefined, signal),
   /** The engine's latest usage report for a thread, as the service kept it. */
@@ -298,7 +309,8 @@ export const api = {
   updateLibrary: (apply: boolean) =>
     request<LibraryUpdateResult>("POST", "/api/workspace/update", { apply }),
   rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
-  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: true }),
+  createProject: (name: string, path?: string) =>
+    request<Project>("POST", "/api/projects/create", { name, readme: true, ...(path ? { path } : {}) }),
   addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
   renameSelectedProjects: (change: RenameSelectedProjects) => request<Project[]>("POST", "/api/settings/projects/rename", change),
   changeProjectIcon: (change: ChangeProjectIcon) => request<Project[]>("POST", "/api/settings/projects/icon", change),
@@ -315,6 +327,7 @@ export const api = {
   removeProject: (id: string, confirm: boolean) =>
     request<ProjectRemoval>("DELETE", `/api/projects/${q(id)}${confirm ? "?confirm=true" : ""}`),
 
+  skills: (signal?: AbortSignal) => request<SkillPackStatus>("GET", "/api/skills", undefined, signal),
   info: (signal?: AbortSignal) => request<ServerInfo>("GET", "/api/info", undefined, signal),
   signIn: (key: string) => request<void>("POST", "/auth/session", { key }),
 

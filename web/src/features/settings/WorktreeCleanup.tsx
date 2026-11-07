@@ -2,18 +2,49 @@ import { useEffect, useRef, useState } from "react";
 import { request } from "../../api/client";
 import type { JsonValue } from "../../api/types";
 import type { PreferenceEdit } from "../../generated/PreferenceEdit";
+import type { ProjectScopeGroup } from "../../generated/ProjectScopeGroup";
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
+import type { ScopedPreferenceRow } from "../../generated/ScopedPreferenceRow";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { ErrorState, Loading } from "../../ui/states";
-import { Advanced } from "./PreferenceRows";
+import { PreferenceInheritance } from "./PreferenceRows";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { useUi } from "../../state/ui";
 
+/** Turning cleanup on without a number of days uses this one. */
+const DEFAULT_DAYS = 7;
+const TITLE = "Automatic worktree cleanup";
+
 type Policy = { mode?: string; rules?: { settled_after_days?: unknown } };
 const policy = (value: unknown): Policy => value !== null && typeof value === "object" ? value as Policy : {};
+
+/** Off or On, with the days a worktree stays after it settles (7 until set) beside it while On. */
+function CleanupSelect({ label, current, disabled, mixed, set }: { label: string; current: number | null; disabled: boolean; mixed?: boolean; set(days: number | null): void }) {
+  const [draft, setDraft] = useState(String(current ?? DEFAULT_DAYS));
+  useEffect(() => { setDraft(String(current ?? DEFAULT_DAYS)); }, [current]);
+  const commit = () => {
+    if (current === null || draft.trim() === "" || !Number.isFinite(Number(draft))) { setDraft(String(current ?? DEFAULT_DAYS)); return; }
+    const next = Math.max(0, Math.min(3650, Math.round(Number(draft))));
+    setDraft(String(next));
+    if (next !== current) set(next);
+  };
+  return <span className="set-inline-control">
+    <select aria-label={label} disabled={disabled} value={mixed ? "mixed" : current === null ? "off" : "on"}
+      onChange={(event) => set(event.target.value === "on" ? Number(draft) || DEFAULT_DAYS : null)}>
+      {mixed ? <option value="mixed" disabled>Mixed</option> : null}
+      <option value="off">Off</option><option value="on">On</option>
+    </select>
+    {current !== null && !mixed ? <span className="unit-field">
+      <input type="number" min={0} max={3650} step={1} aria-label={`${label}: days`} disabled={disabled} value={draft}
+        onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
+      <span className="t3" aria-hidden>days</span>
+    </span> : null}
+  </span>;
+}
 
 export function WorktreeCleanup() {
   const scope = useSettingsScope();
@@ -38,30 +69,22 @@ function CleanupRules({ query }: { query: ProjectScopesQuery }) {
   const legacy = snapshot.rows.find((entry) => entry.key === "storage_cleanup")?.environment.value;
   const legacyAge = legacy && typeof legacy === "object" && !Array.isArray(legacy) ? legacy.worktree_settled_after_days : null;
   const all = snapshot.catalog.selection.kind === "all_projects";
-  const disabled = busy || read.refreshing || !row || snapshot.catalog.selection.kind === "unavailable";
-  const modes = row?.members.map((member) => member.view.source === "project" ? policy(member.view.value).mode ?? "inherit" : "inherit") ?? [];
-  const mixedMode = modes.some((value) => value !== modes[0]);
-  const mode = modes[0] ?? "inherit";
-  const age = (value: unknown): number | null => {
+  const disabled = busy || read.refreshing || snapshot.catalog.selection.kind === "unavailable";
+  const age = (value: unknown, inherit: unknown = row.environment.value): number | null => {
     const selected = policy(value);
-    const own = !all && !selected.mode ? policy(row.environment.value) : selected;
+    const own = !selected.mode ? policy(inherit) : selected;
     const candidate = own.mode === "off" ? null : own.mode === "custom" ? own.rules?.settled_after_days : legacyAge;
     return typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 && candidate <= 3650 ? candidate : null;
   };
-  const ages = all ? [age(row?.value)] : row?.members.map((member) => age(member.view.value)) ?? [];
-  const mixedAge = ages.some((value) => value !== ages[0]);
-  const commit = async (edit: PreferenceEdit): Promise<boolean> => {
-    if (disabled || pending.current || !row) return false;
+  const turn = (days: number | null): PreferenceEdit => ({ op: "set",
+    value: days !== null ? { mode: "custom", rules: { settled_after_days: days } } : { mode: "off" } });
+  const guard = async (write: () => Promise<void>): Promise<boolean> => {
+    if (disabled || pending.current) return false;
     pending.current = true; setBusy(true); setError(null);
     try {
-      const changed = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
-        scope: query, membership_version: snapshot.catalog.version,
-        if_match: { [row.key]: row.revision }, edits: { [row.key]: edit },
-      });
+      await write();
       useUi.getState().bumpPreferencesRevision();
-      if (mounted.current) {
-        read.setData({ ...snapshot, catalog: changed.catalog, rows: snapshot.rows.map((previous) => changed.rows.find((next) => next.key === previous.key) ?? previous) });
-      }
+      if (mounted.current) read.reload();
       return true;
     } catch (failure) {
       if (mounted.current) {
@@ -71,38 +94,68 @@ function CleanupRules({ query }: { query: ProjectScopesQuery }) {
       return false;
     } finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
-  const set = (value: JsonValue) => commit({ op: "set", value });
-  return <SettingGroup title="Cleanup">
-    {error ? <p role="alert" className="field-error">{error} <Button small disabled={disabled} onClick={read.reload}>Retry</Button></p> : null}
-    {!all ? <SettingRow title="Automatic worktree cleanup" description={mode === "off" ? "Keep this project's worktrees until you delete them manually." : mode === "custom" ? "Use these rules for this project." : "Use each machine's worktree cleanup settings."}>
-      <select aria-label="Automatic worktree cleanup" disabled={disabled} value={mixedMode ? "mixed" : mode} onChange={(event) => {
-        const next = event.target.value;
-        void (next === "inherit" ? commit({ op: "inherit" }) : set(next === "off" ? { mode: "off" } : { mode: "custom", rules: {} }));
-      }}>
-        {mixedMode ? <option value="mixed" disabled>Mixed</option> : null}
-        <option value="inherit">Inherit</option><option value="off">Off</option><option value="custom">Custom</option>
-      </select>
-    </SettingRow> : null}
-    <div hidden={!(all || (!mixedMode && mode === "custom"))}><Advanced><SettingRow title="Delete settled worktrees" description="Remove worktrees this many days after their thread settles. Set 0 days to remove them at the next cleanup. Branches and thread history are kept.">
-      <SettledRetention value={ages[0] ?? null} mixed={mixedAge} disabled={disabled} save={(days) => set({ mode: "custom", rules: { settled_after_days: days } })} />
-    </SettingRow></Advanced></div>
+  const put = (target: ProjectScopesQuery, version: string, current: ScopedPreferenceRow, edit: PreferenceEdit) =>
+    request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", {
+      scope: target, membership_version: version, if_match: { [current.key]: current.revision }, edits: { [current.key]: edit } });
+  const retry = error ? <p role="alert" className="field-error">{error} <Button small disabled={disabled} onClick={read.reload}>Retry</Button></p> : null;
+  if (all) return <ProjectsTable row={row} groups={snapshot.catalog.groups} age={age} turn={turn} disabled={disabled} retry={retry}
+    write={(group, edit) => guard(async () => {
+      const target: ProjectScopesQuery = { selection: { kind: "project_group", group_key: group.key } };
+      const fresh = await request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: target, keys: [row.key] });
+      const current = fresh.rows.find((entry) => entry.key === row.key);
+      if (current) await put(target, fresh.catalog.version, current, edit(current));
+    })} />;
+  const ages = row.members.map((member) => age(member.view.value));
+  const mixed = ages.some((value) => value !== ages[0]);
+  const current = ages[0] ?? null;
+  const view = row.members[0]?.view ?? row.environment;
+  return <SettingGroup>
+    {retry}
+    <SettingRow title={TITLE} description="Merged or archived worktrees, untouched for the days set" actions={
+      <div className="setting-inheritance-actions">
+        <PreferenceInheritance row={{ key: row.key, title: TITLE }} view={view} global={row.environment} members={row.members} mixed={mixed}
+          disabled={disabled} onResetOverrides={() => undefined} />
+        {view.source === "project" ? <Button small tone="quiet" disabled={disabled} aria-label={`Reset ${TITLE} to default`} title="Reset to inherited value"
+          onClick={() => { void guard(async () => { await put(query, snapshot.catalog.version, row, { op: "inherit" }); }); }}>Inherit</Button> : null}
+      </div>}>
+      <CleanupSelect label={TITLE} current={mixed ? null : current} mixed={mixed} disabled={disabled}
+        set={(days) => { void guard(async () => { await put(query, snapshot.catalog.version, row, turn(days)); }); }} />
+    </SettingRow>
   </SettingGroup>;
 }
 
-function SettledRetention({ value, mixed, disabled, save }: { value: number | null; mixed: boolean; disabled: boolean; save(days: number | null): Promise<boolean> }) {
-  const [draft, setDraft] = useState(value === null ? "" : String(value));
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => { if (!dirty) setDraft(mixed || value === null ? "" : String(value)); }, [value, mixed, dirty]);
-  const commit = async () => {
-    if (!dirty || disabled) return;
-    if (draft.trim() === "" || !Number.isFinite(Number(draft))) { setDirty(false); return; }
-    const days = Math.max(0, Math.min(3650, Math.round(Number(draft))));
-    setDraft(String(days));
-    if (!mixed && days === value) { setDirty(false); return; }
-    if (await save(days)) setDirty(false);
-  };
-  return <div className="retention-control">
-    {mixed || value !== null || dirty ? <><input aria-label="Delete settled worktrees in days" type="number" min={0} max={3650} step={1} disabled={disabled} placeholder={mixed ? "Mixed" : undefined} value={draft} onChange={(event) => { setDraft(event.target.value); setDirty(true); }} onBlur={() => { void commit(); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commit(); } }} /><span>days</span></> : <span className="muted">Off</span>}
-    <input type="checkbox" role="switch" aria-label="Delete settled worktrees" aria-checked={mixed ? "mixed" : value !== null} checked={!mixed && value !== null} disabled={disabled} onChange={(event) => { void save(event.target.checked ? 8 : null).then((saved) => { if (saved) setDirty(false); }); }} />
-  </div>;
+/** Every project with its own switch (s-x-worktrees-cleanup). The settled-worktree counts and sizes have no data yet, so that column is left out. */
+function ProjectsTable({ row, groups, age, turn, write, disabled, retry }: {
+  row: ScopedPreferenceRow;
+  groups: ProjectScopeGroup[];
+  age(value: unknown): number | null;
+  turn(days: number | null): PreferenceEdit;
+  write(group: ProjectScopeGroup, edit: (current: ScopedPreferenceRow) => PreferenceEdit): Promise<boolean>;
+  disabled: boolean;
+  retry: React.ReactNode;
+}) {
+  const columns = "minmax(0, 1fr) 230px";
+  return <SettingGroup>
+    {retry}
+    <div role="table" aria-label="Automatic worktree cleanup by project" className="set-tbl">
+      <div role="row" className="set-tr h" style={{ gridTemplateColumns: columns }}><span role="columnheader">Project</span><span role="columnheader">Automatic worktree cleanup</span></div>
+      {groups.map((group) => {
+        const override = row.overrides.find((entry) => group.members.some((member) => member.project_id === entry.project_id));
+        const value: JsonValue = override ? override.value : row.environment.value;
+        const current = age(value);
+        const view = override ? { ...row.environment, value: override.value, source: "project" } : row.environment;
+        return <div role="row" key={group.key} className="set-tr" style={{ gridTemplateColumns: columns }}>
+          <span role="cell">{group.label}</span>
+          <span role="cell" className="set-inline-control">
+            <span className="setting-inheritance-actions">
+              <PreferenceInheritance row={{ key: row.key, title: TITLE }} view={view} global={row.environment} disabled={disabled}
+                onResetOverrides={() => undefined} />
+            </span>
+            <CleanupSelect label={`${TITLE} for ${group.label}`} current={current} disabled={disabled}
+              set={(days) => { void write(group, () => turn(days)); }} />
+          </span>
+        </div>;
+      })}
+    </div>
+  </SettingGroup>;
 }

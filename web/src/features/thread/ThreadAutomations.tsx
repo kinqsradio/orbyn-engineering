@@ -157,7 +157,7 @@ export function ThreadAutomations({ threadId }: { threadId: string }) {
               <IconButton
                 label={`Edit ${task.name}`}
                 disabled={busy !== null}
-                onClick={() => navigate({ name: "settings", section: "tasks", task: task.id })}
+                onClick={() => navigate({ name: "settings", section: "tasks", task: task.id, edit: true })}
               >
                 <Pencil size={14} aria-hidden />
               </IconButton>

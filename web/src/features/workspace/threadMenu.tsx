@@ -37,6 +37,7 @@ import {
   regenerateTitles,
   setAutoSettle,
   setUnread,
+  renameThread,
   settleThreads,
   snoozeThreads,
   turnIntoProject,
@@ -235,6 +236,49 @@ const pad = (value: number) => String(value).padStart(2, "0");
 
 const localInput = (at: Date) =>
   `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+
+/** The design's Rename thread dialog: one field, Cancel and Save. Enter saves; Escape cancels. */
+export function RenameThreadDialog({ thread, onClose }: { thread: Thread; onClose(): void }) {
+  const [value, setValue] = useState(thread.title);
+  const next = value.trim();
+  const save = () => {
+    if (!next) return;
+    if (next !== thread.title) void renameThread(thread, next);
+    onClose();
+  };
+  return (
+    <Dialog
+      title="Rename thread"
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button tone="primary" disabled={!next} onClick={save}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="rename-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save();
+        }}
+      >
+        <input
+          className="dialog-field"
+          aria-label="Thread title"
+          data-dialog-focus
+          value={value}
+          autoComplete="off"
+          onFocus={(event) => event.currentTarget.select()}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </form>
+    </Dialog>
+  );
+}
 
 export function CustomSnoozeDialog({ threads, onClose }: { threads: Thread[]; onClose(): void }) {
   const [mode, setMode] = useState<"time" | "duration">("time");

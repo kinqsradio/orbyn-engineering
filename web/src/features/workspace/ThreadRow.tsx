@@ -9,7 +9,6 @@ import { engineById, useWorkspace } from "../../state/workspace";
 import { EngineGlyph, ProjectBadge } from "../../ui/badges";
 import type { DropVerb, SidebarSection } from "./groups";
 import { threadRunState } from "./RunState";
-import { renameThread } from "./threadActions";
 
 const DONE_WINDOW_MS = 5 * 60_000;
 const HOVER_DELAY_MS = 150;
@@ -144,41 +143,11 @@ function ThreadHoverCard({
   );
 }
 
-function TitleEditor({ thread, onDone }: { thread: Thread; onDone(): void }) {
-  const [value, setValue] = useState(thread.title);
-  const finished = useRef(false);
-  const finish = (save: boolean) => {
-    if (finished.current) return;
-    finished.current = true;
-    const next = value.trim();
-    if (save && next && next !== thread.title) void renameThread(thread, next);
-    onDone();
-  };
-  return (
-    <input
-      className="thread-row-rename"
-      aria-label="Thread title"
-      value={value}
-      autoFocus
-      onFocus={(event) => event.currentTarget.select()}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={() => finish(true)}
-      onClick={(event) => event.preventDefault()}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Enter") finish(true);
-        if (event.key === "Escape") finish(false);
-      }}
-    />
-  );
-}
-
 export interface RowActions {
   onClick(event: React.MouseEvent, thread: Thread): void;
   onPressStart(event: ReactPointerEvent, thread: Thread, section: SidebarSection): void;
   onActionPress(event: ReactPointerEvent, thread: Thread, section: SidebarSection): void;
   onMenu(event: { clientX: number; clientY: number }, thread: Thread): void;
-  onRenameDone(): void;
   onSettle(thread: Thread): void;
   onUnsettle(thread: Thread): void;
   onSnooze(event: { clientX: number; clientY: number }, thread: Thread): void;
@@ -196,7 +165,6 @@ export function ThreadRow({
   compact: _compact,
   multiline,
   multiSelected,
-  renaming,
   focusable,
   dragging,
   highlighted,
@@ -221,7 +189,6 @@ export function ThreadRow({
   compact: boolean;
   multiline: boolean;
   multiSelected: boolean;
-  renaming: boolean;
   focusable: boolean;
   dragging: boolean;
   highlighted: boolean;
@@ -381,11 +348,7 @@ export function ThreadRow({
     </button>
   ) : null;
 
-  const title = renaming ? (
-    <TitleEditor thread={thread} onDone={actions.onRenameDone} />
-  ) : (
-    <span className="thread-row-title">{thread.title}</span>
-  );
+  const title = <span className="thread-row-title">{thread.title}</span>;
 
   return (
     <li

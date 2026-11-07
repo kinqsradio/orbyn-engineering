@@ -13,16 +13,16 @@ test("custom model edits retain their environment target and a conflicting draft
     const catalog = await service.api<{ groups: { key: string; members: { project_id: string }[] }[] }>("POST", "/api/settings/project-scopes", {});
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId))!;
     await page.goto(`${service.page}#/settings/providers?project=${encodeURIComponent(group.key)}`);
-    await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
-    const row = page.locator(".setting-list > li").filter({ has: page.getByRole("heading", { name: "Codex", exact: true }) });
-    await row.getByRole("button", { name: /^Models \(/ }).click();
-    const form = row.getByRole("form", { name: "Custom models for Codex", exact: true });
-    await expect(form.getByRole("button", { name: "Remove Initial choice", exact: true })).toBeVisible();
+    await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
+    const row = page.getByRole("region", { name: "Settings" });
+    await expect(row.getByRole("button", { name: "Remove Initial choice", exact: true })).toBeVisible();
     const external = { engine: "codex", id: "external-choice", label: "External choice", forward: "preserve" };
     const externalValues = [...initial, external, null, { unknown_format: ["preserve"] }];
     await service.api("PUT", "/api/preferences", { values: { custom_models: externalValues } });
     const models = async () => (await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences"))
       .find((entry) => entry.key === "custom_models")!.value;
+    await row.getByRole("button", { name: "Add custom model", exact: true }).click();
+    const form = page.getByRole("dialog", { name: "Add custom model", exact: true });
     await form.getByLabel("Model id", { exact: true }).fill("draft-choice");
     await form.getByLabel("Display name", { exact: true }).fill("Draft choice");
     await form.getByRole("button", { name: "Add model", exact: true }).click();
@@ -46,13 +46,10 @@ test("an unavailable project selection cannot submit a custom model edit", async
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId))!;
     await service.api("DELETE", `/api/projects/${projectId}`);
     await page.goto(`${service.page}#/settings/providers?project=${encodeURIComponent(group.key)}`);
-    await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
-    const row = page.locator(".setting-list > li").filter({ has: page.getByRole("heading", { name: "Codex", exact: true }) });
-    await row.getByRole("button", { name: /^Models \(/ }).click();
-    const form = row.getByRole("form", { name: "Custom models for Codex", exact: true });
+    await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
+    const row = page.getByRole("region", { name: "Settings" });
     await expect(page.getByRole("status").filter({ hasText: "This selection is no longer available" })).toBeVisible();
-    await expect(form.getByLabel("Model id", { exact: true })).toBeDisabled();
-    await expect(form.getByRole("button", { name: "Add model", exact: true })).toBeDisabled();
+    await expect(row.getByRole("button", { name: "Add custom model", exact: true })).toBeDisabled();
     const models = (await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences")).find((entry) => entry.key === "custom_models")!.value;
     expect(models).toEqual(initial);
   } finally { await service.stop(); }

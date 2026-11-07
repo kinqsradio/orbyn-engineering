@@ -33,13 +33,16 @@ import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
 import { actionShortcutAllowed, FALLBACK_RULES, isReservedCloseEvent, matchesKey, ruleMatches, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { useTaskRunNotifications } from "./taskNotifications";
 import { actionIdFromCommand } from "../lib/actionCommand";
-import { useLayoutWidth } from "../lib/useLayout";
-import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
+import { layoutForWidth, useLayoutWidth } from "../lib/useLayout";
+import { goToHash, navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { TitleBar } from "./TitleBar";
 import { useReadingNav } from "./readingNav";
+import { toggleSidebarDrawer, useSidebarDrawer } from "./sidebarDrawer";
+import { useEscapeClose } from "../ui/useEscapeClose";
 
 const HIDDEN_POLL_EVERY = 3;
 const POLL_MS = 4000;
@@ -59,15 +62,21 @@ const loadEngines = () =>
 
 type PageRoute = Exclude<Route, { name: "settings" }>;
 
+function Home({ needsProject }: { needsProject: boolean }) {
+  // The welcome steps take the whole page while they are open; the empty home is what they leave.
+  const welcome = useUi((state) => state.welcomeStep !== null);
+  return (
+    <div className="home-stack">
+      <WelcomeHost needsProject={needsProject} />
+      {welcome ? null : needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}
+    </div>
+  );
+}
+
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
     case "home":
-      return (
-        <div className="home-stack">
-          <WelcomeHost />
-          {needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}
-        </div>
-      );
+      return <Home needsProject={needsProject} />;
     case "pulls":
       return <PullsPage />;
     case "usage":
@@ -134,7 +143,8 @@ function runShellCommand(command: string, route: Route): boolean {
   }
   switch (command) {
     case "sidebar.toggle":
-      if (ui.workspaceLayout === "reading") useReadingNav.getState().toggle();
+      if (layoutForWidth(window.innerWidth) === "small") toggleSidebarDrawer();
+      else if (ui.workspaceLayout === "reading") useReadingNav.getState().toggle();
       else ui.toggleSidebar();
       return true;
     case "commandPalette.toggle":
@@ -314,7 +324,7 @@ const attentionOf = (thread: Thread): Attention =>
           : "idle";
 
 const notices: Partial<Record<Attention, string>> = {
-  waiting: "needs your approval",
+  waiting: "needs you",
   done: "finished",
   failed: "failed",
 };
@@ -350,7 +360,7 @@ function useThreadNotifications(openId: string | null) {
         if (before === undefined || before === now || !notice || thread.id === openId) continue;
         useAnnouncer.setState({ text: `${thread.title} ${notice}` });
         const { inAppNotifications, threadNotifications, threadSound, pushToast } = useUi.getState();
-        if (inAppNotifications) pushToast(`${thread.title} ${notice}`);
+        if (inAppNotifications) pushToast(`${thread.title} ${notice}`, now === "waiting" ? "needs" : now === "done" ? "done" : "failed");
         if (threadSound) playChime();
         if (threadNotifications && document.hidden && "Notification" in window && Notification.permission === "granted") {
           new Notification(thread.title, { body: notice });
@@ -539,7 +549,7 @@ function useRouteFocus(routeKey: string, routeName: string, ready: boolean, main
 export function onShellEvent(event: ShellEvent) {
   switch (event.type) {
     case "navigate":
-      window.location.hash = event.href.slice(1);
+      goToHash(event.href.slice(1));
       return;
     case "command":
       if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
@@ -551,7 +561,7 @@ export function onShellEvent(event: ShellEvent) {
       useUi.getState().pushToast(event.message);
       return;
     case "show_preview":
-      window.location.hash = `/threads/${event.thread_id}`;
+      goToHash(`/threads/${event.thread_id}`);
       useUi.getState().showInBrowser({ tabId: event.tab_id });
   }
 }
@@ -576,6 +586,7 @@ export function Shell() {
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
   useThreadNotifications(route.name === "thread" ? route.id : null);
+  useTaskRunNotifications();
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, route.name, threadReady, main);
   useToastClearance(`${routeKey}:${threadReady}`);
@@ -601,12 +612,26 @@ export function Shell() {
   const onHome = underneath.name === "home" && !needsProject;
   const reading = useUi((state) => state.workspaceLayout === "reading");
   const readingNav = useReadingNav((state) => state.open);
-  const showNav = layout === "narrow" ? onHome && route.name !== "settings" : reading ? readingNav : !collapsed;
+  // Small windows (600 to 899 px) fold the sidebar into a drawer over the thread.
+  const small = layout === "small";
+  const drawerOpen = useSidebarDrawer((state) => state.open);
+  const closeDrawer = useSidebarDrawer((state) => state.close);
+  const showNav = layout === "phone" ? onHome && route.name !== "settings" : small ? drawerOpen : reading ? readingNav : !collapsed;
+  // Choosing something closes it, and a window that grows past small leaves nothing open behind.
+  useEffect(() => {
+    closeDrawer();
+  }, [routeKey, small, closeDrawer]);
+  useEscapeClose(small && drawerOpen, closeDrawer, () => document.querySelector<HTMLElement>("[data-sidebar-toggle]"));
+  const dismissDrawer = () => {
+    closeDrawer();
+    document.querySelector<HTMLElement>("[data-sidebar-toggle]")?.focus();
+  };
 
   return (
     <div
       className="shell"
-      data-nav={showNav ? "shown" : "hidden"}
+      data-nav={showNav && !small ? "shown" : "hidden"}
+      data-drawer={small && drawerOpen ? "open" : undefined}
       data-layout={layout}
       data-reading-nav={readingNav ? "open" : undefined}
       data-page={underneath.name}
@@ -618,8 +643,18 @@ export function Shell() {
       }}>
         Skip to content
       </a>
-      <TitleBar route={route} narrow={layout === "narrow"} />
-      {showNav ? <Sidebar route={route} /> : null}
+      <TitleBar route={route} layout={layout} />
+      {small && drawerOpen ? <div className="drawer-scrim" aria-hidden onClick={dismissDrawer} /> : null}
+      {showNav ? (
+        small ? (
+          // Choosing a thread or page closes the drawer, even one already open.
+          <div className="sidebar-drawer" onClick={(event) => (event.target as Element).closest("a[href]") && dismissDrawer()}>
+            <Sidebar route={route} />
+          </div>
+        ) : (
+          <Sidebar route={route} />
+        )
+      ) : null}
       <BackgroundAnnouncer />
       <QuitConfirmation />
       <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
@@ -633,7 +668,7 @@ export function Shell() {
       />
       <CloneJobs />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
-      {layout === "narrow" && onHome && !overlay ? (
+      {layout === "phone" && onHome && !overlay ? (
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">

@@ -74,8 +74,9 @@ test("project settings explain inheritance and reset only their own override", a
     const b = await api<{ id: string }>("POST", "/api/projects/create", { name: "inheritance-b", readme: true });
     await api("POST", `/api/projects/${a.id}/trust`, {});
     await api("PUT", "/api/preferences", { values: { auto_thread_titles: false } });
-    writeFileSync(join(a.path, "orbyn.json"), '{"defaultThreadEnvMode":"worktree","worktreeSubmodules":"none"}\n');
-    await api("PUT", "/api/preferences", { values: { auto_pull: true, default_model: "same-model" } });
+    writeFileSync(join(a.path, "orbyn.json"), '{"worktreeSubmodules":"none"}\n');
+    // Where new threads start is a device choice; a project file never sets it.
+    await api("PUT", "/api/preferences", { values: { auto_pull: true, default_model: "same-model", default_thread_env_mode: "worktree" } });
     await api("PUT", `/api/projects/${a.id}/preferences`, { values: { auto_pull: false, default_model: "same-model" } });
     await api("PUT", `/api/projects/${b.id}/preferences`, { values: { auto_pull: false } });
     const socket = createServer();
@@ -103,21 +104,11 @@ test("project settings explain inheritance and reset only their own override", a
     expect((await api<Pref[]>("GET", `/api/preferences?project_id=${a.id}`)).find((entry) => entry.key === "worktree_submodules")?.value).toBe("top-level");
     await submodules.getByRole("button", { name: "Reset Submodules to default", exact: true }).click();
     await expect(submodules.getByRole("combobox")).toHaveValue("none");
-    const checkoutRow = dialog.locator(".setting-line").filter({ has: page.getByText("Default checkout", { exact: true }) });
-    await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
-    await checkoutRow.getByRole("button", { name: /Inherited from orbyn.json.*Show where/ }).click();
-    const checkoutLayers = dialog.getByRole("dialog", { name: "Default checkout", exact: true });
-    await expect(checkoutLayers.getByText("orbyn.json", { exact: true }).locator("..")).toHaveText(/New worktree/);
-    await expect(checkoutLayers.getByText("Default", { exact: true }).locator("..")).toHaveText(/Current checkout/);
-    await page.keyboard.press("Escape");
-    await checkoutRow.getByRole("combobox").selectOption("local");
-    await expect(checkoutRow.getByRole("button", { name: "Reset Default checkout to default", exact: true })).toBeEnabled();
-    await checkoutRow.getByRole("button", { name: "Reset Default checkout to default", exact: true }).click();
-    await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
     await page.goto(settingsUrl("source-control"));
     const title = "Automatically pull";
     const row = dialog.locator(".setting-line").filter({ has: page.getByText(title, { exact: true }) });
-    const source = row.getByRole("button", { name: /Show where this value comes from/ });
+    // Its name says where the value comes from, and changes with it.
+    const source = row.locator("button[aria-haspopup='dialog']");
     await source.focus(); await page.keyboard.press("Enter");
     const popup = dialog.getByRole("dialog", { name: title, exact: true });
     await expect(popup).toBeVisible();
@@ -191,7 +182,7 @@ test("project settings explain inheritance and reset only their own override", a
     expect(currentThread.worktree).toBeNull(); expect(currentThread.cwd).toBe(a.path);
     await page.goto(`http://localhost:${port}/#/new/${a.id}`);
     await expect(page.getByRole("button", { name: "New worktree", exact: true })).toBeVisible();
-    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Use file checkout default");
+    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Use device checkout default");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page).toHaveURL(/#\/threads\//);
     const isolatedId = new URL(page.url()).hash.split("/").at(-1)!;

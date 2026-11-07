@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api, ApiFailure } from "../../api/client";
 import type { Thread } from "../../api/types";
-import { GitActions } from "./GitControl";
+import { BranchRow, GitActions } from "./GitControl";
 
 const thread: Thread = { id: "writing", project_id: "project", title: "Task", engine: "claude", model: "chosen",
   cwd: "/checkout", worktree: null, skill_profile: null, active_run: null, last_run_state: null,
@@ -56,4 +56,18 @@ it("a generation fallback shows its notice with the result", async () => {
     notice: "Text was not generated, so the thread title was used. This change is too large to generate text." });
   await user.click(dialog.getByRole("button", { name: "Commit" }));
   expect(await dialog.findByRole("status")).toHaveTextContent("thread title was used");
+});
+
+it("a name that matches no branch shows the Create row and Enter creates it", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(api, "branches").mockResolvedValue([{ name: "main", current: true, remote: false }] as never);
+  const create = vi.spyOn(api, "createBranch").mockResolvedValue(undefined);
+  render(<BranchRow thread={thread} branch="main" />);
+  await user.click(screen.getByRole("button", { name: "Branch main" }));
+  const dialog = within(screen.getByRole("dialog"));
+  await user.type(dialog.getByLabelText("Search branches"), "fix/login-2");
+  expect(dialog.getByRole("button", { name: /^Create branch “fix\/login-2”/ })).toBeVisible();
+  expect(dialog.getByText("No branch matches. Enter creates it from the current branch and switches to it.")).toBeVisible();
+  await user.keyboard("{Enter}");
+  expect(create).toHaveBeenCalledExactlyOnceWith("writing", "fix/login-2");
 });

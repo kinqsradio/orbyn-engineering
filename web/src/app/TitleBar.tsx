@@ -1,4 +1,4 @@
-import { PanelLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileDiff, PanelLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { inDesktopApp, onShellChange, readShellStatus } from "../api/shell";
@@ -7,12 +7,41 @@ import { EnvironmentIdentity } from "../features/workspace/EnvironmentIdentity";
 import { useThreadLogs } from "../features/thread/threadLogs";
 import { useAsync } from "../lib/useAsync";
 import { labels } from "../features/settings/SettingsPage";
-import { routeHref, type Route } from "../state/route";
+import { navigate, type Route } from "../state/route";
 import { usePageLabel } from "../state/pageLabel";
 import { useReadingNav } from "./readingNav";
+import { toggleSidebarDrawer, useSidebarDrawer } from "./sidebarDrawer";
+import type { LayoutWidth } from "../lib/useLayout";
 import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
-import { IconButton } from "../ui/controls";
+import { goBack, goForward, useNavHistory } from "./navHistory";
+
+const INTERACTIVE =
+  "a,button,input,select,textarea,summary,label,[role=button],[role=tab],[role=menuitem],[contenteditable=true],[tabindex]:not([tabindex='-1'])";
+
+/**
+ * The whole top strip drags the window, but the bar floats over the page, so its own box
+ * would swallow clicks on the page's buttons beneath. The drag layer therefore takes the
+ * pointer only while nothing interactive is under it.
+ */
+function useDragStrip(layer: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      const node = layer.current;
+      if (!node) return;
+      const strip = node.getBoundingClientRect();
+      if (event.clientY < strip.top || event.clientY > strip.bottom) {
+        node.removeAttribute("data-hot");
+        return;
+      }
+      const under = document.elementsFromPoint?.(event.clientX, event.clientY).find((element) => element !== node);
+      if (under?.closest(INTERACTIVE) && !node.contains(under)) node.removeAttribute("data-hot");
+      else node.setAttribute("data-hot", "");
+    };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [layer]);
+}
 
 /** True in the desktop app on macOS, where the window's traffic lights sit over the title bar. */
 function useTrafficLights(): boolean {
@@ -66,13 +95,17 @@ function ReadingDiff({ threadId }: { threadId: string }) {
   const removed = files.reduce((sum, file) => sum + file.deletions, 0);
   return (
     <button type="button" className="titlebar-diff" aria-pressed={showing} onClick={() => (showing ? closePanel() : togglePanel("diff"))}>
+      <FileDiff size={13} aria-hidden />
       Diff <span className="diff-add">+{added}</span> <span className="diff-del">−{removed}</span>
     </button>
   );
 }
 
 /** The window's top line: the brand, the page it is on and page-level status. */
-export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
+export function TitleBar({ route, layout }: { route: Route; layout: LayoutWidth }) {
+  const phone = layout === "phone";
+  const small = layout === "small";
+  const drawerOpen = useSidebarDrawer((state) => state.open);
   const lights = useTrafficLights();
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
@@ -98,7 +131,7 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
               : route.name === "trust"
                 ? "Trust folder"
                 : "New thread";
-  const shown = reading ? readingNav : !collapsed;
+  const shown = small ? drawerOpen : reading ? readingNav : !collapsed;
   // Folding the sidebar away must not strand focus on a row that no longer exists.
   const wasShown = useRef(shown);
   useEffect(() => {
@@ -108,25 +141,47 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
     wasShown.current = shown;
   }, [shown]);
 
+  const trail = useNavHistory();
+  const dragLayer = useRef<HTMLDivElement>(null);
+  useDragStrip(dragLayer);
+  const sidebarLabel = shown ? "Hide sidebar" : "Show sidebar";
+
   return (
-    <header className="titlebar" data-tauri-drag-region>
+    <header className="titlebar" data-nav={shown && !small ? "shown" : "hidden"} data-tauri-drag-region>
+      <div ref={dragLayer} className="titlebar-drag" data-tauri-drag-region aria-hidden />
       {lights ? <span className="titlebar-lights" aria-hidden /> : null}
-      {narrow ? null : (
-        <IconButton
-          label={shown ? "Collapse sidebar" : "Expand sidebar"}
-          aria-expanded={shown}
-          data-sidebar-toggle
-          onClick={reading ? toggleReadingNav : toggleSidebar}
-        >
-          <PanelLeft size={16} aria-hidden />
-        </IconButton>
+      <button
+        type="button"
+        className="tbi"
+        aria-label={sidebarLabel}
+        aria-expanded={shown}
+        data-sidebar-toggle
+        onClick={
+          phone
+            ? // On the phone the sidebar is the home page: it opens by going home and closes by leaving it.
+              () => navigate(shown ? { name: "new", projectId: null } : { name: "home" })
+            : small
+              ? // On a small window it is a drawer over the thread.
+                toggleSidebarDrawer
+              : reading
+                ? toggleReadingNav
+                : toggleSidebar
+        }
+      >
+        <PanelLeft size={16} aria-hidden />
+      </button>
+      <button type="button" className="tbi" aria-label="Back" aria-disabled={!trail.back} data-dim={!trail.back || undefined} onClick={() => trail.back && goBack()}>
+        <ChevronLeft size={16} aria-hidden />
+      </button>
+      <button type="button" className="tbi" aria-label="Forward" aria-disabled={!trail.forward} data-dim={!trail.forward || undefined} onClick={() => trail.forward && goForward()}>
+        <ChevronRight size={16} aria-hidden />
+      </button>
+      {shown ? null : (
+        <span className="titlebar-title" title="Orbyn Engineering">
+          <b>Orbyn</b>
+          <span className="titlebar-page-label"> · {page}</span>
+        </span>
       )}
-      <a className="titlebar-brand" href={routeHref({ name: "home" })} title="Orbyn Engineering">
-        Orbyn
-      </a>
-      <span className="titlebar-page">
-        <span className="titlebar-page-label">{page}</span>
-      </span>
       <span className="titlebar-end">
         <EnvironmentIdentity />
         {reading && route.name === "thread" ? <ReadingDiff threadId={route.id} /> : null}

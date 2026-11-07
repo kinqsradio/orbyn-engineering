@@ -144,12 +144,13 @@ test("Markdown styles as you type, keeps its markers and sends what was typed", 
 
 test("a custom model joins the picker and can go again", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
-  await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
-  const row = page.locator(".setting-list > li").filter({ hasText: "Codex" });
-  await row.getByRole("button", { name: /^Models \(/ }).click();
-  await row.getByLabel("Model id").fill("house-model");
-  await row.getByLabel("Display name").fill("House Model");
-  await row.getByRole("button", { name: "Add model" }).click();
+  await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
+  const row = page.getByRole("region", { name: "Settings" });
+  await row.getByRole("button", { name: "Add custom model" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add custom model" });
+  await dialog.getByLabel("Model id").fill("house-model");
+  await dialog.getByLabel("Display name").fill("House Model");
+  await dialog.getByRole("button", { name: "Add model" }).click();
   await expect(row.getByRole("button", { name: "Remove House Model" })).toBeVisible();
   const models = await service.api<{ models: { id: string; custom: boolean }[] }>("GET", "/api/engines/codex/models");
   expect(models.models.find((model) => model.id === "house-model")?.custom).toBe(true);
@@ -179,7 +180,7 @@ test("another thread's finish reaches you as a toast, a sound and a system alert
     Object.defineProperty(document, "hidden", { get: () => true });
   });
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByLabel("Thread notifications").selectOption("both");
+  await page.getByRole("radiogroup", { name: "Thread notifications" }).getByRole("radio", { name: "Both" }).click();
   await page.getByRole("switch", { name: "In-app notifications" }).check();
   const other = await service.api<{ id: string }>("POST", "/api/threads", {
     project_id: projectId,

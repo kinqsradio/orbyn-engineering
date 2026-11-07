@@ -29,7 +29,7 @@
   min-height: 26px;
   padding-block: 0;
   border-top: 0;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
 }
 .task-name,
@@ -75,7 +75,7 @@
 .task-dialog {
   width: min(500px, calc(100vw - 32px));
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .tasks-page .tasks-body {
     padding-inline: 16px;
   }
@@ -87,3 +87,35 @@
     display: none;
   }
 }
+.task-actions { gap: 6px; }
+.task-delete { margin-right: auto; color: var(--color-danger); }
+.set-pill.bad { background: var(--color-dangerSoft); color: var(--color-danger); }
+.task-last[data-tone="fail"] { padding: 0 9px; height: 22px; border-radius: var(--radius-pill); background: var(--color-dangerSoft); }
+
+/* Runs and Webhook deliveries: a segmented switch, then a table (s-x-task-history). */
+.set-tabs.set-tabs {
+  display: flex;
+  width: max-content;
+  gap: 2px;
+  margin: 8px 0 10px;
+  padding: 2px;
+  border-radius: var(--radius-9);
+  background: var(--color-sunken);
+}
+.set-tabs [role="tab"] {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-7);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.set-tabs [role="tab"][aria-selected="true"] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+.set-pill.blue { background: var(--color-blueSoft); color: var(--color-blue); }
+.set-run-reason { font-size: var(--text-meta); }
+.set-foot { margin: 0; padding: 8px 0 0; font-size: var(--text-meta); }
+.tasks-head { display: flex; align-items: center; gap: 12px; padding: 16px 0 8px; }
+.tasks-head .set-grp { flex: 1; margin: 0; padding: 0; }

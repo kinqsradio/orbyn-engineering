@@ -2,7 +2,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, type Service } from "./service";
+import { openPanelTab, startProject, type Service } from "./service";
 
 /** Clipboard, file chooser and downloads crossing between a preview and the person. */
 const SITE_PORT = 5294;
@@ -80,8 +80,7 @@ test("copy, paste, a chosen file and a download cross only on the person's actio
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${threadId}`);
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
-  await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
-  await page.getByRole("button", { name: /^Browser/ }).first().click();
+  await openPanelTab(page, "Browser");
   const address = page.getByRole("combobox", { name: "Search or enter URL" });
   await address.fill(`localhost:${SITE_PORT}/`);
   await address.press("Enter");

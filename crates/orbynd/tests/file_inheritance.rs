@@ -40,10 +40,7 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
     let bytes = br#"{"defaultThreadEnvMode":"worktree","worktreeSubmodules":"skip"}"#;
     std::fs::write(&fallback, bytes).unwrap();
     let url = format!("/api/preferences?project_id={project}");
-    for (key, value) in [
-        ("default_thread_env_mode", "worktree"),
-        ("worktree_submodules", "none"),
-    ] {
+    for (key, value) in [("worktree_submodules", "none")] {
         let view = row(&service.json(&url).await, key);
         assert_eq!(view["source"], "file");
         assert_eq!(view["value"], value);
@@ -52,12 +49,7 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
             json!({"path":"t3.json","value":value})
         );
     }
-    set(
-        &service,
-        None,
-        json!({"default_thread_env_mode":"local","worktree_submodules":"recursive"}),
-    )
-    .await;
+    set(&service, None, json!({"worktree_submodules":"recursive"})).await;
     let views = service.json(&url).await;
     assert_eq!(row(&views, "worktree_submodules")["source"], "global");
     assert_eq!(row(&views, "worktree_submodules")["value"], "recursive");
@@ -69,23 +61,13 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
     let views = set(
         &service,
         Some(project),
-        json!({"default_thread_env_mode":"local","worktree_submodules":"recursive"}),
+        json!({"worktree_submodules":"recursive"}),
     )
     .await;
     assert_eq!(row(&views, "worktree_submodules")["source"], "project");
-    let views = set(
-        &service,
-        Some(project),
-        json!({"default_thread_env_mode":null,"worktree_submodules":null}),
-    )
-    .await;
+    let views = set(&service, Some(project), json!({"worktree_submodules":null})).await;
     assert_eq!(row(&views, "worktree_submodules")["source"], "global");
-    set(
-        &service,
-        None,
-        json!({"default_thread_env_mode":null,"worktree_submodules":null}),
-    )
-    .await;
+    set(&service, None, json!({"worktree_submodules":null})).await;
     assert_eq!(
         row(&service.json(&url).await, "worktree_submodules")["source"],
         "file"
@@ -103,7 +85,6 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
         row(&views, "worktree_submodules")["project_file"]["path"],
         "orbyn.json"
     );
-    assert_eq!(row(&views, "default_thread_env_mode")["source"], "default");
     // Invalid enum rejects the whole own file, including its otherwise valid key.
     std::fs::write(
         root.join("orbyn.json"),
@@ -111,7 +92,6 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
     )
     .unwrap();
     let views = service.json(&url).await;
-    assert_eq!(row(&views, "default_thread_env_mode")["source"], "default");
     assert_eq!(row(&views, "worktree_submodules")["value"], "recursive");
     assert!(
         row(&views, "worktree_submodules")
@@ -130,5 +110,29 @@ async fn file_preferences_follow_project_environment_file_default_and_preserve_b
             .unwrap()
             .contains("worktreeSubmodules")
     );
+    service.stop().await;
+}
+
+#[tokio::test]
+async fn a_device_only_key_ignores_the_project_file() {
+    let dir = TempDir::new();
+    let (service, thread) = setup(&dir, Options::default(), "codex").await;
+    let thread = service.json(&format!("/api/threads/{thread}")).await;
+    let project = thread["project_id"].as_str().unwrap();
+    let root = std::path::Path::new(thread["cwd"].as_str().unwrap());
+    std::fs::write(
+        root.join("orbyn.json"),
+        br#"{"defaultThreadEnvMode":"worktree"}"#,
+    )
+    .unwrap();
+    let view = row(
+        &service
+            .json(&format!("/api/preferences?project_id={project}"))
+            .await,
+        "default_thread_env_mode",
+    );
+    assert_eq!(view["source"], "default");
+    assert_eq!(view["value"], "local");
+    assert!(view.get("project_file").is_none(), "{view}");
     service.stop().await;
 }

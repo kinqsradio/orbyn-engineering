@@ -41,6 +41,47 @@ export const THEME_PRESETS: ThemePreset[] = [
 export const presetById = (id: string | null) => THEME_PRESETS.find((preset) => preset.id === id) ?? null;
 
 const HEX = /^#[0-9a-f]{6}$/i;
+const COLOUR = /^(#([0-9a-f]{3}|[0-9a-f]{6})|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+|1\.0+)\s*)?\))$/i;
+/** A colour a token may hold: #rgb, #rrggbb or rgb()/rgba(). */
+export const isColour = (value: string) => COLOUR.test(value.trim());
+
+export type ThemeRead = { colors: ThemeColors } | { error: string };
+
+/** Reads a theme file and says why it can't be used; nothing is applied here. */
+export function readThemeFile(text: string): ThemeRead {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { error: "It isn't valid JSON." };
+  }
+  if (!value || typeof value !== "object") return { error: "It isn't a theme file." };
+  const body = value as { colors?: Record<string, unknown> } & Record<string, unknown>;
+  const colors = body.colors ?? body;
+  const lines = text.split("\n");
+  const out: ThemeColors = {};
+  for (const [key, raw] of Object.entries(colors)) {
+    const token = (THEME_TOKENS.find(([name]) => name === key) ?? [null, null])[0] ?? VSCODE_TOKENS[key] ?? null;
+    if (!token) continue;
+    if (typeof raw !== "string" || !isColour(raw)) {
+      const at = lines.findIndex((line) => line.includes(`"${key}"`));
+      const label = THEME_TOKENS.find(([name]) => name === token)?.[1] ?? key;
+      return { error: `${at >= 0 ? `Line ${at + 1}: ` : ""}“${label}” is not a colour.` };
+    }
+    out[token] = raw.trim();
+  }
+  return Object.keys(out).length > 0 ? { colors: out } : { error: "It has no colours Orbyn knows." };
+}
+
+const VSCODE_TOKENS: Record<string, ThemeToken> = {
+  "editor.background": "--color-background",
+  "sideBar.background": "--color-sidebar",
+  "editorWidget.background": "--color-raised",
+  "panel.border": "--color-border",
+  "editor.foreground": "--color-text",
+  descriptionForeground: "--color-muted",
+  focusBorder: "--color-primary",
+};
 
 /** Reads a theme file: our shape, or a VS Code theme's `colors` map. */
 export function parseThemeFile(text: string): ThemeColors | null {

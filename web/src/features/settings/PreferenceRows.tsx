@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { request } from "../../api/client";
 import type { PreferenceView } from "../../api/types";
 import type { PreferenceEdit } from "../../generated/PreferenceEdit";
@@ -8,6 +8,7 @@ import { ErrorState, Loading } from "../../ui/states";
 import { Collapsible } from "../../ui/Collapsible";
 import { Check, ChevronRight, Layers } from "lucide-react";
 import { Button, IconButton } from "../../ui/controls";
+import { usePopover } from "../../ui/usePopover";
 import type { ScopedPreferenceMember } from "../../generated/ScopedPreferenceMember";
 import type { ScopedPreferenceOverride } from "../../generated/ScopedPreferenceOverride";
 import type { ScopedPreferenceRow } from "../../generated/ScopedPreferenceRow";
@@ -33,6 +34,8 @@ export interface PreferenceRow {
   segmented?: boolean;
   parse?(value: string): unknown;
   multiline?: boolean;
+  /** Hides the row unless this holds, given any row's current value by key. */
+  showWhen?(valueOf: (key: string) => unknown): boolean;
   /** For a value none of the plain controls fit. */
   render?(value: unknown, save: (next: unknown) => void, control: PreferenceControl): React.ReactNode;
 }
@@ -80,7 +83,7 @@ function ProjectPreferenceGroups({ groups, projectId }: {
   const group = catalog.data.groups.find((candidate) => candidate.members.some((member) => member.project_id === projectId));
   if (!group) return <ErrorState title="Couldn't load settings" failure={toFailure(new Error("This settings scope is unavailable."))} onRetry={catalog.reload} />;
   const query = { selection: { kind: "checkout" as const, group_key: group.key, project_id: projectId } };
-  return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} />;
+  return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} inheritance />;
 }
 
 function displayValue(row: PreferenceRow, value: unknown): string {
@@ -104,10 +107,10 @@ export function PreferenceInheritance({ row, view, global, members, overrides, m
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const summary = mixed ? "Mixed" : view.source === "project" ? "Overridden for this project" : view.source === "file" ? `Inherited from ${view.project_file?.path ?? "project file"}` : "Inherited from environment";
+  const popover = usePopover({ kind: "fields", root: panel, active: open, trigger: () => trigger.current, onClose: () => setOpen(false) });
+  const summary = mixed ? "Mixed" : view.source === "project" ? "Set for this project" : view.source === "global" ? "From this device" : view.source === "file" ? `From ${view.project_file?.path ?? "project file"}` : "Default";
   useLayoutEffect(() => {
     if (!open || !panel.current) return;
     const element = panel.current;
@@ -125,14 +128,6 @@ export function PreferenceInheritance({ row, view, global, members, overrides, m
     window.addEventListener("scroll", place, true);
     return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
   }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: MouseEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", outside);
-    return () => document.removeEventListener("mousedown", outside);
-  }, [open]);
   const layersFor = (view: PreferenceView, environmentOnly: boolean) => [
     ...(!environmentOnly ? [{ label: "Project", value: view.source === "project" ? displayValue(row, view.value) : "Inherits", active: view.source === "project" }] : []),
     { label: "Environment", value: global.source === "global" ? displayValue(row, global.value) : "Inherits", active: view.source === "global" },
@@ -141,16 +136,9 @@ export function PreferenceInheritance({ row, view, global, members, overrides, m
   ];
   const chains = members ? members.length ? members : [{ project_id: null, name: null, view: global }] : [{ project_id: "project", name: null, view }];
   return (
-    <div ref={root} onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-    }} onKeyDownCapture={(event) => {
-      if (open && event.key === "Escape") {
-        event.preventDefault(); event.stopPropagation(); setOpen(false);
-        trigger.current?.querySelector("button")?.focus();
-      }
-    }}>
+    <div>
       <div ref={trigger}>
-        <IconButton label={`${summary}. Show where this value comes from`} data-overridden={view.source === "project" || undefined} aria-expanded={open}
+        <IconButton label={summary} data-overridden={view.source === "project" || undefined} aria-expanded={open}
           aria-controls={open ? id : undefined} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
           <Layers size={12} aria-hidden />
         </IconButton>
@@ -175,7 +163,7 @@ export function PreferenceInheritance({ row, view, global, members, overrides, m
               </Button>
             </div>
             {overrides.map((override) => <div key={override.project_id}>
-              <Button small tone="quiet" onClick={() => { onOpenOverride?.(override.project_id); setOpen(false); }}>{override.name}</Button>
+              <Button small tone="quiet" onClick={() => { popover.dismiss("select"); onOpenOverride?.(override.project_id); }}>{override.name}</Button>
               <span>{displayValue(row, override.value)}</span>
             </div>)}
           </div> : null}

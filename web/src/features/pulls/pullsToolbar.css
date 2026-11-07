@@ -1,0 +1,683 @@
+/* The Pull requests toolbar, from Engineer Designs v19 (pr-tb-*). Hover and open states
+   move over --m-fast; menus pop in over --m-base and fade out over --m-base-out. */
+
+/* Title row: the last refresh said quietly, then the refresh button. */
+.pulls-upd {
+  align-self: center;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  white-space: nowrap;
+}
+.pulls-refresh-spin {
+  width: 11px;
+  height: 11px;
+  border: 1.6px solid var(--color-borderStrong);
+  border-top-color: var(--color-blue);
+  border-radius: 50%;
+}
+
+/* Toolbar: pills left, search and the three selectors right. */
+.pulls-tb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 28px 10px;
+}
+.pulls-tbp {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.pulls-tbr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+.pulls-searchrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pulls-sels {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+}
+
+.pulls-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--m-fast) var(--m-io), color var(--m-fast) var(--m-io);
+}
+.pulls-pill:hover {
+  background: var(--color-selected);
+}
+.pulls-pill[aria-pressed="true"] {
+  background: var(--color-primary);
+  color: var(--color-onAccent);
+}
+
+.pulls-sel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+  color: var(--color-text);
+  font-size: var(--text-nav);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--m-fast) var(--m-io), box-shadow var(--m-fast) var(--m-io);
+}
+.pulls-sel:hover {
+  background: var(--color-selected);
+}
+.pulls-sel[data-on] {
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-borderStrong);
+}
+.pulls-dots {
+  display: inline-flex;
+  margin-right: 7px;
+}
+.pulls-dots i,
+.pulls-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tint);
+}
+.pulls-dots i {
+  margin-right: -3px;
+  box-shadow: 0 0 0 1.5px var(--color-sunken);
+}
+.pulls-dot {
+  width: 9px;
+  height: 9px;
+}
+
+/* One field with one border: the .inp box. The input inside it draws none. */
+.pulls-fld {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 210px;
+  min-width: 0;
+}
+.pulls-inp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 6px 0 9px;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-9);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-nav);
+  transition: border-color var(--m-fast) var(--m-io), box-shadow var(--m-fast) var(--m-io);
+}
+.pulls-inp > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.pulls-fld:focus-within .pulls-inp {
+  border-color: var(--color-textSoft);
+  box-shadow: 0 0 0 3px var(--color-selected);
+}
+.pulls-fld .pulls-inp input {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  box-shadow: none;
+}
+.pulls-fld .pulls-inp input::placeholder {
+  color: var(--color-faint);
+}
+.pulls-inp kbd {
+  margin-left: auto;
+  padding-right: 3px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-kbd);
+}
+.pulls-tok {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  padding: 0 2px 0 7px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  color: var(--color-text);
+  font-size: var(--text-label);
+}
+.pulls-x {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-5);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: background-color var(--m-fast) var(--m-io);
+}
+.pulls-x:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.pulls-clear {
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border-radius: var(--radius-md);
+}
+.pulls-fld-menu {
+  width: auto;
+}
+.pulls-fld-menu .pulls-inp {
+  padding: 0 12px;
+  gap: 8px;
+  font-size: var(--text-meta);
+  border-radius: var(--radius-md);
+}
+
+/* Active filter chips */
+.pulls-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 28px 10px;
+}
+.pulls-fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 4px 0 9px;
+  border-radius: var(--radius-7);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.pulls-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-9);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-nav);
+  cursor: pointer;
+  transition: background-color var(--m-fast) var(--m-io);
+}
+.pulls-ghost:hover {
+  background: var(--color-selected);
+}
+
+/* Menus: enter over --m-base with --m-out (fade, rise from -4px, scale from .98) and leave
+   over --m-base-out with --m-io, opacity only. Reduced motion keeps the fade alone. */
+.pulls-pop {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow:
+    0 10px 30px var(--color-shadow),
+    0 0 0 1px var(--color-borderStrong);
+  font-size: var(--text-nav);
+  transition:
+    opacity var(--m-base) var(--m-out),
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out);
+}
+@starting-style {
+  .pulls-pop {
+    opacity: 0;
+    translate: 0 -4px;
+    scale: 0.98;
+  }
+}
+.pulls-pop[data-closing] {
+  opacity: 0;
+  transition: opacity var(--m-base-out) var(--m-io);
+}
+.pulls-mi {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-textSoft);
+  font-size: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--m-fast) var(--m-io);
+}
+.pulls-mi:hover:not(:disabled),
+.pulls-mi:focus-visible {
+  background: var(--color-selected);
+  color: var(--color-text);
+  outline: none;
+}
+.pulls-mi:disabled {
+  color: var(--color-faint);
+  cursor: default;
+}
+.pulls-mi[aria-checked="true"][role^="menuitem"] {
+  color: var(--color-text);
+}
+.pulls-lead {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+}
+.pulls-k {
+  margin-left: auto;
+  padding-left: 18px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-kbd);
+}
+.pulls-mh {
+  padding: 6px 9px 3px;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.pulls-msep {
+  height: 1px;
+  margin: 4px 2px;
+  border: 0;
+  background: var(--color-border);
+}
+.pulls-msub {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 9px 4px;
+}
+.pulls-msub .pulls-fld {
+  align-self: stretch;
+}
+.pulls-mcols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+}
+.pulls-mc {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.pulls-mfoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 2px 0;
+  padding: 6px 4px 2px;
+  border-top: 1px solid var(--color-border);
+}
+.pulls-mcount {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.pulls-cbx {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--color-borderStrong);
+  border-radius: var(--radius-5);
+  color: var(--color-surface);
+}
+.pulls-mi[aria-checked="true"] .pulls-cbx {
+  border-color: var(--color-text);
+  background: var(--color-text);
+}
+
+/* Phone: the filters open as a sheet from the bottom edge. */
+.pulls-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: var(--color-backdrop);
+  transition: opacity var(--m-base) var(--m-io);
+}
+@starting-style {
+  .pulls-scrim {
+    opacity: 0;
+  }
+}
+.pulls-scrim[data-closing] {
+  opacity: 0;
+  transition: opacity var(--m-base-out) var(--m-io);
+}
+/* The sheet rises over --m-slow with --m-out and leaves over --m-slow-out with --m-io, staying
+   mounted until that ends. Reduced motion swaps the slide for a fade over --m-fast. */
+.pulls-sheet {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  max-width: none;
+  max-height: 85vh;
+  gap: 0;
+  padding: 8px 0 0;
+  overflow: hidden;
+  border-radius: var(--radius-20) var(--radius-20) 0 0;
+  box-shadow: 0 -10px 30px var(--color-shadow);
+  transition: translate var(--m-slow) var(--m-out);
+}
+@starting-style {
+  .pulls-sheet {
+    opacity: 1;
+    translate: 0 100%;
+    scale: 1;
+  }
+}
+.pulls-sheet[data-drag] {
+  transition: none;
+}
+.pulls-sheet[data-spring] {
+  transition: translate var(--m-base) var(--m-out);
+}
+/* A drag-close sets --sheet-exit to the share of --m-slow-out that is left to travel. */
+.pulls-sheet[data-closing] {
+  opacity: 1;
+  translate: 0 100%;
+  transition: translate var(--sheet-exit, var(--m-slow-out)) var(--m-io);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulls-sheet,
+  .pulls-sheet[data-closing] {
+    translate: none;
+    transition: opacity var(--m-fast) var(--m-io);
+  }
+  @starting-style {
+    .pulls-sheet {
+      opacity: 0;
+      translate: none;
+    }
+  }
+  .pulls-sheet[data-closing] {
+    opacity: 0;
+  }
+  .pulls-scrim,
+  .pulls-scrim[data-closing] {
+    transition-duration: var(--m-fast);
+  }
+}
+.pulls-sheet .pulls-mi {
+  height: 38px;
+}
+.pulls-sheet .pulls-mh,
+.pulls-sheet .pulls-msub {
+  padding-inline: 0;
+}
+.pulls-sheet-top {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  touch-action: none;
+}
+.pulls-sheet-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  padding: 0 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.pulls-sheet-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px max(28px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.pulls-grab {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-borderStrong);
+}
+.pulls-sheet-head {
+  padding: 8px 16px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pulls-sheet-head b {
+  font-size: var(--text-title);
+  font-weight: 500;
+}
+.pulls-sheet-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pulls-show {
+  flex: 1;
+}
+
+/* Author search results: avatar, name and handle, the typed text in ink and the rest muted.
+   One row is the active one. A chosen person sits below as a removable chip. */
+.pulls-people {
+  display: flex;
+  flex-direction: column;
+}
+.pulls-prs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pulls-prs:hover,
+.pulls-prs[data-kf] {
+  background: var(--color-sunken);
+}
+.pulls-prs[data-kf] {
+  box-shadow: inset 0 0 0 1.5px var(--color-textSoft);
+}
+.pulls-pn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pulls-hd {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.pulls-ink {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.pulls-av {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-borderStrong);
+  color: var(--color-text);
+  font-size: var(--text-caption);
+}
+.pulls-none {
+  margin: 0;
+  padding: 4px 9px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.pulls-chipwrap {
+  padding: 4px 9px;
+}
+.pulls-dot-hollow {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--color-borderStrong);
+}
+
+/* No results: the chips explain why, and Clear filters is the way out. */
+.pulls-nomatch {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 0 80px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.pulls-nomatch b {
+  color: var(--color-text);
+  font-size: var(--text-lead);
+  font-weight: 500;
+}
+.pulls-nomatch p {
+  max-width: 460px;
+  margin: 0;
+}
+.pulls-nomatch .btn {
+  margin-top: 6px;
+}
+
+/* Narrow: the search takes a row of its own, full width and the height of a form field. */
+@media (max-width: 900px) {
+  .pulls-tb {
+    flex-wrap: wrap;
+  }
+  .pulls-tbr {
+    display: contents;
+  }
+  .pulls-searchrow {
+    flex: 1 0 100%;
+    order: 3;
+  }
+  .pulls-searchrow .pulls-fld {
+    flex: 1;
+    width: auto;
+  }
+  .pulls-searchrow .pulls-inp {
+    height: 36px;
+    padding: 0 12px;
+    gap: 8px;
+    border-radius: var(--radius-10);
+    font-size: var(--text-body);
+  }
+  .pulls-sels {
+    margin-left: auto;
+  }
+}
+
+/* Phone: search first, then the pills in one scrolling row, then the three selectors. */
+@media (max-width: 599px) {
+  .pulls-tb {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-inline: 16px;
+  }
+  .pulls-searchrow {
+    flex: none;
+    order: -1;
+  }
+  .pulls-searchrow .pulls-inp {
+    height: 36px;
+  }
+  /* Rows never wrap: they scroll sideways, the bar hidden, with a 32px fade at the trailing end. */
+  .pulls-tbp,
+  .pulls-sels,
+  .pulls-chiprow {
+    flex-wrap: nowrap;
+    min-width: 0;
+    padding: 0 16px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  }
+  .pulls-tbp::-webkit-scrollbar,
+  .pulls-sels::-webkit-scrollbar,
+  .pulls-chiprow::-webkit-scrollbar {
+    display: none;
+  }
+  .pulls-tbp,
+  .pulls-sels {
+    margin-inline: -16px;
+  }
+  .pulls-pill,
+  .pulls-sel,
+  .pulls-fchip,
+  .pulls-chiprow .pulls-ghost {
+    flex: none;
+    white-space: nowrap;
+  }
+  .pulls-sels {
+    margin-left: -16px;
+  }
+}

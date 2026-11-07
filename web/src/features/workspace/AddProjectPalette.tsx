@@ -1,18 +1,33 @@
-import { ArrowLeft, ArrowUp, Download, Folder, FolderGit2, FolderPlus, GitBranch, Link } from "lucide-react";
+import { ArrowUp, Download, Folder, GitBranch, Plus, Search, SquareCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { api } from "../../api/client";
-import type { Project } from "../../api/types";
+import { api, request } from "../../api/client";
+import type { PreferenceView, Project } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { navigate } from "../../state/route";
+import { navigate, routeHref } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
+import { Button } from "../../ui/controls";
+import { Dialog } from "../../ui/Dialog";
+import { FolderBrowser } from "../onboarding/FolderBrowser";
 import { dropTrailingSlash, expandHome, replaceHomePrefix, shortenHome, splitPath, withSlash } from "./pathInput";
 import { trackClone } from "./CloneJobs";
 import "./addProject.css";
 
-type View = "sources" | "browse" | "new" | "clone";
+export type AddProjectView = "folders" | "new" | "clone";
 
+/** An `owner/name` on GitHub is a clone address too; anything else goes to Git as typed. */
+export function cloneAddress(text: string): string {
+  const typed = text.trim();
+  return /^[\w.-]+\/[\w.-]+$/.test(typed) && !/^\.{1,2}\//.test(typed) ? `https://github.com/${typed}.git` : typed;
+}
 
-function useFinish(onClose: () => void) {
+/** The base directory setting, when the person has chosen one. */
+function useBaseDirectory(): string | null {
+  const preferences = useAsync("add-project-base-directory", (signal) => request<PreferenceView[]>("GET", "/api/preferences", undefined, signal));
+  const value = (Array.isArray(preferences.data) ? preferences.data : []).find((view) => view.key === "add_project_base_directory")?.value;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function useFinish(onClose: () => void, onAdded?: (project: Project) => void) {
   const putProject = useWorkspace((state) => state.putProject);
   const refreshThreads = useWorkspace((state) => state.refreshThreads);
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
@@ -20,6 +35,11 @@ function useFinish(onClose: () => void) {
     putProject(project);
     void refreshThreads(project.id);
     void refreshManaged();
+    // Where the add is one step of a longer flow, the caller keeps the person where they are.
+    if (onAdded) {
+      onAdded(project);
+      return;
+    }
     onClose();
     navigate(
       project.trusted
@@ -29,156 +49,22 @@ function useFinish(onClose: () => void) {
   };
 }
 
-function Keys({ back, select }: { back: boolean; select: boolean }) {
-  return (
-    <footer className="palette-foot">
-      <span>
-        <kbd>↑</kbd>
-        <kbd>↓</kbd> Navigate
-      </span>
-      {select ? (
-        <span>
-          <kbd>Enter</kbd> Select
-        </span>
-      ) : null}
-      {back ? (
-        <span>
-          <kbd>Backspace</kbd> Back
-        </span>
-      ) : null}
-      <span>
-        <kbd>Esc</kbd> Close
-      </span>
-    </footer>
-  );
-}
-
-function Head({
-  value,
-  placeholder,
-  chip,
-  label,
-  mono,
-  onChange,
-  onKeyDown,
-  onBack,
+function Folders({
+  onNew,
+  onClone,
+  onBrowse,
+  onClose,
+  added,
+  onAdded,
 }: {
-  mono?: boolean;
-  value: string;
-  placeholder: string;
-  chip: { label: string; onClick(): void; disabled?: boolean } | null;
-  label: string;
-  onChange(value: string): void;
-  onKeyDown(event: KeyboardEvent<HTMLInputElement>): void;
-  onBack(): void;
+  onNew(): void;
+  onClone(): void;
+  onBrowse(): void;
+  onClose(): void;
+  added: readonly Project[];
+  onAdded?(project: Project): void;
 }) {
-  return (
-    <div className="palette-search">
-      <button type="button" className="palette-back" aria-label="Back" onClick={onBack}>
-        <ArrowLeft size={16} aria-hidden />
-      </button>
-      <input
-        autoFocus
-        className={mono ? "add-project-path" : undefined}
-        aria-label={label}
-        placeholder={placeholder}
-        value={value}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      {chip ? (
-        <button type="button" className="palette-chip" disabled={chip.disabled} onClick={chip.onClick}>
-          {chip.label} <kbd>Enter</kbd>
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function Sources({ onPick, onBack }: { onPick(view: View): void; onBack(): void }) {
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const items = useMemo(() => {
-    const all: { view: View; title: string; description: string; icon: ReactNode; terms: string }[] = [
-      {
-        view: "new",
-        title: "New project",
-        description: "Start a new Git repository from a name",
-        icon: <FolderGit2 size={16} aria-hidden />,
-        terms: "new project create empty repository git init",
-      },
-      {
-        view: "browse",
-        title: "Local folder",
-        description: "Browse a folder on disk",
-        icon: <FolderPlus size={16} aria-hidden />,
-        terms: "local folder directory browse",
-      },
-      {
-        view: "clone",
-        title: "Git URL",
-        description: "Clone from a remote URL",
-        icon: <Link size={16} aria-hidden />,
-        terms: "git url clone remote",
-      },
-    ];
-    const needle = query.trim().toLowerCase();
-    return needle ? all.filter((item) => item.terms.includes(needle)) : all;
-  }, [query]);
-  return (
-    <>
-      <Head
-        value={query}
-        placeholder="Search..."
-        label="Search sources"
-        chip={null}
-        onBack={onBack}
-        onChange={(value) => {
-          setQuery(value);
-          setActive(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            const step = event.key === "ArrowDown" ? 1 : -1;
-            setActive((active + step + items.length) % Math.max(items.length, 1));
-          } else if (event.key === "Enter") {
-            event.preventDefault();
-            const item = items[active];
-            if (item) onPick(item.view);
-          } else if (event.key === "Backspace" && query === "") {
-            onBack();
-          }
-        }}
-      />
-      <div className="palette-list">
-        {items.length === 0 ? <p className="sidebar-empty">No results</p> : null}
-        {items.length > 0 ? <div className="palette-group">Sources</div> : null}
-        {items.map((item, at) => (
-          <button
-            key={item.view}
-            type="button"
-            className="palette-two-line"
-            data-active={at === active || undefined}
-            onMouseMove={() => setActive(at)}
-            onClick={() => onPick(item.view)}
-          >
-            {item.icon}
-            <span className="palette-title">{item.title}</span>
-            <span className="add-project-hint add-project-hint-prose">{item.description}</span>
-          </button>
-        ))}
-      </div>
-      <Keys back select />
-    </>
-  );
-}
-
-function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void; onClose(): void }) {
-  const finish = useFinish(onClose);
+  const finish = useFinish(onClose, onAdded);
   const [home, setHome] = useState<string | null>(null);
   const [value, setValue] = useState("~/");
   const [active, setActive] = useState(-1);
@@ -206,7 +92,13 @@ function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void;
     return (listing.data?.entries ?? []).filter((entry) => entry.name.toLowerCase().includes(needle));
   }, [listing.data, leaf]);
   const parent = listing.data?.parent ?? null;
-  const rows = entries.length + (parent ? 1 : 0);
+  const folderRows = entries.length + (parent ? 1 : 0);
+  const actions = [
+    { key: "new", run: onNew },
+    { key: "clone", run: onClone },
+    { key: "browse", run: onBrowse },
+  ];
+  const rows = folderRows + actions.length;
 
   const enter = (path: string) => {
     setValue(withSlash(home ? shortenHome(path, home) : path));
@@ -223,52 +115,56 @@ function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void;
       setBusy(false);
     }
   };
-  const typedPath = () => {
-    const typed = value.trim();
-    if (home === null && typed.startsWith("~")) return null;
-    return dropTrailingSlash(expandHome(typed, home ?? ""));
-  };
   const addTyped = () => {
-    const path = typedPath();
-    if (path) void add(path);
+    const typed = value.trim();
+    if (busy || (home === null && typed.startsWith("~"))) return;
+    void add(dropTrailingSlash(expandHome(typed, home ?? "")));
   };
-
-  const rowAt = (at: number) => {
-    const shift = parent ? 1 : 0;
+  const folderAt = (at: number) => {
     if (parent && at === 0) return parent;
-    return entries[at - shift]?.path ?? null;
+    return entries[at - (parent ? 1 : 0)]?.path ?? null;
   };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+      event.preventDefault();
+      event.stopPropagation();
+      onBrowse();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(Math.min(rows - 1, Math.max(-1, active + (event.key === "ArrowDown" ? 1 : -1))));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (active >= folderRows) actions[active - folderRows]?.run();
+      else if (active >= 0) {
+        const path = folderAt(active);
+        if (path && (event.metaKey || event.ctrlKey)) void add(path);
+        else if (path) enter(path);
+      } else addTyped();
+    }
+  };
+  const isMac = /mac/i.test(navigator.platform);
 
   return (
     <>
-      <Head
-        value={value}
-        placeholder="Enter a folder path"
-        label="Folder path"
-        mono
-        chip={{ label: "Add", onClick: addTyped, disabled: busy }}
-        onBack={onBack}
-        onChange={(next) => {
-          setValue(replaceHomePrefix(next));
-          setActive(-1);
-          setError(null);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            const step = event.key === "ArrowDown" ? 1 : -1;
-            setActive(Math.min(rows - 1, Math.max(-1, active + step)));
-          } else if (event.key === "Enter") {
-            event.preventDefault();
-            const path = active >= 0 ? rowAt(active) : null;
-            if (path && (event.metaKey || event.ctrlKey)) void add(path);
-            else if (path) enter(path);
-            else addTyped();
-          } else if (event.key === "Backspace" && value === "") {
-            onBack();
-          }
-        }}
-      />
+      <div className="palette-search">
+        <Folder size={16} aria-hidden />
+        <input
+          autoFocus
+          className="add-project-path"
+          aria-label="Folder path"
+          placeholder="Enter a folder path"
+          value={value}
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          onChange={(event) => {
+            setValue(replaceHomePrefix(event.target.value));
+            setActive(-1);
+            setError(null);
+          }}
+          onKeyDown={onKeyDown}
+        />
+      </div>
       {error ? (
         <p className="palette-error" role="alert">
           {error}
@@ -277,15 +173,23 @@ function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void;
       <div className="palette-list">
         {listing.status === "error" ? <p className="sidebar-empty">{listing.error.message}</p> : null}
         {/* Until the home folder is known nothing was listed, so nothing is empty yet. */}
-        {listing.status === "ready" && listing.data !== null && rows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
-        {rows > 0 ? <div className="palette-group">Folders</div> : null}
+        {listing.status === "ready" && listing.data !== null && folderRows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
+        {added.length > 0 ? (
+          <>
+            <div className="palette-group">Added</div>
+            {added.map((project) => (
+              <div key={project.id} className="add-project-added">
+                <SquareCheck size={14} aria-hidden />
+                <span className="palette-title add-project-path-row">{home ? shortenHome(project.path, home) : project.path}</span>
+                <span className="add-project-hint">{project.is_git ? "Git" : "Folder"}</span>
+              </div>
+            ))}
+            <div className="add-project-sep" role="separator" />
+          </>
+        ) : null}
+        {folderRows > 0 ? <div className="palette-group">Folders</div> : null}
         {parent ? (
-          <button
-            type="button"
-            data-active={active === 0 || undefined}
-            onMouseMove={() => setActive(0)}
-            onClick={() => enter(parent)}
-          >
+          <button type="button" data-active={active === 0 || undefined} onMouseMove={() => setActive(0)} onClick={() => enter(parent)}>
             <ArrowUp size={16} aria-hidden />
             <span className="palette-title">..</span>
           </button>
@@ -301,7 +205,7 @@ function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void;
               onClick={() => enter(entry.path)}
             >
               {entry.is_git ? <GitBranch size={16} aria-hidden /> : <Folder size={16} aria-hidden />}
-              <span className="palette-title">{entry.name}</span>
+              <span className="palette-title add-project-path-row">{home ? shortenHome(entry.path, home) : entry.path}</span>
               <span className="add-project-hint" aria-hidden>
                 {entry.is_git ? "Git" : "Folder"}
               </span>
@@ -309,31 +213,45 @@ function Browse({ onBack, onClone, onClose }: { onBack(): void; onClone(): void;
           );
         })}
         <div className="add-project-sep" role="separator" />
-        <button type="button" onClick={onClone}>
-          <Download size={16} aria-hidden />
-          <span className="palette-title">Clone from GitHub</span>
-          <span className="add-project-hint">Git URL</span>
-        </button>
+        {[
+          { icon: <Plus size={16} aria-hidden />, title: "New project", hint: "README and first commit" },
+          { icon: <Download size={16} aria-hidden />, title: "Clone a repository", hint: "Git URL or owner/name" },
+          { icon: <Search size={16} aria-hidden />, title: "Browse this computer", hint: isMac ? "⌘O" : "Ctrl O" },
+        ].map((action, at) => (
+          <button
+            key={action.title}
+            type="button"
+            data-active={active === folderRows + at || undefined}
+            onMouseMove={() => setActive(folderRows + at)}
+            onClick={actions[at]?.run}
+          >
+            {action.icon}
+            <span className="palette-title">{action.title}</span>
+            <span className="add-project-hint add-project-hint-prose">{action.hint}</span>
+          </button>
+        ))}
       </div>
-      <Keys back select={false} />
     </>
   );
 }
 
-function SingleField({
-  placeholder,
+/** One field, Cancel and the confirm: the design's New project and Clone dialogs. */
+function AddDialog({
+  title,
   label,
-  chipLabel,
+  confirm,
+  mono,
   hint,
   submit,
-  onBack,
+  onCancel,
 }: {
-  placeholder: string;
+  title: string;
   label: string;
-  chipLabel: string;
-  hint: string | null;
+  confirm: string;
+  mono?: boolean;
+  hint: ReactNode;
   submit(value: string): Promise<void>;
-  onBack(): void;
+  onCancel(): void;
 }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -359,78 +277,162 @@ function SingleField({
     }
   };
   return (
-    <>
-      <Head
-        value={value}
-        placeholder={placeholder}
-        label={label}
-        chip={{ label: chipLabel, onClick: () => void send(), disabled: busy || !value.trim() }}
-        onBack={onBack}
-        onChange={setValue}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void send();
-          } else if (event.key === "Backspace" && value === "") {
-            onBack();
-          }
+    <Dialog
+      title={title}
+      onClose={onCancel}
+      busy={busy}
+      className="add-project-dialog"
+      footer={
+        <>
+          <Button onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button tone="primary" busy={busy} disabled={!value.trim()} onClick={() => void send()}>
+            {confirm}
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="add-project-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void send();
         }}
-      />
-      {error ? (
-        <p className="palette-error" role="alert">
-          {error}
-        </p>
-      ) : hint ? (
-        <p className="palette-hint">{hint}</p>
-      ) : null}
-      <Keys back select={false} />
-    </>
+      >
+        <label htmlFor="add-project-field">{label}</label>
+        <input
+          id="add-project-field"
+          className={mono ? "dialog-field dialog-field-mono" : "dialog-field"}
+          data-dialog-focus
+          value={value}
+          autoComplete="off"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          onChange={(event) => setValue(event.target.value)}
+        />
+        {error ? (
+          <p className="field-error" role="alert">
+            {error}
+          </p>
+        ) : hint ? (
+          <span className="add-project-note">{hint}</span>
+        ) : null}
+      </form>
+    </Dialog>
   );
 }
 
-/** Adding a project, as the palette's own views. Folders stay where they are. */
+/** Adding a project: a path to add in place, a new empty folder or a clone. Folders stay where they are. */
 export function AddProjectPalette({
-  initialView = "sources",
-  onBack,
+  initialView = "folders",
   onClose,
+  onSubdialog,
+  added = [],
+  onAdded,
 }: {
-  initialView?: View;
-  onBack(): void;
+  initialView?: AddProjectView;
+  /** Projects this flow has already added, listed under "Added". */
+  added?: readonly Project[];
+  /** Keeps the person in place after an add, instead of opening the project. */
+  onAdded?(project: Project): void;
   onClose(): void;
+  /** True while a dialog sits over the palette, which hides itself meanwhile. */
+  onSubdialog(open: boolean): void;
 }) {
-  const [view, setView] = useState<View>(initialView);
-  const finish = useFinish(onClose);
-  const toSources = () => setView("sources");
-  switch (view) {
-    case "sources":
-      return <Sources onPick={setView} onBack={onBack} />;
-    case "browse":
-      return <Browse onBack={toSources} onClone={() => setView("clone")} onClose={onClose} />;
-    case "new":
-      return (
-        <SingleField
-          placeholder="Project name"
-          label="Project name"
-          chipLabel="Create"
-          hint={null}
-          onBack={toSources}
-          submit={async (name) => finish(await api.createProject(name))}
+  const [view, setView] = useState<AddProjectView>(initialView);
+  const [browsing, setBrowsing] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
+  const finishAdd = useFinish(onClose, onAdded);
+  // A dialog that added something is done; where the flow goes on, the palette is what is left.
+  const finish = (project: Project) => {
+    setView("folders");
+    setBrowsing(false);
+    finishAdd(project);
+  };
+  const base = useBaseDirectory();
+  const home = useAsync("add-project-home", (signal) => api.browse(null, signal)).data?.path ?? null;
+  const sub = view !== "folders" || browsing;
+  useEffect(() => {
+    onSubdialog(sub);
+    return () => onSubdialog(false);
+  }, [sub, onSubdialog]);
+  // Closing a dialog opened from outside the palette (the empty home) ends the add flow.
+  const cancel = () => (initialView === "folders" ? setView("folders") : onClose());
+  return (
+    <>
+      <Folders onNew={() => setView("new")} onClone={() => setView("clone")} onBrowse={() => setBrowsing(true)} onClose={onClose} added={added} onAdded={onAdded} />
+      {view === "new" ? (
+        <AddDialog
+          title="New project"
+          label="Name"
+          confirm="Create project"
+          hint={
+            <>
+              {base ? (
+                <>
+                  Created in <span className="mono">{base}</span>, your base directory.{" "}
+                  <a className="add-project-link" href={routeHref({ name: "settings", section: "general" })} onClick={onClose}>
+                    Change
+                  </a>
+                  <br />
+                </>
+              ) : null}
+              Creates a folder with a README and a first commit, so worktrees work.
+            </>
+          }
+          submit={async (name) =>
+            // With a base directory chosen the folder is made there; without one the service picks.
+            finish(await api.createProject(name, base && home ? `${dropTrailingSlash(expandHome(base, home))}/${name}` : undefined))
+          }
+          onCancel={cancel}
         />
-      );
-    case "clone":
-      return (
-        <SingleField
-          placeholder="Enter Git clone URL"
-          label="Git clone URL"
-          chipLabel="Clone"
-          hint="Enter a Git clone URL and press Enter to continue."
-          onBack={toSources}
+      ) : null}
+      {view === "clone" ? (
+        <AddDialog
+          title="Clone a repository"
+          label="Git URL or owner/name"
+          confirm="Clone"
+          mono
+          hint={
+            <>
+              Any Git URL works, or an owner/name on GitHub.{" "}
+              {base ? (
+                <>
+                  It is cloned into <span className="mono">{base}</span>;{" "}
+                </>
+              ) : (
+                "It is cloned into your base directory; "
+              )}
+              progress shows in the sidebar until it finishes.
+            </>
+          }
           submit={async (url) => {
-            const job = await api.startClone(url);
-            onClose();
+            const job = await api.startClone(cloneAddress(url));
+            if (onAdded) setView("folders");
+            else onClose();
             trackClone(job, finish);
           }}
+          onCancel={cancel}
         />
-      );
-  }
+      ) : null}
+      {browsing ? (
+        <Dialog title="Browse this computer" onClose={() => setBrowsing(false)} className="add-project-dialog">
+          {browseError ? (
+            <p className="field-error" role="alert">
+              {browseError}
+            </p>
+          ) : null}
+          <FolderBrowser
+            actionLabel="Add this folder"
+            onChoose={(path) => {
+              setBrowseError(null);
+              api.addProject(path).then(finish, (failure: unknown) => setBrowseError(toFailure(failure).message));
+            }}
+          />
+        </Dialog>
+      ) : null}
+    </>
+  );
 }

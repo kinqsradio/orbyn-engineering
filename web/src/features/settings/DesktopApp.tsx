@@ -5,18 +5,19 @@ import { onShellChange } from "../../api/shell";
 import type { ShellAction } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
-import { Button, Pill } from "../../ui/controls";
+import { Check, Info } from "lucide-react";
+import { Button } from "../../ui/controls";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
-const PERMISSIONS: Record<string, { title: string; description: string; open: ShellAction }> = {
+const PERMISSIONS: Record<string, { title: string; missing: string; open: ShellAction }> = {
   accessibility: {
     title: settingsLabel("general-accessibility"),
-    description: "Lets agents use your computer, when you allow it.",
+    missing: "Not granted.",
     open: "open_accessibility_settings",
   },
   screen_recording: {
     title: settingsLabel("general-screen-recording"),
-    description: "Lets agents see your screen, when you allow it.",
+    missing: "Not granted. Needed to capture the screen for a thread.",
     open: "open_screen_recording_settings",
   },
 };
@@ -33,11 +34,11 @@ export function DesktopApp() {
     api.shellAction(action).catch((failure: unknown) => pushToast(toFailure(failure).message));
   };
   return (
-    <SettingGroup title="Desktop app">
+    <><SettingGroup>
       {cli ? (
         <SettingRow
           title={settingsLabel("general-command-line-tool")}
-          description={cli.installed ? `Installed at ${cli.path}.` : `Installs orbyn at ${cli.path}. That folder needs to be on your PATH.`}
+          description={cli.installed ? `Installed at ${cli.path}.` : `Not installed. Installs orbyn into ${cli.path}.`}
         >
           <Button small onClick={() => act(cli.installed ? "remove_cli" : "install_cli")}>
             {cli.installed ? "Remove" : "Install"}
@@ -48,17 +49,22 @@ export function DesktopApp() {
         const known = PERMISSIONS[permission.id];
         if (!known) return null;
         return (
-          <SettingRow key={permission.id} title={known.title} description={known.description}>
+          <SettingRow key={permission.id} title={known.title} description={permission.granted ? "Granted by macOS" : known.missing}>
             {permission.granted ? (
-              <Pill>Allowed</Pill>
+              <span className="set-pill"><Check size={13} aria-hidden />Granted</span>
             ) : (
-              <Button small onClick={() => act(known.open)}>
-                Open System Settings
-              </Button>
+              <>
+                <span className="set-pill">Not granted</span>
+                <Button small onClick={() => act(known.open)}>
+                  Open System Settings
+                </Button>
+              </>
             )}
           </SettingRow>
         );
       })}
     </SettingGroup>
+    <p className="banner"><Info size={13} aria-hidden />macOS asks the first time a thread needs one. Changes in System Settings can need the app to restart.</p>
+    </>
   );
 }

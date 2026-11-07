@@ -101,7 +101,7 @@ function Reasoning({ item, live }: { item: ReasoningItem; live: boolean }) {
       summary={
         <>
           <Brain size={14} aria-hidden />
-          <span className={streaming ? "trace-label text-sweep" : "trace-label"}>
+          <span className="trace-label">
             {streaming ? "Thinking" : "Thought"}
           </span>
           <ChevronRight size={14} className="chev trace-end" aria-hidden />
@@ -205,7 +205,7 @@ function Tool({ item, live }: { item: ToolItem; live: boolean }) {
         summary={
           <>
             {failed ? null : <Icon size={14} aria-hidden />}
-            <span className={running ? "trace-label text-sweep" : "trace-label"} title={trace.label}>
+            <span className="trace-label" title={trace.label}>
               {trace.label}
             </span>
             {running ? <span className="sr-only">Running</span> : null}

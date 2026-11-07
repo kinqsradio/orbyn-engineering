@@ -69,6 +69,12 @@ const openPull = async (page: Page, title: string) => {
   await expect(detail(page, title)).toBeVisible();
   return detail(page, title);
 };
+/** Shows the side panel, with its tabs, unless the window is already wide enough to have it open. */
+const openPanel = async (page: Page) => {
+  const toggle = page.getByRole("button", { name: "Show side panel", exact: true });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+};
 const moreAction = async (page: Page, article: Locator, name: string) => {
   await article.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name }).click();
@@ -80,40 +86,76 @@ test.beforeAll(async () => {
 test.afterAll(() => service.stop());
 test.beforeEach(({ page }) => page.setViewportSize({ width: 1500, height: 1000 }));
 
-test("the list filters by author, label, checks and draft, and sorts", async ({ page }) => {
+test("the list filters by author, label, checks and draft, and by a label typed in the search", async ({ page }) => {
   await page.goto(`${service.page}#/pulls`);
   const rows = page.locator(".pull-rows > li");
   await expect(rows).toHaveCount(3);
-  const filter = async (group: string, value: string) => {
-    await page.getByRole("button", { name: "Filters" }).click();
-    await page.getByRole("menuitem", { name: group }).click();
-    await page.getByRole("menuitemradio", { name: value }).or(page.getByRole("menuitem", { name: value })).first().click();
+  const panel = page.getByRole("dialog", { name: "Filters" });
+  /** A popover is hidden from the page at once but only leaves the DOM when its fade is over. */
+  const popovers = page.locator(".pulls-pop");
+  /** Opens Filters, runs the change, and closes it again with Escape. */
+  const inPanel = async (change: () => Promise<void>) => {
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    await change();
+    await page.keyboard.press("Escape");
+    await expect(popovers).toHaveCount(0);
   };
-  await filter("Author", "grace");
+  const tick = (name: string) => inPanel(() => panel.getByRole("checkbox", { name: new RegExp(`^${name}( \\d+)?$`) }).click());
+  const chip = (name: string) => page.getByRole("button", { name: `Remove filter ${name}` });
+
+  await inPanel(async () => {
+    await panel.getByLabel("Search people").fill("gra");
+    await panel.getByRole("option", { name: /grace/ }).click();
+  });
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("Second layer");
-  await filter("Author", "Anyone");
-  await filter("Label", "bug");
+  await chip("Author: grace").click();
+  await expect(rows).toHaveCount(3);
+
+  await tick("bug");
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("First layer");
-  await filter("Label", "Any");
-  await filter("Draft", "Drafts only");
+  await chip("Label: bug").click();
+
+  await inPanel(() => panel.getByRole("radio", { name: "Only" }).click());
   await expect(rows).toHaveCount(1);
-  await filter("Draft", "All");
-  await filter("Review", "Approved");
+  await expect(page.getByRole("button", { name: "Filters · 1" })).toBeVisible();
+  await chip("Draft: only").click();
+
+  await tick("Approved");
   await expect(rows).toHaveCount(1);
-  await filter("Review", "All");
+  await chip("Review: approved").click();
   await expect(rows).toHaveCount(3);
-  await filter("Checks", "Passing");
+  await tick("Passing");
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("#1 ");
-  await filter("Checks", "All");
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(rows).toHaveCount(3);
-  await page.getByLabel("Search pull requests").fill("label:docs");
-  await page.getByLabel("Search pull requests").press("Enter");
+
+  // A label typed in the search becomes a token and filters like the menu does.
+  const search = page.getByLabel("Search pull requests");
+  await search.fill("label:docs ");
+  await expect(page.getByRole("button", { name: "Remove label:docs" })).toBeVisible();
   await expect(rows).toHaveCount(1);
-  await page.getByLabel("Search pull requests").fill("");
-  await page.getByLabel("Search pull requests").press("Enter");
+  await search.press("Escape");
+  await expect(rows).toHaveCount(3);
+
+});
+
+test("the list sorts, switches state from the pills and comes back from a pull request", async ({ page }) => {
+  await page.goto(`${service.page}#/pulls`);
+  const rows = page.locator(".pull-rows > li");
+  await expect(rows).toHaveCount(3);
+  const panel = page.getByRole("dialog", { name: "Filters" });
+  const sorted = async (item: string) => {
+    await page.getByRole("button", { name: /^Sort:/ }).click();
+    await page.getByRole("menuitemradio", { name: item }).click();
+    await expect(page.locator(".pulls-pop")).toHaveCount(0);
+  };
+  await sorted("Oldest");
+  await expect(rows.first()).toContainText("First layer");
+  await sorted("Created");
+  await expect(rows.first()).toContainText("Unrelated fix");
 
   const open = page.getByRole("button", { name: /^Open · / });
   const drafts = page.getByRole("button", { name: /^Drafts · / });
@@ -122,14 +164,20 @@ test("the list filters by author, label, checks and draft, and sorts", async ({ 
   await expect(drafts).toHaveAttribute("aria-pressed", "true");
   await expect(open).toHaveAttribute("aria-pressed", "false");
   await expect(rows).toHaveCount(1);
-  await filter("Draft", "Hide drafts");
+  await page.getByRole("button", { name: /^Filters/ }).click();
+  await panel.getByRole("radio", { name: "Exclude" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".pulls-pop")).toHaveCount(0);
   await expect(open).toHaveAttribute("aria-pressed", "false");
   await expect(drafts).toHaveAttribute("aria-pressed", "false");
   await open.click();
   await expect(rows).toHaveCount(3);
-  await filter("State", "Closed");
-  await expect(open).toHaveAttribute("aria-pressed", "false");
-  await filter("State", "Open");
+  await page.getByRole("button", { name: "Closed", exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("Old idea");
+  await page.getByRole("button", { name: "Merged", exact: true }).click();
+  await expect(rows).toContainText("Shipped work");
+  await open.click();
 
   // A pull request is a page of its own in history: Back returns to the list.
   await page.getByRole("button", { name: /First layer/ }).click();
@@ -292,9 +340,7 @@ test("merge takes a method, strips credits and can wait for checks; a row merges
 
 test("a merged pull request can be reverted", async ({ page }) => {
   await page.goto(`${service.page}#/pulls`);
-  await page.getByRole("button", { name: "Filters" }).click();
-  await page.getByRole("menuitem", { name: "State" }).click();
-  await page.getByRole("menuitemradio", { name: "Merged" }).or(page.getByRole("menuitem", { name: "Merged" })).first().click();
+  await page.getByRole("button", { name: "Merged", exact: true }).click();
   await page.getByRole("button", { name: /Shipped work/ }).click();
   await moreAction(page, detail(page, "Shipped work"), "Revert changes");
   await expect.poll(() => service.ghCalls().some((call) => call.join(" ") === "pr revert 5")).toBe(true);
@@ -304,16 +350,16 @@ test("rows close and reopen, one at a time or selected together", async ({ page 
   await page.goto(`${service.page}#/pulls`);
   await page.getByRole("button", { name: "Close #1" }).click();
   await expect.poll(() => service.ghPull(1).state).toBe("CLOSED");
-  await page.getByRole("button", { name: "Filters" }).click();
-  await page.getByRole("menuitem", { name: "State" }).click();
-  await page.getByRole("menuitemradio", { name: "All" }).or(page.getByRole("menuitem", { name: "All" })).first().click();
+  await page.getByRole("button", { name: "Closed", exact: true }).click();
   await page.getByRole("button", { name: "Reopen #1" }).click();
   await expect.poll(() => service.ghPull(1).state).toBe("OPEN");
+  await page.getByRole("button", { name: /^Open · / }).click();
   await expect(page.getByRole("button", { name: "Close #1" })).toBeVisible();
   await page.getByRole("checkbox", { name: "Select #1" }).check();
   await page.getByRole("checkbox", { name: "Select #2" }).check();
   await page.getByRole("button", { name: "Close selected" }).click();
   await expect.poll(() => [service.ghPull(1).state, service.ghPull(2).state]).toEqual(["CLOSED", "CLOSED"]);
+  await page.getByRole("button", { name: "Closed", exact: true }).click();
   await page.getByRole("button", { name: "Reopen #1" }).click();
   await expect.poll(() => service.ghPull(1).state).toBe("OPEN");
 });
@@ -322,11 +368,12 @@ test("the PRs tab lists this thread's pull request and a thread without one says
   const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Surface menu" });
   await service.api("POST", `/api/threads/${thread.id}/pulls`, { number: 1 });
   await page.goto(`${service.page}#/threads/${thread.id}`);
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await openPanel(page);
   const tab = page.getByRole("tab", { name: "Pull requests", exact: true });
   await expect(tab).toHaveText("PRs");
   await tab.click();
-  await page.getByRole("button", { name: /First layer/ }).first().click();
+  // The Details card above the tabs has a row for the same pull request.
+  await page.locator(".linked-pulls").getByRole("button", { name: /First layer/ }).click();
   await expect(detail(page, "First layer")).toBeVisible();
   await expect(tab).toHaveCount(1);
   await page.getByRole("tab", { name: "Files", exact: true }).click();
@@ -336,7 +383,7 @@ test("the PRs tab lists this thread's pull request and a thread without one says
 
   const unlinked = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "No linked pull" });
   await page.goto(`${service.page}#/threads/${unlinked.id}`);
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await openPanel(page);
   await page.getByRole("tab", { name: "Pull requests", exact: true }).click();
   await expect(page.getByText("No linked pull requests")).toBeVisible();
 });
@@ -354,8 +401,8 @@ test("a thread links, watches and unlinks; Work on this opens a thread on the br
   expect(current.worktree?.branch).toBe("feat-one");
   await expect.poll(async () => (await service.api<{ number: number }[]>("GET", `/api/threads/${thread}/pulls`)).map((pull) => pull.number)).toEqual([1]);
 
-  await page.getByRole("button", { name: "Surfaces" }).click();
-  await page.getByRole("button", { name: /Pull requests/ }).last().click();
+  await openPanel(page);
+  await page.getByRole("tab", { name: "Pull requests", exact: true }).click();
   await page.getByRole("button", { name: "Watch #1" }).click();
   await expect(page.getByRole("button", { name: "Stop watching #1" })).toBeVisible();
   await page.getByRole("button", { name: "Unlink #1" }).click();
@@ -363,6 +410,6 @@ test("a thread links, watches and unlinks; Work on this opens a thread on the br
   await page.getByRole("button", { name: "Link a pull request" }).click();
   const dialog = page.getByRole("dialog", { name: "Link a pull request" });
   await dialog.getByRole("button", { name: /#1 First layer/ }).click();
-  await expect(page.getByRole("button", { name: /First layer/ })).toBeVisible();
+  await expect(page.locator(".linked-pulls").getByRole("button", { name: /First layer/ })).toBeVisible();
   expect(projectId).not.toBe("");
 });

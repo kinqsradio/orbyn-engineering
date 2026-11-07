@@ -5,6 +5,7 @@ import { tabKeys } from "../../ui/tabKeys";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
 import type { EngineLimits, LimitsOverview, ModelUsage, UsageReport } from "../../api/types";
+import { useWaited } from "../../lib/motion";
 import { readJson, writeJson } from "../../lib/storage";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -12,6 +13,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, Field, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { PageBar } from "../../ui/PageBar";
 import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
@@ -566,6 +568,16 @@ export function UsagePage() {
   const nameOf = (id: string) => engines?.find((engine) => engine.id === id)?.name ?? id;
 
   const usage = useUsageReport(days);
+  // A load that finishes inside 400 ms shows the report with no motion. A longer one shows
+  // the static skeleton first, and the report then fades in over it.
+  const loadingFirst = usage.pending && !usage.data;
+  const skeletonShown = useWaited(loadingFirst);
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (loadingFirst) setRevealed(skeletonShown);
+  }, [loadingFirst, skeletonShown]);
+  // A refresh dims the figures only if it outlasts the same wait.
+  const dimmed = useWaited(usage.pending && usage.data !== null);
   const limits = useAsync(`limits:${metric === "limits"}:${nonce}`, (signal) =>
     metric === "limits" ? api.limits(false, signal) : Promise.resolve(null),
   );
@@ -688,7 +700,7 @@ export function UsagePage() {
             </div>
           )
         ) : (
-          <div className="usage-history" data-refreshing={usage.pending && usage.data ? true : undefined}>
+          <div className="usage-history" data-refreshing={dimmed || undefined}>
             {usage.pending && usage.data ? <p className="usage-refresh-status" role="status">Refreshing usage…</p> : null}
             {usage.error ? (
               <ErrorState
@@ -699,10 +711,10 @@ export function UsagePage() {
             ) : null}
             <div aria-busy={usage.pending}>
               {usage.data ? (
-                <>
+                <div className="usage-data" data-reveal={revealed || undefined}>
                   <UsageView report={usage.data} metric={metric} days={days} only={only} nameOf={nameOf} onSaved={() => void usage.reload()} />
                   <ScanStatus report={usage.data} nameOf={nameOf} />
-                </>
+                </div>
               ) : usage.pending ? (
                 <div className="usage-body"><Loading label="Loading usage" rows={4} /></div>
               ) : null}
@@ -710,7 +722,7 @@ export function UsagePage() {
           </div>
         )}
       </div>
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           {...menu}
           label="Providers"
@@ -724,7 +736,7 @@ export function UsagePage() {
             })),
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
     </section>
   );
 }

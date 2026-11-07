@@ -29,7 +29,7 @@
 }
 .ledger-pin-label {
   flex: none;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-weight: 500;
 }
 .ledger-pin-text {
@@ -59,13 +59,13 @@
   line-height: 1.7;
 }
 /* The sidebar folds away; the title bar toggle opens it (data-reading-nav). */
-:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) {
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):is([data-layout="medium"], [data-layout="wide"], [data-layout="xwide"]) {
   grid-template-columns: minmax(0, 1fr);
 }
-:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) > .sidebar {
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):is([data-layout="medium"], [data-layout="wide"], [data-layout="xwide"]) > .sidebar {
   display: none;
 }
-:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):not([data-layout="narrow"]) > .main {
+:root[data-workspace="reading"] .shell:not([data-reading-nav="open"]):is([data-layout="medium"], [data-layout="wide"], [data-layout="xwide"]) > .main {
   grid-area: 2 / 1;
   border-top: 0;
   border-left: 0;
@@ -76,11 +76,11 @@
   display: none;
 }
 /* On a wide window the side panel floats over the thread as a drawer instead of
-   taking a column; on medium and narrow windows it already replaces the thread. */
+   taking a column; on smaller windows it already floats over the thread, or replaces it on the phone. */
 :root[data-workspace="reading"] .thread-layout {
   position: relative;
 }
-:root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
+:root[data-workspace="reading"] .shell:is([data-layout="wide"], [data-layout="xwide"]) .context:not([data-maximized]) {
   position: absolute;
   top: 14px;
   right: 14px;
@@ -98,7 +98,7 @@
   --details-w: var(--rail-w);
   --details-gap: 0px;
 }
-:root[data-workspace="ledger"] .details {
+:root[data-workspace="ledger"] .thread-main > .details {
   top: 0;
   right: 0;
   bottom: 0;
@@ -115,7 +115,7 @@
 :root[data-workspace="reading"] .composer-lane {
   box-sizing: border-box;
 }
-:root[data-workspace="reading"] .shell:not([data-layout="medium"]):not([data-layout="narrow"]) .context:not([data-maximized]) {
+:root[data-workspace="reading"] .shell:is([data-layout="wide"], [data-layout="xwide"]) .context:not([data-maximized]) {
   width: var(--drawer-w);
 }
 /* Reading sets the title as the column's own 26px heading, on the column. */

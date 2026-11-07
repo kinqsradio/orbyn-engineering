@@ -80,7 +80,7 @@ test("selected project names update the group or checkout without changing paths
     await expect(settings.getByText("Revision", { exact: true })).toHaveCount(0);
     await expect(settings.getByRole("button", { name: /^Settings for / })).toHaveCount(0);
     await expect(settings.getByRole("button", { name: "Trust folder", exact: true })).toHaveCount(0);
-    await expect(settings.getByRole("combobox", { name: "Default workspace", exact: true })).toBeVisible();
+    await expect(settings.getByText("Default model", { exact: true })).toBeVisible();
     await expect(settings.getByRole("button", { name: "Add action", exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath("selected-project-detail.png") });
     await page.goto(`${url}&checkout=${encodeURIComponent(one.id)}`);
@@ -194,7 +194,7 @@ test("changed group membership conflicts and rebases only on an explicit retry",
 });
 
 
-const removalDialog = (page: Page) => page.getByRole("dialog", { name: /^Remove (project|checkout) / });
+const removalDialog = (page: Page) => page.getByRole("dialog", { name: /^Remove / });
 function deletions(page: Page) {
   const requests: URL[] = [];
   page.on("request", (request) => {
@@ -219,29 +219,28 @@ test("registered checkout removal counts archived threads, cancels without write
     await makeThread(service, one.id, "Archived checkout thread", true);
     const peerThread = await makeThread(service, two.id, "Peer remains");
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto(url);
-    await expect(page.getByRole("heading", { name: "Checkouts", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: `Remove checkout ${one.path}`, exact: true }).click();
+    await page.goto(`${url}&checkout=${encodeURIComponent(one.id)}`);
+    await expect(nameField(page)).toBeVisible();
+    await page.getByRole("button", { name: "Remove…", exact: true }).click();
     const dialog = removalDialog(page);
-    await expect(dialog).toHaveAccessibleName(`Remove checkout "${one.name}"?`);
-    await expect(dialog.getByText(`Path: ${one.path}`, { exact: true })).toBeVisible();
-    await expect(dialog.getByText("Other entries in this grouped project are unaffected.", { exact: true })).toBeVisible();
-    await expect(dialog.getByText(/2 threads stay in Archive/)).toBeVisible();
+    await expect(dialog).toHaveAccessibleName(`Remove ${one.name}?`);
+    await expect(dialog.getByText(one.path, { exact: true })).toBeVisible();
+    await expect(dialog.getByText(/Other checkouts of this project are unaffected\./)).toBeVisible();
+    await expect(dialog.getByText("2 · stay in Archive", { exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     expect(deletes).toEqual([]);
     expect((await projects(service)).some((entry) => entry.id === one.id)).toBe(true);
     expect(await threadRows(service, one.id, true)).toHaveLength(1);
-    await page.getByRole("button", { name: `Remove checkout ${one.path}`, exact: true }).click();
-    await removalDialog(page).getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.getByRole("button", { name: "Remove…", exact: true }).click();
+    await removalDialog(page).getByRole("button", { name: "Remove checkout", exact: true }).click();
     await expect(removalDialog(page)).toHaveCount(0);
     await expect.poll(() => projects(service)).not.toContainEqual(expect.objectContaining({ id: one.id }));
     expect((await projects(service)).map((entry) => entry.id)).toEqual(expect.arrayContaining([two.id, unrelatedId]));
-    expect(await threadRows(service, one.id)).toEqual([]);
     // Removal keeps the threads: both now sit in Archive under the removed project.
+    expect(await threadRows(service, one.id)).toEqual([]);
     expect(await threadRows(service, one.id, true)).toHaveLength(2);
     expect(await threadRows(service, two.id)).toContainEqual(expect.objectContaining({ id: peerThread }));
-    await expect(nameField(page)).toHaveValue(two.name);
-    await expect(page.getByRole("heading", { name: "Checkouts", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Project scope: Unavailable project", exact: true })).toBeVisible();
     expect(deletes.map((request) => request.pathname)).toEqual([`/api/projects/${one.id}`]);
     expect(deletes[0]!.search).toBe(""); // Existing file-preserving DELETE; no delete_files or force escalation.
     for (const row of [one, two]) expect(readFileSync(join(row.path, "keep-local.txt"), "utf8")).toBe("unchanged local work");
@@ -256,12 +255,12 @@ test("whole project removal clears selection only after the confirmed entries ar
     await makeThread(service, one.id, "First entry thread");
     await makeThread(service, two.id, "Second archived entry", true);
     await page.goto(url);
-    await page.getByRole("button", { name: "Remove all entries", exact: true }).click();
+    await page.getByRole("button", { name: "Remove…", exact: true }).click();
     const dialog = removalDialog(page);
-    await expect(dialog).toHaveAccessibleName(`Remove project "${group.label}"?`);
-    await expect(dialog.getByText("This removes 2 grouped project entries.", { exact: true })).toBeVisible();
-    await expect(dialog.getByText("This removes only the project entries, not the files on disk.", { exact: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(dialog).toHaveAccessibleName(`Remove ${group.label}?`);
+    await expect(dialog.getByText("Orbyn stops tracking this project. Files on disk are not touched.", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("2 · stay in Archive", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Remove project", exact: true }).click();
     await expect(page).toHaveURL(/#\/settings\/projects$/);
     await expect(page.getByText("Choose a project to manage its name, icon, checkouts and actions.", { exact: true })).toBeVisible();
     await expect(nameField(page)).toHaveCount(0);
@@ -282,10 +281,9 @@ test("selected checkout removal never removes its peer or silently broadens the 
     await makeThread(service, two.id, "Other checkout thread");
     await page.goto(`${url}&checkout=${encodeURIComponent(one.id)}`);
     await expect(nameField(page)).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Checkouts", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Remove checkout", exact: true }).click();
-    await expect(removalDialog(page)).toHaveAccessibleName(`Remove checkout "${one.name}"?`);
-    await removalDialog(page).getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.getByRole("button", { name: "Remove…", exact: true }).click();
+    await expect(removalDialog(page)).toHaveAccessibleName(`Remove ${one.name}?`);
+    await removalDialog(page).getByRole("button", { name: "Remove checkout", exact: true }).click();
     await expect(removalDialog(page)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Project scope: Unavailable project", exact: true })).toBeVisible();
     expect(page.url()).toContain(`checkout=${encodeURIComponent(one.id)}`);
@@ -306,8 +304,8 @@ test("a partial group removal reports its busy member and retries only the entri
     const run = await service.api<{ id: string }>("POST", `/api/threads/${activeThread}/runs`, { prompt: "[hang]" });
     await expect.poll(async () => (await service.api<{ active_run: { state: string } | null }>("GET", `/api/threads/${activeThread}`)).active_run?.state).toBe("running");
     await page.goto(url);
-    await page.getByRole("button", { name: "Remove all entries", exact: true }).click();
-    await removalDialog(page).getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.getByRole("button", { name: "Remove…", exact: true }).click();
+    await removalDialog(page).getByRole("button", { name: "Remove project", exact: true }).click();
     await expect(removalDialog(page).getByRole("alert")).toContainText(`Failed to remove "${two.name}"`);
     expect(deletes.map((request) => request.pathname)).toEqual([`/api/projects/${one.id}`, `/api/projects/${two.id}`]);
     expect((await projects(service)).some((entry) => entry.id === one.id)).toBe(false);
@@ -316,8 +314,8 @@ test("a partial group removal reports its busy member and retries only the entri
     expect((await service.api<{ active_run: { id: string } | null }>("GET", `/api/threads/${activeThread}`)).active_run?.id).toBe(run.id);
     await service.api("POST", `/api/runs/${run.id}/cancel`, {});
     await expect.poll(async () => (await service.api<{ active_run: unknown }>("GET", `/api/threads/${activeThread}`)).active_run).toBeNull();
-    await expect(removalDialog(page).getByRole("button", { name: "Confirm", exact: true })).toBeEnabled();
-    await removalDialog(page).getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(removalDialog(page).getByRole("button", { name: "Remove project", exact: true })).toBeEnabled();
+    await removalDialog(page).getByRole("button", { name: "Remove project", exact: true }).click();
     await expect(page).toHaveURL(/#\/settings\/projects$/);
     expect(deletes.map((request) => request.pathname)).toEqual([`/api/projects/${one.id}`, `/api/projects/${two.id}`, `/api/projects/${two.id}`]);
     expect((await projects(service)).some((entry) => entry.id === unrelatedId)).toBe(true);

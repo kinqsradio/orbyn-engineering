@@ -1,11 +1,12 @@
 import { settingsLabel } from "./settingsSearch";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Copy, RefreshCw } from "lucide-react";
 import { EnvironmentIcon } from "./EnvironmentIcon";
 import { useLayoutEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "../../ui/Dialog";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";
-import type { ResourceSample } from "../../generated/ResourceSample";
-import { fullTime } from "../../lib/format";
+import type { ServiceProcess } from "../../generated/ServiceProcess";
+import { fullTime, sizeWords } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { useUi } from "../../state/ui";
@@ -16,7 +17,10 @@ import type { ScopedPreferencesChange } from "../../generated/ScopedPreferencesC
 import { useSettingsScope } from "./SettingsScopeContext";
 import { Button } from "../../ui/controls";
 import { Collapsible } from "../../ui/Collapsible";
+import { DialogCard } from "./DialogCard";
 import { LibraryChoice } from "./LibraryChoice";
+import { SettingsBanner, SettingsEmpty } from "./SettingsBanner";
+import { useConnection } from "../../state/connection";
 import { FallbackNotice, Library } from "./Projects";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 
@@ -24,12 +28,6 @@ const mib = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MiB`;
 
 const duration = (seconds: number) =>
   seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h`;
-
-const memoryLine = (history: ResourceSample[]) => {
-  const peak = Math.max(...history.map((sample) => sample.memory_bytes));
-  const now = history.at(-1)?.memory_bytes ?? 0;
-  return `${mib(now)} now, ${mib(peak)} at most over the last ${history.length === 1 ? "minute" : `${history.length} minutes`}`;
-};
 
 /** Past this, the space a repair gets back is worth a mention. */
 const REPAIR_NOTICE_BYTES = 1024 ** 3;
@@ -40,7 +38,7 @@ const SIGNALS = [
   { key: "logs_url", title: settingsLabel("maintenance-logs"), signal: "logs" },
 ] as const;
 type SignalKey = typeof SIGNALS[number]["key"];
-type EndpointCheck = { url: string; message: string; pending: boolean };
+type EndpointCheck = { url: string; message: string; pending: boolean; failed?: boolean };
 const isHttpUrl = (url: string) => /^https?:\/\/./i.test(url);
 
 function TelemetryEnvironmentNotice() {
@@ -133,14 +131,14 @@ function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disable
     const id = (checkRequests.current.get(key) ?? 0) + 1;
     checkRequests.current.set(key, id);
     setChecks((previous) => ({ ...previous, [key]: { url, message: "Checking…", pending: true } }));
-    const finish = (text: string) => {
+    const finish = (text: string, failed: boolean) => {
       if (mounted.current && checkRequests.current.get(key) === id) {
-        setChecks((previous) => ({ ...previous, [key]: { url, message: text, pending: false } }));
+        setChecks((previous) => ({ ...previous, [key]: { url, message: text, pending: false, failed } }));
       }
     };
     request<OtlpResult>("POST", "/api/diagnostics/otlp", { url }).then(
-      (result) => finish(result.ok ? `Reached, ${result.status}` : (result.message ?? `The server answered ${result.status}`)),
-      (failure: unknown) => finish(toFailure(failure).message),
+      (result) => result.ok ? finish(`Reached, ${result.status}`, false) : finish("Couldn’t reach this address.", true),
+      () => finish("Couldn’t reach this address.", true),
     );
   };
   return <form aria-label="OpenTelemetry export" onSubmit={(event) => { event.preventDefault(); void save(); }}>
@@ -148,8 +146,8 @@ function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disable
     {SIGNALS.map((signal) => {
       const url = value(signal.key);
       const check = checks[signal.key]?.url === url.trim() ? checks[signal.key] : undefined;
-      return <SettingRow key={signal.key} title={signal.title} description={check?.message ?? "An OTLP HTTP address."}>
-        <input aria-label={`${signal.title} endpoint`} type="url" pattern="[Hh][Tt][Tt][Pp][Ss]?://.*"
+      return <SettingRow key={signal.key} title={signal.title} description={check?.message}>
+        <input aria-label={`${signal.title} endpoint`} type="url" pattern="[Hh][Tt][Tt][Pp][Ss]?://.*" className="set-endpoint-input" aria-invalid={check?.failed || undefined}
           title="Enter an HTTP or HTTPS endpoint, or leave empty to disable export."
           placeholder={`http://localhost:4318/v1/${signal.signal}`} value={url} disabled={busy}
           onChange={(event) => {
@@ -176,9 +174,9 @@ function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disable
 
 const RETENTION = [
   { key: "browser_artifacts_after_days", title: settingsLabel("maintenance-browser-artifacts-days"),
-    description: "Delete saved browser captures after this many days. Older capture links will no longer open." },
+    description: "Screenshots and downloads the Browser panel saved" },
   { key: "logs_after_days", title: settingsLabel("maintenance-logs-days"),
-    description: "Delete inactive rotated log files after this many days. Current logs are kept." },
+    description: "Log files that are no longer written to" },
 ] as const;
 type RetentionKey = typeof RETENTION[number]["key"];
 
@@ -189,16 +187,18 @@ function CleanupGroup() {
   return <EnvironmentCleanup key={JSON.stringify(scope.query)} query={scope.query} disabled={scope.loading} />;
 }
 
-function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
+export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
   const preferences = useAsync(JSON.stringify(["storage-cleanup", query]), (signal) =>
     request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: query, keys: ["storage_cleanup", "worktree_cleanup"] }, signal));
   const last = useAsync("cleanup-report", (signal) =>
     request<CleanupReport | null>("GET", "/api/storage/cleanup", undefined, signal));
+  const preview = useAsync(JSON.stringify(["cleanup-preview", query]), (signal) => api.storageCleanupPreview(signal));
   const [draft, setDraft] = useState<Partial<Record<RetentionKey, string>>>({});
   const [report, setReport] = useState<CleanupReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const pending = useRef(false);
   const mounted = useRef(true);
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -242,6 +242,11 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
   const commitDays = (key: RetentionKey) => {
     const text = draft[key];
     if (busy || text === undefined) return;
+    if (text.trim() === "" && saved(key) !== null) {
+      // An empty field turns the rule off.
+      void save(key, null);
+      return;
+    }
     if (text.trim() === "" || !Number.isFinite(Number(text))) {
       setDraft((previous) => { const next = { ...previous }; delete next[key]; return next; });
       return;
@@ -286,12 +291,22 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
     worktrees?.overrides.some((entry) => worktreeAge(entry.value, environmentAge) !== null) === true;
   const hasDraft = RETENTION.some(({ key }) => draft[key] !== undefined && draft[key] !== String(saved(key)));
   const shown = report ?? last.data ?? null;
+  // The dry run says what each kind would lose and how much room it takes. Held entries are named by the rules but kept.
+  const found = (kind: string) => {
+    const group = preview.data?.groups.find((entry) => entry.kind === kind);
+    const count = group ? Number(group.count) : 0;
+    // A worktree too large to measure in full makes its size a floor, shown as "at least"; with no size known, the count stands alone.
+    const floor = group !== undefined && kind === "worktree" && preview.data?.partial === true;
+    const bytes = group ? Number(group.bytes) : 0;
+    return { count, size: group === undefined || (floor && bytes === 0) ? null : floor ? `at least ${sizeWords(bytes)}` : sizeWords(bytes) };
+  };
+  const counts = { artifact: found("artifact"), log: found("log"), worktree: found("worktree") };
   return <>
-    <SettingGroup title="Artifacts and logs">
+    <SettingGroup title="Retention">
       {RETENTION.map((rule) => <SettingRow key={rule.key} title={rule.title} description={rule.description}>
-        {saved(rule.key) !== null || draft[rule.key] !== undefined ? <>
-          <input aria-label={`${rule.title} in days`} type="number" min="1" max="3650" step="1" disabled={busy}
-            value={draft[rule.key] ?? String(saved(rule.key))}
+        <span className="unit-field">
+          <input aria-label={`${rule.title} in days`} type="number" min="1" max="3650" step="1" disabled={busy} placeholder="Off"
+            value={draft[rule.key] ?? (saved(rule.key) === null ? "" : String(saved(rule.key)))}
             onChange={(event) => {
               const text = event.target.value;
               setDraft((previous) => {
@@ -302,16 +317,25 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
             }}
             onBlur={() => commitDays(rule.key)}
             onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
-          <span aria-hidden>days</span>
-        </> : <span>Off</span>}
-        <input type="checkbox" role="switch" aria-label={rule.title} disabled={busy} checked={saved(rule.key) !== null}
-          onChange={(event) => { void save(rule.key, event.target.checked ? 8 : null); }} />
+          <span className="t3" aria-hidden>days</span>
+        </span>
       </SettingRow>)}
     </SettingGroup>
-    <SettingGroup title="Cleanup">
-      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : shown ? undefined : "Cleanup hasn't run yet."}>
-        <Button small disabled={busy || !hasRules || hasDraft} onClick={() => void run()}>{deleting ? "Deleting…" : "Delete now"}</Button>
+    <SettingGroup>
+      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : previewLine(counts)}>
+        <Button small tone="danger" disabled={busy || !hasRules || hasDraft} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete now…"}</Button>
       </SettingRow>
+      {confirming ? (
+        <ConfirmDialog title="Delete old files now?" confirmLabel="Delete now" tone="danger" cancelFocus onClose={() => setConfirming(false)}
+          onConfirm={async () => { await run(); preview.reload(); }}>
+          <p>They are removed from disk. This can’t be undone.</p>
+          <DialogCard facts={[
+            ...(saved("browser_artifacts_after_days") !== null ? [{ label: `Browser artifacts older than ${saved("browser_artifacts_after_days")} days`, value: factLine(counts.artifact) }] : []),
+            ...(saved("logs_after_days") !== null ? [{ label: `Rotated logs older than ${saved("logs_after_days")} days`, value: factLine(counts.log) }] : []),
+            ...(counts.worktree.count > 0 ? [{ label: "Settled worktrees", value: factLine(counts.worktree) }] : []),
+          ]} />
+        </ConfirmDialog>
+      ) : null}
       {shown ? <Collapsible summary="Last run">
         <p className="setting-line-desc">{reportLine(shown)}</p>
         {shown.entries.length > 0 ? <ul className="cleanup-report" aria-label="Cleanup report">
@@ -327,14 +351,43 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
   </>;
 }
 
+type Found = { count: number; size: string | null };
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+const factLine = ({ count, size }: Found) => (size ? `${count} · ${size}` : String(count));
+/** "Would delete 3 browser artifacts (48 MB) and 1 log (2 MB)": only what the dry run finds. */
+const previewLine = (counts: { artifact: Found; log: Found; worktree: Found }) => {
+  const part = (found: Found, one: string, many: string) => (found.count > 0 ? `${plural(found.count, one, many)}${found.size ? ` (${found.size})` : ""}` : null);
+  const parts = [part(counts.artifact, "browser artifact", "browser artifacts"), part(counts.log, "log", "logs"), part(counts.worktree, "settled worktree", "settled worktrees")]
+    .filter((entry): entry is string => entry !== null);
+  return parts.length === 0 ? undefined : `Would delete ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0]}`;
+};
+
 const reportLine = (report: CleanupReport) => {
   const removed = report.entries.filter((entry) => entry.removed).length;
   return `${fullTime(report.ran_at)}: ${removed} removed, ${report.entries.length - removed} kept`;
 };
 
+/** Sizes as the design writes them: whole megabytes, gigabytes with one decimal. */
+const size = (bytes: number) => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+const DAY_MS = 86_400_000;
+
+/** Today by the clock, yesterday named, anything older by date. */
+function problemTime(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const clock = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()) / DAY_MS);
+  return days <= 0 ? clock : days === 1 ? `Yesterday ${clock}` : `${at.toLocaleDateString([], { day: "numeric", month: "short" })} ${clock}`;
+}
+
 function DiagnosticsGroup() {
   const info = useAsync("diagnostics", (signal) => request<Diagnostics>("GET", "/api/diagnostics", undefined, signal));
+  const offline = useConnection((state) => state.offline);
+  const pushToast = useUi((state) => state.pushToast);
   const [note, setNote] = useState<string | null>(null);
+  const [showProblems, setShowProblems] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [stopping, setStopping] = useState<ServiceProcess | null>(null);
   const run = async (path: string, done: string) => {
     setNote(null);
     try {
@@ -345,57 +398,65 @@ function DiagnosticsGroup() {
       setNote(toFailure(failure).message);
     }
   };
-  if (!info.data) return null;
+  if (info.status === "loading") return <SettingGroup title="Diagnostics"><Loading label="Loading diagnostics" rows={4} /></SettingGroup>;
+  const data = info.data;
+  if (!data) return <SettingGroup title="Diagnostics">
+    <SettingsBanner tone="err">Can’t reach the Orbyn service, so there is nothing to show.</SettingsBanner>
+  </SettingGroup>;
+  const stoppable = data.processes.filter((process) => process.pid !== data.pid);
+  const recent = data.events.filter((event) => Date.now() - Date.parse(event.at) <= DAY_MS);
+  const memory = data.history.at(-1)?.memory_bytes;
+  const facts: [string, string][] = [
+    ["Service", `Running · ${data.version}`],
+    ["Active", `${data.active_runs} ${data.active_runs === 1 ? "thread" : "threads"} running`],
+    ["Database", size(data.database.bytes)],
+    ...(memory === undefined ? [] : [["Memory", size(memory)] as [string, string]]),
+  ];
+  const copy = () => {
+    const lines = [...facts.map(([label, value]) => `${label}: ${value}`),
+      ...recent.map((event) => `${problemTime(event.at)} ${event.message}`)];
+    void navigator.clipboard?.writeText(lines.join("\n")).then(() => pushToast("Report copied"), () => undefined);
+  };
   return (
     <SettingGroup title="Diagnostics">
-      <SettingRow title="Service" description={`Version ${info.data.version}, process ${info.data.pid}`} />
-      <SettingRow
-        title="Active"
-        description={`${info.data.active_runs} runs, ${info.data.terminals} terminals`}
-      />
-      <SettingRow
-        title={settingsLabel("maintenance-database")}
-        description={`${mib(info.data.database.bytes)}, ${mib(info.data.database.reclaimable_bytes)} reclaimable`}
-      >
-        <Button small onClick={() => void run("/api/diagnostics/repair", "Database repaired")}>
-          Repair
-        </Button>
-      </SettingRow>
-      {info.data.history.length > 0 ? <SettingRow title="Memory" description={memoryLine(info.data.history)} /> : null}
-      <ul className="setting-list" aria-label="Processes">
-        {info.data.processes.map((process) => (
+      {offline ? <SettingsBanner>You’re offline. These figures are from this computer and are still current.</SettingsBanner> : null}
+      <div className="set-facts" role="group" aria-label="Service">
+        <div className="set-facts-head"><b>Orbyn service</b><Button small tone="quiet" icon={<Copy size={14} aria-hidden />} onClick={copy}>Copy report</Button></div>
+        {facts.map(([label, value]) => <div key={label}><span>{label}</span><b>{value}</b></div>)}
+        <div className="set-facts-foot"><Button small onClick={() => setRepairing(true)}>Repair database</Button></div>
+      </div>
+      {repairing ? <ConfirmDialog title="Repair the database?" confirmLabel="Repair database" cancelFocus onClose={() => setRepairing(false)}
+        onConfirm={async () => { await run("/api/diagnostics/repair", "Database repaired"); }}>
+        <p>Orbyn will check and repair its local database. Threads aren’t deleted.</p>
+      </ConfirmDialog> : null}
+      {recent.length === 0 ? <SettingsEmpty title="No problems">Nothing went wrong in the last 24 hours.</SettingsEmpty> : <>
+        <SettingRow title="Recent problems" description={`${recent.length} in the last 24 hours`}>
+          <Button small aria-expanded={showProblems} onClick={() => setShowProblems(!showProblems)}>{showProblems ? "Hide" : "Show"}</Button>
+        </SettingRow>
+        {showProblems ? <div className="set-tbl" role="table" aria-label="Recent problems">
+          {recent.map((event, at) => <div key={at} role="row" className="set-tr" style={{ gridTemplateColumns: "90px minmax(0, 1fr)" }}>
+            <span role="cell" className="set-time">{problemTime(event.at)}</span><span role="cell">{event.message}</span>
+          </div>)}
+        </div> : null}
+      </>}
+      <p className="set-grp">Processes</p>
+      {stoppable.length === 0 ? <p className="setting-line-desc">No running processes.</p> : <ul className="setting-list" aria-label="Processes">
+        {stoppable.map((process) => (
           <li key={process.pid}>
-            <SettingRow
-              title={process.name}
-              description={`Process ${process.pid}, ${mib(process.memory_bytes)}, running ${duration(process.running_seconds)}`}
-            >
-              {process.pid === info.data?.pid ? null : (
-                <Button
-                  small
-                  onClick={() => void run(`/api/diagnostics/processes/${process.pid}/stop`, `Stopped ${process.name}`)}
-                >
-                  Stop
-                </Button>
-              )}
+            <SettingRow title={process.name} description={`Running ${duration(process.running_seconds)}`}>
+              <button type="button" className="set-red-link" aria-label={`Stop ${process.name}`} onClick={() => setStopping(process)}>Stop</button>
             </SettingRow>
           </li>
         ))}
-      </ul>
-      {info.data.events.length > 0 ? (
-        <ul className="setting-list" aria-label="Recent problems">
-          {info.data.events.map((event, at) => (
-            <li key={at}>
-              <SettingRow title={event.message} description={`${fullTime(event.at)}, ${event.level.toLowerCase()} from ${event.target}`} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <SettingRow title="Recent problems" description="None since the service started." />
-      )}
+      </ul>}
+      {stopping ? <ConfirmDialog title={`Stop ${stopping.name}?`} confirmLabel="Stop" tone="danger" cancelFocus onClose={() => setStopping(null)}
+        onConfirm={async () => { await run(`/api/diagnostics/processes/${stopping.pid}/stop`, `Stopped ${stopping.name}`); }}>
+        <p>It stops now. Threads that use it end their current turn.</p>
+      </ConfirmDialog> : null}
       {note ? <SettingRow title="Last action" description={note} /> : null}
-      {info.data.database.reclaimable_bytes >= REPAIR_NOTICE_BYTES ? (
+      {data.database.reclaimable_bytes >= REPAIR_NOTICE_BYTES ? (
         <p className="banner banner-warn" role="status">
-          The database can give back {mib(info.data.database.reclaimable_bytes)}. Repair it when no run is active.
+          The database can give back {mib(data.database.reclaimable_bytes)}. Repair it when no run is active.
         </p>
       ) : null}
     </SettingGroup>
@@ -410,20 +471,30 @@ export function MaintenanceSection() {
   const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const offline = useConnection((state) => state.offline);
+  const failure = error ?? updates?.error ?? null;
+  const app = updates?.app;
+  // The shell reports bytes while it downloads; the update is ready once all of them are in.
+  const hasProgress = !!app?.latest && app.downloaded !== undefined && app.total !== undefined && Number(app.total) > 0;
+  const percent = hasProgress ? Math.min(100, Math.floor((Number(app?.downloaded) / Number(app?.total)) * 100)) : 0;
+  const downloading = hasProgress && percent < 100;
+  const ready = hasProgress && !downloading && !!app?.can_apply;
+  const restart = async () => {
+    try { await api.applyAppUpdate(); } catch (problem) { setError(toFailure(problem).message); }
+  };
 
   const check = async () => {
     setChecking(true);
     setError(null);
     try {
       putUpdates(await api.checkUpdates());
-    } catch (failure) {
-      setError(`Couldn't check for updates. ${toFailure(failure).message}`);
+    } catch (problem) {
+      setError(toFailure(problem).message);
     } finally {
       setChecking(false);
     }
   };
 
-  const lastChecked = updates?.checked_at ? fullTime(updates.checked_at) : "Not checked yet";
   return (
     <>
       <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -435,19 +506,29 @@ export function MaintenanceSection() {
       {library?.native_skills === false ? <FallbackNotice /> : null}
       {library ? <Library library={library} /> : null}
       <LibraryChoice />
-      <SettingGroup title="Updates">
+      <SettingGroup title="App updates">
         {unsupported || updates?.app.unconfigured ? (
           <SettingRow title="App updates" description="Updates aren't set up for this build." />
         ) : null}
-        <SettingRow title={settingsLabel("maintenance-check-for-updates")} description={`Last checked: ${lastChecked}`}>
-          <Button small busy={checking} onClick={() => void check()}>
-            Check for updates
-          </Button>
+        {offline ? <SettingsBanner>You’re offline. Updates are checked when you’re back.</SettingsBanner> : null}
+        {failure ? <SettingsBanner tone="err" actions={<Button small icon={<RefreshCw size={14} aria-hidden />} disabled={checking} onClick={() => void check()}>Retry</Button>}>
+          Couldn’t check for updates. {failure}
+        </SettingsBanner> : null}
+        <SettingRow title="Version" settingId="maintenance-check-for-updates"
+          description={ready && updates?.app.latest ? `${updates.app.current} · ${updates.app.latest} is downloaded`
+            : `${updates?.app.current ?? "Unknown"}${checking ? "" : ` · ${updates?.checked_at ? `checked ${new Date(updates.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}` : "not checked yet"}`}`}>
+          {checking ? <span className="set-checking" role="status"><i className="spin" aria-hidden />Checking…</span>
+            : downloading ? <span className="set-checking" role="status">Downloading {app?.latest}…
+              <span className="set-prog" role="progressbar" aria-label="Download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ width: `${percent}%` }} /></span>
+              <span className="set-pct">{percent}%</span></span>
+            : ready ? <Button tone="primary" small onClick={() => void restart()}>Restart to update</Button>
+            : <Button small disabled={offline} onClick={() => void check()}>Check for updates</Button>}
         </SettingRow>
-        <SettingRow title={settingsLabel("maintenance-background-checks")} description="Checks only look. Nothing is applied without a click.">
+        <SettingRow title={settingsLabel("maintenance-background-checks")} description="Look for updates while the app runs">
           <input
             type="checkbox"
-            aria-label="Check in the background"
+            role="switch"
+            aria-label="Background checks"
             checked={settings.data?.background_update_checks !== false}
             disabled={!settings.data}
             onChange={(event) => {
@@ -460,12 +541,6 @@ export function MaintenanceSection() {
           />
         </SettingRow>
       </SettingGroup>
-      {updates?.error ? <p className="banner banner-warn">{updates.error}</p> : null}
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
     </>
   );
 }

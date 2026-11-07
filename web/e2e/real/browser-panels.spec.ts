@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, type Service } from "./service";
+import { openPanelTab, startProject, type Service } from "./service";
 
 let clicks = 0;
 let site: Server;
@@ -52,7 +52,7 @@ test("moves the same service tab between panels and watches only that tab in the
   const tab = { id: tabId };
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto(`${service.page}#/threads/${threadId}`);
-  await page.getByRole("complementary", { name: "Thread context" }).getByRole("button", { name: "Browser B", exact: true }).click();
+  await openPanelTab(page, "Browser");
   const primary = page.getByRole("region", { name: "Browser panel", exact: true });
   await primary.getByRole("tab", { name: "Page /one", exact: true }).click();
   await primary.getByRole("button", { name: "More page actions" }).click();

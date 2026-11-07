@@ -1,4 +1,4 @@
-import { File, FolderPlus, MessageSquare, PanelRight, RotateCcw, Search, Settings, SquarePen, SunMoon, TextSearch } from "lucide-react";
+import { File, FolderPlus, MessageSquare, RotateCcw, Search, Settings, SquarePen, SunMoon, TextSearch } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api } from "../../api/client";
 import { compactAge } from "../../lib/format";
@@ -23,7 +23,6 @@ interface Entry {
     | "new-in"
     | "toggle-theme"
     | "restart-session"
-    | "open-surface"
     | { file: string; line: number | null }
     | { message: string; thread: string };
 }
@@ -67,7 +66,8 @@ function useMessageSearch(query: string, enabled: boolean) {
 export function CommandPalette({ start, onClose }: { start: PaletteStart; onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);
   const allProjects = useWorkspace((state) => state.projects.data);
-  const [adding, setAdding] = useState(start === "add-project" || start === "add-project-url");
+  const [adding, setAdding] = useState(start === "add-project" || start === "add-project-url" || start === "add-project-new");
+  const [subdialog, setSubdialog] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
   const [newIn, setNewIn] = useState(false);
   const projects = useVisibleProjects();
@@ -105,7 +105,6 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       { key: "add", group: "Actions", label: "Add project", icon: <FolderPlus size={16} aria-hidden />, route: "add-project" },
       ...(parseRoute(window.location.hash).name === "thread"
         ? [
-            { key: "open-surface", group: "Actions", label: "Open a surface…", icon: <PanelRight size={16} aria-hidden />, route: "open-surface" as const },
             { key: "restart", group: "Actions", label: "Restart agent session", icon: <RotateCcw size={16} aria-hidden />, route: "restart-session" as const },
           ]
         : []),
@@ -171,11 +170,6 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       );
       return;
     }
-    if (entry.route === "open-surface") {
-      useUi.getState().showLauncher();
-      onClose();
-      return;
-    }
     if (entry.route === "toggle-theme") {
       const { theme, setTheme } = useUi.getState();
       setTheme(theme === "dark" ? "light" : "dark");
@@ -221,6 +215,7 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
     <dialog
       ref={ref}
       className="palette"
+      data-subdialog={subdialog || undefined}
       aria-label="Command palette"
       onCancel={(event) => {
         event.preventDefault();
@@ -232,9 +227,9 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
     >
       {adding ? (
         <AddProjectPalette
-          initialView={start === "add-project-url" ? "clone" : "sources"}
-          onBack={() => (start === "add-project" || start === "add-project-url" ? onClose() : setAdding(false))}
+          initialView={start === "add-project-url" ? "clone" : start === "add-project-new" ? "new" : "folders"}
           onClose={onClose}
+          onSubdialog={setSubdialog}
         />
       ) : (
         <>

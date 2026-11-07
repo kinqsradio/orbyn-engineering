@@ -68,7 +68,7 @@ describe("project preference inheritance", () => {
     await screen.findByRole("switch");
     expect(screen.getByRole("button", { name: "Reset Auto pull to default" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Reset Auto pull to default" })).toHaveAttribute("title", "Reset to inherited value");
-    const source = screen.getByRole("button", { name: /Overridden for this project.*Show where this value comes from/ });
+    const source = screen.getByRole("button", { name: "Set for this project" });
     source.focus(); await user.keyboard("{Enter}");
     const popup = await screen.findByRole("dialog", { name: "Auto pull" });
     expect(within(popup).getByText("Project").closest("li")).toHaveTextContent("On");
@@ -95,7 +95,7 @@ describe("project preference inheritance", () => {
     render(<PreferenceGroups groups={groups} projectId="a" />);
     expect(await screen.findByText("Couldn't load settings")).toBeVisible();
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Show where this value comes from/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Set for this project|From this device|Default/ })).toBeNull();
     failRead = false;
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("switch")).not.toBeChecked();

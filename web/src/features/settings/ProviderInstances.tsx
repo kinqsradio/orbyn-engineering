@@ -1,48 +1,34 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { request } from "../../api/client";
+import { useEffect, useRef, useState } from "react";
+import { api, request } from "../../api/client";
 import type { EngineStatus, JsonValue } from "../../api/types";
 import type { ProviderInstance } from "../../generated/ProviderInstance";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { useWorkspace } from "../../state/workspace";
-import { Button, Field } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
-import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { useSettingsScope } from "./SettingsScopeContext";
-import { accentColor, newInstanceId, patchInstance, readInstance, validCompactWindow, validInstanceId } from "./providerInstanceData";
-import { ProviderInstanceColor } from "./ProviderInstanceColor";
-import "./ProviderInstances.css";
 import { useUi } from "../../state/ui";
+import { useWorkspace } from "../../state/workspace";
+import { Button } from "../../ui/controls";
+import { Dialog } from "../../ui/Dialog";
+import { useSettingsScope } from "./SettingsScopeContext";
+import { formatArgs, INSTANCE_COLORS, newInstanceId, parseArgs, patchInstance, readInstance, validCompactWindow, validInstanceId, accentColor } from "./providerInstanceData";
+import "./ProviderInstances.css";
 
-function DraftField({ label, value, disabled, save, normalize = (next) => next }: { label: string; value: string; disabled: boolean; save(value: string): Promise<boolean>; normalize?(value: string): string }) {
-  const [draft, setDraft] = useState(value), [seen, setSeen] = useState(value);
-  if (seen !== value) { setSeen(value); if (draft === seen) setDraft(value); }
-  const commit = () => { if (!disabled && draft !== value) { const submitted = draft; void save(submitted).then((saved) => { if (saved) setDraft((current) => current === submitted ? normalize(submitted) : current); }); } };
-  return <Field label={label}>{(props) => <input {...props} value={draft} disabled={disabled} spellCheck={false}
-    onChange={(event) => setDraft(event.target.value)} onBlur={commit}
-    onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && !event.repeat) { event.preventDefault(); commit(); } }} />}</Field>;
-}
-function CompactWindow({ value, disabled, save }: { value: string; disabled: boolean; save(value: string): Promise<boolean> }) {
-  const [draft, setDraft] = useState(value), [seen, setSeen] = useState(value);
-  if (seen !== value) { setSeen(value); if (draft === seen) setDraft(value); }
-  const valid = validCompactWindow(draft.trim());
-  const commit = () => { const next = draft.trim(); if (!disabled && valid && next !== value) void save(next).then((saved) => { if (saved) setDraft((current) => current.trim() === next ? next : current); }); };
-  return <SettingRow title="Auto-compact after" description="Compact after 100,000 to 1,000,000 tokens. Leave empty to use Claude's default.">
-    <Field label="Auto-compact after" error={valid ? undefined : "Use 100000 to 1000000."}>{(props) => <input {...props} inputMode="numeric" placeholder="e.g. 300000" value={draft} disabled={disabled} spellCheck={false}
-      onChange={(event) => setDraft(event.target.value)} onBlur={commit}
-      onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && !event.repeat) { event.preventDefault(); commit(); } }} />}</Field></SettingRow>;
-}
-export function ProviderArguments({ values, disabled, save }: { values: string[]; disabled: boolean; save(values: string[]): Promise<boolean> }) {
-  return <SettingRow title="Arguments" description="One literal argument per row, in launch order."><div className="provider-arguments"><Button small disabled={disabled} onClick={() => void save([...values, ""])}>Add argument</Button>
-    {values.map((value, index) => <div className="provider-argument" key={`${index}:${value}`}><DraftField label={`Argument ${index + 1}`} value={value} disabled={disabled} save={(next) => save(values.map((old, at) => at === index ? next : old))} />
-      <Button small disabled={disabled} aria-label={`Remove argument ${index + 1}`} onClick={() => void save(values.filter((_, at) => at !== index))}>×</Button></div>)}
-  </div></SettingRow>;
+export interface InstanceStore {
+  raw: JsonValue[];
+  instances: ProviderInstance[];
+  /** Writes are blocked while loading, saving, conflicted or when the saved list is ambiguous. */
+  disabled: boolean;
+  /** A failure from a change with no dialog of its own, such as the In use switch. */
+  error: string | null;
+  conflict: boolean;
+  /** Saves the whole list; resolves to null, or the reason it was refused. */
+  save(next: JsonValue[]): Promise<string | null>;
+  reload(): void;
 }
 
-export function ProviderInstances({ engines, renderDriver, renderBase, renderInstance, renderStatus }: { engines: EngineStatus[]; renderDriver(engine: EngineStatus): ReactNode; renderBase?(engine: EngineStatus): ReactNode; renderInstance?(engine: EngineStatus): ReactNode; renderStatus?(engine: EngineStatus): ReactNode }) {
+/** The saved provider instances, written with the environment's compare-and-set. */
+export function useProviderInstances(): InstanceStore {
   const scope = useSettingsScope();
   const preferences = useAsync("provider-instances", (signal) => request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: {}, keys: ["provider_instances"] }, signal));
-  const [selected, setSelected] = useState<string | null>(null), [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [conflict, setConflict] = useState(false);
   const pending = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -50,78 +36,178 @@ export function ProviderInstances({ engines, renderDriver, renderBase, renderIns
   const row = preferences.data?.rows.find((entry) => entry.key === "provider_instances");
   const raw = Array.isArray(row?.value) ? row.value : [];
   const instances = raw.flatMap((value) => { const parsed = readInstance(value); return parsed ? [parsed] : []; });
-  const bases = engines.filter((engine) => !engine.instance_of);
-  const active = instances.find((instance) => instance.id === selected);
-  const driver = bases.find((engine) => engine.id === active?.driver);
-  const base = bases.find((engine) => engine.id === selected) ?? (selected === null ? bases[0] : undefined);
   const unavailable = scope !== null && (scope.loading || scope.error !== null || !scope.catalog || scope.catalog.selection.kind === "unavailable");
   const ambiguous = new Set(instances.map((instance) => instance.id)).size !== instances.length;
   const disabled = ambiguous || busy || conflict || unavailable || preferences.status !== "ready" || preferences.refreshing || !row || !Array.isArray(row.value);
-  const viewKey = `${JSON.stringify(scope?.query ?? {})}:${selected ?? ""}`;
-  const currentView = useRef({ key: viewKey });
-  if (currentView.current.key !== viewKey) currentView.current = { key: viewKey };
-  const save = async (next: JsonValue[]): Promise<boolean> => {
-    if (pending.current || disabled || !row || !preferences.data) return false;
-    pending.current = true; setBusy(true); setError(null); const view = currentView.current;
+  const save = async (next: JsonValue[]): Promise<string | null> => {
+    if (pending.current || disabled || !row || !preferences.data) return "Provider settings aren't ready yet.";
+    pending.current = true; setBusy(true); setError(null);
     try {
       const changed = await request<ScopedPreferencesResult>("PUT", "/api/settings/preferences", { scope: {}, membership_version: preferences.data.catalog.version,
         if_match: { provider_instances: row.revision }, edits: { provider_instances: { op: "set", value: next } } });
       useUi.getState().bumpPreferencesRevision();
-      if (mounted.current) preferences.setData(changed); void refresh(); return true;
+      if (mounted.current) preferences.setData(changed);
+      void refresh();
+      return null;
     } catch (failure) {
-      if (mounted.current) { const reason = toFailure(failure); if (reason.status === 409) setConflict(true); if (currentView.current === view) setError(reason.message); }
-      return false;
+      const reason = toFailure(failure);
+      if (mounted.current && reason.status === 409) setConflict(true);
+      return reason.message;
     } finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
-  const update = (fields: Record<string, JsonValue | undefined>) => active ? save(patchInstance(raw, active.id, fields)) : Promise.resolve(false);
-  const remove = () => {
-    if (!active || disabled) return;
-    const view = currentView.current, id = active.id;
-    void save(raw.filter((value) => readInstance(value)?.id !== id)).then((saved) => {
-      if (saved && mounted.current && currentView.current === view) setSelected(null);
-    });
+  return {
+    raw, instances, disabled, conflict,
+    error: error ?? preferences.error?.message ?? null,
+    save,
+    reload() { setConflict(false); setError(null); preferences.reload(); },
   };
-  return <><div className="form-actions"><Button small disabled={disabled} onClick={() => setAdding(true)}>Add provider</Button></div>
-    {error || preferences.error || conflict ? <p className="field-error" role="alert">{error ?? preferences.error?.message ?? "Settings changed. Reload before saving."} <Button small disabled={busy || preferences.refreshing} onClick={() => { setConflict(false); setError(null); preferences.reload(); }}>Reload</Button></p> : null}
-    <div className="provider-instance-layout"><nav aria-label="Providers" className="provider-instance-list">
-      {bases.map((engine) => <Button small key={engine.id} tone={base?.id === engine.id ? "primary" : "quiet"} onClick={() => setSelected(engine.id)}>{engine.name}</Button>)}
-      {instances.map((instance) => <div className="provider-instance-list-row" key={instance.id}><Button small tone={active?.id === instance.id ? "primary" : "quiet"} aria-label={`Select ${instance.name ?? instance.id}`} onClick={() => setSelected(instance.id)}>{instance.name ?? instance.id}</Button>
-        <input type="checkbox" role="switch" aria-label={`Enable ${instance.name ?? instance.id}`} checked={instance.enabled} disabled={disabled} onChange={(event) => void save(patchInstance(raw, instance.id, { enabled: event.target.checked }))} /></div>)}
-    </nav><div className="provider-instance-editor">{active ? <section key={active.id}>
-      <SettingGroup title={active.name ?? active.id}><SettingRow title="Status" description={engines.find((engine) => engine.id === active.id)?.problem ?? (active.enabled ? undefined : "Disabled")}>
-        {engines.find((engine) => engine.id === active.id) && renderStatus ? renderStatus(engines.find((engine) => engine.id === active.id)!) : null}
-        <Button small disabled={disabled} aria-label={`Delete instance ${active.id}`} onClick={remove}>Delete</Button></SettingRow>
-        <SettingRow title="Display name"><ProviderInstanceColor value={active.accent ?? ""} name={active.name ?? active.id} disabled={disabled} save={(value) => void update({ accent: accentColor(value) ?? undefined })} />
-          <DraftField label="Display name" normalize={(value) => value.trim()} value={active.name ?? ""} disabled={disabled} save={(name) => update({ name: name.trim() || undefined })} /></SettingRow></SettingGroup>
-      {driver || active.driver === "_local_acp" ? <SettingGroup title="Config"><DraftField label={active.driver === "_local_acp" || driver?.tier === "acp" ? "Executable" : "Binary path"} value={active.program ?? ""} normalize={(value) => value.trim()} disabled={disabled} save={(program) => update({ program: program.trim() || undefined })} />
-        {driver?.id === "claude" ? <CompactWindow value={active.auto_compact_window ?? ""} disabled={disabled} save={(window) => update({ auto_compact_window: window || undefined })} /> : null}
-        {driver?.tier === "native" ? null : <ProviderArguments values={active.args ?? []} disabled={disabled} save={(args) => update({ args })} />}</SettingGroup> : null}
-      {engines.find((engine) => engine.id === active.id) && renderInstance ? renderInstance(engines.find((engine) => engine.id === active.id)!) : null}
-    </section> : base ? <><ul className="setting-list">{renderDriver(base)}</ul>{renderBase?.(base)}</> : null}</div></div>
-    {adding ? <AddProvider engines={bases} existing={new Set([...engines.map((engine) => engine.id), ...instances.map((instance) => instance.id)])} disabled={disabled} save={async (instance) => {
-      const view = currentView.current; const added = await save([...raw, instance as unknown as JsonValue]); if (added && mounted.current && currentView.current === view) { setAdding(false); setSelected(instance.id); } return added;
-    }} onClose={() => setAdding(false)} /> : null}
-  </>;
 }
-function AddProvider({ engines, existing, disabled, save, onClose }: { engines: EngineStatus[]; existing: Set<string>; disabled: boolean;
-  save(instance: ProviderInstance): Promise<boolean>; onClose(): void }) {
-  const choices = engines.filter((engine) => engine.tier === "native" || engine.tier === "acp");
-  const [step, setStep] = useState(0), [driver, setDriver] = useState(choices[0]?.id ?? "");
-  const [label, setLabel] = useState(""), [idOverride, setIdOverride] = useState<string | null>(null), [accent, setAccent] = useState("");
-  const [program, setProgram] = useState(""), [args, setArgs] = useState<string[]>([]);
-  const chosen = engines.find((engine) => engine.id === driver);
-  const id = idOverride ?? newInstanceId(driver === "_local_acp" ? "acp" : driver, label, existing), invalid = !validInstanceId(id) || existing.has(id);
-  const local = driver === "_local_acp", lastStep = local ? 1 : 2;
-  const config = <><Field label={local || chosen?.tier === "acp" ? "Executable" : "Binary path"}>{(props) => <input {...props} value={program} disabled={disabled} onChange={(event) => setProgram(event.target.value)} spellCheck={false} />}</Field>
-    {chosen?.tier === "native" ? null : <ProviderArguments values={args} disabled={disabled} save={async (next) => { setArgs(next); return true; }} />}</>;
-  return <Dialog title="Add provider" onClose={onClose} busy={disabled} footer={<><Button disabled={disabled} onClick={() => step === 0 ? onClose() : setStep(step - 1)}>{step === 0 ? "Cancel" : "Back"}</Button>
-    {step < lastStep ? <Button disabled={disabled || !driver || (step === 1 && invalid) || (local && !program.trim())} onClick={() => setStep(step + 1)}>Next</Button>
-      : <Button disabled={disabled || invalid || (local && !program.trim())} onClick={() => void save({ id, driver, enabled: true, ...(label.trim() ? { name: label.trim() } : {}), ...(accentColor(accent) ? { accent: accentColor(accent)! } : {}), ...(program.trim() ? { program: program.trim() } : {}), ...(chosen?.tier !== "native" ? { args } : {}) })}>Add instance</Button>}</>}>
-    <p>{["Provider", "Identity", "Config"][step]}</p>
-    {step === 0 ? <><div className="provider-instance-choices">{choices.map((engine) => <Button key={engine.id} aria-pressed={driver === engine.id} onClick={() => { setDriver(engine.id); setProgram(""); setArgs([]); }}>{engine.name}</Button>)}
-      <Button aria-pressed={local} onClick={() => { setDriver("_local_acp"); setProgram(""); setArgs([]); }}>Local ACP command</Button></div>{local ? config : null}</>
-      : step === 1 ? <><Field label="Label" hint="Shown in the provider list.">{(props) => <input {...props} value={label} disabled={disabled} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. Work" />}</Field>
-        <Field label="Instance ID" hint="Letters, digits, '-', or '_'.">{(props) => <input {...props} value={id} disabled={disabled} onChange={(event) => setIdOverride(event.target.value)} aria-invalid={invalid} />}</Field>
-        <SettingRow title="Accent color" description="Optional marker shown in the picker."><ProviderInstanceColor value={accent} name={label || (local ? "Local ACP command" : driver)} disabled={disabled} save={setAccent} /></SettingRow></> : config}
-  </Dialog>;
+
+/** A path that names a file itself. Anything else is a bare name the engines find on PATH. */
+const absolutePath = (path: string) => path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
+
+/**
+ * What running the typed program with `--version` shows: its version, or why it won't run.
+ * It runs only when asked (on leaving the field), never while typing, and it is advice:
+ * only a missing absolute path blocks Save.
+ */
+function useProgramCheck(program: string): { found: string | null; problem: string | null; blocks: boolean; run(): void } {
+  const [result, setResult] = useState<{ program: string; found: string | null; problem: string | null; blocks: boolean } | null>(null);
+  const path = program.trim();
+  const latest = useRef(path);
+  latest.current = path;
+  const run = () => {
+    if (path === "") return;
+    api.probeBinary(path).then(
+      (probe) => {
+        if (latest.current !== path) return;
+        setResult(probe.exists
+          ? { program: path, found: probe.version ? `Found. Version ${probe.version}.` : probe.problem ? null : "Found.", problem: probe.problem, blocks: false }
+          : { program: path, found: null, problem: probe.problem ?? "No file at this path.", blocks: absolutePath(path) });
+      },
+      // A check that could not run says nothing about the program; saving stays possible.
+      () => { if (latest.current === path) setResult(null); },
+    );
+  };
+  const shown = result && result.program === path ? result : { found: null, problem: null, blocks: false };
+  return { ...shown, run };
+}
+
+const requiredProgram = (driver: string) => driver === "_local_acp";
+
+/** The dialog for one instance: its name, colour, binary, auto-compact window and arguments. */
+export function InstanceEditor({ store, engines, instance, create, onClose, onSaved }: {
+  store: InstanceStore;
+  /** Provider drivers, to know which settings the instance has. */
+  engines: EngineStatus[];
+  instance: ProviderInstance;
+  /** Adds a new instance instead of changing a saved one. */
+  create?: { program: string; title: string };
+  onClose(): void;
+  onSaved?(instance: ProviderInstance): void;
+}) {
+  const driver = engines.find((engine) => engine.id === instance.driver);
+  const local = instance.driver === "_local_acp";
+  const first = { name: instance.name ?? "", accent: instance.accent ?? "", program: instance.program ?? create?.program ?? "", compact: instance.auto_compact_window ?? "", args: formatArgs(instance.args ?? []) };
+  const [draft, setDraft] = useState(first);
+  const [reason, setReason] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const set = (patch: Partial<typeof first>) => { setDraft({ ...draft, ...patch }); setReason(null); };
+  const changed = create ? true : (Object.keys(first) as (keyof typeof first)[]).some((key) => first[key] !== draft[key]);
+  const compactOk = validCompactWindow(draft.compact.trim());
+  const check = useProgramCheck(draft.program);
+  const ids = new Set([...engines.map((engine) => engine.id), ...store.instances.map((entry) => entry.id)]);
+  const newId = create ? newInstanceId(local ? "acp" : instance.driver, draft.name, ids) : instance.id;
+  const ready = changed && compactOk && !check.blocks && !store.disabled && !saving && validInstanceId(newId) && (!requiredProgram(instance.driver) || draft.program.trim() !== "") && (!create || draft.name.trim() !== "");
+  const fields = (): Record<string, JsonValue | undefined> => ({
+    name: draft.name.trim() || undefined, accent: accentColor(draft.accent) ?? undefined, program: draft.program.trim() || undefined,
+    auto_compact_window: draft.compact.trim() || undefined, ...(driver?.tier === "native" ? {} : { args: parseArgs(draft.args) }),
+  });
+  const submit = async () => {
+    setSaving(true);
+    const next: ProviderInstance = { ...instance, id: newId, enabled: true };
+    const failure = create
+      ? await store.save([...store.raw, { id: newId, driver: instance.driver, enabled: true, ...Object.fromEntries(Object.entries(fields()).filter(([, value]) => value !== undefined)) } as JsonValue])
+      : await store.save(patchInstance(store.raw, instance.id, fields()));
+    setSaving(false);
+    if (failure) { setReason(failure); return; }
+    onSaved?.(next);
+    onClose();
+  };
+  const pathLabel = local || driver?.tier === "acp" ? "Executable" : "Binary path";
+  const colors = draft.accent && !(INSTANCE_COLORS as readonly string[]).includes(draft.accent) ? [...INSTANCE_COLORS, draft.accent] : INSTANCE_COLORS;
+  return (
+    <Dialog title={create?.title ?? `Edit ${driver?.name ?? instance.driver}${instance.name ? ` · ${instance.name}` : ""}`} onClose={onClose} busy={saving} className="provider-dialog"
+      footer={<><Button data-dialog-focus onClick={onClose} disabled={saving}>Cancel</Button><Button tone="primary" disabled={!ready} onClick={() => void submit()}>Save</Button></>}>
+      <div className="fld">
+        <label htmlFor="instance-name">Display name</label>
+        <input id="instance-name" value={draft.name} spellCheck={false} onChange={(event) => set({ name: event.target.value })} />
+      </div>
+      <div className="fld" role="group" aria-label="Colour">
+        <label>Colour</label>
+        <div className="swatches">
+          {colors.map((color) => (
+            <button key={color} type="button" className="swatch" style={{ background: color }} aria-label={`Colour ${color}`} aria-pressed={draft.accent === color}
+              onClick={() => set({ accent: draft.accent === color ? "" : color })} />
+          ))}
+        </div>
+      </div>
+      <div className={reason || check.problem ? "fld error" : "fld"}>
+        <label htmlFor="instance-program">{pathLabel}</label>
+        <input id="instance-program" className="mono" value={draft.program} spellCheck={false} aria-invalid={reason || check.problem ? true : undefined}
+          aria-describedby={reason || check.problem || check.found ? "instance-program-note" : undefined}
+          onChange={(event) => set({ program: event.target.value })} onBlur={check.run} />
+        {reason || check.problem ? <small id="instance-program-note" className="err" role="alert">{reason ?? check.problem}</small>
+          : check.found ? <small id="instance-program-note" className="hint">{check.found}</small> : null}
+      </div>
+      {instance.driver === "claude" ? (
+        <div className={compactOk ? "fld" : "fld error"}>
+          <label htmlFor="instance-compact">Auto-compact window</label>
+          <input id="instance-compact" inputMode="numeric" placeholder="Default" value={draft.compact} spellCheck={false} onChange={(event) => set({ compact: event.target.value })} />
+          {compactOk ? <small className="hint">100,000 to 1,000,000 tokens. Empty uses Claude’s default.</small> : <small className="err">Use 100000 to 1000000.</small>}
+        </div>
+      ) : null}
+      {driver?.tier === "native" ? null : (
+        <div className="fld">
+          <label htmlFor="instance-args">Arguments</label>
+          <input id="instance-args" className="mono" value={draft.args} spellCheck={false} onChange={(event) => set({ args: event.target.value })} />
+          <small className="hint">Added after the command every time.</small>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+/** What Orbyn found on this computer, plus the registry and a local command. */
+export function AddProviderDialog({ engines, onClose, onRegistry, onChosen }: {
+  engines: EngineStatus[];
+  onClose(): void;
+  onRegistry(): void;
+  onChosen(engine: EngineStatus | "_local_acp"): void;
+}) {
+  const found = engines.filter((engine) => !engine.instance_of && engine.installed && (engine.tier === "native" || engine.tier === "acp"));
+  const [choice, setChoice] = useState<string>(found[0]?.id ?? "_registry");
+  const go = () => {
+    if (choice === "_registry") onRegistry();
+    else if (choice === "_local_acp") onChosen("_local_acp");
+    else { const engine = found.find((entry) => entry.id === choice); if (engine) onChosen(engine); }
+  };
+  const options = [
+    ...found.map((engine) => ({ id: engine.id, name: engine.name, note: `Found at ${engine.path ?? "an unknown path"}${engine.version ? ` · ${engine.version}` : ""}` })),
+    { id: "_registry", name: "Another agent from the ACP registry", note: "Opens the registry" },
+    { id: "_local_acp", name: "A local ACP command", note: "Runs a program you point to" },
+  ];
+  return (
+    <Dialog title="Add a provider" onClose={onClose} className="provider-dialog"
+      footer={<><Button onClick={onClose}>Cancel</Button><Button tone="primary" onClick={go}>Continue</Button></>}>
+      <div role="radiogroup" aria-label="Provider" className="choices">
+        {options.map((option) => (
+          <label key={option.id} className={choice === option.id ? "choice on" : "choice"}>
+            <input type="radio" name="provider" checked={choice === option.id} onChange={() => setChoice(option.id)} />
+            <span><b>{option.name}</b><small>{option.note}</small></span>
+          </label>
+        ))}
+      </div>
+    </Dialog>
+  );
 }

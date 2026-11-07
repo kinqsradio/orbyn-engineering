@@ -1,9 +1,6 @@
-import { AlertCircle, Check, CircleDashed, Download, Loader2, X } from "lucide-react";
-import { useState } from "react";
-import { api } from "../../api/client";
+import { AlertCircle, Check, ChevronDown, ChevronRight, CircleDashed, Download, Loader2 } from "lucide-react";
+import { useId, useState } from "react";
 import type { UpdateStatus } from "../../api/types";
-import { toFailure } from "../../lib/useAsync";
-import { useUi } from "../../state/ui";
 import {
   appHasUpdate,
   engineHasUpdate,
@@ -12,8 +9,8 @@ import {
   type UpdateRunStep,
 } from "../../state/workspace";
 import { Button } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
 import { Markdown } from "../thread/Markdown";
+import { Dialog } from "../../ui/Dialog";
 
 const short = (value: string | null) =>
   value && /^[0-9a-f]{12,}$/.test(value) ? value.slice(0, 8) : (value ?? "Unknown");
@@ -45,43 +42,6 @@ function Versions({ current, latest }: { current: string | null; latest: string 
   );
 }
 
-function ItemButton({
-  label,
-  disabled,
-  onApply,
-}: {
-  label: string;
-  disabled: boolean;
-  onApply(): Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <>
-      <Button
-        small
-        aria-label={`Update ${label}`}
-        busy={busy}
-        disabled={disabled}
-        onClick={() => {
-          setBusy(true);
-          setError(null);
-          onApply()
-            .catch((failure: unknown) => setError(toFailure(failure).message))
-            .finally(() => setBusy(false));
-        }}
-      >
-        Update
-      </Button>
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </>
-  );
-}
-
 function Steps({ steps }: { steps: UpdateRunStep[] }) {
   return (
     <ol className="update-steps" aria-label="Update progress">
@@ -107,6 +67,17 @@ function Steps({ steps }: { steps: UpdateRunStep[] }) {
   );
 }
 
+/** "What's new" for a row that has an update; the notes are shown only where the service sends them. */
+function WhatsNew({ id, open, onToggle }: { id: string; open: boolean; onToggle(): void }) {
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <button type="button" className="update-whatsnew" aria-expanded={open} aria-controls={id} onClick={onToggle}>
+      <Chevron size={12} aria-hidden />
+      What’s new
+    </button>
+  );
+}
+
 const failedStep = (run: UpdateRun | null) => run?.steps.find((step) => step.state === "failed") ?? null;
 
 export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
@@ -114,9 +85,8 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
   const run = useWorkspace((state) => state.updateRun);
   const engineList = useWorkspace((state) => state.engines.data);
   const runAllUpdates = useWorkspace((state) => state.runAllUpdates);
-  const refreshUpdates = useWorkspace((state) => state.refreshUpdates);
-  const refreshEngines = useWorkspace((state) => state.refreshEngines);
-  const refreshManaged = useWorkspace((state) => state.refreshManaged);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const notesId = useId();
 
   if (!status) return null;
   const applying = run?.running === true;
@@ -127,26 +97,56 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
   const engines = status.engines.filter(engineHasUpdate);
   const appAvailable = appHasUpdate(status);
 
+  const incoming = status.library.behind > 0 ? status.library.incoming : [];
+  const appNotes = appAvailable ? (status.app.notes?.trim() ?? "") : "";
+  const hasNotes = (key: string) => (key === "app" ? appNotes !== "" : key === "library" ? incoming.length > 0 : false);
+
+  const rows: { key: string; name: string; current: string | null; latest: string | null; kind: string }[] = [
+    ...(appAvailable
+      ? [{ key: "app", name: "Orbyn Engineering", current: status.app.current, latest: status.app.latest, kind: "Restarts the app" }]
+      : []),
+    ...engines.map((engine) => ({
+      key: engine.id,
+      name: engineList?.find((e) => e.id === engine.id)?.name ?? engine.id,
+      current: engine.current,
+      latest: engine.latest,
+      kind: "CLI",
+    })),
+    // The row is always there once the library has a version: the change, or that it is current.
+    ...(status.library.current
+      ? [
+          {
+            key: "library",
+            name: "Skills library",
+            current: status.library.current,
+            latest: status.library.behind > 0 ? status.library.latest : null,
+            kind: "Library",
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Dialog
       title="Update everything"
       onClose={onClose}
+      className="update-dialog"
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>Not now</Button>
           <Button
             tone="primary"
             busy={applying}
             disabled={locked || (count === 0 && !failed)}
             onClick={() => void runAllUpdates()}
           >
-            {failed ? "Retry" : "Update all"}
+            {failed ? "Retry" : "Update everything"}
           </Button>
         </>
       }
     >
       <p className="update-intro">
-        Updates install one at a time. An agent with a run in progress updates once that run ends.
+        Updates install one at a time; a running agent keeps going and picks up its CLI next turn.
       </p>
       {blocked ? <p className="update-reason">{blocked}</p> : null}
       {run ? <Steps steps={run.steps} /> : null}
@@ -155,83 +155,58 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
           {run.error}
         </p>
       ) : null}
-      {engines.length > 0 ? (
-        <section className="update-group">
-          <h3>Engines</h3>
-          {engines.map((engine) => {
-            const name = engineList?.find((e) => e.id === engine.id)?.name ?? engine.id;
-            return (
-              <div key={engine.id} className="update-item">
-                <span className="update-name">{name}</span>
-                <Versions current={engine.current} latest={engine.latest} />
-                <span className="update-kind">CLI</span>
-                {engine.can_apply ? (
-                  <ItemButton
-                    label={name}
-                    disabled={locked}
-                    onApply={async () => {
-                      await api.updateEngine(engine.id);
-                      await Promise.all([refreshUpdates(), refreshEngines()]);
-                    }}
-                  />
-                ) : null}
+      {rows.length > 0 ? (
+        <div className="update-table" role="list">
+          {rows.map((row) => (
+            <div key={row.key} role="listitem" className="update-row">
+              <div className="update-item">
+                <span>
+                  <b className="update-name">{row.name}</b>
+                  <br />
+                  {row.latest === null && row.key === "library" ? (
+                    <span className="update-versions">{short(row.current)} · Up to date</span>
+                  ) : (
+                    <Versions current={row.current} latest={row.latest} />
+                  )}
+                  {hasNotes(row.key) ? (
+                    <>
+                      <br />
+                      <WhatsNew
+                        id={`${notesId}-${row.key}`}
+                        open={expanded === row.key}
+                        onToggle={() => setExpanded(expanded === row.key ? null : row.key)}
+                      />
+                    </>
+                  ) : null}
+                </span>
+                <span className="update-kind">{row.kind}</span>
               </div>
-            );
-          })}
-        </section>
-      ) : null}
-      {status.library.behind > 0 ? (
-        <section className="update-group">
-          <h3>Skills library</h3>
-          <div className="update-item">
-            <span className="update-name">Library</span>
-            <Versions current={status.library.current} latest={status.library.latest} />
-            <ItemButton
-              label="skills library"
-              disabled={locked || !status.library.can_apply}
-              onApply={async () => {
-                await api.updateLibrary(true);
-                await Promise.all([refreshUpdates(), refreshManaged()]);
-              }}
-            />
-          </div>
-          <ul className="commit-list">
-            {status.library.incoming.map((commit) => (
-              <li key={commit.sha}>
-                <code>{short(commit.sha)}</code>
-                <span>{commit.subject}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {appAvailable ? (
-        <section className="update-group">
-          <h3>App</h3>
-          <div className="update-item">
-            <span className="update-name">Orbyn Engineering</span>
-            <Versions current={status.app.current} latest={status.app.latest} />
-            <span className="update-kind">Restarts the app</span>
-            {status.app.can_apply ? (
-              <ItemButton
-                label="app"
-                disabled={locked}
-                onApply={async () => {
-                  await api.applyAppUpdate();
-                  await refreshUpdates();
-                }}
-              />
-            ) : null}
-          </div>
-          {status.app.notes ? (
-            <div className="update-notes">
-              <Markdown text={status.app.notes} />
+              {expanded === row.key && hasNotes(row.key) ? (
+                <div id={`${notesId}-${row.key}`} className="update-notes">
+                  {row.key === "library" ? (
+                    <>
+                      <b>
+                        {incoming.length} new {incoming.length === 1 ? "change" : "changes"}
+                      </b>
+                      <ul>
+                        {incoming.map((commit) => (
+                          <li key={commit.sha}>
+                            <span className="mono">{commit.sha.slice(0, 7)}</span> {commit.subject}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <Markdown text={appNotes} />
+                  )}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {status.app.mode === "server" && status.app.blocked_reason ? (
-            <p className="muted">{status.app.blocked_reason}</p>
-          ) : null}
-        </section>
+          ))}
+        </div>
+      ) : null}
+      {status.app.mode === "server" && appAvailable && status.app.blocked_reason ? (
+        <p className="update-reason">{status.app.blocked_reason}</p>
       ) : null}
       {count === 0 && !run && !appAvailable ? <p>Everything is up to date.</p> : null}
     </Dialog>
@@ -239,39 +214,6 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
 }
 
 /** Appears only when there's something to do, and carries progress and failure. */
-/** Names an engine's update on its own, and stays gone once dismissed for that version. */
-export function ProviderUpdatePill() {
-  const status = useWorkspace((state) => state.updates.data);
-  const engines = useWorkspace((state) => state.engines.data);
-  const dismissed = useUi((state) => state.dismissedProviderUpdates);
-  const setPrefs = useUi((state) => state.setPrefs);
-  const [open, setOpen] = useState(false);
-  const key = (id: string, latest: string | null) => `${id}:${latest ?? ""}`;
-  const pending = (status?.engines ?? []).filter(
-    (engine) => engineHasUpdate(engine) && !dismissed.includes(key(engine.id, engine.latest)),
-  );
-  const first = pending[0];
-  if (!first) return null;
-  const name = engines?.find((engine) => engine.id === first.id)?.name ?? first.id;
-  return (
-    <>
-      <span className="provider-update">
-        <button type="button" onClick={() => setOpen(true)}>
-          {pending.length === 1 ? `${name} update` : `${pending.length} provider updates`}
-        </button>
-        <button
-          type="button"
-          aria-label="Dismiss provider update"
-          onClick={() => setPrefs({ dismissedProviderUpdates: [...dismissed, ...pending.map((engine) => key(engine.id, engine.latest))] })}
-        >
-          <X size={12} aria-hidden />
-        </button>
-      </span>
-      {open ? <UpdateEverythingDialog onClose={() => setOpen(false)} /> : null}
-    </>
-  );
-}
-
 export function UpdatePill() {
   const status = useWorkspace((state) => state.updates.data);
   const run = useWorkspace((state) => state.updateRun);

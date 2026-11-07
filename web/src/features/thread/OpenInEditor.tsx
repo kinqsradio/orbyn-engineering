@@ -6,15 +6,45 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { launchableEditors, primaryEditor } from "./editorPreferences";
+
+/** Opens the thread's checkout in an editor; a revealed path is not a choice of editor, so it does not become the favorite. */
+function useEditorLauncher(threadId: string, fileManagerId: string | undefined) {
+  const setPrefs = useUi((state) => state.setPrefs);
+  const pushToast = useUi((state) => state.pushToast);
+  return async (id: string) => {
+    try {
+      await api.openInEditor(threadId, { path: ".", editor: id });
+      if (id !== fileManagerId) setPrefs({ preferredEditor: id });
+    } catch (failure) {
+      pushToast(`Couldn't open it. ${toFailure(failure).message}`);
+    }
+  };
+}
+
+/**
+ * The favorite-editor key. It lives with the thread, not the Details card, so it still works while that card is a
+ * popover that is closed or a panel that is hidden.
+ */
+export function FavoriteEditorShortcut({ threadId }: { threadId: string }) {
+  const editors = useAsync("editors", (signal) => api.editors(signal));
+  const preferred = useUi((state) => state.preferredEditor);
+  const list = editors.data ?? [];
+  const primary = primaryEditor(list, preferred);
+  const open = useEditorLauncher(threadId, list.find((editor) => editor.file_manager)?.id);
+  useCommand("editor.openFavorite", () => {
+    if (!primary) return false;
+    void open(primary.id);
+  });
+  return null;
+}
 
 /** Opens the thread's checkout, or a file at a line, in a detected editor. */
 export function OpenInEditor({ threadId }: { threadId: string }) {
   const editors = useAsync("editors", (signal) => api.editors(signal));
   const keymap = useAsync("keybindings", (signal) => api.keybindings(signal));
   const preferred = useUi((state) => state.preferredEditor);
-  const setPrefs = useUi((state) => state.setPrefs);
-  const pushToast = useUi((state) => state.pushToast);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const list = editors.data ?? [];
   const launchable = launchableEditors(list);
@@ -22,21 +52,7 @@ export function OpenInEditor({ threadId }: { threadId: string }) {
   const fileManager = list.find((editor) => editor.file_manager);
   const key = commandShortcut(keymap.data?.rules, "editor.openFavorite");
   const shortcut = key ? formatShortcut(key) : null;
-
-  const open = async (id: string) => {
-    try {
-      await api.openInEditor(threadId, { path: ".", editor: id });
-      // Revealing a path is not a choice of editor, so it does not become the favorite.
-      if (id !== fileManager?.id) setPrefs({ preferredEditor: id });
-    } catch (failure) {
-      pushToast(`Couldn't open it. ${toFailure(failure).message}`);
-    }
-  };
-
-  useCommand("editor.openFavorite", () => {
-    if (!primary) return false;
-    void open(primary.id);
-  });
+  const open = useEditorLauncher(threadId, fileManager?.id);
 
   if (!primary) return null;
   const items: MenuItem[] = [
@@ -67,14 +83,14 @@ export function OpenInEditor({ threadId }: { threadId: string }) {
           <ChevronDown size={14} aria-hidden />
         </IconButton>
       ) : null}
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           {...menu}
           label="Open in"
           onClose={() => setMenu(null)}
           items={items}
         />
-      ) : null}
+      ) : null}</Presence>
     </div>
   );
 }

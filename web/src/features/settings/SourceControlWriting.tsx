@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PreferenceGroups } from "./PreferenceRows";
+import { settingsLabel } from "./settingsSearch";
 
 interface WritingStyle {
   mode: "repo_conventions" | "conventional_commits" | "custom";
@@ -29,8 +30,8 @@ export function WritingStyleControl({ value, save, mixed = false }: { value: unk
 }
 
 export function SourceControlWriting() {
-  return <PreferenceGroups groups={[{ title: "Writing & review", rows: [{ key: "source_control_writing_style", title: "Writing style",
-    description: "Match repository conventions, use Conventional Commits, or write custom instructions.",
+  return <PreferenceGroups groups={[{ title: "", rows: [{ key: "source_control_writing_style", title: settingsLabel("source-control-writing-style"),
+    description: "How generated commit messages read",
     render: (value, save, control) => <WritingStyleControl value={value} mixed={control.mixed} save={save} />,
   }] }]} />;
 }

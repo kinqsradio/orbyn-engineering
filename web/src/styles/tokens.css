@@ -1,4 +1,8 @@
-/* Theme tokens: the Orbyn house style. Light is :root; dark is set on <html data-theme="dark">.
+/* Theme tokens. Every colour comes from Orbyn Components (light, dark, dim) and every
+   duration and easing from Orbyn Motion Designs, read from their HTML source.
+   Tokens those designs do not define keep their earlier values and are listed in
+   docs/design-inventory.md as gaps. */
+/* The Orbyn house style. Light is :root; dark is set on <html data-theme="dark">.
    Three colours: ink for everything, warn (amber) when the person must act, danger (red)
    for failures and removals. Info and success stay ink; ANSI, project and tint colours are content. */
 :root {
@@ -31,13 +35,15 @@
   --color-outline: rgb(0 0 0 / 9%);
   --color-text: rgb(0 0 0 / 92%);
   --color-textSoft: rgb(0 0 0 / 74%);
-  --color-muted: rgb(0 0 0 / 62%);
-  --color-faint: rgb(0 0 0 / 54%);
+  --color-muted: rgb(0 0 0 / 56%);
+  --color-faint: rgb(0 0 0 / 44%);
+  /* Text of the design's Planned and Not available yet: the third text step, never the faint one. */
+  --planned-text: var(--color-muted);
   --color-primary: #111111;
   --color-primaryHover: #2b2b2b;
   --color-onAccent: #ffffff;
   --color-focus: #111111;
-  --color-hover: rgb(0 0 0 / 4.5%);
+  --color-hover: rgb(0 0 0 / 3.5%);
   --color-rowHover: rgb(0 0 0 / 3.5%);
   --color-rowActive: rgb(0 0 0 / 6.5%);
   --color-rowRing: transparent;
@@ -52,14 +58,15 @@
   --color-onDanger: #ffffff;
   --color-dangerSoft: rgb(239 68 68 / 7%);
   --color-dangerBorder: rgb(220 38 38 / 25%);
-  --color-warn: #b45309;
+  --color-warn: #c2710a;
   --color-warnSoft: rgb(245 158 11 / 7%);
   --color-warnBorder: rgb(217 119 6 / 32%);
   --color-info: #525252;
   --color-infoSoft: rgb(0 0 0 / 5%);
   --color-success: #404040;
-  --color-backdrop: rgb(0 0 0 / 32%);
-  --color-shadow: rgb(0 0 0 / 8%);
+  --color-backdrop: rgb(0 0 0 / 16%);
+  --color-shadow: rgb(0 0 0 / 14%);
+  --color-panelShadow: rgb(0 0 0 / 14%);
   --color-diffAdd: rgb(0 0 0 / 7%);
   --color-diffAddText: #171717;
   --color-diffDel: rgb(220 38 38 / 8%);
@@ -85,6 +92,15 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-pill: 999px;
+  /* Further radii the internal designs use, at their exact values. */
+  --radius-3: 3px;
+  --radius-5: 5px;
+  --radius-7: 7px;
+  --radius-9: 9px;
+  --radius-10: 10px;
+  --radius-11: 11px;
+  --radius-14: 14px;
+  --radius-20: 20px;
 
   --text-micro: 8px;
   --text-caption: 11px;
@@ -97,8 +113,14 @@
   --text-nav: 12.5px;
   --text-label: 11.5px;
   --text-page: 22px;
+  --text-section: 18px;
   --text-display: 26px;
   --text-figure: 36px;
+  /* Further sizes the internal designs use, at their exact values. */
+  --text-kbd: 10.5px;
+  --text-lead: 15px;
+  --text-read: 13.5px;
+  --text-thread: 14.5px;
 
   --control-h: 36px;
   --control-h-sm: 32px;
@@ -110,25 +132,59 @@
   --button-fs: 13px;
   --hit: 28px;
 
-  --motion-fast: 100ms;
-  --motion-base: 150ms;
-  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --panel-duration: 0ms;
+  /* Motion, from Orbyn Motion Designs: four durations, exits at 70%, two easings.
+     --motion-k is the design's Slow x4 review multiplier; it is 1 everywhere else. */
+  --motion-k: 1;
+  --m-fast: calc(150ms * var(--motion-k));
+  --m-base: calc(200ms * var(--motion-k));
+  --m-slow: calc(300ms * var(--motion-k));
+  --m-page: calc(240ms * var(--motion-k));
+  --m-fast-out: calc(105ms * var(--motion-k));
+  --m-base-out: calc(140ms * var(--motion-k));
+  --m-slow-out: calc(210ms * var(--motion-k));
+  --m-page-out: calc(170ms * var(--motion-k));
+  --m-wait: calc(400ms * var(--motion-k));
+  --m-hover: calc(500ms * var(--motion-k));
+  --m-stag: calc(60ms * var(--motion-k));
+  --m-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --m-io: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Older names, kept as aliases until every rule uses the --m-* names. */
+  --motion-fast: var(--m-fast);
+  --motion-base: var(--m-base);
+  --ease-out: var(--m-io);
+  --ease-drawer: var(--m-out);
+  --panel-duration: var(--m-slow);
 
   --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
   --sidebar-w: 224px;
-  --titlebar-h: 40px;
+  --titlebar-h: 44px;
   --topbar-h: 56px;
+  /* The side panel: 380px by default, 320px at the narrowest, and where it overlays the thread it starts under the header. */
   --context-w: 380px;
+  --panel-min-w: 320px;
+  --panel-overlay-top: 58px;
   --drawer-w: 360px;
-  --lights-w: 78px;
+  --lights-w: 64px;
   --reading-w: 736px;
   --details-w: 280px;
   --rail-w: 300px;
   --details-gap: 12px;
+  --color-warnText: #9a5705;
+  --color-green: #047857;
+  --color-greenSoft: rgb(16 185 129 / 9%);
+  --color-blue: #1d4ed8;
+  --color-blueSoft: rgb(59 130 246 / 9%);
+  --color-amberSolid: #f59e0b;
+  --color-greenSolid: #10b981;
+  --color-blueSolid: #3b82f6;
+  --color-redSolid: #ef4444;
+  /* Filled red buttons, white text (Orbyn Components v4). Red text stays on --color-danger. */
+  --color-dangerFill: #d42a2a;
+  --color-dangerFillHover: #b91c1c;
+  --color-dangerFillPress: #991b1b;
+  --color-onDangerFill: #ffffff;
 }
 
 @media (max-width: 640px), (pointer: coarse) {
@@ -164,22 +220,22 @@
   --ansi-bright-white: #3f3f46;
   --color-background: #0a0a0a;
   --color-surface: #0a0a0a;
-  --color-raised: #111111;
+  --color-raised: #0a0a0a;
   --color-sidebar: #000000;
   --color-sunken: rgb(255 255 255 / 5%);
   --color-border: rgb(255 255 255 / 7.5%);
-  --color-divider: rgb(255 255 255 / 7%);
+  --color-divider: rgb(255 255 255 / 7.5%);
   --color-borderStrong: rgb(255 255 255 / 14%);
   --color-borderHover: rgb(255 255 255 / 22%);
   --color-outline: rgb(255 255 255 / 12%);
   --color-text: rgb(255 255 255 / 94%);
   --color-textSoft: rgb(255 255 255 / 74%);
-  --color-muted: rgb(255 255 255 / 60%);
-  --color-faint: rgb(255 255 255 / 52%);
+  --color-muted: rgb(255 255 255 / 56%);
+  --color-faint: rgb(255 255 255 / 42%);
   --color-primary: #ffffff;
   --color-primaryHover: #e3e3e3;
   --color-focus: #ffffff;
-  --color-hover: rgb(255 255 255 / 6%);
+  --color-hover: rgb(255 255 255 / 5%);
   --color-rowHover: rgb(255 255 255 / 5%);
   --color-rowActive: rgb(255 255 255 / 8.5%);
   --color-rowRing: transparent;
@@ -191,7 +247,7 @@
   --color-message: rgb(255 255 255 / 5%);
   --color-sendIdle: rgb(255 255 255 / 14%);
   --color-danger: #f05252;
-  --color-onDanger: #0a0a0a;
+  --color-onDanger: #ffffff;
   --color-dangerSoft: rgb(239 68 68 / 10%);
   --color-dangerBorder: rgb(239 68 68 / 32%);
   --color-warn: #fbbf24;
@@ -200,8 +256,9 @@
   --color-info: #a3a3a3;
   --color-infoSoft: rgb(255 255 255 / 6%);
   --color-success: #c4c4c4;
-  --color-backdrop: rgb(0 0 0 / 64%);
+  --color-backdrop: rgb(0 0 0 / 50%);
   --color-shadow: rgb(0 0 0 / 60%);
+  --color-panelShadow: rgb(0 0 0 / 55%);
   --color-diffAdd: rgb(255 255 255 / 9%);
   --color-diffAddText: #f2f2f2;
   --color-diffDel: rgb(239 68 68 / 14%);
@@ -221,6 +278,16 @@
   --tint-4: #a78bfa;
   --tint-5: #22d3ee;
   --color-onAccent: #000000;
+  --color-warnText: #fbbf24;
+  --color-green: #34d399;
+  --color-greenSoft: rgb(16 185 129 / 12%);
+  --color-blue: #60a5fa;
+  --color-blueSoft: rgb(59 130 246 / 13%);
+  /* Filled red buttons, white text (Orbyn Components v4). Red text stays on --color-danger. */
+  --color-dangerFill: #dc2626;
+  --color-dangerFillHover: #c81e1e;
+  --color-dangerFillPress: #b91c1c;
+  --color-onDangerFill: #ffffff;
 }
 
 /* Dim: a neutral dark preset, set by applyTheme on <html data-preset="dim">. It only
@@ -228,24 +295,24 @@
 :root[data-theme="dark"][data-preset="dim"] {
   --color-background: #161616;
   --color-surface: #161616;
-  --color-raised: #1c1c1c;
+  --color-raised: #161616;
   --color-sidebar: #101010;
   --color-sunken: rgb(255 255 255 / 4%);
   --color-border: rgb(255 255 255 / 8%);
-  --color-divider: rgb(255 255 255 / 7%);
+  --color-divider: rgb(255 255 255 / 8%);
   --color-borderStrong: rgb(255 255 255 / 14%);
   --color-borderHover: rgb(255 255 255 / 24%);
   --color-outline: rgb(255 255 255 / 12%);
   --color-text: rgb(255 255 255 / 92%);
   --color-textSoft: rgb(255 255 255 / 78%);
-  --color-muted: rgb(255 255 255 / 64%);
-  --color-faint: rgb(255 255 255 / 54%);
+  --color-muted: rgb(255 255 255 / 62%);
+  --color-faint: rgb(255 255 255 / 48%);
   --color-primary: #f2f2f2;
   --color-primaryHover: #dcdcdc;
   --color-onAccent: #101010;
   --color-focus: #f2f2f2;
-  --color-hover: rgb(255 255 255 / 5.5%);
-  --color-rowHover: rgb(255 255 255 / 4.5%);
+  --color-hover: rgb(255 255 255 / 4%);
+  --color-rowHover: rgb(255 255 255 / 4%);
   --color-rowActive: rgb(255 255 255 / 8%);
   --color-chip: rgb(255 255 255 / 4%);
   --color-chipText: rgb(255 255 255 / 78%);
@@ -255,7 +322,7 @@
   --color-message: rgb(255 255 255 / 4%);
   --color-sendIdle: rgb(255 255 255 / 14%);
   --color-danger: hsl(4 82% 67%);
-  --color-onDanger: #101010;
+  --color-onDanger: #ffffff;
   --color-dangerSoft: hsl(4 72% 54% / 14%);
   --color-dangerBorder: hsl(4 72% 60% / 34%);
   --color-warn: hsl(40 78% 63%);
@@ -264,12 +331,23 @@
   --color-info: #a8a8a8;
   --color-infoSoft: rgb(255 255 255 / 5%);
   --color-success: #c4c4c4;
-  --color-backdrop: rgb(0 0 0 / 56%);
-  --color-shadow: rgb(0 0 0 / 55%);
+  --color-backdrop: rgb(0 0 0 / 50%);
+  --color-shadow: rgb(0 0 0 / 60%);
+  --color-panelShadow: rgb(0 0 0 / 55%);
   --color-diffAdd: rgb(255 255 255 / 8%);
   --color-diffAddText: rgb(255 255 255 / 92%);
   --color-diffDel: hsl(4 72% 54% / 14%);
   --color-diffDelText: hsl(4 82% 70%);
+  --color-warnText: hsl(40 78% 63%);
+  --color-green: #6ee7b7;
+  --color-greenSoft: rgb(16 185 129 / 12%);
+  --color-blue: #93c5fd;
+  --color-blueSoft: rgb(59 130 246 / 13%);
+  /* Filled red buttons, white text (Orbyn Components v4). Red text stays on --color-danger. */
+  --color-dangerFill: #c93a33;
+  --color-dangerFillHover: #b8322b;
+  --color-dangerFillPress: #a82a24;
+  --color-onDangerFill: #ffffff;
 }
 
 /* Project palette: Tailwind 4.3.3, the frozen reference's dependency.

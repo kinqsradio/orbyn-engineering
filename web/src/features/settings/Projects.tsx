@@ -1,4 +1,4 @@
-import { Info, Trash2, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiFailure, api, request } from "../../api/client";
 import type { LibraryStatus, Thread } from "../../api/types";
@@ -6,10 +6,11 @@ import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import type { ProjectScopeGroup } from "../../generated/ProjectScopeGroup";
 import type { ProjectScopeCheckout } from "../../generated/ProjectScopeCheckout";
 import type { ProjectScopesQuery } from "../../generated/ProjectScopesQuery";
-import { toFailure, useAsync } from "../../lib/useAsync";
+import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { useUi } from "../../state/ui";
 import { PreferenceGroups } from "./PreferenceRows";
+import { DialogCard } from "./DialogCard";
 import { ProjectActions } from "./ProjectActions";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
@@ -150,13 +151,14 @@ type NameRead = {
 type NameForm = { read: NameRead; draft: string; dirty: boolean; rebase: boolean };
 
 /** A name draft belongs to the physical members and read that supplied it. */
-function ProjectName({ query, catalog, group, members, disabled, reload, children }: {
+function ProjectName({ query, catalog, group, members, disabled, reload, before, children }: {
   query: ProjectScopesQuery;
   catalog: ProjectScopeCatalog;
   group: ProjectScopeGroup;
   members: ProjectScopeCheckout[];
   disabled: boolean;
   reload(): void;
+  before?: ReactNode;
   children?: ReactNode;
 }) {
   const current = useMemo<NameRead>(() => ({ catalog, label: group.label,
@@ -216,8 +218,8 @@ function ProjectName({ query, catalog, group, members, disabled, reload, childre
     if (refresh && mounted.current) reload();
   };
   return <section className="setting-group" aria-label="Project">
-    <div className="setting-list"><SettingRow title="Name" description="The shared name for this project group in the sidebar and thread lists.">
-      <input aria-label="Project name" value={form.draft} disabled={busy} aria-busy={saving || undefined}
+    <div className="setting-list">{before}<SettingRow title="Name">
+      <input aria-label="Project name" className="set-name-input" value={form.draft} disabled={busy} aria-busy={saving || undefined}
         onChange={(event) => {
           const draft = event.target.value;
           setForm((previous) => draft === previous.read.label
@@ -243,7 +245,7 @@ type RemovalPlan = {
 };
 
 /** Registered physical entries own removal; Git worktree inventories do not. */
-function ProjectRemoval({ query, group, members, disabled, reload, clearSelection }: {
+export function ProjectRemoval({ query, group, members, disabled, reload, clearSelection }: {
   query: ProjectScopesQuery;
   group: ProjectScopeGroup;
   members: ProjectScopeCheckout[];
@@ -251,7 +253,6 @@ function ProjectRemoval({ query, group, members, disabled, reload, clearSelectio
   reload(): void;
   clearSelection(): void;
 }) {
-  const environment = useAsync("project-detail-environment", (signal) => api.info(signal));
   const [plan, setPlan] = useState<RemovalPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const pending = useRef(false);
@@ -328,34 +329,30 @@ function ProjectRemoval({ query, group, members, disabled, reload, clearSelectio
   };
   const hasOtherMembers = members.length < group.members.length;
   const dangerTitle = hasOtherMembers ? "Remove checkout" : members.length > 1 ? "Remove this project everywhere" : "Remove project";
-  const dangerLabel = hasOtherMembers ? "Remove checkout" : members.length > 1 ? "Remove all entries" : "Remove project";
+  const dangerLabel = "Remove…";
   const remaining = plan?.members.filter((member) => !plan.removed.includes(member.project_id)) ?? [];
   const threadCount = remaining.reduce((count, member) => count + (plan?.counts[member.project_id] ?? 0), 0);
-  const targetKind = plan?.wholeGroup ? "project" : "checkout";
-  const targetLabel = remaining.length === 1 ? remaining[0]!.name : plan?.groupLabel;
-  const question = `Remove ${targetKind} "${targetLabel}"?`;
+    const targetLabel = remaining.length === 1 ? remaining[0]!.name : plan?.groupLabel;
+  const question = `Remove ${targetLabel}?`;
+  const folders = remaining.map((member) => member.path).filter((path): path is string => path !== null);
   return <>
-    {members.length > 1 ? <SettingGroup title="Checkouts">
-      {members.map((member) => <SettingRow key={member.physical_key} title={environment.data?.environment_label ?? "Environment"} description={member.path ?? undefined}>
-        <Button small disabled={disabled || planning} aria-label={`Remove checkout ${member.path}`} onClick={() => { void begin([member]); }}>Remove</Button>
-      </SettingRow>)}
-    </SettingGroup> : null}
     <SettingGroup title="Danger">
       <SettingRow title={dangerTitle} description={hasOtherMembers
-        ? "Removes the selected machine's checkout entries. Their threads stay in Archive. Other machines and files on disk are not touched."
-        : members.length > 1 ? `Removes all ${members.length} checkout entries on every machine. Their threads stay in Archive. Files on disk are not touched.`
-        : "Removes the project entry. Its threads stay in Archive. Files on disk are not touched."}>
-        <Button small tone="danger" icon={<Trash2 size={14} aria-hidden />} disabled={disabled || planning} busy={planning}
-          onClick={() => { void begin(members); }}>{dangerLabel}</Button>
+        ? "Stops tracking this checkout in Orbyn. Files on disk stay."
+        : members.length > 1 ? `Stops tracking all ${members.length} checkouts in Orbyn. Files on disk stay.`
+        : "Stops tracking it in Orbyn. Files on disk stay."}>
+        <button type="button" className="set-red-link" disabled={disabled || planning} aria-busy={planning || undefined}
+          onClick={() => { void begin(members); }}>{dangerLabel}</button>
       </SettingRow>
     </SettingGroup>
-    {plan ? <ConfirmDialog title={question} confirmLabel="Confirm" tone="danger" keepOpen confirmDisabled={disabled || remaining.length === 0}
-      onClose={() => setPlan(null)} onConfirm={remove}>
-      {remaining.length === 1 ? <><p>Path: {remaining[0]!.path}</p><p>Environment: {environment.data?.environment_label ?? "Environment"}</p></>
-        : <p>This removes {remaining.length} grouped project entries.</p>}
-      <p>{threadCount > 0 ? `Its ${threadCount} ${threadCount === 1 ? "thread stays" : "threads stay"} in Archive. Add the folder back to unarchive them.`
-        : "Its archived threads stay in Archive. Add the folder back to unarchive them."}</p>
-      <p>{plan.wholeGroup ? "This removes only the project entries, not the files on disk." : "Other entries in this grouped project are unaffected."}</p>
+    {plan ? <ConfirmDialog title={question} confirmLabel={plan.wholeGroup ? "Remove project" : "Remove checkout"} tone="danger" cancelFocus keepOpen
+      confirmDisabled={disabled || remaining.length === 0} onClose={() => setPlan(null)} onConfirm={remove}>
+      <p>{plan.wholeGroup ? "Orbyn stops tracking this project. Files on disk are not touched."
+        : "Orbyn stops tracking this checkout. Files on disk are not touched. Other checkouts of this project are unaffected."}</p>
+      <DialogCard facts={[
+        { label: folders.length === 1 ? "Folder" : "Folders", value: folders.length === 0 ? "Unknown" : <>{folders.map((folder) => <span key={folder} style={{ display: "block" }}>{folder}</span>)}</>, mono: true },
+        ...(threadCount > 0 ? [{ label: "Threads", value: `${threadCount} · stay in Archive` }] : []),
+      ]} />
     </ConfirmDialog> : null}
   </>;
 }
@@ -390,24 +387,20 @@ function ProjectSelection() {
       <><p className="setting-line-desc">Choose a project to manage its name, icon, checkouts and actions.</p>
         <ProjectModelDefaults query={scope.query} disabled={blocked} />
         <FallbackModel disabled={blocked} /></> : <>
-        <p className="banner"><Info size={16} aria-hidden />Can't find a setting? Keep this project picked above and hop to any other settings page.</p>
-        <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload}>
-          <ProjectIconSetting query={scope.query} catalog={catalog} members={members} projectName={group.label} disabled={blocked} loading={scope.loading} reload={scope.reload} />
+        <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload}
+          before={<ProjectIconSetting query={scope.query} catalog={catalog} members={members} projectName={group.label} disabled={blocked} loading={scope.loading} reload={scope.reload} />}>
+          <SettingRow title="Checkouts" description="Folders for this project">
+            <div className="set-checkouts">
+              {group.members.map((member) => <span key={member.physical_key} className="mono" title={member.path ?? undefined}>{member.path ?? member.name}</span>)}
+            </div>
+          </SettingRow>
         </ProjectName>
-        <ProjectModelDefaults query={scope.query} disabled={blocked} />
-        <FallbackModel disabled={blocked} />
         <fieldset className="preference-control" disabled={blocked}>
-          <PreferenceGroups groups={[{ title: "Workspace", rows: [{ key: "default_thread_env_mode", title: "Workspace", inheritance: true,
-            description: "Where new threads in this project start.", render: (value, save, control) =>
-              <select aria-label="Default workspace" disabled={control.disabled} value={control.mixed ? "__mixed__" : String(value ?? "")}
-                onChange={(event) => save(event.target.value)}>
-                {control.mixed ? <option value="__mixed__" disabled>Mixed</option> : null}
-                <option value="local">Current checkout</option><option value="worktree">New worktree</option>
-              </select>,
-          }] }]} />
-          <PreferenceGroups groups={[{ title: "Actions", rows: [{ key: "default_project_scripts", title: "Actions", inheritance: true,
+          <PreferenceGroups groups={[{ title: "", rows: [{ key: "default_project_scripts", title: "Actions", inheritance: true,
             render: (value, _save, control) => <ProjectActions value={value} control={control} /> }] }]} />
         </fieldset>
+        <ProjectModelDefaults query={scope.query} disabled={blocked} />
+        <FallbackModel disabled={blocked} />
         <ProjectRemoval query={scope.query} group={group} members={members} disabled={blocked} reload={scope.reload}
           clearSelection={() => scope.select(undefined)} />
       </>}

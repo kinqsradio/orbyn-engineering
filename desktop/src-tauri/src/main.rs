@@ -50,9 +50,9 @@ pub(crate) fn reveal(app: &AppHandle) {
     }
 }
 
-fn show_restarting(app: &AppHandle, message: &str) {
+fn show_restarting(app: &AppHandle) {
     if let Some(window) = main_window(app) {
-        let _ = window.navigate(desktop_origin::restarting(message));
+        let _ = window.navigate(desktop_origin::restarting());
     }
 }
 
@@ -68,32 +68,40 @@ pub(crate) fn restart_service(app: &AppHandle) {
     std::thread::spawn(move || launch_core(&app));
 }
 
-pub(crate) fn show_service_log(app: &AppHandle) {
+/// Shows the service log in the file manager. The place is the app's own log folder,
+/// never one a caller names.
+fn reveal_service_log(app: &AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    match core_process::service_log(app) {
-        Ok(log) => {
-            if let Err(error) = app.opener().reveal_item_in_dir(log) {
-                tell_core(
-                    app,
-                    serde_json::json!({
-                        "type": "shell_failed", "message": format!("Cannot show the log: {error}.")
-                    }),
-                );
-            }
+    let log = core_process::service_log(app)?;
+    let shown = if log.exists() {
+        app.opener().reveal_item_in_dir(&log)
+    } else {
+        // No service has written one yet, so open the folder that will hold it.
+        let folder = log.parent().ok_or("Cannot find the log folder.")?;
+        // A link could point anywhere, so it is not opened.
+        if std::fs::symlink_metadata(folder).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return Err("The log folder is a link, so it is not opened.".into());
         }
-        Err(message) => tell_core(
+        app.opener()
+            .open_path(folder.to_string_lossy(), None::<&str>)
+    };
+    shown.map_err(|error| format!("Cannot show the log: {error}."))
+}
+
+pub(crate) fn show_service_log(app: &AppHandle) {
+    if let Err(message) = reveal_service_log(app) {
+        tell_core(
             app,
             serde_json::json!({ "type": "shell_failed", "message": message }),
-        ),
+        );
     }
 }
 
-fn show_failure(app: &AppHandle, message: &str) {
+fn show_failure(app: &AppHandle, reason: &str, repeated: bool) {
     let Some(window) = main_window(app) else {
         return;
     };
-    let url = desktop_origin::startup(Some(message));
-    let _ = window.navigate(url);
+    let _ = window.navigate(desktop_origin::failed(reason, repeated));
 }
 
 /// Replaces any running core, then supplies its address to the stable asset page.
@@ -104,7 +112,7 @@ fn launch_core(app: &AppHandle) {
         .fetch_add(1, Ordering::SeqCst)
         + 1;
     if let Err(error) = close_preview_windows(app) {
-        show_failure(app, &error);
+        show_failure(app, &error, false);
         return;
     }
     let state = app.state::<Core>();
@@ -163,15 +171,12 @@ fn launch_core(app: &AppHandle) {
             .on_crash(std::time::Instant::now());
         match decision {
             restart_policy::Decision::RestartOnce => {
-                show_restarting(&watcher, &reason);
+                show_restarting(&watcher);
                 let app = watcher.clone();
                 // Not on this thread: starting the service waits for it to be ready.
                 std::thread::spawn(move || launch_core(&app));
             }
-            restart_policy::Decision::Stop => show_failure(
-                &watcher,
-                &format!("It restarted once and stopped again. {reason}"),
-            ),
+            restart_policy::Decision::Stop => show_failure(&watcher, &reason, true),
         }
     };
     match CoreProcess::start(app, on_message, on_exit) {
@@ -192,7 +197,7 @@ fn launch_core(app: &AppHandle) {
         }
         Err(error) => {
             drop(slot);
-            show_failure(app, &error);
+            show_failure(app, &error, false);
         }
     }
 }
@@ -254,13 +259,31 @@ fn open_preview_window(app: &AppHandle, thread_id: &str, tab_id: &str) -> Result
     Ok(())
 }
 
+/// The startup document is the only caller of the three commands below. Each takes no
+/// argument from the page, and each checks the address its window shows now.
+fn require_startup(window: &WebviewWindow) -> Result<(), String> {
+    desktop_origin::require_startup(&window.url().map_err(|error| error.to_string())?)
+}
+
 #[tauri::command]
 fn restart_core(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
-    let current = window.url().map_err(|error| error.to_string())?;
-    if !desktop_origin::is_startup(&current) {
-        return Err("Only the startup document can restart the service.".into());
-    }
+    require_startup(&window)?;
     restart_service(&app);
+    Ok(())
+}
+
+/// Shows the service log, for a start that failed.
+#[tauri::command]
+fn show_core_log(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+    require_startup(&window)?;
+    reveal_service_log(&app)
+}
+
+/// Closes the app from the startup document, where there may be no service to ask.
+#[tauri::command]
+fn quit_core(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+    require_startup(&window)?;
+    app.exit(0);
     Ok(())
 }
 
@@ -294,7 +317,7 @@ fn open_window(app: &AppHandle) -> tauri::Result<()> {
         .first()
         .ok_or(tauri::Error::WindowNotFound)?
         .clone();
-    config.url = tauri::WebviewUrl::External(desktop_origin::startup(None));
+    config.url = tauri::WebviewUrl::External(desktop_origin::startup());
     let navigating = app.clone();
     let opening = app.clone();
     let window = WebviewWindowBuilder::from_config(app, &config)?
@@ -451,7 +474,7 @@ fn main() {
         .manage(menu::QuitItem::default())
         .menu(menu::build)
         .on_menu_event(menu::on_event)
-        .invoke_handler(tauri::generate_handler![restart_core])
+        .invoke_handler(tauri::generate_handler![restart_core, show_core_log, quit_core])
         .setup(|app| {
             core_process::startup_phase("setup-started");
             let handle = app.handle().clone();

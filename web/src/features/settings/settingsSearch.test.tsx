@@ -20,7 +20,7 @@ it("finds a specific label regardless of word order and excludes desktop control
   expect(new Set(SETTINGS.map((item) => item.id)).size).toBe(SETTINGS.length);
 });
 
-it("navigates from an exact result to an asynchronously loaded row inside Advanced", async () => {
+it("navigates from an exact result to an asynchronously loaded row", async () => {
   const user = userEvent.setup();
   vi.mocked(request).mockImplementation(async (_method, path) => {
     if (path === "/api/shell") return { attached: false };
@@ -39,12 +39,6 @@ it("navigates from an exact result to an asynchronously loaded row inside Advanc
   await user.type(screen.getByRole("searchbox", { name: "Search settings" }), "Branch prefix");
   await user.click(screen.getByRole("link", { name: "Branch prefix · Worktrees" }));
   const control = await screen.findByRole("textbox", { name: "Branch prefix" });
-  await waitFor(() => expect(control.closest(".setting-line")).toHaveFocus());
-  expect(screen.getByRole("button", { name: "Advanced" })).toHaveAttribute("aria-expanded", "true");
-  // Choosing the same result again must reveal it after a manual close.
-  await user.click(screen.getByRole("button", { name: "Advanced" }));
-  await waitFor(() => expect(control).not.toBeVisible());
-  await user.click(screen.getByRole("link", { name: "Branch prefix · Worktrees" }));
   await waitFor(() => expect(control.closest(".setting-line")).toHaveFocus());
   await user.clear(screen.getByRole("searchbox", { name: "Search settings" }));
   await user.type(screen.getByRole("searchbox", { name: "Search settings" }), "unmatched setting");

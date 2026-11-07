@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { libraryReady, startService, type Service } from "./service";
+import { libraryReady, openPanelTab, startService, type Service } from "./service";
 
 /**
  * F66: a Jujutsu checkout with no Git of its own shows its change and diff. A
@@ -46,7 +46,7 @@ test("a jj checkout shows its working-copy change and diff in the changes panel"
   });
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${thread.id}`);
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   const change = page.getByRole("note", { name: "Jujutsu change" });
   await expect(change).toContainText("jj change kxqpmzwt");
   await expect(change).toContainText("on feature");

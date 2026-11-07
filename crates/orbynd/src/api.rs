@@ -1398,8 +1398,15 @@ pub async fn native_session_count(
 }
 
 pub async fn probe_engine_binary(
+    State(state): State<AppState>,
     ApiJson(body): ApiJson<orbyn_contracts::ProbeBinary>,
 ) -> ApiResult<impl IntoResponse> {
+    // The check runs the program, so only the computer the app runs on may ask for it.
+    if state.remote {
+        return Err(
+            CoreError::Invalid("Check this from the computer the app runs on.".into()).into(),
+        );
+    }
     Ok(Json(
         orbyn_core::agents::engines::probe::probe_binary(&body.path).await,
     ))

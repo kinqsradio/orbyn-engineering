@@ -5,7 +5,7 @@
 .add-project-hint {
   margin-left: auto;
   padding-left: 18px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   white-space: nowrap;
@@ -26,4 +26,58 @@
   height: 1px;
   margin: 4px 2px;
   background: var(--color-divider);
+}
+
+/* A folder row shows its whole path, as the design does. */
+.palette-list button .add-project-path-row {
+  font-family: var(--font-mono);
+  font-size: var(--text-nav);
+}
+/* While New project, Clone or Browse is open, the palette steps aside and the dialog stands alone. */
+.palette[data-subdialog] {
+  visibility: hidden;
+}
+.palette[data-subdialog] .dialog {
+  visibility: visible;
+}
+.add-project-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+.add-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.add-project-form label {
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+}
+.add-project-note {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.add-project-note .mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+.add-project-link {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-decoration-color: var(--color-borderStrong);
+  text-underline-offset: 3px;
+}
+
+/* A project this flow has added: listed with a green check, not clickable. */
+.add-project-added {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 0 9px;
+  color: var(--color-textSoft);
+  font-size: var(--text-nav);
+}
+.add-project-added > svg {
+  flex: none;
+  color: var(--color-green);
 }

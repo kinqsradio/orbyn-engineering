@@ -6,6 +6,7 @@ import { useUi } from "../../state/ui";
 import { Dialog } from "../../ui/Dialog";
 import { Button, IconButton, Pill } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { TimelineThread } from "./items";
 import { Markdown } from "./Markdown";
 import { planFilename, planTitle, stripPlanTitle } from "./proposedPlan";
@@ -106,7 +107,7 @@ export function PlanCard({ text }: { text: string }) {
           {expanded ? "Collapse plan" : "Expand plan"}
         </Button>
       ) : null}
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           x={menu.x}
           y={menu.y}
@@ -121,7 +122,7 @@ export function PlanCard({ text }: { text: string }) {
             ...(threadId ? [{ label: "Save to workspace", onSelect: () => setSaving(true) }] : []),
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
       {saving && threadId ? <SaveDialog threadId={threadId} text={text} name={name} onClose={() => setSaving(false)} /> : null}
     </section>
   );

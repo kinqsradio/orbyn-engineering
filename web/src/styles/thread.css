@@ -1,4 +1,5 @@
 .thread-layout {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -42,7 +43,8 @@
 }
 .crumbs {
   display: flex;
-  flex-wrap: wrap;
+  /* The title and the chips shrink with an ellipsis rather than wrapping. */
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 0 12px;
   flex: 1;
@@ -66,8 +68,9 @@
   display: inline-flex;
   align-items: center;
   /* The meta line gives way first: its items ellipsize, and it wraps under the title only if it must. */
-  flex: 0 100 auto;
+  flex: 0 1 auto;
   gap: 12px;
+  overflow: hidden;
   min-width: 0;
   max-width: 100%;
   color: var(--color-muted);
@@ -341,7 +344,7 @@
 }
 .run-status-detail {
   min-width: 0;
-  color: var(--color-faint);
+  color: var(--color-muted);
 }
 .text-action {
   padding: 0 2px;
@@ -362,7 +365,6 @@
   margin-top: 2px;
   background: var(--color-primary);
   border-radius: 2px;
-  animation: pulse 1s ease-in-out infinite;
 }
 
 /* Markdown */
@@ -452,7 +454,7 @@
 .code-actions {
   display: flex;
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--m-fast);
 }
 .code-card:hover .code-actions,
 .code-card:focus-within .code-actions {
@@ -506,16 +508,6 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-md);
-}
-/* A soft band over a tool that's still running. */
-.trace[data-live]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to right, transparent, var(--color-hover), transparent);
-  pointer-events: none;
-  animation: band-sweep 2.2s steps(30) infinite;
-  animation-play-state: var(--loop-state, paused);
 }
 .trace-summary {
   display: flex;
@@ -581,7 +573,7 @@
 }
 .trace-output {
   flex: none;
-  color: var(--color-faint);
+  color: var(--color-muted);
 }
 .work-fold {
   display: flex;
@@ -679,7 +671,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-meta);
   font-weight: 500;
   line-height: 16px;
@@ -867,7 +859,7 @@
   font-size: var(--text-meta);
 }
 .approval-meta {
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
   overflow-wrap: anywhere;
 }
@@ -917,7 +909,7 @@
   }
 }
 .approval-note {
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
 }
 .plain-details summary {
@@ -1097,7 +1089,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 16px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
 }
 .composer-context dl {
@@ -1125,7 +1117,7 @@
   border: 1px solid var(--color-borderStrong);
   border-radius: var(--radius-xl);
   background: var(--color-background);
-  transition: border-color 200ms;
+  transition: border-color var(--m-base);
 }
 .composer-box:hover {
   border-color: var(--color-borderHover);
@@ -1260,7 +1252,7 @@
   background: var(--color-primary);
   color: var(--color-onAccent);
   cursor: pointer;
-  transition: transform var(--motion-base) var(--ease-out);
+  transition: transform var(--m-base) var(--m-io);
 }
 .send-btn:hover:not(:disabled) {
   transform: scale(1.05);
@@ -1518,6 +1510,50 @@
   white-space: nowrap;
 }
 
+/* The Details button: icon and label, pressed while the card shows. */
+.layout-toggles .topbar-details {
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-textSoft);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.layout-toggles .topbar-details[aria-pressed="true"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+/* At the top of the side panel, above its tabs. */
+.context > .details {
+  position: static;
+  flex: none;
+  width: auto;
+  max-height: 45%;
+  margin: 8px 10px 0;
+}
+/* While the panel is closed: a popover under the Details button. */
+.details-popover {
+  position: absolute;
+  z-index: 12;
+  top: calc(var(--topbar-h) + 4px);
+  /* Under the Details button: its right edge, left of the Terminal and panel buttons. */
+  right: 88px;
+  width: min(392px, calc(100% - 32px));
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  box-shadow:
+    0 10px 30px var(--color-shadow),
+    0 0 0 1px var(--color-borderStrong);
+}
+.details-popover > .details {
+  position: static;
+  width: auto;
+  max-height: min(70vh, 560px);
+}
+
 /* Details card */
 .details {
   position: absolute;
@@ -1693,6 +1729,33 @@ button.detail-row:hover {
   padding: 4px 12px 12px;
   border-top: 1px solid var(--color-border);
 }
+/* The terminal drawer rises from the bottom edge and drops back the same way. */
+[data-panel-motion="on"] .drawer[data-moves] {
+  transition: translate var(--panel-duration) var(--ease-drawer);
+}
+[data-panel-motion="on"] .drawer[data-moves][data-closing] {
+  translate: 0 100%;
+  transition: translate var(--m-slow-out) var(--m-io);
+}
+@starting-style {
+  [data-panel-motion="on"] .drawer[data-moves] {
+    translate: 0 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-panel-motion="on"] .drawer[data-moves][data-closing] {
+    translate: none;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    [data-panel-motion="on"] .drawer[data-moves] {
+      translate: none;
+      opacity: 0;
+    }
+  }
+}
 
 /* Context panel */
 .context {
@@ -1706,27 +1769,67 @@ button.detail-row:hover {
   background: var(--color-background);
   box-shadow: none;
 }
-[data-panel-motion="on"] .context {
-  transition:
-    translate var(--panel-duration) var(--ease-drawer),
-    opacity var(--panel-duration) var(--ease-drawer);
+/* Slide in from the right over --panel-duration (--m-slow, ease-out) and out over
+   --m-slow-out. Only a pane that opens or closes moves: data-moves is set once the thread
+   has settled, so a pane already open at page load never animates. */
+[data-panel-motion="on"] .context[data-moves] {
+  transition: translate var(--panel-duration) var(--ease-drawer);
 }
-[data-panel-motion="on"] .context[data-closing] {
-  translate: 24px 0;
-  opacity: 0;
+[data-panel-motion="on"] .context[data-moves][data-closing] {
+  translate: 100% 0;
+  transition: translate var(--m-slow-out) var(--m-io);
 }
 @starting-style {
-  [data-panel-motion="on"] .context {
-    translate: 24px 0;
+  [data-panel-motion="on"] .context[data-moves] {
+    translate: 100% 0;
+  }
+}
+/* Reduced motion: no slide, a fade over --m-fast instead (the global block sets the timing). */
+@media (prefers-reduced-motion: reduce) {
+  [data-panel-motion="on"] .context[data-moves][data-closing] {
+    translate: none;
     opacity: 0;
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    [data-panel-motion="on"] .context[data-moves] {
+      translate: none;
+      opacity: 0;
+    }
+  }
+}
+/* Maximised, or a sheet on the phone: the panel takes the thread's place. */
 .context[data-maximized],
-.shell[data-layout="medium"] .context,
-.shell[data-layout="narrow"] .context {
+.context[data-mode="sheet"] {
   flex: 1;
   width: auto;
   min-width: 0;
+  max-width: none;
+  border-left: 0;
+}
+/* Beside the thread or over it, the panel is 320px at the narrowest and 60% of the window at the widest. */
+.context[data-mode="docked"]:not([data-maximized]),
+.context[data-mode="overlay"]:not([data-maximized]) {
+  min-width: var(--panel-min-w);
+  max-width: 60vw;
+}
+/* Medium and small windows: it floats over the right of the thread, under the header so the header
+   buttons stay in reach. Nothing behind it moves, and nothing behind it is blocked. */
+.context[data-mode="overlay"]:not([data-maximized]) {
+  position: absolute;
+  z-index: 10;
+  top: var(--panel-overlay-top);
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid var(--color-border);
+  border-left: 0;
+  border-top-left-radius: var(--radius-lg);
+  box-shadow:
+    -14px 0 32px var(--color-panelShadow),
+    -1px 0 0 var(--color-borderStrong);
+}
+.context[data-mode="overlay"][data-maximized] {
   border-left: 0;
 }
 .context-head {
@@ -1779,6 +1882,33 @@ button.detail-row:hover {
 .ptab:not([data-selected]):hover {
   background: var(--color-hover);
   color: var(--color-textSoft);
+}
+/* The drawer's own row above the tabs: Back to thread at the left, Maximise and Close at the right. */
+.drawer-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.drawer-head .btn {
+  min-height: 26px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: var(--radius-9);
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+}
+.drawer-head .end {
+  display: flex;
+  gap: 2px;
+}
+.drawer-head .end .icon-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-muted);
 }
 .context-head .end {
   display: flex;
@@ -1847,71 +1977,6 @@ button.detail-row:hover {
 .surface-tab:not([data-selected]):hover,
 .chip:not([aria-pressed="true"]):hover {
   background: var(--color-hover);
-}
-.launcher {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 24px var(--topbar-h);
-  outline: none;
-}
-.launcher-inner {
-  width: 100%;
-  max-width: 320px;
-  padding: 24px 0;
-}
-.launcher h2 {
-  margin-bottom: 12px;
-  font-size: var(--text-body);
-  font-weight: 500;
-  text-align: center;
-}
-.launcher ul {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.launcher button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-textSoft);
-  font-size: var(--text-body);
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 100ms;
-}
-.launcher button:hover:not(:disabled) {
-  background: var(--color-hover);
-}
-.launcher button:disabled {
-  color: var(--color-faint);
-  cursor: default;
-}
-.launcher button span {
-  flex: 1;
-}
-.launcher kbd {
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  color: var(--color-muted);
-  font-family: var(--font-sans);
-  font-size: var(--text-caption);
-}
-.launcher button:disabled kbd {
-  color: var(--color-faint);
 }
 .context-body {
   flex: 1;
@@ -2056,7 +2121,7 @@ button.detail-row:hover {
   color: var(--color-danger);
 }
 .timeline li[data-tone="attention"] .timeline-label {
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .terminal-panel {
   display: flex;
@@ -2074,7 +2139,7 @@ button.detail-row:hover {
   overflow: hidden;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .topbar {
     padding: 0 8px;
   }
@@ -2137,7 +2202,11 @@ button.detail-row:hover {
   min-height: 0;
 }
 .home-stack > .welcome-wizard {
+  flex: 1 0 auto;
+}
+.home-stack > .welcome-wizard:not([data-step="0"]) {
   flex: none;
+  width: 100%;
 }
 /* Centred content never shrinks, so none of it ends up above the scroll start. */
 .home-stack > .no-projects {
@@ -2217,21 +2286,24 @@ button.detail-row:hover {
   position: fixed;
   z-index: 70;
   border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--color-raised) 84%, transparent);
   backdrop-filter: blur(16px) saturate(1.08);
   box-shadow: 0 18px 44px -18px var(--color-shadow);
   transition:
-    scale 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out),
+    opacity var(--m-base) var(--m-out);
 }
 @starting-style {
   .model-picker,
   .traits-menu {
+    translate: 0 -4px;
     scale: 0.98;
     opacity: 0;
   }
 }
+
 .model-picker {
   display: flex;
   width: min(362px, calc(100vw - 12px));
@@ -2469,7 +2541,7 @@ button.detail-row:hover {
   gap: 2px;
   margin: 2px 8px 0;
   padding: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-10);
   background: var(--color-chip);
 }
 .access-segment button {
@@ -2479,7 +2551,7 @@ button.detail-row:hover {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-7);
   background: transparent;
   color: var(--color-muted);
   cursor: pointer;
@@ -2527,6 +2599,7 @@ button.detail-row:hover {
   background: var(--color-divider);
 }
 .draft-layout {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -2603,7 +2676,7 @@ button.detail-row:hover {
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 .question-key {
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-label);
 }
@@ -2763,7 +2836,7 @@ button.detail-row:hover {
   color: var(--color-text);
 }
 .file-tree button[data-ignored] {
-  color: var(--color-faint);
+  color: var(--color-muted);
 }
 .file-tree span {
   min-width: 0;
@@ -2795,13 +2868,13 @@ button.detail-row:hover {
 }
 .zip-size {
   flex: none;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
 }
 .zip-badge {
   flex: none;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-meta);
 }
 .zip-entry {
@@ -2879,7 +2952,7 @@ button.detail-row:hover {
   flex: none;
   margin: 0;
   padding: 4px 8px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-small);
 }
 .office-refusal {
@@ -2935,7 +3008,7 @@ button.detail-row:hover {
   top: 0;
   z-index: 1;
   background: var(--color-raised);
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -2963,7 +3036,7 @@ button.detail-row:hover {
 .file-source i {
   display: inline-block;
   width: 40px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-style: normal;
   text-align: right;
   user-select: none;
@@ -3001,7 +3074,7 @@ button.detail-row:hover {
   height: 24px;
   margin-top: 4px;
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--m-fast);
 }
 .msg-user .msg-actions {
   justify-content: flex-end;
@@ -3204,7 +3277,7 @@ button.detail-row:hover {
 .lightbox-stage img {
   max-width: 90%;
   max-height: 90%;
-  transition: transform 150ms ease;
+  transition: transform var(--m-fast) ease;
 }
 .lightbox-stage video {
   max-width: 90%;
@@ -3337,7 +3410,7 @@ button.detail-row:hover {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-small);
 }
 .composer-banner span {
@@ -3444,7 +3517,7 @@ button.detail-row:hover {
   font-size: var(--text-nav);
 }
 .plan-banner strong {
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-weight: 500;
 }
 .plan-banner span {
@@ -3461,7 +3534,7 @@ button.detail-row:hover {
   z-index: 2;
   width: 20px;
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--m-fast);
 }
 .minimap-zone:hover,
 .minimap-zone:focus-within {
@@ -4071,20 +4144,47 @@ button.context-meter:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.branch-list {
-  max-height: 320px;
-  margin-top: 8px;
-  overflow-y: auto;
+.branch-dialog {
+  width: min(420px, calc(100vw - 32px));
 }
-.branch-list button {
+.branch-find {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  height: 32px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-10);
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+.branch-find input {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
   border: 0;
-  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  outline: none;
+}
+.branch-list {
+  max-height: 320px;
+  gap: 0;
+  overflow-y: auto;
+}
+.branch-list button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
   background: transparent;
   color: var(--color-text);
   text-align: left;
@@ -4092,12 +4192,36 @@ button.context-meter:hover:not(:disabled) {
 .branch-list button:hover:not(:disabled) {
   background: var(--color-hover);
 }
-.branch-list span {
-  flex: 1;
+.branch-list button[data-active] {
+  border-radius: 8px;
+  background: var(--color-sunken);
+}
+.branch-mark {
+  display: inline-grid;
+  place-items: center;
+}
+.branch-name {
   min-width: 0;
   overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.branch-create {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.branch-note {
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.branch-hint {
+  margin: 0;
+  font-size: 12.5px;
 }
 .model-extra {
   color: var(--color-muted);
@@ -4287,7 +4411,7 @@ div.browser-bridge-row {
   z-index: 2;
   pointer-events: none;
   color: var(--color-primary);
-  transition: left 150ms ease-out, top 150ms ease-out;
+  transition: left var(--m-page) var(--m-io), top var(--m-page) var(--m-io);
 }
 .browser-agent-cursor svg {
   fill: var(--color-raised);
@@ -4299,15 +4423,18 @@ div.browser-bridge-row {
   height: 16px;
   border: 2px solid currentColor;
   border-radius: 50%;
-  animation: browser-agent-click 700ms ease-out;
+  /* One ring per click, after the dwell, and never looping. */
+  opacity: 0;
+  animation: browser-agent-click var(--m-slow) var(--m-out) var(--m-wait) forwards;
 }
 @keyframes browser-agent-click {
-  from { transform: scale(.5); opacity: .8; }
-  to { transform: scale(1.8); opacity: 0; }
+  from { transform: scale(.4); opacity: .35; }
+  to { transform: scale(1.6); opacity: 0; }
 }
+/* The cursor jumps, and a static ring marks the click until the cue clears. */
 @media (prefers-reduced-motion: reduce) {
-  .browser-agent-cursor { transition: none; }
-  .browser-agent-click { animation: none; }
+  .browser-agent-cursor { transition: none !important; }
+  .browser-agent-click { animation: none; opacity: .35; transform: none; }
 }
 .patch-line[data-selected] {
   background: var(--color-selected);
@@ -4535,4 +4662,179 @@ div.browser-bridge-row {
   color: var(--color-muted);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
+}
+
+/* Connection states. Offline is neutral because nothing is broken; a service that does not answer is red. */
+.conn-status {
+  gap: 7px;
+  color: var(--color-muted);
+}
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-label);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.conn-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.conn-pill[data-tone="err"] {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.conn-pill[data-tone="info"] {
+  background: var(--color-blueSoft);
+  color: var(--color-blue);
+}
+.conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: var(--reading-w);
+  margin: 0 auto 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-14);
+  background: var(--color-sunken);
+  color: var(--color-text);
+  font-size: var(--text-nav);
+}
+.conn-banner > svg {
+  flex: none;
+}
+.conn-banner[data-tone="err"] {
+  background: var(--color-dangerSoft);
+}
+.conn-banner[data-tone="err"] > svg {
+  color: var(--color-danger);
+}
+.conn-banner[data-tone="info"] {
+  background: var(--color-blueSoft);
+}
+.conn-banner[data-tone="info"] > svg {
+  color: var(--color-blue);
+}
+.conn-banner-end {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.conn-banner b {
+  font-weight: 500;
+}
+.conn-banner-detail {
+  color: var(--color-textSoft);
+}
+/* The thread dims, the draft stays, and sending waits. */
+.thread-stage[data-connection="service-down"] .transcript-wrap {
+  opacity: 0.55;
+}
+.thread-stage[data-connection="service-down"] .composer-lane {
+  opacity: 0.6;
+}
+.ptab[data-offline] > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.tabs-more[aria-pressed="true"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.conn-panel-banner {
+  margin: 12px 14px 0;
+  width: auto;
+  max-width: none;
+}
+/* The Browser tab offline: where the page would be, a notice and Retry. */
+.browser-offline {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 20px 48px;
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+}
+.browser-offline b {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 500;
+}
+.browser-offline .btn {
+  margin-top: 6px;
+}
+.conn-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-sunken);
+}
+.conn-wait b {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.conn-wait span {
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+}
+/* While the edge is dragged: a line on it and the width beside it. */
+.context[data-resizing] {
+  box-shadow: inset 2px 0 0 var(--color-muted);
+}
+/* A faint dashed line at each snap point while the edge is dragged, labelled at the foot. */
+.pane-tick {
+  position: absolute;
+  z-index: 5;
+  top: var(--titlebar-h);
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--color-muted);
+  pointer-events: none;
+}
+.pane-tick > i {
+  position: absolute;
+  bottom: 92px;
+  left: 0;
+  z-index: 6;
+  padding: 1px 5px;
+  border-radius: var(--radius-5);
+  background: var(--color-background);
+  box-shadow: 0 0 0 1px var(--color-border);
+  color: var(--color-textSoft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-style: normal;
+  line-height: normal;
+  transform: translateX(-50%);
+}
+.pane-width {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-onAccent);
+  font-size: var(--text-label);
+  white-space: nowrap;
+  pointer-events: none;
 }

@@ -1,14 +1,12 @@
 import { settingsLabel } from "./settingsSearch";
-import { useRef } from "react";
+import { AlertTriangle, ChevronLeft, Info } from "lucide-react";
+import { useRef, useState } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
-import { applyTheme, useUi, type EnvironmentIdentification, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
+import { applyTheme, useUi, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
-import { api } from "../../api/client";
-import { fullTime } from "../../lib/format";
-import { useAsync } from "../../lib/useAsync";
+import { isColour, presetById, readThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
 import { ENVIRONMENT_ICON_CHOICES } from "./EnvironmentIcon";
 import { PreferenceGroups } from "./PreferenceRows";
 
@@ -19,31 +17,32 @@ function EnvironmentGroup() {
     ...choices.map((choice) => ({ value: choice.value, label: choice.label })),
     ...THEME_PRESETS.map((preset) => ({ value: preset.id, label: preset.name })),
   ];
-  const info = useAsync("appearance-environment", (signal) => api.info(signal));
-  const published = info.data?.environment_theme;
-  const setAt = published ? `Set ${fullTime(new Date(published.set_at).toISOString())}. ` : "";
   return (
+    <>
+    <p className="settings-scope"><Info size={13} aria-hidden />Published to every viewer of this computer</p>
     <PreferenceGroups
       groups={[
         {
-          title: "Environment",
+          title: "",
           rows: [
             {
               key: "default_theme",
               title: settingsLabel("appearance-default-theme"),
-              description: `${setAt}Each device applies it once when it changes, then keeps its own choice.`,
+              description: "The theme a viewer starts with",
               options: themeChoices,
             },
             {
               key: "environment_icon",
               title: settingsLabel("appearance-environment-icon"),
-              description: "The kind of machine this environment shows as.",
+              description: "Shown next to this computer’s name",
               options: ENVIRONMENT_ICON_CHOICES,
             },
           ],
         },
       ]}
     />
+    <p className="banner"><Info size={13} aria-hidden />Anyone who opens this computer’s threads from another device sees this theme and icon.</p>
+    </>
   );
 }
 
@@ -150,7 +149,7 @@ function ThemeChoiceRow() {
     applyTheme(next);
   };
   return (
-    <SettingRow title={settingsLabel("appearance-theme")} description="How the app looks on this device.">
+    <SettingRow title={settingsLabel("appearance-theme")}>
       <Segmented label="Theme" value={value} options={LOOKS} onChange={choose} />
     </SettingRow>
   );
@@ -172,7 +171,7 @@ function PresetRow({ scheme }: { scheme: "light" | "dark" }) {
           applyTheme(theme);
         }}
       >
-        <option value="">Orbyn</option>
+        <option value="">{scheme === "dark" ? "Orbyn Dark" : "Orbyn Light"}</option>
         {THEME_PRESETS.filter((preset) => preset.scheme === scheme).map((preset) => (
           <option key={preset.id} value={preset.id}>
             {preset.name}
@@ -183,12 +182,56 @@ function PresetRow({ scheme }: { scheme: "light" | "dark" }) {
   );
 }
 
-function ThemeEditor() {
+/** A row in Appearance that opens the theme editor page. */
+function ThemeEditorRow({ open }: { open(): void }) {
+  return (
+    <SettingGroup>
+      <SettingRow title="Theme editor" description="Edit a theme as a file or token by token">
+        <Button small onClick={open}>Edit…</Button>
+      </SettingRow>
+    </SettingGroup>
+  );
+}
+
+const colourOf = (token: string) => getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+
+function TokenRow({ label, value, save }: { label: string; value: string; save(next: string): void }) {
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (seen !== value) { setSeen(value); setDraft(value); setProblem(null); }
+  const commit = () => {
+    const next = draft.trim();
+    if (next === value) { setProblem(null); return; }
+    if (!isColour(next)) { setProblem(`${label}: “${next}” is not a colour. Use #rgb, #rrggbb or rgba().`); return; }
+    setProblem(null);
+    save(next);
+  };
+  return (
+    <div className={problem ? "tkn error" : "tkn"}>
+      <b>{label}</b>
+      <span className="swc" style={{ background: isColour(draft) ? draft.trim() : value }} aria-hidden />
+      <input className="mono" aria-label={label} value={draft} spellCheck={false} aria-invalid={problem ? true : undefined}
+        onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commit(); } }} />
+      {problem ? <small className="err" role="alert">{problem}</small> : null}
+    </div>
+  );
+}
+
+function ThemeEditorPage({ onBack }: { onBack(): void }) {
   const custom = useUi((state) => state.customColors);
   const theme = useUi((state) => state.theme);
+  const lightPreset = useUi((state) => state.lightPreset);
+  const darkPreset = useUi((state) => state.darkPreset);
   const setPrefs = useUi((state) => state.setPrefs);
-  const pushToast = useUi((state) => state.pushToast);
   const file = useRef<HTMLInputElement>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const scheme: "light" | "dark" = theme === "system" ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+  const presetKey = scheme === "dark" ? "darkPreset" : "lightPreset";
+  const presetValue = scheme === "dark" ? darkPreset : lightPreset;
+  const preset = presetById(presetValue);
+  const scheme_name = scheme === "dark" ? "Dark" : "Light";
   const save = (customColors: ThemeColors) => {
     setPrefs({ customColors });
     applyTheme(theme);
@@ -203,36 +246,41 @@ function ThemeEditor() {
   };
   const importTheme = async (selected: File | undefined) => {
     if (!selected) return;
-    const colors = parseThemeFile(await selected.text());
-    if (colors) save(colors);
-    else pushToast("Couldn't read that theme file.");
+    const read = readThemeFile(await selected.text());
+    if ("colors" in read) { setFailure(null); save(read.colors); }
+    else setFailure(`Couldn't import ${selected.name}. ${read.error} Nothing changed.`);
     if (file.current) file.current.value = "";
   };
   return (
-    <SettingGroup title="Theme editor">
-      {THEME_TOKENS.map(([token, label]) => (
-        <SettingRow key={token} title={label}>
-          <input
-            type="color"
-            aria-label={label}
-            value={custom[token] ?? (getComputedStyle(document.documentElement).getPropertyValue(token).trim().match(/^#[0-9a-f]{6}$/i)?.[0] ?? "#000000")}
-            onChange={(event) => save({ ...custom, [token]: event.target.value })}
-          />
-        </SettingRow>
-      ))}
-      <SettingRow title={settingsLabel("appearance-theme-file")}>
-        <input ref={file} type="file" accept="application/json,.json" hidden aria-label="Import theme file" onChange={(event) => void importTheme(event.target.files?.[0])} />
-        <Button small tone="quiet" onClick={() => file.current?.click()}>
-          Import
-        </Button>
-        <Button small tone="quiet" onClick={exportTheme}>
-          Export
-        </Button>
-        <Button small tone="quiet" disabled={Object.keys(custom).length === 0} onClick={() => save({})}>
-          Reset
-        </Button>
-      </SettingRow>
-    </SettingGroup>
+    <>
+      <div className="set-back">
+        <Button small tone="quiet" icon={<ChevronLeft size={13} aria-hidden />} onClick={onBack}>Appearance</Button>
+        <h2 className="set-back-title">Theme editor</h2>
+      </div>
+      <div className="set-licence-bar">
+        <select aria-label={`${scheme_name} theme`} value={presetValue ?? ""} onChange={(event) => { setPrefs({ [presetKey]: event.target.value || null }); applyTheme(theme); }}>
+          <option value="">{scheme_name} theme · Orbyn {scheme_name}</option>
+          {THEME_PRESETS.filter((entry) => entry.scheme === scheme).map((entry) => <option key={entry.id} value={entry.id}>{scheme_name} theme · {entry.name}</option>)}
+        </select>
+        <span className="set-back-end">
+          <input ref={file} type="file" accept="application/json,.json" hidden aria-label="Import theme file" onChange={(event) => void importTheme(event.target.files?.[0])} />
+          <Button small onClick={() => file.current?.click()}>Import…</Button>
+          <Button small onClick={exportTheme}>Export…</Button>
+          <Button small disabled={Object.keys(custom).length === 0} onClick={() => { setFailure(null); save({}); }}>Reset</Button>
+        </span>
+      </div>
+      {failure ? (
+        <p className="banner banner-err" role="alert"><AlertTriangle size={14} aria-hidden />{failure}
+          <Button small className="set-back-end" onClick={() => file.current?.click()}>Choose another file</Button></p>
+      ) : null}
+      <div className="tokg">
+        {THEME_TOKENS.map(([token, label]) => (
+          <TokenRow key={token} label={label}
+            value={custom[token] ?? preset?.colors[token] ?? colourOf(token)}
+            save={(next) => save({ ...custom, [token]: next })} />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -243,6 +291,44 @@ const SIZES: { key: keyof Typography; title: string; min: number; max: number }[
   { key: "terminalSize", title: settingsLabel("appearance-terminal-size"), min: 8, max: 24 },
 ];
 
+/** A free-text font name; empty means the default. */
+function FontRow({ title, label, value, save }: { title: string; label: string; value: string; save(next: string): void }) {
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) { setSeen(value); setDraft(value); }
+  return (
+    <SettingRow title={title}>
+      <input aria-label={label} placeholder="Any installed font" value={draft} spellCheck={false}
+        onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft.trim() !== value) save(draft.trim()); }} />
+      {value !== "" ? <Button small tone="quiet" aria-label={`Reset ${label} to default`} onClick={() => { setDraft(""); save(""); }}>Reset to default</Button> : null}
+    </SettingRow>
+  );
+}
+
+function FontRows() {
+  const typography = useUi((state) => state.typography);
+  const theme = useUi((state) => state.theme);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const update = (patch: Partial<Typography>) => {
+    setPrefs({ typography: { ...typography, ...patch } });
+    applyTheme(theme);
+  };
+  return (
+    <SettingGroup>
+      <FontRow title={settingsLabel("appearance-interface-font")} label="Interface font" value={typography.uiFont} save={(uiFont) => update({ uiFont })} />
+      <FontRow title={settingsLabel("appearance-code-font")} label="Code font" value={typography.codeFont} save={(codeFont) => update({ codeFont })} />
+    </SettingGroup>
+  );
+}
+
+const SIZE_DEFAULTS: Record<keyof Typography & string, number> = { uiSize: 16, chatSize: 14, codeSize: 13, terminalSize: 12 } as never;
+const SIZE_NOTES: Record<string, string> = {
+  uiSize: "Sidebar, settings and menus. Applied as page zoom: 16 = 100%.",
+  chatSize: "Messages and tool calls",
+  codeSize: "Diffs, code blocks and files",
+  terminalSize: "The terminal drawer",
+};
+
 function TypographyGroup() {
   const typography = useUi((state) => state.typography);
   const theme = useUi((state) => state.theme);
@@ -252,33 +338,40 @@ function TypographyGroup() {
     applyTheme(theme);
   };
   return (
-    <SettingGroup title="Typography">
-      <SettingRow title={settingsLabel("appearance-interface-font")}>
-        <input aria-label="Interface font" placeholder="System" defaultValue={typography.uiFont} onBlur={(event) => update({ uiFont: event.target.value.trim() })} />
-      </SettingRow>
-      <SettingRow title={settingsLabel("appearance-code-font")}>
-        <input aria-label="Code font" placeholder="System" defaultValue={typography.codeFont} onBlur={(event) => update({ codeFont: event.target.value.trim() })} />
-      </SettingRow>
-      {SIZES.map(({ key, title, min, max }) => (
-        <SettingRow key={key} title={title}>
-          <input
-            type="number"
-            aria-label={title}
-            min={min}
-            max={max}
-            value={typography[key]}
-            onChange={(event) => {
-              const size = Number(event.target.value);
-              if (size >= min && size <= max) update({ [key]: size });
-            }}
-          />
-        </SettingRow>
-      ))}
-    </SettingGroup>
+    <>
+      <SettingGroup>
+        {SIZES.map(({ key, title, min, max }) => (
+          <SettingRow key={key} title={title} description={SIZE_NOTES[key]}>
+            <span className="unit-field">
+              <span className="t3 range-note">{min}–{max} · default {SIZE_DEFAULTS[key]}</span>
+              <input
+                type="number"
+                aria-label={title}
+                min={min}
+                max={max}
+                value={typography[key]}
+                onChange={(event) => {
+                  const size = Number(event.target.value);
+                  if (size >= min && size <= max) update({ [key]: size });
+                }}
+              />
+              <span className="t3">px</span>
+              <Button small disabled={typography[key] === SIZE_DEFAULTS[key]} aria-label={`Reset ${title}`} onClick={() => update({ [key]: SIZE_DEFAULTS[key] })}>Reset</Button>
+            </span>
+          </SettingRow>
+        ))}
+      </SettingGroup>
+      <div className="set-card set-preview">
+        <small className="t3">Preview</small>
+        <span style={{ fontSize: typography.chatSize }}>The redirect ignores the next parameter.</span>
+        <span className="mono" style={{ fontSize: typography.codeSize }}>const next = params.get("next");</span>
+      </div>
+    </>
   );
 }
 
 export function AppearanceSection() {
+  const [editor, setEditor] = useState(false);
   const theme = useUi((state) => state.theme);
   const panelMs = useUi((state) => state.panelAnimationMs);
   const setPanelMs = useUi((state) => state.setPanelAnimationMs);
@@ -287,46 +380,38 @@ export function AppearanceSection() {
   const contrast = useUi((state) => state.contrast);
   const smoothing = useUi((state) => state.fontSmoothing);
   const environmentIdentification = useUi((state) => state.environmentIdentification);
+  if (editor) return <ThemeEditorPage onBack={() => setEditor(false)} />;
   return (
     <>
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Appearance
       </h1>
-      <SettingGroup title="Theme">
+      <SettingGroup>
         <ThemeChoiceRow />
-        <LayoutRow />
-        <SettingRow
-          title={settingsLabel("appearance-environment-identification")}
-          description="How the sidebar marks a Dev or Nightly build of this environment."
-        >
-          <select
-            aria-label="Environment identification"
-            value={environmentIdentification}
-            onChange={(event) => setPrefs({ environmentIdentification: event.target.value as EnvironmentIdentification })}
-          >
-            <option value="artwork">Artwork</option>
-            <option value="pill">Version pill</option>
-            <option value="none">None</option>
-          </select>
-        </SettingRow>
       </SettingGroup>
-      <SettingGroup title="Theme presets">
-        <PresetRow scheme="dark" />
+      <SettingGroup>
+        <LayoutRow />
+      </SettingGroup>
+      <FontRows />
+      <TypographyGroup />
+      <SettingGroup>
         <PresetRow scheme="light" />
+        <PresetRow scheme="dark" />
         <SettingRow title={settingsLabel("appearance-contrast")}>
-          <select
-            aria-label="Contrast"
+          <Segmented
+            label="Contrast"
             value={contrast}
-            onChange={(event) => {
-              setPrefs({ contrast: event.target.value as "normal" | "more" });
+            options={[
+              { value: "normal", label: "Standard" },
+              { value: "more", label: "Higher" },
+            ]}
+            onChange={(next) => {
+              setPrefs({ contrast: next });
               applyTheme(theme);
             }}
-          >
-            <option value="normal">Normal</option>
-            <option value="more">More</option>
-          </select>
+          />
         </SettingRow>
-        <SettingRow title={settingsLabel("appearance-font-smoothing")}>
+        <SettingRow title={settingsLabel("appearance-font-smoothing")} description="Smooth text on macOS">
           <input
             type="checkbox"
             role="switch"
@@ -338,39 +423,55 @@ export function AppearanceSection() {
             }}
           />
         </SettingRow>
-      </SettingGroup>
-      <EnvironmentGroup />
-      <ThemeEditor />
-      <TypographyGroup />
-      <SettingGroup title="Composer">
-        <SettingRow title={settingsLabel("appearance-effort-display")} description="Show reasoning effort in the composer as its name, such as High, or as bars.">
-          <select
-            aria-label="Effort display"
+        <SettingRow title={settingsLabel("appearance-effort-display")} description="How effort shows in the composer">
+          <Segmented
+            label="Effort display"
             value={effortDisplay}
-            onChange={(event) => setPrefs({ effortDisplay: event.target.value as "label" | "bars" })}
-          >
-            <option value="label">Word</option>
-            <option value="bars">Bars</option>
-          </select>
+            options={[
+              { value: "label", label: "Name" },
+              { value: "bars", label: "Bars" },
+            ]}
+            onChange={(next) => setPrefs({ effortDisplay: next })}
+          />
         </SettingRow>
-      </SettingGroup>
-      <SettingGroup title="Motion">
         <SettingRow
           settingId="appearance-panel-animations"
-          title={`${settingsLabel("appearance-panel-animations")}: ${panelMs === 0 ? "Off" : `${panelMs} ms`}`}
-          description="Animates panels opening and the composer moving."
+          title={settingsLabel("appearance-panel-animations")}
+          description="How long the side panel takes to open. 0 turns it off."
         >
-          <input
-            type="range"
-            aria-label="Panel animations"
-            min={0}
-            max={MAX_PANEL_ANIMATION_MS}
-            step={20}
-            value={panelMs}
-            onChange={(event) => setPanelMs(Number(event.target.value))}
+          <span className="unit-field">
+            <input
+              type="number"
+              aria-label="Panel animations"
+              min={0}
+              max={MAX_PANEL_ANIMATION_MS}
+              step={20}
+              value={panelMs}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                if (next >= 0 && next <= MAX_PANEL_ANIMATION_MS) setPanelMs(next);
+              }}
+            />
+            <span className="t3">ms</span>
+          </span>
+        </SettingRow>
+      </SettingGroup>
+      <EnvironmentGroup />
+      <SettingGroup>
+        <SettingRow title={settingsLabel("appearance-environment-identification")} description="How the sidebar marks a Dev or Nightly build of this environment.">
+          <Segmented
+            label="Environment identification"
+            value={environmentIdentification}
+            options={[
+              { value: "artwork", label: "Artwork" },
+              { value: "pill", label: "Version pill" },
+              { value: "none", label: "None" },
+            ]}
+            onChange={(next) => setPrefs({ environmentIdentification: next })}
           />
         </SettingRow>
       </SettingGroup>
+      <ThemeEditorRow open={() => setEditor(true)} />
     </>
   );
 }

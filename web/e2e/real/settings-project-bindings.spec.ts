@@ -51,31 +51,23 @@ for (const row of ROWS) {
   });
 }
 
-test("default permissions and show answers are set per project on the Threads page", async ({ page }) => {
-  await page.goto(await projectSettingsUrl(service, projectId, "threads"));
+test("default access mode and show answers are set for the environment on the Chat page", async ({ page }) => {
+  await page.goto(`${service.page}#/settings/chat`);
   for (const [key, title, value] of [
-    ["default_permission_mode", "Default permissions", "auto"],
+    ["default_permission_mode", "Default access mode", "auto"],
     ["response_streaming_mode", "Show answers", "turn"],
   ] as const) {
-    const environment = await pref(key);
-    const group = page.getByRole("radiogroup", { name: title, exact: true });
-    const choice = key === "response_streaming_mode" ? group.getByRole("radio", { name: "When the turn ends", exact: true }) : null;
-    if (choice) {
-      await expect(choice).toBeEnabled();
-      await choice.click();
-    } else {
-      const select = page.getByRole("combobox", { name: title, exact: true });
-      await expect(select).toBeEnabled();
-      await select.selectOption(value);
-    }
-    await expect.poll(async () => pref(key, projectId)).toMatchObject({ value, source: "project" });
-    expect(await pref(key)).toEqual(environment);
+    const before = (await pref(key))?.value;
+    const select = page.getByRole("combobox", { name: title, exact: true });
+    await expect(select).toBeEnabled();
+    await select.selectOption(value);
+    await expect.poll(async () => (await pref(key))?.value).toBe(value);
     await page.getByRole("button", { name: `Reset ${title} to default`, exact: true }).click();
-    await expect.poll(async () => (await pref(key, projectId))?.source).not.toBe("project");
+    await expect.poll(async () => (await pref(key))?.value).toBe(before);
   }
-  // A new thread in the project takes its own default permissions.
-  await page.getByRole("combobox", { name: "Default permissions", exact: true }).selectOption("auto_edits");
-  await expect.poll(async () => (await pref("default_permission_mode", projectId))?.value).toBe("auto_edits");
+  // A new thread takes the environment's default access mode.
+  await page.getByRole("combobox", { name: "Default access mode", exact: true }).selectOption("auto_edits");
+  await expect.poll(async () => (await pref("default_permission_mode"))?.value).toBe("auto_edits");
   const thread = await service.api<{ lifecycle: { permission_mode: string } }>("POST", "/api/threads", {
     project_id: projectId, engine: "codex", model: null, title: "Scoped mode", worktree: null, skill_profile: null,
   });
@@ -86,8 +78,8 @@ test("a provider turned off for one project is refused there and inherits again"
   const engines = await service.api<{ id: string; name: string }[]>("GET", "/api/engines");
   const codex = engines.find((engine) => engine.id === "codex")!;
   await page.goto(await projectSettingsUrl(service, projectId, "providers"));
-  await expect(page.getByText("Provider instances and custom models are saved for this environment and apply to every project.")).toBeVisible();
-  const toggle = page.getByRole("switch", { name: codex.name, exact: true });
+  await expect(page.getByRole("table", { name: "Providers", exact: true })).toBeVisible();
+  const toggle = page.getByRole("switch", { name: `Use ${codex.name}`, exact: true });
   await expect(toggle).toBeChecked();
   await toggle.click();
   await expect.poll(async () => (await pref("disabled_engines", projectId))?.value).toEqual(["codex"]);
@@ -101,8 +93,12 @@ test("a provider turned off for one project is refused there and inherits again"
   expect(refused.status).toBe(400);
   expect(await refused.text()).toContain("turned off for this project");
 
-  await page.getByRole("button", { name: "Reset Providers in use to default", exact: true }).click();
+  // The checkout view of the row has no Reset control (the popover only lists layers), so the override is cleared through the API.
+  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { disabled_engines: null } });
   await expect.poll(async () => (await pref("disabled_engines", projectId))?.source).not.toBe("project");
+  // The page does not watch a change made behind its back, so it is read again before the row is judged.
+  await page.reload();
+  await expect(page.getByRole("table", { name: "Providers", exact: true })).toBeVisible();
   await expect(toggle).toBeChecked();
   expect((await create()).ok).toBe(true);
 });

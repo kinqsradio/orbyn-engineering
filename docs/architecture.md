@@ -173,7 +173,7 @@ by `thread/start` or `thread/resume`; a missing required model is an error rathe
 than an invented default. Built-in mode instructions and Orbyn's separate thread
 context are both retained. The collaboration mode does not widen permissions.
 
-`response_streaming_mode` `turn` holds a reply's text until that message ends;
+`response_streaming_mode` (a device choice, never per project) `turn` holds a reply's text until that message ends;
 `paragraph` is the default and writes it as it comes, merged over 33 ms. Reasoning and
 tools always go out as they happen. Steering answers `delivered` or `queued`: an engine
 with no mid-turn input takes it on the next turn, and an engine that refuses one sends it
@@ -276,7 +276,7 @@ Effort and options carry only along with their model: the request's own, then th
 project's `default_effort` and `default_model_options` when the thread's model is that
 default model, then the remembered ones for the same model. `default_model_options`
 holds option ids with one string value each and never `effort`, which has its own key.
-A project's `default_permission_mode` also applies there.
+The device's `default_permission_mode` also applies there; it is not set per project.
 
 The new-thread draft resolves that physical project's effective model preferences
 before sending an implicit selection. A model picked in the draft wins over a
@@ -1965,9 +1965,23 @@ it does not inspect, rewrite or merge older development packages' per-port WebKi
 or WebView2 stores. Those stores remain untouched.
 
 The product UI has no accepted native commands or Tauri imports. A separate static
-`orbyn-startup` origin shows startup/failure and Try again. Its only capability is
-`restart_core`, whose handler also rejects callers while the top-level window is not
-on that exact startup origin and path; the product asset origin cannot invoke it.
+`orbyn-startup` origin shows startup/failure with Show log, Try again and Quit. Its
+capability is exactly three commands, none taking an argument from the page:
+`restart_core` (Try again), `show_core_log` (Show log) and `quit_core` (Quit). A failed
+start has no service to ask, so these are the only ways out of it: a person can read why,
+try again or leave without a running service. `show_core_log` reveals only the app's own
+log, resolved in Rust, never a path the page sends; `quit_core` only exits the app. Each
+handler also rejects callers while the top-level window is not on that exact startup
+origin and path. That URL check, made when the command is called, is the real guard, and
+the capability alone is not: the product UI can navigate the main window onto the startup
+page, and it already has these actions (quit, restart, show log) through the service's
+shell actions, so this opens nothing new. Preview windows have no capability and a
+remote viewer is no window. The page gets one short reason line for a failed start: the
+first non-empty line of the service's last words, without control or text-direction
+characters, without words that look like a path, an address (`host:port`), an `@` or `=`
+value or a 20-character token, and cut at 160 characters. It is not log text.
+It follows the system light or dark appearance; the app's own theme choice lives in the
+product origin and does not reach this page, and Dim is not offered here.
 There are no default core/plugin command permissions. The startup document is embedded,
 has no frames or external resources, and displays errors as text. Product actions ask
 the service, which asks the shell over stdin/stdout; results return through
@@ -2048,7 +2062,7 @@ loader says it restarted once and stopped again, and waits for Try again, which 
 earns the next crash its one restart. The product UI restarts the service or shows
 its log through the `restart_service` and `show_log` shell actions, which the service
 relays and a remote viewer is refused; the product origin still holds no capability,
-so `restart_core` stays the startup document's alone. Every
+so the three startup commands stay the startup document's alone. Every
 post-spawn startup failure closes the parent pipe and retains child ownership through
 a five-second graceful-exit period, then kills and reaps a service that has not exited.
 Successful readiness transfers that ownership to the running shell.

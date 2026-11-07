@@ -29,3 +29,16 @@ export const validInstanceId = (id: string) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.t
 export const accentColor = (value: string) => /^#[\da-f]{6}$/i.test(value) ? value.toLowerCase() : null;
 /** Six digits from 100000, or exactly 1000000; empty uses Claude's default. */
 export const validCompactWindow = (value: string) => value === "" || value === "1000000" || /^[1-9]\d{5}$/.test(value);
+/** The six colours the instance editor offers. */
+export const INSTANCE_COLORS = ["#ef4444", "#f59e0b", "#16a34a", "#3b82f6", "#a855f7", "#64748b"] as const;
+/** Arguments as one line: an argument with spaces or quotes is written in double quotes. */
+export const formatArgs = (args: readonly string[]) => args.map((arg) => (arg === "" || /[\s"]/.test(arg) ? JSON.stringify(arg) : arg)).join(" ");
+/** The reverse of formatArgs: whitespace separates arguments, double quotes keep one together. */
+export function parseArgs(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)) {
+    if (match[2] !== undefined) { out.push(match[2]); continue; }
+    try { out.push(JSON.parse(`"${match[1]}"`) as string); } catch { out.push(match[1] ?? ""); }
+  }
+  return out;
+}

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, type Service } from "./service";
+import { openDetails, startProject, type Service } from "./service";
 
 /** The usage page over a synthetic history, and limits from the protocol double. */
 
@@ -68,9 +68,11 @@ test("thread details show what's left, and checks stay five minutes apart", asyn
     if (/\/api\/threads\/[^/]+\/limits/.test(request.url())) checks += 1;
   });
   await page.goto(`${service.page}#/threads/${first.id}`);
+  await openDetails(page);
   await expect(page.getByText(/% left/)).toBeVisible();
   await page.locator("li[data-thread-item]").filter({ hasText: "Two" }).click();
   await expect(page.getByRole("heading", { name: "Two" })).toBeVisible();
+  await openDetails(page);
   await expect(page.getByText(/% left/)).toBeVisible();
   expect(checks).toBe(1);
 });
