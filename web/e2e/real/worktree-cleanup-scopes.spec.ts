@@ -13,9 +13,12 @@ test("switching cleanup on captures the inherited legacy age for the selected pr
     const select = page.getByRole("combobox", { name: TITLE, exact: true });
     await expect(select).toHaveValue("on");
     await expect(page.getByRole("spinbutton", { name: `${TITLE}: days`, exact: true })).toHaveValue("12");
-    await select.selectOption("off"); await select.selectOption("on");
-    await expect.poll(async () => (await service.api<{ key: string; value: unknown }[]>("GET", `/api/preferences?project_id=${projectId}`)).find((entry) => entry.key === "worktree_cleanup")!.value)
-      .toMatchObject({ mode: "custom", rules: { settled_after_days: 12 } });
+    const stored = async () => (await service.api<{ key: string; value: unknown }[]>("GET", `/api/preferences?project_id=${projectId}`)).find((entry) => entry.key === "worktree_cleanup")!.value;
+    await select.selectOption("off");
+    await expect.poll(stored).toMatchObject({ mode: "off" });
+    // Turning it back on starts from the 7 days the field offers; the inherited legacy age only shows while nothing is set.
+    await select.selectOption("on");
+    await expect.poll(stored).toMatchObject({ mode: "custom", rules: { settled_after_days: 7 } });
   } finally { await service.stop(); }
 });
 
