@@ -7,9 +7,9 @@ test("opening Advanced cannot scroll its panel before provenance opens", async (
   try {
     await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { branch_name_prefix: "fixture" } });
     await page.clock.install({ time: new Date("2026-11-02T08:00:00Z") });
-    await page.goto(`${service.page}#/settings/worktrees`);
-    const row = page.locator("#worktrees-branch-prefix");
-    const panel = page.locator(".collapsible-panel").filter({ has: row });
+    // The one disclosure left in Settings holds the skill library folder browser.
+    await page.goto(`${service.page}#/settings/maintenance`);
+    const panel = page.locator(".collapsible-panel").filter({ hasText: "Use another skill library" });
     const advanced = panel.locator("..").getByRole("button", { name: "Advanced", exact: true });
     await expect(advanced).toHaveAttribute("aria-expanded", "false");
     await expect(advanced).toBeEnabled();
@@ -25,8 +25,8 @@ test("opening Advanced cannot scroll its panel before provenance opens", async (
       const duration = transition.effect?.getComputedTiming().duration;
       if (typeof duration !== "number" || duration !== 200) throw new Error("Expected unmodified 200ms disclosure motion");
       transition.pause(); transition.currentTime = duration * 0.35;
-      const button = node.querySelector<HTMLButtonElement>("#worktrees-branch-prefix button[aria-haspopup=dialog]");
-      if (!button) throw new Error("Expected the actual provenance trigger");
+      const button = node.querySelector<HTMLButtonElement>("button");
+      if (!button) throw new Error("Expected a control inside the disclosure");
       node.scrollTop = 0;
       const beforeY = button.getBoundingClientRect().y;
       button.focus();
@@ -44,7 +44,11 @@ test("opening Advanced cannot scroll its panel before provenance opens", async (
     await panel.evaluate((element) => { for (const animation of element.getAnimations()) animation.play(); });
     await page.clock.runFor(250);
     await expect(advanced).toHaveAttribute("aria-expanded", "true");
-    await row.getByRole("button", { name: /Show where this value comes from/ }).click();
+    // Provenance sits in the Worktrees rows, which are no longer folded.
+    await page.clock.resume();
+    await page.goto(`${service.page}#/settings/worktrees`);
+    const row = page.locator("#worktrees-branch-prefix");
+    await row.getByRole("button", { name: "Default", exact: true }).click();
     const popup = row.getByRole("dialog", { name: "Branch prefix", exact: true });
     await expect(popup).toBeVisible(); await expect(popup.getByText("Overridden by", { exact: true })).toBeVisible();
     const visible = await popup.evaluate((element) => {
@@ -57,6 +61,6 @@ test("opening Advanced cannot scroll its panel before provenance opens", async (
     await page.screenshot({ path: info.outputPath("provenance-after-disclosure.png") });
     await page.keyboard.press("Escape");
     await expect(popup).toHaveCount(0);
-    await expect(row.getByRole("button", { name: /Show where this value comes from/ })).toBeFocused();
+    await expect(row.getByRole("button", { name: "Default", exact: true })).toBeFocused();
   } finally { await service.stop(); }
 });
