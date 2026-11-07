@@ -172,3 +172,9 @@ ${Array.from({ length: 30 }, (_, at) => `- Step ${at + 1}`).join("\n")}
     { end: "failed", error: { message: "The engine stopped: disk full" } },
   ],
 };
+
+// Performance baseline (local only): 50 items per turn, half replies and half commands.
+scenes.chunk = Array.from({ length: 25 }, (_, n) => [
+  ...message(`cm${n}`, `Reply ${n}: ${"the agent explains a step of the change in plain words. ".repeat(4)}`),
+  ...command(`cc${n}`, `npm test -- --grep case${n}`, `ok case${n}\n`.repeat(3), 0),
+]).flat();
