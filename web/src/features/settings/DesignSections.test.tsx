@@ -10,7 +10,7 @@ import { ProviderTable } from "./ProviderTable";
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 
 const store = { raw: [], instances: [{ id: "codex", driver: "codex", enabled: true }], disabled: false, error: null, conflict: false,
-  save: vi.fn(), setEnabled: vi.fn(), reload: vi.fn() };
+  save: vi.fn(), reload: vi.fn() };
 const engine = (patch: Partial<EngineStatus>): EngineStatus => ({
   id: "claude", name: "Claude Code", tier: "native", installed: true, path: "/bin/claude", version: "2.1.318", auth: "logged_in",
   latest: null, support: "tested", update_command: null, sign_in_command: null, updating: false, problem: null, ...patch,
@@ -19,6 +19,7 @@ const engine = (patch: Partial<EngineStatus>): EngineStatus => ({
 it("shows each provider's state in the table and opens its editor from Edit", async () => {
   const user = userEvent.setup();
   const edit = vi.fn();
+  vi.mocked(request).mockResolvedValue({ catalog: { version: "1", selection: { kind: "all_projects" } }, rows: [] } as never);
   render(<ProviderTable store={store} onOpen={() => undefined} onEdit={edit} engines={[
     engine({}),
     engine({ id: "codex", name: "Codex", version: "0.98", auth: "logged_out", sign_in_command: "codex login" }),

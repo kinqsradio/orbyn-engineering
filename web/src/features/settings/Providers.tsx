@@ -15,7 +15,6 @@ import { AddProviderDialog, InstanceEditor, useProviderInstances } from "./Provi
 import { ProviderDetail } from "./ProviderDetail";
 import { AcpRegistryPage, HistoryImportPage } from "./ProviderPages";
 import { ProviderListActions, ProviderTable } from "./ProviderTable";
-import { ProjectProviders } from "./ProjectProviders";
 import { followEngineUpdates, UpdateProgressLine } from "./engineUpdates";
 
 const POLL_WHILE_UPDATING_MS = 1500;
@@ -148,7 +147,6 @@ export function ProvidersSection() {
         <SettingRow title="ACP registry" description="Add other agents that speak ACP">
           <Button small onClick={() => setView({ page: "registry" })}>Browse</Button>
         </SettingRow>
-        <ProjectProviders engines={engines.data} />
       </>)}
       {editInstance ? <InstanceEditor store={store} engines={base} instance={editInstance} onClose={() => setEditing(null)} /> : null}
       {adding ? (

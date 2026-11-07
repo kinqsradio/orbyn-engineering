@@ -22,7 +22,6 @@ export interface InstanceStore {
   conflict: boolean;
   /** Saves the whole list; resolves to null, or the reason it was refused. */
   save(next: JsonValue[]): Promise<string | null>;
-  setEnabled(id: string, enabled: boolean): void;
   reload(): void;
 }
 
@@ -60,7 +59,6 @@ export function useProviderInstances(): InstanceStore {
     raw, instances, disabled, conflict,
     error: error ?? preferences.error?.message ?? null,
     save,
-    setEnabled(id, enabled) { void save(patchInstance(raw, id, { enabled })).then((reason) => { if (reason && mounted.current) setError(reason); }); },
     reload() { setConflict(false); setError(null); preferences.reload(); },
   };
 }

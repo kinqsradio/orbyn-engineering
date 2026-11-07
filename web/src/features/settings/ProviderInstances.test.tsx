@@ -14,6 +14,7 @@ vi.mock("./SettingsScopeContext", () => ({ useSettingsScope: () => null }));
 const base = { capabilities: {}, installed: true, version: "2.1.318", auth: "logged_in", latest: null, support: "tested", update_command: null, sign_in_command: null, updating: false, problem: null } as const;
 const engine = (patch: Partial<EngineStatus>) => ({ ...base, ...patch }) as EngineStatus;
 let entries: JsonValue[], revision: string, conflict: string | null;
+let inUseWrites: JsonValue[][] = [];
 let writes: { scope: unknown; membership_version: string; if_match: { provider_instances: string }; edits: { provider_instances: { value: JsonValue[] } } }[];
 function snapshot() { return { catalog: { version: "members-1", selection: { kind: "all_projects" } }, rows: [{ key: "provider_instances", revision, value: entries }] }; }
 beforeEach(() => {
@@ -23,9 +24,12 @@ beforeEach(() => {
     engine({ id: "acp-base", name: "Agent", tier: "acp", path: "/opt/agent" }),
   ];
   entries = [{ id: "work", driver: "claude", name: "Work", enabled: false, forward: "mine", program: "/opt/work" }, { id: "other", driver: "acp-base", enabled: true, forward: { nested: true } }];
-  revision = "revision-1"; conflict = null; writes = []; mock.refresh.mockReset();
+  revision = "revision-1"; conflict = null; writes = []; inUseWrites = []; mock.refresh.mockReset();
   vi.mocked(request).mockReset();
   vi.mocked(request).mockImplementation(async (method, _path, body) => {
+    const wanted = (body as { keys?: string[]; edits?: Record<string, { value: JsonValue[] }> });
+    if (method === "POST" && wanted.keys?.[0] === "disabled_engines") return { catalog: { version: "members-1", selection: { kind: "all_projects" } }, rows: [{ key: "disabled_engines", revision: "r", value: [], mixed: false, default: [], project_scoped: true, environment: { source: "default", value: [], default: [] }, members: [], overrides: [] }] } as never;
+    if (method === "PUT" && wanted.edits?.disabled_engines) { inUseWrites.push(wanted.edits.disabled_engines.value); return {} as never; }
     if (method === "POST") return snapshot() as never;
     const change = body as typeof writes[number]; writes.push(change);
     if (conflict) throw new ApiFailure("invalid_path", conflict, 400);
@@ -75,11 +79,12 @@ describe("provider instance dialog", () => {
     expect(path).toBeInvalid();
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeEnabled();
   });
-  it("turns an instance in use on or off from the list", async () => {
+  it("turns a provider in use on or off for the scope, through the providers-in-use preference", async () => {
     const user = userEvent.setup(); render(<ProvidersSection />);
-    await user.click(await screen.findByRole("switch", { name: "Enable Claude Code · Work" }));
-    await waitFor(() => expect((entries[0] as { enabled: boolean }).enabled).toBe(true));
-    expect(screen.queryByRole("switch", { name: "Enable Claude Code" })).toBeNull();
+    const toggle = await screen.findByRole("switch", { name: "Use Claude Code · Work" });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await user.click(toggle);
+    await waitFor(() => expect(inUseWrites).toEqual([["work"]]));
   });
   it("offers Edit on instances only", async () => {
     render(<ProvidersSection />);
