@@ -1,10 +1,9 @@
 import { api } from "../../api/client";
 import { useAsync } from "../../lib/useAsync";
-import { Check, ChevronDown, Folder } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/controls";
 import { usePopover } from "../../ui/usePopover";
-import { EnvironmentIcon } from "./EnvironmentIcon";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 interface Choice { key: string; label: string; path?: string; }
@@ -93,15 +92,16 @@ function ScopePicker({ axis, label, value, options, allLabel, disabled, onSelect
   </>;
 }
 
-function LocalEnvironmentLabel() {
+/** This app has one device, so the select holds that one choice. */
+function LocalEnvironmentSelect() {
   const info = useAsync("settings-environment-label", (signal) => api.info(signal));
   if (info.error) return <span role="alert">{info.error.message} <Button small onClick={info.reload}>Retry</Button></span>;
-  return <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{info.data ? <EnvironmentIcon icon={info.data.environment_icon} /> : null}{info.data?.environment_label ?? "Loading…"}</span>;
+  return <select aria-label="Device scope" value="this" onChange={() => undefined}><option value="this">{info.data?.environment_label ?? "Loading…"}</option></select>;
 }
 
 /** The local project/checkouts axis; remote environment choices are outside this app's scope. */
 /** `project` draws the Projects frame: one line saying what applies, then the project picker. */
-export function ScopeSentence({ variant }: { variant?: "project" } = {}) {
+export function ScopeSentence() {
   const scope = useSettingsScope();
   if (!scope?.active) return null;
   const groups = scope.catalog?.groups ?? [];
@@ -118,15 +118,14 @@ export function ScopeSentence({ variant }: { variant?: "project" } = {}) {
   const pickerValue = checkoutSelection ? checkout?.physical_key ?? `unavailable:${checkoutSelection.project_id}` : groupKey;
   return (
     <div className="settings-scope">
-      {variant === "project" ? <p className="settings-scope-line"><Folder size={13} aria-hidden />Applies to one project</p> : null}
       <div className="settings-scope-line">
-        {variant === "project" ? null : <span>Applying settings for</span>}
+        <span>Applying settings for</span>
         <ScopePicker axis="Project" label={scope.loading ? "Loading projects…" : projectLabel} value={pickerValue}
           disabled={scope.loading || !scope.catalog} allLabel="All projects"
           options={groups.map((group) => ({ key: group.key, label: group.label,
             path: groups.some((other) => other.key !== group.key && other.label === group.label) ? group.members[0]?.path ?? group.members[0]?.name : undefined }))}
           onSelect={(key) => scope.select(key === undefined ? undefined : { kind: "project_group", group_key: key })} />
-        {variant === "project" ? null : <><span>on</span><LocalEnvironmentLabel /></>}
+        <span>on</span><LocalEnvironmentSelect />
 
       </div>
       {scope.error ? <p role="alert">{scope.error.message} <Button small onClick={scope.reload}>Retry</Button></p> : null}

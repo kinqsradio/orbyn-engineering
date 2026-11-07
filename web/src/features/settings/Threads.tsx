@@ -48,7 +48,7 @@ function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: 
       </SettingGroup>
       <div className="set-add" aria-label={settingsLabel("threads-add-a-preset")} id="threads-add-a-preset" tabIndex={-1}>
         <input aria-label="Preset name" placeholder="Name" value={label} onChange={(event) => setLabel(event.target.value)} />
-        <input aria-label="Preset minutes" type="number" min="1" placeholder="Length of time" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+        <input aria-label="Preset minutes" type="number" min="1" placeholder="Minutes" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
         <Button
           small
           disabled={!valid || presets.length >= MAX_PRESETS}

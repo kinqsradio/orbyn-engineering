@@ -1,4 +1,4 @@
-import { SettingsScopeProvider } from "./SettingsScopeContext";
+import { SCOPE_LINE_SECTIONS, SettingsScopeProvider } from "./SettingsScopeContext";
 import { ScopeSentence } from "./ScopeSentence";
 import { SettingRowIds } from "../../ui/SettingRow";
 import { searchSettings, settingSearchId } from "./settingsSearch";
@@ -213,7 +213,7 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
         </header>
         <div className="settings-scroll">
           <div className="settings-body">
-            {current === "archive" || current === "keybindings" ? null : <ScopeSentence variant={current === "projects" ? "project" : undefined} />}
+            {SCOPE_LINE_SECTIONS.has(current) ? <ScopeSentence /> : null}
             {current === "general" ? <p className="settings-scope"><Info size={13} aria-hidden />{shell.data?.attached ? "Desktop app · applies to this computer" : "Applies to this computer"}</p> : null}
             <SettingRowIds.Provider value={(title) => settingSearchId(current, title)}>
               <View key={current} />

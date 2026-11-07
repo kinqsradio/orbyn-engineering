@@ -81,7 +81,7 @@ function ProjectPreferenceGroups({ groups, projectId }: {
   const group = catalog.data.groups.find((candidate) => candidate.members.some((member) => member.project_id === projectId));
   if (!group) return <ErrorState title="Couldn't load settings" failure={toFailure(new Error("This settings scope is unavailable."))} onRetry={catalog.reload} />;
   const query = { selection: { kind: "checkout" as const, group_key: group.key, project_id: projectId } };
-  return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} />;
+  return <ScopedRows key={JSON.stringify(query)} groups={groups} query={query} inheritance />;
 }
 
 function displayValue(row: PreferenceRow, value: unknown): string {
@@ -108,7 +108,7 @@ export function PreferenceInheritance({ row, view, global, members, overrides, m
   const trigger = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const popover = usePopover({ kind: "fields", root: panel, active: open, trigger: () => trigger.current, onClose: () => setOpen(false) });
-  const summary = mixed ? "Mixed" : view.source === "project" ? "Overridden for this project" : view.source === "file" ? `Inherited from ${view.project_file?.path ?? "project file"}` : "Inherited from environment";
+  const summary = mixed ? "Mixed" : view.source === "project" ? "Set for this project" : view.source === "global" ? "From this device" : view.source === "file" ? `From ${view.project_file?.path ?? "project file"}` : "Default";
   useLayoutEffect(() => {
     if (!open || !panel.current) return;
     const element = panel.current;
@@ -136,7 +136,7 @@ export function PreferenceInheritance({ row, view, global, members, overrides, m
   return (
     <div>
       <div ref={trigger}>
-        <IconButton label={`${summary}. Show where this value comes from`} data-overridden={view.source === "project" || undefined} aria-expanded={open}
+        <IconButton label={summary} data-overridden={view.source === "project" || undefined} aria-expanded={open}
           aria-controls={open ? id : undefined} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
           <Layers size={12} aria-hidden />
         </IconButton>

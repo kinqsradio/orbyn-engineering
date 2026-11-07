@@ -13,7 +13,8 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
-import { ConfirmDialog } from "../../ui/Dialog";
+import { ConfirmDialog, Dialog } from "../../ui/Dialog";
+import { FolderBrowser } from "../onboarding/FolderBrowser";
 import { Menu } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
@@ -77,6 +78,24 @@ const unitRow = (key: string, title: string, description: string, unit = "minute
   key, title, description,
   render: (value: unknown, save: (next: unknown) => void, control: { disabled: boolean }) => <NumberWithUnit value={value} unit={unit} label={title} save={save} disabled={control.disabled} />,
 });
+
+/** A text field with the folder browser beside it. */
+function BaseDirectory({ value, save, disabled }: { value: unknown; save(next: unknown): void; disabled: boolean }) {
+  const [choosing, setChoosing] = useState(false);
+  const [draft, setDraft] = useState(typeof value === "string" ? value : "");
+  return (
+    <>
+      <input aria-label="Base directory" value={draft} disabled={disabled} spellCheck={false}
+        onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft !== (value ?? "")) save(draft); }} />
+      <Button small disabled={disabled} onClick={() => setChoosing(true)}>Choose…</Button>
+      {choosing ? (
+        <Dialog title="Base directory" onClose={() => setChoosing(false)}>
+          <FolderBrowser actionLabel="Use this folder" onChoose={(path) => { setDraft(path); save(path); setChoosing(false); }} />
+        </Dialog>
+      ) : null}
+    </>
+  );
+}
 
 export function GeneralSection() {
   const working = useUi((state) => state.workingSection);
@@ -182,7 +201,8 @@ export function GeneralSection() {
       unitRow("provider_health_refresh_minutes", settingsLabel("general-provider-health-interval-minutes"), "How often providers are checked"),
       { key: "enable_provider_update_checks", title: settingsLabel("general-check-providers-for-updates") },
       { key: "keep_awake_during_runs", title: settingsLabel("general-keep-the-computer-awake-during-runs"), description: "Desktop only. The display can still sleep." },
-      { key: "add_project_base_directory", title: settingsLabel("general-base-directory"), description: "Where new projects are created" },
+      { key: "add_project_base_directory", title: settingsLabel("general-base-directory"), description: "Where new projects are created",
+        render: (value, save, control) => <BaseDirectory value={value} save={save} disabled={control.disabled} /> },
       ] }]} />
       <DesktopApp />
       <p className="set-grp">Ask before</p>
@@ -234,16 +254,11 @@ export function ChatSection() {
             <option value="mod-enter">{MOD} Enter</option>
           </select>
         </SettingRow>
-        <SettingRow title={settingsLabel("chat-while-a-turn-runs-enter")}>
-          <Segmented
-            label="While a turn runs, Enter"
-            value={followUpBehavior}
-            options={[
-              { value: "queue", label: "Queues" },
-              { value: "steer", label: "Steers" },
-            ]}
-            onChange={(next) => setPrefs({ followUpBehavior: next })}
-          />
+        <SettingRow title={settingsLabel("chat-while-a-turn-runs-enter")} description="Steer sends it into the turn that is running.">
+          <select aria-label="While a turn runs, Enter" value={followUpBehavior} onChange={(event) => setPrefs({ followUpBehavior: event.target.value as "queue" | "steer" })}>
+            <option value="queue">Queues the message</option>
+            <option value="steer">Steers the running turn</option>
+          </select>
         </SettingRow>
         <Toggle title={settingsLabel("chat-math-rendering")} on={math} set={(on) => setPrefs({ mathRendering: on })} />
       </SettingGroup>

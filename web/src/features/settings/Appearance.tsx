@@ -1,6 +1,6 @@
 import { settingsLabel } from "./settingsSearch";
 import { Info } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
 import { applyTheme, useUi, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
@@ -242,6 +242,20 @@ const SIZES: { key: keyof Typography; title: string; min: number; max: number }[
   { key: "terminalSize", title: settingsLabel("appearance-terminal-size"), min: 8, max: 24 },
 ];
 
+/** A free-text font name; empty means the default. */
+function FontRow({ title, label, value, save }: { title: string; label: string; value: string; save(next: string): void }) {
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) { setSeen(value); setDraft(value); }
+  return (
+    <SettingRow title={title}>
+      <input aria-label={label} placeholder="Any installed font" value={draft} spellCheck={false}
+        onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft.trim() !== value) save(draft.trim()); }} />
+      {value !== "" ? <Button small tone="quiet" aria-label={`Reset ${label} to default`} onClick={() => { setDraft(""); save(""); }}>Reset to default</Button> : null}
+    </SettingRow>
+  );
+}
+
 function FontRows() {
   const typography = useUi((state) => state.typography);
   const theme = useUi((state) => state.theme);
@@ -252,12 +266,8 @@ function FontRows() {
   };
   return (
     <SettingGroup>
-      <SettingRow title={settingsLabel("appearance-interface-font")}>
-        <input aria-label="Interface font" placeholder="System" defaultValue={typography.uiFont} onBlur={(event) => update({ uiFont: event.target.value.trim() })} />
-      </SettingRow>
-      <SettingRow title={settingsLabel("appearance-code-font")}>
-        <input aria-label="Code font" placeholder="System" defaultValue={typography.codeFont} onBlur={(event) => update({ codeFont: event.target.value.trim() })} />
-      </SettingRow>
+      <FontRow title={settingsLabel("appearance-interface-font")} label="Interface font" value={typography.uiFont} save={(uiFont) => update({ uiFont })} />
+      <FontRow title={settingsLabel("appearance-code-font")} label="Code font" value={typography.codeFont} save={(codeFont) => update({ codeFont })} />
     </SettingGroup>
   );
 }

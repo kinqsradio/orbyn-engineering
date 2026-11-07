@@ -398,14 +398,6 @@ function ProjectSelection() {
         <ProjectModelDefaults query={scope.query} disabled={blocked} />
         <FallbackModel disabled={blocked} />
         <fieldset className="preference-control" disabled={blocked}>
-          <PreferenceGroups groups={[{ title: "Workspace", rows: [{ key: "default_thread_env_mode", title: "Workspace", inheritance: true,
-            description: "Where new threads in this project start.", render: (value, save, control) =>
-              <select aria-label="Default workspace" disabled={control.disabled} value={control.mixed ? "__mixed__" : String(value ?? "")}
-                onChange={(event) => save(event.target.value)}>
-                {control.mixed ? <option value="__mixed__" disabled>Mixed</option> : null}
-                <option value="local">Current checkout</option><option value="worktree">New worktree</option>
-              </select>,
-          }] }]} />
           <PreferenceGroups groups={[{ title: "Actions", rows: [{ key: "default_project_scripts", title: "Actions", inheritance: true,
             render: (value, _save, control) => <ProjectActions value={value} control={control} /> }] }]} />
         </fieldset>

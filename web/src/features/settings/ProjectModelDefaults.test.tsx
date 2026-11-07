@@ -94,7 +94,7 @@ it("does not write Mixed values on read and resets only captured tuple overrides
     overrides: [{ project_id: row.key === "default_engine" ? "a" : "b", name: "Overridden", value: "old" }] }));
   // Mixed effort alone still shows Mixed rather than one checkout's value.
   const user = userEvent.setup(); render(<ProjectModelDefaults query={{}} />);
-  expect(await screen.findByRole("button", { name: "Mixed" })).toBeVisible(); expect(writes).toHaveLength(0);
+  expect((await screen.findAllByRole("button", { name: "Mixed" }))[0]).toBeVisible(); expect(writes).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "Reset all" }));
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]?.edits).toEqual(every({ op: "reset_overrides", project_ids: ["a", "b"] }));

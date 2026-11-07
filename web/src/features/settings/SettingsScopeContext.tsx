@@ -11,7 +11,13 @@ export const DEVICE_SETTINGS_SECTIONS: ReadonlySet<SettingsSection> = new Set([
   "general", "appearance", "chat", "diffs", "about",
 ]);
 
+/** Pages that show the scope line under the title (Applying settings for a project on a device). */
+export const SCOPE_LINE_SECTIONS: ReadonlySet<SettingsSection> = new Set(["threads", "worktrees", "projects", "source-control"]);
+/** Pages whose rows really are project-scoped, so only they show where a value comes from. */
+export const INHERITANCE_SECTIONS: ReadonlySet<SettingsSection> = new Set(["worktrees", "projects", "source-control"]);
+
 export interface SettingsScopeContextValue {
+  inheritance: boolean;
   query: ProjectScopesQuery;
   catalog: ProjectScopeCatalog | null;
   loading: boolean;
@@ -44,6 +50,7 @@ export function SettingsScopeProvider({ section, children }: { section: Settings
     navigate({ name: "settings", section, selection: next, machine: undefined });
   }, [section]);
   const value: SettingsScopeContextValue = {
+    inheritance: INHERITANCE_SECTIONS.has(section),
     query,
     catalog: current ? result.data!.catalog : null,
     loading: !current || result.refreshing,
