@@ -96,6 +96,9 @@ test("a provider turned off for one project is refused there and inherits again"
   // The checkout view of the row has no Reset control (the popover only lists layers), so the override is cleared through the API.
   await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { disabled_engines: null } });
   await expect.poll(async () => (await pref("disabled_engines", projectId))?.source).not.toBe("project");
+  // The page does not watch a change made behind its back, so it is read again before the row is judged.
+  await page.reload();
+  await expect(page.getByRole("table", { name: "Providers", exact: true })).toBeVisible();
   await expect(toggle).toBeChecked();
   expect((await create()).ok).toBe(true);
 });
