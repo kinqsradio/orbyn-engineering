@@ -19,6 +19,7 @@ import { useLayoutWidth } from "../../lib/useLayout";
 import { IconButton } from "../../ui/controls";
 import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { Loading, NarrowBack } from "../../ui/states";
 import { ACCESS, EffortTrigger, offeredModes, shownAccess, useTraitsMenu } from "../thread/ComposerTraits";
 import { ModelPickerTrigger } from "../thread/ModelPicker";
@@ -614,7 +615,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
           </div>
         </div>
       </div>
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           x={menu.x}
           y={menu.y}
@@ -643,7 +644,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
             })),
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
       {picker ? (
         <DraftProjectPicker
           projects={projects}

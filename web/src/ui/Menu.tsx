@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { closingProps } from "./Presence";
 
 export interface MenuItem {
   label: string;
@@ -32,6 +33,7 @@ function MenuList({
   label,
   items,
   submenu,
+  closing,
   onClose,
   onBack,
 }: {
@@ -41,6 +43,7 @@ function MenuList({
   label: string;
   items: MenuItem[];
   submenu?: boolean;
+  closing?: boolean;
   onClose(): void;
   onBack?(): void;
 }) {
@@ -99,6 +102,7 @@ function MenuList({
         style={{ left: x, top: y, transformOrigin: origin }}
         data-origin={origin}
         onKeyDown={onKeyDown}
+        {...closingProps(closing)}
       >
         {items.map((item, index) => (
           <FragmentRow key={item.label} separator={item.separatorBefore === true && index > 0}>
@@ -144,6 +148,7 @@ function MenuList({
           label={open.item.label}
           items={open.item.children}
           submenu
+          closing={closing}
           onClose={onClose}
           onBack={() => {
             const label = open.item.label;
@@ -183,13 +188,17 @@ function menuHost(): HTMLElement {
   return modals.at(-1) ?? document.body;
 }
 
-/** A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work. */
+/**
+ * A popup at a point, scaling from its origin, with submenus. Arrow keys, Enter and Escape work.
+ * Wrap it in `Presence` to fade out on close; `closing` is set by that wrapper.
+ */
 export function Menu({
   x,
   y,
   origin = "top left",
   label,
   items,
+  closing,
   onClose,
 }: {
   x: number;
@@ -197,20 +206,23 @@ export function Menu({
   origin?: "top left" | "bottom left" | "bottom right";
   label: string;
   items: MenuItem[];
+  closing?: boolean;
   onClose(): void;
 }) {
   useEffect(() => {
+    // A menu that is leaving must not close the one that replaced it.
+    if (closing) return;
     const close = (event: MouseEvent) => {
       if (!(event.target as Element | null)?.closest?.("[data-menu-root]")) onClose();
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [onClose]);
+  }, [onClose, closing]);
 
   // Chosen once, so a dialog opening or closing behind the menu doesn't remount it.
   const [host] = useState(menuHost);
   return createPortal(
-    <MenuList x={x} y={y} origin={origin} label={label} items={items} onClose={onClose} />,
+    <MenuList x={x} y={y} origin={origin} label={label} items={items} closing={closing} onClose={onClose} />,
     host,
   );
 }

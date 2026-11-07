@@ -20,6 +20,7 @@ import { useComposerChips } from "../thread/composerChipStore";
 import { chipId } from "../thread/composerContext";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { SiteIcon } from "./SiteIcon";
 import { AgentCursor } from "./AgentCursor";
 import { BrowserRecording } from "./BrowserRecording";
@@ -869,7 +870,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           if (recordings.owns(`${base}/${q(active.id)}/recording`)) tabs.setData(fresh);
           return target;
         }} /> : null}
-      {menu && active ? <Menu x={menu.x} y={menu.y} label="Page actions" items={moreItems(active)} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu && active ? <Menu x={menu.x} y={menu.y} label="Page actions" items={moreItems(active)} onClose={() => setMenu(null)} /> : null}</Presence>
       {toolbar && active ? (
         <div className="browser-devices" role="toolbar" aria-label="Device toolbar">
           <select aria-label="Device" value={device} onChange={(event) => setDevice(event.target.value)}>

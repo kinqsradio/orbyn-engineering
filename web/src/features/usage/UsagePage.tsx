@@ -13,6 +13,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, Field, IconButton } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { PageBar } from "../../ui/PageBar";
 import { ErrorState, Loading } from "../../ui/states";
 import { UsageChart } from "./UsageChart";
@@ -721,7 +722,7 @@ export function UsagePage() {
           </div>
         )}
       </div>
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           {...menu}
           label="Providers"
@@ -735,7 +736,7 @@ export function UsagePage() {
             })),
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
     </section>
   );
 }

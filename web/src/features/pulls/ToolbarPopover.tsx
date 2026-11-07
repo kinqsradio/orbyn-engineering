@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { closingProps } from "../../ui/Presence";
 
 /** The longest the exit may take: --m-base-out is 140ms, so the fallback never cuts it short. */
 const EXIT_FALLBACK_MS = 220;
@@ -11,7 +12,8 @@ const DRAG_DISMISS_PX = 80;
 /**
  * A panel anchored under the button that opened it, right edges aligned, scaling from that
  * corner. It enters with the --m-base pop and leaves by fading; Escape, a click outside or
- * `dismiss` all end it, and focus returns to the button.
+ * `dismiss` all end it. From that moment it is inert and hidden from assistive technology and
+ * focus is back on the button, so nobody waits for the fade.
  */
 export function ToolbarPopover({
   anchor,
@@ -34,14 +36,16 @@ export function ToolbarPopover({
   const ref = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = useState(false);
   const closed = useRef(false);
-  const refocus = useRef(true);
   const finish = () => {
     if (closed.current) return;
     closed.current = true;
     onClose();
-    if (refocus.current) anchor.focus();
   };
-  const dismiss = () => setClosing(true);
+  const leave = (refocus: boolean) => {
+    if (refocus && !closed.current) anchor.focus();
+    setClosing(true);
+  };
+  const dismiss = () => leave(true);
 
   useEffect(() => {
     if (!closing) return;
@@ -70,13 +74,12 @@ export function ToolbarPopover({
     const away = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (target && (ref.current?.contains(target) || anchor.contains(target))) return;
-      refocus.current = false;
-      setClosing(true);
+      leave(false);
     };
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        setClosing(true);
+        leave(true);
       }
     };
     document.addEventListener("mousedown", away);
@@ -85,6 +88,8 @@ export function ToolbarPopover({
       document.removeEventListener("mousedown", away);
       document.removeEventListener("keydown", key, true);
     };
+    // `leave` only reads refs and props that cannot change while the panel is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor]);
 
   // Dragging the sheet's top (grab bar and title) down past a threshold dismisses it.
@@ -108,7 +113,7 @@ export function ToolbarPopover({
     drag.current = null;
     event.currentTarget.style.transition = "";
     event.currentTarget.style.translate = "";
-    if (state.dy > DRAG_DISMISS_PX) setClosing(true);
+    if (state.dy > DRAG_DISMISS_PX) leave(true);
   };
 
   const arrows = (event: React.KeyboardEvent) => {
@@ -129,7 +134,7 @@ export function ToolbarPopover({
         role={role}
         aria-label={label}
         aria-modal={layout === "sheet" ? true : undefined}
-        data-closing={closing || undefined}
+        {...closingProps(closing)}
         style={width && layout === "popover" ? { width } : undefined}
         onKeyDown={arrows}
         onPointerDown={dragStart}

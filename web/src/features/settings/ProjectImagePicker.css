@@ -22,5 +22,12 @@
 .project-image-dialog[open]::backdrop { opacity: 1; transition: opacity var(--m-base); }
 @starting-style { .project-image-dialog[open] { scale: .98; opacity: 0; } .project-image-dialog[open]::backdrop { opacity: 0; } }
 @media (max-width: 640px) { .project-image-dialog { margin-top: max(16px, 4vh); } }
+/* A leaving dialog is closed and inert; it only fades. */
+.project-image-dialog:not([open]) { pointer-events: none; }
 /* Reduced motion: opacity only, so the dialog does not scale in. */
-@media (prefers-reduced-motion: reduce) { @starting-style { .project-image-dialog[open] { scale: none; opacity: 0; } } }
+@media (prefers-reduced-motion: reduce) {
+  @starting-style { .project-image-dialog[open] { scale: none; opacity: 0; } }
+  /* The global reduced-motion block drops display and overlay from the list, which would end the
+     exit at once. Opacity stays the only visible change, over --m-fast. */
+  .project-image-dialog, .project-image-dialog::backdrop { transition-property: opacity, display, overlay !important; transition-duration: var(--m-fast) !important; }
+}

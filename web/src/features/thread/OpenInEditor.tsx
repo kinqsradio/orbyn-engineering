@@ -6,6 +6,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { launchableEditors, primaryEditor } from "./editorPreferences";
 
 /** Opens the thread's checkout, or a file at a line, in a detected editor. */
@@ -67,14 +68,14 @@ export function OpenInEditor({ threadId }: { threadId: string }) {
           <ChevronDown size={14} aria-hidden />
         </IconButton>
       ) : null}
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           {...menu}
           label="Open in"
           onClose={() => setMenu(null)}
           items={items}
         />
-      ) : null}
+      ) : null}</Presence>
     </div>
   );
 }

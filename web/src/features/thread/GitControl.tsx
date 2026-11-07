@@ -10,6 +10,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, Field } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 
 export interface Plan {
   title: string;
@@ -248,7 +249,7 @@ export function GitActions({ thread }: { thread: Thread }) {
         Git
         <ChevronDown size={12} aria-hidden />
       </button>
-      {anchor ? <Menu x={anchor.x} y={anchor.y} label="Git actions" items={items} onClose={() => setAnchor(null)} /> : null}
+      <Presence>{anchor ? <Menu x={anchor.x} y={anchor.y} label="Git actions" items={items} onClose={() => setAnchor(null)} /> : null}</Presence>
       {plan ? <GitActionDialog thread={thread} plan={plan} onClose={() => setPlan(null)} /> : null}
       {publishing ? <PublishDialog thread={thread} onClose={() => setPublishing(false)} /> : null}
     </>

@@ -40,7 +40,7 @@ describe("design tokens", () => {
   it("mirrors the motion durations in the timers and keeps the panel tokens on them", () => {
     const tokens = css["tokens.css"] ?? "";
     const ms = (name: string) => Number(new RegExp(`--${name}: calc\\((\\d+)ms`).exec(tokens)?.[1]);
-    expect(MOTION).toEqual({ fast: ms("m-fast"), slow: ms("m-slow"), slowOut: ms("m-slow-out"), wait: ms("m-wait") });
+    expect(MOTION).toEqual({ fast: ms("m-fast"), baseOut: ms("m-base-out"), slow: ms("m-slow"), slowOut: ms("m-slow-out"), wait: ms("m-wait") });
     expect(tokens).toContain("--ease-drawer: var(--m-out);");
     expect(tokens).toContain("--panel-duration: var(--m-slow);");
   });

@@ -7,6 +7,7 @@ import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { IconButton } from "../../ui/controls";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { TerminalPanel } from "./TerminalPanel";
 import type { ProjectScript } from "../../generated/ProjectScript";
 import { runProjectAction } from "../thread/runProjectAction";
@@ -173,14 +174,14 @@ export function TerminalDrawerBody({ threadId, onClose }: { threadId: string; on
           <TerminalPanel threadId={threadId} observe={watching} />
         )}
       </div>
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           {...menu}
           label="Scripts"
           onClose={() => setMenu(null)}
           items={scriptList.map((script) => ({ label: script.name, icon: <ProjectActionIcon icon={script.icon} />, onSelect: () => void run(script) }))}
         />
-      ) : null}
+      ) : null}</Presence>
     </div>
   );
 }

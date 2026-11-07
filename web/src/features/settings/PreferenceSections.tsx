@@ -14,6 +14,7 @@ import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
 import { DesktopApp } from "./DesktopApp";
 import { Advanced, PreferenceGroups } from "./PreferenceRows";
@@ -51,7 +52,7 @@ function DetailRowsButton() {
       >
         {DETAIL_ROWS.length - hidden.length} of {DETAIL_ROWS.length} on
       </Button>
-      {anchor ? <Menu {...anchor} label="Thread details rows" items={detailsMenuItems()} onClose={() => setAnchor(null)} /> : null}
+      <Presence>{anchor ? <Menu {...anchor} label="Thread details rows" items={detailsMenuItems()} onClose={() => setAnchor(null)} /> : null}</Presence>
     </>
   );
 }

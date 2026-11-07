@@ -745,6 +745,17 @@ input[type="checkbox"][role="switch"]:disabled {
 .popup-menu button[aria-current] {
   color: var(--color-text);
 }
+/* Leaving: a menu or popover stays mounted, inert, and fades out over --m-base-out with --m-io,
+   opacity only. Reduced motion keeps the same fade over --m-fast (the global block below). */
+.popup-menu[data-closing],
+.menu[data-closing],
+.mention-menu[data-closing],
+.model-picker[data-closing],
+.traits-menu[data-closing] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--m-base-out) var(--m-io);
+}
 .hover-card {
   position: fixed;
   z-index: 55;

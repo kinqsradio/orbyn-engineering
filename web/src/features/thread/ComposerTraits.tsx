@@ -5,6 +5,7 @@ import { FloatingPanel } from "./ModelPicker";
 import { effortOption, effortValue } from "../../state/modelStore";
 import { EffortGlyph } from "./EffortGlyph";
 import { useUi } from "../../state/ui";
+import { Presence } from "../../ui/Presence";
 
 export const ACCESS: Record<PermissionMode, { label: string; description: string; icon: LucideIcon }> = {
   supervised: { label: "Supervised", description: "Ask before commands and file changes.", icon: Lock },
@@ -42,6 +43,7 @@ function TraitsMenu({
   modes,
   anchor,
   toAccess,
+  closing,
   onEffort,
   onOption,
   onAccess,
@@ -54,6 +56,7 @@ function TraitsMenu({
   modes: PermissionMode[];
   anchor: DOMRect;
   toAccess: boolean;
+  closing?: boolean;
   onEffort(value: string): void;
   onOption(option: string, value: string): void;
   onAccess(mode: PermissionMode): void;
@@ -85,7 +88,7 @@ function TraitsMenu({
     }
   };
   return (
-    <FloatingPanel anchor={anchor} label="Composer options" className="traits-menu" onClose={onClose}>
+    <FloatingPanel anchor={anchor} label="Composer options" className="traits-menu" closing={closing} onClose={onClose}>
       <div ref={body} className="traits-body" role="menu" aria-label="Composer options" onKeyDown={onKey}>
         {options.map((option, index) => (
           <div key={option.id} role="group" aria-label={option.label}>
@@ -162,9 +165,13 @@ export function useTraitsMenu(input: {
   const close = useCallback(() => setOpen(null), []);
   const openAt = (element: HTMLElement, toAccess: boolean) =>
     setOpen(open ? null : { anchor: element.getBoundingClientRect(), toAccess });
-  const menu = open ? (
-    <TraitsMenu {...input} modes={input.modes ?? MODES} anchor={open.anchor} toAccess={open.toAccess} onClose={close} />
-  ) : null;
+  const menu = (
+    <Presence>
+      {open ? (
+        <TraitsMenu {...input} modes={input.modes ?? MODES} anchor={open.anchor} toAccess={open.toAccess} onClose={close} />
+      ) : null}
+    </Presence>
+  );
   return { openAt, menu };
 }
 

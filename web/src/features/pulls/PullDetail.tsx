@@ -13,6 +13,7 @@ import { useWorkspace } from "../../state/workspace";
 import { Button, Field, IconButton, Pill } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { PageBar } from "../../ui/PageBar";
 import { ErrorState, Loading } from "../../ui/states";
 import { Markdown } from "../thread/Markdown";
@@ -127,7 +128,7 @@ function People({
       >
         <Plus size={14} aria-hidden />
       </IconButton>
-      {menu ? <Menu x={menu.x} y={menu.y} label={title} items={items} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu ? <Menu x={menu.x} y={menu.y} label={title} items={items} onClose={() => setMenu(null)} /> : null}</Presence>
     </div>
   );
 }
@@ -553,7 +554,7 @@ export function PullDetail({
   const dialogs = (
     <>
       {merging ? <MergeDialog projectId={projectId} initialMethod={mergeMethod} detail={detail.data} onClose={() => setMerging(false)} onMerged={detail.reload} /> : null}
-      {menu ? <Menu x={menu.x} y={menu.y} label="Pull request actions" items={items} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu ? <Menu x={menu.x} y={menu.y} label="Pull request actions" items={items} onClose={() => setMenu(null)} /> : null}</Presence>
     </>
   );
 

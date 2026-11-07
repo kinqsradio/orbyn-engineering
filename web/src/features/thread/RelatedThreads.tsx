@@ -6,6 +6,7 @@ import { navigate } from "../../state/route";
 import { useWorkspace } from "../../state/workspace";
 import { IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 
 const RELATION: Record<string, string> = { fork: "Fork", side: "Side chat", subagent: "Subagent" };
 
@@ -42,7 +43,7 @@ export function RelatedThreads({ thread }: { thread: Thread }) {
       >
         <Network size={16} aria-hidden />
       </IconButton>
-      {anchor ? (
+      <Presence>{anchor ? (
         <Menu
           x={anchor.x}
           y={anchor.y}
@@ -53,7 +54,7 @@ export function RelatedThreads({ thread }: { thread: Thread }) {
             ...children.map((child) => row(child, RELATION[child.lifecycle?.relation ?? ""] ?? "Related")),
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
     </>
   );
 }

@@ -14,6 +14,7 @@ import { ProjectBadge } from "../../ui/badges";
 import { SettingRow } from "../../ui/SettingRow";
 import { Button, IconButton } from "../../ui/controls";
 import { ProjectIconPicker } from "./ProjectIconPicker";
+import { Presence } from "../../ui/Presence";
 import { ProjectImagePicker, type ProjectImagePickerScope } from "./ProjectImagePicker";
 
 /** How the service names a copy of an image chosen outside the project. */
@@ -166,11 +167,11 @@ export function ProjectIconSetting({ query, catalog, members, projectName, disab
           onClick={() => { void chooseFromComputer(); }}>Choose from computer</Button> : null}
       </div>
     </SettingRow>
-    {imageDialog ? <ProjectImagePicker input={imageDialog.input} projectName={imageDialog.projectName} onClose={() => setImageDialog(null)} onSelect={(path) => {
+    <Presence>{imageDialog ? <ProjectImagePicker input={imageDialog.input} projectName={imageDialog.projectName} onClose={() => setImageDialog(null)} onSelect={(path) => {
       const selection = imageDialog;
       setImageDialog(null);
       void changeImage(path, selection);
-    }} /> : null}
+    }} /> : null}</Presence>
     {dialog ? <ProjectIconPicker current={dialog.current} projectName={projectName} disabled={!writable || dialog.rebase}
       onClose={() => setDialog(null)} reloadPending={loading} onReload={dialog.rebase ? () => {
         setDialog((previous) => previous ? { ...previous, reloadSource: catalog } : previous);

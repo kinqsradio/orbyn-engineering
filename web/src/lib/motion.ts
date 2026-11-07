@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 /** The --m-* durations in tokens.css, in ms, for timers that must match a transition. */
-export const MOTION = { fast: 150, slow: 300, slowOut: 210, wait: 400 } as const;
+export const MOTION = { fast: 150, baseOut: 140, slow: 300, slowOut: 210, wait: 400 } as const;
 
 /**
  * True once `active` has held for `ms` without a break. Work that finishes inside the wait

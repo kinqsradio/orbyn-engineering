@@ -6,6 +6,7 @@ import { toFailure } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { touchesOf } from "./approvalDetail";
 import { approvalFromContent } from "./projection";
 
@@ -152,7 +153,7 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
           <p>Applies in every project.</p>
         </ConfirmDialog>
       ) : null}
-      {more ? (
+      <Presence>{more ? (
         <Menu
           {...more}
           label="More approval options"
@@ -161,7 +162,7 @@ export function ApprovalCard({ approval, minimapKey }: { approval: Approval; min
             { label: "Cancel", onSelect: cancelRun },
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
       {error ? (
         <p className="field-error" role="alert">
           {error}

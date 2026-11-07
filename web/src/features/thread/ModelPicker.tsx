@@ -5,6 +5,7 @@ import type { EngineStatus } from "../../api/types";
 import { useCommand } from "../../app/shortcuts";
 import { useUi } from "../../state/ui";
 import { EngineGlyph } from "../../ui/badges";
+import { closingProps, Presence } from "../../ui/Presence";
 import { modKeyLabel } from "../workspace/threadUndo";
 import {
   arrangeModels,
@@ -51,6 +52,7 @@ export function FloatingPanel({
   label,
   className,
   container,
+  closing,
   onClose,
   children,
 }: {
@@ -58,6 +60,8 @@ export function FloatingPanel({
   label: string;
   className: string;
   container?: HTMLElement | null;
+  /** Set by `Presence` while the panel fades out: it takes no focus or pointer and ignores outside clicks. */
+  closing?: boolean;
   onClose(): void;
   children: ReactNode;
 }) {
@@ -81,14 +85,15 @@ export function FloatingPanel({
     element.style.transformOrigin = place.origin;
   });
   useEffect(() => {
+    if (closing) return;
     const close = (event: MouseEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose();
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [onClose]);
+  }, [onClose, closing]);
   return createPortal(
-    <div ref={ref} className={className} role="dialog" aria-label={label}>
+    <div ref={ref} className={className} role="dialog" aria-label={label} {...closingProps(closing)}>
       {children}
     </div>,
     container ?? document.body,
@@ -202,12 +207,14 @@ function ModelPopover({
   disabledReason,
   onPick,
   onToggleExtra,
+  closing,
   onClose,
 }: {
   engines: EngineStatus[];
   selected: Selection;
   extra: readonly Selection[];
   anchor: DOMRect;
+  closing?: boolean;
   portalContainer?: HTMLElement | null;
   disabledReason?(engine: EngineStatus): string | null;
   onPick(selection: Selection): void;
@@ -323,7 +330,7 @@ function ModelPopover({
   const listed = tab === FAVORITES || searching || byEngine[tab] !== undefined;
 
   return (
-    <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" container={portalContainer} onClose={onClose}>
+    <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" container={portalContainer} closing={closing} onClose={onClose}>
       <div ref={rail} className="model-rail" role="toolbar" aria-label="Providers"
         onKeyDown={(event) => { if (event.key === "Escape") onKey(event); }}>
         {tabButton(FAVORITES, "Favorites", <Star size={20} fill="currentColor" aria-hidden />, false)}
@@ -443,6 +450,7 @@ export function ModelPickerTrigger({
         {extra.length > 0 ? <span className="model-extra">+{extra.length}</span> : null}
         {engines.length === 0 ? <ChevronDown size={12} aria-hidden /> : null}
       </button>
+      <Presence>
       {anchor ? (
         <ModelPopover
           engines={engines}
@@ -456,6 +464,7 @@ export function ModelPickerTrigger({
           onClose={close}
         />
       ) : null}
+      </Presence>
     </>
   );
 }

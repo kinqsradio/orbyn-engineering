@@ -38,6 +38,7 @@ import { Collapsible } from "../../ui/Collapsible";
 import { IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { ErrorState, Loading } from "../../ui/states";
 import {
   arrangeThreads,
@@ -1168,7 +1169,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       </div>
       <SidebarFoot route={route} ledger={ledger} />
       <SidebarRail />
-      {menu ? <Menu {...menu} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu ? <Menu {...menu} onClose={() => setMenu(null)} /> : null}</Presence>
       {snoozing ? <CustomSnoozeDialog threads={snoozing} onClose={() => setSnoozing(null)} /> : null}
       {deleting ? (
         <ConfirmDialog

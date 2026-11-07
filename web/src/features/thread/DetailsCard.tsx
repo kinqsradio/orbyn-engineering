@@ -26,6 +26,7 @@ import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { EngineGlyph } from "../../ui/badges";
 import { Menu, type MenuItem } from "../../ui/Menu";
+import { closingProps, Presence } from "../../ui/Presence";
 import { pullsApi } from "../../api/pulls";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
@@ -36,6 +37,16 @@ import { runningTools } from "./timeline";
 import type { ProjectScript } from "../../generated/ProjectScript";
 import { runProjectAction } from "./runProjectAction";
 import { ProjectActionIcon } from "../../ui/ProjectActionIcon";
+
+function ThreadActions({ deletable, closing, onDelete }: { deletable: boolean; closing?: boolean; onDelete(): void }) {
+  return (
+    <div className="menu" {...closingProps(closing)}>
+      <Button tone="quiet" small icon={<Trash2 size={16} aria-hidden />} disabled={!deletable} onClick={onDelete}>
+        Delete thread
+      </Button>
+    </div>
+  );
+}
 
 function ThreadMenu({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false);
@@ -63,22 +74,17 @@ function ThreadMenu({ thread }: { thread: Thread }) {
       <IconButton label="Thread actions" aria-expanded={open} onClick={() => setOpen(!open)}>
         <EllipsisVertical size={14} aria-hidden />
       </IconButton>
-      {open ? (
-        <div className="menu">
-          <Button
-            tone="quiet"
-            small
-            icon={<Trash2 size={16} aria-hidden />}
-            disabled={thread.active_run !== null}
-            onClick={() => {
+      <Presence>
+        {open ? (
+          <ThreadActions
+            deletable={thread.active_run === null}
+            onDelete={() => {
               setOpen(false);
               setConfirming(true);
             }}
-          >
-            Delete thread
-          </Button>
-        </div>
-      ) : null}
+          />
+        ) : null}
+      </Presence>
       {confirming ? (
         <ConfirmDialog
           title="Delete thread?"
@@ -336,7 +342,7 @@ export function DetailsCard({
         setMenu({ x: event.clientX, y: event.clientY });
       }}
     >
-      {menu ? <Menu {...menu} label="Thread details rows" items={detailsMenuItems()} onClose={() => setMenu(null)} /> : null}
+      <Presence>{menu ? <Menu {...menu} label="Thread details rows" items={detailsMenuItems()} onClose={() => setMenu(null)} /> : null}</Presence>
       <div className="details-section">
         <div className="detail-row detail-row-static">
           <Monitor size={16} aria-hidden />

@@ -4,6 +4,7 @@ import { navigate, parseRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
 import { Menu } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 import { PullLinkPreview } from "../pulls/PullLinkPreview";
 import { pullNumberOf } from "../pulls/pullLink";
 
@@ -131,7 +132,7 @@ export function ExternalLink({ href, children }: { href: string; children: React
       {preview && number !== null ? (
         <PullLinkPreview href={href} number={number} projectId={preview.projectId} anchor={preview.anchor} />
       ) : null}
-      {menu ? (
+      <Presence>{menu ? (
         <Menu
           x={menu.x}
           y={menu.y}
@@ -145,7 +146,7 @@ export function ExternalLink({ href, children }: { href: string; children: React
             { label: "Copy link", onSelect: () => void navigator.clipboard?.writeText(href) },
           ]}
         />
-      ) : null}
+      ) : null}</Presence>
     </>
   );
 }
