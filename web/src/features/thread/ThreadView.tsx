@@ -2,6 +2,7 @@ import {
   Brain,
   GitBranch,
   CircleCheck,
+  Loader2,
   PanelBottom,
   PanelRight,
   Rows3,
@@ -16,7 +17,7 @@ import { toFailure } from "../../lib/useAsync";
 import { runHandlers, useCommand } from "../../app/shortcuts";
 import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
-import { useLingering, usePanelMotion } from "../../lib/panelAnimations";
+import { useLingering, usePanelMotion, useSettledAfter } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "./threadLogs";
@@ -195,8 +196,8 @@ function RunStatusLine({ thread }: { thread: Thread }) {
 
   return (
     <div className="thread-state run-status-row" role="status">
-      {tools.length === 0 ? <Brain size={14} aria-hidden /> : <span className="status-dot tone-info" aria-hidden />}
-      <span className="run-status text-sweep">{statusSentence(state, tools.length)}</span>
+      {tools.length === 0 ? <Brain size={14} aria-hidden /> : <Loader2 size={14} className="spin" aria-hidden />}
+      <span className="run-status">{statusSentence(state, tools.length)}</span>
       {tools.length > 0 ? (
         <span className="run-status-detail">{tools.map((tool) => tool.name).join(", ")}</span>
       ) : null}
@@ -274,12 +275,25 @@ function StreamBanner({ threadId }: { threadId: string }) {
 }
 
 /** Keeps its socket and scrollback once opened; a phone shows it instead of the thread. */
-function TerminalDrawer({ threadId, open, onClose }: { threadId: string; open: boolean; onClose(): void }) {
+function TerminalDrawer({
+  threadId,
+  open,
+  moves,
+  onClose,
+}: {
+  threadId: string;
+  open: boolean;
+  moves: boolean;
+  onClose(): void;
+}) {
   const [opened, setOpened] = useState(open);
+  const { exitMs } = usePanelMotion();
+  // Stays shown while it slides out, then hides.
+  const shown = useLingering(open, exitMs);
   if (open && !opened) setOpened(true);
   if (!opened) return null;
   return (
-    <section className="drawer" hidden={!open} aria-label="Terminal">
+    <section className="drawer" hidden={!shown} data-closing={!open || undefined} data-moves={moves || undefined} aria-label="Terminal">
       <TerminalDrawerBody threadId={threadId} onClose={onClose} />
     </section>
   );
@@ -374,7 +388,9 @@ export function ThreadView({ id }: { id: string }) {
   const { mover, anchor, recordStart } = useComposerDock(hero, motion.enabled, motion.durationMs);
 
   const panelOpen = panelPref ?? layout === "xwide";
-  const panelPresent = useLingering(panelOpen, motion.enabled ? motion.durationMs : 0);
+  const panelPresent = useLingering(panelOpen, motion.exitMs);
+  // A pane that is already open when the thread appears stays still; later opens and closes slide.
+  const paneMoves = useSettledAfter(thread ? id : null);
 
   if (!thread) {
     if (missing) {
@@ -480,7 +496,7 @@ export function ThreadView({ id }: { id: string }) {
             </div>
           </div>
         </div>
-        <TerminalDrawer threadId={id} open={terminalOpen} onClose={() => togglePanel("terminal")} />
+        <TerminalDrawer threadId={id} open={terminalOpen} moves={paneMoves} onClose={() => togglePanel("terminal")} />
         {detailsShown ? (
           <DetailsCard
             thread={thread}
@@ -495,6 +511,7 @@ export function ThreadView({ id }: { id: string }) {
           thread={thread}
           overlay={!wide}
           closing={!panelOpen}
+          moves={paneMoves}
           maximized={maximized}
           onToggleMaximize={() => setMaximized(!maximized)}
           onReturn={() => {

@@ -1,7 +1,8 @@
 /** How `Cmd+Q` quits the macOS app: at once, after a hold, or on a second press. */
 export type QuitMode = "direct" | "hold" | "double_press";
 
-export const HOLD_MS = 1000;
+/** The hold, and the fill that shows it, run linearly for this long. */
+export const HOLD_MS = 1200;
 export const DOUBLE_PRESS_MS = 1500;
 /**
  * WebKit often sends no keyup for a letter while Cmd stays down, so a hold is proved

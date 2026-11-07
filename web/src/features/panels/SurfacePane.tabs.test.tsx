@@ -25,6 +25,7 @@ function pane(props: { overlay?: boolean; onReturn?: () => void; onToggleMaximiz
       thread={thread}
       overlay={props.overlay ?? false}
       closing={false}
+      moves={false}
       maximized={props.maximized ?? false}
       onToggleMaximize={props.onToggleMaximize ?? (() => {})}
       onReturn={props.onReturn ?? (() => {})}

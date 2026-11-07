@@ -4,15 +4,18 @@ import type { ApiFailure } from "../api/client";
 import { NETWORK_ERROR } from "../api/client";
 import { routeHref, type Route } from "../state/route";
 import { useLayoutWidth } from "../lib/useLayout";
+import { useWaited } from "../lib/motion";
 import { Button } from "./controls";
 
+/** A static skeleton, drawn only if the wait outlasts 400 ms. The label is read at once. */
 export function Loading({ label, rows = 4 }: { label: string; rows?: number }) {
+  const slow = useWaited(true);
   return (
     <div className="loading" role="status">
       <span className="sr-only">{label}</span>
-      {Array.from({ length: rows }, (_, at) => (
-        <div key={at} className="skeleton" aria-hidden />
-      ))}
+      {slow
+        ? Array.from({ length: rows }, (_, at) => <div key={at} className="skeleton" aria-hidden />)
+        : null}
     </div>
   );
 }

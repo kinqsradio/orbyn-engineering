@@ -146,6 +146,7 @@ export function SurfacePane({
   thread,
   overlay,
   closing,
+  moves,
   maximized,
   onToggleMaximize,
   onReturn,
@@ -154,6 +155,8 @@ export function SurfacePane({
   /** True when the pane replaces the thread instead of sitting beside it. */
   overlay: boolean;
   closing: boolean;
+  /** False while the pane is part of the page as it first appeared. */
+  moves: boolean;
   maximized: boolean;
   onToggleMaximize(): void;
   onReturn(): void;
@@ -207,6 +210,7 @@ export function SurfacePane({
       className="context"
       aria-label="Thread context"
       data-closing={closing || undefined}
+      data-moves={moves || undefined}
       data-maximized={maximized || undefined}
       style={width !== null && !overlay && !maximized ? { width } : undefined}
     >

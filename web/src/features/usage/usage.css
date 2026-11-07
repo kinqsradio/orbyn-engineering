@@ -61,11 +61,20 @@
 }
 .usage-history :is(.usage-stat strong, .usage-engine strong, .usage-share, .usage-table td:not(:first-child), .usage-chart) {
   opacity: 1;
-  transition: opacity 0s;
+  transition: opacity var(--m-base) var(--m-out);
 }
 .usage-history[data-refreshing] :is(.usage-stat strong, .usage-engine strong, .usage-share, .usage-table td:not(:first-child), .usage-chart) {
   opacity: 0.4;
-  transition-delay: 150ms;
+}
+/* Shown only after a skeleton: the report fades in as the skeleton leaves. */
+.usage-data[data-reveal] {
+  opacity: 1;
+  transition: opacity var(--m-base) var(--m-out);
+}
+@starting-style {
+  .usage-data[data-reveal] {
+    opacity: 0;
+  }
 }
 
 /* Figures */

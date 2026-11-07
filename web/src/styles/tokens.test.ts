@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MOTION } from "../lib/motion";
 
 const dir = join(process.cwd(), "src/styles");
 const files = readdirSync(dir).filter((name) => name.endsWith(".css"));
@@ -34,5 +35,25 @@ describe("design tokens", () => {
         expect(RADII).toContain(radius);
       }
     }
+  });
+
+  it("mirrors the motion durations in the timers and keeps the panel tokens on them", () => {
+    const tokens = css["tokens.css"] ?? "";
+    const ms = (name: string) => Number(new RegExp(`--${name}: calc\\((\\d+)ms`).exec(tokens)?.[1]);
+    expect(MOTION).toEqual({ fast: ms("m-fast"), slow: ms("m-slow"), slowOut: ms("m-slow-out"), wait: ms("m-wait") });
+    expect(tokens).toContain("--ease-drawer: var(--m-out);");
+    expect(tokens).toContain("--panel-duration: var(--m-slow);");
+  });
+
+  it("runs one loop only: the spinner, 900ms linear", () => {
+    const loops = Object.values(css).flatMap((text) => text.match(/animation:[^;]*\binfinite\b[^;]*;/g) ?? []);
+    expect(loops).toEqual(["animation: spin 900ms linear infinite;"]);
+  });
+
+  it("keeps the hold-to-quit fill linear under reduced motion", () => {
+    const shell = css["shell.css"] ?? "";
+    expect(shell).toMatch(/\.quit-progress\[data-holding\] \{\s*width: 100%;\s*transition: width var\(--hold-ms\) linear;/);
+    const reduced = shell.slice(shell.indexOf("@media (prefers-reduced-motion: reduce)", shell.indexOf(".quit-progress")));
+    expect(reduced).toContain("transition-timing-function: linear !important;");
   });
 });

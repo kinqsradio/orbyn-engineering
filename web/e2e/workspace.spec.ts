@@ -165,21 +165,50 @@ test("the default zero duration and reduced motion skip the transition", async (
   await expect(page.locator(".msg-user").getByText("still", { exact: true })).toBeVisible();
 });
 
-test("status loops are stepped and pause when not visible", async ({ page }) => {
+test("status dots are static and the spinner is the only loop, 900 ms linear", async ({ page }) => {
   await page.goto("/#/threads/t-approval");
   const dot = page.locator(".sidebar .status-dot").first();
   await expect(dot).toBeVisible();
-  const read = () =>
-    dot.evaluate((element) => {
+  const read = (locator: typeof dot) =>
+    locator.evaluate((element) => {
       const style = getComputedStyle(element);
-      return { name: style.animationName, duration: style.animationDuration, state: style.animationPlayState };
+      const after = getComputedStyle(element, "::after");
+      return { name: style.animationName, after: after.animationName, duration: style.animationDuration, easing: style.animationTimingFunction };
     });
-  await expect.poll(read).toMatchObject({ name: "dot-breathe", duration: "2s", state: "running" });
-  await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", { value: true, configurable: true });
-    document.dispatchEvent(new Event("visibilitychange"));
+  expect(await read(dot)).toMatchObject({ name: "none", after: "none" });
+  const spin = page.locator(".spin").first();
+  await expect(spin).toBeAttached();
+  expect(await read(spin)).toMatchObject({ name: "spin", duration: "0.9s", easing: "linear" });
+});
+
+const contextMotion = (page: Page) =>
+  page.evaluate(() => {
+    const t = document.getAnimations().find((a) => a instanceof CSSTransition && (a.effect as KeyframeEffect).target?.matches(".context"));
+    const timing = t?.effect?.getComputedTiming();
+    return t ? { property: (t as CSSTransition).transitionProperty, duration: timing?.duration, easing: timing?.easing } : null;
   });
-  await expect.poll(read).toMatchObject({ state: "paused" });
+
+test("the side panel does not move when the page loads with it open", async ({ page }) => {
+  // An extra-wide window opens the panel by default.
+  await page.setViewportSize({ width: 2000, height: 900 });
+  await page.goto("/__mock/scenario/default?to=/%23/threads/t-done");
+  await expect(page.getByRole("complementary", { name: "Thread context" })).toBeVisible();
+  expect(await contextMotion(page)).toBeNull();
+});
+
+test("the side panel slides in over 300 ms ease-out and out over 210 ms ease-in-out", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ panelOpen: false })));
+  await page.goto("/__mock/scenario/default?to=/%23/threads/t-done");
+  const panel = page.getByRole("complementary", { name: "Thread context" });
+  await expect(page.getByRole("heading", { name: "Explain how the event log resumes" })).toBeVisible();
+  await expect(panel).toBeHidden();
+  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await expect(panel).toBeVisible();
+  expect(await contextMotion(page)).toEqual({ property: "translate", duration: 300, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+  await page.getByRole("button", { name: "Close surfaces" }).click();
+  expect(await contextMotion(page)).toEqual({ property: "translate", duration: 210, easing: "cubic-bezier(0.4, 0, 0.2, 1)" });
+  await expect(panel).toBeHidden();
 });
 
 test("disclosures animate height over 200 ms", async ({ page }) => {
@@ -300,9 +329,10 @@ test("the pull requests page lists and filters", async ({ page }) => {
   await page.getByRole("link", { name: "Pull requests" }).click();
   await expect(page.getByRole("heading", { name: "Pull requests", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Add approval timeouts/ })).toBeVisible();
-  await page.getByLabel("Search pull requests").fill("label:nothing");
-  await page.getByLabel("Search pull requests").press("Enter");
-  await expect(page.getByRole("heading", { name: "No pull requests" })).toBeVisible();
+  await page.getByLabel("Search pull requests").fill("label:nothing ");
+  await expect(page.getByText("No pull requests match")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page.getByRole("button", { name: /Add approval timeouts/ })).toBeVisible();
 });
 
 test("Reading folds the sidebar away on a wide window, but a narrow home is still the thread list", async ({ page }) => {

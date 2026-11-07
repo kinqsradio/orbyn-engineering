@@ -528,7 +528,7 @@ describe("App against the mock API", () => {
     go("#/settings/appearance");
     render(<App />);
     const slider = await screen.findByRole("slider", { name: /Panel animations/ });
-    expect(slider).toHaveValue("0");
+    expect(slider).toHaveValue("300");
     fireEvent.change(slider, { target: { value: "240" } });
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"panelAnimationMs":240');
   });

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { presetById, THEME_TOKENS, type ThemeColors } from "../styles/themes";
 import type { ProjectGroupingMode } from "../generated/ProjectGroupingMode";
+import { MOTION } from "../lib/motion";
 import { readJson, writeJson } from "../lib/storage";
 import { useWorkspace } from "./workspace";
 
@@ -18,7 +19,7 @@ interface Prefs {
   panelOpen: boolean | null;
   /** The surface showing; null is the launcher. */
   panelTab: RightTab | null;
-  /** Panel and hero motion in ms, 0 to 400. 0 is off, upstream's default. */
+  /** Panel and hero motion in ms, 0 to 400. 0 is off; the default is the --m-slow token. */
   panelAnimationMs: number;
   /** The floating details card on wide layouts. */
   detailsOpen: boolean;
@@ -171,7 +172,7 @@ const defaults: Prefs = {
   theme: "dark",
   panelOpen: null,
   panelTab: null,
-  panelAnimationMs: 0,
+  panelAnimationMs: MOTION.slow,
   detailsOpen: true,
   terminalOpen: false,
   panelMaximized: false,

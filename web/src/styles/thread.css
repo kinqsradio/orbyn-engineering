@@ -362,7 +362,6 @@
   margin-top: 2px;
   background: var(--color-primary);
   border-radius: 2px;
-  animation: pulse 1s ease-in-out infinite;
 }
 
 /* Markdown */
@@ -506,16 +505,6 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-md);
-}
-/* A soft band over a tool that's still running. */
-.trace[data-live]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to right, transparent, var(--color-hover), transparent);
-  pointer-events: none;
-  animation: band-sweep 2.2s steps(30) infinite;
-  animation-play-state: var(--loop-state, paused);
 }
 .trace-summary {
   display: flex;
@@ -1693,6 +1682,33 @@ button.detail-row:hover {
   padding: 4px 12px 12px;
   border-top: 1px solid var(--color-border);
 }
+/* The terminal drawer rises from the bottom edge and drops back the same way. */
+[data-panel-motion="on"] .drawer[data-moves] {
+  transition: translate var(--panel-duration) var(--ease-drawer);
+}
+[data-panel-motion="on"] .drawer[data-moves][data-closing] {
+  translate: 0 100%;
+  transition: translate var(--m-slow-out) var(--m-io);
+}
+@starting-style {
+  [data-panel-motion="on"] .drawer[data-moves] {
+    translate: 0 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-panel-motion="on"] .drawer[data-moves][data-closing] {
+    translate: none;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    [data-panel-motion="on"] .drawer[data-moves] {
+      translate: none;
+      opacity: 0;
+    }
+  }
+}
 
 /* Context panel */
 .context {
@@ -1706,19 +1722,34 @@ button.detail-row:hover {
   background: var(--color-background);
   box-shadow: none;
 }
-[data-panel-motion="on"] .context {
-  transition:
-    translate var(--panel-duration) var(--ease-drawer),
-    opacity var(--panel-duration) var(--ease-drawer);
+/* Slide in from the right over --panel-duration (--m-slow, ease-out) and out over
+   --m-slow-out. Only a pane that opens or closes moves: data-moves is set once the thread
+   has settled, so a pane already open at page load never animates. */
+[data-panel-motion="on"] .context[data-moves] {
+  transition: translate var(--panel-duration) var(--ease-drawer);
 }
-[data-panel-motion="on"] .context[data-closing] {
-  translate: 24px 0;
-  opacity: 0;
+[data-panel-motion="on"] .context[data-moves][data-closing] {
+  translate: 100% 0;
+  transition: translate var(--m-slow-out) var(--m-io);
 }
 @starting-style {
-  [data-panel-motion="on"] .context {
-    translate: 24px 0;
+  [data-panel-motion="on"] .context[data-moves] {
+    translate: 100% 0;
+  }
+}
+/* Reduced motion: no slide, a fade over --m-fast instead (the global block sets the timing). */
+@media (prefers-reduced-motion: reduce) {
+  [data-panel-motion="on"] .context[data-moves][data-closing] {
+    translate: none;
     opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    [data-panel-motion="on"] .context[data-moves] {
+      translate: none;
+      opacity: 0;
+    }
   }
 }
 .context[data-maximized],
@@ -1888,10 +1919,11 @@ button.detail-row:hover {
   font-size: var(--text-body);
   text-align: left;
   cursor: pointer;
-  transition: background-color 100ms;
 }
+/* In on hover, out instantly: the transition lives on :hover only. */
 .launcher button:hover:not(:disabled) {
   background: var(--color-hover);
+  transition: background-color var(--m-fast) var(--m-out);
 }
 .launcher button:disabled {
   color: var(--color-faint);
@@ -2222,16 +2254,19 @@ button.detail-row:hover {
   backdrop-filter: blur(16px) saturate(1.08);
   box-shadow: 0 18px 44px -18px var(--color-shadow);
   transition:
-    scale var(--m-fast) var(--m-io),
-    opacity var(--m-fast) var(--m-io);
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out),
+    opacity var(--m-base) var(--m-out);
 }
 @starting-style {
   .model-picker,
   .traits-menu {
+    translate: 0 -4px;
     scale: 0.98;
     opacity: 0;
   }
 }
+
 .model-picker {
   display: flex;
   width: min(362px, calc(100vw - 12px));
@@ -4287,7 +4322,7 @@ div.browser-bridge-row {
   z-index: 2;
   pointer-events: none;
   color: var(--color-primary);
-  transition: left var(--m-fast) ease-out, top var(--m-fast) ease-out;
+  transition: left var(--m-page) var(--m-io), top var(--m-page) var(--m-io);
 }
 .browser-agent-cursor svg {
   fill: var(--color-raised);
@@ -4299,15 +4334,18 @@ div.browser-bridge-row {
   height: 16px;
   border: 2px solid currentColor;
   border-radius: 50%;
-  animation: browser-agent-click 700ms ease-out;
+  /* One ring per click, after the dwell, and never looping. */
+  opacity: 0;
+  animation: browser-agent-click var(--m-slow) var(--m-out) var(--m-wait) forwards;
 }
 @keyframes browser-agent-click {
-  from { transform: scale(.5); opacity: .8; }
-  to { transform: scale(1.8); opacity: 0; }
+  from { transform: scale(.4); opacity: .35; }
+  to { transform: scale(1.6); opacity: 0; }
 }
+/* The cursor jumps, and a static ring marks the click until the cue clears. */
 @media (prefers-reduced-motion: reduce) {
-  .browser-agent-cursor { transition: none; }
-  .browser-agent-click { animation: none; }
+  .browser-agent-cursor { transition: none !important; }
+  .browser-agent-click { animation: none; opacity: .35; transform: none; }
 }
 .patch-line[data-selected] {
   background: var(--color-selected);

@@ -1251,18 +1251,29 @@ li[data-file-over] .thread-row {
   font-size: 12px;
 }
 .quit-progress {
-  width: 100%;
   height: 4px;
   border-radius: var(--radius-pill);
   background: var(--color-text);
-  transform-origin: left;
-  animation: quit-hold linear forwards;
 }
-@keyframes quit-hold {
-  from {
-    transform: scaleX(0);
+/* Progress, not decoration: the fill runs linearly for the whole hold, and a release resets
+   it over --m-fast. It keeps this timing under reduced motion. */
+.quit-progress {
+  display: block;
+  width: 0;
+  transition: width var(--m-fast) var(--m-out);
+}
+.quit-progress[data-holding] {
+  width: 100%;
+  transition: width var(--hold-ms) linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quit-progress {
+    transition-property: width !important;
+    transition-duration: var(--m-fast) !important;
+    transition-timing-function: var(--m-out) !important;
   }
-  to {
-    transform: scaleX(1);
+  .quit-progress[data-holding] {
+    transition-duration: var(--hold-ms) !important;
+    transition-timing-function: linear !important;
   }
 }

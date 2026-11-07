@@ -53,7 +53,7 @@ test("a real local refresh keeps and dims figures, then applies its response", a
     await held.ready;
     await expect(page.getByRole("region", { name: "Usage" }).getByRole("status")).toHaveText("Refreshing usage…");
     await expect(row).toContainText("101");
-    await expect(page.locator(".usage-stat strong").first()).toHaveCSS("transition-delay", "0.15s");
+    await expect(page.locator(".usage-stat strong").first()).toHaveCSS("transition-delay", "0s");
     await expect(page.locator(".usage-stat strong").first()).toHaveCSS("opacity", "0.4");
     await expect(page.locator(".usage-chart")).toHaveCSS("opacity", "0.4");
     expect(await model?.evaluate((element) => element.isConnected)).toBe(true);

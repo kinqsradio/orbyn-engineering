@@ -29,7 +29,6 @@ import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import type { ProjectScopeCatalog } from "../../generated/ProjectScopeCatalog";
 import { toFailure } from "../../lib/useAsync";
 import { DRAFT_KEY, useDraftStore } from "../../state/draftStore";
-import { useLoopsWhileVisible } from "../../lib/visibleAnimation";
 import { threadToken } from "../../lib/skillMention";
 import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
@@ -531,7 +530,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const tree = useRef<HTMLDivElement>(null);
   const pointerY = useRef(0);
   const grabOffset = useRef(0);
-  useLoopsWhileVisible(nav);
   const selectedThread = route.name === "thread" ? route.id : null;
   const list = useMemo(() => visibleProjects ?? [], [visibleProjects]);
 

@@ -453,7 +453,6 @@ input[type="checkbox"][role="switch"]:disabled {
   width: 62%;
   border-radius: var(--radius-sm);
   background: var(--color-chip);
-  animation: loading-breathe 2.4s infinite;
 }
 .skeleton:nth-child(4n + 3) {
   width: 88%;
@@ -650,72 +649,9 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 
 .spin {
-  animation: spin 1s linear infinite;
+  animation: spin 900ms linear infinite;
 }
-/* Loops use a few discrete steps per cycle rather than one frame per vsync, and
-   read --loop-state, so nothing runs off screen. */
-@keyframes loading-breathe {
-  0%,
-  42% {
-    opacity: 1;
-    animation-timing-function: steps(4);
-  }
-  50%,
-  92% {
-    opacity: 0.55;
-    animation-timing-function: steps(4);
-  }
-  100% {
-    opacity: 1;
-  }
-}
-@keyframes dot-breathe {
-  0%,
-  40% {
-    opacity: 1;
-    animation-timing-function: steps(6);
-  }
-  50%,
-  90% {
-    opacity: 0.5;
-    animation-timing-function: steps(6);
-  }
-  100% {
-    opacity: 1;
-  }
-}
-@keyframes dot-ripple {
-  0% {
-    opacity: 0.9;
-    scale: 0.75;
-    animation-timing-function: steps(8);
-  }
-  40%,
-  100% {
-    opacity: 0;
-    scale: 2;
-  }
-}
-@keyframes text-sweep {
-  from {
-    background-position:
-      -4.5rem 0,
-      0 0;
-  }
-  to {
-    background-position:
-      calc(100% + 4.5rem) 0,
-      0 0;
-  }
-}
-@keyframes band-sweep {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
+/* Running work spins; content waiting to load is a static block. Nothing else loops. */
 .status-dot {
   position: relative;
   display: inline-block;
@@ -724,33 +660,6 @@ input[type="checkbox"][role="switch"]:disabled {
   flex: none;
   border-radius: 50%;
   background: currentColor;
-  animation: dot-breathe 2s infinite;
-  animation-play-state: var(--loop-state, paused);
-}
-.status-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: currentColor;
-  animation: dot-ripple 2s infinite;
-  animation-play-state: var(--loop-state, paused);
-}
-@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-  .text-sweep {
-    color: transparent;
-    background-image:
-      linear-gradient(to right, transparent, var(--color-text), transparent),
-      linear-gradient(var(--color-muted), var(--color-muted));
-    background-size:
-      4.5rem 100%,
-      100% 100%;
-    background-repeat: no-repeat;
-    background-clip: text;
-    -webkit-background-clip: text;
-    animation: text-sweep 2.2s steps(30) infinite;
-    animation-play-state: var(--loop-state, paused);
-  }
 }
 .collapsible-panel {
   height: var(--collapsible-panel-height, auto);
@@ -776,15 +685,19 @@ input[type="checkbox"][role="switch"]:disabled {
     0 10px 30px var(--color-shadow),
     0 0 0 1px var(--color-borderStrong);
   transition:
-    scale 100ms,
-    opacity 100ms;
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out),
+    opacity var(--m-base) var(--m-out);
 }
+/* Enter: fade, rise 4px and settle from .98 at the trigger. */
 @starting-style {
   .popup-menu {
+    translate: 0 -4px;
     scale: 0.98;
     opacity: 0;
   }
 }
+
 .popup-menu button {
   display: flex;
   align-items: center;
@@ -1142,9 +1055,11 @@ input[type="checkbox"][role="switch"]:disabled {
 .menu,
 .mention-menu {
   transition:
-    scale 100ms,
-    opacity 100ms;
+    translate var(--m-base) var(--m-out),
+    scale var(--m-base) var(--m-out),
+    opacity var(--m-base) var(--m-out);
 }
+
 .menu {
   transform-origin: top right;
 }
@@ -1154,6 +1069,7 @@ input[type="checkbox"][role="switch"]:disabled {
 @starting-style {
   .menu,
   .mention-menu {
+    translate: 0 -4px;
     scale: 0.98;
     opacity: 0;
   }
@@ -1163,15 +1079,12 @@ input[type="checkbox"][role="switch"]:disabled {
     transform: rotate(360deg);
   }
 }
-@keyframes pulse {
-  50% {
-    opacity: 0.5;
-  }
-}
 /* Reduced motion, following the Motion Designs reduced-motion section: only fades
    remain (opacity and colour properties at --m-fast with --m-io, no delay). Slides, pops
    and scales are not in the transition list, so they jump to their end state and the
-   element simply fades; spinners and every other keyframe loop stop. */
+   element simply fades; the spinner and every other keyframe stop (the spinner then shows
+   as a static ring beside its label). Hold-to-quit is the one exception, because its fill
+   is progress: .quit-progress restores its own linear width transition. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
