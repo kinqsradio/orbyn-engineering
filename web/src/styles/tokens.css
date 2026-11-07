@@ -159,6 +159,11 @@
   --color-greenSolid: #10b981;
   --color-blueSolid: #3b82f6;
   --color-redSolid: #ef4444;
+  /* Filled red buttons, white text (Orbyn Components v4). Red text stays on --color-danger. */
+  --color-dangerFill: #d42a2a;
+  --color-dangerFillHover: #b91c1c;
+  --color-dangerFillPress: #991b1b;
+  --color-onDangerFill: #ffffff;
 }
 
 @media (max-width: 640px), (pointer: coarse) {
@@ -256,6 +261,11 @@
   --color-greenSoft: rgb(16 185 129 / 12%);
   --color-blue: #60a5fa;
   --color-blueSoft: rgb(59 130 246 / 13%);
+  /* Filled red buttons, white text (Orbyn Components v4). Red text stays on --color-danger. */
+  --color-dangerFill: #dc2626;
+  --color-dangerFillHover: #c81e1e;
+  --color-dangerFillPress: #b91c1c;
+  --color-onDangerFill: #ffffff;
 }
 
 /* Dim: a neutral dark preset, set by applyTheme on <html data-preset="dim">. It only
@@ -310,6 +320,11 @@
   --color-greenSoft: rgb(16 185 129 / 12%);
   --color-blue: #93c5fd;
   --color-blueSoft: rgb(59 130 246 / 13%);
+  /* Filled red buttons, white text (Orbyn Components v4). Red text stays on --color-danger. */
+  --color-dangerFill: #c93a33;
+  --color-dangerFillHover: #b8322b;
+  --color-dangerFillPress: #a82a24;
+  --color-onDangerFill: #ffffff;
 }
 
 /* Project palette: Tailwind 4.3.3, the frozen reference's dependency.

@@ -611,12 +611,14 @@ input[type="checkbox"][role="switch"]:disabled {
   background: var(--color-primaryHover);
 }
 .dialog-foot .btn-danger {
-  background: var(--color-danger);
-  color: var(--color-onDanger);
+  background: var(--color-dangerFill);
+  color: var(--color-onDangerFill);
 }
 .dialog-foot .btn-danger:hover:not(:disabled) {
-  background: var(--color-danger);
-  filter: brightness(1.08);
+  background: var(--color-dangerFillHover);
+}
+.dialog-foot .btn-danger:active:not(:disabled) {
+  background: var(--color-dangerFillPress);
 }
 .command {
   display: flex;
