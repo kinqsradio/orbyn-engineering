@@ -378,6 +378,7 @@ function DiagnosticsGroup() {
   const pushToast = useUi((state) => state.pushToast);
   const [note, setNote] = useState<string | null>(null);
   const [showProblems, setShowProblems] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const run = async (path: string, done: string) => {
     setNote(null);
     try {
@@ -410,9 +411,14 @@ function DiagnosticsGroup() {
     <SettingGroup title="Diagnostics">
       {offline ? <SettingsBanner>You’re offline. These figures are from this computer and are still current.</SettingsBanner> : null}
       <div className="set-facts" role="group" aria-label="Service">
+        <div className="set-facts-head"><b>Orbyn service</b><Button small tone="quiet" icon={<Copy size={14} aria-hidden />} onClick={copy}>Copy report</Button></div>
         {facts.map(([label, value]) => <div key={label}><span>{label}</span><b>{value}</b></div>)}
-        <div className="set-facts-end"><Button small tone="quiet" icon={<Copy size={14} aria-hidden />} onClick={copy}>Copy report</Button></div>
+        <div className="set-facts-foot"><Button small onClick={() => setRepairing(true)}>Repair database</Button></div>
       </div>
+      {repairing ? <ConfirmDialog title="Repair the database?" confirmLabel="Repair database" cancelFocus onClose={() => setRepairing(false)}
+        onConfirm={async () => { await run("/api/diagnostics/repair", "Database repaired"); }}>
+        <p>Orbyn will check and repair its local database. Threads aren’t deleted.</p>
+      </ConfirmDialog> : null}
       {recent.length === 0 ? <SettingsEmpty title="No problems">Nothing went wrong in the last 24 hours.</SettingsEmpty> : <>
         <SettingRow title="Recent problems" description={`${recent.length} in the last 24 hours`}>
           <Button small aria-expanded={showProblems} onClick={() => setShowProblems(!showProblems)}>{showProblems ? "Hide" : "Show"}</Button>
@@ -423,14 +429,6 @@ function DiagnosticsGroup() {
           </div>)}
         </div> : null}
       </>}
-      <SettingRow
-        title={settingsLabel("maintenance-database")}
-        description={`${mib(data.database.bytes)}, ${mib(data.database.reclaimable_bytes)} reclaimable`}
-      >
-        <Button small onClick={() => void run("/api/diagnostics/repair", "Database repaired")}>
-          Repair
-        </Button>
-      </SettingRow>
       <ul className="setting-list" aria-label="Processes">
         {data.processes.map((process) => (
           <li key={process.pid}>
@@ -472,7 +470,10 @@ export function MaintenanceSection() {
   const failure = error ?? updates?.error ?? null;
   const app = updates?.app;
   // The shell reports bytes while it downloads; the update is ready once all of them are in.
-  const ready = !!app?.latest && app.can_apply && app.downloaded !== undefined && app.total !== undefined && Number(app.downloaded) >= Number(app.total);
+  const hasProgress = !!app?.latest && app.downloaded !== undefined && app.total !== undefined && Number(app.total) > 0;
+  const percent = hasProgress ? Math.min(100, Math.floor((Number(app?.downloaded) / Number(app?.total)) * 100)) : 0;
+  const downloading = hasProgress && percent < 100;
+  const ready = hasProgress && !downloading && !!app?.can_apply;
   const restart = async () => {
     try { await api.applyAppUpdate(); } catch (problem) { setError(toFailure(problem).message); }
   };
@@ -512,6 +513,9 @@ export function MaintenanceSection() {
           description={ready && updates?.app.latest ? `${updates.app.current} · ${updates.app.latest} is downloaded`
             : `${updates?.app.current ?? "Unknown"}${checking ? "" : ` · ${updates?.checked_at ? `checked ${new Date(updates.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}` : "not checked yet"}`}`}>
           {checking ? <span className="set-checking" role="status"><i className="spin" aria-hidden />Checking…</span>
+            : downloading ? <span className="set-checking" role="status">Downloading {app?.latest}…
+              <span className="set-prog" role="progressbar" aria-label="Download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ width: `${percent}%` }} /></span>
+              <span className="set-pct">{percent}%</span></span>
             : ready ? <Button tone="primary" small onClick={() => void restart()}>Restart to update</Button>
             : <Button small disabled={offline} onClick={() => void check()}>Check for updates</Button>}
         </SettingRow>

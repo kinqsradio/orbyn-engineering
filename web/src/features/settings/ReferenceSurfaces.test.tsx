@@ -28,7 +28,7 @@ it("keeps diagnostics and update controls without requesting a Network inventory
   });
   render(<MaintenanceSection />);
   expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Repair" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Repair database" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Check for updates" })).toBeEnabled();
   expect(screen.queryByRole("heading", { name: "Network" })).toBeNull();
   expect(request).not.toHaveBeenCalledWith("GET", "/api/network", undefined, expect.any(AbortSignal));

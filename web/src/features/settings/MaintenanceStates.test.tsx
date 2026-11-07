@@ -86,3 +86,27 @@ it("says a failed check with Retry, and offline without offering the check", asy
   expect(await screen.findByText("You’re offline. Updates are checked when you’re back.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
 });
+
+it("shows the download with its percentage and no button, then Restart to update", async () => {
+  serve(() => diagnostics([]));
+  useWorkspace.getState().putUpdates(app({ latest: "0.43.0", can_apply: true, downloaded: 42, total: 100 }));
+  render(<MaintenanceSection />);
+  expect(await screen.findByText(/Downloading 0\.43\.0…/)).toBeVisible();
+  expect(screen.getByRole("progressbar", { name: "Download progress" })).toHaveAttribute("aria-valuenow", "42");
+  expect(screen.getByText("42%")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Check for updates" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Restart to update" })).toBeNull();
+});
+
+it("asks before repairing the database, with Cancel focused", async () => {
+  serve(() => diagnostics([]));
+  const user = userEvent.setup();
+  render(<MaintenanceSection />);
+  await user.click(await screen.findByRole("button", { name: "Repair database" }));
+  const ask = await screen.findByRole("dialog", { name: "Repair the database?" });
+  expect(within(ask).getByText("Orbyn will check and repair its local database. Threads aren’t deleted.")).toBeVisible();
+  await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus());
+  expect(vi.mocked(request)).not.toHaveBeenCalledWith("POST", "/api/diagnostics/repair");
+  await user.click(within(ask).getByRole("button", { name: "Repair database" }));
+  await waitFor(() => expect(vi.mocked(request)).toHaveBeenCalledWith("POST", "/api/diagnostics/repair"));
+});

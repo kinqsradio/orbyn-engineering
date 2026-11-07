@@ -681,3 +681,35 @@
 .settings-page .setting-line-control .set-fallback-id input {
   width: 240px;
 }
+.set-facts-head {
+  margin-bottom: 4px;
+}
+.set-facts-head > b {
+  flex: 1;
+  font-weight: 500;
+}
+.set-facts-foot {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+.set-prog {
+  display: inline-block;
+  width: 140px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-sunken);
+  overflow: hidden;
+}
+.set-prog > i {
+  display: block;
+  height: 100%;
+  background: var(--color-text);
+}
+.set-pct {
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
