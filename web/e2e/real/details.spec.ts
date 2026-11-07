@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { openDetails, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** The thread's surroundings: details rows, relations, new messages, the Working shelf. */
 
@@ -35,6 +35,7 @@ test("details shows linked pull requests, and right-click turns rows off and bac
   await settled(service, id);
   await service.api("POST", `/api/threads/${id}/pulls`, { number: 42 });
   await page.reload();
+  await openDetails(page);
   await expect(details(page).getByRole("button", { name: /Fix the login/ })).toBeVisible();
   await details(page).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Pull requests" }).click();

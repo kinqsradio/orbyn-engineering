@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { send, settled, startProject, type Service } from "./service";
+import { openDetails, send, settled, startProject, type Service } from "./service";
 
 let service: Service;
 let projectId = "";
@@ -28,7 +28,7 @@ test("E10: a diff range comment shows inline, follows its chip and reaches the p
   const { id } = await thread("Diff review");
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${id}`);
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await (await openDetails(page)).getByRole("button", { name: /^Changes/ }).click();
   const file = page.locator("[data-diff-file='review.txt']");
   await file.getByRole("button", { name: "Comment on line 1", exact: true }).click();
   await file.getByRole("button", { name: "Comment on line 2", exact: true }).click({ modifiers: ["Shift"] });
@@ -70,7 +70,7 @@ test("E18: a large uncommitted diff loads files as you scroll, and find covers l
   const { id } = await thread("Large diff");
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${id}`);
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await (await openDetails(page)).getByRole("button", { name: /^Changes/ }).click();
   const files = page.locator("[data-diff-file^='bulk/']");
   await expect(files.first()).toBeVisible();
   const first = await files.count();
