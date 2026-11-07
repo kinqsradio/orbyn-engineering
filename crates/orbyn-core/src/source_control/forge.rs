@@ -9,9 +9,9 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use orbyn_contracts::{
-    AddPullComment, MergePull, PullCandidate, PullCheck, PullComment, PullConversation, PullFile,
-    PullRequest, PullRequestDetail, PullRevision, PullThread, PullTimelineEvent, ReviewLineComment,
-    SetPullPeople, SubmitReview, UpdatePull,
+    AddPullComment, MergePull, PullCandidate, PullCheck, PullChecks, PullComment, PullConversation,
+    PullFile, PullRequest, PullRequestDetail, PullRevision, PullThread, PullTimelineEvent,
+    RequestedReviewer, ReviewLineComment, SetPullPeople, SubmitReview, UpdatePull,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
@@ -66,10 +66,13 @@ impl crate::app::Core {
     }
 }
 const GH_LIST_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup";
+updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,comments,reviewRequests,latestReviews";
 const GH_VIEW_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup,body,comments,reviews,mergeable,reviewRequests,\
-headRefOid,baseRefOid,additions,deletions,changedFiles,maintainerCanModify,autoMergeRequest";
+updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,latestReviews,body,comments,reviews,\
+mergeable,reviewRequests,headRefOid,baseRefOid,additions,deletions,changedFiles,\
+maintainerCanModify,autoMergeRequest";
+/// Failing check names kept per pull request, so a list stays small.
+const MAX_FAILING_NAMES: usize = 20;
 const THREADS_QUERY: &str = "query($owner:String!,$repo:String!,$number:Int!){\
 repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){nodes{\
 id isResolved path line comments(first:100){nodes{databaseId body createdAt author{login}}}}}}}}";
@@ -316,6 +319,85 @@ fn github_rollup(value: &Value) -> Option<String> {
     })))
 }
 
+/// Per-state counts over GitHub's check rollup, which holds check runs and commit
+/// statuses. Skipped and neutral checks count only in the total.
+fn github_checks(value: &Value) -> Option<PullChecks> {
+    let entries = value.get("statusCheckRollup")?.as_array()?;
+    let mut checks = PullChecks {
+        total: u32::try_from(entries.len()).unwrap_or(u32::MAX),
+        passing: 0,
+        failing: 0,
+        running: 0,
+        failing_names: Vec::new(),
+    };
+    for entry in entries {
+        let status = [field(entry, "status"), field(entry, "state")].concat();
+        match check_state(&status, field(entry, "conclusion")) {
+            "pass" => checks.passing += 1,
+            "fail" => {
+                checks.failing += 1;
+                let name = [field(entry, "name"), field(entry, "context")].concat();
+                if !name.is_empty() && checks.failing_names.len() < MAX_FAILING_NAMES {
+                    checks.failing_names.push(name);
+                }
+            }
+            "pending" => checks.running += 1,
+            _ => {}
+        }
+    }
+    Some(checks)
+}
+
+/// GitHub's review requests: users carry a `login`, teams a `slug` and `name`.
+fn requested_reviewers(value: &Value) -> Option<Vec<RequestedReviewer>> {
+    let requests = value.get("reviewRequests")?.as_array()?;
+    Some(
+        requests
+            .iter()
+            .filter_map(|request| {
+                if let Some(login) = optional(request, "login") {
+                    return Some(RequestedReviewer {
+                        name: login,
+                        kind: "user".into(),
+                    });
+                }
+                let team = optional(request, "slug").or_else(|| optional(request, "name"))?;
+                Some(RequestedReviewer {
+                    name: team,
+                    kind: "team".into(),
+                })
+            })
+            .collect(),
+    )
+}
+
+/// The viewer's latest review among GitHub's `latestReviews`; `none` when they have
+/// not reviewed. Unknown without the viewer's login.
+pub fn viewer_review_state(value: &Value, viewer: Option<&str>) -> Option<String> {
+    let viewer = viewer?;
+    let reviews = value.get("latestReviews")?.as_array()?;
+    let state = reviews
+        .iter()
+        .find(|review| {
+            review
+                .pointer("/author/login")
+                .and_then(Value::as_str)
+                .is_some_and(|login| login.eq_ignore_ascii_case(viewer))
+        })
+        .map_or("none".to_owned(), |review| {
+            field(review, "state").to_lowercase()
+        });
+    Some(state)
+}
+
+fn comment_count(value: &Value) -> Option<u32> {
+    let count = match value.get("comments") {
+        Some(Value::Array(comments)) => comments.len() as u64,
+        _ => value.get("user_notes_count")?.as_u64()?,
+    };
+    Some(u32::try_from(count).unwrap_or(u32::MAX))
+}
+
 fn review_word(decision: &str) -> String {
     match decision.to_uppercase().as_str() {
         "APPROVED" => "approved",
@@ -399,6 +481,13 @@ pub fn parse_pull(value: &Value) -> Option<PullRequest> {
             .get("reviewDecision")
             .map(|decision| review_word(decision.as_str().unwrap_or_default())),
         checks_state: github_rollup(value),
+        requested_reviewers: requested_reviewers(value),
+        comment_count: comment_count(value),
+        created_at: ["createdAt", "created_at", "creationDate"]
+            .iter()
+            .find_map(|key| optional(value, key)),
+        checks: github_checks(value),
+        viewer_review_state: None,
     })
 }
 
@@ -460,7 +549,14 @@ pub struct PullFilter {
     pub head: Option<String>,
 }
 
-pub async fn list_pulls(forge: Forge, cwd: &Path, filter: &PullFilter) -> Result<Vec<PullRequest>> {
+/// Lists pull requests. GitHub's extra fields come in the same call; `viewer` is the
+/// signed-in login, which only the viewer's own review state needs.
+pub async fn list_pulls(
+    forge: Forge,
+    cwd: &Path,
+    filter: &PullFilter,
+    viewer: Option<&str>,
+) -> Result<Vec<PullRequest>> {
     let mut args: Vec<&str>;
     match forge {
         Forge::GitHub => {
@@ -538,7 +634,14 @@ pub async fn list_pulls(forge: Forge, cwd: &Path, filter: &PullFilter) -> Result
         Forge::Bitbucket => return Err(forge.unsupported("list pull requests")),
     }
     let values: Vec<Value> = serde_json::from_str(&call(forge, cwd, &args).await?)?;
-    let mut pulls: Vec<PullRequest> = values.iter().filter_map(parse_pull).collect();
+    let mut pulls: Vec<PullRequest> = values
+        .iter()
+        .filter_map(|value| {
+            let mut pull = parse_pull(value)?;
+            pull.viewer_review_state = viewer_review_state(value, viewer);
+            Some(pull)
+        })
+        .collect();
     // Azure and Forgejo have no such flags, so they are applied here.
     if matches!(forge, Forge::Azure | Forge::Forgejo) {
         if let Some(needle) = &filter.search {
@@ -1851,6 +1954,7 @@ pub async fn forge_status(forge: Forge) -> orbyn_contracts::ForgeStatus {
         version: None,
         signed_in: false,
         accounts: Vec::new(),
+        viewer: None,
         problem: None,
     };
     let Some(program) = forge.program() else {
@@ -1881,6 +1985,9 @@ pub async fn forge_status(forge: Forge) -> orbyn_contracts::ForgeStatus {
     if let Ok(output) = spawn(forge, &cwd, auth, None).await {
         status.signed_in = output.success;
         status.accounts = auth_accounts(&format!("{}\n{}", output.stdout, output.stderr));
+        if output.success {
+            status.viewer = viewer(forge, &cwd).await;
+        }
     }
     status
 }
@@ -1976,6 +2083,83 @@ mod tests {
             Forge::of_remote("https://git.corp.example/a/b"),
             Forge::GitHub
         );
+    }
+
+    #[test]
+    fn a_github_list_row_carries_the_extra_fields() {
+        let row = json!({
+            "number": 7, "title": "T", "url": "https://x/7", "state": "OPEN",
+            "headRefName": "feat", "baseRefName": "main", "author": { "login": "a" },
+            "createdAt": "2026-01-02T03:04:05Z",
+            "comments": [{ "id": 1 }, { "id": 2 }, { "id": 3 }],
+            "reviewRequests": [
+                { "__typename": "User", "login": "sam" },
+                { "__typename": "Team", "name": "Core Team", "slug": "core" },
+            ],
+            "latestReviews": [
+                { "author": { "login": "Other" }, "state": "APPROVED" },
+                { "author": { "login": "Me" }, "state": "CHANGES_REQUESTED" },
+            ],
+            "statusCheckRollup": [
+                { "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS" },
+                { "__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE" },
+                { "__typename": "CheckRun", "name": "e2e", "status": "IN_PROGRESS", "conclusion": "" },
+                { "__typename": "CheckRun", "name": "docs", "status": "COMPLETED", "conclusion": "SKIPPED" },
+                { "__typename": "StatusContext", "context": "ci/legacy", "state": "ERROR" },
+            ],
+        });
+        let pull = parse_pull(&row).unwrap();
+        assert_eq!(pull.created_at.as_deref(), Some("2026-01-02T03:04:05Z"));
+        assert_eq!(pull.comment_count, Some(3));
+        let reviewers = pull.requested_reviewers.unwrap();
+        assert_eq!(
+            reviewers
+                .iter()
+                .map(|r| (r.name.as_str(), r.kind.as_str()))
+                .collect::<Vec<_>>(),
+            [("sam", "user"), ("core", "team")]
+        );
+        let checks = pull.checks.unwrap();
+        assert_eq!(
+            (checks.total, checks.passing, checks.failing, checks.running),
+            (5, 1, 2, 1)
+        );
+        assert_eq!(checks.failing_names, ["lint", "ci/legacy"]);
+        assert_eq!(pull.viewer_review_state, None);
+        assert_eq!(
+            viewer_review_state(&row, Some("me")).as_deref(),
+            Some("changes_requested")
+        );
+        assert_eq!(
+            viewer_review_state(&row, Some("nobody")).as_deref(),
+            Some("none")
+        );
+        assert_eq!(viewer_review_state(&row, None), None);
+    }
+
+    #[test]
+    fn a_row_without_the_extra_fields_leaves_them_out() {
+        let row = json!({
+            "number": 1, "title": "T", "url": "u", "state": "OPEN",
+            "headRefName": "a", "baseRefName": "b",
+        });
+        let pull = parse_pull(&row).unwrap();
+        assert!(pull.requested_reviewers.is_none());
+        assert!(pull.comment_count.is_none());
+        assert!(pull.created_at.is_none());
+        assert!(pull.checks.is_none());
+        let wire = serde_json::to_value(&pull).unwrap();
+        assert!(wire.get("checks").is_none() && wire.get("created_at").is_none());
+        let old: PullRequest = serde_json::from_value(wire).unwrap();
+        assert!(old.viewer_review_state.is_none());
+        let lab = json!({
+            "iid": 9, "title": "T", "web_url": "u", "state": "opened",
+            "source_branch": "f", "target_branch": "m",
+            "created_at": "2026-02-03T00:00:00Z", "user_notes_count": 4,
+        });
+        let pull = parse_pull(&lab).unwrap();
+        assert_eq!(pull.comment_count, Some(4));
+        assert_eq!(pull.created_at.as_deref(), Some("2026-02-03T00:00:00Z"));
     }
 
     #[test]

@@ -553,6 +553,17 @@ merge, close and reopen; anything else is `422`. Arguments are passed directly a
 shell parses them, and comment and thread ids that go into API paths are checked to
 be plain.
 
+A pull request list row also carries, from the same `gh pr list --json` call and never
+a call per pull request: `created_at`, `requested_reviewers` (users and teams),
+`comment_count`, per-check `checks` counts (total, passing, failing, running and up to
+20 failing names) and `viewer_review_state` (the signed-in login's latest review, or
+`none`). `ForgeStatus.viewer` is that login. Each is left out when the forge does not say,
+so older clients keep working. `comment_count` is conversation comments only, because
+`gh`'s list fields do not carry inline review comments. The viewer is asked of the CLI
+once per forge and kept for the service's life; `GET /api/forges` refreshes it. Only
+list reads fill `viewer_review_state`. GitLab fills `created_at` and `comment_count`;
+the other forges fill none of these.
+
 A git action runs commit, push and pull request in order, logs each phase as `CUSTOM
 git.phase`, and stops at the first failure; earlier phases stand. These are the
 user's own commands, so unlike Orbyn's internal reads they run commit hooks. All of

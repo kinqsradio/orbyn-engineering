@@ -121,6 +121,9 @@ pub struct Core {
     pub http: reqwest::Client,
     pub recovery: Recovery,
     pub(crate) keybinding_writer: Mutex<()>,
+    /// The login each forge CLI is signed in as, by forge id. A forge rescan
+    /// (`GET /api/forges`) refreshes it; only a found login is kept.
+    pub(crate) forge_viewers: Mutex<std::collections::HashMap<String, String>>,
     pub(crate) cleanup_policy_gate: tokio::sync::RwLock<()>,
     _lock: File,
 }
@@ -226,6 +229,7 @@ impl Core {
             http,
             recovery,
             keybinding_writer: Mutex::new(()),
+            forge_viewers: Mutex::new(std::collections::HashMap::new()),
             cleanup_policy_gate: tokio::sync::RwLock::new(()),
             _lock: lock,
         };

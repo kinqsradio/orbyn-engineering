@@ -75,6 +75,21 @@ const view = (entry) => ({
   ...entry,
 });
 
+/**
+ * What `gh pr list --json` adds for the list columns: when it was opened, conversation
+ * comments, review requests (a "team/" prefix marks a team) and each reviewer's latest
+ * review. A fixture may set any of them itself.
+ */
+const listRow = (entry) => ({
+  createdAt: "2026-09-01T00:00:00Z",
+  comments: entry.issueComments ?? [],
+  reviewRequests: (entry.reviewers ?? []).map((name) =>
+    name.startsWith("team/") ? { __typename: "Team", name, slug: name.slice(5) } : { __typename: "User", login: name },
+  ),
+  latestReviews: [],
+  ...entry,
+});
+
 const threads = (number) => ({
   data: { repository: { pullRequest: { reviewThreads: { nodes: pull(number).threads ?? [] } } } },
 });
@@ -91,6 +106,7 @@ function apiCall() {
     }
     return undefined;
   };
+  if (args[1] === "user") return out({ login: state.viewer ?? "me" });
   const method = flag("-X") ?? "GET";
   const path = args.find((arg, at) => at > 0 && /^(repos|graphql|user\/starred\/)/.test(arg)) ?? "";
   if (path === "user/starred/orbyn-dev/orbyn-engineering") process.exit(state.starred ? 0 : 1);
@@ -165,7 +181,7 @@ switch (route) {
     out(state.labels.map((name) => ({ name, description: `About ${name}` })));
     break;
   case "pr list":
-    out(state.pulls.filter((entry) => (flag("--state") === "all" ? true : entry.state.toLowerCase() === flag("--state"))));
+    out(state.pulls.filter((entry) => (flag("--state") === "all" ? true : entry.state.toLowerCase() === flag("--state"))).map(listRow));
     break;
   case "pr view":
     out(view(pull(args[2])));

@@ -921,6 +921,52 @@ pub struct PullRequest {
     /// `pass`, `fail`, `pending` or `none`.
     #[serde(default)]
     pub checks_state: Option<String>,
+    /// Users and teams whose review is still asked for; `None` when the forge does
+    /// not say, empty when nobody is asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub requested_reviewers: Option<Vec<RequestedReviewer>>,
+    /// Conversation comments on the pull request; `None` when the forge does not say.
+    /// GitHub's list gives conversation comments only, not inline review comments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub comment_count: Option<u32>,
+    /// When the pull request was opened, as the forge writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub created_at: Option<String>,
+    /// Check counts; `None` when the forge's list does not carry checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub checks: Option<PullChecks>,
+    /// The signed-in viewer's latest review: `approved`, `changes_requested`,
+    /// `commented`, `dismissed`, `pending` or `none`. `None` in a list when the
+    /// viewer is unknown or the forge does not say; only list reads fill it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub viewer_review_state: Option<String>,
+}
+}
+
+wire! {
+pub struct RequestedReviewer {
+    /// A login, or a team's slug.
+    pub name: String,
+    /// `user` or `team`.
+    pub kind: String,
+}
+}
+
+wire! {
+/// Per-state counts over a pull request's checks. Skipped and neutral checks count
+/// only in `total`.
+pub struct PullChecks {
+    pub total: u32,
+    pub passing: u32,
+    pub failing: u32,
+    pub running: u32,
+    /// Names of failing checks, at most 20.
+    pub failing_names: Vec<String>,
 }
 }
 
@@ -1312,6 +1358,10 @@ pub struct ForgeStatus {
     pub version: Option<String>,
     pub signed_in: bool,
     pub accounts: Vec<String>,
+    /// The login the CLI is signed in as; `None` when signed out or the forge has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub viewer: Option<String>,
     pub problem: Option<String>,
 }
 }

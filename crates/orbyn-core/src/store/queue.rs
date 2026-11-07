@@ -121,6 +121,11 @@ fn pull_row(row: &Row<'_>) -> rusqlite::Result<PullRequest> {
         labels: Vec::new(),
         review_state: None,
         checks_state: None,
+        requested_reviewers: None,
+        comment_count: None,
+        created_at: None,
+        checks: None,
+        viewer_review_state: None,
     })
 }
 

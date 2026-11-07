@@ -218,6 +218,11 @@ impl Core {
                     labels: Vec::new(),
                     review_state: None,
                     checks_state: None,
+                    requested_reviewers: None,
+                    comment_count: None,
+                    created_at: None,
+                    checks: None,
+                    viewer_review_state: None,
                 });
                 self.store.link_pull(id, &pull)?;
             }
@@ -345,7 +350,7 @@ impl Core {
             ..PullFilter::default()
         };
         let linked = self.store.linked_pulls(id).unwrap_or_default();
-        if let Ok(pulls) = forge::list_pulls(forge, cwd, &filter).await
+        if let Ok(pulls) = forge::list_pulls(forge, cwd, &filter, None).await
             && let Some(pull) = pulls.first()
             && pull.state == "open"
             && !linked.iter().any(|known| known.number == pull.number)
@@ -517,7 +522,22 @@ impl Core {
     ) -> Result<Vec<PullRequest>> {
         check_state(&filter.state)?;
         let (project, forge) = self.pull_site(project_id).await?;
-        forge::list_pulls(forge, Path::new(&project.path), filter).await
+        let cwd = Path::new(&project.path);
+        let viewer = self.forge_viewer(forge, cwd).await;
+        forge::list_pulls(forge, cwd, filter, viewer.as_deref()).await
+    }
+
+    /// The signed-in login for a forge, asked of the CLI once and then kept.
+    async fn forge_viewer(&self, forge: Forge, cwd: &Path) -> Option<String> {
+        if let Some(known) = self.forge_viewers.lock().unwrap().get(forge.id()) {
+            return Some(known.clone());
+        }
+        let login = forge::viewer(forge, cwd).await?;
+        self.forge_viewers
+            .lock()
+            .unwrap()
+            .insert(forge.id().to_owned(), login.clone());
+        Some(login)
     }
 
     /// Pull requests across every trusted project with a remote. A project that
@@ -987,7 +1007,14 @@ impl Core {
     pub async fn forges(&self) -> Vec<ForgeStatus> {
         let mut statuses = Vec::with_capacity(ALL_FORGES.len());
         for forge in ALL_FORGES {
-            statuses.push(forge::forge_status(forge).await);
+            let status = forge::forge_status(forge).await;
+            let mut viewers = self.forge_viewers.lock().unwrap();
+            match &status.viewer {
+                Some(login) => viewers.insert(forge.id().to_owned(), login.clone()),
+                None => viewers.remove(forge.id()),
+            };
+            drop(viewers);
+            statuses.push(status);
         }
         statuses
     }
@@ -1146,6 +1173,11 @@ mod tests {
             labels: Vec::new(),
             review_state: None,
             checks_state: None,
+            requested_reviewers: None,
+            comment_count: None,
+            created_at: None,
+            checks: None,
+            viewer_review_state: None,
         }
     }
 
