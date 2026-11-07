@@ -5,18 +5,17 @@
 .welcome-wizard {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: min(720px, 100%);
-  margin: 0 auto;
-  padding: 26px 28px 18px;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0 28px 40px;
+  text-align: center;
 }
 .welcome-wizard h2 {
   margin: 0;
-  font-size: var(--text-page);
+  font-size: var(--text-section);
   font-weight: 500;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
   color: var(--color-text);
 }
 .welcome-lede {
@@ -24,11 +23,28 @@
   color: var(--color-muted);
   font-size: var(--text-small);
 }
+/* Later steps read as a page, from the top, as the connect-agent frame is. */
+.welcome-wizard:not([data-step="0"]) {
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 14px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 26px 28px;
+  text-align: left;
+}
+.welcome-wizard:not([data-step="0"]) h2 {
+  font-size: var(--text-page);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
 .welcome-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin: 0;
+  width: min(700px, 100%);
+  margin: 10px 0 0;
+  text-align: left;
   padding: 0;
   list-style: none;
 }
@@ -50,7 +66,7 @@
 .welcome-steps b {
   margin-top: 2px;
   color: var(--color-text);
-  font-size: var(--text-title);
+  font-size: var(--text-lead);
   font-weight: 500;
 }
 .welcome-steps span {
@@ -58,9 +74,10 @@
   font-size: var(--text-meta);
 }
 .welcome-note {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 6px 10px;
   margin: 0;
   color: var(--color-muted);
@@ -78,11 +95,11 @@
 }
 .welcome-agents li {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  grid-template-columns: 28px minmax(0, 1fr) 230px 90px;
   align-items: center;
   gap: 12px;
-  min-height: 44px;
-  padding: 6px 4px;
+  min-height: 38px;
+  padding: 4px;
   border-top: 1px solid var(--color-divider);
 }
 .welcome-agents li:last-child {
@@ -91,15 +108,16 @@
 .welcome-avatar {
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-sm);
-  background: var(--color-chip);
-  color: var(--color-textSoft);
-  font-size: var(--text-caption);
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--color-selected);
+  color: var(--color-text);
+  font-size: 10px;
   font-weight: 500;
 }
 .welcome-agent-name {
+  line-height: 1.6;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -157,8 +175,46 @@
 }
 .welcome-wizard-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
+  margin-top: 4px;
+}
+.welcome-wizard:not([data-step="0"]) .welcome-wizard-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+/* The design's two buttons: a raised ghost and a solid one, 30px tall. */
+.welcome-wizard .btn {
+  min-height: 30px;
+  padding: 0 12px;
+  border-color: transparent;
+  border-radius: var(--radius-9);
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+  font-size: var(--text-nav);
+}
+.welcome-wizard .btn:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--color-selected);
+}
+.welcome-wizard .btn-primary {
+  padding: 0 13px;
+  background: var(--color-primary);
+  color: var(--color-onAccent);
+}
+.welcome-wizard .btn-primary:hover:not(:disabled) {
+  background: var(--color-primaryHover);
+}
+.welcome-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+  font-size: var(--text-label);
 }
 @media (max-width: 640px) {
   .welcome-steps,
@@ -167,6 +223,7 @@
   }
   .welcome-agents li {
     grid-template-columns: 28px minmax(0, 1fr) auto;
+    padding: 6px 4px;
   }
   .welcome-agent-next {
     grid-column: 2 / -1;
@@ -414,6 +471,20 @@
   position: static;
 }
 .welcome-agent-next {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-textSoft);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.welcome-agent-text {
   color: var(--color-muted);
-  font-size: var(--text-meta);
+  font-family: inherit;
+}
+.welcome-agent-act {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }

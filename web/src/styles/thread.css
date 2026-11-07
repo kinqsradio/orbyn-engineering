@@ -2169,7 +2169,11 @@ button.detail-row:hover {
   min-height: 0;
 }
 .home-stack > .welcome-wizard {
+  flex: 1 0 auto;
+}
+.home-stack > .welcome-wizard:not([data-step="0"]) {
   flex: none;
+  width: 100%;
 }
 /* Centred content never shrinks, so none of it ends up above the scroll start. */
 .home-stack > .no-projects {

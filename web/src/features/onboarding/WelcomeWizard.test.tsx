@@ -36,7 +36,9 @@ it("walks the overview, agents, projects and access, and remembers it was finish
   expect(screen.getByRole("heading", { name: "Welcome to Orbyn Engineering" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(screen.getByText("Ready")).toBeInTheDocument();
-  expect(screen.getByText("Sign in needed")).toBeInTheDocument();
+  // A signed-out agent shows the command to run, with a Copy action, as the frame draws it.
+  expect(screen.getByText("claude login")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy the Codex command" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Continue" }));
   await user.click(screen.getByRole("button", { name: "Add project" }));
   expect(onClose).not.toHaveBeenCalled();

@@ -1,11 +1,14 @@
-import { Check, FolderPlus } from "lucide-react";
+import { Check, Copy, FolderPlus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { api } from "../../api/client";
+import { useAsync } from "../../lib/useAsync";
 import type { EngineStatus, PermissionMode } from "../../api/types";
 import { HistoryImport } from "../settings/HistoryImport";
 import { ACCESS } from "../thread/ComposerTraits";
 import { navigate, routeHref } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
-import { Button, CopyCommand, Pill } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import "./onboarding.css";
 
 /**
@@ -26,8 +29,10 @@ const OVERVIEW = [
 ] as const;
 
 function Overview() {
-  // Only a confirmed library earns the claim; unknown or failed shows nothing.
+  // Only a confirmed library earns the claim, and the count is the library's own: no count, no notice.
   const ready = useWorkspace((state) => state.managed.data?.configured === true);
+  const library = useAsync("welcome-skills", (signal) => api.skills(signal));
+  const count = ready ? library.data?.skills.length : undefined;
   return (
     <>
       <ol className="welcome-steps">
@@ -39,19 +44,36 @@ function Overview() {
           </li>
         ))}
       </ol>
-      {!ready ? null : (
+      {!count ? null : (
         <p className="welcome-note">
           <Check size={14} aria-hidden />
-          Skills are built in and ready
+          Orbyn skills library ready · {count} {count === 1 ? "skill" : "skills"}
         </p>
       )}
     </>
   );
 }
 
+function CopyAction({ command, name }: { command: string; name: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <Button small aria-label={copied ? "Copied" : `Copy the ${name} command`} icon={copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />} onClick={() => void copy()}>
+      {copied ? "Copied" : "Copy"}
+    </Button>
+  );
+}
+
 function AgentsStep() {
   const engines = useWorkspace((state) => state.engines.data) ?? [];
-  const refresh = useWorkspace((state) => state.refreshEngines);
   const known = engines.filter((engine) => engine.tier !== "acp" || engine.installed);
   return (
     <>
@@ -66,12 +88,19 @@ function AgentsStep() {
               </span>
               <span className="welcome-agent-name">
                 <b>{engine.name}</b>
-                <small>{ready.step ?? (engine.version ? `Version ${engine.version}` : "Installed")}</small>
+                <small>{!engine.installed ? "Not installed" : engine.version ? `${engine.version} · installed` : "Installed"}</small>
               </span>
-              <span className="welcome-agent-next">
-                {ready.next ? <CopyCommand command={ready.next} label={`Copy the ${engine.name} step`} /> : null}
+              <code className="welcome-agent-next">{ready.next}</code>
+              <span className="welcome-agent-act">
+                {ready.label === "Ready" ? (
+                  <span className="welcome-ready">
+                    <Check size={14} aria-hidden />
+                    Ready
+                  </span>
+                ) : ready.next ? (
+                  <CopyAction command={ready.next} name={engine.name} />
+                ) : null}
               </span>
-              <Pill tone={ready.tone}>{ready.label}</Pill>
             </li>
           );
         })}
@@ -83,18 +112,14 @@ function AgentsStep() {
             <b>ACP registry</b>
             <small>Agents that speak ACP</small>
           </span>
-          <span className="welcome-agent-next">In Settings · Providers</span>
-          <a className="btn btn-small" href={routeHref({ name: "settings", section: "providers" })}>
-            Open
-          </a>
+          <span className="welcome-agent-next welcome-agent-text">In Settings · Providers</span>
+          <span className="welcome-agent-act">
+            <a className="btn btn-small" href={routeHref({ name: "settings", section: "providers" })}>
+              Open
+            </a>
+          </span>
         </li>
       </ul>
-      <p className="welcome-note">
-        Installed or signed in just now?
-        <Button small tone="quiet" onClick={() => void refresh()}>
-          Check again
-        </Button>
-      </p>
     </>
   );
 }
@@ -142,8 +167,8 @@ function AccessStep() {
 }
 
 const STEPS = [
-  { title: "Welcome to Orbyn Engineering", lede: "Agents that work in your projects while you stay in control. Ready in a minute." },
-  { title: "Connect an agent", lede: "Pick at least one. You can add more in Settings · Providers. Signing in happens in the agent's own CLI; Orbyn never sees the password." },
+  { title: "Welcome to Orbyn Engineering", lede: "Agents that work in your projects while you stay in control. Set up in a minute." },
+  { title: "Connect an agent", lede: "Pick at least one. You can add more in Settings · Providers." },
   { title: "Add a project", lede: "Add any folder in place; adding it copies nothing." },
   { title: "Choose how agents ask", lede: "Each thread can change it from its composer." },
 ] as const;
@@ -160,14 +185,14 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
   const last = step === STEPS.length - 1;
   const first = step === 0;
   return (
-    <section className="welcome-wizard" aria-labelledby="welcome-title">
+    <section className="welcome-wizard" data-step={step} aria-labelledby="welcome-title">
       <h2 id="welcome-title">{STEPS[step]?.title}</h2>
       <p className="welcome-lede" aria-live="polite">
-        {first ? STEPS[0].lede : `Step ${step} of ${STEPS.length - 1}. ${STEPS[step]?.lede}`}
+        {STEPS[step]?.lede}
       </p>
       {step === 0 ? <Overview /> : step === 1 ? <AgentsStep /> : step === 2 ? <ProjectsStep /> : <AccessStep />}
       <div className="welcome-wizard-actions">
-        <Button small tone="quiet" onClick={first ? finish : () => setStep(step - 1)}>
+        <Button small onClick={first ? finish : () => setStep(step - 1)}>
           {first ? "Skip for now" : "Back"}
         </Button>
         <Button
@@ -193,7 +218,13 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
  * open step lives in the UI store, so adding or trusting a folder elsewhere doesn't
  * end them: they are back when home is.
  */
-export function WelcomeHost() {
+export function WelcomeHost({ needsProject }: { needsProject: boolean }) {
   const step = useUi((state) => state.welcomeStep);
+  const welcomeDone = useUi((state) => state.welcomeDone);
+  const setWelcomeStep = useUi((state) => state.setWelcomeStep);
+  // A new device with nothing to work on opens the steps once.
+  useEffect(() => {
+    if (needsProject && !welcomeDone && useUi.getState().welcomeStep === null) setWelcomeStep(0);
+  }, [needsProject, welcomeDone, setWelcomeStep]);
   return step === null ? null : <WelcomeWizard onClose={() => undefined} />;
 }

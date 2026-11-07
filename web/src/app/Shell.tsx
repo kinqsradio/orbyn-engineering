@@ -59,15 +59,21 @@ const loadEngines = () =>
 
 type PageRoute = Exclude<Route, { name: "settings" }>;
 
+function Home({ needsProject }: { needsProject: boolean }) {
+  // The welcome steps take the whole page while they are open; the empty home is what they leave.
+  const welcome = useUi((state) => state.welcomeStep !== null);
+  return (
+    <div className="home-stack">
+      <WelcomeHost needsProject={needsProject} />
+      {welcome ? null : needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}
+    </div>
+  );
+}
+
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
     case "home":
-      return (
-        <div className="home-stack">
-          <WelcomeHost />
-          {needsProject ? <NoProjects /> : <DraftView key="draft" projectId={null} />}
-        </div>
-      );
+      return <Home needsProject={needsProject} />;
     case "pulls":
       return <PullsPage />;
     case "usage":

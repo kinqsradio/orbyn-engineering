@@ -11,6 +11,7 @@ let mock: MockApi;
 beforeEach(() => {
   mock = installMockFetch();
   useUi.setState({ projectFolders: true });
+  useUi.getState().setPrefs({ welcomeDone: true });
 });
 
 const go = (hash: string) => {
@@ -24,6 +25,14 @@ describe("App against the mock API", () => {
     expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();
     expect((await within(nav).findAllByText("Approval")).length).toBe(2);
     expect(within(nav).queryByRole("link", { name: /Approvals/ })).toBeNull();
+  });
+
+  it("marks the whole title bar strip as the window drag region", async () => {
+    const { container } = render(<App />);
+    await screen.findByRole("navigation", { name: "Workspace" });
+    const bar = container.querySelector(".titlebar");
+    expect(bar).toHaveAttribute("data-tauri-drag-region");
+    expect(bar?.querySelector(".titlebar-drag")).toHaveAttribute("data-tauri-drag-region");
   });
 
   it("heads a thread with Terminal then Show side panel, each pressed while its panel is open", async () => {
@@ -90,6 +99,30 @@ describe("App against the mock API", () => {
     await user.type(within(nav).getByRole("searchbox", { name: "Search threads" }), "tokio");
     expect(within(nav).queryByText("Explain how the event log resumes")).toBeNull();
     expect(within(nav).getByText("Upgrade tokio and fix the fallout")).toBeInTheDocument();
+  });
+
+  it("renames a thread in a dialog: F2 opens it, Enter saves, Escape cancels", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Workspace" });
+    const title = "Upgrade tokio and fix the fallout";
+    const row = (await within(nav).findByText(title)).closest("a")!;
+    row.focus();
+    await user.keyboard("{F2}");
+    const dialog = await screen.findByRole("dialog", { name: "Rename thread" });
+    expect(within(dialog).getByRole("textbox", { name: "Thread title" })).toHaveValue(title);
+    // The browser turns Escape into the dialog's cancel event; jsdom does not.
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Rename thread" })).toBeNull());
+    expect(within(nav).getByText(title)).toBeInTheDocument();
+
+    row.focus();
+    await user.keyboard("{F2}");
+    const again = await screen.findByRole("dialog", { name: "Rename thread" });
+    await user.clear(within(again).getByRole("textbox", { name: "Thread title" }));
+    await user.type(within(again).getByRole("textbox", { name: "Thread title" }), "Tokio upgrade{Enter}");
+    expect(await within(nav).findByText("Tokio upgrade")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Rename thread" })).toBeNull();
   });
 
   describe("updates", () => {
@@ -236,6 +269,14 @@ describe("App against the mock API", () => {
     await user.clear(field);
     await user.type(field, "/Users/dev/code/site/{Enter}");
     expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ })).toBeInTheDocument();
+  });
+
+  it("opens the welcome steps alone on a new device, without the empty home beneath", async () => {
+    mock.reset("first-run");
+    useUi.getState().setPrefs({ welcomeDone: false });
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Welcome to Orbyn Engineering" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Add your first project" })).toBeNull();
   });
 
   it("opens straight on the draft flow, with nothing to set up", async () => {

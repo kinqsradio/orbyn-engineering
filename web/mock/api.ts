@@ -697,6 +697,17 @@ export function createMockApi(options: MockOptions = {}) {
         return { status: 204 };
       case "GET /api/approvals":
         return { status: 200, body: approvals };
+      case "GET /api/skills":
+        return {
+          status: 200,
+          body: {
+            version: "0.15",
+            digest: "0".repeat(40),
+            signature_valid: true,
+            source: null,
+            skills: Array.from({ length: 64 }, (_, at) => ({ name: `skill-${at + 1}`, category: "core", description: "", enabled: true })),
+          },
+        };
       case "GET /api/engines":
         if (seg[3] === "models") return { status: 200, body: fixtures.engineModels(seg[2] ?? "") };
         return { status: 200, body: engines };

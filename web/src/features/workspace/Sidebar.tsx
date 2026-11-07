@@ -71,7 +71,7 @@ import {
   unsettleThreads,
   wakeThreads,
 } from "./threadActions";
-import { bulkMenuItems, CustomSnoozeDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
+import { bulkMenuItems, CustomSnoozeDialog, RenameThreadDialog, snoozeChildren, threadMenuItems } from "./threadMenu";
 import { ThreadRow, type RowActions } from "./ThreadRow";
 import { useDrawnOrder } from "./drawnOrder";
 import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
@@ -515,6 +515,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
   const [anchorId, setAnchorId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const renamingThread = renaming ? threads[renaming] : undefined;
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [snoozing, setSnoozing] = useState<Thread[] | null>(null);
   const [deleting, setDeletingState] = useState<Thread[] | null>(null);
@@ -692,7 +693,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
     },
     onPressStart(event, thread, section) {
       if (event.button !== 0 || section === "working") return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || renaming === thread.id) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey) return;
       const row = event.currentTarget.closest("li");
       if (!row || !tree.current) return;
       const list = tree.current;
@@ -796,7 +797,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         }),
       });
     },
-    onRenameDone: () => setRenaming(null),
     onSettle: (thread) => void settleThreads([thread]),
     onUnsettle: (thread) => void unsettleThreads([thread]),
     onWake: (thread) => void wakeThreads([thread]),
@@ -918,7 +918,6 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
         compact={compact}
         multiline={multilineRows}
         multiSelected={selection.has(thread.id)}
-        renaming={renaming === thread.id}
         focusable={thread.id === rovingId}
         dragging={dragged}
         highlighted={highlighted}
@@ -1170,6 +1169,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       <SidebarFoot route={route} ledger={ledger} />
       <SidebarRail />
       <Presence>{menu ? <Menu {...menu} onClose={() => setMenu(null)} /> : null}</Presence>
+      {renamingThread ? <RenameThreadDialog thread={renamingThread} onClose={() => setRenaming(null)} /> : null}
       {snoozing ? <CustomSnoozeDialog threads={snoozing} onClose={() => setSnoozing(null)} /> : null}
       {deleting ? (
         <ConfirmDialog

@@ -1,6 +1,7 @@
 import { serviceUrl } from "./origin";
 import { readToken } from "./token";
 import type { SteerResult } from "../generated/SteerResult";
+import type { SkillPackStatus } from "../generated/SkillPackStatus";
 import type { EngineUpdateOutcome } from "../generated/EngineUpdateOutcome";
 import type { WorkflowScript } from "../generated/WorkflowScript";
 import type { WorkflowStop } from "../generated/WorkflowStop";
@@ -297,6 +298,7 @@ export const api = {
   removeProject: (id: string, confirm: boolean) =>
     request<ProjectRemoval>("DELETE", `/api/projects/${q(id)}${confirm ? "?confirm=true" : ""}`),
 
+  skills: (signal?: AbortSignal) => request<SkillPackStatus>("GET", "/api/skills", undefined, signal),
   info: (signal?: AbortSignal) => request<ServerInfo>("GET", "/api/info", undefined, signal),
   signIn: (key: string) => request<void>("POST", "/auth/session", { key }),
 

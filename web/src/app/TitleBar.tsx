@@ -14,6 +14,33 @@ import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
 import { goBack, goForward, useNavHistory } from "./navHistory";
 
+const INTERACTIVE =
+  "a,button,input,select,textarea,summary,label,[role=button],[role=tab],[role=menuitem],[contenteditable=true],[tabindex]:not([tabindex='-1'])";
+
+/**
+ * The whole top strip drags the window, but the bar floats over the page, so its own box
+ * would swallow clicks on the page's buttons beneath. The drag layer therefore takes the
+ * pointer only while nothing interactive is under it.
+ */
+function useDragStrip(layer: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      const node = layer.current;
+      if (!node) return;
+      const strip = node.getBoundingClientRect();
+      if (event.clientY < strip.top || event.clientY > strip.bottom) {
+        node.removeAttribute("data-hot");
+        return;
+      }
+      const under = document.elementsFromPoint?.(event.clientX, event.clientY).find((element) => element !== node);
+      if (under?.closest(INTERACTIVE) && !node.contains(under)) node.removeAttribute("data-hot");
+      else node.setAttribute("data-hot", "");
+    };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [layer]);
+}
+
 /** True in the desktop app on macOS, where the window's traffic lights sit over the title bar. */
 function useTrafficLights(): boolean {
   const [attached, setAttached] = useState(inDesktopApp());
@@ -110,10 +137,13 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
   }, [shown]);
 
   const trail = useNavHistory();
+  const dragLayer = useRef<HTMLDivElement>(null);
+  useDragStrip(dragLayer);
   const sidebarLabel = shown ? "Hide sidebar" : "Show sidebar";
 
   return (
     <header className="titlebar" data-nav={shown ? "shown" : "hidden"} data-tauri-drag-region>
+      <div ref={dragLayer} className="titlebar-drag" data-tauri-drag-region aria-hidden />
       {lights ? <span className="titlebar-lights" aria-hidden /> : null}
       {narrow ? null : (
         <button
