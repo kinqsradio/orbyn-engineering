@@ -6,6 +6,7 @@ mod desktop_origin;
 mod image_picker;
 mod links;
 mod menu;
+mod restart_policy;
 mod shell_state;
 mod system;
 mod window_actions;
@@ -29,6 +30,9 @@ struct Core(Mutex<Option<CoreProcess>>);
 /// Fences window requests queued by an earlier service process.
 #[derive(Default)]
 struct ServiceGeneration(AtomicU64);
+/// Whether a crashed service is started again by itself, which happens once.
+#[derive(Default)]
+struct Restarts(Mutex<restart_policy::RestartPolicy>);
 /// The update found by the latest check, installed only when orbynd asks.
 struct PendingUpdate(Mutex<Option<Update>>);
 /// Links that arrived before the service could take them.
@@ -43,6 +47,44 @@ pub(crate) fn reveal(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+fn show_restarting(app: &AppHandle, message: &str) {
+    if let Some(window) = main_window(app) {
+        let _ = window.navigate(desktop_origin::restarting(message));
+    }
+}
+
+/// Starts the service again at a person's request, which also gives the next crash
+/// its one automatic restart.
+pub(crate) fn restart_service(app: &AppHandle) {
+    app.state::<Restarts>()
+        .0
+        .lock()
+        .expect("restart policy")
+        .reset();
+    let app = app.clone();
+    std::thread::spawn(move || launch_core(&app));
+}
+
+pub(crate) fn show_service_log(app: &AppHandle) {
+    use tauri_plugin_opener::OpenerExt;
+    match core_process::service_log(app) {
+        Ok(log) => {
+            if let Err(error) = app.opener().reveal_item_in_dir(log) {
+                tell_core(
+                    app,
+                    serde_json::json!({
+                        "type": "shell_failed", "message": format!("Cannot show the log: {error}.")
+                    }),
+                );
+            }
+        }
+        Err(message) => tell_core(
+            app,
+            serde_json::json!({ "type": "shell_failed", "message": message }),
+        ),
     }
 }
 
@@ -113,7 +155,24 @@ fn launch_core(app: &AppHandle) {
     };
     let on_exit = move |reason: String| {
         watcher.state::<Core>().0.lock().expect("core slot").take();
-        show_failure(&watcher, &reason);
+        let decision = watcher
+            .state::<Restarts>()
+            .0
+            .lock()
+            .expect("restart policy")
+            .on_crash(std::time::Instant::now());
+        match decision {
+            restart_policy::Decision::RestartOnce => {
+                show_restarting(&watcher, &reason);
+                let app = watcher.clone();
+                // Not on this thread: starting the service waits for it to be ready.
+                std::thread::spawn(move || launch_core(&app));
+            }
+            restart_policy::Decision::Stop => show_failure(
+                &watcher,
+                &format!("It restarted once and stopped again. {reason}"),
+            ),
+        }
     };
     match CoreProcess::start(app, on_message, on_exit) {
         Ok(core) => {
@@ -201,7 +260,7 @@ fn restart_core(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
     if !desktop_origin::is_startup(&current) {
         return Err("Only the startup document can restart the service.".into());
     }
-    std::thread::spawn(move || launch_core(&app));
+    restart_service(&app);
     Ok(())
 }
 
@@ -382,6 +441,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(Core(Mutex::new(None)))
+        .manage(Restarts::default())
         .manage(ServiceGeneration::default())
         .manage(PendingUpdate(Mutex::new(None)))
         .manage(WaitingLinks(Mutex::new(Vec::new())))

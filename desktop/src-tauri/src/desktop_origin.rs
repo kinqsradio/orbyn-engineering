@@ -48,6 +48,17 @@ pub fn startup(error: Option<&str>) -> Url {
     target
 }
 
+/// The startup document while the service starts again by itself after a crash. It
+/// shows the state, without the retry button.
+pub fn restarting(message: &str) -> Url {
+    let mut target = startup(None);
+    target
+        .query_pairs_mut()
+        .append_pair("state", "restarting")
+        .append_pair("detail", message);
+    target
+}
+
 /// The retry command belongs only to the separate, static startup document.
 pub fn is_startup(url: &Url) -> bool {
     url.scheme() == startup(None).scheme()
@@ -82,6 +93,17 @@ mod tests {
         );
         assert!(!is_startup(&first));
     }
+    #[test]
+    fn the_restarting_page_is_the_startup_document_and_carries_its_state() {
+        let page = restarting("It stopped.");
+        assert!(is_startup(&page));
+        assert!(
+            page.query_pairs()
+                .any(|(key, value)| key == "state" && value == "restarting")
+        );
+        assert!(!page.query_pairs().any(|(key, _)| key == "error"));
+    }
+
     #[test]
     fn only_the_static_startup_origin_may_retry() {
         assert!(is_startup(&startup(Some("<untrusted service error>"))));

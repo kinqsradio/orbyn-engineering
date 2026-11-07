@@ -2995,6 +2995,11 @@ pub enum ShellAction {
     /// Quits the app, which stops its service and runs; sent once a window's quit
     /// confirmation is met.
     Quit,
+    /// Starts the local service again, as the startup page's Try again does. Runs it
+    /// held are interrupted and picked up as after any restart.
+    RestartService,
+    /// Shows the service's log file in the file manager.
+    ShowLog,
 }
 }
 

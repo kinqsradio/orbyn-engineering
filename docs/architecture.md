@@ -2037,7 +2037,14 @@ never touches `PATH`, and neither replaces nor removes a file the app didn't put
 The service's stderr goes to `orbynd.log` in the app's log folder, new each launch. It is a
 file and not a pipe so the service can still log its own shutdown after the shell dies: a
 write to a dead pipe stops it before it cleans up. When the service stops, the loader
-shows the log's last line with Try again, and threads and runs are kept. Every
+shows the log's last line with Try again, and threads and runs are kept. A service
+that exits without being asked is started again once, automatically, while the loader
+says it is restarting. If the restarted service stops again within ten minutes, the
+loader says it restarted once and stopped again, and waits for Try again, which also
+earns the next crash its one restart. The product UI restarts the service or shows
+its log through the `restart_service` and `show_log` shell actions, which the service
+relays and a remote viewer is refused; the product origin still holds no capability,
+so `restart_core` stays the startup document's alone. Every
 post-spawn startup failure closes the parent pipe and retains child ownership through
 a five-second graceful-exit period, then kills and reaps a service that has not exited.
 Successful readiness transfers that ownership to the running shell.
