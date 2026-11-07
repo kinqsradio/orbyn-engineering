@@ -35,7 +35,7 @@ import { toFailure, useAsync } from "../lib/useAsync";
 import { actionShortcutAllowed, FALLBACK_RULES, isReservedCloseEvent, matchesKey, ruleMatches, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { actionIdFromCommand } from "../lib/actionCommand";
 import { useLayoutWidth } from "../lib/useLayout";
-import { navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
+import { goToHash, navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { TitleBar } from "./TitleBar";
@@ -539,7 +539,7 @@ function useRouteFocus(routeKey: string, routeName: string, ready: boolean, main
 export function onShellEvent(event: ShellEvent) {
   switch (event.type) {
     case "navigate":
-      window.location.hash = event.href.slice(1);
+      goToHash(event.href.slice(1));
       return;
     case "command":
       if (!runHandlers(event.command)) runShellCommand(event.command, parseRoute(window.location.hash));
@@ -551,7 +551,7 @@ export function onShellEvent(event: ShellEvent) {
       useUi.getState().pushToast(event.message);
       return;
     case "show_preview":
-      window.location.hash = `/threads/${event.thread_id}`;
+      goToHash(`/threads/${event.thread_id}`);
       useUi.getState().showInBrowser({ tabId: event.tab_id });
   }
 }

@@ -121,7 +121,22 @@ export function navigate(route: Route): void {
   const current = parseRoute(window.location.hash);
   const next = route.name === "settings" && !("selection" in route) && current.name === "settings"
     ? { ...route, selection: current.selection, machine: current.machine } : route;
-  window.location.hash = routeHref(next).slice(1);
+  goToHash(routeHref(next).slice(1));
+}
+
+/**
+ * Moves to a hash route. While a modal sheet holds its history entry (`history.state.sheet`), the
+ * navigation replaces that entry instead of pushing one, and the sheet closes with it: the stack
+ * [list, list + sheet] becomes [list, destination]. Typed addresses and links out can't be seen.
+ */
+export function goToHash(hash: string): void {
+  if ((window.history.state as { sheet?: boolean } | null)?.sheet === true) {
+    window.history.replaceState(null, "", `#${hash}`);
+    // replaceState says nothing, so tell the router and the sheet.
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    return;
+  }
+  window.location.hash = hash;
 }
 
 const subscribe = (notify: () => void) => {

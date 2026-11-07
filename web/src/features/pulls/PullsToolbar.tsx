@@ -346,7 +346,7 @@ function FilterPanel({ props, count, sheet, dismiss }: { props: ToolbarProps; co
 export function PullsToolbar(props: ToolbarProps) {
   const has = props.has ?? pullData;
   const { filters, onFilters, sort, onSort, text, onText, tokens, onTokens, onSubmit } = props;
-  const [menu, setMenu] = useState<{ kind: Kind; anchor: HTMLElement } | null>(null);
+  const [menu, setMenu] = useState<{ kind: Kind; anchor: HTMLElement; sheet: boolean } | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const chips = useMemo(() => activeChips(filters), [filters]);
   const count = chips.length;
@@ -381,7 +381,7 @@ export function PullsToolbar(props: ToolbarProps) {
   };
   const open = (kind: Kind) => (event: React.MouseEvent<HTMLElement>) => {
     const anchor = event.currentTarget;
-    setMenu(menu?.kind === kind ? null : { kind, anchor });
+    setMenu(menu?.kind === kind ? null : { kind, anchor, sheet: props.phone && kind === "filters" });
   };
   const sheet = props.phone;
 
@@ -589,8 +589,16 @@ export function PullsToolbar(props: ToolbarProps) {
         </ToolbarPopover>
       ) : null}
       {menu?.kind === "filters" ? (
-        <ToolbarPopover anchor={menu.anchor} label="Filters" layout={sheet ? "sheet" : "popover"} width={470} onClose={() => setMenu(null)}>
-          {(dismiss) => <FilterPanel props={props} count={count} sheet={sheet} dismiss={dismiss} />}
+        <ToolbarPopover
+          anchor={menu.anchor}
+          label="Filters"
+          layout={menu.sheet ? "sheet" : "popover"}
+          width={470}
+          // Past the phone breakpoint the sheet closes the normal way; it never turns into the popover.
+          closeNow={menu.sheet && !sheet}
+          onClose={() => setMenu(null)}
+        >
+          {(dismiss) => <FilterPanel props={props} count={count} sheet={menu.sheet} dismiss={dismiss} />}
         </ToolbarPopover>
       ) : null}
     </>

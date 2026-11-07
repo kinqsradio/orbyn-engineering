@@ -15,7 +15,19 @@ const SHEET_REDUCED_FALLBACK_MS = MOTION.fast + 90;
 const DRAG_DISMISS_RATIO = 0.3;
 /** ...or when it is moving down faster than this, in px per ms. */
 const DRAG_DISMISS_SPEED = 0.5;
+/** Release speed counts only the pointer moves this recent. */
+const SPEED_WINDOW_MS = 100;
 const TABBABLE = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex]';
+
+/** Downward px per ms over the pointer moves in the last 100ms before release; 0 if there were none. */
+function releaseSpeed(moves: { y: number; at: number }[], now: number): number {
+  const from = moves.findIndex((move) => move.at >= now - SPEED_WINDOW_MS);
+  const last = moves[moves.length - 1];
+  if (from < 0 || !last || moves.length < 2) return 0;
+  // The stretch starts at the first sample in the window, or at the one before it when only one is in.
+  const start = from === 0 || from < moves.length - 1 ? moves[from]! : moves[from - 1]!;
+  return last.at > start.at ? (last.y - start.y) / (last.at - start.at) : 0;
+}
 
 /**
  * A panel anchored under the button that opened it, right edges aligned, scaling from that
@@ -29,6 +41,7 @@ export function ToolbarPopover({
   role = "dialog",
   layout = "popover",
   width,
+  closeNow = false,
   onClose,
   children,
 }: {
@@ -38,37 +51,53 @@ export function ToolbarPopover({
   /** A sheet rises from the bottom edge of a phone instead of hanging from the button. */
   layout?: "popover" | "sheet";
   width?: number;
+  /** Closes it the normal way: the owner needs it gone though nobody chose to close it. */
+  closeNow?: boolean;
   onClose(): void;
   children: (dismiss: () => void) => ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = useState(false);
   const closed = useRef(false);
+  // A sheet owns one history entry, flagged `history.state.sheet`, pushed when it opens.
+  // Back or an in-app navigation takes it off already; any other close pops it once.
+  const entry = useRef<"none" | "pushed" | "popped">("none");
+  const ignorePop = useRef(false);
+  const popEntry = () => {
+    if (entry.current !== "pushed") return;
+    entry.current = "popped";
+    if ((window.history.state as { sheet?: boolean } | null)?.sheet !== true) return;
+    ignorePop.current = true;
+    window.history.back();
+  };
   const finish = () => {
     if (closed.current) return;
     closed.current = true;
+    // The pop comes last, after the exit.
+    popEntry();
     onClose();
   };
   // The trigger button is where focus returns; `captureFocusReturn` falls back from it if it is gone.
   const [focusReturn] = useState(() => captureFocusReturn(anchor));
   const reduced = usePrefersReducedMotion();
+  const mounted = useRef(false);
   const leaving = useRef(false);
-  // A sheet owns one history entry, pushed when it opens, so Back closes it and stays on the page.
-  const entry = useRef<"none" | "pushed" | "popped">("none");
-  const ignorePop = useRef(false);
   const leave = (cause: CloseCause, target?: EventTarget | null) => {
     if (leaving.current) return;
     leaving.current = true;
+    // Inert at once, then focus returns, then the exit runs (the state below), then the entry pops.
+    ref.current?.setAttribute("inert", "");
+    ref.current?.setAttribute("aria-hidden", "true");
     moveFocus(focusReturn, cause, target);
     setClosing(true);
-    // Closed by anything but Back (and not by leaving the route): take our entry off again, once.
-    if (layout === "sheet" && entry.current === "pushed" && cause !== "window") {
-      entry.current = "popped";
-      ignorePop.current = true;
-      window.history.back();
-    }
   };
   const dismiss = () => leave("select");
+
+  useEffect(() => {
+    if (closeNow) leave("select");
+    // `leave` only reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closeNow]);
 
   useEffect(() => {
     if (!closing) return;
@@ -98,9 +127,10 @@ export function ToolbarPopover({
     if (layout !== "sheet") return;
     // Strict mode runs this twice; the entry is pushed once.
     if (entry.current === "none") {
-      window.history.pushState({ ...(window.history.state as object | null), orbynSheet: true }, "");
+      window.history.pushState({ ...(window.history.state as object | null), sheet: true }, "");
       entry.current = "pushed";
     }
+    mounted.current = true;
     const back = () => {
       if (ignorePop.current) {
         ignorePop.current = false;
@@ -111,7 +141,15 @@ export function ToolbarPopover({
       leave("escape");
     };
     window.addEventListener("popstate", back);
-    return () => window.removeEventListener("popstate", back);
+    return () => {
+      window.removeEventListener("popstate", back);
+      mounted.current = false;
+      // Unmounted without a close (the page left, or the phone layout ended): pop the entry, unless
+      // Back or a navigation already took it. Strict mode remounts at once, so look a moment later.
+      queueMicrotask(() => {
+        if (!mounted.current) popEntry();
+      });
+    };
     // `leave` only reads refs and props that cannot change while the sheet is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
@@ -178,11 +216,11 @@ export function ToolbarPopover({
 
   // Dragging the sheet's handle or header down follows the finger; on release it closes past 30% of
   // its height or faster than 0.5px/ms, else springs back. The body never starts a drag, so it scrolls.
-  const drag = useRef<{ y: number; dy: number; last: number; at: number; speed: number } | null>(null);
+  const drag = useRef<{ y: number; dy: number; moves: { y: number; at: number }[] } | null>(null);
   const dragStart = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     if (layout !== "sheet" || closing || !target.closest("[data-sheet-handle]") || target.closest("button")) return;
-    drag.current = { y: event.clientY, dy: 0, last: event.clientY, at: performance.now(), speed: 0 };
+    drag.current = { y: event.clientY, dy: 0, moves: [{ y: event.clientY, at: performance.now() }] };
     event.currentTarget.removeAttribute("data-spring");
     event.currentTarget.setAttribute("data-drag", "");
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -190,10 +228,7 @@ export function ToolbarPopover({
   const dragMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = drag.current;
     if (!state) return;
-    const now = performance.now();
-    if (now > state.at) state.speed = (event.clientY - state.last) / (now - state.at);
-    state.last = event.clientY;
-    state.at = now;
+    state.moves.push({ y: event.clientY, at: performance.now() });
     state.dy = Math.max(0, event.clientY - state.y);
     event.currentTarget.style.translate = `0 ${state.dy}px`;
   };
@@ -203,9 +238,10 @@ export function ToolbarPopover({
     drag.current = null;
     const element = event.currentTarget;
     const height = element.getBoundingClientRect().height;
+    const speed = releaseSpeed(state.moves, performance.now());
     element.removeAttribute("data-drag");
     element.style.translate = "";
-    if (!cancelled && height > 0 && (state.dy > height * DRAG_DISMISS_RATIO || state.speed > DRAG_DISMISS_SPEED)) {
+    if (!cancelled && height > 0 && (state.dy > height * DRAG_DISMISS_RATIO || speed > DRAG_DISMISS_SPEED)) {
       // Leaves from where it is, over the share of the exit that is left: no jump.
       const left = Math.min(1, Math.max(0, (height - state.dy) / height));
       element.style.setProperty("--sheet-exit", `calc(var(--m-slow-out) * ${left})`);

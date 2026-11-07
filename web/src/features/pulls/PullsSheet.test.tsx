@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { navigate } from "../../state/route";
 import { PullsToolbar } from "./PullsToolbar";
 import { defaultSort, noFilters } from "./pullModel";
 
-function Harness() {
+function Harness({ phone = true }: { phone?: boolean }) {
   const [filters, setFilters] = useState(noFilters);
   const [text, setText] = useState("");
   const [tokens, setTokens] = useState<string[]>([]);
@@ -27,7 +28,7 @@ function Harness() {
       authors={[]}
       labels={[{ name: "bug", count: 3 }]}
       shown={2}
-      phone
+      phone={phone}
       oneRepo
     />
   );
@@ -42,12 +43,12 @@ const reduceMotion = () =>
   }));
 
 function openSheet() {
-  render(<Harness />);
+  const view = render(<Harness />);
   const filtersButton = screen.getByRole("button", { name: "Filters" });
   fireEvent.click(filtersButton);
   const sheet = screen.getByRole("dialog", { name: "Filters" });
   sheet.getBoundingClientRect = () => ({ height: 400 }) as DOMRect;
-  return { sheet, filtersButton };
+  return { sheet, filtersButton, view };
 }
 
 const handle = (sheet: HTMLElement) => sheet.querySelector<HTMLElement>("[data-sheet-handle]")!;
@@ -150,7 +151,7 @@ describe("phone filter sheet", () => {
   it("Back closes the sheet, stays on the page and does not pop twice", () => {
     const hash = window.location.hash;
     const { sheet } = openSheet();
-    expect(window.history.state).toMatchObject({ orbynSheet: true });
+    expect(window.history.state).toMatchObject({ sheet: true });
     fireEvent(window, new PopStateEvent("popstate"));
     expect(sheet).toHaveAttribute("data-closing");
     expect(window.history.back).not.toHaveBeenCalled();
@@ -159,13 +160,69 @@ describe("phone filter sheet", () => {
     expect(window.location.hash).toBe(hash);
   });
 
-  it("pops its history entry once when it closes by any other means", () => {
-    openSheet();
+  it("closes in order: inert, focus back, exit, then the pop", () => {
+    const { sheet, filtersButton } = openSheet();
     escape();
+    expect(sheet).toHaveAttribute("inert");
+    expect(filtersButton).toHaveFocus();
+    wait(319);
+    expect(window.history.back).not.toHaveBeenCalled();
+    wait(1);
     expect(window.history.back).toHaveBeenCalledTimes(1);
     fireEvent(window, new PopStateEvent("popstate"));
     wait(320);
     expect(window.history.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("an in-app navigation replaces the sheet's entry and closes it, with no pop", () => {
+    const { sheet } = openSheet();
+    const length = window.history.length;
+    act(() => navigate({ name: "home" }));
+    expect(window.history.length).toBe(length);
+    expect(window.history.state).toBeNull();
+    expect(sheet).toHaveAttribute("data-closing");
+    wait(320);
+    expect(gone()).toBe(true);
+    expect(window.history.back).not.toHaveBeenCalled();
+  });
+
+  it("widening past the phone layout closes the sheet normally and pops once, never opening the popover", () => {
+    const { sheet, view } = openSheet();
+    view.rerender(<Harness phone={false} />);
+    expect(sheet).toHaveAttribute("data-closing");
+    expect(sheet).toHaveClass("pulls-sheet");
+    wait(320);
+    expect(gone()).toBe(true);
+    expect(document.querySelector(".pulls-pop")).toBeNull();
+    expect(window.history.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("the page unmounting pops the entry once", async () => {
+    const { view } = openSheet();
+    view.unmount();
+    await Promise.resolve();
+    expect(window.history.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pop on unmount when Back already took the entry", async () => {
+    const { view } = openSheet();
+    fireEvent(window, new PopStateEvent("popstate"));
+    view.unmount();
+    await Promise.resolve();
+    expect(window.history.back).not.toHaveBeenCalled();
+  });
+
+  it("springs back when the pointer pauses before release, unless it passed 30%", () => {
+    const { sheet } = openSheet();
+    fireEvent.pointerDown(handle(sheet), { pointerId: 1, clientY: 0 });
+    wait(20);
+    fireEvent.pointerMove(handle(sheet), { pointerId: 1, clientY: 60 });
+    wait(500);
+    fireEvent.pointerUp(handle(sheet), { pointerId: 1, clientY: 60 });
+    expect(sheet).not.toHaveAttribute("data-closing");
+    expect(sheet).toHaveAttribute("data-spring");
+    drag(handle(sheet), sheet, 130, 1000);
+    expect(sheet).toHaveAttribute("data-closing");
   });
 
   it("Show N pull requests takes the normal exit and focus returns to Filters", () => {
