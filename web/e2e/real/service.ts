@@ -331,7 +331,8 @@ export async function projectSettingsUrl(service: Service, projectId: string, se
  */
 export async function openDetails(page: Page) {
   const toggle = page.getByRole("button", { name: "Details", exact: true });
-  await expect(toggle).toBeVisible();
+  // A freshly started dev server compiles the page on its first load.
+  await expect(toggle).toBeVisible({ timeout: 30_000 });
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
   const card = page.getByRole("complementary", { name: "Thread details" });
   await expect(card).toBeVisible();
