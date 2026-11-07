@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
-import type { EngineStatus, PermissionMode } from "../../api/types";
+import type { EngineStatus, PermissionMode, Project } from "../../api/types";
 import { AddProjectPalette } from "../workspace/AddProjectPalette";
 import { ACCESS, offeredModes, shownAccess } from "../thread/ComposerTraits";
 import { navigate, routeHref } from "../../state/route";
@@ -128,11 +128,14 @@ function AgentsStep() {
 const listedEngines = (engines: EngineStatus[]) => engines.filter((engine) => engine.tier !== "acp" || engine.installed);
 
 /** Add a project: the add-project palette's path field, Folders and actions, laid out inline. */
-function ProjectsStep() {
+function ProjectsStep({ added, onAdded }: { added: readonly Project[]; onAdded(project: Project): void }) {
   return (
-    <div className="welcome-menu">
-      <AddProjectPalette onClose={() => undefined} onSubdialog={() => undefined} />
-    </div>
+    <>
+      <div className="welcome-menu">
+        <AddProjectPalette onClose={() => undefined} onSubdialog={() => undefined} added={added} onAdded={onAdded} />
+      </div>
+      <p className="welcome-quiet">You can import past agent sessions later in Settings › Providers.</p>
+    </>
   );
 }
 
@@ -225,6 +228,8 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
   const [picked, setPicked] = useState<PermissionMode | null>(null);
   const choice = shownAccess(engine, picked ?? access.saved);
   const [saving, setSaving] = useState(false);
+  // What step 2 has added so far; the last one is the project the app opens on.
+  const [added, setAdded] = useState<Project[]>([]);
   const finish = () => {
     useUi.getState().setPrefs({ welcomeDone: true });
     setStep(null);
@@ -238,7 +243,14 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
     try {
       if (choice !== access.saved) await access.save(choice);
       finish();
-      navigate({ name: "home" });
+      const opened = added.at(-1);
+      navigate(
+        opened
+          ? opened.trusted
+            ? { name: "new", projectId: opened.id }
+            : { name: "trust", projectId: opened.id, threadId: null }
+          : { name: "home" },
+      );
     } catch (failure) {
       pushToast(`Couldn't save the access mode. ${toFailure(failure).message}`);
     } finally {
@@ -257,7 +269,7 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
       ) : step === 1 ? (
         <AgentsStep />
       ) : step === 2 ? (
-        <ProjectsStep />
+        <ProjectsStep added={added} onAdded={(project) => setAdded((list) => (list.some((entry) => entry.id === project.id) ? list : [...list, project]))} />
       ) : (
         <AccessStep choice={choice} onChoose={setPicked} modes={modes} />
       )}
@@ -282,12 +294,18 @@ export function WelcomeWizard({ onClose }: { onClose(): void }) {
               Back
             </Button>
           ) : null}
-          {step === 2 ? (
+          {step === 2 && added.length === 0 ? (
             <Button small onClick={() => setStep(3)}>
               Skip for now
             </Button>
           ) : null}
-          <Button small tone="primary" busy={saving} onClick={() => (last ? void done() : setStep(step + 1))}>
+          <Button
+            small
+            tone="primary"
+            busy={saving}
+            disabled={step === 2 && added.length === 0}
+            onClick={() => (last ? void done() : setStep(step + 1))}
+          >
             {first ? "Start" : "Continue"}
           </Button>
         </span>

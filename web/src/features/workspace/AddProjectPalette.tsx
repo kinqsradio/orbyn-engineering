@@ -1,4 +1,4 @@
-import { ArrowUp, Download, Folder, GitBranch, Plus, Search } from "lucide-react";
+import { ArrowUp, Download, Folder, GitBranch, Plus, Search, SquareCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api, request } from "../../api/client";
 import type { PreferenceView, Project } from "../../api/types";
@@ -27,7 +27,7 @@ function useBaseDirectory(): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function useFinish(onClose: () => void) {
+function useFinish(onClose: () => void, onAdded?: (project: Project) => void) {
   const putProject = useWorkspace((state) => state.putProject);
   const refreshThreads = useWorkspace((state) => state.refreshThreads);
   const refreshManaged = useWorkspace((state) => state.refreshManaged);
@@ -35,6 +35,11 @@ function useFinish(onClose: () => void) {
     putProject(project);
     void refreshThreads(project.id);
     void refreshManaged();
+    // Where the add is one step of a longer flow, the caller keeps the person where they are.
+    if (onAdded) {
+      onAdded(project);
+      return;
+    }
     onClose();
     navigate(
       project.trusted
@@ -49,13 +54,17 @@ function Folders({
   onClone,
   onBrowse,
   onClose,
+  added,
+  onAdded,
 }: {
   onNew(): void;
   onClone(): void;
   onBrowse(): void;
   onClose(): void;
+  added: readonly Project[];
+  onAdded?(project: Project): void;
 }) {
-  const finish = useFinish(onClose);
+  const finish = useFinish(onClose, onAdded);
   const [home, setHome] = useState<string | null>(null);
   const [value, setValue] = useState("~/");
   const [active, setActive] = useState(-1);
@@ -165,6 +174,19 @@ function Folders({
         {listing.status === "error" ? <p className="sidebar-empty">{listing.error.message}</p> : null}
         {/* Until the home folder is known nothing was listed, so nothing is empty yet. */}
         {listing.status === "ready" && listing.data !== null && folderRows === 0 ? <p className="sidebar-empty">No folders here</p> : null}
+        {added.length > 0 ? (
+          <>
+            <div className="palette-group">Added</div>
+            {added.map((project) => (
+              <div key={project.id} className="add-project-added">
+                <SquareCheck size={14} aria-hidden />
+                <span className="palette-title add-project-path-row">{home ? shortenHome(project.path, home) : project.path}</span>
+                <span className="add-project-hint">{project.is_git ? "Git" : "Folder"}</span>
+              </div>
+            ))}
+            <div className="add-project-sep" role="separator" />
+          </>
+        ) : null}
         {folderRows > 0 ? <div className="palette-group">Folders</div> : null}
         {parent ? (
           <button type="button" data-active={active === 0 || undefined} onMouseMove={() => setActive(0)} onClick={() => enter(parent)}>
@@ -307,8 +329,14 @@ export function AddProjectPalette({
   initialView = "folders",
   onClose,
   onSubdialog,
+  added = [],
+  onAdded,
 }: {
   initialView?: AddProjectView;
+  /** Projects this flow has already added, listed under "Added". */
+  added?: readonly Project[];
+  /** Keeps the person in place after an add, instead of opening the project. */
+  onAdded?(project: Project): void;
   onClose(): void;
   /** True while a dialog sits over the palette, which hides itself meanwhile. */
   onSubdialog(open: boolean): void;
@@ -316,7 +344,13 @@ export function AddProjectPalette({
   const [view, setView] = useState<AddProjectView>(initialView);
   const [browsing, setBrowsing] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
-  const finish = useFinish(onClose);
+  const finishAdd = useFinish(onClose, onAdded);
+  // A dialog that added something is done; where the flow goes on, the palette is what is left.
+  const finish = (project: Project) => {
+    setView("folders");
+    setBrowsing(false);
+    finishAdd(project);
+  };
   const base = useBaseDirectory();
   const home = useAsync("add-project-home", (signal) => api.browse(null, signal)).data?.path ?? null;
   const sub = view !== "folders" || browsing;
@@ -328,7 +362,7 @@ export function AddProjectPalette({
   const cancel = () => (initialView === "folders" ? setView("folders") : onClose());
   return (
     <>
-      <Folders onNew={() => setView("new")} onClone={() => setView("clone")} onBrowse={() => setBrowsing(true)} onClose={onClose} />
+      <Folders onNew={() => setView("new")} onClone={() => setView("clone")} onBrowse={() => setBrowsing(true)} onClose={onClose} added={added} onAdded={onAdded} />
       {view === "new" ? (
         <AddDialog
           title="New project"
@@ -376,7 +410,8 @@ export function AddProjectPalette({
           }
           submit={async (url) => {
             const job = await api.startClone(cloneAddress(url));
-            onClose();
+            if (onAdded) setView("folders");
+            else onClose();
             trackClone(job, finish);
           }}
           onCancel={cancel}

@@ -66,3 +66,18 @@
   text-decoration-color: var(--color-borderStrong);
   text-underline-offset: 3px;
 }
+
+/* A project this flow has added: listed with a green check, not clickable. */
+.add-project-added {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 0 9px;
+  color: var(--color-textSoft);
+  font-size: var(--text-nav);
+}
+.add-project-added > svg {
+  flex: none;
+  color: var(--color-green);
+}

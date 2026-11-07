@@ -21,7 +21,9 @@ vi.mock("../../api/client", async (original) => {
       if (path === "/api/skills") return { skills: [] };
       return [];
     }),
-    api: { ...actual.api, browse: vi.fn(async () => ({ path: "/home/dev", parent: null, entries: [] })), skills: vi.fn(async () => ({ skills: [] })) },
+    api: { ...actual.api, browse: vi.fn(async () => ({ path: "/home/dev", parent: null, entries: [] })), skills: vi.fn(async () => ({ skills: [] })),
+      addProject: vi.fn(async (path: string) => ({ id: "p1", name: "site", path, trusted: true, is_git: true, created_at: "", managed: false, scratch: false })),
+    },
   };
 });
 
@@ -77,6 +79,21 @@ it("walks the overview, agents, projects and access, saving the chosen access mo
   expect(saved[0]).toMatchObject({ edits: { default_permission_mode: { op: "set", value: "full_access" } } });
   expect(useUi.getState().welcomeDone).toBe(true);
   expect(useUi.getState().welcomeStep).toBeNull();
+});
+
+it("keeps Continue off until a project is added, then lists it under Added and drops Skip for now", async () => {
+  const user = userEvent.setup();
+  useUi.getState().setWelcomeStep(2);
+  render(<WelcomeWizard onClose={() => undefined} />);
+  expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Skip for now" })).toBeEnabled();
+  expect(screen.getByText("You can import past agent sessions later in Settings › Providers.")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("Folder path"), "{Enter}");
+  expect(await screen.findByText("Added")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+  // Adding does not leave the step: the wizard stays until Continue.
+  expect(useUi.getState().welcomeStep).toBe(2);
 });
 
 it("drops Check again once every agent is ready", async () => {
