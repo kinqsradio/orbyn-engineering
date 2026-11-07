@@ -89,6 +89,13 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-pill: 999px;
+  /* Further radii the internal designs use, at their exact values. */
+  --radius-5: 5px;
+  --radius-7: 7px;
+  --radius-9: 9px;
+  --radius-10: 10px;
+  --radius-14: 14px;
+  --radius-20: 20px;
 
   --text-micro: 8px;
   --text-caption: 11px;
@@ -103,6 +110,11 @@
   --text-page: 22px;
   --text-display: 26px;
   --text-figure: 36px;
+  /* Further sizes the internal designs use, at their exact values. */
+  --text-kbd: 10.5px;
+  --text-lead: 15px;
+  --text-read: 13.5px;
+  --text-thread: 14.5px;
 
   --control-h: 36px;
   --control-h-sm: 32px;
