@@ -8,6 +8,7 @@ import { useThreadLogs } from "../features/thread/threadLogs";
 import { useAsync } from "../lib/useAsync";
 import { labels } from "../features/settings/SettingsPage";
 import { routeHref, type Route } from "../state/route";
+import { usePageLabel } from "../state/pageLabel";
 import { useReadingNav } from "./readingNav";
 import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
@@ -81,19 +82,22 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
   const ledger = useUi((state) => state.workspaceLayout === "ledger");
   const title = useWorkspace((state) => (route.name === "thread" ? state.threads[route.id]?.title : undefined));
   const waiting = useWaitingCount();
+  const pageLabel = usePageLabel((state) => state.label);
 
   const page =
     route.name === "thread"
       ? (title ?? "")
       : route.name === "pulls"
-        ? "Pull requests"
+        ? (pageLabel ?? "Pull requests")
         : route.name === "usage"
           ? "Usage"
-          : route.name === "settings"
-            ? labels[route.section ?? "general"]
-            : route.name === "trust"
-              ? "Trust folder"
-              : "New thread";
+          : route.name === "tasks"
+            ? "Scheduled tasks"
+            : route.name === "settings"
+              ? labels[route.section ?? "general"]
+              : route.name === "trust"
+                ? "Trust folder"
+                : "New thread";
   const shown = reading ? readingNav : !collapsed;
   // Folding the sidebar away must not strand focus on a row that no longer exists.
   const wasShown = useRef(shown);

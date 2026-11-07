@@ -298,8 +298,8 @@ const navRows: { label: string; icon: ReactNode; route: Route; current(route: Ro
   {
     label: "Scheduled tasks",
     icon: <Clock size={15} aria-hidden />,
-    route: { name: "settings", section: "tasks" },
-    current: (route) => route.name === "settings" && route.section === "tasks",
+    route: { name: "tasks" },
+    current: (route) => route.name === "tasks" || (route.name === "settings" && route.section === "tasks"),
   },
 ];
 

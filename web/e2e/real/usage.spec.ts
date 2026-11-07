@@ -24,7 +24,7 @@ test.afterAll(() => service.stop());
 
 test("a model takes a price, follows another model and refreshes; keys move the page", async ({ page }) => {
   await page.goto(`${service.page}#/usage`);
-  const usage = page.getByRole("dialog", { name: "Usage" });
+  const usage = page.getByRole("region", { name: "Usage" });
   await usage.getByRole("button", { name: "Refresh usage" }).click();
   await usage.getByRole("button", { name: "Set price for house-model" }).click();
   const dialog = page.getByRole("dialog", { name: "Price for house-model" });
@@ -49,7 +49,7 @@ test("a model takes a price, follows another model and refreshes; keys move the 
   await page.keyboard.press("t");
   await expect(usage.getByRole("radio", { name: "Tokens" })).toBeChecked();
   await page.keyboard.press("l");
-  await expect(usage.getByRole("radio", { name: "Limits" })).toBeChecked();
+  await expect(usage.getByRole("tab", { name: "Limits" })).toHaveAttribute("aria-selected", "true");
   await expect(usage.getByRole("heading", { name: "Pooled" })).toBeVisible();
   await expect(usage.locator(".limit-reset").first()).toBeVisible();
   await expect(usage.locator(".usage-plan").first()).toBeVisible();
@@ -77,7 +77,7 @@ test("thread details show what's left, and checks stay five minutes apart", asyn
 
 test("the provider menu opens above the usage dialog and goes back to all providers", async ({ page }) => {
   await page.goto(`${service.page}#/usage`);
-  const usage = page.getByRole("dialog", { name: "Usage" });
+  const usage = page.getByRole("region", { name: "Usage" });
   const picker = usage.getByRole("button", { name: "All providers" });
   await picker.click();
   // A click lands only on what is on top, so this fails while the menu sits under the dialog.

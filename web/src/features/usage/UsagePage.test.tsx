@@ -32,7 +32,7 @@ beforeEach(() => {
 it("keeps the same period mounted and uses the refresh response without another read", async () => {
   const refresh = deferred<UsageReport>();
   vi.spyOn(api, "refreshUsage").mockReturnValue(refresh.promise);
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   expect(await screen.findByRole("row", { name: /local-model/ })).toHaveTextContent("101");
   const original = row();
   await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
@@ -48,7 +48,7 @@ it("keeps the same period mounted and uses the refresh response without another 
 it("retains unpriced figures on refresh failure and retries the refresh", async () => {
   const refresh = deferred<UsageReport>();
   vi.spyOn(api, "refreshUsage").mockReturnValueOnce(refresh.promise).mockResolvedValue(report(303));
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   await screen.findByRole("row", { name: /local-model/ });
   await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
   await act(async () => refresh.reject(new ApiFailure("unavailable", "Local scan failed.", 503)));
@@ -66,7 +66,7 @@ it.each(["success", "failure"])("rejects an old period refresh %s without cleari
   const week = deferred<UsageReport>();
   vi.spyOn(api, "refreshUsage").mockReturnValue(refresh.promise);
   vi.mocked(api.usage).mockImplementation((days) => days === 7 ? week.promise : Promise.resolve(report(101)));
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   await screen.findByRole("row", { name: /local-model/ });
   await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
   await userEvent.click(screen.getByRole("radio", { name: "7 days" }));
@@ -86,7 +86,7 @@ it.each(["success", "failure"])("rejects an old period refresh %s without cleari
 it("retries an initial read without pretending a previous report exists", async () => {
   vi.mocked(api.usage).mockRejectedValueOnce(new ApiFailure("unavailable", "History unavailable.", 503))
     .mockResolvedValue(report(404));
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   expect(await screen.findByRole("alert")).toHaveTextContent("History unavailable.");
   expect(screen.queryByRole("table")).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -98,7 +98,7 @@ it("does not revive a refresh after leaving and returning to its period", async 
   vi.spyOn(api, "refreshUsage").mockReturnValue(old.promise);
   vi.mocked(api.usage).mockResolvedValueOnce(report(101)).mockResolvedValueOnce(report(707))
     .mockResolvedValueOnce(report(303));
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   await screen.findByRole("row", { name: /local-model/ });
   await userEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
   await userEvent.click(screen.getByRole("radio", { name: "7 days" }));
@@ -115,7 +115,7 @@ it("keeps provider selection when the same-period report refreshes", async () =>
   });
   vi.mocked(api.usage).mockResolvedValue(both(101));
   vi.spyOn(api, "refreshUsage").mockResolvedValue(both(202));
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   await screen.findByRole("row", { name: /local-model/ });
   await userEvent.click(screen.getByRole("button", { name: "All providers" }));
   await userEvent.click(screen.getByRole("menuitem", { name: "claude" }));
@@ -139,7 +139,7 @@ it("splits cost by token type and tier and keeps an unpriced tier unknown", asyn
     unpriced_tokens: 50,
   };
   vi.mocked(api.usage).mockResolvedValue(priced);
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   await screen.findByRole("row", { name: /local-model/ });
   await userEvent.click(screen.getByRole("radio", { name: "Cost" }));
   const split = screen.getByRole("region", { name: "Cost split" });
@@ -160,7 +160,7 @@ it("shows each model's cache hit, cost per million and trend", async () => {
     days: [{ date: today, tokens: 1_000_000, estimated_cost: 3 }],
   };
   vi.mocked(api.usage).mockResolvedValue(data);
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   const line = await screen.findByRole("row", { name: /local-model/ });
   expect(line).toHaveTextContent("50.0%");
   expect(line).toHaveTextContent("$3.00/M");
@@ -175,7 +175,7 @@ it("draws a provider share bar and a daily cost chart for the period", async () 
   data.engines.push({ ...report(100, "second-model").engines[0]!, engine: "codex",
     days: [{ date: today, tokens: 100, estimated_cost: null }] });
   vi.mocked(api.usage).mockResolvedValue(data);
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   await screen.findByRole("row", { name: /local-model/ });
   const tokens = screen.getByRole("group", { name: "Share of tokens" });
   expect(within(tokens).getByLabelText("claude 75.0%")).toBeInTheDocument();
@@ -190,8 +190,29 @@ it("says what the local scan read, including engines with no history and unreada
   data.engines[0] = { ...data.engines[0]!, files_scanned: 3, files_skipped: 1 };
   data.engines.push({ engine: "codex", status: "no_history", files_scanned: 0, files_skipped: 0, models: [], days: [] });
   vi.mocked(api.usage).mockResolvedValue(data);
-  render(<UsagePage onClose={() => undefined} />);
+  render(<UsagePage />);
   const status = await screen.findByLabelText("Scan status");
   expect(status).toHaveTextContent("claude: 3 files, 1 unreadable");
   expect(status).toHaveTextContent("codex: no local history");
+});
+
+it("moves between the Usage and Limits tabs with the arrow keys and reads a meter as what is left", async () => {
+  vi.spyOn(api, "limits").mockResolvedValue({
+    pooled: [{ label: "5 hours", used_percent: 85, resets_at: null }],
+    engines: [],
+    unavailable: [],
+  } as never);
+  render(<UsagePage />);
+  await screen.findByRole("row", { name: /local-model/ });
+  const usage = screen.getByRole("tab", { name: "Usage" });
+  const limits = screen.getByRole("tab", { name: "Limits" });
+  expect(usage).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", usage.id);
+  usage.focus();
+  await userEvent.keyboard("{ArrowRight}");
+  expect(limits).toHaveAttribute("aria-selected", "true");
+  expect(limits).toHaveFocus();
+  expect(await screen.findByRole("meter", { name: "5 hours" })).toHaveAttribute("aria-valuetext", "15% left");
+  await userEvent.keyboard("{Home}");
+  expect(usage).toHaveAttribute("aria-selected", "true");
 });

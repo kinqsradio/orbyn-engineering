@@ -73,8 +73,8 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
   left and top. It has no border or radius when the sidebar is hidden.
 - Page heading (`.topbar`, the shared `.ph`): 22px/28px padding, a 22px medium title with
   -0.015em tracking, a muted sub line (branch, run status) and actions at the right. The
-  thread header, the new-thread header and Pull requests use it; `PageHeader` has the
-  same title size. Page content pads 28px.
+  thread header, the new-thread header and the pages below use it (`ui/PageBar.tsx`);
+  `PageHeader` has the same title size. Page content pads 28px.
 - Side panel: 380px, `--color-background`, 1px left border, and text tabs without icons
   (30px, 8px radius, 12.5px; the selected tab has the selected fill). Tab order follows
   the open surfaces; "Pull requests" reads "PRs" on its tab. The close button ends the
@@ -103,6 +103,35 @@ details), `--drawer-w` 360px (Reading panel), `--lights-w` 78px. The sizes 12.5p
 - Minimap: a 6px strip near the right edge, shown when the pointer reaches it. Ticks for
   your messages are ink and can be clicked; failures (red) and decisions waiting on you
   (amber) are marks.
+
+## Pages
+
+Pull requests, Usage and Scheduled tasks are pages in the main sheet, not overlays. Each
+has the page heading and 28px content padding.
+
+- Pull requests: filter pills (Open and Drafts, each with a count) beside search, Sort,
+  Filters (state, draft, review, checks, author, label), the project filter and Refresh.
+  Rows are a table: select box, title with its number, branch, project and author, Checks
+  (Running, Failing, Passing or No checks), Review (changes requested is an amber pill),
+  Updated, and row actions (Reopen, Ready for review, Merge, Close) that show on hover or
+  focus. Selecting rows offers Close selected. A row opens the pull request as its own
+  page with a back button and its title in the title bar; the list keeps its filters. The
+  tabs are Summary, Guide, Timeline and Code. Summary has the description and conversation
+  beside a side column: status card (status, branch, checks, changes), a merge method,
+  Work on this, Close and Merge, then checks, reviewers and labels. On the other tabs and
+  on a narrow window those actions move to the heading. A thread's side panel keeps the
+  compact detail.
+- Usage: tabs Usage and Limits under the heading. Usage has period, provider and metric
+  (Cost, Tokens) controls, tiles for tokens, estimated cost and cache hits, the daily bar
+  chart (hover reads a day), the providers, and the breakdown by model or day, where a
+  model name opens its price. Cost adds the split by token type and tier. Limits is its
+  own tab, fetched only there: a card per window with its meter, amber once less than 15%
+  is left, and Refresh in the heading. `c`, `t` and `l` switch the view.
+- Scheduled tasks: a table of task (with its project), when (with the next run or
+  Paused), last run (a failure in red) and an On switch, with Run, Webhook address,
+  Deliveries, Edit and Delete on each row and New task in the heading. The editor asks
+  for the prompt first, then the project, schedule and name. Settings keeps its own
+  Scheduled tasks section, which task links from a thread still open.
 
 ## Surfaces
 

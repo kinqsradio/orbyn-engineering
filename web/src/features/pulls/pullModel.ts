@@ -11,6 +11,10 @@ export interface PullFilters {
   label: string | null;
 }
 
+/** The service says `pass` and `fail`; older stand-ins say `passing` and `failing`. */
+export const checksOf = (state: string | null): "pass" | "fail" | "pending" | "none" =>
+  state === "pass" || state === "passing" ? "pass" : state === "fail" || state === "failing" ? "fail" : state === "pending" ? "pending" : "none";
+
 export const noFilters: PullFilters = { draft: "all", review: "all", checks: "all", project: null, author: null, label: null };
 
 /** Splits `label:x` out of the search, which the list filters on itself. */
@@ -37,7 +41,7 @@ export function visiblePulls(
     if (filters.draft === "only" && !pull.draft) return false;
     if (filters.draft === "hide" && pull.draft) return false;
     if (filters.review !== "all" && (pull.review_state ?? "none") !== filters.review) return false;
-    if (filters.checks !== "all" && pull.checks_state !== filters.checks) return false;
+    if (filters.checks !== "all" && checksOf(pull.checks_state) !== (filters.checks === "passing" ? "pass" : "fail")) return false;
     if (filters.author && pull.author !== filters.author) return false;
     const names = pull.labels.map((label) => label.toLowerCase());
     if (filters.label && !names.includes(filters.label.toLowerCase())) return false;
