@@ -6,7 +6,7 @@ import type { ForgeStatus, Thread } from "../../api/types";
 import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
-import { useVisibleProjects } from "../../state/workspace";
+import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import licenses from "./licenses.json";
 import { Empty, ErrorState, Loading } from "../../ui/states";
@@ -464,6 +464,7 @@ export function WorktreesSection() {
                 ],
               },
               { key: "branch_name_prefix", title: settingsLabel("worktrees-branch-prefix"), description: "Added in front of every branch Orbyn creates" },
+              { key: "branch_name_instructions", title: settingsLabel("worktrees-branch-name-instructions"), description: "Extra guidance for the names Orbyn generates", multiline: true },
             ],
           },
         ]}
@@ -617,6 +618,20 @@ function TriageRow() {
   );
 }
 
+/** The agent CLIs Orbyn found and their versions, with a re-check. */
+function AgentClis() {
+  const engines = useWorkspace((state) => state.engines.data);
+  const refresh = useWorkspace((state) => state.refreshEngines);
+  const [checking, setChecking] = useState(false);
+  const found = (engines ?? []).filter((engine) => !engine.instance_of && engine.installed && engine.version);
+  if (found.length === 0) return null;
+  return (
+    <SettingRow title="Agent CLIs" description={found.map((engine) => `${engine.name} ${engine.version}`).join(" · ")}>
+      <Button small busy={checking} onClick={() => { setChecking(true); void api.refreshEngines().then(refresh).finally(() => setChecking(false)); }}>Check</Button>
+    </SettingRow>
+  );
+}
+
 /** The service reports Rust's OS id, such as `macos`. */
 const PLATFORM_NAMES: Record<string, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 export const platformName = (id: string) => PLATFORM_NAMES[id] ?? id;
@@ -637,6 +652,7 @@ export function AboutSection() {
       </div>
       <SettingGroup>
         <AutomaticUpdateChecks />
+        <AgentClis />
         <TriageRow />
         <SettingRow title="Open-source licences" description="The app and the service">
           <Button small onClick={() => setLicences(true)}>View lists</Button>

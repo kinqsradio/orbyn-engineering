@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { request } from "../../api/client";
 import type { EngineStatus } from "../../api/types";
+import { useWorkspace } from "../../state/workspace";
 import { KeybindingsSection } from "./Keybindings";
 import { AboutSection } from "./PreferenceSections";
 import { ProviderTable } from "./ProviderTable";
@@ -62,4 +63,11 @@ it("opens the licence lists from About and narrows them by package name", async 
   expect(before).toBeGreaterThan(1);
   await user.click(screen.getByRole("button", { name: "About" }));
   expect(screen.getByRole("button", { name: "View lists" })).toBeVisible();
+});
+
+it("lists the installed agent CLIs and their versions on About", async () => {
+  vi.mocked(request).mockResolvedValue({ version: "1.0.0", platform: "macos", remote: false });
+  useWorkspace.setState({ engines: { data: [engine({}), engine({ id: "codex", name: "Codex", version: "0.98" }), engine({ id: "x", name: "Work", instance_of: "claude" })], error: null, loading: false } });
+  render(<AboutSection />);
+  expect(await screen.findByText("Claude Code 2.1.318 · Codex 0.98")).toBeVisible();
 });

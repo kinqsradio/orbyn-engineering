@@ -419,13 +419,14 @@ describe("App against the mock API", () => {
     render(<App />);
     expect(await screen.findByText("Couldn't load providers")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("heading", { name: "Claude Code" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Claude Code" })).toBeInTheDocument();
   });
 
   it("confirms an engine update and refuses during an active run", async () => {
     const user = userEvent.setup();
     go("#/settings/providers");
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Claude Code" }));
     await user.click(await screen.findByRole("button", { name: "Update to 2.1.20" }));
     const dialog = await screen.findByRole("dialog", { name: "Update Claude Code?" });
     expect(within(dialog).getByText("npm install -g @anthropic-ai/claude-code")).toBeInTheDocument();
@@ -440,7 +441,7 @@ describe("App against the mock API", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Codex" }));
     await screen.findByRole("heading", { name: "Codex" });
-    expect(screen.getByText(/Sign in through the Codex CLI/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy sign-in command" })).toBeInTheDocument();
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.body.textContent).not.toMatch(/api key|paste your token/i);
   });

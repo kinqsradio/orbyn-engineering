@@ -2,6 +2,7 @@ import { settingsLabel } from "./settingsSearch";
 import { ChevronRight } from "lucide-react";
 import { EnvironmentIcon } from "./EnvironmentIcon";
 import { useLayoutEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "../../ui/Dialog";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";
 import type { ResourceSample } from "../../generated/ResourceSample";
@@ -189,7 +190,7 @@ function CleanupGroup() {
   return <EnvironmentCleanup key={JSON.stringify(scope.query)} query={scope.query} disabled={scope.loading} />;
 }
 
-function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
+export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; disabled: boolean }) {
   const preferences = useAsync(JSON.stringify(["storage-cleanup", query]), (signal) =>
     request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: query, keys: ["storage_cleanup", "worktree_cleanup"] }, signal));
   const last = useAsync("cleanup-report", (signal) =>
@@ -199,6 +200,7 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const pending = useRef(false);
   const mounted = useRef(true);
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -242,6 +244,11 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
   const commitDays = (key: RetentionKey) => {
     const text = draft[key];
     if (busy || text === undefined) return;
+    if (text.trim() === "" && saved(key) !== null) {
+      // An empty field turns the rule off.
+      void save(key, null);
+      return;
+    }
     if (text.trim() === "" || !Number.isFinite(Number(text))) {
       setDraft((previous) => { const next = { ...previous }; delete next[key]; return next; });
       return;
@@ -289,9 +296,9 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
   return <>
     <SettingGroup title="Retention">
       {RETENTION.map((rule) => <SettingRow key={rule.key} title={rule.title} description={rule.description}>
-        {saved(rule.key) !== null || draft[rule.key] !== undefined ? <>
-          <input aria-label={`${rule.title} in days`} type="number" min="1" max="3650" step="1" disabled={busy}
-            value={draft[rule.key] ?? String(saved(rule.key))}
+        <span className="unit-field">
+          <input aria-label={`${rule.title} in days`} type="number" min="1" max="3650" step="1" disabled={busy} placeholder="Off"
+            value={draft[rule.key] ?? (saved(rule.key) === null ? "" : String(saved(rule.key)))}
             onChange={(event) => {
               const text = event.target.value;
               setDraft((previous) => {
@@ -302,16 +309,22 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
             }}
             onBlur={() => commitDays(rule.key)}
             onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
-          <span aria-hidden>days</span>
-        </> : <span>Off</span>}
-        <input type="checkbox" role="switch" aria-label={rule.title} disabled={busy} checked={saved(rule.key) !== null}
-          onChange={(event) => { void save(rule.key, event.target.checked ? 8 : null); }} />
+          <span className="t3" aria-hidden>days</span>
+        </span>
       </SettingRow>)}
     </SettingGroup>
     <SettingGroup>
       <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : shown ? undefined : "Cleanup hasn't run yet."}>
-        <Button small tone="danger" disabled={busy || !hasRules || hasDraft} onClick={() => void run()}>{deleting ? "Deleting…" : "Delete now"}</Button>
+        <Button small tone="danger" disabled={busy || !hasRules || hasDraft} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete now…"}</Button>
       </SettingRow>
+      {confirming ? (
+        <ConfirmDialog title="Delete old files now?" confirmLabel="Delete now" tone="danger" cancelFocus onClose={() => setConfirming(false)}
+          onConfirm={async () => { await run(); }}>
+          <p>They are removed from disk. This can’t be undone.</p>
+          {RETENTION.filter(({ key }) => saved(key) !== null).map((rule) => <p key={rule.key}>{rule.title}: older than {saved(rule.key)} days</p>)}
+          {environmentAge !== null ? <p>Settled worktrees: after {environmentAge} days</p> : null}
+        </ConfirmDialog>
+      ) : null}
       {shown ? <Collapsible summary="Last run">
         <p className="setting-line-desc">{reportLine(shown)}</p>
         {shown.entries.length > 0 ? <ul className="cleanup-report" aria-label="Cleanup report">
@@ -423,7 +436,6 @@ export function MaintenanceSection() {
     }
   };
 
-  const lastChecked = updates?.checked_at ? fullTime(updates.checked_at) : "Not checked yet";
   return (
     <>
       <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -439,7 +451,8 @@ export function MaintenanceSection() {
         {unsupported || updates?.app.unconfigured ? (
           <SettingRow title="App updates" description="Updates aren't set up for this build." />
         ) : null}
-        <SettingRow title={settingsLabel("maintenance-check-for-updates")} description={`Checked ${lastChecked}`}>
+        <SettingRow title="Version" settingId="maintenance-check-for-updates"
+          description={`${updates?.app.current ?? "Unknown"} · ${updates?.checked_at ? `checked ${new Date(updates.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}` : "not checked yet"}`}>
           <Button small busy={checking} onClick={() => void check()}>
             Check for updates
           </Button>
