@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { send, settled, startProject, threadIdOf, type Service } from "./service";
+import { openDetails, openPanelTab, send, settled, startProject, threadIdOf, type Service } from "./service";
 
 /** Smaller flows that cross the UI and the service: presets, servers, scripts, editors, stops. */
 const FAKE = resolve(import.meta.dirname, "../../../target/debug/orbyn-fake-engine");
@@ -66,8 +66,7 @@ test("a server from this checkout is listed and can be stopped", async ({ page }
   const server = spawn(process.execPath, ["-e", "require('http').createServer((_,r)=>r.end('ok')).listen(0,'127.0.0.1');setTimeout(()=>{},60000)"], { cwd: made.cwd, stdio: "ignore" });
   await expect.poll(async () => (await service.api<unknown[]>("GET", `/api/threads/${made.id}/servers`)).length, { timeout: 15_000 }).toBeGreaterThan(0);
   await page.goto(`${service.page}#/threads/${made.id}`);
-  await page.getByRole("button", { name: "Surfaces" }).click();
-  await page.getByRole("button", { name: /Browser/ }).last().click();
+  await openPanelTab(page, "Browser");
   await page.getByRole("button", { name: /^Stop localhost:/ }).click();
   await expect.poll(() => server.exitCode ?? server.signalCode, { timeout: 15_000 }).not.toBeNull();
   await expect.poll(async () => (await service.api<unknown[]>("GET", `/api/threads/${made.id}/servers`)).length).toBe(0);
@@ -102,7 +101,7 @@ test("a project script runs in its own terminal, and a watch-only terminal sends
 test("Rescan asks the hosts again, and shows the signed-in state", async ({ page }) => {
   await page.goto(`${service.page}#/settings/source-control`);
   // Every host's command line is asked, and a missing one can take a while to say so.
-  await expect(page.locator(".setting-line").filter({ hasText: "GitHub" })).toContainText("Signed in", { timeout: 25_000 });
+  await expect(page.locator(".set-tr").filter({ hasText: "GitHub" })).toContainText("Signed in", { timeout: 25_000 });
   const before = service.ghCalls().filter((call) => call[0] === "auth").length;
   await page.getByRole("button", { name: "Rescan" }).click();
   await expect.poll(() => service.ghCalls().filter((call) => call[0] === "auth").length).toBeGreaterThan(before);
@@ -131,11 +130,12 @@ test("the editor menu lists what's installed and opens the chosen one", async ({
   writeFileSync(join(service.binDir, "code"), `#!/bin/sh\necho "$@" >> '${log}'\n`, { mode: 0o755 });
   const made = await thread("Editors");
   await page.goto(`${service.page}#/threads/${made.id}`);
-  await page.getByRole("button", { name: "Choose editor" }).click();
+  const card = await openDetails(page);
+  await card.getByRole("button", { name: "Choose editor" }).click();
   await page.getByRole("menuitem", { name: "VS Code" }).or(page.getByRole("menuitemradio", { name: "VS Code" })).first().click();
   await expect.poll(() => existsSync(log)).toBe(true);
   expect(readFileSync(log, "utf8")).toContain(".");
-  await expect(page.getByRole("button", { name: "Open in VS Code" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Open in VS Code" })).toBeVisible();
 });
 
 test("a file's menu opens it elsewhere, and dragging it mentions it", async ({ page }) => {
@@ -144,8 +144,7 @@ test("a file's menu opens it elsewhere, and dragging it mentions it", async ({ p
   const made = await thread("File menu");
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${made.id}`);
-  await page.getByRole("button", { name: "Surfaces" }).click();
-  await page.locator(".launcher").getByRole("button", { name: /Files/ }).click();
+  await openPanelTab(page, "Files");
   const file = page.locator(".file-tree button").filter({ hasText: "README.md" }).first();
   await file.click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Open", exact: true })).toBeVisible();
@@ -174,15 +173,15 @@ test("stopping a parent stops the child it delegated to", async ({ page }) => {
 test("a local ACP command becomes a provider", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
   await page.getByRole("button", { name: "Add provider" }).click();
-  const dialog = page.getByRole("dialog", { name: "Add provider" });
-  await dialog.getByRole("button", { name: "Local ACP command" }).click();
+  const chooser = page.getByRole("dialog", { name: "Add a provider", exact: true });
+  await chooser.getByRole("radio", { name: /A local ACP command/ }).check();
+  await chooser.getByRole("button", { name: "Continue", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a local ACP command", exact: true });
   await dialog.getByLabel("Executable").fill(FAKE);
-  await dialog.getByRole("button", { name: "Add argument" }).click();
-  await dialog.getByRole("textbox", { name: "Argument 1", exact: true }).fill("acp");
-  await dialog.getByRole("button", { name: "Next" }).click();
-  await dialog.getByLabel("Label").fill("House agent");
-  await dialog.getByRole("button", { name: "Add instance" }).click();
-  await expect(page.getByRole("button", { name: "Select House agent" })).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("textbox", { name: "Arguments", exact: true }).fill("acp");
+  await dialog.getByRole("textbox", { name: "Display name", exact: true }).fill("House agent");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "House agent", exact: true })).toBeVisible({ timeout: 15_000 });
   await page.goto(`${service.page}#/settings/general`);
   await expect(page.getByRole("switch", { name: "Check providers for updates" })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Prefer saved login" })).toHaveCount(0);
