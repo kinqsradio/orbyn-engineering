@@ -65,10 +65,10 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 }
 
 /** Screen identity, plus the explicit way back on one-surface layouts. */
-/** In the narrow layout a page has no sidebar beside it, so its topbar leads back to the thread list. */
+/** In the phone layout a page has no sidebar beside it, so its topbar leads back to the thread list. */
 export function NarrowBack() {
   const layout = useLayoutWidth();
-  if (layout !== "narrow") return null;
+  if (layout !== "phone") return null;
   return (
     <a className="icon-btn" href={routeHref({ name: "home" })} aria-label="Back to threads" title="Back to threads">
       <ArrowLeft size={16} aria-hidden />
@@ -90,7 +90,7 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   const layout = useLayoutWidth();
-  const showBack = back && (layout === "narrow" || back.name !== "home");
+  const showBack = back && (layout === "phone" || back.name !== "home");
   return (
     <header className="page-head">
       {showBack ? (

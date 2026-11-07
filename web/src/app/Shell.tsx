@@ -34,12 +34,14 @@ import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
 import { actionShortcutAllowed, FALLBACK_RULES, isReservedCloseEvent, matchesKey, ruleMatches, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
 import { actionIdFromCommand } from "../lib/actionCommand";
-import { useLayoutWidth } from "../lib/useLayout";
+import { layoutForWidth, useLayoutWidth } from "../lib/useLayout";
 import { goToHash, navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
 import { DRAFT_LAYOUT, useUi, type ContextTab, type ThemeChoice } from "../state/ui";
 import { useVisibleProjects, useWorkspace } from "../state/workspace";
 import { TitleBar } from "./TitleBar";
 import { useReadingNav } from "./readingNav";
+import { toggleSidebarDrawer, useSidebarDrawer } from "./sidebarDrawer";
+import { useEscapeClose } from "../ui/useEscapeClose";
 
 const HIDDEN_POLL_EVERY = 3;
 const POLL_MS = 4000;
@@ -140,7 +142,8 @@ function runShellCommand(command: string, route: Route): boolean {
   }
   switch (command) {
     case "sidebar.toggle":
-      if (ui.workspaceLayout === "reading") useReadingNav.getState().toggle();
+      if (layoutForWidth(window.innerWidth) === "small") toggleSidebarDrawer();
+      else if (ui.workspaceLayout === "reading") useReadingNav.getState().toggle();
       else ui.toggleSidebar();
       return true;
     case "commandPalette.toggle":
@@ -607,12 +610,26 @@ export function Shell() {
   const onHome = underneath.name === "home" && !needsProject;
   const reading = useUi((state) => state.workspaceLayout === "reading");
   const readingNav = useReadingNav((state) => state.open);
-  const showNav = layout === "narrow" ? onHome && route.name !== "settings" : reading ? readingNav : !collapsed;
+  // Small windows (600 to 899 px) fold the sidebar into a drawer over the thread.
+  const small = layout === "small";
+  const drawerOpen = useSidebarDrawer((state) => state.open);
+  const closeDrawer = useSidebarDrawer((state) => state.close);
+  const showNav = layout === "phone" ? onHome && route.name !== "settings" : small ? drawerOpen : reading ? readingNav : !collapsed;
+  // Choosing something closes it, and a window that grows past small leaves nothing open behind.
+  useEffect(() => {
+    closeDrawer();
+  }, [routeKey, small, closeDrawer]);
+  useEscapeClose(small && drawerOpen, closeDrawer, () => document.querySelector<HTMLElement>("[data-sidebar-toggle]"));
+  const dismissDrawer = () => {
+    closeDrawer();
+    document.querySelector<HTMLElement>("[data-sidebar-toggle]")?.focus();
+  };
 
   return (
     <div
       className="shell"
-      data-nav={showNav ? "shown" : "hidden"}
+      data-nav={showNav && !small ? "shown" : "hidden"}
+      data-drawer={small && drawerOpen ? "open" : undefined}
       data-layout={layout}
       data-reading-nav={readingNav ? "open" : undefined}
       data-page={underneath.name}
@@ -624,8 +641,18 @@ export function Shell() {
       }}>
         Skip to content
       </a>
-      <TitleBar route={route} narrow={layout === "narrow"} />
-      {showNav ? <Sidebar route={route} /> : null}
+      <TitleBar route={route} layout={layout} />
+      {small && drawerOpen ? <div className="drawer-scrim" aria-hidden onClick={dismissDrawer} /> : null}
+      {showNav ? (
+        small ? (
+          // Choosing a thread or page closes the drawer, even one already open.
+          <div className="sidebar-drawer" onClick={(event) => (event.target as Element).closest("a[href]") && dismissDrawer()}>
+            <Sidebar route={route} />
+          </div>
+        ) : (
+          <Sidebar route={route} />
+        )
+      ) : null}
       <BackgroundAnnouncer />
       <QuitConfirmation />
       <PreviewFloat threadId={route.name === "thread" ? route.id : null} />
@@ -639,7 +666,7 @@ export function Shell() {
       />
       <CloneJobs />
       {palette ? <CommandPalette start={palette} onClose={() => setPalette(null)} /> : null}
-      {layout === "narrow" && onHome && !overlay ? (
+      {layout === "phone" && onHome && !overlay ? (
         <main id="main" ref={main} tabIndex={-1} hidden />
       ) : (
         <main id="main" ref={main} tabIndex={-1} className="main">

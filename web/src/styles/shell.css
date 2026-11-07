@@ -8,7 +8,7 @@
   background: var(--color-sidebar);
 }
 .shell[data-nav="hidden"],
-.shell[data-layout="narrow"] {
+.shell[data-layout="phone"] {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
 }
@@ -35,14 +35,14 @@
   pointer-events: auto;
 }
 .titlebar[data-nav="hidden"],
-.shell[data-layout="narrow"] > .titlebar {
+.shell[data-layout="phone"] > .titlebar {
   pointer-events: auto;
   position: relative;
   grid-area: 1 / 1 / 2 / -1;
   width: auto;
   background: var(--color-background);
 }
-.shell[data-layout="narrow"] > .titlebar[data-nav="shown"] {
+.shell[data-layout="phone"] > .titlebar[data-nav="shown"] {
   background: var(--color-sidebar);
 }
 /* The full 44px strip drags the window; see useDragStrip for when it takes the pointer. */
@@ -159,7 +159,7 @@
   overflow: auto;
 }
 .shell[data-nav="hidden"] > .main,
-.shell[data-layout="narrow"] > .main {
+.shell[data-layout="phone"] > .main {
   grid-area: 2 / 1;
 }
 .shell[data-nav="hidden"] > .main {
@@ -184,9 +184,38 @@
   padding: 46px 10px 10px;
   background: var(--color-sidebar);
 }
-.shell[data-layout="narrow"] > .sidebar {
+.shell[data-layout="phone"] > .sidebar {
   grid-area: 2 / 1;
   padding-top: 6px;
+}
+/* Small windows (600 to 899 px): the sidebar is a drawer over the thread, opened from the title bar's
+   sidebar button, with a scrim over the rest. The title bar stays in its own row; its buttons sit
+   above the scrim so they can close the drawer again. */
+.sidebar-drawer {
+  display: contents;
+}
+.shell[data-layout="small"] .sidebar {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--sidebar-w);
+}
+.shell[data-layout="small"] .sidebar-rail {
+  display: none;
+}
+.drawer-scrim {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  background: var(--color-backdrop);
+}
+.shell[data-layout="small"] > .titlebar {
+  z-index: auto;
+}
+.shell[data-layout="small"] > .titlebar > :not(.titlebar-drag):not(.titlebar-title) {
+  z-index: 9;
 }
 .sidebar-search {
   flex: none;
@@ -844,7 +873,7 @@ details[open] > summary > .chev {
 .sidebar-rail[data-dragging]::after {
   opacity: 0.6;
 }
-.shell[data-layout="narrow"] .sidebar-rail {
+.shell[data-layout="phone"] .sidebar-rail {
   display: none;
 }
 /* Rows under a project, and Ledger's sections. */
@@ -1188,7 +1217,7 @@ details[open] > summary > .chev {
   color: var(--color-danger);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .sidebar {
     border-right: 0;
     height: 100dvh;

@@ -897,7 +897,7 @@ export function Composer({
                 : "Send a message to decline and redirect the agent"
               : "Ask anything. @ files, $ skills, / commands"
           }
-          data-autofocus={layout === "narrow" ? undefined : true}
+          data-autofocus={layout === "phone" ? undefined : true}
         />
         </div>
         <span id="composer-help" className="sr-only">

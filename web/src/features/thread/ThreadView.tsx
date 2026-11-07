@@ -17,7 +17,9 @@ import { runHandlers, useCommand } from "../../app/shortcuts";
 import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion, useSettledAfter } from "../../lib/panelAnimations";
-import { isWide, useLayoutWidth } from "../../lib/useLayout";
+import { isWide, panelOverlays, useLayoutWidth } from "../../lib/useLayout";
+import { useEscapeClose } from "../../ui/useEscapeClose";
+import { useSidebarDrawer } from "../../app/sidebarDrawer";
 import { markReachable, markUnreachable, useConnectionKind } from "../../state/connection";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "./threadLogs";
@@ -67,7 +69,7 @@ function TopBar({
   );
   const branch = thread.worktree?.branch ?? projectBranch;
   const state = threadRunState(thread);
-  const narrow = layout === "narrow";
+  const narrow = layout === "phone";
   const connection = useConnectionKind();
 
   return (
@@ -102,7 +104,7 @@ function TopBar({
           <SquareTerminal size={16} aria-hidden />
         </IconButton>
         {narrow ? null : (
-          <IconButton label="Show side panel" pressed={paneShown} onClick={onTogglePane}>
+          <IconButton label="Show side panel" data-panel-toggle pressed={paneShown} onClick={onTogglePane}>
             <PanelRight size={16} aria-hidden />
           </IconButton>
         )}
@@ -341,6 +343,8 @@ export function ThreadView({ id }: { id: string }) {
   const chatWidth = useUi((state) => state.chatWidth);
   const layout = useLayoutWidth();
   const wide = isWide(layout);
+  const phone = layout === "phone";
+  const overlays = panelOverlays(layout);
   const reading = useUi((state) => state.workspaceLayout === "reading");
   const [detailsOverlay, setDetailsOverlay] = useState(false);
   const [finding, setFinding] = useState(false);
@@ -384,6 +388,14 @@ export function ThreadView({ id }: { id: string }) {
   const { mover, anchor, recordStart } = useComposerDock(hero, motion.enabled, motion.durationMs);
 
   const panelOpen = panelPref ?? layout === "xwide";
+  // Over the thread, Escape closes the panel and focus goes back to the header button.
+  useEscapeClose(panelOpen && overlays && !maximized, () => setPanelOpen(false), () =>
+    document.querySelector<HTMLElement>("[data-panel-toggle]"),
+  );
+  // A small window has room for the sidebar drawer or the panel, not both: opening one closes the other.
+  useEffect(() => {
+    if (panelOpen && layout === "small") useSidebarDrawer.getState().close();
+  }, [panelOpen, layout]);
   const panelPresent = useLingering(panelOpen, motion.exitMs);
   // A pane that is already open when the thread appears stays still; later opens and closes slide.
   const paneMoves = useSettledAfter(thread ? id : null);
@@ -410,8 +422,9 @@ export function ThreadView({ id }: { id: string }) {
   }
 
   const engine = engineById(engines, thread.engine);
-  const swapped = panelOpen && (!wide || maximized);
-  const terminalTakesOver = terminalOpen && layout === "narrow";
+  // The panel takes the thread's place on the phone and when maximised; otherwise it docks or floats over it.
+  const swapped = panelOpen && (phone || maximized);
+  const terminalTakesOver = terminalOpen && layout === "phone";
   const detailsFit = layout === "xwide" || !panelOpen;
   // Reading keeps the column clear: the details card opens on request, over the thread.
   const cardDocked = wide && !reading;
@@ -438,9 +451,9 @@ export function ThreadView({ id }: { id: string }) {
           thread={thread}
           project={project}
           detailsShown={detailsShown}
-          paneShown={panelOpen && wide}
+          paneShown={panelOpen && !phone}
           onToggleDetails={() => (cardDocked ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
-          onTogglePane={() => setPanelOpen(!(panelOpen && wide))}
+          onTogglePane={() => setPanelOpen(!panelOpen)}
         />
         {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
         <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined} data-connection={connection ?? undefined}>
@@ -505,7 +518,7 @@ export function ThreadView({ id }: { id: string }) {
       {panelPresent ? (
         <SurfacePane
           thread={thread}
-          overlay={!wide}
+          mode={phone ? "sheet" : overlays ? "overlay" : "docked"}
           closing={!panelOpen}
           moves={paneMoves}
           maximized={maximized}

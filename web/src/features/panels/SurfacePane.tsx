@@ -29,6 +29,7 @@ import { LinkedPulls } from "./LinkedPulls";
 import { openSideChat } from "./sideChat";
 import { SideChatPane } from "./SideChatPane";
 import { fitTabs, RIGHT_TABS } from "./tabs";
+import { clampPanelWidth, dragPanelWidth, PANEL_DEFAULT, snapPoints } from "./panelWidth";
 import { useConnectionKind } from "../../state/connection";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
@@ -108,20 +109,27 @@ function Launcher({ thread, back }: { thread: Thread; back: RightTab | null }) {
   );
 }
 
-const MIN_PANE = 360;
 /** The More button: a 24px icon button. */
 const MORE_WIDTH = 24;
 const MORE_MENU_WIDTH = 210;
+/** The one line under "Waiting for the Orbyn service", by tab. The Browser is not here: it stays usable. */
+const WAITING_LINE: Partial<Record<RightTab, string>> = {
+  diff: "The diff comes back when the service does.",
+  files: "Files open again as soon as it is back.",
+  activity: "Activity shows again as soon as it is back.",
+  side: "Your side chats open again as soon as it is back. Nothing is lost.",
+};
 /** Tabs that need this device's network. Diff, Files, Activity and the terminal keep working offline. */
 const NEEDS_NETWORK: readonly RightTab[] = ["browser", "side", "pulls"];
-const MIN_MAIN = 420;
 
-/** Saves this thread's pane width when the drag ends. The width shows beside the edge while it moves. */
+/**
+ * The panel's left edge. Dragging it resizes the panel, snapping to 360, 520 or 720 px within 12 px
+ * and staying between 320 px and 60% of the window; a pill shows the width and faint ticks mark the
+ * snap points while it moves. Double click returns to 520 px. The width is saved when the drag ends.
+ */
 export function PaneResizer() {
   const setWidth = useUi((state) => state.setPanelWidth);
   const [dragging, setDragging] = useState<number | null>(null);
-  const clamp = (right: number, x: number) =>
-    Math.max(MIN_PANE, Math.min(right - MIN_MAIN, Math.round(right - x)));
   return (
     <>
       <div
@@ -130,7 +138,7 @@ export function PaneResizer() {
         aria-orientation="vertical"
         aria-label="Resize panel"
         title="Drag to resize"
-        onDoubleClick={() => setWidth(null)}
+        onDoubleClick={() => setWidth(PANEL_DEFAULT)}
         onPointerDown={(event) => {
           const pane = event.currentTarget.parentElement;
           if (!pane) return;
@@ -138,35 +146,51 @@ export function PaneResizer() {
           const right = pane.getBoundingClientRect().right;
           const handle = event.currentTarget;
           pane.dataset.resizing = "";
-          setDragging(Math.round(pane.getBoundingClientRect().width));
+          let current = clampPanelWidth(pane.getBoundingClientRect().width, window.innerWidth);
+          setDragging(current);
           const move = (moved: PointerEvent) => {
-            const next = clamp(right, moved.clientX);
-            pane.style.width = `${next}px`;
-            setDragging(next);
+            current = dragPanelWidth(right - moved.clientX, window.innerWidth);
+            pane.style.width = `${current}px`;
+            setDragging(current);
           };
           const stop = () => {
             handle.removeEventListener("pointermove", move);
             handle.removeEventListener("lostpointercapture", stop);
             delete pane.dataset.resizing;
             setDragging(null);
-            setWidth(Math.round(pane.getBoundingClientRect().width));
+            setWidth(current);
           };
           handle.addEventListener("pointermove", move);
           handle.addEventListener("lostpointercapture", stop);
         }}
       />
       {dragging === null ? null : (
-        <span className="pane-width" role="status">
-          {dragging} px
-        </span>
+        <>
+          {snapPoints(window.innerWidth)
+            .filter((point) => point !== dragging)
+            .map((point) => (
+              <span key={point} className="pane-tick" style={{ right: point }} aria-hidden>
+                <i>{point}</i>
+              </span>
+            ))}
+          <span className="pane-width" role="status">
+            {dragging} px
+          </span>
+        </>
       )}
     </>
   );
 }
 
+/**
+ * How the pane sits in the window: "docked" beside the thread, "overlay" over its right side under
+ * the header (medium and small windows), or "sheet" in place of the thread (phone).
+ */
+export type PaneMode = "docked" | "overlay" | "sheet";
+
 export function SurfacePane({
   thread,
-  overlay,
+  mode,
   closing,
   moves,
   maximized,
@@ -174,8 +198,7 @@ export function SurfacePane({
   onReturn,
 }: {
   thread: Thread;
-  /** True when the pane replaces the thread instead of sitting beside it. */
-  overlay: boolean;
+  mode: PaneMode;
   closing: boolean;
   /** False while the pane is part of the page as it first appeared. */
   moves: boolean;
@@ -187,9 +210,9 @@ export function SurfacePane({
   const toggle = useUi((state) => state.togglePanel);
   const showLauncher = useUi((state) => state.showLauncher);
   const width = useUi((state) => state.panelWidth);
-  // Over the thread, as a drawer: narrow windows, and the reading layout on any width.
+  // A header row of its own, with Back to thread: the phone's sheet, and the reading layout's floating drawer.
   const reading = useUi((state) => state.workspaceLayout === "reading");
-  const drawer = overlay || reading;
+  const drawer = mode === "sheet" || (reading && mode === "docked");
 
   // The tab the list was opened from, for Escape to return to.
   const lastTab = useRef<RightTab | null>(null);
@@ -253,18 +276,21 @@ export function SurfacePane({
       data-closing={closing || undefined}
       data-moves={moves || undefined}
       data-maximized={maximized || undefined}
-      style={width !== null && !overlay && !maximized ? { width } : undefined}
+      data-mode={mode}
+      style={mode !== "sheet" && !maximized ? { width: width ?? (drawer ? undefined : PANEL_DEFAULT) } : undefined}
     >
-      {overlay || maximized ? null : <PaneResizer />}
+      {mode === "sheet" || maximized ? null : <PaneResizer />}
       {drawer ? (
         <header className="drawer-head">
           <Button small onClick={onReturn}>
             Back to thread
           </Button>
           <span className="end">
-            <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
-              {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
-            </IconButton>
+            {mode === "sheet" ? null : (
+              <IconButton label={maximized ? "Restore" : "Maximise panel"} onClick={onToggleMaximize}>
+                {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+              </IconButton>
+            )}
             <IconButton label="Close side panel" onClick={onReturn}>
               <X size={16} aria-hidden />
             </IconButton>
@@ -293,6 +319,7 @@ export function SurfacePane({
               }}
             >
               {text}
+              {kind === "offline" && NEEDS_NETWORK.includes(id) ? <CloudOff size={12} aria-hidden /> : null}
             </button>
           ))}
         </div>
@@ -313,7 +340,7 @@ export function SurfacePane({
           ) : null}
           {drawer ? null : (
             <>
-              <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
+              <IconButton label={maximized ? "Restore" : "Maximise panel"} onClick={onToggleMaximize}>
                 {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
               </IconButton>
               <IconButton label="Close side panel" onClick={onReturn}>
@@ -336,7 +363,7 @@ export function SurfacePane({
         ) : null}
       </Presence>
       <div className="context-body" data-connection={kind ?? undefined}>
-        {kind === "offline" && tab !== null && NEEDS_NETWORK.includes(tab) ? (
+        {kind === "offline" && tab !== null && tab !== "browser" && NEEDS_NETWORK.includes(tab) ? (
           <p className="conn-banner conn-panel-banner" role="status">
             <CloudOff size={13} aria-hidden />
             <span>You’re offline.</span>
@@ -345,7 +372,7 @@ export function SurfacePane({
         {kind === "service-down" && tab !== null && tab !== "browser" ? (
           <div className="conn-wait">
             <b>Waiting for the Orbyn service</b>
-            {tab === "diff" ? <span>The diff comes back when the service does.</span> : null}
+            {WAITING_LINE[tab] ? <span>{WAITING_LINE[tab]}</span> : null}
           </div>
         ) : tab === null ? (
           <Launcher thread={thread} back={lastTab.current} />

@@ -838,7 +838,7 @@ input[type="checkbox"][role="switch"]:disabled {
   left: calc(var(--sidebar-w) + 16px);
 }
 .shell[data-nav="hidden"][data-page] .toasts,
-.shell[data-layout="narrow"][data-page] .toasts {
+.shell[data-layout="phone"][data-page] .toasts {
   left: 16px;
 }
 .toast {

@@ -44,10 +44,16 @@ describe("App against the mock API", () => {
     const side = screen.getByRole("button", { name: "Show side panel" });
     expect(terminal.compareDocumentPosition(side) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(side).toHaveAttribute("aria-pressed", "false");
+    expect(terminal).toHaveAttribute("aria-pressed", "false");
     await user.click(terminal);
     expect(useUi.getState().terminalOpen).toBe(true);
+    expect(terminal).toHaveAttribute("aria-pressed", "true");
+    // The terminal is the bottom drawer: it is no tab of the side panel.
+    expect(side).toHaveAttribute("aria-pressed", "false");
     await user.click(side);
     expect(useUi.getState().panelOpen).toBe(true);
+    expect(side).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("tablist", { name: "Context" })).queryByRole("tab", { name: "Terminal" })).not.toBeInTheDocument();
   });
 
   it("creates the thread on first send from the draft", async () => {

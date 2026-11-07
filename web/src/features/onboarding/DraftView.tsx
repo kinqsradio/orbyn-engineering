@@ -15,7 +15,8 @@ import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { SkillsNotice } from "./SkillsNotice";
 import "./onboarding.css";
 import { NoProjects } from "./NoProjects";
-import { useLayoutWidth } from "../../lib/useLayout";
+import { panelOverlays, useLayoutWidth } from "../../lib/useLayout";
+import { PANEL_DEFAULT } from "../panels/panelWidth";
 import { IconButton } from "../../ui/controls";
 import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
@@ -143,7 +144,7 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const setPanelOpen = useUi((state) => state.setPanelOpen);
   const panelWidth = useUi((state) => state.panelWidth);
   const layoutWidth = useLayoutWidth();
-  const paneShown = panelPref === true && layoutWidth !== "narrow";
+  const paneShown = panelPref === true && layoutWidth !== "phone";
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
   const scratch = chosenProject === SCRATCH;
@@ -669,7 +670,8 @@ export function DraftView({ projectId }: { projectId: string | null }) {
         <aside
           className="context"
           aria-label="Thread context"
-          style={panelWidth !== null ? { width: panelWidth } : undefined}
+          data-mode={panelOverlays(layoutWidth) ? "overlay" : "docked"}
+          style={{ width: panelWidth ?? PANEL_DEFAULT }}
         >
           <PaneResizer />
           <header className="context-head">

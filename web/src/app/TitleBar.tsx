@@ -10,6 +10,8 @@ import { labels } from "../features/settings/SettingsPage";
 import { navigate, type Route } from "../state/route";
 import { usePageLabel } from "../state/pageLabel";
 import { useReadingNav } from "./readingNav";
+import { toggleSidebarDrawer, useSidebarDrawer } from "./sidebarDrawer";
+import type { LayoutWidth } from "../lib/useLayout";
 import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
 import { goBack, goForward, useNavHistory } from "./navHistory";
@@ -100,7 +102,10 @@ function ReadingDiff({ threadId }: { threadId: string }) {
 }
 
 /** The window's top line: the brand, the page it is on and page-level status. */
-export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
+export function TitleBar({ route, layout }: { route: Route; layout: LayoutWidth }) {
+  const phone = layout === "phone";
+  const small = layout === "small";
+  const drawerOpen = useSidebarDrawer((state) => state.open);
   const lights = useTrafficLights();
   const collapsed = useUi((state) => state.sidebarCollapsed);
   const toggleSidebar = useUi((state) => state.toggleSidebar);
@@ -126,7 +131,7 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
               : route.name === "trust"
                 ? "Trust folder"
                 : "New thread";
-  const shown = reading ? readingNav : !collapsed;
+  const shown = small ? drawerOpen : reading ? readingNav : !collapsed;
   // Folding the sidebar away must not strand focus on a row that no longer exists.
   const wasShown = useRef(shown);
   useEffect(() => {
@@ -142,7 +147,7 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
   const sidebarLabel = shown ? "Hide sidebar" : "Show sidebar";
 
   return (
-    <header className="titlebar" data-nav={shown ? "shown" : "hidden"} data-tauri-drag-region>
+    <header className="titlebar" data-nav={shown && !small ? "shown" : "hidden"} data-tauri-drag-region>
       <div ref={dragLayer} className="titlebar-drag" data-tauri-drag-region aria-hidden />
       {lights ? <span className="titlebar-lights" aria-hidden /> : null}
       <button
@@ -152,12 +157,15 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
         aria-expanded={shown}
         data-sidebar-toggle
         onClick={
-          narrow
-            ? // Narrow, the sidebar is the home page: it opens by going home and closes by leaving it.
+          phone
+            ? // On the phone the sidebar is the home page: it opens by going home and closes by leaving it.
               () => navigate(shown ? { name: "new", projectId: null } : { name: "home" })
-            : reading
-              ? toggleReadingNav
-              : toggleSidebar
+            : small
+              ? // On a small window it is a drawer over the thread.
+                toggleSidebarDrawer
+              : reading
+                ? toggleReadingNav
+                : toggleSidebar
         }
       >
         <PanelLeft size={16} aria-hidden />

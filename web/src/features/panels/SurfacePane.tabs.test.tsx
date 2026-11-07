@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useConnection } from "../../state/connection";
-import { useUi } from "../../state/ui";
-import { SurfacePane } from "./SurfacePane";
+import { useUi, type RightTab } from "../../state/ui";
+import { SurfacePane, type PaneMode } from "./SurfacePane";
 
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => <div>Browser content</div> }));
 vi.mock("./DiffPanel", () => ({ DiffPanel: () => <div>Diff content</div> }));
@@ -23,11 +23,11 @@ beforeEach(() => {
   useUi.setState({ panelOpen: true, panelTab: null, terminalOpen: false, pullReveal: null });
 });
 
-function pane(props: { overlay?: boolean; onReturn?: () => void; onToggleMaximize?: () => void; maximized?: boolean } = {}) {
+function pane(props: { mode?: PaneMode; onReturn?: () => void; onToggleMaximize?: () => void; maximized?: boolean } = {}) {
   return render(
     <SurfacePane
       thread={thread}
-      overlay={props.overlay ?? false}
+      mode={props.mode ?? "docked"}
       closing={false}
       moves={false}
       maximized={props.maximized ?? false}
@@ -73,11 +73,20 @@ describe("surface tabs", () => {
     expect(onReturn).toHaveBeenCalled();
   });
 
-  it("offers Back to thread and the same Maximise button when it covers the thread", () => {
-    pane({ overlay: true });
+  it("is a full-screen sheet on the phone: Back to thread and Close, with nothing to maximise", () => {
+    pane({ mode: "sheet" });
     expect(screen.getByRole("button", { name: "Back to thread" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Maximise panel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close side panel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Maximise panel" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(6);
+  });
+
+  it("keeps the tab row, with Maximise and Close at its right end, when it floats over the thread", () => {
+    pane({ mode: "overlay" });
+    expect(screen.queryByRole("button", { name: "Back to thread" })).not.toBeInTheDocument();
+    const row = screen.getByRole("tablist").closest("header")!;
+    const buttons = [...row.querySelectorAll("button:not([role=tab])")].map((button) => button.getAttribute("aria-label"));
+    expect(buttons.slice(-2)).toEqual(["Maximise panel", "Close side panel"]);
   });
 
   it("heads the reading layout's drawer with Back to thread at the left and Maximise and Close at the right", async () => {
@@ -166,9 +175,40 @@ describe("connection states in the panel", () => {
     expect(screen.queryByText("Diff content")).not.toBeInTheDocument();
   });
 
-  it("names the restore button for the side panel when maximised", () => {
+  it("names the maximise button Restore once the panel is maximised", () => {
     pane({ maximized: true });
-    expect(screen.getByRole("button", { name: "Restore side panel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore" })).toHaveAttribute("title", "Restore");
+    expect(screen.queryByRole("button", { name: "Maximise panel" })).not.toBeInTheDocument();
+  });
+
+  it("tells each tab what is waiting while the service is away, and leaves the Browser usable", () => {
+    useConnection.setState({ serviceDown: true });
+    const lines: [RightTab, string][] = [
+      ["files", "Files open again as soon as it is back."],
+      ["activity", "Activity shows again as soon as it is back."],
+      ["side", "Your side chats open again as soon as it is back. Nothing is lost."],
+    ];
+    for (const [tab, line] of lines) {
+      useUi.setState({ panelTab: tab });
+      const { unmount } = pane();
+      expect(screen.getByText("Waiting for the Orbyn service")).toBeInTheDocument();
+      expect(screen.getByText(line)).toBeInTheDocument();
+      unmount();
+    }
+    useUi.setState({ panelTab: "browser" });
+    pane();
+    expect(screen.getByText("Browser content")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the Orbyn service")).not.toBeInTheDocument();
+  });
+
+  it("marks the Browser tab offline and leaves the note to the Browser, while Diff, Files and Activity carry no mark", () => {
+    useConnection.setState({ offline: true });
+    useUi.setState({ panelTab: "browser" });
+    pane();
+    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute("data-offline");
+    for (const name of ["Diff", "Files", "Activity"]) expect(screen.getByRole("tab", { name })).not.toHaveAttribute("data-offline");
+    expect(screen.getByText("Browser content")).toBeInTheDocument();
+    expect(screen.queryByText("You’re offline.")).not.toBeInTheDocument();
   });
 
   it("folds tabs that don't fit into More, keeping the open tab visible", async () => {

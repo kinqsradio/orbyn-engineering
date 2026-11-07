@@ -1,4 +1,5 @@
 .thread-layout {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -1752,12 +1753,37 @@ button.detail-row:hover {
     }
   }
 }
+/* Maximised, or a sheet on the phone: the panel takes the thread's place. */
 .context[data-maximized],
-.shell[data-layout="medium"] .context,
-.shell[data-layout="narrow"] .context {
+.context[data-mode="sheet"] {
   flex: 1;
   width: auto;
   min-width: 0;
+  max-width: none;
+  border-left: 0;
+}
+/* Beside the thread or over it, the panel is 320px at the narrowest and 60% of the window at the widest. */
+.context[data-mode="docked"]:not([data-maximized]),
+.context[data-mode="overlay"]:not([data-maximized]) {
+  min-width: var(--panel-min-w);
+  max-width: 60vw;
+}
+/* Medium and small windows: it floats over the right of the thread, under the header so the header
+   buttons stay in reach. Nothing behind it moves, and nothing behind it is blocked. */
+.context[data-mode="overlay"]:not([data-maximized]) {
+  position: absolute;
+  z-index: 10;
+  top: var(--panel-overlay-top);
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid var(--color-border);
+  border-left: 0;
+  border-top-left-radius: var(--radius-lg);
+  box-shadow:
+    -14px 0 32px var(--color-panelShadow),
+    -1px 0 0 var(--color-borderStrong);
+}
+.context[data-mode="overlay"][data-maximized] {
   border-left: 0;
 }
 .context-head {
@@ -2133,7 +2159,7 @@ button.detail-row:hover {
   overflow: hidden;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .topbar {
     padding: 0 8px;
   }
@@ -2593,6 +2619,7 @@ button.detail-row:hover {
   background: var(--color-divider);
 }
 .draft-layout {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -4670,8 +4697,9 @@ div.browser-bridge-row {
 .thread-stage[data-connection="service-down"] .composer-lane {
   opacity: 0.6;
 }
-.ptab[data-offline] {
-  opacity: 0.5;
+.ptab[data-offline] > svg {
+  flex: none;
+  color: var(--color-muted);
 }
 .tabs-more[aria-pressed="true"] {
   background: var(--color-selected);
@@ -4681,6 +4709,25 @@ div.browser-bridge-row {
   margin: 12px 14px 0;
   width: auto;
   max-width: none;
+}
+/* The Browser tab offline: where the page would be, a notice and Retry. */
+.browser-offline {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 20px 48px;
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+}
+.browser-offline b {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 500;
+}
+.browser-offline .btn {
+  margin-top: 6px;
 }
 .conn-wait {
   display: flex;
@@ -4702,6 +4749,32 @@ div.browser-bridge-row {
 /* While the edge is dragged: a line on it and the width beside it. */
 .context[data-resizing] {
   box-shadow: inset 2px 0 0 var(--color-muted);
+}
+/* A faint dashed line at each snap point while the edge is dragged, labelled at the foot. */
+.pane-tick {
+  position: absolute;
+  z-index: 5;
+  top: var(--titlebar-h);
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--color-muted);
+  pointer-events: none;
+}
+.pane-tick > i {
+  position: absolute;
+  bottom: 92px;
+  left: 0;
+  z-index: 6;
+  padding: 1px 5px;
+  border-radius: var(--radius-5);
+  background: var(--color-background);
+  box-shadow: 0 0 0 1px var(--color-border);
+  color: var(--color-textSoft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-style: normal;
+  line-height: normal;
+  transform: translateX(-50%);
 }
 .pane-width {
   position: absolute;

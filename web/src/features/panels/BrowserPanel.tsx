@@ -1,5 +1,5 @@
 import { serviceSocketUrl } from "../../api/origin";
-import { AppWindow, ArrowLeft, ArrowRight, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
+import { AppWindow, ArrowLeft, ArrowRight, Clock, CloudOff, Crosshair, EyeOff, Hand, MoreHorizontal, Plus, RotateCw, Square, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -15,10 +15,11 @@ import { readToken } from "../../api/token";
 import type { BrowserProfile, LocalServer, PickedElement, PreviewTab } from "../../api/types";
 import { useCommand } from "../../app/shortcuts";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { useConnection, useConnectionKind } from "../../state/connection";
 import { useUi } from "../../state/ui";
 import { useComposerChips } from "../thread/composerChipStore";
 import { chipId } from "../thread/composerContext";
-import { IconButton } from "../../ui/controls";
+import { Button, IconButton } from "../../ui/controls";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
 import { SiteIcon } from "./SiteIcon";
@@ -42,6 +43,30 @@ import {
 } from "./viewportResize";
 
 export { pageSize };
+
+/** A page on this machine: it loads with no network, and needs nothing from the Orbyn service. */
+export function isLocalUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+/** The Browser tab's body when the device has no network and the page needs one. */
+function OfflineNotice({ onRetry }: { onRetry(): void }) {
+  return (
+    <div className="browser-offline" role="status">
+      <CloudOff size={16} aria-hidden />
+      <b>You’re offline</b>
+      <span>Pages that need the network will load when you’re back.</span>
+      <Button small icon={<RotateCw size={14} aria-hidden />} onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
 
 const q = encodeURIComponent;
 const VIEWPORT = { width: 1280, height: 800 };
@@ -753,10 +778,19 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
   useCommand("preview.zoomOut", () => zoomTo((from) => stepZoom(from, false)), ownsFocus);
   useCommand("preview.resetZoom", () => zoomTo(() => 1), ownsFocus);
   const human = active?.control === "human";
+  // Offline, a page on this machine still opens; anything else waits for the network. Sending to
+  // the thread needs the Orbyn service, so while it is away Pick element is off and says why.
+  const connection = useConnectionKind();
+  const waitsForNetwork = connection === "offline" && !(active && isLocalUrl(active.url));
+  const serviceAway = connection === "service-down";
+  const retryNetwork = () => {
+    useConnection.getState().setOffline(navigator.onLine === false);
+    reload();
+  };
 
   return (
     <div ref={pane} className="browser-panel">
-      <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
+      {waitsForNetwork && list.length === 0 ? null : <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
         {list.map((tab) => (
           <span key={tab.id} className="surface-tab" data-selected={tab.id === active?.id || undefined}>
             <button
@@ -808,7 +842,8 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           </span>
         ) : null}
         {onlyTabId && onMove ? <IconButton label="Close second Browser panel" onClick={() => onMove(onlyTabId)}><X size={14} aria-hidden /></IconButton> : null}
-      </div>
+      </div>}
+      {waitsForNetwork ? <OfflineNotice onRetry={retryNetwork} /> : <>
       <div className="browser-bar">
         <IconButton label="Back" disabled={!active?.can_go_back} onClick={() => step(true)}>
           <ArrowLeft size={14} aria-hidden />
@@ -838,7 +873,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
         </datalist>
         {active ? (
           <>
-            {!detached ? <IconButton label="Pick an element" pressed={picking} onClick={() => setPicking(!picking)}>
+            {!detached ? <IconButton label={serviceAway ? "Pick element, unavailable" : "Pick an element"} pressed={picking && !serviceAway} disabled={serviceAway} onClick={() => setPicking(!picking)}>
               <Crosshair size={14} aria-hidden />
             </IconButton> : null}
             <IconButton
@@ -891,6 +926,12 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           </IconButton>
         </div>
       ) : null}
+      {serviceAway && active ? (
+        <p className="conn-banner conn-panel-banner" role="status">
+          <Clock size={13} aria-hidden />
+          <span>Sending to the thread is paused while the service is away.</span>
+        </p>
+      ) : null}
       {error ? (
         <p className="field-error" role="alert">
           {error}
@@ -902,7 +943,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
           threadId={threadId}
           tab={active}
           fitted={!detached && device === "fit"}
-          picking={picking}
+          picking={picking && !serviceAway}
           resize={device === "fit" && !detached ? null : { live, handles: device !== "fit" && toolbar, onPreview: setLive, onCommit: commitResize }}
           onPicked={onPicked}
         />
@@ -915,6 +956,7 @@ export function BrowserPane({ threadId, onlyTabId, excludedTabId, onMove, detach
       ) : (
         <StartPage threadId={threadId} onOpen={go} profile={profile} setProfile={setProfile} isPrivate={isPrivate} />
       )}
+      </>}
     </div>
   );
 }
