@@ -4693,6 +4693,10 @@ div.browser-bridge-row {
   background: var(--color-dangerSoft);
   color: var(--color-danger);
 }
+.conn-pill[data-tone="info"] {
+  background: var(--color-blueSoft);
+  color: var(--color-blue);
+}
 .conn-banner {
   display: flex;
   align-items: center;
@@ -4714,6 +4718,17 @@ div.browser-bridge-row {
 }
 .conn-banner[data-tone="err"] > svg {
   color: var(--color-danger);
+}
+.conn-banner[data-tone="info"] {
+  background: var(--color-blueSoft);
+}
+.conn-banner[data-tone="info"] > svg {
+  color: var(--color-blue);
+}
+.conn-banner-end {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
 }
 .conn-banner b {
   font-weight: 500;

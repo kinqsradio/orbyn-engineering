@@ -7,7 +7,7 @@ import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
 import { onShellEvent, Shell } from "./Shell";
-import { watchConnection } from "../state/connection";
+import { useConnection, watchConnection } from "../state/connection";
 import { upgradeToast } from "../state/healthToasts";
 import { PreviewWindow } from "../features/panels/PreviewWindow";
 import { previewWindowRoute } from "../features/panels/browserPanels";
@@ -58,6 +58,7 @@ function BootedApp() {
     api.info(abort.signal).then(
       (info) => {
         adoptEnvironmentTheme(info.environment_theme);
+        useConnection.setState({ remote: info.remote });
         const upgraded = upgradeToast(info);
         if (upgraded) useUi.getState().pushToast(upgraded);
         setBoot({ state: "ready" });

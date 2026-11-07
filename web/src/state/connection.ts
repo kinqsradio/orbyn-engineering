@@ -11,15 +11,24 @@ interface ConnectionStore {
   offline: boolean;
   /** The service did not answer while the network was fine. */
   serviceDown: boolean;
+  /** This window asked the desktop app to start the service again, and it has not answered yet. */
+  restarting: boolean;
+  /** The service says this window reaches it from another computer, which may not stop or restart it. */
+  remote: boolean;
   setOffline(offline: boolean): void;
   setServiceDown(down: boolean): void;
+  setRestarting(restarting: boolean): void;
 }
 
 export const useConnection = create<ConnectionStore>((set) => ({
   offline: typeof navigator !== "undefined" && navigator.onLine === false,
   serviceDown: false,
+  restarting: false,
+  remote: false,
   setOffline: (offline) => set({ offline }),
-  setServiceDown: (serviceDown) => set((state) => (state.serviceDown === serviceDown ? state : { serviceDown })),
+  // A service that answers again is no longer restarting.
+  setServiceDown: (serviceDown) => set((state) => (state.serviceDown === serviceDown ? state : { serviceDown, restarting: serviceDown && state.restarting })),
+  setRestarting: (restarting) => set({ restarting }),
 }));
 
 /** A request or stream reached the service. */
