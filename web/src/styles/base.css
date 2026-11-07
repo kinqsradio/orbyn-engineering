@@ -583,6 +583,10 @@ input[type="checkbox"][role="switch"]:disabled {
   color: var(--color-muted);
   overflow-wrap: anywhere;
 }
+/* A dialog with no footer ends on its body, so the body carries the bottom padding. */
+.dialog-body:last-child {
+  padding-bottom: 20px;
+}
 .dialog-foot {
   display: flex;
   justify-content: flex-end;
@@ -731,7 +735,7 @@ input[type="checkbox"][role="switch"]:disabled {
 .popup-menu .menu-shortcut {
   margin-left: auto;
   padding-left: 18px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-label);
 }
@@ -1047,7 +1051,7 @@ input[type="checkbox"][role="switch"]:disabled {
   height: 28px;
   padding: 0 9px;
   margin-top: 4px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
 }
 .palette-list button {
@@ -1071,7 +1075,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .palette-list button span:last-child:not(:first-child, .palette-title) {
   margin-left: auto;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-label);
 }
@@ -1162,6 +1166,6 @@ input[type="checkbox"][role="switch"]:disabled {
 .project-color-rose { --tint: var(--project-color-rose); }
 .menu-heading {
   padding: 6px 9px 3px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-caption);
 }

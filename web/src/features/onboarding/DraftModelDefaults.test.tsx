@@ -86,3 +86,12 @@ it("keeps a missing configured provider blocked until the person explicitly choo
   await waitFor(() => expect(api.createThread).toHaveBeenCalledTimes(1));
   expect(vi.mocked(api.createThread).mock.calls[0]?.[0]).toMatchObject({ engine: "codex", model: "explicit" });
 });
+
+it("shows no side panel and no launcher on a draft, even when the panel preference is open", () => {
+  vi.mocked(request).mockResolvedValue(defaults("project-model") as never);
+  useUi.setState({ panelOpen: true });
+  render(<DraftView projectId="a" />);
+  expect(screen.queryByRole("complementary", { name: "Thread context" })).toBeNull();
+  expect(screen.queryByText("Open a surface")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Surfaces" })).toBeNull();
+});

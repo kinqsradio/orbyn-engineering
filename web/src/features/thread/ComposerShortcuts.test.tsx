@@ -134,6 +134,21 @@ describe("composer menu shortcuts (K41)", () => {
     expect(within(dialog).getByRole("list", { name: "Branches" })).toBeInTheDocument();
   });
 
+  it("the branch switcher follows the footerless design: Find a branch, a Current note and the switch hint", async () => {
+    const user = userEvent.setup();
+    for (const thread of mock.threads) thread.active_run = null;
+    go("#/threads/t-approval");
+    render(<App />);
+    await screen.findByRole("button", { name: /^Branch / });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    await chord(user, "g");
+    const dialog = await screen.findByRole("dialog", { name: "Switch branch" });
+    expect(within(dialog).getByRole("textbox", { name: "Search branches" })).toHaveAttribute("placeholder", "Find a branch");
+    expect(await within(dialog).findByText("Current")).toBeInTheDocument();
+    expect(within(dialog).getByText("Choosing a branch switches to it.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
   describe("on the draft", () => {
     const openDraft = async () => {
       go("#/");

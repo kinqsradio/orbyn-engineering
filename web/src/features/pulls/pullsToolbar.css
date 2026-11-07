@@ -4,7 +4,7 @@
 /* Title row: the last refresh said quietly, then the refresh button. */
 .pulls-upd {
   align-self: center;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
   white-space: nowrap;
 }
@@ -163,7 +163,7 @@
 .pulls-inp kbd {
   margin-left: auto;
   padding-right: 3px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-kbd);
 }
@@ -323,13 +323,13 @@
 .pulls-k {
   margin-left: auto;
   padding-left: 18px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-kbd);
 }
 .pulls-mh {
   padding: 6px 9px 3px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-caption);
 }
 .pulls-msep {
@@ -550,7 +550,7 @@
   text-overflow: ellipsis;
 }
 .pulls-hd {
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
 }
 .pulls-ink {

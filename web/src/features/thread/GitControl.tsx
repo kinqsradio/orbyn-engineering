@@ -1,4 +1,4 @@
-import { Check, ChevronDown, CloudUpload, GitBranch, GitCommitHorizontal, GitPullRequest, Plus, Upload, X } from "lucide-react";
+import { Check, ChevronDown, CloudUpload, GitBranch, GitCommitHorizontal, GitPullRequest, Plus, Search, Upload, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
@@ -285,33 +285,37 @@ function BranchDialog({ thread, onClose }: { thread: Thread; onClose(): void }) 
     }
   };
   return (
-    <Dialog title="Switch branch" onClose={onClose} busy={busy}>
-      <input
-        aria-label="Search branches"
-        placeholder="Search or name a new branch"
-        value={query}
-        autoFocus
-        onChange={(event) => setQuery(event.target.value)}
-      />
+    <Dialog title="Switch branch" className="branch-dialog" onClose={onClose} busy={busy}>
+      <label className="branch-find">
+        <Search size={14} aria-hidden />
+        <input
+          aria-label="Search branches"
+          placeholder="Find a branch"
+          value={query}
+          autoFocus
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
       <ul className="branch-list" aria-label="Branches">
         {rows.map((branch) => (
           <li key={branch.name}>
             <button type="button" disabled={busy || branch.current} onClick={() => void act(api.switchBranch(thread.id, branch.name))}>
-              <GitBranch size={14} aria-hidden />
-              <span>{branch.name}</span>
-              {branch.current ? <Check size={14} aria-label="Current branch" /> : null}
+              <span className="branch-mark">{branch.current ? <Check size={14} aria-label="Current branch" /> : null}</span>
+              <span className="branch-name">{branch.name}</span>
+              <span className="branch-note">{branch.current ? "Current" : branch.remote ? "Remote only" : ""}</span>
             </button>
           </li>
         ))}
         {name && !exists ? (
           <li>
             <button type="button" disabled={busy} onClick={() => void act(api.createBranch(thread.id, name))}>
-              <Plus size={14} aria-hidden />
-              <span>Create {name}</span>
+              <span className="branch-mark"><Plus size={14} aria-hidden /></span>
+              <span className="branch-name">Create {name}</span>
             </button>
           </li>
         ) : null}
       </ul>
+      <p className="branch-hint">Choosing a branch switches to it.</p>
       {error ? (
         <p className="field-error" role="alert">
           {error}

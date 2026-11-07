@@ -8,10 +8,13 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 export function FolderBrowser({
   actionLabel,
   busy,
+  rowAction,
   onChoose,
 }: {
   actionLabel: string;
   busy?: boolean;
+  /** A label such as "Use": every folder row then carries a button that applies that folder at once. */
+  rowAction?: string;
   onChoose(path: string): void;
 }) {
   const [path, setPath] = useState<string | null>(null);
@@ -42,12 +45,17 @@ export function FolderBrowser({
       ) : (
         <ul className="browser-list">
           {listing.data.entries.map((entry) => (
-            <li key={entry.path}>
+            <li key={entry.path} className={rowAction ? "browser-row" : undefined}>
               <button type="button" onClick={() => setPath(entry.path)}>
                 {entry.is_git ? <GitBranch size={16} aria-hidden /> : <Folder size={16} aria-hidden />}
                 <span>{entry.name}</span>
                 {entry.is_git ? <span className="row-meta">Git repository</span> : null}
               </button>
+              {rowAction ? (
+                <Button small className="browser-use" aria-label={`${rowAction} ${entry.name}`} disabled={busy} onClick={() => onChoose(entry.path)}>
+                  {rowAction}
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>

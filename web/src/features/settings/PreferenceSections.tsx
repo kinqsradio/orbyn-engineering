@@ -90,8 +90,9 @@ function BaseDirectory({ value, save, disabled }: { value: unknown; save(next: u
         onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft !== (value ?? "")) save(draft); }} />
       <Button small disabled={disabled} onClick={() => setChoosing(true)}>Choose…</Button>
       {choosing ? (
-        <Dialog title="Base directory" onClose={() => setChoosing(false)}>
-          <FolderBrowser actionLabel="Use this folder" onChoose={(path) => { setDraft(path); save(path); setChoosing(false); }} />
+        <Dialog title="Base directory" className="folder-dialog" onClose={() => setChoosing(false)}>
+          <p>New projects are created in this folder. Use applies a folder at once.</p>
+          <FolderBrowser actionLabel="Use this folder" rowAction="Use" onChoose={(path) => { setDraft(path); save(path); setChoosing(false); }} />
         </Dialog>
       ) : null}
     </>

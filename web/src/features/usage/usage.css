@@ -108,7 +108,7 @@
   font-variant-numeric: tabular-nums;
 }
 .usage-stat small {
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
 }
 
@@ -276,7 +276,7 @@
 }
 .usage-table th {
   padding: 4px 0 6px 24px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
   font-weight: 400;
   text-align: right;
@@ -354,7 +354,7 @@
   background: var(--color-warn);
 }
 .limit-reset {
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-meta);
 }
 @media (max-width: 899px) {
@@ -362,7 +362,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .usage-tabs,
   .usage-filters,
   .usage-body {

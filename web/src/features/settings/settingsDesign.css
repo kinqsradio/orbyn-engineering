@@ -109,7 +109,7 @@
 .set-tr.h {
   min-height: 26px;
   border-top: 0;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
 }
 .set-tr:last-child {
@@ -289,7 +289,7 @@
 .settings-search-menu .mh {
   margin: 0;
   padding: 6px 9px 3px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: 11px;
 }
 .settings-search-menu a {
@@ -311,7 +311,7 @@
 .settings-search-menu a small {
   margin-left: auto;
   padding-left: 18px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-kbd);
 }
@@ -332,7 +332,7 @@
 .set-grp {
   margin: 0;
   padding: 18px 0 4px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
 }
 .unit-field {
@@ -362,9 +362,9 @@
 }
 
 /* Titled groups read as a quiet label between lists. */
-.settings-page .setting-group h2 {
+.settings-page .setting-group > h2 {
   padding: 18px 0 4px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
   font-weight: 400;
 }

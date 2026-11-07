@@ -5,7 +5,7 @@
 .add-project-hint {
   margin-left: auto;
   padding-left: 18px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   white-space: nowrap;

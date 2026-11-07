@@ -1,7 +1,7 @@
 import { recordUserPrompt } from "../workspace/GitHubStarPrompt";
 import { useDraftModelDefaults } from "./useDraftModelDefaults";
 import { useDraftCheckout } from "./useDraftCheckout";
-import { ArrowUp, Bot, Eye, Folder, GitBranch, GitPullRequest, PanelRight, Paperclip, Sparkles, X, XCircle } from "lucide-react";
+import { ArrowUp, Bot, Eye, Folder, GitBranch, GitPullRequest, Paperclip, Sparkles, X, XCircle } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useCommand } from "../../app/shortcuts";
@@ -15,10 +15,7 @@ import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { SkillsNotice } from "./SkillsNotice";
 import "./onboarding.css";
 import { NoProjects } from "./NoProjects";
-import { panelOverlays, useLayoutWidth } from "../../lib/useLayout";
-import { PANEL_DEFAULT } from "../panels/panelWidth";
 import { IconButton } from "../../ui/controls";
-import { PaneResizer } from "../panels/SurfacePane";
 import { Menu } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
 import { Loading, NarrowBack } from "../../ui/states";
@@ -140,11 +137,6 @@ export function DraftView({ projectId }: { projectId: string | null }) {
   const setReused = useDraftStore((state) => state.setReuseWorktree);
   const fileInput = useRef<HTMLInputElement>(null);
   const adoptLayout = useUi((state) => state.adoptDraftLayout);
-  const panelPref = useUi((state) => state.panelOpen);
-  const setPanelOpen = useUi((state) => state.setPanelOpen);
-  const panelWidth = useUi((state) => state.panelWidth);
-  const layoutWidth = useLayoutWidth();
-  const paneShown = panelPref === true && layoutWidth !== "phone";
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [openTraits, setOpenTraits] = useState<((element: HTMLElement) => void) | null>(null);
   const scratch = chosenProject === SCRATCH;
@@ -337,13 +329,6 @@ export function DraftView({ projectId }: { projectId: string | null }) {
             <span className="page-sub">
               <span className="page-sub-item">{project?.name ?? "No project"}</span>
             </span>
-          </div>
-          <div className="layout-toggles" role="group" aria-label="Layout">
-            {paneShown ? null : (
-              <IconButton label="Surfaces" onClick={() => setPanelOpen(true)}>
-                <PanelRight size={16} aria-hidden />
-              </IconButton>
-            )}
           </div>
         </header>
     <div className="thread-stage draft-stage" data-hero>
@@ -666,30 +651,6 @@ export function DraftView({ projectId }: { projectId: string | null }) {
       ) : null}
     </div>
       </section>
-      {paneShown ? (
-        <aside
-          className="context"
-          aria-label="Thread context"
-          data-mode={panelOverlays(layoutWidth) ? "overlay" : "docked"}
-          style={{ width: panelWidth ?? PANEL_DEFAULT }}
-        >
-          <PaneResizer />
-          <header className="context-head">
-            <div className="layout-toggles">
-              <IconButton label="Close surfaces" pressed onClick={() => setPanelOpen(false)}>
-                <PanelRight size={16} aria-hidden />
-              </IconButton>
-            </div>
-          </header>
-          <div className="context-body">
-            <div className="launcher">
-              <div className="launcher-inner">
-                <h2>Open a surface</h2>
-              </div>
-            </div>
-          </div>
-        </aside>
-      ) : null}
     </div>
   );
 }

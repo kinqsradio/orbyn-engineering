@@ -37,6 +37,8 @@
   --color-textSoft: rgb(0 0 0 / 74%);
   --color-muted: rgb(0 0 0 / 56%);
   --color-faint: rgb(0 0 0 / 44%);
+  /* Text of the design's Planned and Not available yet: the third text step, never the faint one. */
+  --planned-text: var(--color-muted);
   --color-primary: #111111;
   --color-primaryHover: #2b2b2b;
   --color-onAccent: #ffffff;

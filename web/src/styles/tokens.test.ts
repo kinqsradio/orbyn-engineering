@@ -19,6 +19,24 @@ describe("design tokens", () => {
     }
   });
 
+  it("keeps the faint step off text: only placeholders, disabled controls, icons and dividers use it for color", () => {
+    // Selectors where the faint step is allowed: placeholder-like search fields, dimmed or disabled controls, icons and dividers.
+    const exempt = /::placeholder|:disabled|\[data-dim\]|\.icon-btn|> svg|\.crumb-slash|\.search-trigger|\.search-field|^\.set-find$|^\.settings-search$/;
+    const all = (folder: string): string[] => readdirSync(folder, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? all(join(folder, entry.name)) : entry.name.endsWith(".css") ? [join(folder, entry.name)] : []);
+    const offenders: string[] = [];
+    for (const file of all(join(process.cwd(), "src"))) {
+      if (file.endsWith("tokens.css")) continue;
+      const text = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const [, selector = "", body = ""] of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        if (!/(?<![-\w])color:\s*[^;]*--color-faint/.test(body)) continue;
+        if (selector.split(",").every((part) => exempt.test(part.trim()))) continue;
+        offenders.push(`${file.replace(`${process.cwd()}/`, "")}: ${selector.trim().replace(/\s+/g, " ")}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps font sizes on the type scale", () => {
     for (const text of Object.values(css)) {
       for (const [, size] of text.matchAll(/font-size:\s*([\d.]+)px/g)) {

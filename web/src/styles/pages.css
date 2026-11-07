@@ -46,7 +46,7 @@
 .settings-group {
   margin: 0;
   padding: 12px 8px 4px;
-  color: var(--color-faint);
+  color: var(--color-muted);
   font-size: var(--text-label);
   font-weight: 400;
 }
@@ -281,7 +281,7 @@ p.settings-scope {
   display: flex;
   flex-direction: column;
 }
-.setting-group h2,
+.setting-group > h2,
 .settings-body .section > h2 {
   padding: 16px 0 6px;
   font-size: var(--text-small);
@@ -687,6 +687,22 @@ kbd {
 .browser-list button:hover {
   background: var(--color-hover);
 }
+.folder-dialog {
+  width: min(460px, calc(100vw - 32px));
+}
+.browser-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.browser-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.browser-list .browser-use {
+  flex: none;
+  width: auto;
+}
 .browser-list button span:first-of-type {
   flex: 1;
   min-width: 0;
@@ -773,7 +789,7 @@ kbd {
   margin-top: 2px;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .settings-page {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
