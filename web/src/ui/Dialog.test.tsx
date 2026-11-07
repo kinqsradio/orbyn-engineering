@@ -22,6 +22,24 @@ it("closes a footerless dialog by its Close button or a tap on the backdrop, and
   expect(kept).not.toHaveBeenCalled();
 });
 
+it("a footerless dialog with a text field ignores a backdrop tap but still closes by Close and Escape", async () => {
+  const onClose = vi.fn();
+  render(<Dialog title="Switch branch" onClose={onClose}><input aria-label="Branch" /></Dialog>);
+  fireEvent.click(screen.getByRole("dialog"));
+  expect(onClose).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  expect(onClose).toHaveBeenCalledTimes(2);
+});
+
+it("a footerless dialog with only a checkbox still closes on a backdrop tap", () => {
+  const onClose = vi.fn();
+  render(<Dialog title="Pick" onClose={onClose}><input type="checkbox" aria-label="Yes" /></Dialog>);
+  fireEvent.click(screen.getByRole("dialog"));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
 it("Escape (the dialog's cancel) closes footerless and footer dialogs alike, but not while a write is in flight", () => {
   const cancel = () => fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
   const onClose = vi.fn();

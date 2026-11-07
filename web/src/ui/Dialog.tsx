@@ -14,10 +14,13 @@ interface DialogProps {
   footer?: ReactNode;
 }
 
+const TEXT_FIELD = 'textarea, [contenteditable=""], [contenteditable="true"], input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="range"], [type="color"], [type="file"], [type="hidden"])';
+const holdsTextField = (dialog: HTMLElement) => dialog.querySelector(TEXT_FIELD) !== null;
+
 /**
  * A native modal: the top layer owns focus containment and Escape. With no footer
  * there is nothing to dismiss it, so the header carries Close and a tap on the
- * backdrop closes it. A dialog with footer actions has neither.
+ * backdrop closes it, unless it holds a text field. A dialog with footer actions has neither.
  */
 export function Dialog({ title, onClose, busy, className, children, footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -50,7 +53,8 @@ export function Dialog({ title, onClose, busy, className, children, footer }: Di
       }}
       onClick={(event) => {
         // Only the backdrop reports the dialog itself as the target.
-        if (!footer && !busy && event.target === event.currentTarget) onClose();
+        // A footerless dialog holding a text field keeps what was typed: only Escape or Close ends it.
+        if (!footer && !busy && event.target === event.currentTarget && !holdsTextField(event.currentTarget)) onClose();
       }}
     >
       <header className="dialog-head">
