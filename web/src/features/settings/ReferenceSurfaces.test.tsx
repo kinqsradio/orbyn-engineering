@@ -65,7 +65,7 @@ it("asks before deleting old files, names what goes with the service's counts an
   await waitFor(() => expect(vi.mocked(request)).toHaveBeenCalledWith("POST", "/api/storage/cleanup"));
 });
 
-it("leaves Settled worktrees out when the dry run finds none, and gives no size for a worktree it could not measure in full", async () => {
+it("leaves Settled worktrees out when the dry run finds none, and shows a worktree it could not measure in full as at least its size, or the count alone", async () => {
   const user = userEvent.setup();
   vi.spyOn(api, "settings").mockResolvedValue({ background_update_checks: true } as Awaited<ReturnType<typeof api.settings>>);
   const preview = vi.spyOn(api, "storageCleanupPreview").mockResolvedValue(previewOf([group("artifact", 3, 48), group("log", 1, 2), group("worktree", 0, 0)]));
@@ -84,9 +84,16 @@ it("leaves Settled worktrees out when the dry run finds none, and gives no size 
 
   view.unmount();
   preview.mockResolvedValue(previewOf([group("worktree", 2, 310)], true));
-  render(<EnvironmentCleanup query={{}} disabled={false} />);
+  const partial = render(<EnvironmentCleanup query={{}} disabled={false} />);
   await user.click(await screen.findByRole("button", { name: "Delete now…" }));
   const second = await screen.findByRole("dialog", { name: "Delete old files now?" });
   expect(within(second).getByText("Settled worktrees")).toBeVisible();
-  expect(within(second).queryByText(/310 MB/)).toBeNull();
+  expect(within(second).getByText("2 · At least 310 MB")).toBeVisible();
+
+  partial.unmount();
+  preview.mockResolvedValue(previewOf([group("worktree", 2, 0)], true));
+  render(<EnvironmentCleanup query={{}} disabled={false} />);
+  await user.click(await screen.findByRole("button", { name: "Delete now…" }));
+  const third = await screen.findByRole("dialog", { name: "Delete old files now?" });
+  expect(within(third).getByText("2")).toBeVisible();
 });

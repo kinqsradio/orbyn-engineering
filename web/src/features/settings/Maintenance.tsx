@@ -295,9 +295,10 @@ export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQu
   const found = (kind: string) => {
     const group = preview.data?.groups.find((entry) => entry.kind === kind);
     const count = group ? Number(group.count) : 0;
-    // A worktree too large to measure makes its size a floor, and a floor is not shown as a size.
-    const measured = group !== undefined && !(kind === "worktree" && preview.data?.partial);
-    return { count, size: measured ? sizeWords(Number(group.bytes)) : null };
+    // A worktree too large to measure in full makes its size a floor, shown as "At least"; with no size known, the count stands alone.
+    const floor = group !== undefined && kind === "worktree" && preview.data?.partial === true;
+    const bytes = group ? Number(group.bytes) : 0;
+    return { count, size: group === undefined || (floor && bytes === 0) ? null : floor ? `At least ${sizeWords(bytes)}` : sizeWords(bytes) };
   };
   const counts = { artifact: found("artifact"), log: found("log"), worktree: found("worktree") };
   return <>
@@ -355,7 +356,7 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 const factLine = ({ count, size }: Found) => (size ? `${count} · ${size}` : String(count));
 /** "Would delete 3 browser artifacts (48 MB) and 1 log (2 MB)": only what the dry run finds. */
 const previewLine = (counts: { artifact: Found; log: Found; worktree: Found }) => {
-  const part = (found: Found, one: string, many: string) => (found.count > 0 ? `${plural(found.count, one, many)}${found.size ? ` (${found.size})` : ""}` : null);
+  const part = (found: Found, one: string, many: string) => (found.count > 0 ? `${plural(found.count, one, many)}${found.size ? ` (${found.size.replace(/^At/, "at")})` : ""}` : null);
   const parts = [part(counts.artifact, "browser artifact", "browser artifacts"), part(counts.log, "log", "logs"), part(counts.worktree, "settled worktree", "settled worktrees")]
     .filter((entry): entry is string => entry !== null);
   return parts.length === 0 ? undefined : `Would delete ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0]}`;

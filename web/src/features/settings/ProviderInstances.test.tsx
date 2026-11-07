@@ -149,6 +149,12 @@ describe("provider pages", () => {
     await user.click(await screen.findByRole("button", { name: "Review 18" }));
     expect(await screen.findByRole("button", { name: "Providers" })).toBeVisible();
   });
+  it("marks the count as a lower bound when the history folder was too large to count to the end", async () => {
+    vi.spyOn(api, "nativeSessionCount").mockImplementation(async (id) => ({ engine: id, count: id === "claude" ? 12 : 0, truncated: id === "claude" }));
+    mock.engines = [engine({ id: "claude", name: "Claude Code", tier: "native" }), engine({ id: "codex", name: "Codex", tier: "native" })];
+    render(<ProvidersSection />);
+    expect(await screen.findByRole("button", { name: "Review 12+" })).toBeVisible();
+  });
   it("hides Native sessions when the service has no count to give", async () => {
     vi.spyOn(api, "nativeSessionCount").mockRejectedValue(new ApiFailure("unsupported", "No history folder.", 400));
     render(<ProvidersSection />);
