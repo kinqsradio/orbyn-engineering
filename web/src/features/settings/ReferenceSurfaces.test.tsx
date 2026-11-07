@@ -33,19 +33,20 @@ it("keeps diagnostics and update controls without requesting a Network inventory
   expect(screen.queryByRole("heading", { name: "Network" })).toBeNull();
   expect(request).not.toHaveBeenCalledWith("GET", "/api/network", undefined, expect.any(AbortSignal));
 });
-it("asks before deleting old files and runs the cleanup only on confirm", async () => {
+const group = (kind: string, count: number, megabytes: number) => ({ kind, count, bytes: megabytes * 1_000_000, held: 0 });
+const previewOf = (groups: ReturnType<typeof group>[], partial = false) => ({ groups, count: groups.reduce((sum, entry) => sum + entry.count, 0), bytes: 0, partial, entries: [] });
+
+it("asks before deleting old files, names what goes with the service's counts and sizes, and runs the cleanup only on confirm", async () => {
+  vi.spyOn(api, "storageCleanupPreview").mockResolvedValue(previewOf([group("artifact", 3, 48), group("log", 1, 2), group("worktree", 2, 310)]));
   vi.spyOn(api, "settings").mockResolvedValue({ background_update_checks: true } as Awaited<ReturnType<typeof api.settings>>);
   const user = userEvent.setup();
   vi.mocked(request).mockImplementation(async (method, path) => {
     if (path === "/api/diagnostics") return { version: "f", pid: 1, active_runs: 0, terminals: 0, database: { bytes: 0, reclaimable_bytes: 0 }, history: [], processes: [], events: [] } as never;
     if (path === "/api/settings/preferences/query") return scopedFixture([
-      { key: "storage_cleanup", value: { browser_artifacts_after_days: 14 }, default: {}, source: "global", project_scoped: false },
+      { key: "storage_cleanup", value: { browser_artifacts_after_days: 14, logs_after_days: 7 }, default: {}, source: "global", project_scoped: false },
       { key: "worktree_cleanup", value: {}, default: {}, source: "default", project_scoped: false },
     ]) as never;
     if (method === "GET" && path === "/api/storage/cleanup") return null as never;
-    if (method === "POST" && path === "/api/storage/cleanup?dry_run=true") return { dry_run: true, ran_at: "2026-11-07T00:00:00Z", entries: [
-      { kind: "artifact", path: "/data/a.png", removed: false, reason: "Older than 14 days" },
-      { kind: "artifact", path: "/data/b.png", removed: false, reason: "Older than 14 days" }] } as never;
     if (method === "POST" && path === "/api/storage/cleanup") return { dry_run: false, ran_at: "2026-11-07T00:00:00Z", entries: [] } as never;
     return [] as never;
   });
@@ -54,8 +55,38 @@ it("asks before deleting old files and runs the cleanup only on confirm", async 
   const ask = await screen.findByRole("dialog", { name: "Delete old files now?" });
   expect(vi.mocked(request)).not.toHaveBeenCalledWith("POST", "/api/storage/cleanup");
   expect(within(ask).getByText("Browser artifacts older than 14 days")).toBeVisible();
-  expect(within(ask).getByText("2")).toBeVisible();
-  expect(screen.getByText("Would delete 2 browser artifacts")).toBeVisible();
+  expect(within(ask).getByText("3 · 48 MB")).toBeVisible();
+  expect(within(ask).getByText("Rotated logs older than 7 days")).toBeVisible();
+  expect(within(ask).getByText("1 · 2 MB")).toBeVisible();
+  expect(within(ask).getByText("Settled worktrees")).toBeVisible();
+  expect(within(ask).getByText("2 · 310 MB")).toBeVisible();
+  expect(screen.getByText("Would delete 3 browser artifacts (48 MB), 1 log (2 MB) and 2 settled worktrees (310 MB)")).toBeVisible();
   await user.click(within(ask).getByRole("button", { name: "Delete now" }));
   await waitFor(() => expect(vi.mocked(request)).toHaveBeenCalledWith("POST", "/api/storage/cleanup"));
+});
+
+it("leaves Settled worktrees out when the dry run finds none, and gives no size for a worktree it could not measure in full", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(api, "settings").mockResolvedValue({ background_update_checks: true } as Awaited<ReturnType<typeof api.settings>>);
+  const preview = vi.spyOn(api, "storageCleanupPreview").mockResolvedValue(previewOf([group("artifact", 3, 48), group("log", 1, 2), group("worktree", 0, 0)]));
+  vi.mocked(request).mockImplementation(async (_method, path) => {
+    if (path === "/api/settings/preferences/query") return scopedFixture([
+      { key: "storage_cleanup", value: { browser_artifacts_after_days: 14, logs_after_days: 7 }, default: {}, source: "global", project_scoped: false },
+      { key: "worktree_cleanup", value: {}, default: {}, source: "default", project_scoped: false },
+    ]) as never;
+    return null as never;
+  });
+  const view = render(<EnvironmentCleanup query={{}} disabled={false} />);
+  await user.click(await screen.findByRole("button", { name: "Delete now…" }));
+  const ask = await screen.findByRole("dialog", { name: "Delete old files now?" });
+  expect(within(ask).queryByText("Settled worktrees")).toBeNull();
+  expect(screen.getByText("Would delete 3 browser artifacts (48 MB) and 1 log (2 MB)")).toBeVisible();
+
+  view.unmount();
+  preview.mockResolvedValue(previewOf([group("worktree", 2, 310)], true));
+  render(<EnvironmentCleanup query={{}} disabled={false} />);
+  await user.click(await screen.findByRole("button", { name: "Delete now…" }));
+  const second = await screen.findByRole("dialog", { name: "Delete old files now?" });
+  expect(within(second).getByText("Settled worktrees")).toBeVisible();
+  expect(within(second).queryByText(/310 MB/)).toBeNull();
 });

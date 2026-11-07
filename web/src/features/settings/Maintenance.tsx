@@ -6,7 +6,7 @@ import { ConfirmDialog } from "../../ui/Dialog";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";
 import type { ServiceProcess } from "../../generated/ServiceProcess";
-import { fullTime } from "../../lib/format";
+import { fullTime, sizeWords } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
 import { useUi } from "../../state/ui";
@@ -192,8 +192,7 @@ export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQu
     request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: query, keys: ["storage_cleanup", "worktree_cleanup"] }, signal));
   const last = useAsync("cleanup-report", (signal) =>
     request<CleanupReport | null>("GET", "/api/storage/cleanup", undefined, signal));
-  const preview = useAsync(JSON.stringify(["cleanup-preview", query]), (signal) =>
-    request<CleanupReport>("POST", "/api/storage/cleanup?dry_run=true", undefined, signal));
+  const preview = useAsync(JSON.stringify(["cleanup-preview", query]), (signal) => api.storageCleanupPreview(signal));
   const [draft, setDraft] = useState<Partial<Record<RetentionKey, string>>>({});
   const [report, setReport] = useState<CleanupReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -292,11 +291,15 @@ export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQu
     worktrees?.overrides.some((entry) => worktreeAge(entry.value, environmentAge) !== null) === true;
   const hasDraft = RETENTION.some(({ key }) => draft[key] !== undefined && draft[key] !== String(saved(key)));
   const shown = report ?? last.data ?? null;
-  // A dry run says what the rules would take, by kind. It carries no sizes, so none are shown.
-  const counts = { artifact: 0, log: 0, worktree: 0 };
-  for (const entry of Array.isArray(preview.data?.entries) ? preview.data.entries : []) {
-    if (!entry.removed && entry.kind in counts && entry.reason !== "Another active thread uses it") counts[entry.kind as keyof typeof counts] += 1;
-  }
+  // The dry run says what each kind would lose and how much room it takes. Held entries are named by the rules but kept.
+  const found = (kind: string) => {
+    const group = preview.data?.groups.find((entry) => entry.kind === kind);
+    const count = group ? Number(group.count) : 0;
+    // A worktree too large to measure makes its size a floor, and a floor is not shown as a size.
+    const measured = group !== undefined && !(kind === "worktree" && preview.data?.partial);
+    return { count, size: measured ? sizeWords(Number(group.bytes)) : null };
+  };
+  const counts = { artifact: found("artifact"), log: found("log"), worktree: found("worktree") };
   return <>
     <SettingGroup title="Retention">
       {RETENTION.map((rule) => <SettingRow key={rule.key} title={rule.title} description={rule.description}>
@@ -318,7 +321,7 @@ export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQu
       </SettingRow>)}
     </SettingGroup>
     <SettingGroup>
-      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : shown && !preview.data ? undefined : previewLine(counts)}>
+      <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : previewLine(counts)}>
         <Button small tone="danger" disabled={busy || !hasRules || hasDraft} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete now…"}</Button>
       </SettingRow>
       {confirming ? (
@@ -326,9 +329,9 @@ export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQu
           onConfirm={async () => { await run(); preview.reload(); }}>
           <p>They are removed from disk. This can’t be undone.</p>
           <DialogCard facts={[
-            ...(saved("browser_artifacts_after_days") !== null ? [{ label: `Browser artifacts older than ${saved("browser_artifacts_after_days")} days`, value: String(counts.artifact) }] : []),
-            ...(saved("logs_after_days") !== null ? [{ label: `Rotated logs older than ${saved("logs_after_days")} days`, value: String(counts.log) }] : []),
-            ...(environmentAge !== null ? [{ label: `Settled worktrees older than ${environmentAge} days`, value: String(counts.worktree) }] : []),
+            ...(saved("browser_artifacts_after_days") !== null ? [{ label: `Browser artifacts older than ${saved("browser_artifacts_after_days")} days`, value: factLine(counts.artifact) }] : []),
+            ...(saved("logs_after_days") !== null ? [{ label: `Rotated logs older than ${saved("logs_after_days")} days`, value: factLine(counts.log) }] : []),
+            ...(counts.worktree.count > 0 ? [{ label: "Settled worktrees", value: factLine(counts.worktree) }] : []),
           ]} />
         </ConfirmDialog>
       ) : null}
@@ -347,12 +350,15 @@ export function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQu
   </>;
 }
 
+type Found = { count: number; size: string | null };
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-const previewLine = (counts: { artifact: number; log: number; worktree: number }) => {
-  const parts = [counts.artifact > 0 ? plural(counts.artifact, "browser artifact", "browser artifacts") : null,
-    counts.log > 0 ? plural(counts.log, "log", "logs") : null,
-    counts.worktree > 0 ? plural(counts.worktree, "settled worktree", "settled worktrees") : null].filter(Boolean);
-  return parts.length === 0 ? undefined : `Would delete ${parts.join(" and ")}`;
+const factLine = ({ count, size }: Found) => (size ? `${count} · ${size}` : String(count));
+/** "Would delete 3 browser artifacts (48 MB) and 1 log (2 MB)": only what the dry run finds. */
+const previewLine = (counts: { artifact: Found; log: Found; worktree: Found }) => {
+  const part = (found: Found, one: string, many: string) => (found.count > 0 ? `${plural(found.count, one, many)}${found.size ? ` (${found.size})` : ""}` : null);
+  const parts = [part(counts.artifact, "browser artifact", "browser artifacts"), part(counts.log, "log", "logs"), part(counts.worktree, "settled worktree", "settled worktrees")]
+    .filter((entry): entry is string => entry !== null);
+  return parts.length === 0 ? undefined : `Would delete ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0]}`;
 };
 
 const reportLine = (report: CleanupReport) => {
