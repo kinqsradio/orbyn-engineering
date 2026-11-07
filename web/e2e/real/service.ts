@@ -346,6 +346,8 @@ export async function openDetails(page: Page) {
  */
 export async function openPanelTab(page: Page, name?: string) {
   const toggle = page.getByRole("button", { name: "Show side panel", exact: true });
+  // A freshly started dev server compiles the page on its first load.
+  await expect(toggle).toBeVisible({ timeout: 30_000 });
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
   const panel = page.getByRole("complementary", { name: "Thread context" });
   await expect(panel).toBeVisible();
