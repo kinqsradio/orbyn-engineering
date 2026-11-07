@@ -548,7 +548,7 @@
 .set-checkouts .mono {
   color: var(--color-text);
 }
-.settings-page .set-name-input {
+.settings-page .setting-line-control input.set-name-input {
   width: 200px;
 }
 
@@ -638,11 +638,11 @@
   color: var(--color-muted);
 }
 /* OpenTelemetry endpoints: mono, 300px; a failed check outlines red and says so (s-x-maint-otel). */
-.settings-page .set-endpoint-input {
+.settings-page .setting-line-control input.set-endpoint-input {
   width: 300px;
   font-family: var(--font-mono);
 }
-.settings-page .set-endpoint-input[aria-invalid="true"] {
+.settings-page .setting-line-control input.set-endpoint-input[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
 .settings-page .setting-line:has(.set-endpoint-input[aria-invalid="true"]) .setting-line-desc {

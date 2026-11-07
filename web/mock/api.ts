@@ -24,7 +24,8 @@ import type {
   WorkspaceStatus,
 } from "../src/api/types.ts";
 import * as fixtures from "./fixtures.ts";
-import { instanceEngines, providerInstances } from "./instances.ts";
+import { acpRegistry, historyScan } from "./history.ts";
+import { customModels, instanceEngines, providerInstances } from "./instances.ts";
 import { cleanupPreview, diagnostics } from "./maintenance.ts";
 import { preferenceCatalog, projectPreferenceKeys } from "./preferenceCatalog.ts";
 
@@ -118,7 +119,7 @@ export function createMockApi(options: MockOptions = {}) {
     failStep = null;
     if (next === "no-skills") managed = fixtures.workspaceStatus([], false);
     engines = structuredClone([...fixtures.engines, ...instanceEngines(fixtures.engines)]);
-    if (!blank) preferenceValues = { ...preferenceValues, provider_instances: structuredClone(providerInstances) };
+    if (!blank) preferenceValues = { ...preferenceValues, provider_instances: structuredClone(providerInstances), custom_models: structuredClone(customModels) };
   }
   reset();
 
@@ -482,6 +483,12 @@ export function createMockApi(options: MockOptions = {}) {
             : { status: 200, body: result };
         }
         break;
+      case "GET /api/history":
+        return { status: 200, body: historyScan(Date.now()) };
+      case "POST /api/history":
+        return { status: 200, body: { thread_id: nextId("t"), imported: true } };
+      case "GET /api/acp":
+        return { status: 200, body: acpRegistry };
       case "GET /api/diagnostics":
         return { status: 200, body: diagnostics(Date.now()) };
       case "POST /api/diagnostics":

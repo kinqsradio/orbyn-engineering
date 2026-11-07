@@ -18,3 +18,11 @@ export function instanceEngines(base: EngineStatus[]): EngineStatus[] {
       instance_of: parent.id, update_command: null }];
   });
 }
+
+/** Models the person added by id; the service merges them into each provider's list. */
+export const customModels: JsonValue[] = [
+  { engine: "claude", id: "sonnet-5-5-1m" },
+  { engine: "claude", id: "haiku-5-5-fast" },
+  { engine: "claude_personal", id: "sonnet-5-5-1m" },
+  { engine: "claude_personal", id: "haiku-5-5-fast" },
+];
