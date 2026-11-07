@@ -333,6 +333,12 @@ test("the pull requests page lists and filters", async ({ page }) => {
   await expect(page.getByText("No pull requests match")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(page.getByRole("button", { name: /Add approval timeouts/ })).toBeVisible();
+
+  // With a project chosen, the empty state names it.
+  await page.getByRole("button", { name: "All projects" }).click();
+  await page.getByRole("menuitemradio", { name: /^(?!All projects)/ }).first().click();
+  await page.getByLabel("Search pull requests").fill("label:nothing ");
+  await expect(page.getByText(/^No pull requests in .+ match these filters\.$/)).toBeVisible();
 });
 
 test("Reading folds the sidebar away on a wide window, but a narrow home is still the thread list", async ({ page }) => {

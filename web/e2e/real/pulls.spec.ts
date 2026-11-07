@@ -97,7 +97,7 @@ test("the list filters by author, label, checks and draft, and by a label typed 
 
   await inPanel(async () => {
     await panel.getByLabel("Search people").fill("gra");
-    await panel.getByRole("checkbox", { name: "grace" }).click();
+    await panel.getByRole("option", { name: /grace/ }).click();
   });
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("Second layer");

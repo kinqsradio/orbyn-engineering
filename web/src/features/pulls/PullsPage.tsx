@@ -22,6 +22,7 @@ import {
   defaultSort,
   labelsOf,
   noFilters,
+  pullData,
   statesToAsk,
   visiblePulls,
   authorsOf,
@@ -68,10 +69,11 @@ export function PullsPage() {
   const phone = useMedia("(max-width: 767px)");
   const asked = statesToAsk(filters.states);
   const list = useAsync(`pulls:${[...asked].sort().join("+")}:${submitted}`, (signal) => loadPulls(asked, submitted, signal));
-  const forges = useAsync("pulls:forges", (signal) => pullsApi.forges(signal));
-  const accounts = useMemo(() => forges.data?.flatMap((forge) => forge.accounts) ?? [], [forges.data]);
   const all = useMemo(() => list.data?.pulls ?? [], [list.data]);
-  const rows = useMemo(() => visiblePulls(all, filters, tokens, sort, accounts), [all, filters, tokens, sort, accounts]);
+  // Without a creation time the number orders by date, which only means something inside one repository.
+  const oneRepo = pullData.createdAt || filters.project !== null || new Set(all.map((entry) => entry.project_id)).size <= 1;
+  const orderBy = oneRepo || sort.by !== "created" ? sort : defaultSort;
+  const rows = useMemo(() => visiblePulls(all, filters, tokens, orderBy, null), [all, filters, tokens, orderBy]);
   const refresh = () => void list.reload();
   const refreshing = list.status === "ready" && list.refreshing;
   const loadedAt = useMemo(() => (list.data ? Date.now() : null), [list.data]);
@@ -171,7 +173,9 @@ export function PullsPage() {
         draftCount={count((pull) => pull.state === "open" && pull.draft)}
         filters={filters}
         onFilters={setFilters}
-        sort={sort}
+        sort={orderBy}
+        oneRepo={oneRepo}
+        has={pullData}
         onSort={setSort}
         text={text}
         onText={setText}
@@ -207,7 +211,9 @@ export function PullsPage() {
             <Search size={20} aria-hidden />
             <b>No pull requests match</b>
             <p>
-              Nothing in {sentence(filters.states.map((state) => state[0]!.toUpperCase() + state.slice(1)))} matches {sentence(criteria)}.
+              {filters.project
+                ? `No pull requests in ${nameOf(filters.project)} match these filters.`
+                : `Nothing in ${sentence(filters.states.map((state) => state[0]!.toUpperCase() + state.slice(1)))} matches ${sentence(criteria)}.`}
             </p>
             <Button icon={<X size={14} aria-hidden />} tone="primary" onClick={clearAll}>
               Clear filters

@@ -7,9 +7,11 @@ import "./pullsToolbar.css";
 import {
   activeChips,
   clearedFilters,
+  pullData,
   takeLabels,
   sortName,
   type CheckKey,
+  type PullData,
   type PullFilters,
   type PullSort,
   type PullState,
@@ -44,6 +46,10 @@ export interface ToolbarProps {
   /** How many rows the current filters leave, for the phone sheet's button. */
   shown: number;
   phone: boolean;
+  /** Whether the list covers one repository, which Created and Oldest need. */
+  oneRepo: boolean;
+  /** Which hidden controls the data now supports. */
+  has?: PullData;
   /** On a phone the refresh button sits beside the search. */
   phoneRefresh?: ReactNode;
 }
@@ -58,7 +64,6 @@ const STATE_OPTIONS: { value: PullState; label: string }[] = [
   { value: "merged", label: "Merged" },
 ];
 const REVIEW_OPTIONS: { value: ReviewKey; label: string }[] = [
-  { value: "review_required", label: "Review required" },
   { value: "approved", label: "Approved" },
   { value: "changes_requested", label: "Changes requested" },
 ];
@@ -80,12 +85,37 @@ function Tick({ on, label, count, onClick }: { on: boolean; label: string; count
   );
 }
 
-function SearchBox({ placeholder, value, onChange, label }: { placeholder: string; value: string; onChange(next: string): void; label: string }) {
+/** The typed text in ink, the rest of the name muted. */
+function Matched({ name, find }: { name: string; find: string }) {
+  const at = find ? name.toLowerCase().indexOf(find.toLowerCase()) : -1;
+  if (at < 0) return <>{name}</>;
+  return (
+    <>
+      {name.slice(0, at)}
+      <span className="pulls-ink">{name.slice(at, at + find.length)}</span>
+      {name.slice(at + find.length)}
+    </>
+  );
+}
+
+function SearchBox({
+  placeholder,
+  value,
+  onChange,
+  label,
+  inputProps,
+}: {
+  placeholder: string;
+  value: string;
+  onChange(next: string): void;
+  label: string;
+  inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
+}) {
   return (
     <div className="pulls-fld pulls-fld-menu">
       <div className="pulls-inp">
         <Search size={14} aria-hidden />
-        <input aria-label={label} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
+        <input aria-label={label} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} {...inputProps} />
       </div>
     </div>
   );
@@ -93,10 +123,15 @@ function SearchBox({ placeholder, value, onChange, label }: { placeholder: strin
 
 function FilterPanel({ props, count, sheet, dismiss }: { props: ToolbarProps; count: number; sheet: boolean; dismiss(): void }) {
   const { filters, onFilters } = props;
+  const has = props.has ?? pullData;
   const [authorFind, setAuthorFind] = useState("");
   const [labelFind, setLabelFind] = useState("");
   const set = (patch: Partial<PullFilters>) => onFilters({ ...filters, ...patch });
-  const authors = authorFind.trim() ? props.authors.filter((name) => name.toLowerCase().includes(authorFind.trim().toLowerCase())).slice(0, 6) : [];
+  const [active, setActive] = useState(0);
+  const find = authorFind.trim();
+  // Choosing someone adds the chip; the search and its list stay, with focus where it was.
+  const pick = (name: string) => set({ author: filters.author === name ? null : name, me: false });
+  const authors = find ? props.authors.filter((name) => name.toLowerCase().includes(find.toLowerCase())).slice(0, 6) : [];
   const labels = props.labels.filter((entry) => entry.name.toLowerCase().includes(labelFind.trim().toLowerCase()));
   const clearAll = () => {
     onFilters(clearedFilters(filters));
@@ -138,6 +173,9 @@ function FilterPanel({ props, count, sheet, dismiss }: { props: ToolbarProps; co
   const review = (
     <>
       <div className="pulls-mh">Review</div>
+      {has.reviewRequests ? (
+        <Tick on={filters.review.includes("review_required")} label="Needs my review" onClick={() => set({ review: toggle(filters.review, "review_required") })} />
+      ) : null}
       {REVIEW_OPTIONS.map((entry) => (
         <Tick key={entry.value} on={filters.review.includes(entry.value)} label={entry.label} onClick={() => set({ review: toggle(filters.review, entry.value) })} />
       ))}
@@ -159,16 +197,75 @@ function FilterPanel({ props, count, sheet, dismiss }: { props: ToolbarProps; co
           label="Author"
           value={filters.me ? "me" : filters.author ? "named" : "anyone"}
           options={[
-            { value: "me", label: "Me" },
-            { value: "anyone", label: "Anyone" },
+            ...(has.viewerLogin ? [{ value: "me" as const, label: "Me" }] : []),
+            { value: "anyone" as const, label: "Anyone" },
           ]}
           onChange={(who) => set({ me: who === "me", author: null })}
         />
-        <SearchBox label="Search people" placeholder="Search people" value={authorFind} onChange={setAuthorFind} />
+        <SearchBox
+          label="Search people"
+          placeholder="Search people"
+          value={authorFind}
+          onChange={(next) => {
+            setAuthorFind(next);
+            setActive(0);
+          }}
+          inputProps={{
+            role: "combobox",
+            "aria-expanded": authors.length > 0,
+            "aria-controls": "pulls-author-list",
+            "aria-activedescendant": authors[active] ? `pulls-author-${authors[active]}` : undefined,
+            onKeyDown: (event) => {
+              if (authors.length === 0) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                setActive((at) => (at + (event.key === "ArrowDown" ? 1 : -1) + authors.length) % authors.length);
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const name = authors[active];
+                if (name) pick(name);
+              }
+            },
+          }}
+        />
       </div>
-      {authors.map((name) => (
-        <Tick key={name} on={filters.author === name} label={name} onClick={() => set({ author: filters.author === name ? null : name, me: false })} />
-      ))}
+      {authors.length > 0 ? (
+        <div id="pulls-author-list" role="listbox" aria-label={`Authors matching ${find}`} className="pulls-people">
+          {authors.map((name, at) => (
+            <div
+              key={name}
+              id={`pulls-author-${name}`}
+              role="option"
+              aria-selected={at === active}
+              className="pulls-prs"
+              data-kf={at === active || undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(name)}
+            >
+              <span className="pulls-av" aria-hidden>
+                {name.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="pulls-pn">
+                <Matched name={name} find={find} />
+              </span>
+              <span className="pulls-hd">
+                @<Matched name={name} find={find} />
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {find && authors.length === 0 ? <p className="pulls-none">No one matches “{find}”</p> : null}
+      {filters.author ? (
+        <div className="pulls-chipwrap">
+          <span className="pulls-fchip">
+            {filters.author}
+            <button type="button" className="pulls-x" aria-label={`Remove author ${filters.author}`} onClick={() => set({ author: null })}>
+              <X size={10} aria-hidden />
+            </button>
+          </span>
+        </div>
+      ) : null}
     </>
   );
   const label = (
@@ -192,27 +289,31 @@ function FilterPanel({ props, count, sheet, dismiss }: { props: ToolbarProps; co
   if (sheet) {
     return (
       <>
-        <span className="pulls-grab" aria-hidden />
-        <div className="pulls-sheet-head">
-          <b>Filters</b>
-          <span className="pulls-sheet-acts">
-            <button type="button" className="pulls-ghost" onClick={clearAll}>
-              Clear all
-            </button>
+        <div className="pulls-sheet-top" data-sheet-handle>
+          <span className="pulls-grab" aria-hidden />
+          <div className="pulls-sheet-head">
+            <b>Filters</b>
             <IconButton label="Close filters" onClick={dismiss}>
               <X size={14} aria-hidden />
             </IconButton>
-          </span>
+          </div>
         </div>
-        {state}
-        {draft}
-        {review}
-        {checks}
-        {author}
-        {label}
-        <Button tone="primary" className="pulls-show" onClick={dismiss}>
-          Show {props.shown} pull {props.shown === 1 ? "request" : "requests"}
-        </Button>
+        <div className="pulls-sheet-body">
+          {state}
+          {draft}
+          {review}
+          {checks}
+          {author}
+          {label}
+        </div>
+        <div className="pulls-sheet-foot">
+          <button type="button" className="pulls-ghost" onClick={clearAll}>
+            Clear all
+          </button>
+          <Button tone="primary" className="pulls-show" onClick={dismiss}>
+            Show {props.shown} pull {props.shown === 1 ? "request" : "requests"}
+          </Button>
+        </div>
       </>
     );
   }
@@ -241,6 +342,7 @@ function FilterPanel({ props, count, sheet, dismiss }: { props: ToolbarProps; co
 }
 
 export function PullsToolbar(props: ToolbarProps) {
+  const has = props.has ?? pullData;
   const { filters, onFilters, sort, onSort, text, onText, tokens, onTokens, onSubmit } = props;
   const [menu, setMenu] = useState<{ kind: Kind; anchor: HTMLElement } | null>(null);
   const field = useRef<HTMLInputElement>(null);
@@ -411,6 +513,7 @@ export function PullsToolbar(props: ToolbarProps) {
                 }}
               >
                 <span className="pulls-lead">{filters.project === null ? <Check size={14} aria-hidden /> : null}</span>
+                <i className="pulls-dot pulls-dot-hollow" aria-hidden />
                 All projects
                 <span className="pulls-k">{props.allCount}</span>
               </button>
@@ -426,9 +529,8 @@ export function PullsToolbar(props: ToolbarProps) {
                     dismiss();
                   }}
                 >
-                  <span className="pulls-lead">
-                    <i className={`pulls-dot project-color-${entry.color}`} />
-                  </span>
+                  <span className="pulls-lead">{filters.project === entry.id ? <Check size={14} aria-hidden /> : null}</span>
+                  <i className={`pulls-dot project-color-${entry.color}`} aria-hidden />
                   {entry.name}
                   <span className="pulls-k">{entry.count}</span>
                 </button>
@@ -444,29 +546,29 @@ export function PullsToolbar(props: ToolbarProps) {
               <div className="pulls-mh">Sort by</div>
               {(
                 [
-                  { label: "Updated", on: sort.by === "updated", to: { by: "updated", dir: sort.dir } },
-                  { label: "Created", on: sort.by === "created" && sort.dir === "newest", to: { by: "created", dir: "newest" } },
-                  { label: "Most comments", on: false, to: null },
-                  { label: "Oldest", on: sort.by === "created" && sort.dir === "oldest", to: { by: "created", dir: "oldest" } },
-                ] as { label: string; on: boolean; to: PullSort | null }[]
-              ).map((entry) => (
-                <button
-                  key={entry.label}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={entry.on}
-                  disabled={entry.to === null}
-                  title={entry.to === null ? "The forge does not report comment counts" : undefined}
-                  className="pulls-mi"
-                  onClick={() => {
-                    if (entry.to) onSort(entry.to);
-                    dismiss();
-                  }}
-                >
-                  <span className="pulls-lead">{entry.on ? <Check size={14} aria-hidden /> : null}</span>
-                  {entry.label}
-                </button>
-              ))}
+                  { label: "Updated", on: sort.by === "updated", to: { by: "updated", dir: sort.dir }, shown: true },
+                  { label: "Created", on: sort.by === "created" && sort.dir === "newest", to: { by: "created", dir: "newest" }, shown: props.oneRepo },
+                  { label: "Most comments", on: sort.by === "comments", to: { by: "comments", dir: "newest" }, shown: has.commentCount },
+                  { label: "Oldest", on: sort.by === "created" && sort.dir === "oldest", to: { by: "created", dir: "oldest" }, shown: props.oneRepo },
+                ] as { label: string; on: boolean; to: PullSort; shown: boolean }[]
+              )
+                .filter((entry) => entry.shown)
+                .map((entry) => (
+                  <button
+                    key={entry.label}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={entry.on}
+                    className="pulls-mi"
+                    onClick={() => {
+                      onSort(entry.to);
+                      dismiss();
+                    }}
+                  >
+                    <span className="pulls-lead">{entry.on ? <Check size={14} aria-hidden /> : null}</span>
+                    {entry.label}
+                  </button>
+                ))}
               <hr className="pulls-msep" />
               <div className="pulls-mh">Direction</div>
               <div className="pulls-msub">

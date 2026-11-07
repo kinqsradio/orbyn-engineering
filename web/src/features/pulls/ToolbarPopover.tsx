@@ -3,6 +3,10 @@ import { createPortal } from "react-dom";
 
 /** The longest the exit may take: --m-base-out is 140ms, so the fallback never cuts it short. */
 const EXIT_FALLBACK_MS = 220;
+/** A sheet leaves over --m-slow-out (210ms), so its fallback waits a little longer. */
+const SHEET_EXIT_FALLBACK_MS = 320;
+/** How far down a drag must go, in px, to dismiss the sheet. */
+const DRAG_DISMISS_PX = 80;
 
 /**
  * A panel anchored under the button that opened it, right edges aligned, scaling from that
@@ -41,7 +45,7 @@ export function ToolbarPopover({
 
   useEffect(() => {
     if (!closing) return;
-    const timer = setTimeout(finish, EXIT_FALLBACK_MS);
+    const timer = setTimeout(finish, layout === "sheet" ? SHEET_EXIT_FALLBACK_MS : EXIT_FALLBACK_MS);
     return () => clearTimeout(timer);
     // `finish` only reads refs and props that cannot change while the panel is leaving.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,6 +87,30 @@ export function ToolbarPopover({
     };
   }, [anchor]);
 
+  // Dragging the sheet's top (grab bar and title) down past a threshold dismisses it.
+  const drag = useRef<{ y: number; dy: number } | null>(null);
+  const dragStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (layout !== "sheet" || closing || !target.closest("[data-sheet-handle]") || target.closest("button")) return;
+    drag.current = { y: event.clientY, dy: 0 };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const dragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    if (!state) return;
+    state.dy = Math.max(0, event.clientY - state.y);
+    event.currentTarget.style.transition = "none";
+    event.currentTarget.style.translate = `0 ${state.dy}px`;
+  };
+  const dragEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    if (!state) return;
+    drag.current = null;
+    event.currentTarget.style.transition = "";
+    event.currentTarget.style.translate = "";
+    if (state.dy > DRAG_DISMISS_PX) setClosing(true);
+  };
+
   const arrows = (event: React.KeyboardEvent) => {
     if (role !== "menu" || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
     event.preventDefault();
@@ -104,8 +132,13 @@ export function ToolbarPopover({
         data-closing={closing || undefined}
         style={width && layout === "popover" ? { width } : undefined}
         onKeyDown={arrows}
+        onPointerDown={dragStart}
+        onPointerMove={dragMove}
+        onPointerUp={dragEnd}
+        onPointerCancel={dragEnd}
         onTransitionEnd={(event) => {
-          if (closing && event.target === event.currentTarget && event.propertyName === "opacity") finish();
+          // A popover leaves by fading; a sheet by sliding (or fading, under reduced motion).
+          if (closing && event.target === event.currentTarget && (layout === "sheet" || event.propertyName === "opacity")) finish();
         }}
       >
         {children(dismiss)}

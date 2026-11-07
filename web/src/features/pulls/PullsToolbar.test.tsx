@@ -1,11 +1,23 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { PullsToolbar } from "./PullsToolbar";
-import { defaultSort, noFilters, type PullFilters } from "./pullModel";
+import { defaultSort, noFilters, pullData, type PullData, type PullFilters } from "./pullModel";
 
-function Harness({ initial = noFilters, onQuery }: { initial?: PullFilters; onQuery?(query: string): void }) {
+function Harness({
+  initial = noFilters,
+  onQuery,
+  phone = false,
+  oneRepo = true,
+  has = pullData,
+}: {
+  initial?: PullFilters;
+  onQuery?(query: string): void;
+  phone?: boolean;
+  oneRepo?: boolean;
+  has?: PullData;
+}) {
   const [filters, setFilters] = useState(initial);
   const [sort, setSort] = useState(defaultSort);
   const [text, setText] = useState("");
@@ -25,10 +37,12 @@ function Harness({ initial = noFilters, onQuery }: { initial?: PullFilters; onQu
       onSubmit={(query) => onQuery?.(query)}
       projects={[{ id: "p", name: "orbyn-engineering", color: "blue", count: 2 }]}
       allCount={2}
-      authors={["ada"]}
+      authors={["ada", "grace"]}
       labels={[{ name: "bug", count: 3 }]}
       shown={2}
-      phone={false}
+      phone={phone}
+      oneRepo={oneRepo}
+      has={has}
     />
   );
 }
@@ -74,5 +88,59 @@ describe("pull requests toolbar", () => {
     expect(field()).toHaveValue("");
     expect(screen.queryByRole("button", { name: "Remove label:bug" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
+  });
+
+  it("shows the live count on the phone sheet's footer button", async () => {
+    const user = userEvent.setup();
+    render(<Harness phone />);
+    await user.click(screen.getByRole("button", { name: "Filters" }));
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    expect(within(sheet).getByRole("button", { name: "Show 2 pull requests" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Clear all" })).toBeInTheDocument();
+  });
+
+  it("says who matches, or that no one does, under the Author search", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("button", { name: "Filters" }));
+    await user.type(screen.getByRole("combobox", { name: "Search people" }), "gr");
+    expect(screen.getByRole("option", { name: /grace/ })).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "Remove author grace" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Search people" })).toHaveFocus();
+    await user.clear(screen.getByRole("combobox", { name: "Search people" }));
+    await user.type(screen.getByRole("combobox", { name: "Search people" }), "ril");
+    expect(screen.getByText("No one matches “ril”")).toBeInTheDocument();
+  });
+
+  it("hides what the data cannot support yet, and draws it in place once it can", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<Harness />);
+    await user.click(screen.getByRole("button", { name: "Filters" }));
+    expect(screen.queryByRole("checkbox", { name: "Needs my review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Me" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /^Sort:/ }));
+    expect(screen.queryByRole("menuitemradio", { name: "Most comments" })).not.toBeInTheDocument();
+    unmount();
+
+    render(<Harness has={{ reviewRequests: true, viewerLogin: true, commentCount: true, createdAt: false }} />);
+    await user.click(screen.getByRole("button", { name: "Filters" }));
+    expect(screen.getByRole("checkbox", { name: "Needs my review" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Me" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /^Sort:/ }));
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual(["Updated", "Created", "Most comments", "Oldest"]);
+  });
+
+  it("offers Created and Oldest for one repository and not across several", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<Harness oneRepo={false} />);
+    await user.click(screen.getByRole("button", { name: /^Sort:/ }));
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual(["Updated"]);
+    unmount();
+    render(<Harness oneRepo />);
+    await user.click(screen.getByRole("button", { name: /^Sort:/ }));
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual(["Updated", "Created", "Oldest"]);
   });
 });

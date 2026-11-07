@@ -47,9 +47,9 @@ describe("pull list", () => {
     expect(numbers({ ...noFilters, checks: ["running"] })).toEqual([2]);
   });
 
-  it("limits to the signed-in accounts for Me", () => {
+  it("limits Me to the viewer's login", () => {
     const list = [entry(1, { author: "ada" }), entry(2, { author: "grace" })];
-    expect(visiblePulls(list, { ...noFilters, me: true }, [], newest, ["grace"]).map((e) => e.pull.number)).toEqual([2]);
+    expect(visiblePulls(list, { ...noFilters, me: true }, [], newest, "grace").map((e) => e.pull.number)).toEqual([2]);
   });
 
   it("asks the service for each chosen state, or all of them at once", () => {

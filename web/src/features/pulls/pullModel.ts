@@ -6,7 +6,7 @@ export type CheckKey = "passing" | "failing" | "running";
 
 /** What the list orders by, and which end comes first. */
 export interface PullSort {
-  by: "updated" | "created";
+  by: "updated" | "created" | "comments";
   dir: "newest" | "oldest";
 }
 
@@ -22,6 +22,22 @@ export interface PullFilters {
   me: boolean;
   labels: string[];
 }
+
+/**
+ * What the forge contract does not carry yet. Each flag turns one hidden control back on, in the
+ * place the design draws it, once its field arrives. All false for now.
+ */
+export interface PullData {
+  /** Who is asked to review: the "Needs my review" filter. */
+  reviewRequests: boolean;
+  /** The signed-in person's login: the Author "Me" choice. */
+  viewerLogin: boolean;
+  /** A comment count: the "Most comments" sort. */
+  commentCount: boolean;
+  /** A creation time: Created and Oldest across several repositories. */
+  createdAt: boolean;
+}
+export const pullData: PullData = { reviewRequests: false, viewerLogin: false, commentCount: false, createdAt: false };
 
 export const defaultSort: PullSort = { by: "updated", dir: "newest" };
 
@@ -121,14 +137,19 @@ export const clearedFilters = (filters: PullFilters): PullFilters => ({ ...noFil
 export const statesToAsk = (states: readonly PullState[]): string[] => (states.length === 3 ? ["all"] : [...states]);
 
 /** `Updated`, `Created` or `Oldest`: the sort as the button names it. */
-export const sortName = (sort: PullSort) => (sort.by === "updated" ? "Updated" : sort.dir === "oldest" ? "Oldest" : "Created");
+export const sortName = (sort: PullSort) =>
+  sort.by === "updated" ? "Updated" : sort.by === "comments" ? "Most comments" : sort.dir === "oldest" ? "Oldest" : "Created";
+
+/** The contract carries no comment count yet, so every pull request counts the same. */
+const commentsOf = (_entry: PullListEntry) => 0;
 
 export function visiblePulls(
   entries: readonly PullListEntry[],
   filters: PullFilters,
   labels: readonly string[],
   sort: PullSort,
-  accounts: readonly string[] = [],
+  /** The signed-in person's login, once the contract carries it. */
+  viewer: string | null = null,
 ): PullListEntry[] {
   const kept = entries.filter(({ project_id, pull }) => {
     if (filters.project && project_id !== filters.project) return false;
@@ -140,14 +161,19 @@ export function visiblePulls(
       const key = word === "pass" ? "passing" : word === "fail" ? "failing" : word === "pending" ? "running" : null;
       if (!key || !filters.checks.includes(key)) return false;
     }
-    if (filters.me && !(pull.author && accounts.includes(pull.author))) return false;
+    if (filters.me && !(viewer && pull.author === viewer)) return false;
     if (filters.author && pull.author !== filters.author) return false;
     const names = pull.labels.map((label) => label.toLowerCase());
     if (!filters.labels.every((label) => names.includes(label.toLowerCase()))) return false;
     return labels.every((label) => names.includes(label));
   });
-  // The forge reports no creation time, so the number stands in for it.
-  const key = (entry: PullListEntry) => (sort.by === "updated" ? (entry.pull.updated_at ?? "") : String(entry.pull.number).padStart(12, "0"));
+  // The forge reports no creation time, so the number stands in for it (one repository only).
+  const key = (entry: PullListEntry) =>
+    sort.by === "updated"
+      ? (entry.pull.updated_at ?? "")
+      : sort.by === "comments"
+        ? String(commentsOf(entry)).padStart(12, "0")
+        : String(entry.pull.number).padStart(12, "0");
   const order = sort.dir === "newest" ? -1 : 1;
   return [...kept].sort((a, b) => order * key(a).localeCompare(key(b)));
 }
