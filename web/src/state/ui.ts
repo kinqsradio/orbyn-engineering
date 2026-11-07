@@ -22,7 +22,7 @@ interface Prefs {
   theme: ThemeChoice;
   /** The surface pane. Null follows the layout: open only when there's room. */
   panelOpen: boolean | null;
-  /** The surface showing; null is the launcher. */
+  /** The surface showing; null when none is. */
   panelTab: RightTab | null;
   /** Panel and hero motion in ms, 0 to 400. 0 is off; the default is the --m-slow token. */
   panelAnimationMs: number;
@@ -294,7 +294,6 @@ interface UiState extends Prefs {
   showInBrowser(url: string | { tabId: string } | null): void;
   closePanel(): void;
   setPanelOpen(open: boolean): void;
-  /** Back to the launcher, keeping open surfaces. */
   setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
   setPanelMaximized(maximized: boolean): void;

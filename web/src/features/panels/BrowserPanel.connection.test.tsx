@@ -73,9 +73,9 @@ describe("the Browser while the Orbyn service is away", () => {
     useConnection.setState({ serviceDown: true });
     render(<BrowserPanel threadId="t" />);
     expect(await screen.findByRole("combobox", { name: "Search or enter URL" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Pick element, unavailable" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Reload" })).toBeEnabled();
-    expect(screen.getByText("Sending to the thread is paused while the service is away.")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Pick element, unavailable" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Reload" })).toBeEnabled();
+    expect(await screen.findByText("Sending to the thread is paused while the service is away.")).toBeInTheDocument();
   });
 
   it("offers Pick element and no note while the service answers", async () => {

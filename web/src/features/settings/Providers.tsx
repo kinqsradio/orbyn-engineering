@@ -30,7 +30,12 @@ type View = { page: "list" } | { page: "detail"; id: string } | { page: "history
 /** How many conversations Claude and Codex keep on this computer, as the service counts them. Hidden until it answers, and when there are none. */
 function NativeSessionsRow({ engines, onReview }: { engines: EngineStatus[]; onReview(): void }) {
   const ids = ["claude", "codex"].filter((id) => engines.some((engine) => engine.id === id));
-  const counts = useAsync(`native-session-counts:${ids.join()}`, (signal) => Promise.all(ids.map((id) => api.nativeSessionCount(id, signal))));
+  const counts = useAsync(`native-session-counts:${ids.join()}`, async (signal) => {
+    // One engine that cannot count must not hide the others.
+    const settled = await Promise.allSettled(ids.map((id) => api.nativeSessionCount(id, signal)));
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    return settled.flatMap((entry) => (entry.status === "fulfilled" ? [entry.value] : []));
+  });
   if (counts.status !== "ready") return null;
   const total = counts.data.reduce((sum, entry) => sum + entry.count, 0);
   if (total === 0) return null;

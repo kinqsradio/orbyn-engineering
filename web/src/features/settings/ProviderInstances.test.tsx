@@ -179,6 +179,14 @@ describe("provider pages", () => {
     render(<ProvidersSection />);
     expect(await screen.findByRole("button", { name: "Review 12+" })).toBeVisible();
   });
+  it("still shows Native sessions when only one engine fails to count", async () => {
+    vi.spyOn(api, "nativeSessionCount").mockImplementation(async (id) => {
+      if (id === "codex") throw new ApiFailure("unsupported", "No history folder.", 400);
+      return { engine: id, count: 12, truncated: false };
+    });
+    render(<ProvidersSection />);
+    expect(await screen.findByRole("button", { name: "Review 12" })).toBeVisible();
+  });
   it("hides Native sessions when the service has no count to give", async () => {
     vi.spyOn(api, "nativeSessionCount").mockRejectedValue(new ApiFailure("unsupported", "No history folder.", 400));
     render(<ProvidersSection />);
