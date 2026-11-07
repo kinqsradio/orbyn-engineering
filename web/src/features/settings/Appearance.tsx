@@ -1,12 +1,12 @@
 import { settingsLabel } from "./settingsSearch";
-import { Info } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Info } from "lucide-react";
 import { useRef, useState } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
 import { applyTheme, useUi, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
+import { isColour, presetById, readThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
 import { ENVIRONMENT_ICON_CHOICES } from "./EnvironmentIcon";
 import { PreferenceGroups } from "./PreferenceRows";
 
@@ -182,12 +182,56 @@ function PresetRow({ scheme }: { scheme: "light" | "dark" }) {
   );
 }
 
-function ThemeEditor() {
+/** A row in Appearance that opens the theme editor page. */
+function ThemeEditorRow({ open }: { open(): void }) {
+  return (
+    <SettingGroup>
+      <SettingRow title="Theme editor" description="Edit a theme as a file or token by token">
+        <Button small onClick={open}>Edit…</Button>
+      </SettingRow>
+    </SettingGroup>
+  );
+}
+
+const colourOf = (token: string) => getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+
+function TokenRow({ label, value, save }: { label: string; value: string; save(next: string): void }) {
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (seen !== value) { setSeen(value); setDraft(value); setProblem(null); }
+  const commit = () => {
+    const next = draft.trim();
+    if (next === value) { setProblem(null); return; }
+    if (!isColour(next)) { setProblem(`${label}: “${next}” is not a colour. Use #rgb, #rrggbb or rgba().`); return; }
+    setProblem(null);
+    save(next);
+  };
+  return (
+    <div className={problem ? "tkn error" : "tkn"}>
+      <b>{label}</b>
+      <span className="swc" style={{ background: isColour(draft) ? draft.trim() : value }} aria-hidden />
+      <input className="mono" aria-label={label} value={draft} spellCheck={false} aria-invalid={problem ? true : undefined}
+        onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commit(); } }} />
+      {problem ? <small className="err" role="alert">{problem}</small> : null}
+    </div>
+  );
+}
+
+function ThemeEditorPage({ onBack }: { onBack(): void }) {
   const custom = useUi((state) => state.customColors);
   const theme = useUi((state) => state.theme);
+  const lightPreset = useUi((state) => state.lightPreset);
+  const darkPreset = useUi((state) => state.darkPreset);
   const setPrefs = useUi((state) => state.setPrefs);
-  const pushToast = useUi((state) => state.pushToast);
   const file = useRef<HTMLInputElement>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const scheme: "light" | "dark" = theme === "system" ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+  const presetKey = scheme === "dark" ? "darkPreset" : "lightPreset";
+  const presetValue = scheme === "dark" ? darkPreset : lightPreset;
+  const preset = presetById(presetValue);
+  const scheme_name = scheme === "dark" ? "Dark" : "Light";
   const save = (customColors: ThemeColors) => {
     setPrefs({ customColors });
     applyTheme(theme);
@@ -202,36 +246,41 @@ function ThemeEditor() {
   };
   const importTheme = async (selected: File | undefined) => {
     if (!selected) return;
-    const colors = parseThemeFile(await selected.text());
-    if (colors) save(colors);
-    else pushToast("Couldn't read that theme file.");
+    const read = readThemeFile(await selected.text());
+    if ("colors" in read) { setFailure(null); save(read.colors); }
+    else setFailure(`Couldn't import ${selected.name}. ${read.error} Nothing changed.`);
     if (file.current) file.current.value = "";
   };
   return (
-    <SettingGroup title="Theme editor">
-      {THEME_TOKENS.map(([token, label]) => (
-        <SettingRow key={token} title={label}>
-          <input
-            type="color"
-            aria-label={label}
-            value={custom[token] ?? (getComputedStyle(document.documentElement).getPropertyValue(token).trim().match(/^#[0-9a-f]{6}$/i)?.[0] ?? "#000000")}
-            onChange={(event) => save({ ...custom, [token]: event.target.value })}
-          />
-        </SettingRow>
-      ))}
-      <SettingRow title={settingsLabel("appearance-theme-file")}>
-        <input ref={file} type="file" accept="application/json,.json" hidden aria-label="Import theme file" onChange={(event) => void importTheme(event.target.files?.[0])} />
-        <Button small tone="quiet" onClick={() => file.current?.click()}>
-          Import
-        </Button>
-        <Button small tone="quiet" onClick={exportTheme}>
-          Export
-        </Button>
-        <Button small tone="quiet" disabled={Object.keys(custom).length === 0} onClick={() => save({})}>
-          Reset
-        </Button>
-      </SettingRow>
-    </SettingGroup>
+    <>
+      <div className="set-back">
+        <Button small tone="quiet" icon={<ChevronLeft size={13} aria-hidden />} onClick={onBack}>Appearance</Button>
+        <h2 className="set-back-title">Theme editor</h2>
+      </div>
+      <div className="set-licence-bar">
+        <select aria-label={`${scheme_name} theme`} value={presetValue ?? ""} onChange={(event) => { setPrefs({ [presetKey]: event.target.value || null }); applyTheme(theme); }}>
+          <option value="">{scheme_name} theme · Orbyn {scheme_name}</option>
+          {THEME_PRESETS.filter((entry) => entry.scheme === scheme).map((entry) => <option key={entry.id} value={entry.id}>{scheme_name} theme · {entry.name}</option>)}
+        </select>
+        <span className="set-back-end">
+          <input ref={file} type="file" accept="application/json,.json" hidden aria-label="Import theme file" onChange={(event) => void importTheme(event.target.files?.[0])} />
+          <Button small onClick={() => file.current?.click()}>Import…</Button>
+          <Button small onClick={exportTheme}>Export…</Button>
+          <Button small disabled={Object.keys(custom).length === 0} onClick={() => { setFailure(null); save({}); }}>Reset</Button>
+        </span>
+      </div>
+      {failure ? (
+        <p className="banner banner-err" role="alert"><AlertTriangle size={14} aria-hidden />{failure}
+          <Button small className="set-back-end" onClick={() => file.current?.click()}>Choose another file</Button></p>
+      ) : null}
+      <div className="tokg">
+        {THEME_TOKENS.map(([token, label]) => (
+          <TokenRow key={token} label={label}
+            value={custom[token] ?? preset?.colors[token] ?? colourOf(token)}
+            save={(next) => save({ ...custom, [token]: next })} />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -322,6 +371,7 @@ function TypographyGroup() {
 }
 
 export function AppearanceSection() {
+  const [editor, setEditor] = useState(false);
   const theme = useUi((state) => state.theme);
   const panelMs = useUi((state) => state.panelAnimationMs);
   const setPanelMs = useUi((state) => state.setPanelAnimationMs);
@@ -330,6 +380,7 @@ export function AppearanceSection() {
   const contrast = useUi((state) => state.contrast);
   const smoothing = useUi((state) => state.fontSmoothing);
   const environmentIdentification = useUi((state) => state.environmentIdentification);
+  if (editor) return <ThemeEditorPage onBack={() => setEditor(false)} />;
   return (
     <>
       <h1 className="sr-only" tabIndex={-1} data-page-title>
@@ -420,7 +471,7 @@ export function AppearanceSection() {
           />
         </SettingRow>
       </SettingGroup>
-      <ThemeEditor />
+      <ThemeEditorRow open={() => setEditor(true)} />
     </>
   );
 }

@@ -437,3 +437,41 @@
 .set-card .sub {
   font-size: var(--text-meta);
 }
+
+/* Theme editor: one row per colour token. */
+.tokg {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 24px;
+}
+.tkn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px 150px;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+}
+.tkn b {
+  font-weight: 400;
+}
+.tkn .swc {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-5);
+  box-shadow: inset 0 0 0 1px var(--color-borderStrong);
+}
+.tkn input {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.tkn.error input {
+  border-color: var(--color-danger);
+}
+.tkn .err {
+  grid-column: 1 / -1;
+  color: var(--color-danger);
+  font-size: 11.5px;
+}
+@media (max-width: 767px) {
+  .tokg { grid-template-columns: 1fr; }
+}

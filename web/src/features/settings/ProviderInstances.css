@@ -58,3 +58,4 @@
 .set-path { font-family: var(--font-mono); font-size: 11.5px; color: var(--color-textSoft); }
 .set-remove { color: var(--color-danger); }
 .settings-page .banner .btn { margin-left: auto; }
+.set-inuse-head { display: inline-flex; align-items: center; gap: 4px; }
