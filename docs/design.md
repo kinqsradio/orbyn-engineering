@@ -1,8 +1,24 @@
 # Design
 
-Orbyn's own look. Every feature in `docs/parity.md` stays; the interface no longer
-copies T3 Code's appearance or layout. `docs/ui-parity-audit.md` remains the record of
-behaviour checks; its pixel measurements against T3 are no longer targets.
+Orbyn's own look. Every feature in `docs/parity.md` stays; the interface follows the
+internal designs, not another product's appearance or layout. `docs/design-inventory.md`
+maps every design screen and motion to this app.
+
+## Sources of truth
+
+The internal designs, in order of authority:
+
+1. Engineer Designs: the screens of Orbyn Engineering.
+2. Components: the shared controls.
+3. Motion Designs: timing, easing and reduced-motion forms.
+4. Account Designs: the account and connected-app screens that Engineering shows.
+
+These are named in words only; the repository links to none of them. Their HTML is the
+source of values.
+
+There is one token file, `web/src/styles/tokens.css`. Its values come only from the
+design artifacts' HTML. Phase 1 fills it. Where this document and a design disagree
+about a value, the design wins; fix this document.
 
 ## Principles
 
@@ -206,12 +222,14 @@ close button returns to the page behind. The page is a labelled region, not a di
 
 ## Planned with the Orbyn platform
 
-The Orbyn Engineer Designs also draw four screens that need engine work that does not
+The Orbyn Engineer Designs draw four screens that need engine work that does not
 exist yet (connected-app scopes and a remote-access relay): Sign in to Orbyn, Connect
-Orbyn Planner, Remote access and pairing, and On a phone. They are built as real
-components on sample data in `web/src/features/platform`, behind a development-only
-build flag (`__ORBYN_PREVIEWS__`, true outside `vite build`). Nothing in the app links to
-them; they open by hash route only: `#/preview/account`, `#/preview/connect-planner`,
+Orbyn Planner, Remote access and pairing, and On a phone. They are
+`preview-only` rows in `docs/design-inventory.md`, together with the phone preview's
+"Paired machine offline" state. They are built as real components on sample
+data in `web/src/features/platform`, behind a development-only build flag
+(`__ORBYN_PREVIEWS__`, true outside `vite build`). Nothing in the app links to them;
+they open by hash route only: `#/preview/account`, `#/preview/connect-planner`,
 `#/preview/pair-phone` and `#/preview/phone`. In a production build the routes fall
 through to the normal app and the code is not in the output (`npm run build` fails if it
 is). Every control is disabled with the reason "Available with Orbyn accounts", and the
