@@ -1,10 +1,6 @@
 import { CircleAlert, CloudOff, Loader2 } from "lucide-react";
-import { api } from "../../api/client";
 import { inDesktopApp } from "../../api/shell";
-import type { ShellAction } from "../../api/types";
-import { toFailure } from "../../lib/useAsync";
-import { useConnection, useConnectionKind } from "../../state/connection";
-import { useUi } from "../../state/ui";
+import { checkConnectionNow, useConnection, useConnectionKind } from "../../state/connection";
 import { Button } from "../../ui/controls";
 
 /** The header's word for a connection failure, in place of the run state. Null when all is well. */
@@ -35,16 +31,10 @@ export function ServiceDownBanner() {
   const kind = useConnectionKind();
   const restarting = useConnection((state) => state.restarting);
   const remote = useConnection((state) => state.remote);
-  const pushToast = useUi((state) => state.pushToast);
   if (kind !== "service-down") return null;
-  // The desktop app starts the service and opens its log; a remote viewer or a plain browser can do neither.
-  const controls = !remote && inDesktopApp();
-  const ask = (action: ShellAction) => {
-    api.shellAction(action).then(
-      () => { if (action === "restart_service") useConnection.getState().setRestarting(true); },
-      (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`),
-    );
-  };
+  // The desktop app's menu restarts the service. "Restart service" and "Show log" return to this
+  // banner once an approved desktop route exists: the service is down here, so it can't carry them.
+  const menu = !remote && inDesktopApp();
   if (restarting) {
     return (
       <div className="conn-banner" data-tone="info" role="status">
@@ -59,13 +49,11 @@ export function ServiceDownBanner() {
       <div>
         <b>Can’t reach the Orbyn service on this Mac.</b>{" "}
         <span className="conn-banner-detail">Threads, files and the terminal are paused.</span>
+        {menu ? <div className="conn-banner-detail">To restart the service, use the app’s menu: Orbyn › Restart service.</div> : null}
       </div>
-      {controls ? (
-        <div className="conn-banner-end">
-          <Button small onClick={() => ask("show_log")}>Show log</Button>
-          <Button small tone="primary" onClick={() => ask("restart_service")}>Restart service</Button>
-        </div>
-      ) : null}
+      <div className="conn-banner-end">
+        <Button small tone="primary" onClick={checkConnectionNow}>Check again</Button>
+      </div>
     </div>
   );
 }

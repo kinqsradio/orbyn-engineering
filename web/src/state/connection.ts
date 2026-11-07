@@ -56,6 +56,10 @@ const PROBE_TIMEOUT_MS = 2500;
  * `probe` resolves when the service answers and should stop when its signal aborts; only one probe
  * is in flight at a time. Returns a stop function.
  */
+let askNow: (() => void) | null = null;
+/** Asks the service whether it is back right now, without waiting for the next timed probe. */
+export const checkConnectionNow = () => askNow?.();
+
 export function watchConnection(probe: (signal: AbortSignal) => Promise<unknown>): () => void {
   const sync = () => useConnection.getState().setOffline(navigator.onLine === false);
   sync();
@@ -64,23 +68,27 @@ export function watchConnection(probe: (signal: AbortSignal) => Promise<unknown>
   let timer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
   let asking = false;
+  let inFlight: AbortController | null = null;
   const ask = () => {
     if (stopped || asking) return;
     if (!useConnection.getState().serviceDown || useConnection.getState().offline) return;
     asking = true;
     const abort = new AbortController();
+    inFlight = abort;
     const cutoff = setTimeout(() => abort.abort(), PROBE_TIMEOUT_MS);
     // A probe that ignores the signal is also given up on at the cutoff.
     const gaveUp = new Promise<never>((_, reject) =>
       abort.signal.addEventListener("abort", () => reject(new Error("The service did not answer.")), { once: true }),
     );
     Promise.race([probe(abort.signal), gaveUp])
-      .then(markReachable, () => undefined)
+      .then(() => { if (!stopped) markReachable(); }, () => undefined)
       .finally(() => {
         clearTimeout(cutoff);
         asking = false;
+        inFlight = null;
       });
   };
+  askNow = ask;
   const unsubscribe = useConnection.subscribe((state) => {
     if (state.serviceDown && !state.offline && timer === undefined) timer = setInterval(ask, PROBE_MS);
     if ((!state.serviceDown || state.offline) && timer !== undefined) {
@@ -90,6 +98,8 @@ export function watchConnection(probe: (signal: AbortSignal) => Promise<unknown>
   });
   return () => {
     stopped = true;
+    inFlight?.abort();
+    if (askNow === ask) askNow = null;
     unsubscribe();
     if (timer !== undefined) clearInterval(timer);
     window.removeEventListener("online", sync);

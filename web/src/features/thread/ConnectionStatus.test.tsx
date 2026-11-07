@@ -1,9 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { readShellStatus } from "../../api/shell";
-import { markReachable, useConnection } from "../../state/connection";
+import { checkConnectionNow, useConnection, watchConnection } from "../../state/connection";
 import { ConnectionStatus, ServiceDownBanner } from "./ConnectionStatus";
 
 afterEach(async () => {
@@ -31,36 +31,51 @@ it("names the Orbyn service, not the network, when it does not answer", () => {
   expect(screen.queryByText("Offline")).toBeNull();
 });
 
-it("offers Show log and Restart service through the desktop shell, and shows Restarting until the service answers", async () => {
-  await inDesktop(true);
-  const relay = vi.spyOn(api, "shellAction").mockResolvedValue(undefined);
-  useConnection.setState({ serviceDown: true });
-  const user = userEvent.setup();
-  render(<><ConnectionStatus /><ServiceDownBanner /></>);
-  await user.click(screen.getByRole("button", { name: "Show log" }));
-  expect(relay).toHaveBeenLastCalledWith("show_log");
-  await user.click(screen.getByRole("button", { name: "Restart service" }));
-  expect(relay).toHaveBeenLastCalledWith("restart_service");
-  expect(await screen.findByText("Restarting the Orbyn service. Your drafts are kept.")).toBeInTheDocument();
-  expect(screen.getByText("Restarting")).toBeInTheDocument();
-  expect(screen.queryByText("Paused")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Restart service" })).toBeNull();
+const MENU_LINE = "To restart the service, use the app’s menu: Orbyn › Restart service.";
 
-  markReachable();
-  expect(useConnection.getState().restarting).toBe(false);
+it("points the desktop app's person to its menu and has no Restart service or Show log buttons", async () => {
+  await inDesktop(true);
+  useConnection.setState({ serviceDown: true });
+  render(<ServiceDownBanner />);
+  expect(screen.getByText(MENU_LINE)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Restart service" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Show log" })).toBeNull();
 });
 
-it("hides Show log and Restart service from a remote viewer and from a browser outside the desktop app", async () => {
+it("shows only Check again, with no menu line, in a plain browser and to a remote viewer", async () => {
   useConnection.setState({ serviceDown: true, remote: true });
   await inDesktop(true);
   const view = render(<ServiceDownBanner />);
-  expect(screen.getByText("Can’t reach the Orbyn service on this Mac.")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Restart service" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Show log" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+  expect(screen.queryByText(MENU_LINE)).toBeNull();
 
   view.unmount();
   useConnection.setState({ remote: false });
   await inDesktop(false);
   render(<ServiceDownBanner />);
-  expect(screen.queryByRole("button", { name: "Restart service" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+  expect(screen.queryByText(MENU_LINE)).toBeNull();
+});
+
+it("Check again asks the service at once and clears the banner when it answers", async () => {
+  useConnection.setState({ serviceDown: true });
+  const probe = vi.fn().mockResolvedValue(undefined);
+  const stop = watchConnection(probe);
+  render(<ServiceDownBanner />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Check again" }));
+  await waitFor(() => expect(useConnection.getState().serviceDown).toBe(false));
+  expect(probe).toHaveBeenCalledTimes(1);
+  stop();
+});
+
+it("ignores a probe that answers after the watcher stopped", async () => {
+  useConnection.setState({ serviceDown: true });
+  let answer: () => void = () => undefined;
+  const stop = watchConnection(() => new Promise<void>((resolve) => { answer = resolve; }));
+  checkConnectionNow();
+  stop();
+  answer();
+  await Promise.resolve();
+  expect(useConnection.getState().serviceDown).toBe(true);
 });
