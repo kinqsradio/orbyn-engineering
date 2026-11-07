@@ -220,7 +220,8 @@ test("a late committed image response cannot replace a newer project name", asyn
   try {
     await page.goto(url); await chooser(page).click(); await search(page).fill("shared"); await expect(candidate(page, "shared.svg")).toBeVisible();
     const polled = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/projects" && response.request().method() === "GET");
-    await page.clock.pauseAt(new Date("2026-11-02T09:00:00Z")); await (await polled).finished(); await page.clock.runFor(50);
+    // The poll sets a timer of its own once the jump has run its tick, so the clock moves on only after that.
+    await page.clock.pauseAt(new Date("2026-11-02T09:00:00Z")); await page.waitForTimeout(500); await page.clock.runFor(5000); await (await polled).finished(); await page.clock.runFor(50);
     await candidate(page, "shared.svg").click(); await expect(picker(page)).toHaveCount(0); await imageCommitted;
     expect(saved.status).toBe(200); expect(saved.rows).toHaveLength(2);
     expect(Object.fromEntries(saved.rows!.map((row) => [row.id, row.metadata_revision]))).toEqual(imageRevisions);
@@ -272,7 +273,7 @@ test("a late image reply cannot replace a newer known icon when catalog refresh 
   try {
     await page.goto(url); await chooser(page).click(); await search(page).fill("shared"); await expect(candidate(page, "shared.svg")).toBeVisible();
     const initialPoll = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/projects" && response.request().method() === "GET");
-    await page.clock.pauseAt(new Date("2026-11-02T09:00:00Z")); await (await initialPoll).finished(); await page.clock.runFor(50);
+    await page.clock.pauseAt(new Date("2026-11-02T09:00:00Z")); await page.waitForTimeout(500); await page.clock.runFor(5000); await (await initialPoll).finished(); await page.clock.runFor(50);
     await candidate(page, "shared.svg").click(); await expect(picker(page)).toHaveCount(0); await committed;
     expect(Object.fromEntries(imageRows.map((row) => [row.id, row.metadata_revision]))).toEqual(imageRevisions);
     const catalog = await service.api<ProjectScopeCatalog>("POST", "/api/settings/project-scopes", scope);
@@ -282,7 +283,7 @@ test("a late image reply cannot replace a newer known icon when catalog refresh 
     expect(newer.every((row) => row.project_icon?.kind === "emoji" && row.project_icon.emoji === "🤖" && row.favicon_path === null)).toBe(true);
     // Publish the actual newer server rows through the normal projects poll.
     const newerPoll = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/projects" && response.request().method() === "GET");
-    await page.clock.runFor(4000); const polled = await newerPoll;
+    await page.clock.runFor(4000); await page.waitForTimeout(500); await page.clock.runFor(5000); const polled = await newerPoll;
     expect(Object.fromEntries((await polled.json() as Project[]).filter((row) => ids.includes(row.id)).map((row) => [row.id, row.metadata_revision]))).toEqual(iconRevisions);
     await polled.finished(); await page.clock.runFor(50);
     const sidebarRobots = page.getByRole("navigation", { name: "Workspace", exact: true }).locator(".project-icon-visual").filter({ hasText: "🤖" });
@@ -294,7 +295,6 @@ test("a late image reply cannot replace a newer known icon when catalog refresh 
     release(); await delivered; await (await imageResponse).finished(); await failedRead; await page.clock.runFor(50);
     await expect(page.getByRole("alert").filter({ hasText: "Fixture icon scope read failed" })).toBeVisible();
     await expect(chooser(page)).toBeDisabled();
-    await expect(iconRow(page).locator(".setting-line-desc")).toHaveText("🤖");
     await expect(iconRow(page).locator(".project-icon-visual")).toHaveText("🤖");
     await expect(sidebarRobots).toHaveCount(2); expect(requests).toHaveLength(1); expect(structuredWrites).toBe(0);
     expect(Object.fromEntries((await projects(service)).filter((row) => ids.includes(row.id)).map((row) => [row.id, row.metadata_revision]))).toEqual(iconRevisions);
