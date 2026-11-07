@@ -122,7 +122,18 @@ test("a task pauses, runs now, edits and goes", async ({ page }) => {
   await edit.getByRole("button", { name: "Save task" }).click();
   await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeVisible();
   await page.getByRole("button", { name: "Delete Hourly check" }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete scheduled task?" });
+  await expect(confirm.getByText("Delete Hourly check?")).toBeVisible();
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  expect(await task()).toBeDefined();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toBeHidden();
+  expect(await task()).toBeDefined();
+  await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Hourly check" }).click();
+  await confirm.getByRole("button", { name: "Delete task" }).click();
   await expect(page.getByRole("button", { name: "Edit Hourly check" })).toBeHidden();
+  await expect.poll(task).toBeUndefined();
 });
 
 test("a task bound to a thread pauses, runs and edits from the details card", async ({ page }) => {

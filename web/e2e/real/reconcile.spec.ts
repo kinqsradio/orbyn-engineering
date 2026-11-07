@@ -185,6 +185,15 @@ test("scheduled tasks: create, pause, run and delete through the form", async ({
   expect((await saved())[0]?.schedule.time).toBe("08:15");
 
   await page.getByRole("button", { name: "Delete Weekly" }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete scheduled task?" });
+  await expect(confirm.getByText("Delete Weekly?")).toBeVisible();
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  expect((await list()).length).toBe(1);
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toBeHidden();
+  expect((await list()).length).toBe(1);
+  await page.getByRole("button", { name: "Delete Weekly" }).click();
+  await confirm.getByRole("button", { name: "Delete task" }).click();
   await expect.poll(async () => (await list()).length).toBe(0);
 });
 
