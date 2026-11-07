@@ -11,10 +11,10 @@ use std::time::{Duration, Instant};
 use orbyn_contracts::{
     AddPullComment, BranchInfo, CheckoutPull, CreateBranch, EditPullComment, ForgeStatus,
     GitAction, GitActionResult, GitPhase, MergePull, Project, PublishProject, PullBulkResult,
-    PullCandidate, PullCheck, PullCheckout, PullConversation, PullFile, PullList, PullListEntry,
-    PullListFailure, PullRequest, PullRequestDetail, PullRequestDraft, PullRevision, PullStack,
-    PullTimelineEvent, PullWatch, ReactPullComment, SetPullPeople, StackAction, SubmitReview,
-    Thread, UpdatePull, WorkOnPull,
+    PullCandidate, PullCheck, PullCheckout, PullConversation, PullDetails, PullDetailsRequest,
+    PullDetailsResponse, PullFile, PullList, PullListEntry, PullListFailure, PullRequest,
+    PullRequestDetail, PullRequestDraft, PullRevision, PullStack, PullTimelineEvent, PullWatch,
+    ReactPullComment, SetPullPeople, StackAction, SubmitReview, Thread, UpdatePull, WorkOnPull,
 };
 use serde_json::{Value, json};
 use tokio::process::Command;
@@ -22,17 +22,14 @@ use tokio::process::Command;
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::source_control::forge::{
-    self, ALL_FORGES, CommentCounts, Forge, PullFilter, create_pull, fetch_pull, forge_of,
-    number_from_url,
+    self, ALL_FORGES, DETAIL_FIELDS, DetailsOutcome, Forge, PullFilter, create_pull, fetch_pull,
+    forge_of, number_from_url,
 };
-use crate::source_control::forge_cache::ViewerCache;
 use crate::source_control::git::{git, text};
 use crate::store::{AuditRecord, WatchUpdate};
 use crate::util::tail;
 
 const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
-/// A list never waits longer than this to learn who is signed in.
-const VIEWER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 const PUSH_TIMEOUT: Duration = Duration::from_secs(300);
 /// Watching ends after this many wakes in a row that bring only comments.
 const MAX_COMMENT_WAKES: i64 = 10;
@@ -222,11 +219,7 @@ impl Core {
                     labels: Vec::new(),
                     review_state: None,
                     checks_state: None,
-                    requested_reviewers: None,
-                    comment_count: None,
-                    created_at: None,
                     checks: None,
-                    viewer_review_state: None,
                 });
                 self.store.link_pull(id, &pull)?;
             }
@@ -354,7 +347,7 @@ impl Core {
             ..PullFilter::default()
         };
         let linked = self.store.linked_pulls(id).unwrap_or_default();
-        if let Ok(pulls) = forge::list_pulls(forge, cwd, &filter, None).await
+        if let Ok(pulls) = forge::list_pulls(forge, cwd, &filter).await
             && let Some(pull) = pulls.first()
             && pull.state == "open"
             && !linked.iter().any(|known| known.number == pull.number)
@@ -524,120 +517,9 @@ impl Core {
         project_id: &str,
         filter: &PullFilter,
     ) -> Result<Vec<PullRequest>> {
-        Ok(self.project_pulls_counted(project_id, filter).await?.0)
-    }
-
-    /// The list, and whether comment counts were asked for but paused by GitHub's
-    /// rate limit (so no row carries one).
-    async fn project_pulls_counted(
-        &self,
-        project_id: &str,
-        filter: &PullFilter,
-    ) -> Result<(Vec<PullRequest>, bool)> {
         check_state(&filter.state)?;
         let (project, forge) = self.pull_site(project_id).await?;
-        let cwd = Path::new(&project.path);
-        let key = viewer_key(forge, cwd).await;
-        let viewer = self.forge_viewer(&key, forge, cwd).await;
-        let mut pulls = match forge::list_pulls(forge, cwd, filter, viewer.as_deref()).await {
-            Ok(pulls) => pulls,
-            Err(error) => {
-                if forge::is_auth_error(&error) {
-                    self.forge_viewers.lock().unwrap().evict(&key);
-                }
-                return Err(error);
-            }
-        };
-        let paused = filter.comment_counts
-            && self
-                .fill_comment_counts(&project.id, forge, cwd, filter.fresh_counts, &mut pulls)
-                .await;
-        Ok((pulls, paused))
-    }
-
-    /// The signed-in login for a forge host. It is asked of the CLI at most once per
-    /// `VIEWER_TTL`, a failure is remembered for a shorter
-    /// time, and the ask is cut short so a list never waits on it.
-    async fn forge_viewer(&self, key: &str, forge: Forge, cwd: &Path) -> Option<String> {
-        if let Some(known) = self.forge_viewers.lock().unwrap().get(key, Instant::now()) {
-            return known;
-        }
-        let login = tokio::time::timeout(VIEWER_LOOKUP_TIMEOUT, forge::viewer(forge, cwd))
-            .await
-            .ok()
-            .flatten();
-        self.forge_viewers
-            .lock()
-            .unwrap()
-            .put(key, login.clone(), Instant::now());
-        login
-    }
-
-    /// Sets each GitHub row's comment total from the cache, asking GitHub once for the
-    /// rows it does not know. Returns `true` when the rate limit paused counting. Every
-    /// row is left without a count whenever the whole set cannot be had.
-    async fn fill_comment_counts(
-        &self,
-        project_id: &str,
-        forge: Forge,
-        cwd: &Path,
-        fresh: bool,
-        pulls: &mut [PullRequest],
-    ) -> bool {
-        if forge != Forge::GitHub {
-            return false;
-        }
-        let now = Instant::now();
-        let mut missing = Vec::new();
-        {
-            let cache = self.comment_counts.lock().unwrap();
-            if cache.paused(now) {
-                return true;
-            }
-            for pull in pulls.iter_mut() {
-                // A refresh the person started recounts every row; the pause still holds.
-                pull.comment_count = if fresh {
-                    None
-                } else {
-                    cache.lookup(project_id, pull.number, pull.updated_at.as_deref(), now)
-                };
-                if pull.comment_count.is_none() {
-                    missing.push(pull.number);
-                }
-            }
-        }
-        if missing.is_empty() {
-            return false;
-        }
-        match forge::github_comment_counts(forge, cwd, &missing).await {
-            CommentCounts::Counts(counts) => {
-                let now = Instant::now();
-                let mut cache = self.comment_counts.lock().unwrap();
-                for pull in pulls.iter_mut() {
-                    if let Some(count) = counts.get(&pull.number) {
-                        pull.comment_count = Some(*count);
-                        cache.store(
-                            project_id,
-                            pull.number,
-                            pull.updated_at.as_deref(),
-                            *count,
-                            now,
-                        );
-                    }
-                }
-                false
-            }
-            outcome => {
-                let limited = outcome == CommentCounts::RateLimited;
-                if limited {
-                    self.comment_counts.lock().unwrap().pause(Instant::now());
-                }
-                for pull in pulls.iter_mut() {
-                    pull.comment_count = None;
-                }
-                limited
-            }
-        }
+        forge::list_pulls(forge, Path::new(&project.path), filter).await
     }
 
     /// Pull requests across every trusted project with a remote. A project that
@@ -647,7 +529,6 @@ impl Core {
         let mut list = PullList {
             pulls: Vec::new(),
             failed: Vec::new(),
-            comment_count_paused: None,
         };
         for project in self.store.list_projects()? {
             if !project.trusted || !project.is_git {
@@ -657,17 +538,13 @@ impl Core {
             if git(&cwd, &["remote", "get-url", "origin"]).await.is_err() {
                 continue;
             }
-            match self.project_pulls_counted(&project.id, filter).await {
-                Ok((pulls, paused)) => {
-                    if paused {
-                        list.comment_count_paused = Some(true);
-                    }
-                    list.pulls
-                        .extend(pulls.into_iter().map(|pull| PullListEntry {
-                            project_id: project.id.clone(),
-                            pull,
-                        }));
-                }
+            match self.project_pulls(&project.id, filter).await {
+                Ok(pulls) => list
+                    .pulls
+                    .extend(pulls.into_iter().map(|pull| PullListEntry {
+                        project_id: project.id.clone(),
+                        pull,
+                    })),
                 Err(error) => list.failed.push(PullListFailure {
                     project_id: project.id,
                     message: error.public_message(),
@@ -675,6 +552,84 @@ impl Core {
             }
         }
         Ok(list)
+    }
+
+    /// What the base list leaves out, for pull requests the caller already shows. GitHub
+    /// answers one batched request per project, and only for rows whose details are not
+    /// already known (an unchanged `updated_at`, for at most ten minutes) unless the
+    /// request is `fresh`. A project that cannot be read, a failed batch or a forge
+    /// without details leaves those rows out whole. A spent rate limit pauses details for
+    /// two minutes and leaves every row without them.
+    pub async fn pull_details(&self, request: &PullDetailsRequest) -> Result<PullDetailsResponse> {
+        let mut projects: Vec<(&str, Vec<&orbyn_contracts::PullDetailsRef>)> = Vec::new();
+        for pull in &request.pulls {
+            match projects.iter_mut().find(|(id, _)| *id == pull.project_id) {
+                Some((_, refs)) => refs.push(pull),
+                None => projects.push((pull.project_id.as_str(), vec![pull])),
+            }
+        }
+        let paused = || PullDetailsResponse {
+            details: Vec::new(),
+            paused: DETAIL_FIELDS
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect(),
+        };
+        let mut found: Vec<PullDetails> = Vec::new();
+        for (project_id, refs) in projects {
+            let Ok((project, forge)) = self.pull_site(project_id).await else {
+                continue;
+            };
+            if forge != Forge::GitHub {
+                continue;
+            }
+            let now = Instant::now();
+            let mut known = Vec::new();
+            let mut missing = Vec::new();
+            {
+                let cache = self.pull_details.lock().unwrap();
+                if cache.paused(now) {
+                    return Ok(paused());
+                }
+                for pull in refs {
+                    let cached = if request.fresh {
+                        None
+                    } else {
+                        cache.lookup(project_id, pull.number, pull.updated_at.as_deref(), now)
+                    };
+                    match cached {
+                        Some(details) => known.push(details),
+                        None => missing.push(pull),
+                    }
+                }
+            }
+            if !missing.is_empty() {
+                let numbers: Vec<u64> = missing.iter().map(|pull| pull.number).collect();
+                let cwd = Path::new(&project.path);
+                match forge::github_details(forge, cwd, project_id, &numbers).await {
+                    DetailsOutcome::Details(mut asked) => {
+                        let now = Instant::now();
+                        let mut cache = self.pull_details.lock().unwrap();
+                        for pull in missing {
+                            if let Some(details) = asked.remove(&pull.number) {
+                                cache.store(details.clone(), pull.updated_at.as_deref(), now);
+                                known.push(details);
+                            }
+                        }
+                    }
+                    DetailsOutcome::RateLimited => {
+                        self.pull_details.lock().unwrap().pause(Instant::now());
+                        return Ok(paused());
+                    }
+                    DetailsOutcome::Unavailable => continue,
+                }
+            }
+            found.extend(known);
+        }
+        Ok(PullDetailsResponse {
+            details: found,
+            paused: Vec::new(),
+        })
     }
 
     pub async fn project_pull(&self, project_id: &str, number: u64) -> Result<PullRequestDetail> {
@@ -1112,36 +1067,9 @@ impl Core {
     pub async fn forges(&self) -> Vec<ForgeStatus> {
         let mut statuses = Vec::with_capacity(ALL_FORGES.len());
         for forge in ALL_FORGES {
-            let status = forge::forge_status(forge).await;
-            {
-                let mut viewers = self.forge_viewers.lock().unwrap();
-                viewers.evict_forge(forge.id());
-                if let Some(login) = &status.viewer {
-                    let key = ViewerCache::key(forge.id(), default_host(forge));
-                    viewers.put(&key, Some(login.clone()), Instant::now());
-                }
-            }
-            statuses.push(status);
+            statuses.push(forge::forge_status(forge).await);
         }
         statuses
-    }
-}
-
-/// The cache key for a project's forge: the forge and the host of its origin remote,
-/// so github.com and an enterprise host never share a login.
-async fn viewer_key(forge: Forge, cwd: &Path) -> String {
-    let host = match git(cwd, &["remote", "get-url", "origin"]).await {
-        Ok(url) => forge::remote_host(&text(&url)),
-        Err(_) => String::new(),
-    };
-    ViewerCache::key(forge.id(), &host)
-}
-
-/// The host a forge CLI uses when no remote says otherwise.
-fn default_host(forge: Forge) -> &'static str {
-    match forge {
-        Forge::GitLab => "gitlab.com",
-        _ => "github.com",
     }
 }
 
@@ -1298,11 +1226,7 @@ mod tests {
             labels: Vec::new(),
             review_state: None,
             checks_state: None,
-            requested_reviewers: None,
-            comment_count: None,
-            created_at: None,
             checks: None,
-            viewer_review_state: None,
         }
     }
 

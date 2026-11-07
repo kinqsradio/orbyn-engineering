@@ -23,7 +23,7 @@ struct Fixture {
 const GH: &str = r#"#!/bin/sh
 echo "$@" >> "$GH_LOG"
 pull() {
-  echo "{\"number\":$1,\"title\":\"$2\",\"url\":\"https://github.com/o/r/pull/$1\",\"state\":\"$(cat "$GH_STATE")\",\"headRefName\":\"$3\",\"baseRefName\":\"$4\",\"author\":{\"login\":\"me\"},\"isDraft\":false,\"labels\":[{\"name\":\"bug\"}],\"reviewDecision\":\"APPROVED\",\"createdAt\":\"2026-01-02T03:04:05Z\",\"latestReviews\":[{\"author\":{\"login\":\"me\"},\"state\":\"CHANGES_REQUESTED\"}],\"statusCheckRollup\":[{\"name\":\"ci\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"},{\"name\":\"lint\",\"status\":\"COMPLETED\",\"conclusion\":\"FAILURE\"},{\"name\":\"e2e\",\"status\":\"IN_PROGRESS\",\"conclusion\":\"\"}]$5}"
+  echo "{\"number\":$1,\"title\":\"$2\",\"url\":\"https://github.com/o/r/pull/$1\",\"state\":\"$(cat "$GH_STATE")\",\"headRefName\":\"$3\",\"baseRefName\":\"$4\",\"author\":{\"login\":\"me\"},\"isDraft\":false,\"labels\":[{\"name\":\"bug\"}],\"reviewDecision\":\"APPROVED\",\"statusCheckRollup\":[]$5}"
 }
 case "$1 $2" in
   "pr create") [ -f "$GH_FAIL" ] && { echo "no permission" >&2; exit 1; }
@@ -32,15 +32,15 @@ case "$1 $2" in
   "pr checks") echo '[{"name":"ci","state":"SUCCESS","link":"x","bucket":"pass"},{"name":"lint","state":"FAILURE","link":"y","bucket":"fail"}]'; exit 1 ;;
   "pr list") case "$*" in
       *--head*) echo "[$(pull 12 T feature main)]" ;;
-      *) echo "[$(pull 3 Other h main ',"reviewRequests":[{"login":"sam"},{"__typename":"Team","name":"Core","slug":"core"}]'),$(pull 4 Next i h)]" ;;
+      *) echo "[$(pull 3 Other h main),$(pull 4 Next i h)]" ;;
     esac ;;
   "pr merge") echo MERGED > "$GH_STATE" ;;
   "pr close") [ "$3" = 66 ] && { echo "refused" >&2; exit 1; } ;;
   "label list") echo '[{"name":"bug","description":"Broken"}]' ;;
   "api user") echo '{"login":"me"}' ;;
   "api graphql") case "$*" in
-      *totalCount*) [ -f "$GH_RATE" ] && { echo "GraphQL: API rate limit already exceeded" >&2; exit 1; }
-        echo '{"data":{"repository":{"p3":{"comments":{"totalCount":2},"reviews":{"nodes":[{"comments":{"totalCount":3}},{"comments":{"totalCount":0}}]}},"p4":{"comments":{"totalCount":1},"reviews":{"nodes":[]}}}}}' ;;
+      *reviewRequests*) [ -f "$GH_RATE" ] && { echo "GraphQL: API rate limit already exceeded" >&2; exit 1; }
+        echo '{"data":{"viewer":{"login":"me"},"repository":{"p3":{"createdAt":"2026-01-02T03:04:05Z","reviewRequests":{"nodes":[{"requestedReviewer":{"__typename":"User","login":"sam"}},{"requestedReviewer":{"__typename":"Team","slug":"core"}}]},"latestReviews":{"nodes":[{"author":null,"state":"APPROVED"},{"author":{"login":"me"},"state":"CHANGES_REQUESTED"}]},"comments":{"totalCount":2},"reviews":{"nodes":[{"comments":{"totalCount":3}},{"comments":{"totalCount":0}}]}},"p4":{"createdAt":"2026-02-02T00:00:00Z","reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]},"comments":{"totalCount":1},"reviews":{"nodes":[]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
     esac ;;
   "auth status") echo "  Logged in to github.com account octo (keyring)" >&2 ;;
@@ -422,12 +422,6 @@ async fn review_list_and_publish_use_the_users_own_cli() {
         .await;
     assert_eq!(open[0]["number"], 3);
     assert_eq!(open[0]["state"], "open");
-    // The new fields reach the wire; their values are checked where they are read.
-    assert!(open[0]["created_at"].is_string());
-    assert!(open[0]["requested_reviewers"].is_array());
-    assert!(open[0]["checks"]["failing_names"].is_array());
-    assert!(open[0]["viewer_review_state"].is_string());
-    assert!(open[0].get("comment_count").is_none());
     let bad = f
         .service
         .get(&format!("/api/projects/{project}/pulls?state=x"))
@@ -477,6 +471,18 @@ async fn lists_narrow_and_read_into_one_shape() {
     assert_eq!(pulls[0]["labels"][0], "bug");
     assert_eq!(pulls[0]["review_state"], "approved");
     let log = f.log();
+    // The base list asks for exactly the fields it always has, so it is as fast as before.
+    assert!(
+        log.contains(
+            "--json number,title,url,state,headRefName,baseRefName,author,isDraft,updatedAt,labels,reviewDecision,statusCheckRollup "
+        ),
+        "{log}"
+    );
+    assert!(pulls[0]["checks"]["failing_names"].is_array());
+    assert!(
+        !log.contains("graphql"),
+        "the base list never asks for details"
+    );
     assert!(log.contains("--state all"));
     assert!(
         log.contains("--search fix --author me --label bug"),
@@ -931,83 +937,65 @@ async fn a_review_guide_is_written_by_a_linked_thread_that_reads_the_pull_reques
 }
 
 #[tokio::test]
-async fn the_viewer_login_is_asked_once_and_shared_by_lists() {
+async fn details_come_from_one_batched_query_and_merge_per_pull_request() {
     let f = fixture().await;
     f.hosted();
     let project = f.project().await;
-    let asked = |log: &str| log.lines().filter(|line| *line == "api user").count();
-    // A list asks the CLI once and reads the viewer's own review from the same call.
-    for _ in 0..2 {
-        let pulls = f
-            .service
-            .json(&format!("/api/projects/{project}/pulls"))
-            .await;
-        assert!(pulls[0]["viewer_review_state"].is_string());
-    }
-    assert_eq!(asked(&f.log()), 1, "{}", f.log());
-    // The forge rescan reports the login and refreshes what lists use.
-    let forges = f.service.json("/api/forges").await;
-    let github = forges
+    let asked = |log: &str| {
+        log.lines()
+            .filter(|line| line.contains("reviewRequests"))
+            .count()
+    };
+    let body = |fresh: bool| {
+        json!({ "fresh": fresh, "pulls": [
+            { "project_id": project, "number": 3, "updated_at": "t1" },
+            { "project_id": project, "number": 4, "updated_at": "t1" },
+        ] })
+    };
+    let (code, response) = f.service.send("/api/pulls/details", body(false)).await;
+    assert_eq!(code, 200, "{response}");
+    let first = &response["details"][0];
+    assert_eq!(first["number"], 3);
+    assert_eq!(first["comment_count"], 5);
+    assert_eq!(first["requested_reviewers"][1]["kind"], "team");
+    assert_eq!(first["viewer_review_state"], "changes_requested");
+    assert_eq!(response["details"][1]["comment_count"], 1);
+    assert_eq!(response["paused"].as_array().unwrap().len(), 0);
+    assert_eq!(asked(&f.log()), 1);
+    // Known details are reused, a changed pull request is asked again, fresh recounts.
+    f.service.send("/api/pulls/details", body(false)).await;
+    assert_eq!(asked(&f.log()), 1, "an unchanged row reuses its details");
+    let changed = json!({ "pulls": [{ "project_id": project, "number": 3, "updated_at": "t2" }] });
+    f.service.send("/api/pulls/details", changed).await;
+    assert_eq!(asked(&f.log()), 2, "a changed updated_at asks again");
+    f.service.send("/api/pulls/details", body(true)).await;
+    assert_eq!(asked(&f.log()), 3, "fresh bypasses the cache");
+}
+
+#[tokio::test]
+async fn a_spent_rate_limit_withholds_every_detail_and_names_them() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let body = json!({ "pulls": [{ "project_id": project, "number": 3 }] });
+    std::fs::write(f._dir.path().join("gh-rate"), "").unwrap();
+    let (_, limited) = f.service.send("/api/pulls/details", body.clone()).await;
+    assert_eq!(
+        limited["details"].as_array().unwrap().len(),
+        0,
+        "never partial"
+    );
+    let paused: Vec<&str> = limited["paused"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|forge| forge["id"] == "github")
-        .unwrap();
-    assert_eq!(github["viewer"], "me");
-}
-
-#[tokio::test]
-async fn comment_counts_are_one_batched_query_asked_only_on_request() {
-    let f = fixture().await;
-    f.hosted();
-    let asked = |log: &str| {
-        log.lines()
-            .filter(|line| line.contains("totalCount"))
-            .count()
-    };
-    let project = f.project().await;
-    f.service.json("/api/pulls").await;
-    assert_eq!(
-        asked(&f.log()),
-        0,
-        "counts are not fetched unless asked for"
-    );
-    for _ in 0..2 {
-        let all = f.service.json("/api/pulls?counts=comments").await;
-        // Conversation comments plus every review's comments, merged per pull request.
-        assert_eq!(all["pulls"][0]["pull"]["comment_count"], 5);
-        assert_eq!(all["pulls"][1]["pull"]["comment_count"], 1);
-        assert!(all.get("comment_count_paused").is_none());
-    }
-    assert_eq!(asked(&f.log()), 1, "an unchanged list reuses its totals");
-    // A refresh the person started recounts; a plain one still reuses.
-    let fresh = f.service.json("/api/pulls?counts=comments&fresh=1").await;
-    assert_eq!(fresh["pulls"][0]["pull"]["comment_count"], 5);
-    assert_eq!(asked(&f.log()), 2, "fresh=1 bypasses the cache");
-    f.service.json("/api/pulls?counts=comments").await;
-    assert_eq!(asked(&f.log()), 2, "and the recounted totals are kept");
-    let one = f
-        .service
-        .json(&format!("/api/projects/{project}/pulls?counts=comments"))
-        .await;
-    assert_eq!(one[0]["comment_count"], 5);
-}
-
-#[tokio::test]
-async fn a_spent_rate_limit_omits_every_count_and_says_so() {
-    let f = fixture().await;
-    f.hosted();
-    std::fs::write(f._dir.path().join("gh-rate"), "").unwrap();
-    let all = f.service.json("/api/pulls?counts=comments").await;
-    assert_eq!(all["comment_count_paused"], true);
-    for entry in all["pulls"].as_array().unwrap() {
-        assert!(
-            entry["pull"].get("comment_count").is_none(),
-            "never 0 or partial"
-        );
-    }
-    // While paused the limit is not tried again.
+        .map(|n| n.as_str().unwrap())
+        .collect();
+    assert!(paused.contains(&"comment_count") && paused.contains(&"requested_reviewers"));
+    // The pause holds without asking GitHub again.
     std::fs::remove_file(f._dir.path().join("gh-rate")).unwrap();
-    let again = f.service.json("/api/pulls?counts=comments").await;
-    assert_eq!(again["comment_count_paused"], true);
+    let before = f.log();
+    let (_, again) = f.service.send("/api/pulls/details", body).await;
+    assert_eq!(again["paused"], limited["paused"]);
+    assert_eq!(f.log(), before);
 }

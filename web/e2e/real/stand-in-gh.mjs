@@ -75,19 +75,6 @@ const view = (entry) => ({
   ...entry,
 });
 
-/**
- * What `gh pr list --json` adds for the list columns: when it was opened, review requests (a "team/" prefix marks a team) and each reviewer's latest
- * review. A fixture may set any of them itself.
- */
-const listRow = (entry) => ({
-  createdAt: "2026-09-01T00:00:00Z",
-  reviewRequests: (entry.reviewers ?? []).map((name) =>
-    name.startsWith("team/") ? { __typename: "Team", name, slug: name.slice(5) } : { __typename: "User", login: name },
-  ),
-  latestReviews: [],
-  ...entry,
-});
-
 const threads = (number) => ({
   data: { repository: { pullRequest: { reviewThreads: { nodes: pull(number).threads ?? [] } } } },
 });
@@ -110,8 +97,8 @@ function apiCall() {
   if (path === "user/starred/orbyn-dev/orbyn-engineering") process.exit(state.starred ? 0 : 1);
   if (path === "graphql") {
     const query = field("query") ?? "";
-    if (query.includes("totalCount")) {
-      // The batched comment-count query: one alias `p<number>` per pull request.
+    if (query.includes("reviewRequests")) {
+      // The batched details query: one alias `p<number>` per pull request.
       if (state.rateLimited) return fail("GraphQL: API rate limit already exceeded");
       const repository = {};
       for (const [, number] of query.matchAll(/p(\d+):pullRequest/g)) {
@@ -119,11 +106,18 @@ function apiCall() {
         if (!entry) continue;
         const inline = (entry.threads ?? []).flatMap((thread) => thread.comments.nodes).length;
         repository[`p${number}`] = {
+          createdAt: entry.createdAt ?? "2026-09-01T00:00:00Z",
+          reviewRequests: {
+            nodes: (entry.reviewers ?? []).map((name) => ({
+              requestedReviewer: name.startsWith("team/") ? { __typename: "Team", slug: name.slice(5) } : { __typename: "User", login: name },
+            })),
+          },
+          latestReviews: { nodes: entry.latestReviews ?? [] },
           comments: { totalCount: (entry.issueComments ?? []).length },
           reviews: { nodes: [{ comments: { totalCount: inline } }] },
         };
       }
-      return out({ data: { repository } });
+      return out({ data: { viewer: { login: state.viewer ?? "me" }, repository } });
     }
     if (query.includes("reviewThreads")) return out(threads(field("number")));
     const thread = allThreads().find((entry) => entry.id === field("id"));
@@ -194,7 +188,7 @@ switch (route) {
     out(state.labels.map((name) => ({ name, description: `About ${name}` })));
     break;
   case "pr list":
-    out(state.pulls.filter((entry) => (flag("--state") === "all" ? true : entry.state.toLowerCase() === flag("--state"))).map(listRow));
+    out(state.pulls.filter((entry) => (flag("--state") === "all" ? true : entry.state.toLowerCase() === flag("--state"))));
     break;
   case "pr view":
     out(view(pull(args[2])));

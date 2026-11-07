@@ -921,31 +921,11 @@ pub struct PullRequest {
     /// `pass`, `fail`, `pending` or `none`.
     #[serde(default)]
     pub checks_state: Option<String>,
-    /// Users and teams whose review is still asked for; `None` when the forge does
-    /// not say, empty when nobody is asked.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub requested_reviewers: Option<Vec<RequestedReviewer>>,
-    /// Conversation comments plus inline review comments; `None` when not asked for
-    /// (GitHub counts them only on request), when the forge does not say, or when the
-    /// count is paused. Never a partial number.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub comment_count: Option<u32>,
-    /// When the pull request was opened, as the forge writes it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub created_at: Option<String>,
-    /// Check counts; `None` when the forge's list does not carry checks.
+    /// Check counts, read from the check data the list already carries; `None` when
+    /// the forge's list has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub checks: Option<PullChecks>,
-    /// The signed-in viewer's latest review: `approved`, `changes_requested`,
-    /// `commented`, `dismissed`, `pending` or `none`. `None` in a list when the
-    /// viewer is unknown or the forge does not say; only list reads fill it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub viewer_review_state: Option<String>,
 }
 }
 
@@ -968,6 +948,61 @@ pub struct PullChecks {
     pub running: u32,
     /// Names of failing checks, at most 20.
     pub failing_names: Vec<String>,
+}
+}
+
+wire! {
+/// Asks for the details of listed pull requests, all projects in one call.
+pub struct PullDetailsRequest {
+    pub pulls: Vec<PullDetailsRef>,
+    /// A refresh the person started: recount instead of reusing known details.
+    #[serde(default)]
+    pub fresh: bool,
+}
+}
+
+wire! {
+pub struct PullDetailsRef {
+    pub project_id: String,
+    pub number: u64,
+    /// The row's `updated_at`, which says whether known details still hold.
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+}
+
+wire! {
+/// What the base list leaves out, for one pull request. A field is absent when it is
+/// unknown, never zero or partial.
+pub struct PullDetails {
+    pub project_id: String,
+    pub number: u64,
+    /// When the pull request was opened, as the forge writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub created_at: Option<String>,
+    /// Users and teams whose review is still asked for; empty when nobody is asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub requested_reviewers: Option<Vec<RequestedReviewer>>,
+    /// Conversation comments plus inline review comments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub comment_count: Option<u32>,
+    /// The signed-in viewer's latest review: `approved`, `changes_requested`,
+    /// `commented`, `dismissed`, `pending` or `none`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub viewer_review_state: Option<String>,
+}
+}
+
+wire! {
+pub struct PullDetailsResponse {
+    pub details: Vec<PullDetails>,
+    /// Detail fields withheld because GitHub's rate limit is spent, named as they
+    /// appear on `PullDetails`; empty otherwise. No row carries a paused field.
+    pub paused: Vec<String>,
 }
 }
 
@@ -1214,11 +1249,6 @@ pub struct PullList {
     pub pulls: Vec<PullListEntry>,
     /// Projects that could not be read, so a partial list is never silent.
     pub failed: Vec<PullListFailure>,
-    /// `true` when comment counts were asked for but GitHub's rate limit is spent, so
-    /// no pull request carries `comment_count`. Left out otherwise.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub comment_count_paused: Option<bool>,
 }
 }
 

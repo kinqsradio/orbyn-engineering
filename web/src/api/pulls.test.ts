@@ -1,14 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { listQuery } from "./pulls";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { pullsApi } from "./pulls";
 
-describe("listQuery", () => {
-  it("asks for nothing extra by default", () => {
-    expect(listQuery("open", "fix")).toBe("state=open&q=fix");
-  });
+afterEach(() => vi.unstubAllGlobals());
 
-  it("asks for counts, and for a recount only together with counts", () => {
-    expect(listQuery("open", "", { counts: "comments" })).toBe("state=open&q=&counts=comments");
-    expect(listQuery("open", "", { counts: "comments", fresh: true })).toBe("state=open&q=&counts=comments&fresh=1");
-    expect(listQuery("open", "", { fresh: true })).toBe("state=open&q=");
+describe("pullsApi.details", () => {
+  it("posts the listed rows and whether the refresh was the person's own", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ details: [], paused: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const body = { pulls: [{ project_id: "p", number: 3, updated_at: "t" }], fresh: true };
+    await expect(pullsApi.details(body)).resolves.toEqual({ details: [], paused: [] });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("/api/pulls/details");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual(body);
   });
 });

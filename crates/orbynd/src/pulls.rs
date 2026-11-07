@@ -8,8 +8,8 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use orbyn_contracts::{
     AddPullComment, AskAboutStop, BulkClosePulls, CheckoutPull, EditPullComment, GeneratePullGuide,
-    MergePull, PullAction, ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople,
-    StackAction, SubmitReview, UpdatePull, WorkOnPull,
+    MergePull, PullAction, PullDetailsRequest, ReactPullComment, ResolvePullThread, SetFilesViewed,
+    SetPullPeople, StackAction, SubmitReview, UpdatePull, WorkOnPull,
 };
 use orbyn_core::source_control::forge::PullFilter;
 
@@ -23,10 +23,6 @@ fn filter_of(query: HashMap<String, String>) -> PullFilter {
         author: query.remove("author").filter(|text| !text.is_empty()),
         label: query.remove("label").filter(|text| !text.is_empty()),
         head: None,
-        comment_counts: query
-            .get("counts")
-            .is_some_and(|counts| counts == "comments"),
-        fresh_counts: query.get("fresh").is_some_and(|fresh| fresh == "1"),
     }
 }
 
@@ -35,6 +31,14 @@ pub async fn all(
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.all_pulls(&filter_of(query)).await?))
+}
+
+/// Details the base list leaves out, asked for after the list has been shown.
+pub async fn details(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<PullDetailsRequest>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.pull_details(&body).await?))
 }
 
 pub async fn list(

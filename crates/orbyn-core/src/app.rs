@@ -121,10 +121,8 @@ pub struct Core {
     pub http: reqwest::Client,
     pub recovery: Recovery,
     pub(crate) keybinding_writer: Mutex<()>,
-    /// The login each forge CLI is signed in as, per forge and host, with expiry.
-    pub(crate) forge_viewers: Mutex<crate::source_control::forge_cache::ViewerCache>,
-    /// Comment totals asked of GitHub, reused while a pull request is unchanged.
-    pub(crate) comment_counts: Mutex<crate::source_control::forge_cache::CountCache>,
+    /// Pull request details asked of GitHub, reused while a pull request is unchanged.
+    pub(crate) pull_details: Mutex<crate::source_control::forge_cache::DetailCache>,
     pub(crate) cleanup_policy_gate: tokio::sync::RwLock<()>,
     _lock: File,
 }
@@ -230,8 +228,7 @@ impl Core {
             http,
             recovery,
             keybinding_writer: Mutex::new(()),
-            forge_viewers: Mutex::new(Default::default()),
-            comment_counts: Mutex::new(Default::default()),
+            pull_details: Mutex::new(Default::default()),
             cleanup_policy_gate: tokio::sync::RwLock::new(()),
             _lock: lock,
         };

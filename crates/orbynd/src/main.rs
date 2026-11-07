@@ -322,6 +322,7 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/forges", get(pulls::forges))
         .route("/api/pulls", get(pulls::all))
+        .route("/api/pulls/details", post(pulls::details))
         .route("/api/projects/{id}/pulls", get(pulls::list))
         .route("/api/projects/{id}/pulls/close", post(pulls::close_many))
         .route(

@@ -11,8 +11,9 @@ use std::time::Duration;
 
 use orbyn_contracts::{
     AddPullComment, MergePull, PullCandidate, PullCheck, PullChecks, PullComment, PullConversation,
-    PullFile, PullRequest, PullRequestDetail, PullRevision, PullThread, PullTimelineEvent,
-    RequestedReviewer, ReviewLineComment, SetPullPeople, SubmitReview, UpdatePull,
+    PullDetails, PullFile, PullRequest, PullRequestDetail, PullRevision, PullThread,
+    PullTimelineEvent, RequestedReviewer, ReviewLineComment, SetPullPeople, SubmitReview,
+    UpdatePull,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
@@ -25,8 +26,8 @@ use crate::util::tail;
 
 const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
 const LIST_LIMIT: &str = "100";
-/// The comment-count request must not hold a list up for long.
-const COUNT_TIMEOUT: Duration = Duration::from_secs(20);
+/// The details request must not hold a refresh up for long.
+const DETAILS_TIMEOUT: Duration = Duration::from_secs(20);
 
 impl crate::app::Core {
     /// A fixed, read-only product-repository check through the person's own CLI.
@@ -68,17 +69,11 @@ impl crate::app::Core {
         orbyn_contracts::RepositoryStarStatus { starred }
     }
 }
-/// What a pull request link or a refresh needs: no conversation, no reviews.
-const GH_BASE_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup,createdAt";
-/// The list adds review requests and each reviewer's latest review, both small. The
-/// conversation comments stay out: they are counted by a separate batched query.
 const GH_LIST_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,reviewRequests,latestReviews";
+updatedAt,labels,reviewDecision,statusCheckRollup";
 const GH_VIEW_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,body,comments,reviews,mergeable,\
-reviewRequests,headRefOid,baseRefOid,additions,deletions,changedFiles,maintainerCanModify,\
-autoMergeRequest";
+updatedAt,labels,reviewDecision,statusCheckRollup,body,comments,reviews,mergeable,reviewRequests,\
+headRefOid,baseRefOid,additions,deletions,changedFiles,maintainerCanModify,autoMergeRequest";
 /// Failing check names kept per pull request, so a list stays small.
 const MAX_FAILING_NAMES: usize = 20;
 const THREADS_QUERY: &str = "query($owner:String!,$repo:String!,$number:Int!){\
@@ -110,7 +105,9 @@ impl Forge {
     /// Reads the host from a remote URL. A word in the path does not count. An
     /// unknown host is GitHub, so GitHub Enterprise works through `gh`.
     pub fn of_remote(url: &str) -> Self {
-        let host = remote_host(url);
+        let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+        let rest = rest.rsplit_once('@').map_or(rest, |(_, rest)| rest);
+        let host = rest.split(['/', ':']).next().unwrap_or("").to_lowercase();
         if host.contains("gitlab") {
             Self::GitLab
         } else if host == "dev.azure.com"
@@ -160,13 +157,6 @@ impl Forge {
     fn unsupported(self, what: &str) -> CoreError {
         CoreError::Unsupported(format!("{} cannot {what} from Orbyn.", self.name()))
     }
-}
-
-/// The host of a remote URL, lowercase: `https://h/o/r`, `git@h:o/r` and `ssh://git@h:22/o/r`.
-pub fn remote_host(url: &str) -> String {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let rest = rest.rsplit_once('@').map_or(rest, |(_, rest)| rest);
-    rest.split(['/', ':']).next().unwrap_or("").to_lowercase()
 }
 
 pub async fn forge_of(cwd: &Path) -> Result<Forge> {
@@ -388,55 +378,6 @@ fn github_checks(value: &Value) -> Option<PullChecks> {
     Some(checks)
 }
 
-/// GitHub's review requests: users carry a `login`, teams a `slug` and `name`.
-fn requested_reviewers(value: &Value) -> Option<Vec<RequestedReviewer>> {
-    let requests = value.get("reviewRequests")?.as_array()?;
-    Some(
-        requests
-            .iter()
-            .filter_map(|request| {
-                if let Some(login) = optional(request, "login") {
-                    return Some(RequestedReviewer {
-                        name: login,
-                        kind: "user".into(),
-                    });
-                }
-                let team = optional(request, "slug").or_else(|| optional(request, "name"))?;
-                Some(RequestedReviewer {
-                    name: team,
-                    kind: "team".into(),
-                })
-            })
-            .collect(),
-    )
-}
-
-/// The viewer's latest review among GitHub's `latestReviews`; `none` when they have
-/// not reviewed. Unknown without the viewer's login.
-pub fn viewer_review_state(value: &Value, viewer: Option<&str>) -> Option<String> {
-    let viewer = viewer?;
-    let reviews = value.get("latestReviews")?.as_array()?;
-    let state = reviews
-        .iter()
-        .find(|review| {
-            review
-                .pointer("/author/login")
-                .and_then(Value::as_str)
-                .is_some_and(|login| login.eq_ignore_ascii_case(viewer))
-        })
-        .map_or("none".to_owned(), |review| {
-            field(review, "state").to_lowercase()
-        });
-    Some(state)
-}
-
-/// GitLab reports every note on a merge request in the list. GitHub's list has no
-/// such total, so its count comes from [`github_comment_counts`] when asked for.
-fn comment_count(value: &Value) -> Option<u32> {
-    let count = value.get("user_notes_count")?.as_u64()?;
-    Some(u32::try_from(count).unwrap_or(u32::MAX))
-}
-
 fn review_word(decision: &str) -> String {
     match decision.to_uppercase().as_str() {
         "APPROVED" => "approved",
@@ -520,63 +461,56 @@ pub fn parse_pull(value: &Value) -> Option<PullRequest> {
             .get("reviewDecision")
             .map(|decision| review_word(decision.as_str().unwrap_or_default())),
         checks_state: github_rollup(value),
-        requested_reviewers: requested_reviewers(value),
-        comment_count: comment_count(value),
-        created_at: ["createdAt", "created_at", "creationDate"]
-            .iter()
-            .find_map(|key| optional(value, key)),
         checks: github_checks(value),
-        viewer_review_state: None,
     })
 }
 
-/// Whether a failed forge call means the CLI's login is gone or switched.
-pub fn is_auth_error(error: &CoreError) -> bool {
-    let CoreError::Git(message) = error else {
-        return false;
-    };
-    let message = message.to_lowercase();
-    [
-        "auth login",
-        "not logged in",
-        "bad credentials",
-        "http 401",
-        "requires authentication",
-        "authentication required",
-    ]
-    .iter()
-    .any(|needle| message.contains(needle))
-}
+/// The `PullDetails` fields one batched request supplies, by wire name.
+pub const DETAIL_FIELDS: [&str; 4] = [
+    "created_at",
+    "requested_reviewers",
+    "viewer_review_state",
+    "comment_count",
+];
 
-/// How the batched comment-count request ended.
-#[derive(Debug, PartialEq, Eq)]
-pub enum CommentCounts {
-    Counts(HashMap<u64, u32>),
-    /// GitHub's GraphQL limit is spent, so no number may be reported.
+/// How the batched details request ended.
+#[derive(Debug, PartialEq)]
+pub enum DetailsOutcome {
+    Details(HashMap<u64, PullDetails>),
+    /// GitHub's GraphQL limit is spent, so no detail may be reported.
     RateLimited,
     Unavailable,
 }
 
-/// One GraphQL request for every listed pull request: conversation comments plus the
-/// comments inside each review (inline review comments). Aliases are `p<number>`.
-fn comment_count_query(numbers: &[u64]) -> String {
+/// One GraphQL request for every listed pull request, aliased `p<number>`: when it was
+/// opened, who is asked to review, the viewer's latest review (the viewer comes from
+/// the same request), and conversation comments plus the comments inside each review.
+fn details_query(numbers: &[u64]) -> String {
     let aliases: String = numbers
         .iter()
         .map(|number| {
             format!(
-                "p{number}:pullRequest(number:{number}){{comments{{totalCount}}\
-reviews(first:100){{nodes{{comments{{totalCount}}}}}}}}"
+                "p{number}:pullRequest(number:{number}){{createdAt \
+reviewRequests(first:50){{nodes{{requestedReviewer{{__typename ...on User{{login}} \
+...on Mannequin{{login}} ...on Team{{slug}}}}}}}} \
+latestReviews(first:50){{nodes{{state author{{login}}}}}} \
+comments{{totalCount}} reviews(first:100){{nodes{{comments{{totalCount}}}}}}}}"
             )
         })
         .collect();
     format!(
-        "query($owner:String!,$repo:String!){{repository(owner:$owner,name:$repo){{{aliases}}}}}"
+        "query($owner:String!,$repo:String!){{viewer{{login}} \
+repository(owner:$owner,name:$repo){{{aliases}}}}}"
     )
 }
 
-/// Adds each pull request's conversation comments and its reviews' comments. A pull
-/// request the response lacks is left out rather than counted as zero.
-fn parse_comment_counts(response: &Value, numbers: &[u64]) -> HashMap<u64, u32> {
+/// Reads the response. A pull request whose comments cannot be totalled is left out
+/// whole, so a row never carries a partial set. The viewer's review state is absent
+/// when the response names no viewer.
+fn parse_details(response: &Value, project_id: &str, numbers: &[u64]) -> HashMap<u64, PullDetails> {
+    let viewer = response
+        .pointer("/data/viewer/login")
+        .and_then(Value::as_str);
     let total = |value: &Value| {
         value
             .pointer("/comments/totalCount")
@@ -586,25 +520,90 @@ fn parse_comment_counts(response: &Value, numbers: &[u64]) -> HashMap<u64, u32> 
         .iter()
         .filter_map(|number| {
             let pull = response.pointer(&format!("/data/repository/p{number}"))?;
-            let reviews: u64 = pull
+            let in_reviews: u64 = pull
                 .pointer("/reviews/nodes")?
                 .as_array()?
                 .iter()
                 .filter_map(total)
                 .sum();
-            let count = total(pull)? + reviews;
-            Some((*number, u32::try_from(count).unwrap_or(u32::MAX)))
+            let comments = total(pull)? + in_reviews;
+            let requested_reviewers = pull
+                .pointer("/reviewRequests/nodes")
+                .and_then(Value::as_array)
+                .map(|nodes| {
+                    nodes
+                        .iter()
+                        .filter_map(|node| {
+                            let who = node.get("requestedReviewer")?;
+                            let team = optional(who, "slug");
+                            let (name, kind) = match team {
+                                Some(slug) => (slug, "team"),
+                                None => (optional(who, "login")?, "user"),
+                            };
+                            Some(RequestedReviewer {
+                                name,
+                                kind: kind.into(),
+                            })
+                        })
+                        .collect()
+                });
+            let viewer_review_state = viewer.and_then(|viewer| {
+                let reviews = pull.pointer("/latestReviews/nodes")?.as_array()?;
+                let mine = reviews.iter().find(|review| {
+                    review
+                        .pointer("/author/login")
+                        .and_then(Value::as_str)
+                        .is_some_and(|login| login.eq_ignore_ascii_case(viewer))
+                });
+                Some(mine.map_or("none".to_owned(), |review| {
+                    field(review, "state").to_lowercase()
+                }))
+            });
+            Some((
+                *number,
+                PullDetails {
+                    project_id: project_id.to_owned(),
+                    number: *number,
+                    created_at: optional(pull, "createdAt"),
+                    requested_reviewers,
+                    comment_count: Some(u32::try_from(comments).unwrap_or(u32::MAX)),
+                    viewer_review_state,
+                },
+            ))
         })
         .collect()
 }
 
-/// Comment totals for GitHub pull requests, in one request. Other forges report their
-/// own total in the list.
-pub async fn github_comment_counts(forge: Forge, cwd: &Path, numbers: &[u64]) -> CommentCounts {
-    if forge != Forge::GitHub || numbers.is_empty() {
-        return CommentCounts::Unavailable;
+fn classify_details(
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+    project_id: &str,
+    numbers: &[u64],
+) -> DetailsOutcome {
+    let said = format!("{stderr}\n{stdout}").to_lowercase();
+    if said.contains("rate limit") || said.contains("rate_limited") {
+        return DetailsOutcome::RateLimited;
     }
-    let query = format!("query={}", comment_count_query(numbers));
+    match serde_json::from_str::<Value>(stdout) {
+        Ok(response) if success && response.get("errors").is_none() => {
+            DetailsOutcome::Details(parse_details(&response, project_id, numbers))
+        }
+        _ => DetailsOutcome::Unavailable,
+    }
+}
+
+/// Details for GitHub pull requests, in one request. Other forges have none.
+pub async fn github_details(
+    forge: Forge,
+    cwd: &Path,
+    project_id: &str,
+    numbers: &[u64],
+) -> DetailsOutcome {
+    if forge != Forge::GitHub || numbers.is_empty() {
+        return DetailsOutcome::Unavailable;
+    }
+    let query = format!("query={}", details_query(numbers));
     let args = [
         "api",
         "graphql",
@@ -615,27 +614,25 @@ pub async fn github_comment_counts(forge: Forge, cwd: &Path, numbers: &[u64]) ->
         "-f",
         query.as_str(),
     ];
-    let Ok(Ok(output)) = tokio::time::timeout(COUNT_TIMEOUT, spawn(forge, cwd, &args, None)).await
+    let Ok(Ok(output)) =
+        tokio::time::timeout(DETAILS_TIMEOUT, spawn(forge, cwd, &args, None)).await
     else {
-        return CommentCounts::Unavailable;
+        return DetailsOutcome::Unavailable;
     };
-    let said = format!("{}\n{}", output.stderr, output.stdout).to_lowercase();
-    if said.contains("rate limit") || said.contains("rate_limited") {
-        return CommentCounts::RateLimited;
-    }
-    match serde_json::from_str::<Value>(&output.stdout) {
-        Ok(response) if output.success && response.get("errors").is_none() => {
-            CommentCounts::Counts(parse_comment_counts(&response, numbers))
-        }
-        _ => CommentCounts::Unavailable,
-    }
+    classify_details(
+        output.success,
+        &output.stdout,
+        &output.stderr,
+        project_id,
+        numbers,
+    )
 }
 
 pub async fn fetch_pull(forge: Forge, cwd: &Path, number: u64) -> Result<PullRequest> {
     let id = number.to_string();
     let value = match forge {
         Forge::GitHub => {
-            call_json(forge, cwd, &["pr", "view", &id, "--json", GH_BASE_FIELDS]).await?
+            call_json(forge, cwd, &["pr", "view", &id, "--json", GH_LIST_FIELDS]).await?
         }
         Forge::GitLab => call_json(forge, cwd, &["mr", "view", &id, "--output", "json"]).await?,
         Forge::Azure => {
@@ -687,20 +684,9 @@ pub struct PullFilter {
     pub author: Option<String>,
     pub label: Option<String>,
     pub head: Option<String>,
-    /// Ask for each GitHub pull request's comment total. Costs one extra request.
-    pub comment_counts: bool,
-    /// A refresh the person started: recount instead of reusing a known total.
-    pub fresh_counts: bool,
 }
 
-/// Lists pull requests. GitHub's extra fields come in the same call; `viewer` is the
-/// signed-in login, which only the viewer's own review state needs.
-pub async fn list_pulls(
-    forge: Forge,
-    cwd: &Path,
-    filter: &PullFilter,
-    viewer: Option<&str>,
-) -> Result<Vec<PullRequest>> {
+pub async fn list_pulls(forge: Forge, cwd: &Path, filter: &PullFilter) -> Result<Vec<PullRequest>> {
     let mut args: Vec<&str>;
     match forge {
         Forge::GitHub => {
@@ -778,14 +764,7 @@ pub async fn list_pulls(
         Forge::Bitbucket => return Err(forge.unsupported("list pull requests")),
     }
     let values: Vec<Value> = serde_json::from_str(&call(forge, cwd, &args).await?)?;
-    let mut pulls: Vec<PullRequest> = values
-        .iter()
-        .filter_map(|value| {
-            let mut pull = parse_pull(value)?;
-            pull.viewer_review_state = viewer_review_state(value, viewer);
-            Some(pull)
-        })
-        .collect();
+    let mut pulls: Vec<PullRequest> = values.iter().filter_map(parse_pull).collect();
     // Azure and Forgejo have no such flags, so they are applied here.
     if matches!(forge, Forge::Azure | Forge::Forgejo) {
         if let Some(needle) = &filter.search {
@@ -2230,81 +2209,27 @@ mod tests {
     }
 
     #[test]
-    fn a_github_list_row_carries_the_extra_fields() {
+    fn a_github_row_carries_check_counts_from_its_own_rollup() {
         let row = json!({
-            "number": 7, "title": "T", "url": "https://x/7", "state": "OPEN",
-            "headRefName": "feat", "baseRefName": "main", "author": { "login": "a" },
-            "createdAt": "2026-01-02T03:04:05Z",
-            "comments": [{ "id": 1 }, { "id": 2 }, { "id": 3 }],
-            "reviewRequests": [
-                { "__typename": "User", "login": "sam" },
-                { "__typename": "Team", "name": "Core Team", "slug": "core" },
-            ],
-            "latestReviews": [
-                { "author": { "login": "Other" }, "state": "APPROVED" },
-                { "author": { "login": "Me" }, "state": "CHANGES_REQUESTED" },
-            ],
+            "number": 7, "title": "T", "url": "u", "state": "OPEN",
+            "headRefName": "a", "baseRefName": "b",
             "statusCheckRollup": [
-                { "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS" },
-                { "__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE" },
-                { "__typename": "CheckRun", "name": "e2e", "status": "IN_PROGRESS", "conclusion": "" },
-                { "__typename": "CheckRun", "name": "docs", "status": "COMPLETED", "conclusion": "SKIPPED" },
-                { "__typename": "StatusContext", "context": "ci/legacy", "state": "ERROR" },
+                { "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS" },
+                { "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE" },
+                { "name": "e2e", "status": "IN_PROGRESS", "conclusion": "" },
+                { "context": "ci/legacy", "state": "ERROR" },
             ],
         });
         let pull = parse_pull(&row).unwrap();
-        assert_eq!(pull.created_at.as_deref(), Some("2026-01-02T03:04:05Z"));
-        // GitHub rows get their total from the batched query, never from the list.
-        assert_eq!(pull.comment_count, None);
-        let reviewers = pull.requested_reviewers.unwrap();
-        assert_eq!(
-            reviewers
-                .iter()
-                .map(|r| (r.name.as_str(), r.kind.as_str()))
-                .collect::<Vec<_>>(),
-            [("sam", "user"), ("core", "team")]
-        );
         let checks = pull.checks.unwrap();
         assert_eq!(
             (checks.total, checks.passing, checks.failing, checks.running),
-            (5, 1, 2, 1)
+            (4, 1, 2, 1)
         );
         assert_eq!(checks.failing_names, ["lint", "ci/legacy"]);
-        assert_eq!(pull.viewer_review_state, None);
-        assert_eq!(
-            viewer_review_state(&row, Some("me")).as_deref(),
-            Some("changes_requested")
-        );
-        assert_eq!(
-            viewer_review_state(&row, Some("nobody")).as_deref(),
-            Some("none")
-        );
-        assert_eq!(viewer_review_state(&row, None), None);
-    }
-
-    #[test]
-    fn a_row_without_the_extra_fields_leaves_them_out() {
-        let row = json!({
-            "number": 1, "title": "T", "url": "u", "state": "OPEN",
-            "headRefName": "a", "baseRefName": "b",
-        });
-        let pull = parse_pull(&row).unwrap();
-        assert!(pull.requested_reviewers.is_none());
-        assert!(pull.comment_count.is_none());
-        assert!(pull.created_at.is_none());
-        assert!(pull.checks.is_none());
-        let wire = serde_json::to_value(&pull).unwrap();
-        assert!(wire.get("checks").is_none() && wire.get("created_at").is_none());
-        let old: PullRequest = serde_json::from_value(wire).unwrap();
-        assert!(old.viewer_review_state.is_none());
-        let lab = json!({
-            "iid": 9, "title": "T", "web_url": "u", "state": "opened",
-            "source_branch": "f", "target_branch": "m",
-            "created_at": "2026-02-03T00:00:00Z", "user_notes_count": 4,
-        });
-        let pull = parse_pull(&lab).unwrap();
-        assert_eq!(pull.comment_count, Some(4));
-        assert_eq!(pull.created_at.as_deref(), Some("2026-02-03T00:00:00Z"));
+        assert_eq!(pull.checks_state.as_deref(), Some("fail"));
+        let bare = json!({ "number": 1, "title": "T", "url": "u", "state": "OPEN" });
+        assert!(parse_pull(&bare).unwrap().checks.is_none());
     }
 
     #[test]
@@ -2447,69 +2372,6 @@ mod tests {
     }
 
     #[test]
-    fn a_review_with_no_author_is_skipped() {
-        let row = json!({ "latestReviews": [
-            { "author": null, "state": "APPROVED" },
-            { "author": { "login": "me" }, "state": "COMMENTED" },
-        ] });
-        assert_eq!(
-            viewer_review_state(&row, Some("me")).as_deref(),
-            Some("commented")
-        );
-        assert_eq!(
-            viewer_review_state(&row, Some("you")).as_deref(),
-            Some("none")
-        );
-        // Without the field the viewer's state is unknown, not "none".
-        assert_eq!(viewer_review_state(&json!({}), Some("me")), None);
-    }
-
-    #[test]
-    fn comment_totals_add_conversation_and_review_comments() {
-        let response = json!({ "data": { "repository": {
-            "p3": { "comments": { "totalCount": 2 },
-                    "reviews": { "nodes": [
-                        { "comments": { "totalCount": 3 } },
-                        { "comments": { "totalCount": 0 } },
-                    ] } },
-            "p4": { "comments": { "totalCount": 0 }, "reviews": { "nodes": [] } },
-            "p5": null,
-        } } });
-        let counts = parse_comment_counts(&response, &[3, 4, 5, 6]);
-        // A pull request the response lacks has no count, not zero.
-        assert_eq!(counts, HashMap::from([(3, 5), (4, 0)]));
-        let query = comment_count_query(&[3, 4]);
-        assert!(
-            query.contains("p3:pullRequest(number:3)")
-                && query.contains("p4:pullRequest(number:4)")
-        );
-    }
-
-    #[test]
-    fn an_auth_failure_is_told_from_any_other() {
-        let git = |text: &str| CoreError::Git(text.into());
-        assert!(is_auth_error(&git(
-            "To get started with GitHub CLI, please run:  gh auth login"
-        )));
-        assert!(is_auth_error(&git("gh: Bad credentials (HTTP 401)")));
-        assert!(!is_auth_error(&git("Could not resolve to a PullRequest")));
-        assert!(!is_auth_error(&CoreError::Invalid("auth login".into())));
-    }
-
-    #[test]
-    fn a_remote_host_ignores_user_port_and_path() {
-        for url in [
-            "https://GitHub.com/o/r.git",
-            "git@github.com:o/r.git",
-            "ssh://git@github.com:22/o/r",
-            "https://user@github.com/o/r",
-        ] {
-            assert_eq!(remote_host(url), "github.com", "{url}");
-        }
-        assert_eq!(remote_host("git@ghe.corp.example:o/r"), "ghe.corp.example");
-    }
-
-    #[test]
     fn a_review_with_lines_keeps_every_line() {
         let payload = review_payload(
             "request_changes",
@@ -2558,5 +2420,125 @@ mod tests {
         let output =
             "github.com\n  ✓ Logged in to github.com account octo (keyring)\n  - Token: gho_****\n";
         assert_eq!(auth_accounts(output), ["octo"]);
+    }
+
+    fn details_response() -> Value {
+        json!({ "data": {
+            "viewer": { "login": "Me" },
+            "repository": {
+                "p3": {
+                    "createdAt": "2026-01-02T03:04:05Z",
+                    "reviewRequests": { "nodes": [
+                        { "requestedReviewer": { "__typename": "User", "login": "sam" } },
+                        { "requestedReviewer": { "__typename": "Team", "slug": "core" } },
+                        { "requestedReviewer": { "__typename": "Bot" } },
+                    ] },
+                    "latestReviews": { "nodes": [
+                        { "author": null, "state": "APPROVED" },
+                        { "author": { "login": "me" }, "state": "CHANGES_REQUESTED" },
+                    ] },
+                    "comments": { "totalCount": 2 },
+                    "reviews": { "nodes": [
+                        { "comments": { "totalCount": 3 } },
+                        { "comments": { "totalCount": 0 } },
+                    ] },
+                },
+                "p4": {
+                    "createdAt": "2026-02-02T00:00:00Z",
+                    "reviewRequests": { "nodes": [] },
+                    "latestReviews": { "nodes": [] },
+                    "comments": { "totalCount": 0 },
+                    "reviews": { "nodes": [] },
+                },
+                "p5": null,
+                "p6": { "comments": { "totalCount": 1 } },
+            },
+        } })
+    }
+
+    #[test]
+    fn the_details_response_merges_per_pull_request() {
+        let details = parse_details(&details_response(), "proj", &[3, 4, 5, 6, 7]);
+        // A pull request that is missing, null or incomplete has no entry at all.
+        assert_eq!(
+            details
+                .keys()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            [3, 4].into()
+        );
+        let three = &details[&3];
+        assert_eq!(three.project_id, "proj");
+        assert_eq!(three.created_at.as_deref(), Some("2026-01-02T03:04:05Z"));
+        // Conversation comments plus every review's comments.
+        assert_eq!(three.comment_count, Some(5));
+        let reviewers = three.requested_reviewers.as_ref().unwrap();
+        assert_eq!(
+            reviewers
+                .iter()
+                .map(|r| (r.name.as_str(), r.kind.as_str()))
+                .collect::<Vec<_>>(),
+            [("sam", "user"), ("core", "team")]
+        );
+        // The viewer is matched ignoring case, and a null author is skipped.
+        assert_eq!(
+            three.viewer_review_state.as_deref(),
+            Some("changes_requested")
+        );
+        let four = &details[&4];
+        assert_eq!(four.requested_reviewers.as_deref(), Some(&[][..]));
+        assert_eq!(four.viewer_review_state.as_deref(), Some("none"));
+        assert_eq!(four.comment_count, Some(0));
+    }
+
+    #[test]
+    fn without_a_viewer_the_review_state_is_absent_not_none() {
+        let mut response = details_response();
+        response["data"]["viewer"] = Value::Null;
+        let details = parse_details(&response, "proj", &[3]);
+        assert_eq!(details[&3].viewer_review_state, None);
+        assert_eq!(details[&3].comment_count, Some(5));
+    }
+
+    #[test]
+    fn details_are_absent_when_the_batch_fails_or_the_limit_is_spent() {
+        let ok = details_response().to_string();
+        assert!(matches!(
+            classify_details(true, &ok, "", "p", &[3]),
+            DetailsOutcome::Details(found) if found.len() == 1
+        ));
+        for (success, stdout, stderr) in [
+            (false, "", "GraphQL: API rate limit already exceeded"),
+            (false, r#"{"errors":[{"type":"RATE_LIMITED"}]}"#, ""),
+        ] {
+            assert_eq!(
+                classify_details(success, stdout, stderr, "p", &[3]),
+                DetailsOutcome::RateLimited
+            );
+        }
+        for (success, stdout) in [
+            (false, ""),
+            (true, "not json"),
+            (
+                true,
+                r#"{"data":{},"errors":[{"message":"Could not resolve"}]}"#,
+            ),
+        ] {
+            assert_eq!(
+                classify_details(success, stdout, "", "p", &[3]),
+                DetailsOutcome::Unavailable
+            );
+        }
+    }
+
+    #[test]
+    fn the_details_query_names_one_alias_per_pull_request() {
+        let query = details_query(&[3, 40]);
+        assert!(query.contains("viewer{login}"));
+        assert!(
+            query.contains("p3:pullRequest(number:3)")
+                && query.contains("p40:pullRequest(number:40)")
+        );
+        assert_eq!(query.matches("pullRequest(").count(), 2);
     }
 }
