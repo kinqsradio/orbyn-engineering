@@ -152,6 +152,7 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
   const projects = useVisibleProjects() ?? [];
   const engines = useWorkspace((state) => state.engines.data) ?? [];
   const [name, setName] = useState(task?.name ?? "");
+  const [touched, setTouched] = useState(false);
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
   const [minutes, setMinutes] = useState(String(task?.schedule.every_minutes ?? 60));
   const [kind, setKind] = useState<TaskKind>((task?.schedule.kind as TaskKind | undefined) ?? "interval");
@@ -231,6 +232,10 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
         </>
       }
     >
+      <Field label="Name" error={touched && !name.trim() ? "Give the task a name." : undefined}>
+        {(props) => <input {...props} required placeholder="Name this task" value={name}
+          onChange={(event) => { setTouched(true); setName(event.target.value); }} onBlur={() => setTouched(true)} />}
+      </Field>
       <Field label="What should the agent do?">
         {(props) => <textarea {...props} rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} />}
       </Field>
@@ -305,7 +310,6 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
           </label>
         </>
       ) : null}
-      <Field label="Name">{(props) => <input {...props} value={name} onChange={(event) => setName(event.target.value)} />}</Field>
       {error ? (
         <p className="field-error" role="alert">
           {error}

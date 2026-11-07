@@ -65,3 +65,22 @@ it("opens a task from its row and starts a run from there", async () => {
   await user.click(screen.getByRole("button", { name: "Run now" }));
   await waitFor(() => expect(calls.some((call) => call.method === "POST" && call.path.endsWith("/task-review/run"))).toBe(true));
 });
+
+it("puts Name first, typed by the person, and refuses to save without one", async () => {
+  ready();
+  window.location.hash = "#/settings/tasks?task=task-review";
+  installMockFetch();
+  const user = userEvent.setup();
+  render(<ScheduledTasksSection />);
+  const dialog = await screen.findByRole("dialog", { name: "Edit scheduled task" });
+  const name = within(dialog).getByRole("textbox", { name: "Name" });
+  expect(dialog.querySelector("input, textarea, select")).toBe(name);
+  expect(within(dialog).queryByText("Give the task a name.")).toBeNull();
+  await user.clear(name);
+  expect(within(dialog).getByText("Give the task a name.")).toBeVisible();
+  expect(name).toHaveAttribute("aria-invalid", "true");
+  expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeDisabled();
+  await user.type(name, "Morning review");
+  expect(within(dialog).queryByText("Give the task a name.")).toBeNull();
+  expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeEnabled();
+});
