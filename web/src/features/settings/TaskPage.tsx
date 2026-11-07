@@ -122,7 +122,7 @@ function Deliveries({ task }: { task: ScheduledTask }) {
         <Button small className="set-back-end" icon={<RefreshCw size={13} aria-hidden />} onClick={deliveries.reload}>Retry</Button></p>
     );
   }
-  if (deliveries.data.length === 0) return <Empty title="No deliveries yet"><p>When a service calls the address, each call shows here.</p></Empty>;
+  if (deliveries.data.length === 0) return <Empty title="No deliveries yet."><p>When a service calls the address, each call shows here.</p></Empty>;
   return (
     <div className="set-tbl" role="table" aria-label="Deliveries">
       <div role="row" className="set-tr h" style={{ gridTemplateColumns: DELIVERY_COLUMNS }}>
@@ -168,7 +168,7 @@ function WebhookAddressRow({ task, offline }: { task: ScheduledTask; offline: bo
     <>
       <p className="set-grp">Webhook</p>
       <SettingGroup>
-        <SettingRow title="Webhook address" description={url ? "Copy it now. It isn’t shown again." : "Anyone with this address can start the task. Keep it private."}>
+        <SettingRow title="Webhook address" description={url ? "Copy it now. It isn’t shown again." : stored && !stored.configured ? "No webhook address yet." : "Anyone with this address can start the task. Keep it private."}>
           {url ? (
             <>
               <code className="set-path" title={url}>{url}</code>
@@ -181,10 +181,7 @@ function WebhookAddressRow({ task, offline }: { task: ScheduledTask; offline: bo
                 <Button small busy={busy} disabled={offline} onClick={issue}>Regenerate address</Button>
               </>
             ) : (
-              <>
-                <span className="t3">No webhook address yet.</span>
-                <Button small tone="primary" busy={busy} disabled={offline} onClick={issue}>Create address</Button>
-              </>
+              <Button small tone="primary" busy={busy} disabled={offline} onClick={issue}>Create address</Button>
             )
           )}
         </SettingRow>

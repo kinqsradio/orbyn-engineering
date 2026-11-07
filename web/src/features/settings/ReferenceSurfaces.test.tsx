@@ -88,7 +88,7 @@ it("leaves Settled worktrees out when the dry run finds none, and shows a worktr
   await user.click(await screen.findByRole("button", { name: "Delete now…" }));
   const second = await screen.findByRole("dialog", { name: "Delete old files now?" });
   expect(within(second).getByText("Settled worktrees")).toBeVisible();
-  expect(within(second).getByText("2 · At least 310 MB")).toBeVisible();
+  expect(within(second).getByText("2 · at least 310 MB")).toBeVisible();
 
   partial.unmount();
   preview.mockResolvedValue(previewOf([group("worktree", 2, 0)], true));
