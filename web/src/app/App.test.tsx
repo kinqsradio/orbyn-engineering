@@ -80,6 +80,10 @@ describe("App against the mock API", () => {
     await screen.findByRole("navigation", { name: "Workspace" });
     await waitFor(() => expect(container.querySelector(".folder-toggle .project-swatch")).not.toBeNull());
     expect(container.querySelector(".folder-toggle .folder-chev")).not.toBeNull();
+    // A small plus at the row's right starts a thread there; its tooltip names the project.
+    const plus = container.querySelector<HTMLAnchorElement>(".folder-head > .folder-new")!;
+    expect(plus.title).toMatch(/^New thread in /);
+    expect(plus.textContent).toBe("");
   });
 
   it("pins Working open and keeps Settled collapsed behind a count", async () => {

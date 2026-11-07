@@ -633,14 +633,31 @@ li[data-highlight] .thread-row {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.folder-new {
-  display: none;
-  width: 24px;
-  height: 24px;
+/* A small plus at the right of the row starts a thread in that project; it shows on hover and keyboard focus. */
+.folder-head {
+  position: relative;
 }
-.folder-head:hover .folder-new,
-.folder-new:focus-visible {
-  display: inline-grid;
+.folder-head > .folder-new {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: 6px;
+  color: var(--color-muted);
+  opacity: 0;
+}
+.folder-head[data-count] > .folder-new {
+  right: 30px;
+}
+.folder-head:hover > .folder-new,
+.folder-head:has(:focus-visible) > .folder-new {
+  opacity: 1;
+}
+.folder-head > .folder-new:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
 }
 .project-filter {
   position: relative;

@@ -9,7 +9,6 @@ import {
   MessagesSquare,
   MoreHorizontal,
   SquareTerminal,
-  ArrowLeft,
   CloudOff,
   X,
   type LucideIcon,
@@ -188,6 +187,9 @@ export function SurfacePane({
   const toggle = useUi((state) => state.togglePanel);
   const showLauncher = useUi((state) => state.showLauncher);
   const width = useUi((state) => state.panelWidth);
+  // Over the thread, as a drawer: narrow windows, and the reading layout on any width.
+  const reading = useUi((state) => state.workspaceLayout === "reading");
+  const drawer = overlay || reading;
 
   // The tab the list was opened from, for Escape to return to.
   const lastTab = useRef<RightTab | null>(null);
@@ -254,12 +256,22 @@ export function SurfacePane({
       style={width !== null && !overlay && !maximized ? { width } : undefined}
     >
       {overlay || maximized ? null : <PaneResizer />}
-      <header className="context-head">
-        {overlay ? (
-          <Button small tone="quiet" icon={<ArrowLeft size={16} aria-hidden />} onClick={onReturn}>
+      {drawer ? (
+        <header className="drawer-head">
+          <Button small onClick={onReturn}>
             Back to thread
           </Button>
-        ) : null}
+          <span className="end">
+            <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
+              {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+            </IconButton>
+            <IconButton label="Close side panel" onClick={onReturn}>
+              <X size={16} aria-hidden />
+            </IconButton>
+          </span>
+        </header>
+      ) : null}
+      <header className="context-head">
         <div ref={list} className="tabs" role="tablist" aria-label="Context" onKeyDown={onTabKey}>
           {RIGHT_TABS.filter(({ id }) => shown.includes(id)).map(({ id, label, text }) => (
             <button
@@ -299,12 +311,16 @@ export function SurfacePane({
               <MoreHorizontal size={16} aria-hidden />
             </IconButton>
           ) : null}
-          <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
-            {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
-          </IconButton>
-          <IconButton label="Close side panel" onClick={onReturn}>
-            <X size={16} aria-hidden />
-          </IconButton>
+          {drawer ? null : (
+            <>
+              <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
+                {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+              </IconButton>
+              <IconButton label="Close side panel" onClick={onReturn}>
+                <X size={16} aria-hidden />
+              </IconButton>
+            </>
+          )}
         </div>
       </header>
       <Presence>

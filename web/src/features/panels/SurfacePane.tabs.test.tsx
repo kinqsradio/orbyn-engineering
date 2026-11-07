@@ -80,6 +80,22 @@ describe("surface tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(6);
   });
 
+  it("heads the reading layout's drawer with Back to thread at the left and Maximise and Close at the right", async () => {
+    const user = userEvent.setup();
+    const onReturn = vi.fn();
+    useUi.setState({ workspaceLayout: "reading" });
+    try {
+      pane({ onReturn });
+      const row = screen.getByRole("button", { name: "Back to thread" }).closest("header")!;
+      expect(row.nextElementSibling?.querySelector('[role="tablist"]')).not.toBeNull();
+      expect(screen.getAllByRole("button", { name: "Close side panel" })).toHaveLength(1);
+      await user.click(screen.getByRole("button", { name: "Back to thread" }));
+      expect(onReturn).toHaveBeenCalled();
+    } finally {
+      useUi.setState({ workspaceLayout: "console" });
+    }
+  });
+
   it("is one tablist: one Tab stop, arrow keys, Home and End, and a panel for the chosen tab only", async () => {
     const user = userEvent.setup();
     pane();

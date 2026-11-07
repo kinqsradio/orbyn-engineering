@@ -1811,6 +1811,33 @@ button.detail-row:hover {
   background: var(--color-hover);
   color: var(--color-textSoft);
 }
+/* The drawer's own row above the tabs: Back to thread at the left, Maximise and Close at the right. */
+.drawer-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.drawer-head .btn {
+  min-height: 26px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+}
+.drawer-head .end {
+  display: flex;
+  gap: 2px;
+}
+.drawer-head .end .icon-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-muted);
+}
 .context-head .end {
   display: flex;
   flex: none;

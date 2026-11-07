@@ -23,7 +23,7 @@ export function cloneAddress(text: string): string {
 /** The base directory setting, when the person has chosen one. */
 function useBaseDirectory(): string | null {
   const preferences = useAsync("add-project-base-directory", (signal) => request<PreferenceView[]>("GET", "/api/preferences", undefined, signal));
-  const value = preferences.data?.find((view) => view.key === "add_project_base_directory")?.value;
+  const value = (Array.isArray(preferences.data) ? preferences.data : []).find((view) => view.key === "add_project_base_directory")?.value;
   return typeof value === "string" && value.trim() ? value : null;
 }
 
@@ -192,7 +192,7 @@ function Folders({
         })}
         <div className="add-project-sep" role="separator" />
         {[
-          { icon: <Plus size={16} aria-hidden />, title: "New project", hint: "Empty folder" },
+          { icon: <Plus size={16} aria-hidden />, title: "New project", hint: "README and first commit" },
           { icon: <Download size={16} aria-hidden />, title: "Clone a repository", hint: "Git URL or owner/name" },
           { icon: <Search size={16} aria-hidden />, title: "Browse this computer", hint: isMac ? "⌘O" : "Ctrl O" },
         ].map((action, at) => (
@@ -335,18 +335,18 @@ export function AddProjectPalette({
           label="Name"
           confirm="Create project"
           hint={
-            base ? (
-              <>
-                Created in <span className="mono">{base}</span>, your base directory.{" "}
-                <a
-                  className="add-project-link"
-                  href={routeHref({ name: "settings", section: "general" })}
-                  onClick={onClose}
-                >
-                  Change
-                </a>
-              </>
-            ) : null
+            <>
+              {base ? (
+                <>
+                  Created in <span className="mono">{base}</span>, your base directory.{" "}
+                  <a className="add-project-link" href={routeHref({ name: "settings", section: "general" })} onClick={onClose}>
+                    Change
+                  </a>
+                  <br />
+                </>
+              ) : null}
+              Creates a folder with a README and a first commit, so worktrees work.
+            </>
           }
           submit={async (name) =>
             // With a base directory chosen the folder is made there; without one the service picks.

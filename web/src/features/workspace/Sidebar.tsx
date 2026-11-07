@@ -369,7 +369,7 @@ function FolderHeader({
   onMenu(event: React.MouseEvent): void;
 }) {
   return (
-    <li className="folder-head">
+    <li className="folder-head" data-count={needs > 0 || (collapsed && count > 0) ? "" : undefined}>
       <button
         type="button"
         className="folder-toggle"
@@ -401,7 +401,7 @@ function FolderHeader({
         aria-label={`New thread in ${project.name}`}
         title={`New thread in ${project.name}`}
       >
-        <SquarePen size={14} aria-hidden />
+        <Plus size={14} aria-hidden />
       </a>
     </li>
   );
