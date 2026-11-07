@@ -9,6 +9,8 @@ import { ProviderTable } from "./ProviderTable";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 
+const store = { raw: [], instances: [{ id: "codex", driver: "codex", enabled: true }], disabled: false, error: null, conflict: false,
+  save: vi.fn(), setEnabled: vi.fn(), reload: vi.fn() };
 const engine = (patch: Partial<EngineStatus>): EngineStatus => ({
   id: "claude", name: "Claude Code", tier: "native", installed: true, path: "/bin/claude", version: "2.1.318", auth: "logged_in",
   latest: null, support: "tested", update_command: null, sign_in_command: null, updating: false, problem: null, ...patch,
@@ -17,12 +19,12 @@ const engine = (patch: Partial<EngineStatus>): EngineStatus => ({
 it("shows each provider's state in the table and opens its editor from Edit", async () => {
   const user = userEvent.setup();
   const edit = vi.fn();
-  render(<ProviderTable onAdd={() => undefined} onRegistry={() => undefined} onEdit={edit} engines={[
+  render(<ProviderTable store={store} onOpen={() => undefined} onEdit={edit} engines={[
     engine({}),
     engine({ id: "codex", name: "Codex", version: "0.98", auth: "logged_out", sign_in_command: "codex login" }),
     engine({ id: "gemini", name: "Gemini CLI", tier: "acp", version: "0.31", latest: "0.33" }),
   ]} />);
-  const rows = screen.getAllByRole("row");
+  const rows = screen.getAllByRole("row").slice(1);
   expect(within(rows[0]!).getByText("Ready")).toBeVisible();
   expect(within(rows[1]!).getByText("codex login")).toBeVisible();
   expect(within(rows[2]!).getByText("Update 0.33")).toBeVisible();

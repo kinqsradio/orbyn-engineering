@@ -71,7 +71,7 @@ export function ScopedRows({ groups, query, inheritance }: {
         const hasOverride = value.members.some((member) => member.view.source === "project");
         return <SettingRow key={row.key} title={row.title} description={row.description} actions={
           <div className="setting-inheritance-actions">
-            {showInheritance ? <PreferenceInheritance row={row} view={value.members[0]?.view ?? value.environment} global={value.environment}
+            {showInheritance && (inheritance === true || value.project_scoped) ? <PreferenceInheritance row={row} view={value.members[0]?.view ?? value.environment} global={value.environment}
               members={value.members} mixed={value.mixed} overrides={all ? value.overrides : []} disabled={disabled}
               onResetOverrides={(ids) => save(value, { op: "reset_overrides", project_ids: ids })}
               onOpenOverride={(id) => {

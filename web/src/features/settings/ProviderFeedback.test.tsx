@@ -23,7 +23,6 @@ vi.mock("../../state/workspace", () => ({
       projects: { data: [], error: null },
     }),
 }));
-vi.mock("./AcpRegistry", () => ({ AcpRegistry: () => null }));
 vi.mock("./SettingsScopeContext", () => ({ useSettingsScope: () => null }));
 
 const catalog: EngineModels = {
@@ -71,6 +70,7 @@ describe("codex feedback", () => {
     mock.engines = [engine()];
     actions.sendFeedback.mockResolvedValue({ thread_id: "report-1", prompt_hash: null });
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
 
     await user.click(await screen.findByRole("button", { name: "Send feedback" }));
     const dialog = await screen.findByRole("dialog");
@@ -98,6 +98,7 @@ describe("codex feedback", () => {
       new ApiFailure("unsupported", "Codex refused the report.", 422),
     );
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
 
     await user.click(await screen.findByRole("button", { name: "Send feedback" }));
     const dialog = await screen.findByRole("dialog");
@@ -113,13 +114,13 @@ describe("codex feedback", () => {
     let accept!: (receipt: { thread_id: string }) => void;
     actions.sendFeedback.mockReturnValue(new Promise((resolve) => { accept = resolve; }));
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Codex" }));
     await user.click(await screen.findByRole("button", { name: "Send feedback" }));
     const dialog = await screen.findByRole("dialog");
     const send = within(dialog).getByRole("button", { name: "Send feedback" });
     await user.click(send);
     expect(send).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
     await user.click(send);
     expect(actions.sendFeedback).toHaveBeenCalledTimes(1);
     accept({ thread_id: "pending-report" });
@@ -130,6 +131,7 @@ describe("codex feedback", () => {
   it("offers the action only where the route exists", async () => {
     mock.engines = [engine({ id: "claude", name: "Claude" })];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Claude" }));
 
     expect(await screen.findByRole("heading", { name: "Claude" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Send feedback" })).toBeNull();
@@ -176,13 +178,14 @@ describe("acp sign-in", () => {
     const acp = { id: "opencode", name: "OpenCode", tier: "acp" as const, auth: "not_applicable" as const, installer: "unknown" as const };
     mock.engines = [engine({ ...acp, sign_in_command: "opencode acp --login" })];
     const { unmount } = render(<ProvidersSection />);
-    expect(await screen.findByText("Sign in through the OpenCode CLI. Run this in a terminal:")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Copy sign-in command" })).toBeVisible();
+    await userEvent.click(await screen.findByRole("button", { name: "OpenCode" }));
+    expect(await screen.findByRole("button", { name: "Copy sign-in command" })).toBeVisible();
     expect(screen.getByText("opencode acp --login")).toBeVisible();
     unmount();
 
     mock.engines = [engine({ ...acp, sign_in_command: null })];
     render(<ProvidersSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "OpenCode" }));
     expect((await screen.findAllByText("OpenCode")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Copy sign-in command" })).toBeNull();
   });

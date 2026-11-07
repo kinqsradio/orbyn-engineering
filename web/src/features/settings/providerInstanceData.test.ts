@@ -27,3 +27,12 @@ describe("provider instance edits", () => {
     expect(accentColor("#ABCDEF")).toBe("#abcdef"); expect(accentColor("red")).toBeNull(); expect(accentColor("url(x)")).toBeNull();
   });
 });
+
+import { formatArgs, parseArgs } from "./providerInstanceData";
+describe("launch arguments as one line", () => {
+  it("keeps an argument with spaces together and round-trips", () => {
+    const args = ["--add-dir", "~/My Code", "--flag=\"x\"", ""];
+    expect(parseArgs(formatArgs(args))).toEqual(args);
+    expect(parseArgs("--add-dir ~/Documents/Github")).toEqual(["--add-dir", "~/Documents/Github"]);
+  });
+});
