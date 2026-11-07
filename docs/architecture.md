@@ -1972,9 +1972,14 @@ start has no service to ask, so these are the only ways out of it: a person can 
 try again or leave without a running service. `show_core_log` reveals only the app's own
 log, resolved in Rust, never a path the page sends; `quit_core` only exits the app. Each
 handler also rejects callers while the top-level window is not on that exact startup
-origin and path, so the product asset origin, preview windows and remote viewers cannot
-invoke any of them. The page gets one short reason line for a failed start, cut to
-a single line with path and address words removed and capped in length, not log text.
+origin and path. That URL check, made when the command is called, is the real guard, and
+the capability alone is not: the product UI can navigate the main window onto the startup
+page, and it already has these actions (quit, restart, show log) through the service's
+shell actions, so this opens nothing new. Preview windows have no capability and a
+remote viewer is no window. The page gets one short reason line for a failed start: the
+first non-empty line of the service's last words, without control or text-direction
+characters, without words that look like a path, an address (`host:port`), an `@` or `=`
+value or a 20-character token, and cut at 160 characters. It is not log text.
 It follows the system light or dark appearance; the app's own theme choice lives in the
 product origin and does not reach this page, and Dim is not offered here.
 There are no default core/plugin command permissions. The startup document is embedded,

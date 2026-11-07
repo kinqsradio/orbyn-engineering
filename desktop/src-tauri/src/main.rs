@@ -78,6 +78,10 @@ fn reveal_service_log(app: &AppHandle) -> Result<(), String> {
     } else {
         // No service has written one yet, so open the folder that will hold it.
         let folder = log.parent().ok_or("Cannot find the log folder.")?;
+        // A link could point anywhere, so it is not opened.
+        if std::fs::symlink_metadata(folder).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return Err("The log folder is a link, so it is not opened.".into());
+        }
         app.opener()
             .open_path(folder.to_string_lossy(), None::<&str>)
     };
