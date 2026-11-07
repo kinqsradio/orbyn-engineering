@@ -2,7 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, settled, type Service } from "./service";
+import { openPanelTab, startProject, settled, type Service } from "./service";
 
 type Cue = { phase: string; sequence: number; [key: string]: unknown };
 let service: Service;
@@ -54,8 +54,7 @@ async function withPreview(page: Page, info: TestInfo, work: (context: {
   let primary: unknown;
   try {
     await page.goto(`${service.page}#/threads/${thread.id}`);
-    await page.getByRole("button", { name: "Surfaces", exact: true }).click();
-    await page.getByRole("button", { name: /^Browser/ }).first().click();
+    await openPanelTab(page, "Browser");
     const picture = page.getByRole("img", { name: /^Page at/ });
     await expect(picture).toBeVisible();
     await expect.poll(async () => {

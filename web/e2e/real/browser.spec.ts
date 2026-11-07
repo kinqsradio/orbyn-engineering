@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, type Service } from "./service";
+import { openPanelTab, startProject, type Service } from "./service";
 
 /** The Browser surface driving the service's headless Chrome. */
 const SITE_PORT = 5293;
@@ -63,8 +63,7 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${threadId}`);
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
-  await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
-  await page.getByRole("button", { name: /^Browser/ }).first().click();
+  await openPanelTab(page, "Browser");
   await expect(page.getByText("No preview yet")).toBeVisible();
 
   const address = page.getByRole("combobox", { name: "Search or enter URL" });
@@ -76,18 +75,18 @@ test("a page opens, streams, takes input under control, and tabs close", async (
   await address.fill(`localhost:${SITE_PORT}/two`);
   await address.press("Enter");
   await expect(address).toHaveValue(new RegExp(`/two$`));
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("region", { name: "Browser panel", exact: true }).getByRole("button", { name: "Back", exact: true }).click();
   await expect(address).toHaveValue(new RegExp(`/one$`));
-  await page.getByRole("button", { name: "Forward", exact: true }).click();
+  await page.getByRole("region", { name: "Browser panel", exact: true }).getByRole("button", { name: "Forward", exact: true }).click();
   await expect(address).toHaveValue(new RegExp(`/two$`));
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("region", { name: "Browser panel", exact: true }).getByRole("button", { name: "Back", exact: true }).click();
   await expect(address).toHaveValue(new RegExp(`/one$`));
 
   const threadUrl = decodeURIComponent(page.url().split("/threads/")[1] ?? "");
   const size = async () => (await service.api<{ width: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.width;
   const before = await size();
   // The panel is a fixed 380px; maximising it gives the preview a wider pane to follow.
-  await page.getByRole("button", { name: "Maximize pane" }).click();
+  await page.getByRole("button", { name: "Maximise panel" }).click();
   await expect.poll(size, { timeout: 10_000 }).toBeGreaterThan(before ?? 0);
 
   const zoom = async () => (await service.api<{ zoom: number }[]>("GET", `/api/threads/${threadUrl}/previews`))[0]?.zoom;
@@ -116,8 +115,7 @@ test("the device toolbar resizes the page from its edges", async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${threadId}`);
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
-  await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
-  await page.getByRole("button", { name: /^Browser/ }).first().click();
+  await openPanelTab(page, "Browser");
   const address = page.getByRole("combobox", { name: "Search or enter URL" });
   await address.fill(`localhost:${SITE_PORT}/one`);
   await address.press("Enter");
