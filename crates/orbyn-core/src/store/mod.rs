@@ -378,6 +378,17 @@ impl Store {
     /// uses any more goes; its folder stays.
     pub fn move_thread(&self, id: &str, target: &Project) -> Result<Thread> {
         self.commit(|tx, _| {
+            let removed: Option<String> = tx
+                .query_row(
+                    "SELECT removed_project_name FROM threads WHERE id = ?1",
+                    [id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten();
+            if let Some(name) = removed {
+                return Err(CoreError::ProjectRemoved(name));
+            }
             let runs: i64 = tx.query_row(
                 "SELECT COUNT(*) FROM runs WHERE thread_id = ?1",
                 [id],
@@ -882,6 +893,19 @@ fn tombstone_project(
     appended: &mut Appended,
     project: &Project,
 ) -> Result<Vec<String>> {
+    // Checked here, in the transaction, so a run cannot start between a caller's
+    // look and this write.
+    let busy: bool = tx.query_row(
+        &format!(
+            "SELECT EXISTS (SELECT 1 FROM runs JOIN threads ON threads.id = runs.thread_id
+             WHERE threads.project_id = ?1 AND runs.state IN {ACTIVE_STATES})"
+        ),
+        [&project.id],
+        |row| row.get(0),
+    )?;
+    if busy {
+        return Err(CoreError::ThreadBusy);
+    }
     let stamp = now();
     let ids = project_thread_ids(tx, &project.id)?;
     for table in [

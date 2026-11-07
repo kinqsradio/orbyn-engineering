@@ -552,15 +552,18 @@ impl Core {
         prompt: &str,
         source: &str,
     ) -> Result<String> {
+        // Noted first: the run `fire` queues must not be older than its history row.
+        let began = self.store.begin_task_run(&task.id, source);
         let fired = self.fire(&task, prompt).await;
         let (status, thread, error) = match &fired {
             Ok(thread) => ("started", Some(thread.as_str()), None),
             Err(error) => ("refused", None, Some(error.public_message())),
         };
-        if let Err(error) =
+        let settled = began.and_then(|id| {
             self.store
-                .record_task_run(&task.id, source, thread, status, error.as_deref())
-        {
+                .finish_task_run(&id, thread, status, error.as_deref())
+        });
+        if let Err(error) = settled {
             tracing::warn!(%error, "could not record a task run");
         }
         task.last_run_at = Some(now());

@@ -513,11 +513,8 @@ async fn a_started_firing_reports_how_its_threads_run_ended() {
     let project = core.new_project("app", false, None).await.unwrap();
     let task = core.save_task(interval_task(&project.id), "user").unwrap();
     let thread = thread_in(&core, &project).await;
-    core.store
-        .record_task_run(&task.id, "manual", Some(&thread.id), "started", None)
-        .unwrap();
-    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "queued");
-
+    // The real order: the firing is noted, then its run is made, then the thread is linked.
+    let began = core.store.begin_task_run(&task.id, "manual").unwrap();
     let run = core
         .store
         .admit_run(crate::store::Admission {
@@ -525,6 +522,9 @@ async fn a_started_firing_reports_how_its_threads_run_ended() {
             prompt: "go",
             actor: "t",
         })
+        .unwrap();
+    core.store
+        .finish_task_run(&began, Some(&thread.id), "started", None)
         .unwrap();
     assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "running");
     core.store
@@ -720,4 +720,55 @@ async fn a_stale_due_task_of_a_removed_project_is_refused_and_starts_no_thread()
     assert_eq!(history[0].outcome, "refused");
     assert!(history[0].thread_id.is_none());
     assert!(core.store.list_all_threads(&project.id).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_firing_with_no_run_yet_is_queued() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    let thread = thread_in(&core, &project).await;
+    let began = core.store.begin_task_run(&task.id, "manual").unwrap();
+    core.store
+        .finish_task_run(&began, Some(&thread.id), "started", None)
+        .unwrap();
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "queued");
+}
+
+#[tokio::test]
+async fn removal_refuses_a_run_that_began_after_the_callers_look() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let thread = thread_in(&core, &project).await;
+    core.store
+        .admit_run(crate::store::Admission {
+            thread_id: &thread.id,
+            prompt: "go",
+            actor: "t",
+        })
+        .unwrap();
+
+    // The store is what decides, whatever the caller saw before.
+    assert!(matches!(
+        core.store.remove_project_keeping_threads(&project.id, "t"),
+        Err(CoreError::ThreadBusy)
+    ));
+    assert!(!core.store.thread(&thread.id).unwrap().project_removed);
+}
+
+#[tokio::test]
+async fn a_thread_of_a_removed_project_cannot_be_moved() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let other = core.new_project("other", false, None).await.unwrap();
+    let thread = thread_in(&core, &project).await;
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+
+    refused(core.move_thread(&thread.id, Some(&other.id)));
+    refused(core.move_thread(&thread.id, None));
 }

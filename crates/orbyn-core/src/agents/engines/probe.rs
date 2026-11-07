@@ -29,6 +29,32 @@ pub(crate) async fn capture(
     args: &[&str],
     timeout: Duration,
 ) -> Option<Captured> {
+    capture_with(command, args, timeout, false).await
+}
+
+/// What a program of unknown origin may see: where to find things, a home, a locale,
+/// and on Windows the few variables it cannot start without. No login variable.
+fn minimal_env(builder: &mut std::process::Command) {
+    builder.env_clear();
+    for (name, value) in std::env::vars_os() {
+        let key = name.to_string_lossy().to_ascii_uppercase();
+        let keep = matches!(key.as_str(), "PATH" | "HOME" | "LANG")
+            || key.starts_with("LC_")
+            || (cfg!(windows) && matches!(key.as_str(), "SYSTEMROOT" | "TEMP" | "TMP" | "PATHEXT"));
+        if keep {
+            builder.env(name, value);
+        }
+    }
+}
+
+/// `capture`, and with `minimal` the child gets only `minimal_env` rather than the
+/// environment engines inherit.
+async fn capture_with(
+    command: &ResolvedCommand,
+    args: &[&str],
+    timeout: Duration,
+    minimal: bool,
+) -> Option<Captured> {
     let mut builder = Command::new(&command.program);
     builder
         .args(&command.prefix)
@@ -38,7 +64,11 @@ pub(crate) async fn capture(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    crate::host::child_env::for_engine(builder.as_std_mut());
+    if minimal {
+        minimal_env(builder.as_std_mut());
+    } else {
+        crate::host::child_env::for_engine(builder.as_std_mut());
+    }
     let mut child = builder.spawn().ok()?;
     let (stdout, stderr) = (child.stdout.take()?, child.stderr.take()?);
     let read = async {
@@ -135,7 +165,7 @@ pub async fn probe_binary(path: &str) -> BinaryProbe {
         path: Some(command.path.to_string_lossy().into_owned()),
         ..missing
     };
-    match capture(&command, &["--version"], BINARY_TIMEOUT).await {
+    match capture_with(&command, &["--version"], BINARY_TIMEOUT, true).await {
         Some(output) if output.status == 0 => {
             found.version = parse_version(&output.stdout);
             if found.version.is_none() {
@@ -181,6 +211,25 @@ mod tests {
             Some("0.166.0")
         );
         assert_eq!(parse_version("no version here"), None);
+    }
+
+    #[test]
+    fn a_program_of_unknown_origin_gets_only_the_plain_environment() {
+        let mut command = std::process::Command::new("x");
+        minimal_env(&mut command);
+        let names: Vec<String> = command
+            .get_envs()
+            .map(|(name, _)| name.to_string_lossy().to_ascii_uppercase())
+            .collect();
+        assert!(names.iter().any(|name| name == "PATH"));
+        assert!(names.iter().all(|name| {
+            matches!(
+                name.as_str(),
+                "PATH" | "HOME" | "LANG" | "SYSTEMROOT" | "TEMP" | "TMP" | "PATHEXT"
+            ) || name.starts_with("LC_")
+        }));
+        // Cargo sets this for the test, and a login variable would travel the same way.
+        assert!(!names.iter().any(|name| name == "CARGO"));
     }
 
     #[tokio::test]

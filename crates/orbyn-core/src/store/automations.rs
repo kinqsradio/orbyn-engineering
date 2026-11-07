@@ -149,9 +149,54 @@ impl Store {
         rows.map(|text| Ok(serde_json::from_str(&text?)?)).collect()
     }
 
-    /// Notes one firing. `status` is `started`, `refused` or `skipped`.
+    /// Notes a firing before it starts, so its time is not later than any run it
+    /// creates. Returns the row to `finish_task_run` once the outcome is known.
+    pub fn begin_task_run(&self, task_id: &str, source: &str) -> Result<String> {
+        let id = crate::util::new_id();
+        self.record_task_row(&id, task_id, source, None, "starting", None)?;
+        Ok(id)
+    }
+
+    /// Settles a firing begun with `begin_task_run`: `started` with its thread, or
+    /// `refused` with the reason.
+    pub fn finish_task_run(
+        &self,
+        id: &str,
+        thread_id: Option<&str>,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "UPDATE task_runs SET thread_id = ?2, status = ?3, error = ?4 WHERE id = ?1",
+                params![id, thread_id, status, error],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Notes one finished firing. `status` is `started`, `refused` or `skipped`.
     pub fn record_task_run(
         &self,
+        task_id: &str,
+        source: &str,
+        thread_id: Option<&str>,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        self.record_task_row(
+            &crate::util::new_id(),
+            task_id,
+            source,
+            thread_id,
+            status,
+            error,
+        )
+    }
+
+    fn record_task_row(
+        &self,
+        id: &str,
         task_id: &str,
         source: &str,
         thread_id: Option<&str>,
@@ -164,7 +209,7 @@ impl Store {
                     thread_id, status, error)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
-                    crate::util::new_id(),
+                    id,
                     task_id,
                     source,
                     crate::util::now(),
@@ -189,7 +234,7 @@ impl Store {
     pub fn task_runs(&self, task_id: &str) -> Result<Vec<TaskRun>> {
         let conn = self.reader();
         let mut statement = conn.prepare(
-            "SELECT id, source, started_at, thread_id, status, error FROM task_runs
+            "SELECT id, source, started_at, thread_id, status, error, started_unix FROM task_runs
              WHERE task_id = ?1 ORDER BY started_unix DESC, rowid DESC",
         )?;
         let rows = statement
@@ -201,40 +246,46 @@ impl Store {
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, String>(4)?,
                     row.get::<_, Option<String>>(5)?,
+                    row.get::<_, i64>(6)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         rows.into_iter()
-            .map(|(id, source, started_at, thread_id, status, error)| {
-                let (outcome, ended_at) = match (status.as_str(), thread_id.as_deref()) {
-                    ("started", Some(thread)) => {
-                        let run: Option<(String, Option<String>)> = conn
-                            .query_row(
-                                "SELECT state, ended_at FROM runs
-                                 WHERE thread_id = ?1 AND started_at >= ?2
-                                 ORDER BY started_at, id LIMIT 1",
-                                params![thread, started_at],
-                                |row| Ok((row.get(0)?, row.get(1)?)),
-                            )
-                            .optional()?;
-                        match run {
-                            None => ("queued".to_owned(), None),
-                            Some((state, ended)) => (run_outcome(&state), ended),
+            .map(
+                |(id, source, started_at, thread_id, status, error, started_unix)| {
+                    let (outcome, ended_at) = match (status.as_str(), thread_id.as_deref()) {
+                        ("started", Some(thread)) => {
+                            let run: Option<(String, Option<String>)> = conn
+                                .query_row(
+                                    "SELECT state, ended_at FROM runs
+                                 WHERE thread_id = ?1
+                                   AND CAST(strftime('%s', started_at) AS INTEGER) >= ?2
+                                 ORDER BY strftime('%s', started_at), started_at, id LIMIT 1",
+                                    params![thread, started_unix],
+                                    |row| Ok((row.get(0)?, row.get(1)?)),
+                                )
+                                .optional()?;
+                            match run {
+                                None => ("queued".to_owned(), None),
+                                Some((state, ended)) => (run_outcome(&state), ended),
+                            }
                         }
-                    }
-                    (other, _) => (other.to_owned(), None),
-                };
-                Ok(TaskRun {
-                    id,
-                    task_id: task_id.to_owned(),
-                    source,
-                    started_at,
-                    ended_at,
-                    outcome,
-                    thread_id,
-                    error,
-                })
-            })
+                        // A firing that never settled: the service stopped mid-start.
+                        ("starting", _) => ("interrupted".to_owned(), None),
+                        (other, _) => (other.to_owned(), None),
+                    };
+                    Ok(TaskRun {
+                        id,
+                        task_id: task_id.to_owned(),
+                        source,
+                        started_at,
+                        ended_at,
+                        outcome,
+                        thread_id,
+                        error,
+                    })
+                },
+            )
             .collect()
     }
 
