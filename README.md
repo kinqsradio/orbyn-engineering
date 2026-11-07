@@ -40,24 +40,20 @@ protocols and packages it uses.
 
 ## Status of features
 
-Labels are Available, Beta, Building and Planned. Only what works is Available.
+Statuses are the product plan's own words for each feature inside Orbyn Engineering.
 
 | Feature | Status |
 | --- | --- |
-| Threads, approvals, source control, terminals, files, preview and search (above) | Available, not finished |
-| Skills library, built in with no setup | Available |
-| Sign-in to an Orbyn account (one account across the line) | Planned |
-| Remote access from phone and web (Pro) | Planned |
-| Sync across machines (Pro) | Planned |
-| Memory | Planned |
-| Review gate | Planned |
-| Diagrams | Planned |
-| Security audit | Planned |
-| Inspect | Planned |
-| Teams | Planned, later |
+| Skills library | Exists |
+| Memory | Next |
+| Review gate | Next |
+| Diagrams | After Memory |
+| Security audit | Later |
+| Inspect | Later, niche |
 
-Four Planned screens exist only as development-only previews. See
-[docs/design.md](docs/design.md#planned-with-the-orbyn-platform).
+The plan's line for this app is "Free locally, Pro for remote access and sync", and its
+subscription line says "Teams later". Four screens exist only as development-only
+previews; see [docs/design.md](docs/design.md#planned-with-the-orbyn-platform).
 
 ## Layout
 
