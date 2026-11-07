@@ -16,7 +16,7 @@ import { FeedbackAction, hasFeedback, UpdateAction, useCustomModels } from "./Pr
 import type { InstanceStore } from "./ProviderInstances";
 import { patchInstance } from "./providerInstanceData";
 
-function AddModelDialog({ onClose, add, disabled }: { onClose(): void; add(id: string, label: string): Promise<boolean>; disabled: boolean }) {
+function AddModelDialog({ onClose, add, disabled, error }: { onClose(): void; add(id: string, label: string): Promise<boolean>; disabled: boolean; error: string | null }) {
   const [id, setId] = useState("");
   const [label, setLabel] = useState("");
   return (
@@ -25,6 +25,8 @@ function AddModelDialog({ onClose, add, disabled }: { onClose(): void; add(id: s
         <Button tone="primary" disabled={disabled || !id.trim()} onClick={() => void add(id, label).then((saved) => { if (saved) onClose(); })}>Add model</Button></>}>
       <div className="fld"><label htmlFor="custom-model-id">Model id</label><input id="custom-model-id" value={id} spellCheck={false} onChange={(event) => setId(event.target.value)} /></div>
       <div className="fld"><label htmlFor="custom-model-label">Display name</label><input id="custom-model-label" value={label} onChange={(event) => setLabel(event.target.value)} /></div>
+      {/* A refused save keeps the draft here, so its reason shows here and not behind the dialog. */}
+      {error ? <p className="field-error" role="alert">{error}</p> : null}
     </Dialog>
   );
 }
@@ -81,7 +83,7 @@ function Models({ engine }: { engine: EngineStatus }) {
         <Button small disabled={custom.disabled} onClick={() => setAdding(true)}><Plus size={13} aria-hidden />Add custom model</Button>
         <Button small busy={refreshing} aria-label={`Refresh ${engine.name} models`} onClick={() => void reload(engine.id)}>Refresh models</Button>
       </div>
-      {adding ? <AddModelDialog onClose={() => setAdding(false)} disabled={custom.disabled} add={custom.add} /> : null}
+      {adding ? <AddModelDialog onClose={() => setAdding(false)} disabled={custom.disabled} add={custom.add} error={custom.error} /> : null}
     </>
   );
 }
