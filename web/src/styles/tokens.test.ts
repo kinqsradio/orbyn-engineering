@@ -7,8 +7,9 @@ const dir = join(process.cwd(), "src/styles");
 const files = readdirSync(dir).filter((name) => name.endsWith(".css"));
 const css = Object.fromEntries(files.map((name) => [name, readFileSync(join(dir, name), "utf8")]));
 
-const SCALE = new Set(["8", "11", "11.5", "12", "12.5", "13", "14", "16", "18", "20", "22", "26", "30", "36"]);
-const RADII = new Set(["2", "4", "6", "8", "12", "16", "999"]);
+// Sizes and radii the internal designs use; 10.5, 13.5, 14.5 and 15 and the 5–20 radii come from their source.
+const SCALE = new Set(["8", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15", "16", "18", "20", "22", "26", "30", "36"]);
+const RADII = new Set(["2", "4", "5", "6", "7", "8", "9", "10", "12", "14", "16", "20", "999"]);
 
 describe("design tokens", () => {
   it("keeps literal colours in the token owner only", () => {
