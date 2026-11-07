@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { type Service, libraryReady, startService } from "./service";
+import { type Service, libraryReady, openPanelTab, startService } from "./service";
 
 
 interface Thread {
@@ -215,7 +215,7 @@ test("each thread restores its own panel across switches and a reload", async ({
 
   await open(first);
   await expect(page.getByRole("heading", { name: first })).toBeVisible();
-  await page.getByRole("button", { name: "Surfaces" }).click();
+  await openPanelTab(page);
   await expect(pane).toBeVisible();
   const handle = await pane.getByRole("separator", { name: "Resize panel" }).boundingBox();
   await page.mouse.move((handle?.x ?? 0) + 3, 300);
@@ -258,9 +258,7 @@ test("the terminal drawer opens tabs and splits, and files and diff sources read
   await expect(drawer.locator(".terminal-panel")).toHaveCount(2);
   await drawer.getByRole("button", { name: /^Close Terminal|^Close [^t]/ }).first().click();
 
-  await page.getByRole("button", { name: "Surfaces" }).click();
-  const pane = page.getByRole("complementary", { name: "Thread context" });
-  await pane.getByRole("button", { name: /^Files/ }).click();
+  const pane = await openPanelTab(page, "Files");
   await expect(pane.locator(".file-tree button").first()).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("ControlOrMeta+f");
   await expect(page.getByRole("textbox", { name: "Find in thread" })).toBeFocused();

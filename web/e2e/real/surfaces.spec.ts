@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { startProject, type Service } from "./service";
+import { openPanelTab, startProject, type Service } from "./service";
 
 /** Diff and file surfaces reading a real checkout through the real service. */
 
@@ -48,7 +48,7 @@ test("the diff surface: status, tests filter, find, split, whitespace, collapse,
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto(`${service.page}#/threads/${threadId}`);
-  await page.getByRole("button", { name: /^Changes/ }).click();
+  await openPanelTab(page, "Diff");
   await expect(page.locator("[data-diff-file='README.md'] .diff-status")).toHaveText("M");
   await expect(page.locator("[data-diff-file='fresh.txt'] .diff-status")).toHaveText("A");
 
@@ -146,7 +146,7 @@ test("files preview by kind, keep the source, and save safely", async ({ page })
 
 test("settings rows for background work and providers save", async ({ page }) => {
   await page.goto(`${service.page}#/settings/general`);
-  await page.getByRole("combobox", { name: "Activity profile" }).selectOption("saver");
+  await page.getByRole("radio", { name: "Saver", exact: true }).click();
   await page.getByRole("textbox", { name: "Base directory" }).fill("/tmp/projects");
   await page.getByRole("textbox", { name: "Base directory" }).blur();
   await expect
