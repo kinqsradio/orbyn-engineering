@@ -5,6 +5,7 @@ import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useConnection } from "../../state/connection";
 import { useUi, type RightTab } from "../../state/ui";
+import { useClosedTabs } from "./closedTabs";
 import { SurfacePane, type PaneMode } from "./SurfacePane";
 
 vi.mock("./BrowserPanel", () => ({ BrowserPanel: () => <div>Browser content</div> }));
@@ -21,6 +22,7 @@ beforeEach(() => {
   vi.spyOn(api, "diff").mockResolvedValue([]);
   useConnection.setState({ offline: false, serviceDown: false });
   useUi.setState({ panelOpen: true, panelTab: null, terminalOpen: false, pullReveal: null });
+  useClosedTabs.setState({ closed: [] });
 });
 
 function pane(props: { mode?: PaneMode; onReturn?: () => void; onToggleMaximize?: () => void; maximized?: boolean } = {}) {
@@ -46,16 +48,15 @@ describe("surface tabs", () => {
     expect(screen.queryByRole("button", { name: /^Close (Files|Diff)/ })).not.toBeInTheDocument();
   });
 
-  it("opens a surface from its tab and its list when selected again", async () => {
+  it("shows the first surface until another is chosen, and keeps the chosen one when its tab is pressed again", async () => {
     const user = userEvent.setup();
     pane();
-    expect(screen.getByLabelText("Open a surface")).toBeInTheDocument();
+    expect(screen.getByText("Diff content")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Open a surface")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Files" }));
     expect(screen.getByText("Files content")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("tab", { name: "Files" }));
-    expect(screen.queryByText("Files content")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Open a surface")).toBeInTheDocument();
+    expect(screen.getByText("Files content")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Pull requests" }));
     expect(screen.getByText("Linked pulls content")).toBeInTheDocument();
     expect(useUi.getState().panelTab).toBe("pulls");
@@ -127,30 +128,22 @@ describe("surface tabs", () => {
     expect(useUi.getState().panelTab).toBe("diff");
   });
 
-  it("reaches the launcher again from the chosen tab, and Escape returns to it", async () => {
-    const user = userEvent.setup();
+  it("has no plus while every tab is open", () => {
     pane();
-    expect(screen.queryByRole("button", { name: "All surfaces" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Files" }));
-    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-description", "Opens all surfaces");
-    expect(screen.getByRole("tab", { name: "Diff" })).not.toHaveAttribute("aria-description");
-    await user.click(screen.getByRole("tab", { name: "Files" }));
-    expect(useUi.getState().panelTab).toBeNull();
-    expect(screen.getByLabelText("Open a surface")).toHaveFocus();
-    expect(screen.getByRole("button", { name: /Browser/ })).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-    expect(useUi.getState().panelTab).toBe("files");
-    screen.getByRole("tab", { name: "Files" }).focus();
-    await user.keyboard("{Enter}");
-    expect(useUi.getState().panelTab).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open a tab" })).not.toBeInTheDocument();
   });
 
-  it("opens a surface with its launcher shortcut", async () => {
+  it("lists closed surfaces under a plus at the end of the row, reopens one, and leaves Terminal and Reset tab order out", async () => {
     const user = userEvent.setup();
+    useClosedTabs.setState({ closed: ["files", "side"] });
     pane();
-    screen.getByLabelText("Open a surface").focus();
-    await user.keyboard("f");
-    expect(screen.getByText("Files content")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.id)).toEqual(["context-tab-diff", "context-tab-browser", "context-tab-activity", "context-tab-pulls"]);
+    await user.click(screen.getByRole("button", { name: "Open a tab" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Files", "Side chat"]);
+    await user.click(screen.getByRole("menuitem", { name: "Files" }));
+    expect(useClosedTabs.getState().closed).toEqual(["side"]);
+    expect(useUi.getState().panelTab).toBe("files");
+    expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
   });
 });
 

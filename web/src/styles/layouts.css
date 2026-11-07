@@ -98,7 +98,7 @@
   --details-w: var(--rail-w);
   --details-gap: 0px;
 }
-:root[data-workspace="ledger"] .details {
+:root[data-workspace="ledger"] .thread-main > .details {
   top: 0;
   right: 0;
   bottom: 0;

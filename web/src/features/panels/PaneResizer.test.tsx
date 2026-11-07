@@ -29,7 +29,7 @@ describe("resizing the panel by its edge", () => {
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 880 });
     drag(handle, 600);
     expect(screen.getByRole("status")).toHaveTextContent("600 px");
-    expect([...document.querySelectorAll(".pane-tick")].map((tick) => tick.textContent)).toEqual(["360", "520", "720"]);
+    expect([...document.querySelectorAll(".pane-tick")].map((tick) => tick.textContent)).toEqual(["380", "520", "720"]);
     fireEvent.lostPointerCapture(handle, { pointerId: 1 });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(document.querySelector(".pane-tick")).toBeNull();
@@ -40,12 +40,12 @@ describe("resizing the panel by its edge", () => {
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 880 });
     drag(handle, 731);
     expect(pane.style.width).toBe("720px");
-    drag(handle, 372);
-    expect(pane.style.width).toBe("360px");
-    drag(handle, 400);
-    expect(pane.style.width).toBe("400px");
+    drag(handle, 392);
+    expect(pane.style.width).toBe("380px");
+    drag(handle, 420);
+    expect(pane.style.width).toBe("420px");
     fireEvent.lostPointerCapture(handle, { pointerId: 1 });
-    expect(useUi.getState().panelWidth).toBe(400);
+    expect(useUi.getState().panelWidth).toBe(420);
   });
 
   it("stops at 320 px and at 60% of the window", () => {
@@ -59,10 +59,10 @@ describe("resizing the panel by its edge", () => {
     expect(useUi.getState().panelWidth).toBe(840);
   });
 
-  it("returns to 520 px on a double click on the edge", () => {
+  it("returns to 380 px on a double click on the edge", () => {
     useUi.setState({ panelWidth: 700 });
     const { handle } = setup();
     fireEvent.doubleClick(handle);
-    expect(useUi.getState().panelWidth).toBe(520);
+    expect(useUi.getState().panelWidth).toBe(380);
   });
 });

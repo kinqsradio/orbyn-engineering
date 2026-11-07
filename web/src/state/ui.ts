@@ -290,7 +290,6 @@ interface UiState extends Prefs {
   closePanel(): void;
   setPanelOpen(open: boolean): void;
   /** Back to the launcher, keeping open surfaces. */
-  showLauncher(): void;
   setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
   setPanelMaximized(maximized: boolean): void;
@@ -588,10 +587,6 @@ export const useUi = create<UiState>((set, get) => {
     },
     setPanelOpen(open) {
       set({ panelOpen: open });
-      savePrefs();
-    },
-    showLauncher() {
-      set({ panelOpen: true, panelTab: null });
       savePrefs();
     },
     setPanelAnimationMs(ms) {

@@ -1,113 +1,21 @@
-import {
-  Activity,
-  AppWindow,
-  FileDiff,
-  Files,
-  GitPullRequest,
-  Maximize2,
-  Minimize2,
-  MessagesSquare,
-  MoreHorizontal,
-  SquareTerminal,
-  CloudOff,
-  X,
-  type LucideIcon,
-} from "lucide-react";
-import type { KeyboardEvent } from "react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api } from "../../api/client";
+import { CloudOff, Maximize2, Minimize2, MoreHorizontal, Plus, X } from "lucide-react";
+import type { KeyboardEvent, ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { Thread } from "../../api/types";
-import { useAsync } from "../../lib/useAsync";
-import { useThreadLogs } from "../thread/threadLogs";
-import { useUi, type ContextTab, type RightTab } from "../../state/ui";
+import { useUi, type RightTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
 import { ActivityPanel } from "./ActivityPanel";
 import { BrowserPanel } from "./BrowserPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FilesPanel } from "./FilesPanel";
 import { LinkedPulls } from "./LinkedPulls";
-import { openSideChat } from "./sideChat";
 import { SideChatPane } from "./SideChatPane";
 import { fitTabs, RIGHT_TABS } from "./tabs";
+import { useClosedTabs } from "./closedTabs";
 import { clampPanelWidth, dragPanelWidth, PANEL_DEFAULT, snapPoints } from "./panelWidth";
 import { useConnectionKind } from "../../state/connection";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
-
-interface LauncherAction {
-  id: ContextTab | "new-side";
-  label: string;
-  icon: LucideIcon;
-  shortcut: string;
-  available: boolean;
-}
-
-function Launcher({ thread, back }: { thread: Thread; back: RightTab | null }) {
-  const toggle = useUi((state) => state.togglePanel);
-  const terminalOpen = useUi((state) => state.terminalOpen);
-  const activity = useThreadLogs((state) => (state.logs[thread.id]?.timeline.length ?? 0) > 0);
-  const version = useThreadLogs((state) => state.diffVersion[thread.id] ?? 0);
-  const diff = useAsync(`launcher-diff:${thread.id}`, (signal) => api.diff(thread.id, signal));
-  const { reload } = diff;
-  useEffect(() => {
-    if (version > 0) reload();
-  }, [version, reload]);
-
-  const root = useRef<HTMLDivElement>(null);
-  // Reached from a tab: take focus so Escape can return to it.
-  useEffect(() => {
-    if (back) root.current?.focus();
-  }, [back]);
-
-  const actions: LauncherAction[] = [
-    { id: "browser", label: "Browser", icon: AppWindow, shortcut: "B", available: true },
-    { id: "terminal", label: "Terminal", icon: SquareTerminal, shortcut: "T", available: true },
-    { id: "diff", label: "Diff", icon: FileDiff, shortcut: "D", available: (diff.data?.length ?? 0) > 0 },
-    { id: "files", label: "Files", icon: Files, shortcut: "F", available: true },
-    { id: "activity", label: "Activity", icon: Activity, shortcut: "A", available: activity },
-    { id: "pulls", label: "Pull requests", icon: GitPullRequest, shortcut: "P", available: true },
-    { id: "new-side", label: "Side chat", icon: MessagesSquare, shortcut: "S", available: true },
-  ];
-
-  const open = (action: LauncherAction) => {
-    if (action.id === "terminal" && terminalOpen) return;
-    if (action.id === "new-side") void openSideChat(thread, null);
-    else toggle(action.id);
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape" && back) {
-      event.preventDefault();
-      toggle(back);
-      return;
-    }
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const action = actions.find((entry) => entry.shortcut === event.key.toUpperCase());
-    if (action?.available) {
-      event.preventDefault();
-      open(action);
-    }
-  };
-
-  return (
-    <div ref={root} className="launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
-      <div className="launcher-inner">
-        <h2>Open a surface</h2>
-        <ul>
-          {actions.map((action) => (
-            <li key={action.id}>
-              <button type="button" disabled={!action.available} onClick={() => open(action)}>
-                <action.icon size={16} aria-hidden />
-                <span>{action.label}</span>
-                <kbd>{action.shortcut}</kbd>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
 
 /** The More button: a 24px icon button. */
 const MORE_WIDTH = 24;
@@ -123,9 +31,9 @@ const WAITING_LINE: Partial<Record<RightTab, string>> = {
 const NEEDS_NETWORK: readonly RightTab[] = ["browser", "side", "pulls"];
 
 /**
- * The panel's left edge. Dragging it resizes the panel, snapping to 360, 520 or 720 px within 12 px
+ * The panel's left edge. Dragging it resizes the panel, snapping to 380, 520 or 720 px within 12 px
  * and staying between 320 px and 60% of the window; a pill shows the width and faint ticks mark the
- * snap points while it moves. Double click returns to 520 px. The width is saved when the drag ends.
+ * snap points while it moves. Double click returns to 380 px. The width is saved when the drag ends.
  */
 export function PaneResizer() {
   const setWidth = useUi((state) => state.setPanelWidth);
@@ -194,6 +102,7 @@ export function SurfacePane({
   closing,
   moves,
   maximized,
+  details = null,
   onToggleMaximize,
   onReturn,
 }: {
@@ -203,29 +112,32 @@ export function SurfacePane({
   /** False while the pane is part of the page as it first appeared. */
   moves: boolean;
   maximized: boolean;
+  /** The thread's details card, which sits at the top of the panel above its tabs. */
+  details?: ReactNode;
   onToggleMaximize(): void;
   onReturn(): void;
 }) {
-  const tab = useUi((state) => state.panelTab);
+  // With no surface chosen yet the panel shows the first.
+  const tab: RightTab = useUi((state) => state.panelTab) ?? "diff";
   const toggle = useUi((state) => state.togglePanel);
-  const showLauncher = useUi((state) => state.showLauncher);
+  const closedTabs = useClosedTabs((state) => state.closed);
+  const reopenTab = useClosedTabs((state) => state.reopen);
+  const rowTabs = RIGHT_TABS.filter(({ id }) => !closedTabs.includes(id));
   const width = useUi((state) => state.panelWidth);
   // A header row of its own, with Back to thread: the phone's sheet, and the reading layout's floating drawer.
   const reading = useUi((state) => state.workspaceLayout === "reading");
   const drawer = mode === "sheet" || (reading && mode === "docked");
 
-  // The tab the list was opened from, for Escape to return to.
-  const lastTab = useRef<RightTab | null>(null);
-  if (tab !== null) lastTab.current = tab;
   const list = useRef<HTMLDivElement>(null);
   const kind = useConnectionKind();
   // When the row is narrow, the tabs that don't fit fold into More; the open tab always stays.
   const widths = useRef(new Map<RightTab, number>());
   const [shown, setShown] = useState<readonly RightTab[]>(() => RIGHT_TABS.map(({ id }) => id));
+  const [plusMenu, setPlusMenu] = useState<{ x: number; y: number } | null>(null);
   const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null);
-  const folded = shown.length < RIGHT_TABS.length;
-  const latest = useRef({ tab, folded });
-  latest.current = { tab, folded };
+  const folded = rowTabs.some(({ id }) => !shown.includes(id));
+  const latest = useRef({ tab, folded, ids: rowTabs.map(({ id }) => id) });
+  latest.current = { tab, folded, ids: rowTabs.map(({ id }) => id) };
   const refit = useCallback(() => {
     const row = list.current;
     if (!row) return;
@@ -235,7 +147,7 @@ export function SurfacePane({
     }
     // The row is narrower by the More button while it shows.
     const room = row.clientWidth + (latest.current.folded ? MORE_WIDTH : 0);
-    const next = fitTabs(RIGHT_TABS.map(({ id }) => id), widths.current, room, MORE_WIDTH, latest.current.tab);
+    const next = fitTabs(latest.current.ids, widths.current, room, MORE_WIDTH, latest.current.tab);
     setShown((current) => (current.length === next.length && current.every((id, i) => id === next[i]) ? current : next));
   }, []);
   useLayoutEffect(() => {
@@ -246,23 +158,33 @@ export function SurfacePane({
     observer?.observe(row);
     return () => observer?.disconnect();
   }, [refit]);
-  useLayoutEffect(refit, [tab, refit]);
-  const hiddenTabs: MenuItem[] = RIGHT_TABS.filter(({ id }) => !shown.includes(id)).map(({ id, text, icon: Icon }) => ({
+  const closedKey = closedTabs.join();
+  useLayoutEffect(refit, [tab, closedKey, refit]);
+  const hiddenTabs: MenuItem[] = rowTabs.filter(({ id }) => !shown.includes(id)).map(({ id, text, icon: Icon }) => ({
     label: text,
     icon: <Icon size={14} aria-hidden />,
     onSelect: () => toggle(id),
   }));
-  // One Tab stop: the chosen tab, or the first while none is chosen.
-  const stop = tab ?? RIGHT_TABS[0]?.id;
+  // The "+" lists the closed surfaces. "Reset tab order" waits for tab reordering (data-gated).
+  const closedItems: MenuItem[] = RIGHT_TABS.filter(({ id }) => closedTabs.includes(id)).map(({ id, text, icon: Icon }) => ({
+    label: text,
+    icon: <Icon size={14} aria-hidden />,
+    onSelect: () => {
+      reopenTab(id);
+      toggle(id);
+    },
+  }));
+  // One Tab stop: the chosen tab.
+  const stop = tab;
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const at = RIGHT_TABS.findIndex(({ id }) => id === stop);
+    const at = rowTabs.findIndex(({ id }) => id === stop);
     const next =
-      event.key === "ArrowRight" ? (at + 1) % RIGHT_TABS.length
-      : event.key === "ArrowLeft" ? (at - 1 + RIGHT_TABS.length) % RIGHT_TABS.length
+      event.key === "ArrowRight" ? (at + 1) % rowTabs.length
+      : event.key === "ArrowLeft" ? (at - 1 + rowTabs.length) % rowTabs.length
       : event.key === "Home" ? 0
-      : event.key === "End" ? RIGHT_TABS.length - 1
+      : event.key === "End" ? rowTabs.length - 1
       : -1;
-    const target = RIGHT_TABS[next];
+    const target = rowTabs[next];
     if (!target) return;
     event.preventDefault();
     toggle(target.id);
@@ -297,9 +219,10 @@ export function SurfacePane({
           </span>
         </header>
       ) : null}
+      {details}
       <header className="context-head">
         <div ref={list} className="tabs" role="tablist" aria-label="Context" onKeyDown={onTabKey}>
-          {RIGHT_TABS.filter(({ id }) => shown.includes(id)).map(({ id, label, text }) => (
+          {rowTabs.filter(({ id }) => shown.includes(id)).map(({ id, label, text }) => (
             <button
               key={id}
               type="button"
@@ -312,10 +235,8 @@ export function SurfacePane({
               aria-controls={tab === id ? `context-${id}` : undefined}
               aria-label={text === label ? undefined : label}
               data-offline={kind === "offline" && NEEDS_NETWORK.includes(id) ? "" : undefined}
-              {...(tab === id ? { "aria-description": "Opens all surfaces", title: "Click again for all surfaces" } : {})}
               onClick={() => {
                 if (tab !== id) toggle(id);
-                else showLauncher();
               }}
             >
               {text}
@@ -338,6 +259,19 @@ export function SurfacePane({
               <MoreHorizontal size={16} aria-hidden />
             </IconButton>
           ) : null}
+          {closedItems.length > 0 ? (
+            <IconButton
+              label="Open a tab"
+              pressed={plusMenu !== null}
+              aria-haspopup="menu"
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setPlusMenu(plusMenu ? null : { x: rect.right - MORE_MENU_WIDTH, y: rect.bottom + 4 });
+              }}
+            >
+              <Plus size={16} aria-hidden />
+            </IconButton>
+          ) : null}
           {drawer ? null : (
             <>
               <IconButton label={maximized ? "Restore" : "Maximise panel"} onClick={onToggleMaximize}>
@@ -350,6 +284,11 @@ export function SurfacePane({
           )}
         </div>
       </header>
+      <Presence>
+        {plusMenu ? (
+          <Menu x={plusMenu.x} y={plusMenu.y} label="Closed tabs" items={closedItems} onClose={() => setPlusMenu(null)} />
+        ) : null}
+      </Presence>
       <Presence>
         {moreMenu ? (
           <Menu
@@ -374,8 +313,6 @@ export function SurfacePane({
             <b>Waiting for the Orbyn service</b>
             {WAITING_LINE[tab] ? <span>{WAITING_LINE[tab]}</span> : null}
           </div>
-        ) : tab === null ? (
-          <Launcher thread={thread} back={lastTab.current} />
         ) : (
           <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">
             {tab === "browser" ? (

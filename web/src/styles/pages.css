@@ -178,9 +178,12 @@ p.settings-scope {
   min-height: 28px;
   padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-10);
   background: var(--color-sunken);
   font-size: var(--text-nav);
+}
+.settings-main select {
+  border-radius: var(--radius-md);
 }
 .settings-main textarea {
   min-height: 64px;
@@ -190,7 +193,7 @@ p.settings-scope {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border-radius: var(--radius-9);
+  border-radius: var(--radius-10);
   background: var(--color-sunken);
 }
 .segmented button {
@@ -829,14 +832,14 @@ kbd {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-10);
   background: var(--color-chip);
 }
 .segment button {
   height: 24px;
   padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-7);
   background: transparent;
   color: var(--color-muted);
   font-size: var(--text-body);

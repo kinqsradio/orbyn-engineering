@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockApi } from "../../mock/api";
-import { installMockFetch } from "../test-support";
+import { installMockFetch, setViewportWidth } from "../test-support";
 import { useUi } from "../state/ui";
 import { App } from "./App";
 
@@ -586,19 +586,14 @@ describe("App against the mock API", () => {
     await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
   });
 
-  it("offers only surfaces it can back", async () => {
-    window.matchMedia = ((query: string) => ({
-      matches: query.includes("min-width"),
-      media: query,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    })) as unknown as typeof window.matchMedia;
+  it("opens the panel on its first tab, with no launcher, when the window is wide enough to open it itself", async () => {
+    setViewportWidth(1700);
     go("#/threads/t-done");
     render(<App />);
-    const launcher = await screen.findByLabelText("Open a surface");
-    expect(within(launcher).getByRole("button", { name: /Terminal/ })).toBeEnabled();
-    expect(within(launcher).getByRole("button", { name: /Diff/ })).toBeDisabled();
-    expect(within(launcher).getByRole("button", { name: /Browser/ })).toBeInTheDocument();
+    const row = await screen.findByRole("tablist", { name: "Context" });
+    expect(within(row).getByRole("tab", { name: "Diff" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByLabelText("Open a surface")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open a tab" })).toBeNull();
   });
 
   it("opens an empty thread as a draft, with the project in the heading", async () => {

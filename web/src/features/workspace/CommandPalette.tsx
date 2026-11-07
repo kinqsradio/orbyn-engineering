@@ -1,4 +1,4 @@
-import { File, FolderPlus, MessageSquare, PanelRight, RotateCcw, Search, Settings, SquarePen, SunMoon, TextSearch } from "lucide-react";
+import { File, FolderPlus, MessageSquare, RotateCcw, Search, Settings, SquarePen, SunMoon, TextSearch } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api } from "../../api/client";
 import { compactAge } from "../../lib/format";
@@ -23,7 +23,6 @@ interface Entry {
     | "new-in"
     | "toggle-theme"
     | "restart-session"
-    | "open-surface"
     | { file: string; line: number | null }
     | { message: string; thread: string };
 }
@@ -106,7 +105,6 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
       { key: "add", group: "Actions", label: "Add project", icon: <FolderPlus size={16} aria-hidden />, route: "add-project" },
       ...(parseRoute(window.location.hash).name === "thread"
         ? [
-            { key: "open-surface", group: "Actions", label: "Open a surface…", icon: <PanelRight size={16} aria-hidden />, route: "open-surface" as const },
             { key: "restart", group: "Actions", label: "Restart agent session", icon: <RotateCcw size={16} aria-hidden />, route: "restart-session" as const },
           ]
         : []),
@@ -170,11 +168,6 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
         () => pushToast("The next message starts a fresh agent session"),
         (failure: unknown) => pushToast(`Couldn't restart. ${toFailure(failure).message}`),
       );
-      return;
-    }
-    if (entry.route === "open-surface") {
-      useUi.getState().showLauncher();
-      onClose();
       return;
     }
     if (entry.route === "toggle-theme") {

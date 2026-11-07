@@ -646,7 +646,7 @@ input[type="checkbox"][role="switch"]:disabled {
   right: 0;
   padding: 4px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-raised);
   box-shadow: 0 8px 24px var(--color-shadow);
 }
