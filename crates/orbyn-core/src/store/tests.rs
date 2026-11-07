@@ -1249,6 +1249,53 @@ fn only_an_upgraded_database_reports_its_upgrade() {
 }
 
 #[test]
+fn a_database_that_ran_27_without_the_run_links_gets_them_in_28() {
+    let dir = TempDir::new();
+    let path = dir.path().join("at27.db");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
+    )
+    .unwrap();
+    for (version, sql) in super::migrations::MIGRATIONS
+        .iter()
+        .filter(|(version, _)| *version <= 27)
+    {
+        conn.execute_batch(sql).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations VALUES (?1, 'fixture')",
+            [version],
+        )
+        .unwrap();
+    }
+    let has = |table: &str, column: &str| -> bool {
+        conn.prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .any(|name| name.unwrap() == column)
+    };
+    assert!(!has("runs", "queued_message_id") && !has("task_runs", "queued_id"));
+    drop(conn);
+
+    let store = Store::open(&path, "a").unwrap();
+    assert_eq!(
+        store.upgrade(),
+        Some(orbyn_contracts::DatabaseUpgrade { from: 27, to: 28 })
+    );
+    drop(store);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let has = |table: &str, column: &str| -> bool {
+        conn.prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .any(|name| name.unwrap() == column)
+    };
+    assert!(has("runs", "queued_message_id") && has("task_runs", "queued_id"));
+}
+
+#[test]
 fn a_native_revert_needs_the_runs_own_turn_in_the_threads_session() {
     let f = fixture();
     let first = running(&f.store, &f.thread);

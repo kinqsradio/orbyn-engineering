@@ -259,7 +259,8 @@ impl Store {
                         ("started", Some(queued)) => {
                             let run: Option<(String, Option<String>)> = conn
                                 .query_row(
-                                    "SELECT state, ended_at FROM runs WHERE queued_message_id = ?1",
+                                    "SELECT state, ended_at FROM runs WHERE queued_message_id = ?1
+                                 ORDER BY rowid DESC LIMIT 1",
                                     [queued],
                                     |row| Ok((row.get(0)?, row.get(1)?)),
                                 )
