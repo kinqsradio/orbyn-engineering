@@ -25,11 +25,10 @@ export function SettingRow({
       <div className="setting-line-text">
         <div className="setting-line-heading">
           <span className="setting-line-title">{title}</span>
-          {actions}
         </div>
         {description ? <span className="setting-line-desc">{description}</span> : null}
       </div>
-      {children ? <div className="setting-line-control">{children}</div> : null}
+      {children || actions ? <div className="setting-line-control">{actions}{children}</div> : null}
     </div>
   );
 }

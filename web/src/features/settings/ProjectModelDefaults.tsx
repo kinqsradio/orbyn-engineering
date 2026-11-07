@@ -165,8 +165,8 @@ function ModelTuning({ engine, selected, mixed, disabled, inheritance, onChange 
 /** The model a turn runs on when its own has left the provider's list; empty means none. */
 export function FallbackModel({ disabled = false }: { disabled?: boolean }) {
   return <fieldset className="preference-control" disabled={disabled}>
-    <PreferenceGroups groups={[{ title: "Fallback", rows: [{ key: "fallback_model", title: "Fallback model", inheritance: true,
-      description: "Runs a turn on this model when the thread's model is no longer offered by its provider. Leave empty to stop instead.",
+    <PreferenceGroups groups={[{ title: "", rows: [{ key: "fallback_model", title: "Fallback model", inheritance: true,
+      description: "Used when the default model is unavailable",
       parse: (value) => value.trim() }] }]} />
   </fieldset>;
 }

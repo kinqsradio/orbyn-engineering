@@ -347,11 +347,11 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     go("#/settings/projects?project=mock%3Ap-site");
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Remove project" }));
+    await user.click(await screen.findByRole("button", { name: "Remove…" }));
     const dialog = await screen.findByRole("dialog", { name: /Remove.*marketing-site/ });
-    expect(within(dialog).getByText("This removes only the project entries, not the files on disk.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Orbyn stops tracking this project. Files on disk are not touched.")).toBeInTheDocument();
     expect(within(dialog).queryByRole("checkbox")).toBeNull();
-    const confirm = within(dialog).getByRole("button", { name: "Confirm" });
+    const confirm = within(dialog).getByRole("button", { name: "Remove project" });
     mock.fail("/api/projects/p-site", 1, 409, "thread_busy", "One of this project's threads is running.");
     await user.click(confirm);
     expect(await within(dialog).findByText(/threads is running/)).toBeInTheDocument();

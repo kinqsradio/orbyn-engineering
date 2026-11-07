@@ -24,6 +24,7 @@ import type {
   WorkspaceStatus,
 } from "../src/api/types.ts";
 import * as fixtures from "./fixtures.ts";
+import { preferenceCatalog, projectPreferenceKeys } from "./preferenceCatalog.ts";
 
 export interface MockResponse {
   status: number;
@@ -75,7 +76,7 @@ export function createMockApi(options: MockOptions = {}) {
   let idCounter = 0;
   let preferenceValues: Record<string, JsonValue> = {};
   let preferenceOverrides: Record<string, Record<string, JsonValue>> = {};
-  const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat",
+  const preferenceDefaults: Record<string, JsonValue> = { ...preferenceCatalog, default_thread_env_mode: "local", branch_name_prefix: "feat",
     default_engine: "", default_model: "", default_effort: "", default_model_options: {}, fallback_model: "", disabled_engines: [],
     auto_thread_titles: true, default_permission_mode: "supervised", response_streaming_mode: "paragraph", pull_request_merge_method: "squash",
     source_control_writing_style: { mode: "conventional_commits", custom_instructions: "", follow_templates: true } };
@@ -364,13 +365,13 @@ export function createMockApi(options: MockOptions = {}) {
     return { catalog, rows: keys.filter((key) => Object.hasOwn(preferenceDefaults, key)).map((key) => {
       const fallback = preferenceDefaults[key] ?? null;
       const environment = { key, value: preferenceValues[key] ?? fallback, default: fallback,
-        source: Object.hasOwn(preferenceValues, key) ? "global" : "default", project_scoped: true };
+        source: Object.hasOwn(preferenceValues, key) ? "global" : "default", project_scoped: projectPreferenceKeys.has(key) };
       const members = ids.map((id) => ({ project_id: id, name: projects.find((project) => project.id === id)?.name ?? id,
         view: { ...environment, value: preferenceOverrides[id]?.[key] ?? environment.value,
           source: Object.hasOwn(preferenceOverrides[id] ?? {}, key) ? "project" : environment.source } }));
       const value = members[0]?.view.value ?? environment.value;
       return { key, value, mixed: members.some((member) => JSON.stringify(member.view.value) !== JSON.stringify(value)),
-        default: fallback, project_scoped: true, revision: JSON.stringify([environment, members]), environment, members,
+        default: fallback, project_scoped: projectPreferenceKeys.has(key), revision: JSON.stringify([environment, members]), environment, members,
         overrides: projects.filter((project) => Object.hasOwn(preferenceOverrides[project.id] ?? {}, key)).map((project) => ({
           project_id: project.id, name: project.name, value: preferenceOverrides[project.id]?.[key] ?? null,
         })) };
