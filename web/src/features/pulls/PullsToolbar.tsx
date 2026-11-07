@@ -29,6 +29,8 @@ export interface ToolbarProject {
 export interface ToolbarProps {
   openCount: number;
   draftCount: number;
+  /** While the list loads the pill counts read as an ellipsis, never 0. */
+  loading?: boolean;
   filters: PullFilters;
   onFilters(next: PullFilters): void;
   sort: PullSort;
@@ -434,7 +436,7 @@ export function PullsToolbar(props: ToolbarProps) {
             aria-pressed={filters.states.length === 1 && filters.states[0] === "open" && filters.draft === "all"}
             onClick={() => onFilters({ ...filters, states: ["open"], draft: "all" })}
           >
-            Open · {props.openCount}
+            Open · {props.loading ? "\u2026" : props.openCount}
           </button>
           <button
             type="button"
@@ -442,7 +444,7 @@ export function PullsToolbar(props: ToolbarProps) {
             aria-pressed={filters.states.length === 1 && filters.states[0] === "open" && filters.draft === "only"}
             onClick={() => onFilters({ ...filters, states: ["open"], draft: "only" })}
           >
-            Drafts · {props.draftCount}
+            Drafts · {props.loading ? "\u2026" : props.draftCount}
           </button>
           {(["merged", "closed"] as const).map((state) => (
             <button

@@ -310,3 +310,50 @@
   min-height: var(--button-h-sm);
   font-size: var(--control-fs-sm);
 }
+
+/* Loading: static skeleton rows at the real row height, shown only after the wait. */
+.pull-skel > li {
+  cursor: default;
+}
+.pull-skel > li:hover {
+  background: transparent;
+}
+.pull-skel i {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+}
+.pull-skel .pull-skel-icon {
+  width: 18px;
+  height: 18px;
+}
+.pull-skel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pull-skel .pull-skel-bar {
+  width: 60%;
+}
+/* Shown only after a skeleton: the rows fade in as the skeleton leaves. */
+.pull-rows[data-reveal] {
+  opacity: 1;
+  transition: opacity var(--m-base) var(--m-out);
+}
+@starting-style {
+  .pull-rows[data-reveal] {
+    opacity: 0;
+  }
+}
+/* Under reduced motion the swap is instant. */
+@media (prefers-reduced-motion: reduce) {
+  .pull-rows[data-reveal] {
+    transition: none !important;
+  }
+  @starting-style {
+    .pull-rows[data-reveal] {
+      opacity: 1;
+    }
+  }
+}

@@ -11,12 +11,14 @@ function Harness({
   phone = false,
   oneRepo = true,
   has = pullData,
+  loading = false,
 }: {
   initial?: PullFilters;
   onQuery?(query: string): void;
   phone?: boolean;
   oneRepo?: boolean;
   has?: PullData;
+  loading?: boolean;
 }) {
   const [filters, setFilters] = useState(initial);
   const [sort, setSort] = useState(defaultSort);
@@ -26,6 +28,7 @@ function Harness({
     <PullsToolbar
       openCount={4}
       draftCount={1}
+      loading={loading}
       filters={filters}
       onFilters={setFilters}
       sort={sort}
@@ -143,4 +146,10 @@ describe("pull requests toolbar", () => {
     await user.click(screen.getByRole("button", { name: /^Sort:/ }));
     expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual(["Updated", "Created", "Oldest"]);
   });
+});
+
+it("reads the Open and Drafts counts as an ellipsis while the list loads, never 0", () => {
+  render(<Harness loading />);
+  expect(screen.getByRole("button", { name: "Open · \u2026" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Drafts · \u2026" })).toBeInTheDocument();
 });

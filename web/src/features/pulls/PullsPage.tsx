@@ -3,6 +3,7 @@ import "./pulls.css";
 import { useEffect, useMemo, useState } from "react";
 import type { PullList, PullListEntry } from "../../api/types";
 import { compactAge, relativeTime } from "../../lib/format";
+import { useWaited } from "../../lib/motion";
 import { deriveProjectIdentity } from "../../lib/projectIdentity";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useMedia } from "../../lib/useMedia";
@@ -12,7 +13,7 @@ import { useVisibleProjects } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { PageBar } from "../../ui/PageBar";
-import { ErrorState, Loading } from "../../ui/states";
+import { ErrorState } from "../../ui/states";
 import { PullDetail } from "./PullDetail";
 import { PullsToolbar } from "./PullsToolbar";
 import {
@@ -75,7 +76,15 @@ export function PullsPage() {
   const orderBy = oneRepo || sort.by !== "created" ? sort : defaultSort;
   const rows = useMemo(() => visiblePulls(all, filters, tokens, orderBy, null), [all, filters, tokens, orderBy]);
   const refresh = () => void list.reload();
+  const loading = list.status === "loading";
   const refreshing = list.status === "ready" && list.refreshing;
+  // A load that finishes inside 400 ms shows nothing under the header. A longer one shows the
+  // static skeleton, and the rows then fade in as it leaves.
+  const skeletonShown = useWaited(loading);
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (loading) setRevealed(skeletonShown);
+  }, [loading, skeletonShown]);
   const loadedAt = useMemo(() => (list.data ? Date.now() : null), [list.data]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -127,9 +136,20 @@ export function PullsPage() {
     setSubmitted("");
   };
   const refreshButton = (
-    <IconButton label="Refresh" aria-busy={refreshing || undefined} onClick={refresh}>
-      {refreshing ? <i className="pulls-refresh-spin spin" aria-hidden /> : <RefreshCw size={14} aria-hidden />}
+    <IconButton label="Refresh" aria-busy={loading || refreshing || undefined} onClick={refresh}>
+      {loading || refreshing ? <i className="pulls-refresh-spin spin" aria-hidden /> : <RefreshCw size={14} aria-hidden />}
     </IconButton>
+  );
+
+  const tableHead = (
+    <div className="pulls-head" aria-hidden>
+      <span />
+      <span>Pull request</span>
+      <span>Checks</span>
+      <span>Review</span>
+      <span>Updated</span>
+      <span />
+    </div>
   );
 
   if (selected) {
@@ -157,7 +177,7 @@ export function PullsPage() {
           phone ? undefined : (
             <>
               <span className="pulls-upd" role="status">
-                {refreshing ? "Refreshing" : loadedAt ? `Updated ${relativeTime(new Date(loadedAt).toISOString(), now).toLowerCase()}` : ""}
+                {loading ? "Loading" : refreshing ? "Refreshing" : loadedAt ? `Updated ${relativeTime(new Date(loadedAt).toISOString(), now).toLowerCase()}` : ""}
               </span>
               {refreshButton}
             </>
@@ -171,6 +191,7 @@ export function PullsPage() {
       <PullsToolbar
         openCount={count((pull) => pull.state === "open")}
         draftCount={count((pull) => pull.state === "open" && pull.draft)}
+        loading={loading}
         filters={filters}
         onFilters={setFilters}
         sort={orderBy}
@@ -202,8 +223,27 @@ export function PullsPage() {
             </Button>
           </div>
         ) : null}
-        {list.status === "loading" ? (
-          <Loading label="Loading pull requests" rows={5} />
+        {loading ? (
+          <>
+            {tableHead}
+            {skeletonShown ? (
+              <ul className="pull-rows pull-skel" aria-hidden>
+                {Array.from({ length: 6 }, (_, at) => (
+                  <li key={at}>
+                    <i className="pull-skel-icon" />
+                    <span className="pull-skel-title">
+                      <i style={{ width: "55%" }} />
+                      <i style={{ width: "30%" }} />
+                    </span>
+                    <i className="pull-skel-bar" />
+                    <i className="pull-skel-bar" />
+                    <i className="pull-skel-bar" />
+                    <span />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
         ) : list.status === "error" ? (
           <ErrorState title="Couldn't load pull requests" failure={list.error} onRetry={list.reload} />
         ) : rows.length === 0 && criteria.length > 0 ? (
@@ -232,15 +272,8 @@ export function PullsPage() {
           </div>
         ) : (
           <>
-            <div className="pulls-head" aria-hidden>
-              <span />
-              <span>Pull request</span>
-              <span>Checks</span>
-              <span>Review</span>
-              <span>Updated</span>
-              <span />
-            </div>
-            <ul className="pull-rows">
+            {tableHead}
+            <ul className="pull-rows" data-reveal={revealed || undefined}>
               {rows.map((entry) => {
                 const { project_id: project, pull } = entry;
                 const isPicked = picked.some((one) => one.project_id === project && one.pull.number === pull.number);
