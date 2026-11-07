@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import type { EngineUpdateOutcome } from "../../generated/EngineUpdateOutcome";
 import type { EngineStatus } from "../../api/types";
 import type { ProviderInstance } from "../../generated/ProviderInstance";
-import { toFailure } from "../../lib/useAsync";
+import { toFailure, useAsync } from "../../lib/useAsync";
 import { useConnection } from "../../state/connection";
 import { useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand } from "../../ui/controls";
@@ -26,6 +26,20 @@ function wantsUpdate(engine: EngineStatus) {
 }
 
 type View = { page: "list" } | { page: "detail"; id: string } | { page: "history" } | { page: "registry" };
+
+/** How many conversations Claude and Codex keep on this computer, as the service counts them. Hidden until it answers, and when there are none. */
+function NativeSessionsRow({ engines, onReview }: { engines: EngineStatus[]; onReview(): void }) {
+  const ids = ["claude", "codex"].filter((id) => engines.some((engine) => engine.id === id));
+  const counts = useAsync(`native-session-counts:${ids.join()}`, (signal) => Promise.all(ids.map((id) => api.nativeSessionCount(id, signal))));
+  if (counts.status !== "ready") return null;
+  const total = counts.data.reduce((sum, entry) => sum + entry.count, 0);
+  if (total === 0) return null;
+  return (
+    <SettingRow title="Native sessions" description="Provider sessions this computer keeps">
+      <Button small onClick={onReview}>Review {total}{counts.data.some((entry) => entry.truncated) ? "+" : ""}</Button>
+    </SettingRow>
+  );
+}
 
 export function ProvidersSection() {
   const engines = useWorkspace((state) => state.engines);
@@ -145,6 +159,7 @@ export function ProvidersSection() {
         <SettingRow title="Agent history import" description="Bring in sessions you ran in Claude Code or Codex outside Orbyn">
           <Button small onClick={() => setView({ page: "history" })}>Import…</Button>
         </SettingRow>
+        <NativeSessionsRow engines={engines.data} onReview={() => setView({ page: "history" })} />
         <SettingRow title="ACP registry" description="Add other agents that speak ACP">
           <Button small onClick={() => setView({ page: "registry" })}>Browse</Button>
         </SettingRow>

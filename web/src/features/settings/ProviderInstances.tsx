@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { request } from "../../api/client";
+import { api, request } from "../../api/client";
 import type { EngineStatus, JsonValue } from "../../api/types";
 import type { ProviderInstance } from "../../generated/ProviderInstance";
 import type { ScopedPreferencesResult } from "../../generated/ScopedPreferencesResult";
@@ -63,6 +63,32 @@ export function useProviderInstances(): InstanceStore {
   };
 }
 
+const PROBE_DELAY_MS = 400;
+
+/** What running the typed program with `--version` shows: its version, or why it won't run. Nothing until asked and answered. */
+function useProgramCheck(program: string): { found: string | null; problem: string | null } {
+  const [result, setResult] = useState<{ program: string; found: string | null; problem: string | null } | null>(null);
+  const path = program.trim();
+  useEffect(() => {
+    if (path === "") return;
+    let current = true;
+    const timer = setTimeout(() => {
+      api.probeBinary(path).then(
+        (probe) => {
+          if (!current) return;
+          setResult(probe.exists
+            ? { program: path, found: probe.version ? `Found. Version ${probe.version}.` : "Found.", problem: null }
+            : { program: path, found: null, problem: probe.problem ?? "No file at this path." });
+        },
+        // A check that could not run says nothing about the program; saving stays possible.
+        () => { if (current) setResult(null); },
+      );
+    }, PROBE_DELAY_MS);
+    return () => { current = false; clearTimeout(timer); };
+  }, [path]);
+  return result && result.program === path ? result : { found: null, problem: null };
+}
+
 const requiredProgram = (driver: string) => driver === "_local_acp";
 
 /** The dialog for one instance: its name, colour, binary, auto-compact window and arguments. */
@@ -85,9 +111,10 @@ export function InstanceEditor({ store, engines, instance, create, onClose, onSa
   const set = (patch: Partial<typeof first>) => { setDraft({ ...draft, ...patch }); setReason(null); };
   const changed = create ? true : (Object.keys(first) as (keyof typeof first)[]).some((key) => first[key] !== draft[key]);
   const compactOk = validCompactWindow(draft.compact.trim());
+  const check = useProgramCheck(draft.program);
   const ids = new Set([...engines.map((engine) => engine.id), ...store.instances.map((entry) => entry.id)]);
   const newId = create ? newInstanceId(local ? "acp" : instance.driver, draft.name, ids) : instance.id;
-  const ready = changed && compactOk && !store.disabled && !saving && validInstanceId(newId) && (!requiredProgram(instance.driver) || draft.program.trim() !== "") && (!create || draft.name.trim() !== "");
+  const ready = changed && compactOk && check.problem === null && !store.disabled && !saving && validInstanceId(newId) && (!requiredProgram(instance.driver) || draft.program.trim() !== "") && (!create || draft.name.trim() !== "");
   const fields = (): Record<string, JsonValue | undefined> => ({
     name: draft.name.trim() || undefined, accent: accentColor(draft.accent) ?? undefined, program: draft.program.trim() || undefined,
     auto_compact_window: draft.compact.trim() || undefined, ...(driver?.tier === "native" ? {} : { args: parseArgs(draft.args) }),
@@ -121,11 +148,13 @@ export function InstanceEditor({ store, engines, instance, create, onClose, onSa
           ))}
         </div>
       </div>
-      <div className={reason ? "fld error" : "fld"}>
+      <div className={reason || check.problem ? "fld error" : "fld"}>
         <label htmlFor="instance-program">{pathLabel}</label>
-        <input id="instance-program" className="mono" value={draft.program} spellCheck={false} aria-invalid={reason ? true : undefined} aria-describedby={reason ? "instance-program-error" : undefined}
+        <input id="instance-program" className="mono" value={draft.program} spellCheck={false} aria-invalid={reason || check.problem ? true : undefined}
+          aria-describedby={reason || check.problem || check.found ? "instance-program-note" : undefined}
           onChange={(event) => set({ program: event.target.value })} />
-        {reason ? <small id="instance-program-error" className="err" role="alert">{reason}</small> : null}
+        {reason || check.problem ? <small id="instance-program-note" className="err" role="alert">{reason ?? check.problem}</small>
+          : check.found ? <small id="instance-program-note" className="hint">{check.found}</small> : null}
       </div>
       {instance.driver === "claude" ? (
         <div className={compactOk ? "fld" : "fld error"}>

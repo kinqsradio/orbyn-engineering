@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiFailure, request } from "../../api/client";
+import { api, ApiFailure, request } from "../../api/client";
 import type { EngineStatus, JsonValue } from "../../api/types";
 import { ProvidersSection } from "./Providers";
 
@@ -18,6 +18,7 @@ let inUseWrites: JsonValue[][] = [];
 let writes: { scope: unknown; membership_version: string; if_match: { provider_instances: string }; edits: { provider_instances: { value: JsonValue[] } } }[];
 function snapshot() { return { catalog: { version: "members-1", selection: { kind: "all_projects" } }, rows: [{ key: "provider_instances", revision, value: entries }] }; }
 beforeEach(() => {
+  vi.restoreAllMocks();
   mock.engines = [
     engine({ id: "claude", name: "Claude Code", tier: "native", path: "/opt/claude" }),
     engine({ id: "work", name: "Claude Code · Work", tier: "native", path: "/opt/work", instance_of: "claude" }),
@@ -79,6 +80,22 @@ describe("provider instance dialog", () => {
     expect(path).toBeInvalid();
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeEnabled();
   });
+  it("checks the binary path as you type: Found with its version, or the reason, and Save waits on a path that won't run", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "probeBinary").mockImplementation(async (path) => path === "/opt/work"
+      ? { exists: true, path, version: "2.1.318", problem: null } : { exists: false, path: null, version: null, problem: "No file at this path." });
+    render(<ProvidersSection />);
+    await user.click(await screen.findByRole("button", { name: "Edit Claude Code · Work" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Found. Version 2.1.318.")).toBeVisible();
+    const path = within(dialog).getByRole("textbox", { name: "Binary path" });
+    const name = within(dialog).getByRole("textbox", { name: "Display name" });
+    await user.type(name, "!");
+    await user.clear(path); await user.type(path, "/opt/claud");
+    expect(await within(dialog).findByText("No file at this path.")).toBeVisible();
+    expect(path).toBeInvalid();
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+  });
   it("turns a provider in use on or off for the scope, through the providers-in-use preference", async () => {
     const user = userEvent.setup(); render(<ProvidersSection />);
     const toggle = await screen.findByRole("switch", { name: "Use Claude Code · Work" });
@@ -106,6 +123,37 @@ describe("provider pages", () => {
     await user.click(within(editor).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(entries).toHaveLength(3));
     expect(entries[2]).toMatchObject({ id: "claude_personal", driver: "claude", name: "Personal", program: "/opt/claude", enabled: true });
+  });
+  it("names who is signed in under each provider, and the instance beside it", async () => {
+    mock.engines = [engine({ id: "claude", name: "Claude Code", tier: "native", account: "sam@example.com" }),
+      engine({ id: "work", name: "Claude Code · Work", tier: "native", instance_of: "claude", account: "sam@acme.com" }),
+      engine({ id: "codex", name: "Codex", tier: "native", auth: "logged_out" })];
+    render(<ProvidersSection />);
+    expect(await screen.findByText("sam@example.com")).toBeVisible();
+    expect(screen.getByText("Work · sam@acme.com")).toBeVisible();
+    expect(screen.getByText("Not signed in")).toBeVisible();
+  });
+  it("shows the signed-in account on the provider's page", async () => {
+    const user = userEvent.setup();
+    mock.engines = [engine({ id: "claude", name: "Claude Code", tier: "native", account: "sam@example.com" })];
+    render(<ProvidersSection />);
+    await user.click(await screen.findByRole("button", { name: "Claude Code" }));
+    expect(await screen.findByText("Signed in as sam@example.com")).toBeVisible();
+  });
+  it("offers Review with the count of sessions the service finds, and opens the history import", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "nativeSessionCount").mockImplementation(async (id) => ({ engine: id, count: id === "claude" ? 12 : 6, truncated: false }));
+    mock.engines = [engine({ id: "claude", name: "Claude Code", tier: "native" }), engine({ id: "codex", name: "Codex", tier: "native" })];
+    render(<ProvidersSection />);
+    expect(await screen.findByText("Provider sessions this computer keeps")).toBeVisible();
+    await user.click(await screen.findByRole("button", { name: "Review 18" }));
+    expect(await screen.findByRole("button", { name: "Providers" })).toBeVisible();
+  });
+  it("hides Native sessions when the service has no count to give", async () => {
+    vi.spyOn(api, "nativeSessionCount").mockRejectedValue(new ApiFailure("unsupported", "No history folder.", 400));
+    render(<ProvidersSection />);
+    await screen.findByRole("table", { name: "Providers" });
+    expect(screen.queryByText("Native sessions")).toBeNull();
   });
   it("opens a provider and returns with the back link", async () => {
     const user = userEvent.setup(); render(<ProvidersSection />);

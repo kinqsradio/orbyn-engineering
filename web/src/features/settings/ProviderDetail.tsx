@@ -124,7 +124,7 @@ export function ProviderDetail({ engine, store, onBack, onEdit }: {
           <UpdateAction engine={engine} />
           {hasNewer ? null : <Button small busy={checking} onClick={() => void recheck()}>Check for update</Button>}
         </SettingRow>
-        <SettingRow title="Login" description={engine.auth === "logged_out" ? "Not signed in" : authLabels[engine.auth]}>
+        <SettingRow title="Login" description={engine.auth === "logged_out" ? "Not signed in" : engine.auth === "logged_in" && engine.account ? `Signed in as ${engine.account}` : authLabels[engine.auth]}>
           {signIn && engine.sign_in_command ? <CopyCommand command={engine.sign_in_command} label="Copy sign-in command" /> : null}
           {engine.auth === "logged_out" ? <Button small busy={checking} onClick={() => void recheck()}>Check again</Button> : null}
         </SettingRow>

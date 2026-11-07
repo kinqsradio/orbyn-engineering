@@ -50,8 +50,17 @@ function Status({ engine }: { engine: EngineStatus }) {
   return <span className="set-pill"><Check size={13} aria-hidden />Ready</span>;
 }
 
-const subtitle = (engine: EngineStatus) =>
-  engine.tier === "acp" ? "via ACP" : engine.auth === "logged_out" ? "Not signed in" : engine.auth === "logged_in" ? "Signed in" : null;
+/** An instance is named `Provider · Name`: the provider leads the row, and the instance's own name opens the line under it. */
+function rowNames(engine: EngineStatus): { title: string; label: string | null } {
+  const at = engine.instance_of ? engine.name.indexOf(" · ") : -1;
+  return at < 0 ? { title: engine.name, label: null } : { title: engine.name.slice(0, at), label: engine.name.slice(at + 3) };
+}
+
+/** The line under a provider's name: which instance, and who is signed in. */
+const subtitle = (engine: EngineStatus) => {
+  const status = engine.tier === "acp" ? "via ACP" : engine.auth === "logged_out" ? "Not signed in" : engine.auth === "logged_in" ? engine.account ?? "Signed in" : null;
+  return [rowNames(engine).label, status].filter(Boolean).join(" · ") || null;
+};
 
 const COLUMNS = "28px minmax(0, 1fr) 90px 130px 60px 72px";
 
@@ -87,7 +96,7 @@ export function ProviderTable({ engines, store, onOpen, onEdit }: {
           <div key={engine.id} role="row" className="set-tr set-tr-open" style={{ gridTemplateColumns: COLUMNS }} onClick={() => onOpen(engine.id)}>
             <span role="cell"><span className="set-mark" style={engine.accent ? { background: engine.accent, color: "#fff" } : undefined}>{engine.name.charAt(0).toUpperCase()}</span></span>
             <span role="cell">
-              <button type="button" className="set-row-open name" onClick={(event) => { event.stopPropagation(); onOpen(engine.id); }}>{engine.name}</button>
+              <button type="button" className="set-row-open name" aria-label={engine.name} onClick={(event) => { event.stopPropagation(); onOpen(engine.id); }}>{rowNames(engine).title}</button>
               {note ? <><br /><span className="sub">{note}</span></> : null}
             </span>
             <span role="cell" className="t3">{engine.version ?? ""}</span>
