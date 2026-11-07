@@ -7,7 +7,8 @@ land there.
 
 ## Report a vulnerability privately
 
-Use [GitHub private vulnerability reporting](https://github.com/orbyn-dev/orbyn-engineering/security/advisories/new).
+Email hello@orbyn.dev, or use
+[GitHub private vulnerability reporting](https://github.com/orbyn-dev/orbyn-engineering/security/advisories/new).
 Do not open a public issue for a vulnerability.
 
 Include:
@@ -19,9 +20,7 @@ Include:
 - a suggested fix, if you have one.
 
 Never attach real tokens, engine credentials, private project files or personal
-data. If private reporting is unavailable, open an issue that asks for a private
-contact and gives no details. The maintainer replies through that route. No
-response time is promised.
+data. No response time is promised.
 
 ## What is in scope
 
