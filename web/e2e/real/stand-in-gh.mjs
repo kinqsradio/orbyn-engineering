@@ -76,13 +76,11 @@ const view = (entry) => ({
 });
 
 /**
- * What `gh pr list --json` adds for the list columns: when it was opened, conversation
- * comments, review requests (a "team/" prefix marks a team) and each reviewer's latest
+ * What `gh pr list --json` adds for the list columns: when it was opened, review requests (a "team/" prefix marks a team) and each reviewer's latest
  * review. A fixture may set any of them itself.
  */
 const listRow = (entry) => ({
   createdAt: "2026-09-01T00:00:00Z",
-  comments: entry.issueComments ?? [],
   reviewRequests: (entry.reviewers ?? []).map((name) =>
     name.startsWith("team/") ? { __typename: "Team", name, slug: name.slice(5) } : { __typename: "User", login: name },
   ),
@@ -112,6 +110,21 @@ function apiCall() {
   if (path === "user/starred/orbyn-dev/orbyn-engineering") process.exit(state.starred ? 0 : 1);
   if (path === "graphql") {
     const query = field("query") ?? "";
+    if (query.includes("totalCount")) {
+      // The batched comment-count query: one alias `p<number>` per pull request.
+      if (state.rateLimited) return fail("GraphQL: API rate limit already exceeded");
+      const repository = {};
+      for (const [, number] of query.matchAll(/p(\d+):pullRequest/g)) {
+        const entry = state.pulls.find((candidate) => candidate.number === Number(number));
+        if (!entry) continue;
+        const inline = (entry.threads ?? []).flatMap((thread) => thread.comments.nodes).length;
+        repository[`p${number}`] = {
+          comments: { totalCount: (entry.issueComments ?? []).length },
+          reviews: { nodes: [{ comments: { totalCount: inline } }] },
+        };
+      }
+      return out({ data: { repository } });
+    }
     if (query.includes("reviewThreads")) return out(threads(field("number")));
     const thread = allThreads().find((entry) => entry.id === field("id"));
     if (thread) {

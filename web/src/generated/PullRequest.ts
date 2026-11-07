@@ -21,8 +21,9 @@ checks_state: string | null,
  */
 requested_reviewers?: Array<RequestedReviewer>, 
 /**
- * Conversation comments on the pull request; `None` when the forge does not say.
- * GitHub's list gives conversation comments only, not inline review comments.
+ * Conversation comments plus inline review comments; `None` when not asked for
+ * (GitHub counts them only on request), when the forge does not say, or when the
+ * count is paused. Never a partial number.
  */
 comment_count?: number, 
 /**

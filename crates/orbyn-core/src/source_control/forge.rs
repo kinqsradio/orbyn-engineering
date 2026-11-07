@@ -4,6 +4,7 @@
 //! DevOps and Forgejo cover the basics their CLIs have, and Bitbucket has no CLI to
 //! go through, so it reports that instead of asking for a token.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -24,6 +25,8 @@ use crate::util::tail;
 
 const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
 const LIST_LIMIT: &str = "100";
+/// The comment-count request must not hold a list up for long.
+const COUNT_TIMEOUT: Duration = Duration::from_secs(20);
 
 impl crate::app::Core {
     /// A fixed, read-only product-repository check through the person's own CLI.
@@ -65,12 +68,17 @@ impl crate::app::Core {
         orbyn_contracts::RepositoryStarStatus { starred }
     }
 }
+/// What a pull request link or a refresh needs: no conversation, no reviews.
+const GH_BASE_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
+updatedAt,labels,reviewDecision,statusCheckRollup,createdAt";
+/// The list adds review requests and each reviewer's latest review, both small. The
+/// conversation comments stay out: they are counted by a separate batched query.
 const GH_LIST_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,comments,reviewRequests,latestReviews";
+updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,reviewRequests,latestReviews";
 const GH_VIEW_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
-updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,latestReviews,body,comments,reviews,\
-mergeable,reviewRequests,headRefOid,baseRefOid,additions,deletions,changedFiles,\
-maintainerCanModify,autoMergeRequest";
+updatedAt,labels,reviewDecision,statusCheckRollup,createdAt,body,comments,reviews,mergeable,\
+reviewRequests,headRefOid,baseRefOid,additions,deletions,changedFiles,maintainerCanModify,\
+autoMergeRequest";
 /// Failing check names kept per pull request, so a list stays small.
 const MAX_FAILING_NAMES: usize = 20;
 const THREADS_QUERY: &str = "query($owner:String!,$repo:String!,$number:Int!){\
@@ -102,9 +110,7 @@ impl Forge {
     /// Reads the host from a remote URL. A word in the path does not count. An
     /// unknown host is GitHub, so GitHub Enterprise works through `gh`.
     pub fn of_remote(url: &str) -> Self {
-        let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-        let rest = rest.rsplit_once('@').map_or(rest, |(_, rest)| rest);
-        let host = rest.split(['/', ':']).next().unwrap_or("").to_lowercase();
+        let host = remote_host(url);
         if host.contains("gitlab") {
             Self::GitLab
         } else if host == "dev.azure.com"
@@ -154,6 +160,13 @@ impl Forge {
     fn unsupported(self, what: &str) -> CoreError {
         CoreError::Unsupported(format!("{} cannot {what} from Orbyn.", self.name()))
     }
+}
+
+/// The host of a remote URL, lowercase: `https://h/o/r`, `git@h:o/r` and `ssh://git@h:22/o/r`.
+pub fn remote_host(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let rest = rest.rsplit_once('@').map_or(rest, |(_, rest)| rest);
+    rest.split(['/', ':']).next().unwrap_or("").to_lowercase()
 }
 
 pub async fn forge_of(cwd: &Path) -> Result<Forge> {
@@ -296,31 +309,59 @@ fn check_state(status: &str, conclusion: &str) -> &'static str {
     }
 }
 
-/// One word for a whole check list: a failure wins, then anything unfinished.
-fn rollup(states: impl Iterator<Item = String>) -> String {
-    let states: Vec<String> = states.collect();
-    if states.is_empty() {
-        "none"
-    } else if states.iter().any(|state| state == "fail") {
-        "fail"
-    } else if states.iter().any(|state| state == "pending") {
-        "pending"
-    } else {
-        "pass"
-    }
-    .to_owned()
+/// What one entry of GitHub's check rollup counts as.
+#[derive(Debug, PartialEq, Eq)]
+enum CheckBucket {
+    Pass,
+    Fail,
+    Running,
+    /// Skipped, neutral or stale: only in the total.
+    Other,
 }
 
+/// A check run is running until it is `COMPLETED`; then its conclusion decides. A
+/// commit status has only a `state`, where `EXPECTED` and `PENDING` are still to come.
+fn check_bucket(entry: &Value) -> CheckBucket {
+    let status = field(entry, "status").to_uppercase();
+    let conclusion = field(entry, "conclusion").to_uppercase();
+    if status.is_empty() && conclusion.is_empty() {
+        return match field(entry, "state").to_uppercase().as_str() {
+            "SUCCESS" => CheckBucket::Pass,
+            "FAILURE" | "ERROR" => CheckBucket::Fail,
+            _ => CheckBucket::Running,
+        };
+    }
+    if !status.is_empty() && status != "COMPLETED" {
+        return CheckBucket::Running;
+    }
+    match conclusion.as_str() {
+        "SUCCESS" => CheckBucket::Pass,
+        "FAILURE" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE" => {
+            CheckBucket::Fail
+        }
+        _ => CheckBucket::Other,
+    }
+}
+
+/// One word for the counts: a failure wins, then anything unfinished.
 fn github_rollup(value: &Value) -> Option<String> {
-    let checks = value.get("statusCheckRollup")?.as_array()?;
-    Some(rollup(checks.iter().map(|check| {
-        let status = [field(check, "status"), field(check, "state")].concat();
-        check_state(&status, field(check, "conclusion")).to_owned()
-    })))
+    let checks = github_checks(value)?;
+    Some(
+        if checks.total == 0 {
+            "none"
+        } else if checks.failing > 0 {
+            "fail"
+        } else if checks.running > 0 {
+            "pending"
+        } else {
+            "pass"
+        }
+        .to_owned(),
+    )
 }
 
 /// Per-state counts over GitHub's check rollup, which holds check runs and commit
-/// statuses. Skipped and neutral checks count only in the total.
+/// statuses. Skipped, neutral and stale checks count only in the total.
 fn github_checks(value: &Value) -> Option<PullChecks> {
     let entries = value.get("statusCheckRollup")?.as_array()?;
     let mut checks = PullChecks {
@@ -331,18 +372,17 @@ fn github_checks(value: &Value) -> Option<PullChecks> {
         failing_names: Vec::new(),
     };
     for entry in entries {
-        let status = [field(entry, "status"), field(entry, "state")].concat();
-        match check_state(&status, field(entry, "conclusion")) {
-            "pass" => checks.passing += 1,
-            "fail" => {
+        match check_bucket(entry) {
+            CheckBucket::Pass => checks.passing += 1,
+            CheckBucket::Fail => {
                 checks.failing += 1;
                 let name = [field(entry, "name"), field(entry, "context")].concat();
                 if !name.is_empty() && checks.failing_names.len() < MAX_FAILING_NAMES {
                     checks.failing_names.push(name);
                 }
             }
-            "pending" => checks.running += 1,
-            _ => {}
+            CheckBucket::Running => checks.running += 1,
+            CheckBucket::Other => {}
         }
     }
     Some(checks)
@@ -390,11 +430,10 @@ pub fn viewer_review_state(value: &Value, viewer: Option<&str>) -> Option<String
     Some(state)
 }
 
+/// GitLab reports every note on a merge request in the list. GitHub's list has no
+/// such total, so its count comes from [`github_comment_counts`] when asked for.
 fn comment_count(value: &Value) -> Option<u32> {
-    let count = match value.get("comments") {
-        Some(Value::Array(comments)) => comments.len() as u64,
-        _ => value.get("user_notes_count")?.as_u64()?,
-    };
+    let count = value.get("user_notes_count")?.as_u64()?;
     Some(u32::try_from(count).unwrap_or(u32::MAX))
 }
 
@@ -491,11 +530,112 @@ pub fn parse_pull(value: &Value) -> Option<PullRequest> {
     })
 }
 
+/// Whether a failed forge call means the CLI's login is gone or switched.
+pub fn is_auth_error(error: &CoreError) -> bool {
+    let CoreError::Git(message) = error else {
+        return false;
+    };
+    let message = message.to_lowercase();
+    [
+        "auth login",
+        "not logged in",
+        "bad credentials",
+        "http 401",
+        "requires authentication",
+        "authentication required",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle))
+}
+
+/// How the batched comment-count request ended.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CommentCounts {
+    Counts(HashMap<u64, u32>),
+    /// GitHub's GraphQL limit is spent, so no number may be reported.
+    RateLimited,
+    Unavailable,
+}
+
+/// One GraphQL request for every listed pull request: conversation comments plus the
+/// comments inside each review (inline review comments). Aliases are `p<number>`.
+fn comment_count_query(numbers: &[u64]) -> String {
+    let aliases: String = numbers
+        .iter()
+        .map(|number| {
+            format!(
+                "p{number}:pullRequest(number:{number}){{comments{{totalCount}}\
+reviews(first:100){{nodes{{comments{{totalCount}}}}}}}}"
+            )
+        })
+        .collect();
+    format!(
+        "query($owner:String!,$repo:String!){{repository(owner:$owner,name:$repo){{{aliases}}}}}"
+    )
+}
+
+/// Adds each pull request's conversation comments and its reviews' comments. A pull
+/// request the response lacks is left out rather than counted as zero.
+fn parse_comment_counts(response: &Value, numbers: &[u64]) -> HashMap<u64, u32> {
+    let total = |value: &Value| {
+        value
+            .pointer("/comments/totalCount")
+            .and_then(Value::as_u64)
+    };
+    numbers
+        .iter()
+        .filter_map(|number| {
+            let pull = response.pointer(&format!("/data/repository/p{number}"))?;
+            let reviews: u64 = pull
+                .pointer("/reviews/nodes")?
+                .as_array()?
+                .iter()
+                .filter_map(total)
+                .sum();
+            let count = total(pull)? + reviews;
+            Some((*number, u32::try_from(count).unwrap_or(u32::MAX)))
+        })
+        .collect()
+}
+
+/// Comment totals for GitHub pull requests, in one request. Other forges report their
+/// own total in the list.
+pub async fn github_comment_counts(forge: Forge, cwd: &Path, numbers: &[u64]) -> CommentCounts {
+    if forge != Forge::GitHub || numbers.is_empty() {
+        return CommentCounts::Unavailable;
+    }
+    let query = format!("query={}", comment_count_query(numbers));
+    let args = [
+        "api",
+        "graphql",
+        "-F",
+        "owner={owner}",
+        "-F",
+        "repo={repo}",
+        "-f",
+        query.as_str(),
+    ];
+    let Ok(Ok(output)) = tokio::time::timeout(COUNT_TIMEOUT, spawn(forge, cwd, &args, None)).await
+    else {
+        return CommentCounts::Unavailable;
+    };
+    let said = format!("{}\n{}", output.stderr, output.stdout).to_lowercase();
+    if said.contains("rate limit") || said.contains("rate_limited") {
+        return CommentCounts::RateLimited;
+    }
+    match serde_json::from_str::<Value>(&output.stdout) {
+        Ok(response) if output.success && response.get("errors").is_none() => {
+            CommentCounts::Counts(parse_comment_counts(&response, numbers))
+        }
+        _ => CommentCounts::Unavailable,
+    }
+}
+
 pub async fn fetch_pull(forge: Forge, cwd: &Path, number: u64) -> Result<PullRequest> {
     let id = number.to_string();
     let value = match forge {
         Forge::GitHub => {
-            call_json(forge, cwd, &["pr", "view", &id, "--json", GH_LIST_FIELDS]).await?
+            call_json(forge, cwd, &["pr", "view", &id, "--json", GH_BASE_FIELDS]).await?
         }
         Forge::GitLab => call_json(forge, cwd, &["mr", "view", &id, "--output", "json"]).await?,
         Forge::Azure => {
@@ -547,6 +687,8 @@ pub struct PullFilter {
     pub author: Option<String>,
     pub label: Option<String>,
     pub head: Option<String>,
+    /// Ask for each GitHub pull request's comment total. Costs one extra request.
+    pub comment_counts: bool,
 }
 
 /// Lists pull requests. GitHub's extra fields come in the same call; `viewer` is the
@@ -2110,7 +2252,8 @@ mod tests {
         });
         let pull = parse_pull(&row).unwrap();
         assert_eq!(pull.created_at.as_deref(), Some("2026-01-02T03:04:05Z"));
-        assert_eq!(pull.comment_count, Some(3));
+        // GitHub rows get their total from the batched query, never from the list.
+        assert_eq!(pull.comment_count, None);
         let reviewers = pull.requested_reviewers.unwrap();
         assert_eq!(
             reviewers
@@ -2230,11 +2373,138 @@ mod tests {
         assert_eq!(check_state("IN_PROGRESS", ""), "pending");
         assert_eq!(check_state("SUCCESS", ""), "pass");
         assert_eq!(check_state("failed", ""), "fail");
+    }
+
+    fn rolled(entries: Value) -> (PullChecks, String) {
+        let row = json!({ "statusCheckRollup": entries });
+        (github_checks(&row).unwrap(), github_rollup(&row).unwrap())
+    }
+
+    #[test]
+    fn rollup_entries_count_by_completion_then_conclusion() {
+        let run = |status: &str, conclusion: &str| json!({ "name": "c", "status": status, "conclusion": conclusion });
+        let context = |state: &str| json!({ "context": "c", "state": state });
+        // (entry, passing, failing, running) with a total of one each.
+        let table = [
+            (run("COMPLETED", "SUCCESS"), 1, 0, 0),
+            (run("COMPLETED", "FAILURE"), 0, 1, 0),
+            (run("COMPLETED", "TIMED_OUT"), 0, 1, 0),
+            (run("COMPLETED", "CANCELLED"), 0, 1, 0),
+            (run("COMPLETED", "ACTION_REQUIRED"), 0, 1, 0),
+            (run("COMPLETED", "STARTUP_FAILURE"), 0, 1, 0),
+            (run("COMPLETED", "STALE"), 0, 0, 0),
+            (run("COMPLETED", "NEUTRAL"), 0, 0, 0),
+            (run("COMPLETED", "SKIPPED"), 0, 0, 0),
+            (run("IN_PROGRESS", ""), 0, 0, 1),
+            (run("QUEUED", ""), 0, 0, 1),
+            (run("WAITING", ""), 0, 0, 1),
+            // Not completed, so a stale conclusion does not count.
+            (run("IN_PROGRESS", "FAILURE"), 0, 0, 1),
+            (context("SUCCESS"), 1, 0, 0),
+            (context("FAILURE"), 0, 1, 0),
+            (context("ERROR"), 0, 1, 0),
+            (context("PENDING"), 0, 0, 1),
+            (context("EXPECTED"), 0, 0, 1),
+        ];
+        for (entry, passing, failing, running) in table {
+            let (checks, _) = rolled(json!([entry.clone()]));
+            assert_eq!(
+                (checks.total, checks.passing, checks.failing, checks.running),
+                (1, passing, failing, running),
+                "{entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_rollup_word_follows_the_counts() {
+        let run = |status: &str, conclusion: &str| json!({ "name": "c", "status": status, "conclusion": conclusion });
+        assert_eq!(rolled(json!([])).1, "none");
+        assert_eq!(rolled(json!([run("COMPLETED", "SKIPPED")])).1, "pass");
         assert_eq!(
-            rollup(["pass".into(), "pending".into()].into_iter()),
+            rolled(json!([run("COMPLETED", "SUCCESS"), run("QUEUED", "")])).1,
             "pending"
         );
-        assert_eq!(rollup(std::iter::empty()), "none");
+        assert_eq!(
+            rolled(json!([
+                run("COMPLETED", "ACTION_REQUIRED"),
+                run("QUEUED", "")
+            ]))
+            .1,
+            "fail"
+        );
+    }
+
+    #[test]
+    fn failing_names_are_capped() {
+        let many: Vec<Value> = (0..30)
+            .map(|n| json!({ "name": format!("c{n}"), "status": "COMPLETED", "conclusion": "FAILURE" }))
+            .collect();
+        let (checks, _) = rolled(json!(many));
+        assert_eq!((checks.failing, checks.failing_names.len()), (30, 20));
+    }
+
+    #[test]
+    fn a_review_with_no_author_is_skipped() {
+        let row = json!({ "latestReviews": [
+            { "author": null, "state": "APPROVED" },
+            { "author": { "login": "me" }, "state": "COMMENTED" },
+        ] });
+        assert_eq!(
+            viewer_review_state(&row, Some("me")).as_deref(),
+            Some("commented")
+        );
+        assert_eq!(
+            viewer_review_state(&row, Some("you")).as_deref(),
+            Some("none")
+        );
+        // Without the field the viewer's state is unknown, not "none".
+        assert_eq!(viewer_review_state(&json!({}), Some("me")), None);
+    }
+
+    #[test]
+    fn comment_totals_add_conversation_and_review_comments() {
+        let response = json!({ "data": { "repository": {
+            "p3": { "comments": { "totalCount": 2 },
+                    "reviews": { "nodes": [
+                        { "comments": { "totalCount": 3 } },
+                        { "comments": { "totalCount": 0 } },
+                    ] } },
+            "p4": { "comments": { "totalCount": 0 }, "reviews": { "nodes": [] } },
+            "p5": null,
+        } } });
+        let counts = parse_comment_counts(&response, &[3, 4, 5, 6]);
+        // A pull request the response lacks has no count, not zero.
+        assert_eq!(counts, HashMap::from([(3, 5), (4, 0)]));
+        let query = comment_count_query(&[3, 4]);
+        assert!(
+            query.contains("p3:pullRequest(number:3)")
+                && query.contains("p4:pullRequest(number:4)")
+        );
+    }
+
+    #[test]
+    fn an_auth_failure_is_told_from_any_other() {
+        let git = |text: &str| CoreError::Git(text.into());
+        assert!(is_auth_error(&git(
+            "To get started with GitHub CLI, please run:  gh auth login"
+        )));
+        assert!(is_auth_error(&git("gh: Bad credentials (HTTP 401)")));
+        assert!(!is_auth_error(&git("Could not resolve to a PullRequest")));
+        assert!(!is_auth_error(&CoreError::Invalid("auth login".into())));
+    }
+
+    #[test]
+    fn a_remote_host_ignores_user_port_and_path() {
+        for url in [
+            "https://GitHub.com/o/r.git",
+            "git@github.com:o/r.git",
+            "ssh://git@github.com:22/o/r",
+            "https://user@github.com/o/r",
+        ] {
+            assert_eq!(remote_host(url), "github.com", "{url}");
+        }
+        assert_eq!(remote_host("git@ghe.corp.example:o/r"), "ghe.corp.example");
     }
 
     #[test]

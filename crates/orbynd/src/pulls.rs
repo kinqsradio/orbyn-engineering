@@ -23,6 +23,9 @@ fn filter_of(query: HashMap<String, String>) -> PullFilter {
         author: query.remove("author").filter(|text| !text.is_empty()),
         label: query.remove("label").filter(|text| !text.is_empty()),
         head: None,
+        comment_counts: query
+            .get("counts")
+            .is_some_and(|counts| counts == "comments"),
     }
 }
 

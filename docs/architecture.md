@@ -554,15 +554,32 @@ shell parses them, and comment and thread ids that go into API paths are checked
 be plain.
 
 A pull request list row also carries, from the same `gh pr list --json` call and never
-a call per pull request: `created_at`, `requested_reviewers` (users and teams),
-`comment_count`, per-check `checks` counts (total, passing, failing, running and up to
-20 failing names) and `viewer_review_state` (the signed-in login's latest review, or
-`none`). `ForgeStatus.viewer` is that login. Each is left out when the forge does not say,
-so older clients keep working. `comment_count` is conversation comments only, because
-`gh`'s list fields do not carry inline review comments. The viewer is asked of the CLI
-once per forge and kept for the service's life; `GET /api/forges` refreshes it. Only
-list reads fill `viewer_review_state`. GitLab fills `created_at` and `comment_count`;
-the other forges fill none of these.
+a call per pull request: `created_at`, `requested_reviewers` (users and teams), per-check
+`checks` counts (total, passing, failing, running and up to 20 failing names) and
+`viewer_review_state` (the signed-in login's latest review, or `none`; absent when the
+viewer is unknown). A check run counts as running until it is `COMPLETED`; completed
+with `FAILURE`, `CANCELLED`, `TIMED_OUT`, `ACTION_REQUIRED` or `STARTUP_FAILURE` it
+fails; `SKIPPED`, `NEUTRAL` and `STALE` count only in the total; a commit status of
+`PENDING` or `EXPECTED` is running. `checks_state` is derived from the same counts.
+Each field is left out when the forge does not say, so older clients keep working.
+Only list reads fill `viewer_review_state`.
+
+`ForgeStatus.viewer` and the viewer behind `viewer_review_state` are the login the CLI
+is signed in as. It is asked of the CLI once per forge and host (the origin remote's
+host, so github.com and an enterprise host never share one) and kept for 5 minutes, so a
+`gh auth switch` outside Orbyn is noticed. A failed lookup is kept for 30 seconds, the
+lookup is cut off after 5 seconds so a list never waits on it, and a list that fails
+with an authentication error drops the entry. `GET /api/forges` refreshes it.
+
+`comment_count` is conversation comments plus inline review comments. GitHub's list has
+no such total, so it is asked only when a list is requested with `?counts=comments`:
+one batched GraphQL request for the pull requests whose total is not already known,
+and none when every total is known. A total is reused while the pull request's
+`updated_at` is unchanged (which moves with every new comment) and for at most 10
+minutes. If GitHub's rate limit is spent, no row carries `comment_count` (never a
+partial number or 0), `PullList.comment_count_paused` is `true`, and counting is not
+tried again for 2 minutes. GitLab reports its own note total in the list. The
+single-project list has no place for the flag, so only `GET /api/pulls` carries it.
 
 A git action runs commit, push and pull request in order, logs each phase as `CUSTOM
 git.phase`, and stops at the first failure; earlier phases stand. These are the

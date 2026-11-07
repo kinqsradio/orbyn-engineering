@@ -926,8 +926,9 @@ pub struct PullRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub requested_reviewers: Option<Vec<RequestedReviewer>>,
-    /// Conversation comments on the pull request; `None` when the forge does not say.
-    /// GitHub's list gives conversation comments only, not inline review comments.
+    /// Conversation comments plus inline review comments; `None` when not asked for
+    /// (GitHub counts them only on request), when the forge does not say, or when the
+    /// count is paused. Never a partial number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub comment_count: Option<u32>,
@@ -1213,6 +1214,11 @@ pub struct PullList {
     pub pulls: Vec<PullListEntry>,
     /// Projects that could not be read, so a partial list is never silent.
     pub failed: Vec<PullListFailure>,
+    /// `true` when comment counts were asked for but GitHub's rate limit is spent, so
+    /// no pull request carries `comment_count`. Left out otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub comment_count_paused: Option<bool>,
 }
 }
 

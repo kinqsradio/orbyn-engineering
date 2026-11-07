@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
     AddPullComment, BranchInfo, CheckoutPull, CreateBranch, EditPullComment, ForgeStatus,
@@ -22,13 +22,17 @@ use tokio::process::Command;
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::source_control::forge::{
-    self, ALL_FORGES, Forge, PullFilter, create_pull, fetch_pull, forge_of, number_from_url,
+    self, ALL_FORGES, CommentCounts, Forge, PullFilter, create_pull, fetch_pull, forge_of,
+    number_from_url,
 };
+use crate::source_control::forge_cache::ViewerCache;
 use crate::source_control::git::{git, text};
 use crate::store::{AuditRecord, WatchUpdate};
 use crate::util::tail;
 
 const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
+/// A list never waits longer than this to learn who is signed in.
+const VIEWER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 const PUSH_TIMEOUT: Duration = Duration::from_secs(300);
 /// Watching ends after this many wakes in a row that bring only comments.
 const MAX_COMMENT_WAKES: i64 = 10;
@@ -520,24 +524,115 @@ impl Core {
         project_id: &str,
         filter: &PullFilter,
     ) -> Result<Vec<PullRequest>> {
+        Ok(self.project_pulls_counted(project_id, filter).await?.0)
+    }
+
+    /// The list, and whether comment counts were asked for but paused by GitHub's
+    /// rate limit (so no row carries one).
+    async fn project_pulls_counted(
+        &self,
+        project_id: &str,
+        filter: &PullFilter,
+    ) -> Result<(Vec<PullRequest>, bool)> {
         check_state(&filter.state)?;
         let (project, forge) = self.pull_site(project_id).await?;
         let cwd = Path::new(&project.path);
-        let viewer = self.forge_viewer(forge, cwd).await;
-        forge::list_pulls(forge, cwd, filter, viewer.as_deref()).await
+        let key = viewer_key(forge, cwd).await;
+        let viewer = self.forge_viewer(&key, forge, cwd).await;
+        let mut pulls = match forge::list_pulls(forge, cwd, filter, viewer.as_deref()).await {
+            Ok(pulls) => pulls,
+            Err(error) => {
+                if forge::is_auth_error(&error) {
+                    self.forge_viewers.lock().unwrap().evict(&key);
+                }
+                return Err(error);
+            }
+        };
+        let paused = filter.comment_counts
+            && self
+                .fill_comment_counts(&project.id, forge, cwd, &mut pulls)
+                .await;
+        Ok((pulls, paused))
     }
 
-    /// The signed-in login for a forge, asked of the CLI once and then kept.
-    async fn forge_viewer(&self, forge: Forge, cwd: &Path) -> Option<String> {
-        if let Some(known) = self.forge_viewers.lock().unwrap().get(forge.id()) {
-            return Some(known.clone());
+    /// The signed-in login for a forge host. It is asked of the CLI at most once per
+    /// `VIEWER_TTL`, a failure is remembered for a shorter
+    /// time, and the ask is cut short so a list never waits on it.
+    async fn forge_viewer(&self, key: &str, forge: Forge, cwd: &Path) -> Option<String> {
+        if let Some(known) = self.forge_viewers.lock().unwrap().get(key, Instant::now()) {
+            return known;
         }
-        let login = forge::viewer(forge, cwd).await?;
+        let login = tokio::time::timeout(VIEWER_LOOKUP_TIMEOUT, forge::viewer(forge, cwd))
+            .await
+            .ok()
+            .flatten();
         self.forge_viewers
             .lock()
             .unwrap()
-            .insert(forge.id().to_owned(), login.clone());
-        Some(login)
+            .put(key, login.clone(), Instant::now());
+        login
+    }
+
+    /// Sets each GitHub row's comment total from the cache, asking GitHub once for the
+    /// rows it does not know. Returns `true` when the rate limit paused counting. Every
+    /// row is left without a count whenever the whole set cannot be had.
+    async fn fill_comment_counts(
+        &self,
+        project_id: &str,
+        forge: Forge,
+        cwd: &Path,
+        pulls: &mut [PullRequest],
+    ) -> bool {
+        if forge != Forge::GitHub {
+            return false;
+        }
+        let now = Instant::now();
+        let mut missing = Vec::new();
+        {
+            let cache = self.comment_counts.lock().unwrap();
+            if cache.paused(now) {
+                return true;
+            }
+            for pull in pulls.iter_mut() {
+                pull.comment_count =
+                    cache.lookup(project_id, pull.number, pull.updated_at.as_deref(), now);
+                if pull.comment_count.is_none() {
+                    missing.push(pull.number);
+                }
+            }
+        }
+        if missing.is_empty() {
+            return false;
+        }
+        match forge::github_comment_counts(forge, cwd, &missing).await {
+            CommentCounts::Counts(counts) => {
+                let now = Instant::now();
+                let mut cache = self.comment_counts.lock().unwrap();
+                for pull in pulls.iter_mut() {
+                    if let Some(count) = counts.get(&pull.number) {
+                        pull.comment_count = Some(*count);
+                        cache.store(
+                            project_id,
+                            pull.number,
+                            pull.updated_at.as_deref(),
+                            *count,
+                            now,
+                        );
+                    }
+                }
+                false
+            }
+            outcome => {
+                let limited = outcome == CommentCounts::RateLimited;
+                if limited {
+                    self.comment_counts.lock().unwrap().pause(Instant::now());
+                }
+                for pull in pulls.iter_mut() {
+                    pull.comment_count = None;
+                }
+                limited
+            }
+        }
     }
 
     /// Pull requests across every trusted project with a remote. A project that
@@ -547,6 +642,7 @@ impl Core {
         let mut list = PullList {
             pulls: Vec::new(),
             failed: Vec::new(),
+            comment_count_paused: None,
         };
         for project in self.store.list_projects()? {
             if !project.trusted || !project.is_git {
@@ -556,13 +652,17 @@ impl Core {
             if git(&cwd, &["remote", "get-url", "origin"]).await.is_err() {
                 continue;
             }
-            match self.project_pulls(&project.id, filter).await {
-                Ok(pulls) => list
-                    .pulls
-                    .extend(pulls.into_iter().map(|pull| PullListEntry {
-                        project_id: project.id.clone(),
-                        pull,
-                    })),
+            match self.project_pulls_counted(&project.id, filter).await {
+                Ok((pulls, paused)) => {
+                    if paused {
+                        list.comment_count_paused = Some(true);
+                    }
+                    list.pulls
+                        .extend(pulls.into_iter().map(|pull| PullListEntry {
+                            project_id: project.id.clone(),
+                            pull,
+                        }));
+                }
                 Err(error) => list.failed.push(PullListFailure {
                     project_id: project.id,
                     message: error.public_message(),
@@ -1008,15 +1108,35 @@ impl Core {
         let mut statuses = Vec::with_capacity(ALL_FORGES.len());
         for forge in ALL_FORGES {
             let status = forge::forge_status(forge).await;
-            let mut viewers = self.forge_viewers.lock().unwrap();
-            match &status.viewer {
-                Some(login) => viewers.insert(forge.id().to_owned(), login.clone()),
-                None => viewers.remove(forge.id()),
-            };
-            drop(viewers);
+            {
+                let mut viewers = self.forge_viewers.lock().unwrap();
+                viewers.evict_forge(forge.id());
+                if let Some(login) = &status.viewer {
+                    let key = ViewerCache::key(forge.id(), default_host(forge));
+                    viewers.put(&key, Some(login.clone()), Instant::now());
+                }
+            }
             statuses.push(status);
         }
         statuses
+    }
+}
+
+/// The cache key for a project's forge: the forge and the host of its origin remote,
+/// so github.com and an enterprise host never share a login.
+async fn viewer_key(forge: Forge, cwd: &Path) -> String {
+    let host = match git(cwd, &["remote", "get-url", "origin"]).await {
+        Ok(url) => forge::remote_host(&text(&url)),
+        Err(_) => String::new(),
+    };
+    ViewerCache::key(forge.id(), &host)
+}
+
+/// The host a forge CLI uses when no remote says otherwise.
+fn default_host(forge: Forge) -> &'static str {
+    match forge {
+        Forge::GitLab => "gitlab.com",
+        _ => "github.com",
     }
 }
 

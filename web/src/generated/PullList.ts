@@ -6,4 +6,9 @@ export type PullList = { pulls: Array<PullListEntry>,
 /**
  * Projects that could not be read, so a partial list is never silent.
  */
-failed: Array<PullListFailure>, };
+failed: Array<PullListFailure>, 
+/**
+ * `true` when comment counts were asked for but GitHub's rate limit is spent, so
+ * no pull request carries `comment_count`. Left out otherwise.
+ */
+comment_count_paused?: boolean, };

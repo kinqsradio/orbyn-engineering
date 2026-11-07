@@ -32,13 +32,17 @@ case "$1 $2" in
   "pr checks") echo '[{"name":"ci","state":"SUCCESS","link":"x","bucket":"pass"},{"name":"lint","state":"FAILURE","link":"y","bucket":"fail"}]'; exit 1 ;;
   "pr list") case "$*" in
       *--head*) echo "[$(pull 12 T feature main)]" ;;
-      *) echo "[$(pull 3 Other h main ',"comments":[{"id":1},{"id":2}],"reviewRequests":[{"login":"sam"},{"__typename":"Team","name":"Core","slug":"core"}]'),$(pull 4 Next i h)]" ;;
+      *) echo "[$(pull 3 Other h main ',"reviewRequests":[{"login":"sam"},{"__typename":"Team","name":"Core","slug":"core"}]'),$(pull 4 Next i h)]" ;;
     esac ;;
   "pr merge") echo MERGED > "$GH_STATE" ;;
   "pr close") [ "$3" = 66 ] && { echo "refused" >&2; exit 1; } ;;
   "label list") echo '[{"name":"bug","description":"Broken"}]' ;;
   "api user") echo '{"login":"me"}' ;;
-  "api graphql") echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
+  "api graphql") case "$*" in
+      *totalCount*) [ -f "$GH_RATE" ] && { echo "GraphQL: API rate limit already exceeded" >&2; exit 1; }
+        echo '{"data":{"repository":{"p3":{"comments":{"totalCount":2},"reviews":{"nodes":[{"comments":{"totalCount":3}},{"comments":{"totalCount":0}}]}},"p4":{"comments":{"totalCount":1},"reviews":{"nodes":[]}}}}}' ;;
+      *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
+    esac ;;
   "auth status") echo "  Logged in to github.com account octo (keyring)" >&2 ;;
   "--version "*) echo "gh version 2.0" ;;
 esac
@@ -77,6 +81,10 @@ async fn fixture() -> Fixture {
         (
             "GH_STATE".to_owned(),
             state_file.to_string_lossy().into_owned(),
+        ),
+        (
+            "GH_RATE".to_owned(),
+            dir.path().join("gh-rate").to_string_lossy().into_owned(),
         ),
         (
             "GH_FAIL".to_owned(),
@@ -414,18 +422,12 @@ async fn review_list_and_publish_use_the_users_own_cli() {
         .await;
     assert_eq!(open[0]["number"], 3);
     assert_eq!(open[0]["state"], "open");
-    assert_eq!(open[0]["created_at"], "2026-01-02T03:04:05Z");
-    assert_eq!(open[0]["comment_count"], 2);
-    assert_eq!(open[0]["requested_reviewers"][0]["name"], "sam");
-    assert_eq!(open[0]["requested_reviewers"][1]["kind"], "team");
-    assert_eq!(open[0]["viewer_review_state"], "changes_requested");
-    assert_eq!(open[0]["checks"]["total"], 3);
-    assert_eq!(open[0]["checks"]["passing"], 1);
-    assert_eq!(open[0]["checks"]["failing"], 1);
-    assert_eq!(open[0]["checks"]["running"], 1);
-    assert_eq!(open[0]["checks"]["failing_names"][0], "lint");
-    // Without a reviewer list the field is left out, not an empty claim.
-    assert!(open[1].get("requested_reviewers").is_none());
+    // The new fields reach the wire; their values are checked where they are read.
+    assert!(open[0]["created_at"].is_string());
+    assert!(open[0]["requested_reviewers"].is_array());
+    assert!(open[0]["checks"]["failing_names"].is_array());
+    assert!(open[0]["viewer_review_state"].is_string());
+    assert!(open[0].get("comment_count").is_none());
     let bad = f
         .service
         .get(&format!("/api/projects/{project}/pulls?state=x"))
@@ -940,7 +942,7 @@ async fn the_viewer_login_is_asked_once_and_shared_by_lists() {
             .service
             .json(&format!("/api/projects/{project}/pulls"))
             .await;
-        assert_eq!(pulls[0]["viewer_review_state"], "changes_requested");
+        assert!(pulls[0]["viewer_review_state"].is_string());
     }
     assert_eq!(asked(&f.log()), 1, "{}", f.log());
     // The forge rescan reports the login and refreshes what lists use.
@@ -952,4 +954,54 @@ async fn the_viewer_login_is_asked_once_and_shared_by_lists() {
         .find(|forge| forge["id"] == "github")
         .unwrap();
     assert_eq!(github["viewer"], "me");
+}
+
+#[tokio::test]
+async fn comment_counts_are_one_batched_query_asked_only_on_request() {
+    let f = fixture().await;
+    f.hosted();
+    let asked = |log: &str| {
+        log.lines()
+            .filter(|line| line.contains("totalCount"))
+            .count()
+    };
+    let project = f.project().await;
+    f.service.json("/api/pulls").await;
+    assert_eq!(
+        asked(&f.log()),
+        0,
+        "counts are not fetched unless asked for"
+    );
+    for _ in 0..2 {
+        let all = f.service.json("/api/pulls?counts=comments").await;
+        // Conversation comments plus every review's comments, merged per pull request.
+        assert_eq!(all["pulls"][0]["pull"]["comment_count"], 5);
+        assert_eq!(all["pulls"][1]["pull"]["comment_count"], 1);
+        assert!(all.get("comment_count_paused").is_none());
+    }
+    assert_eq!(asked(&f.log()), 1, "an unchanged list reuses its totals");
+    let one = f
+        .service
+        .json(&format!("/api/projects/{project}/pulls?counts=comments"))
+        .await;
+    assert_eq!(one[0]["comment_count"], 5);
+}
+
+#[tokio::test]
+async fn a_spent_rate_limit_omits_every_count_and_says_so() {
+    let f = fixture().await;
+    f.hosted();
+    std::fs::write(f._dir.path().join("gh-rate"), "").unwrap();
+    let all = f.service.json("/api/pulls?counts=comments").await;
+    assert_eq!(all["comment_count_paused"], true);
+    for entry in all["pulls"].as_array().unwrap() {
+        assert!(
+            entry["pull"].get("comment_count").is_none(),
+            "never 0 or partial"
+        );
+    }
+    // While paused the limit is not tried again.
+    std::fs::remove_file(f._dir.path().join("gh-rate")).unwrap();
+    let again = f.service.json("/api/pulls?counts=comments").await;
+    assert_eq!(again["comment_count_paused"], true);
 }
