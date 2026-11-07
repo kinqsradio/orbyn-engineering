@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { api } from "../api/client";
+import { navigate } from "../state/route";
 import { useUi } from "../state/ui";
 
 const FIRST_POLL_MS = 5_000;
@@ -31,7 +32,14 @@ export function useTaskRunNotifications() {
       }
       waiting.delete(taskId);
       if (newest.outcome !== "completed" && newest.outcome !== "failed") return;
-      useUi.getState().pushToast(`${name} ${newest.outcome === "completed" ? "finished" : "failed"}`, newest.outcome === "completed" ? "done" : "failed");
+      const text = `Task “${name}” ${newest.outcome === "completed" ? "finished" : "failed"}.`;
+      const { threadNotifications, pushToast } = useUi.getState();
+      const view = () => navigate({ name: "settings", section: "tasks", task: taskId });
+      pushToast(text, newest.outcome === "completed" ? "done" : "failed", { label: "View", run: view });
+      // The same path thread notices take: the system notification, when the app is in the background.
+      if (threadNotifications && (document.hidden || !document.hasFocus()) && "Notification" in window && Notification.permission === "granted") {
+        new Notification("Orbyn", { body: text });
+      }
     };
     const poll = async () => {
       try {

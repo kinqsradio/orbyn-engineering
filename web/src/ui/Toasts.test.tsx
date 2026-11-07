@@ -16,3 +16,12 @@ it("leads a thread notice with a dot and a failure with a red cross, and a plain
   expect(failed!.querySelector(".toast-failed")).not.toBeNull();
   expect(plain!.querySelector("svg, .toast-dot")).toBeNull();
 });
+
+it("runs a toast's action and closes the toast", () => {
+  let ran = 0;
+  render(<Toasts />);
+  act(() => useUi.getState().pushToast("Task “Nightly review” finished.", "done", { label: "View", run: () => { ran += 1; } }));
+  act(() => screen.getByRole("button", { name: "View" }).click());
+  expect(ran).toBe(1);
+  expect(screen.queryByText(/Nightly review/)).toBeNull();
+});

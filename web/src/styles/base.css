@@ -875,6 +875,9 @@ input[type="checkbox"][role="switch"]:disabled {
   border-radius: 50%;
   background: var(--color-warn);
 }
+.toast-action {
+  margin-left: auto;
+}
 .toast-failed {
   color: var(--color-danger);
 }
