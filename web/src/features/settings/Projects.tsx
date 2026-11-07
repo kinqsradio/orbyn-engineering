@@ -333,7 +333,7 @@ function ProjectRemoval({ query, group, members, disabled, reload, clearSelectio
   const threadCount = remaining.reduce((count, member) => count + (plan?.counts[member.project_id] ?? 0), 0);
   const targetKind = plan?.wholeGroup ? "project" : "checkout";
   const targetLabel = remaining.length === 1 ? remaining[0]!.name : plan?.groupLabel;
-  const question = `Remove ${targetKind} "${targetLabel}"${threadCount > 0 ? ` and delete its ${threadCount} ${threadCount === 1 ? "thread" : "threads"}` : ""}?`;
+  const question = `Remove ${targetKind} "${targetLabel}"?`;
   return <>
     {members.length > 1 ? <SettingGroup title="Checkouts">
       {members.map((member) => <SettingRow key={member.physical_key} title={environment.data?.environment_label ?? "Environment"} description={member.path ?? undefined}>
@@ -342,9 +342,9 @@ function ProjectRemoval({ query, group, members, disabled, reload, clearSelectio
     </SettingGroup> : null}
     <SettingGroup title="Danger">
       <SettingRow title={dangerTitle} description={hasOtherMembers
-        ? "Deletes the selected machine's checkout entries and their threads. Other machines and files on disk are not touched."
-        : members.length > 1 ? `Deletes all ${members.length} checkout entries and their threads on every machine. Files on disk are not touched.`
-        : "Deletes the project entry and its threads. Files on disk are not touched."}>
+        ? "Removes the selected machine's checkout entries. Their threads stay in Archive. Other machines and files on disk are not touched."
+        : members.length > 1 ? `Removes all ${members.length} checkout entries on every machine. Their threads stay in Archive. Files on disk are not touched.`
+        : "Removes the project entry. Its threads stay in Archive. Files on disk are not touched."}>
         <Button small tone="danger" icon={<Trash2 size={14} aria-hidden />} disabled={disabled || planning} busy={planning}
           onClick={() => { void begin(members); }}>{dangerLabel}</Button>
       </SettingRow>
@@ -353,10 +353,9 @@ function ProjectRemoval({ query, group, members, disabled, reload, clearSelectio
       onClose={() => setPlan(null)} onConfirm={remove}>
       {remaining.length === 1 ? <><p>Path: {remaining[0]!.path}</p><p>Environment: {environment.data?.environment_label ?? "Environment"}</p></>
         : <p>This removes {remaining.length} grouped project entries.</p>}
-      <p>{threadCount > 0 ? "Those threads and any archived threads are deleted from Orbyn. Provider sessions are kept."
-        : "Any archived threads are deleted from Orbyn. Provider sessions are kept."}</p>
+      <p>{threadCount > 0 ? `Its ${threadCount} ${threadCount === 1 ? "thread stays" : "threads stay"} in Archive. Add the folder back to unarchive them.`
+        : "Its archived threads stay in Archive. Add the folder back to unarchive them."}</p>
       <p>{plan.wholeGroup ? "This removes only the project entries, not the files on disk." : "Other entries in this grouped project are unaffected."}</p>
-      <p>This action cannot be undone.</p>
     </ConfirmDialog> : null}
   </>;
 }
