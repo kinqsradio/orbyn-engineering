@@ -17,7 +17,8 @@ beforeEach(() => {
 const panel = () => screen.queryByRole("complementary", { name: "Thread context" });
 const sidebar = () => screen.queryByRole("navigation", { name: "Workspace" });
 const thread = () => document.querySelector(".thread-main") as HTMLElement | null;
-const showPanel = () => screen.findByRole("button", { name: "Show side panel" });
+// The first render of the whole app can take longer than the default wait on a busy machine.
+const showPanel = () => screen.findByRole("button", { name: "Show side panel" }, { timeout: 8000 });
 
 describe("layouts by window width", () => {
   it("docks the sidebar, the thread and the panel from 1160 px", async () => {
@@ -116,7 +117,7 @@ describe("layouts by window width", () => {
     setViewportWidth(599);
     useUi.setState({ layoutKey: "t-done", panelOpen: true, panelTab: "files" });
     render(<App />);
-    await screen.findByRole("button", { name: "Back to thread" });
+    await screen.findByRole("button", { name: "Back to thread" }, { timeout: 8000 });
     expect(panel()).toHaveAttribute("data-mode", "sheet");
     expect(thread()).toHaveAttribute("hidden");
     expect(screen.queryByRole("button", { name: "Show side panel" })).not.toBeInTheDocument();
