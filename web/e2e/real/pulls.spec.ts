@@ -69,6 +69,12 @@ const openPull = async (page: Page, title: string) => {
   await expect(detail(page, title)).toBeVisible();
   return detail(page, title);
 };
+/** Shows the side panel, with its tabs, unless the window is already wide enough to have it open. */
+const openPanel = async (page: Page) => {
+  const toggle = page.getByRole("button", { name: "Show side panel", exact: true });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+};
 const moreAction = async (page: Page, article: Locator, name: string) => {
   await article.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name }).click();
@@ -85,12 +91,14 @@ test("the list filters by author, label, checks and draft, and by a label typed 
   const rows = page.locator(".pull-rows > li");
   await expect(rows).toHaveCount(3);
   const panel = page.getByRole("dialog", { name: "Filters" });
+  /** A popover is hidden from the page at once but only leaves the DOM when its fade is over. */
+  const popovers = page.locator(".pulls-pop");
   /** Opens Filters, runs the change, and closes it again with Escape. */
   const inPanel = async (change: () => Promise<void>) => {
     await page.getByRole("button", { name: /^Filters/ }).click();
     await change();
     await page.keyboard.press("Escape");
-    await expect(panel).toHaveCount(0);
+    await expect(popovers).toHaveCount(0);
   };
   const tick = (name: string) => inPanel(() => panel.getByRole("checkbox", { name: new RegExp(`^${name}( \\d+)?$`) }).click());
   const chip = (name: string) => page.getByRole("button", { name: `Remove filter ${name}` });
@@ -142,7 +150,7 @@ test("the list sorts, switches state from the pills and comes back from a pull r
   const sorted = async (item: string) => {
     await page.getByRole("button", { name: /^Sort:/ }).click();
     await page.getByRole("menuitemradio", { name: item }).click();
-    await expect(page.getByRole("menu", { name: "Sort" })).toHaveCount(0);
+    await expect(page.locator(".pulls-pop")).toHaveCount(0);
   };
   await sorted("Oldest");
   await expect(rows.first()).toContainText("First layer");
@@ -159,6 +167,7 @@ test("the list sorts, switches state from the pills and comes back from a pull r
   await page.getByRole("button", { name: /^Filters/ }).click();
   await panel.getByRole("radio", { name: "Exclude" }).click();
   await page.keyboard.press("Escape");
+  await expect(page.locator(".pulls-pop")).toHaveCount(0);
   await expect(open).toHaveAttribute("aria-pressed", "false");
   await expect(drafts).toHaveAttribute("aria-pressed", "false");
   await open.click();
@@ -359,11 +368,12 @@ test("the PRs tab lists this thread's pull request and a thread without one says
   const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Surface menu" });
   await service.api("POST", `/api/threads/${thread.id}/pulls`, { number: 1 });
   await page.goto(`${service.page}#/threads/${thread.id}`);
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await openPanel(page);
   const tab = page.getByRole("tab", { name: "Pull requests", exact: true });
   await expect(tab).toHaveText("PRs");
   await tab.click();
-  await page.getByRole("button", { name: /First layer/ }).first().click();
+  // The Details card above the tabs has a row for the same pull request.
+  await page.locator(".linked-pulls").getByRole("button", { name: /First layer/ }).click();
   await expect(detail(page, "First layer")).toBeVisible();
   await expect(tab).toHaveCount(1);
   await page.getByRole("tab", { name: "Files", exact: true }).click();
@@ -373,7 +383,7 @@ test("the PRs tab lists this thread's pull request and a thread without one says
 
   const unlinked = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "No linked pull" });
   await page.goto(`${service.page}#/threads/${unlinked.id}`);
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await openPanel(page);
   await page.getByRole("tab", { name: "Pull requests", exact: true }).click();
   await expect(page.getByText("No linked pull requests")).toBeVisible();
 });
@@ -391,8 +401,8 @@ test("a thread links, watches and unlinks; Work on this opens a thread on the br
   expect(current.worktree?.branch).toBe("feat-one");
   await expect.poll(async () => (await service.api<{ number: number }[]>("GET", `/api/threads/${thread}/pulls`)).map((pull) => pull.number)).toEqual([1]);
 
-  await page.getByRole("button", { name: "Surfaces" }).click();
-  await page.getByRole("button", { name: /Pull requests/ }).last().click();
+  await openPanel(page);
+  await page.getByRole("tab", { name: "Pull requests", exact: true }).click();
   await page.getByRole("button", { name: "Watch #1" }).click();
   await expect(page.getByRole("button", { name: "Stop watching #1" })).toBeVisible();
   await page.getByRole("button", { name: "Unlink #1" }).click();
@@ -400,6 +410,6 @@ test("a thread links, watches and unlinks; Work on this opens a thread on the br
   await page.getByRole("button", { name: "Link a pull request" }).click();
   const dialog = page.getByRole("dialog", { name: "Link a pull request" });
   await dialog.getByRole("button", { name: /#1 First layer/ }).click();
-  await expect(page.getByRole("button", { name: /First layer/ })).toBeVisible();
+  await expect(page.locator(".linked-pulls").getByRole("button", { name: /First layer/ })).toBeVisible();
   expect(projectId).not.toBe("");
 });
