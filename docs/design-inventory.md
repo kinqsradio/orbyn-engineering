@@ -11,9 +11,9 @@ Component paths are under `web/src` and some line numbers are approximate; each 
 re-verifies its rows. Sources of truth and the token file are in
 [design.md](design.md#sources-of-truth).
 
-## Screens (221)
+## Screens (226)
 
-exists: 94, missing: 56, partial: 67, preview-only: 4.
+exists: 94, missing: 60, partial: 67, preview-only: 5.
 
 | n | id | group | title | component | status | phase | Proof |
 |---|---|---|---|---|---|---|---|
@@ -238,6 +238,11 @@ exists: 94, missing: 56, partial: 67, preview-only: 4.
 | 219 | `connect-planner` | Orbyn account and other devices | Connect Orbyn Planner | `features/platform/ConnectPlanner.tsx` | preview-only | Later | |
 | 220 | `pair-phone` | Orbyn account and other devices | Remote access and pairing | `features/platform/PairPhone.tsx` | preview-only | P2 | |
 | 221 | `phone` | Orbyn account and other devices | On a phone | `features/platform/PhoneView.tsx` | preview-only | P2 | |
+| 222 | `conn-defs` | Connection states | Connection states: the four definitions |  | missing | P1 | |
+| 223 | `conn-compare` | Connection states | Connection states side by side |  | missing | P1 | |
+| 224 | `conn-service-down` | Connection states | Can't reach the Orbyn service |  | missing | P1 | |
+| 225 | `conn-service-restart` | Connection states | Restarting the Orbyn service |  | missing | P1 | |
+| 226 | `conn-remote` | Connection states | Paired machine offline |  | preview-only | P2c | |
 
 ## Motion (85)
 
@@ -389,5 +394,5 @@ Side-panel tab switch, range of 3 runs (budget: under 100 ms):
 
 The startup layout shift is the largest miss: CLS 0.51 against a budget of 0.1, from
 the draft layout and `BODY`. At 10,000 items scrolling drops to under 5 fps, which is
-the case Phase 2 addresses by rendering only the visible part of a long thread. Startup figures were not
+the case the virtualised thread list in Phase 2 has to fix. Startup figures were not
 measured in the 10,000-item run.
