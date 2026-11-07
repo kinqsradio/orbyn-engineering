@@ -14,8 +14,8 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
-import { ConfirmDialog, Dialog } from "../../ui/Dialog";
-import { FolderBrowser } from "../onboarding/FolderBrowser";
+import { ConfirmDialog } from "../../ui/Dialog";
+import { BaseDirectoryDialog } from "./BaseDirectoryDialog";
 import { Menu } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
@@ -90,10 +90,7 @@ function BaseDirectory({ value, save, disabled }: { value: unknown; save(next: u
         onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft !== (value ?? "")) save(draft); }} />
       <Button small disabled={disabled} onClick={() => setChoosing(true)}>Choose…</Button>
       {choosing ? (
-        <Dialog title="Base directory" className="folder-dialog" onClose={() => setChoosing(false)}>
-          <p>New projects are created in this folder. Use applies a folder at once.</p>
-          <FolderBrowser actionLabel="Use this folder" rowAction="Use" onChoose={(path) => { setDraft(path); save(path); setChoosing(false); }} />
-        </Dialog>
+        <BaseDirectoryDialog onClose={() => setChoosing(false)} onChoose={(path) => { setDraft(path); save(path); setChoosing(false); }} />
       ) : null}
     </>
   );

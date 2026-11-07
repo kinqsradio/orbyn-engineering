@@ -37,6 +37,8 @@ it("picks the base directory with the folder browser", async () => {
   ]));
   render(<GeneralSection />);
   await user.click(await screen.findByRole("button", { name: "Choose…" }));
-  await user.click(await screen.findByRole("button", { name: "Use this folder" }));
+  const use = await screen.findByRole("button", { name: "Use this folder" });
+  await waitFor(() => expect(use).toBeEnabled());
+  await user.click(use);
   await waitFor(() => expect(request).toHaveBeenCalledWith("PUT", "/api/settings/preferences", expect.objectContaining({ edits: { add_project_base_directory: { op: "set", value: "/home" } } })));
 });

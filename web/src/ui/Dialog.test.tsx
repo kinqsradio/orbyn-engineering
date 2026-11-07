@@ -21,3 +21,16 @@ it("closes a footerless dialog by its Close button or a tap on the backdrop, and
   fireEvent.click(screen.getByRole("dialog"));
   expect(kept).not.toHaveBeenCalled();
 });
+
+it("Escape (the dialog's cancel) closes footerless and footer dialogs alike, but not while a write is in flight", () => {
+  const cancel = () => fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  const onClose = vi.fn();
+  const { rerender } = render(<Dialog title="Sent files" onClose={onClose}>body</Dialog>);
+  cancel();
+  rerender(<Dialog title="Sent files" onClose={onClose} footer={<button type="button">Cancel</button>}>body</Dialog>);
+  cancel();
+  expect(onClose).toHaveBeenCalledTimes(2);
+  rerender(<Dialog title="Sent files" onClose={onClose} busy>body</Dialog>);
+  cancel();
+  expect(onClose).toHaveBeenCalledTimes(2);
+});

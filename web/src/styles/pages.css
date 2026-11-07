@@ -690,18 +690,56 @@ kbd {
 .folder-dialog {
   width: min(460px, calc(100vw - 32px));
 }
-.browser-row {
+.folder-bar {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.browser-row > button:first-child {
+.folder-path {
   flex: 1;
   min-width: 0;
+  color: var(--color-text);
 }
-.browser-list .browser-use {
-  flex: none;
-  width: auto;
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  border-bottom: 1px solid var(--color-divider);
+}
+.folder-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-small);
+  text-align: left;
+}
+button.folder-row {
+  cursor: pointer;
+}
+button.folder-row:hover {
+  background: var(--color-hover);
+}
+.folder-row > svg:first-child {
+  color: var(--color-muted);
+}
+.folder-row > svg:last-child:not(:first-child) {
+  color: var(--color-muted);
+}
+.folder-none {
+  color: var(--color-muted);
 }
 .browser-list button span:first-of-type {
   flex: 1;
