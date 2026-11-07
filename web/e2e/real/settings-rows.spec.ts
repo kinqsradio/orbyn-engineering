@@ -29,18 +29,15 @@ test("Maintenance keeps diagnostics without a Network inventory", async ({ page 
   await expect(settings(page).getByRole("heading", { name: "Network", exact: true })).toHaveCount(0);
 });
 
-test("About folds its open source list, and Worktrees folds branch names", async ({ page }) => {
+test("About lists its open source licences on request, and Worktrees shows branch naming without a fold", async ({ page }) => {
   await page.goto(`${service.page}#/settings/about`);
   await expect(settings(page).getByText("zustand")).toBeHidden();
-  await settings(page).getByRole("button", { name: "Advanced" }).click();
+  await settings(page).getByRole("button", { name: "View lists" }).click();
   await expect(settings(page).getByText("zustand")).toBeVisible();
+  await settings(page).getByRole("radio", { name: /^Service/ }).click();
   await expect(settings(page).getByText("axum", { exact: true })).toBeVisible();
   await page.goto(`${service.page}#/settings/worktrees`);
-  await expect(settings(page).getByLabel("Naming")).toBeHidden();
-  const branchDisclosure = settings(page).locator(".collapsible-panel")
-    .filter({ has: page.locator("#worktrees-naming") }).locator("..");
-  await branchDisclosure.getByRole("button", { name: "Advanced", exact: true }).click();
-  await expect(settings(page).getByLabel("Naming")).toBeVisible();
+  await expect(settings(page).getByRole("radiogroup", { name: "Branch naming" })).toBeVisible();
 });
 
 test("Labs turns Plan off, and Shift+Tab flips it while it is on", async ({ page }) => {
