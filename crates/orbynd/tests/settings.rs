@@ -400,6 +400,24 @@ async fn worktrees_follow_the_prefix_the_chosen_base_and_a_settled_one_is_cleane
 }
 
 #[tokio::test]
+async fn offline_mode_makes_no_health_request_and_still_lists_each_provider() {
+    let dir = TempDir::new();
+    let (service, _) = setup(&dir, Options::default(), "codex").await;
+    let health = service.json("/api/health/dependencies").await;
+    assert_eq!(health["github"]["checked"], false, "{health}");
+    assert_eq!(health["github"]["reachable"], false);
+    let providers = health["providers"].as_array().unwrap();
+    assert!(providers.iter().any(|p| p["engine"] == "codex"), "{health}");
+    assert!(
+        providers
+            .iter()
+            .all(|p| p["service"].is_null() || p["service"]["checked"] == false),
+        "{health}"
+    );
+    service.stop().await;
+}
+
+#[tokio::test]
 async fn the_network_list_names_each_switch_and_reports_it() {
     let dir = TempDir::new();
     let (service, _) = setup(&dir, Options::default(), "codex").await;

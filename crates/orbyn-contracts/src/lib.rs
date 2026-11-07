@@ -3360,6 +3360,43 @@ pub struct EngineStatus {
 }
 
 wire! {
+/// One reachability check: whether anything answered at a host, not whether it is signed in.
+pub struct DependencyCheck {
+    pub host: String,
+    /// False when the check was not made, for example in offline mode.
+    pub checked: bool,
+    pub reachable: bool,
+    /// The HTTP status of the answer; any answer shows the host is reachable.
+    pub status: Option<u16>,
+    pub latency_ms: Option<u64>,
+    pub message: Option<String>,
+}
+}
+
+wire! {
+pub struct ProviderHealth {
+    pub engine: String,
+    pub name: String,
+    /// Its program was found and answered `--version`.
+    pub installed: bool,
+    pub auth: AuthState,
+    /// The program's own problem, from the probe.
+    pub problem: Option<String>,
+    /// The provider's service, for Claude and Codex; absent for engines with no fixed host.
+    pub service: Option<DependencyCheck>,
+}
+}
+
+wire! {
+/// What the app depends on, as reachable from this machine right now.
+pub struct DependencyHealth {
+    pub checked_at: String,
+    pub github: DependencyCheck,
+    pub providers: Vec<ProviderHealth>,
+}
+}
+
+wire! {
 pub struct ProbeBinary {
     /// An absolute path to a program.
     pub path: String,

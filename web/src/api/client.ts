@@ -180,6 +180,9 @@ export async function attachmentBlob(id: string, signal?: AbortSignal): Promise<
 const q = encodeURIComponent;
 
 export const api = {
+  /** Whether GitHub and each provider's service answer from this machine. Asked for, never polled by the service. */
+  dependencyHealth: (signal?: AbortSignal) =>
+    request<import("../generated/DependencyHealth").DependencyHealth>("GET", "/api/health/dependencies", undefined, signal),
   /** Whether a program path runs, and its version. Runs `--version` with no shell, for at most five seconds. */
   probeBinary: (path: string) =>
     request<import("../generated/BinaryProbe").BinaryProbe>("POST", "/api/engines/probe-binary", { path } satisfies import("../generated/ProbeBinary").ProbeBinary),

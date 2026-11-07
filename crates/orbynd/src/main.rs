@@ -532,6 +532,7 @@ fn router(state: AppState) -> Router {
             get(api::cleanup_report).post(api::storage_cleanup),
         )
         .route("/api/storage/cleanup/preview", get(api::storage_preview))
+        .route("/api/health/dependencies", get(api::dependency_health))
         .route("/api/tasks", get(api::tasks).post(api::save_task))
         .route(
             "/api/tasks/{id}",

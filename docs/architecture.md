@@ -2675,6 +2675,7 @@ because browsers cannot set headers on them.
 | `GET, DELETE /api/threads/:id/terminals/:terminal/scrollback` | `TerminalScrollback`; clear |
 | `GET, POST /api/threads/:id/scripts` | `ProjectFileView`; `RunScript` to `TerminalInfo` |
 | `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]`; `account` is the signed-in account when the CLI's own status names one (Claude's email; Codex names none) |
+| `GET /api/health/dependencies` | `DependencyHealth`: one empty `GET` each to `api.github.com` and, for an installed Claude or Codex, its provider's host; any HTTP answer is reachable. Only when asked, listed in `/api/network`; offline mode makes no request and says `checked: false` |
 | `POST /api/engines/probe-binary` | `ProbeBinary` `{path}` to `BinaryProbe`: whether an absolute path is a runnable file and the version `--version` printed. No shell, fixed argument, 5 second limit; a relative path is refused with a `problem` |
 | `GET /api/engines/:id/native-sessions/count` | `NativeSessionCount`: conversation files in the engine's own history folder (`claude`, `codex`); counted, never opened; `422 unsupported` for other engines |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
