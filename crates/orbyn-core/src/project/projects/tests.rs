@@ -389,7 +389,13 @@ async fn removing_a_project_archives_its_threads_with_the_project_name() {
         .unwrap();
 
     assert!(core.store.list_projects().unwrap().is_empty());
-    assert!(!core.store.project(&project.id).unwrap().trusted);
+    assert!(
+        !core
+            .store
+            .project_including_removed(&project.id)
+            .unwrap()
+            .trusted
+    );
     let kept = core.store.thread(&thread.id).unwrap();
     assert!(kept.project_removed);
     assert_eq!(kept.removed_project_name.as_deref(), Some("app"));
@@ -589,4 +595,129 @@ async fn a_due_task_fires_near_a_limit_when_the_preference_is_off() {
     due(&core, &task).await;
 
     assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "refused");
+}
+
+async fn removed_project(core: &Core) -> Project {
+    let project = core.new_project("app", false, None).await.unwrap();
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+    project
+}
+
+fn refused<T: std::fmt::Debug>(result: Result<T>) {
+    match result {
+        Err(CoreError::ProjectRemoved(name)) => assert_eq!(name, "app"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn the_store_refuses_a_removed_project_but_can_still_read_it() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = removed_project(&core).await;
+    refused(core.store.project(&project.id));
+    assert!(core.store.project_including_removed(&project.id).is_ok());
+}
+
+#[tokio::test]
+async fn a_thread_cannot_start_in_a_removed_project() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = removed_project(&core).await;
+    refused(
+        core.create_thread(orbyn_contracts::CreateThread {
+            project_id: Some(project.id),
+            engine: "claude".into(),
+            model: None,
+            title: None,
+            worktree: None,
+            skill_profile: None,
+            base_branch: None,
+            effort: None,
+            options: BTreeMap::new(),
+        })
+        .await,
+    );
+}
+
+#[tokio::test]
+async fn a_removed_project_cannot_be_renamed_or_trusted() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = removed_project(&core).await;
+    refused(core.rename_project(&project.id, "other"));
+    refused(core.store.trust_project(&project.id, "t"));
+}
+
+#[tokio::test]
+async fn a_removed_project_takes_no_preferences() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = removed_project(&core).await;
+    refused(core.set_preferences(
+        Some(&project.id),
+        &BTreeMap::from([("auto_pull".to_owned(), true.into())]),
+    ));
+}
+
+#[tokio::test]
+async fn a_removed_project_takes_no_task_and_checks_out_no_pull() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let live = core.new_project("live", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&live.id), "user").unwrap();
+    let project = removed_project(&core).await;
+    refused(core.save_task(interval_task(&project.id), "user"));
+    refused(
+        core.checkout_pull(
+            &project.id,
+            1,
+            &orbyn_contracts::CheckoutPull { worktree: false },
+            "t",
+        )
+        .await,
+    );
+    assert!(core.set_task_enabled(&task.id, true).is_ok());
+}
+
+#[tokio::test]
+async fn removing_a_project_pauses_its_tasks_and_they_cannot_be_resumed() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+
+    let paused = core.store.task(&task.id).unwrap();
+    assert!(!paused.enabled && paused.next_run_at.is_none());
+    assert!(paused.last_status.starts_with("paused"));
+    refused(core.set_task_enabled(&task.id, true));
+}
+
+#[tokio::test]
+async fn a_stale_due_task_of_a_removed_project_is_refused_and_starts_no_thread() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+    // A row that was due before the removal, as if the pause were missed.
+    let mut stale = core.store.task(&task.id).unwrap();
+    stale.enabled = true;
+    core.store
+        .save_task(&stale, Some(crate::util::unix_now() - 1), None)
+        .unwrap();
+
+    core.run_due_tasks().await;
+
+    let history = core.task_runs(&task.id).unwrap();
+    assert_eq!(history[0].outcome, "refused");
+    assert!(history[0].thread_id.is_none());
+    assert!(core.store.list_all_threads(&project.id).unwrap().is_empty());
 }

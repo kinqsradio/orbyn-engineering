@@ -31,7 +31,7 @@ pub enum CoreError {
     EngineUnavailable(String),
     #[error("this thread is archived")]
     ThreadArchived,
-    #[error("The project \"{0}\" was removed. Add its folder back to restore this thread.")]
+    #[error("The project \"{0}\" was removed. Add its folder back to use it again.")]
     ProjectRemoved(String),
     #[error("set up the workspace first")]
     WorkspaceRequired,

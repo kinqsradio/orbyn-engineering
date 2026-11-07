@@ -217,7 +217,17 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// A project that is registered. A removed one is refused with `project_removed`,
+    /// so nothing acts on it; `project_including_removed` reads it anyway.
     pub fn project(&self, id: &str) -> Result<Project> {
+        let project = self.project_including_removed(id)?;
+        let conn = self.reader();
+        ensure_live(&conn, &project)?;
+        Ok(project)
+    }
+
+    /// The row of a project even after its removal, which keeps its threads.
+    pub fn project_including_removed(&self, id: &str) -> Result<Project> {
         self.reader()
             .query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)
             .optional()?
@@ -231,6 +241,7 @@ impl Store {
                 .query_row("SELECT * FROM projects WHERE id=?1", [id], project_row)
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound("project".into()))?;
+            ensure_live(tx, &project)?;
             let revision =
                 crate::project::project_icon_override::revision(&project.metadata_revision)?
                     .checked_add(1)
@@ -251,6 +262,7 @@ impl Store {
                 .query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound("project".into()))?;
+            ensure_live(tx, &project)?;
             insert_audit(
                 tx,
                 &AuditRecord {
@@ -893,11 +905,50 @@ fn tombstone_project(
         )?;
         threads::notify(tx, appended, thread, "archive")?;
     }
+    pause_project_tasks(tx, &project.id)?;
     tx.execute(
         "UPDATE projects SET removed_at = ?2, scratch = 1, trusted = 0 WHERE id = ?1",
         params![project.id, stamp],
     )?;
     Ok(ids)
+}
+
+/// Pauses every scheduled task of a project that is being removed, so none fires.
+fn pause_project_tasks(tx: &Transaction<'_>, project_id: &str) -> Result<()> {
+    let mut statement = tx.prepare("SELECT id, task FROM scheduled_tasks")?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(statement);
+    for (id, text) in rows {
+        let mut task: orbyn_contracts::ScheduledTask = serde_json::from_str(&text)?;
+        if task.project_id != project_id {
+            continue;
+        }
+        task.enabled = false;
+        task.next_run_at = None;
+        "paused: the project was removed".clone_into(&mut task.last_status);
+        tx.execute(
+            "UPDATE scheduled_tasks SET task = ?2, next_run_at = NULL WHERE id = ?1",
+            params![id, serde_json::to_string(&task)?],
+        )?;
+    }
+    Ok(())
+}
+
+/// Refuses a removed project. Works on a connection or a transaction.
+fn ensure_live(conn: &Connection, project: &Project) -> Result<()> {
+    let removed: Option<String> = conn.query_row(
+        "SELECT removed_at FROM projects WHERE id = ?1",
+        [&project.id],
+        |row| row.get(0),
+    )?;
+    if removed.is_some() {
+        return Err(CoreError::ProjectRemoved(project.name.clone()));
+    }
+    Ok(())
 }
 
 fn project_thread_ids(tx: &Transaction<'_>, project_id: &str) -> Result<Vec<String>> {

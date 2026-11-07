@@ -1845,7 +1845,11 @@ staging folder beside its destination. Those projects are `managed`.
 Removing a project unregisters it, archives its threads and never deletes them, and
 leaves the folder exactly as it was. Each kept thread carries `project_removed` and the
 project's name as `removed_project_name`, so the archive can say where it came from.
-The project row stays hidden. Unarchiving such a thread is refused with
+The project row stays hidden, and anything that would act on it (a new thread, a task
+saved or resumed, a rename, trust, per-project preferences, a pull checkout) is refused
+with `project_removed`. Its scheduled tasks are paused at removal; one that is somehow
+still due is refused and recorded as `refused` in its history. Archived threads still list
+and read. Unarchiving such a thread is refused with
 `project_removed` (409) until the folder is added again, which restores the row
 untrusted and clears the label on its threads. `?delete_files=true` is refused for a folder Orbyn did not create.
 For one it did, dirty or unpushed work needs `confirm`, and files go only when nothing

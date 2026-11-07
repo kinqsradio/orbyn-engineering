@@ -465,7 +465,7 @@ mod tests {
         let removed = remove(&f, &target, &preview, "/library");
         let admitted = worker.join().unwrap();
         match (removed, admitted) {
-            (Ok(_), Err(_)) => assert!(f.store.thread(&target_thread).is_err()),
+            (Ok(_), Err(_)) => assert!(f.store.thread(&target_thread).unwrap().project_removed),
             (Err(CoreError::ThreadBusy), Ok(run)) => {
                 assert!(f.store.thread(&target_thread).is_ok());
                 f.store

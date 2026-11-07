@@ -324,6 +324,9 @@ impl Core {
         project_id: Option<&str>,
         values: &BTreeMap<String, Value>,
     ) -> Result<()> {
+        if let Some(id) = project_id {
+            self.store.project(id)?;
+        }
         for (key, value) in values {
             let definition = writable(key)?;
             if project_id.is_some() && !definition.project {

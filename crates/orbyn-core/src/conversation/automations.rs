@@ -424,6 +424,9 @@ impl Core {
 
     pub fn set_task_enabled(&self, id: &str, enabled: bool) -> Result<ScheduledTask> {
         let mut task = self.store.task(id)?;
+        if enabled {
+            self.store.project(&task.project_id)?;
+        }
         task.enabled = enabled;
         let next = if enabled {
             next_run(&task.schedule, unix_now())?
