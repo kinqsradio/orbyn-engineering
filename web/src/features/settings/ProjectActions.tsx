@@ -59,7 +59,7 @@ export function ProjectActions({ value, control }: { value: unknown; control: Pr
     {!control.mixed && (actions.length === 0 ? <p className="field-hint">No actions configured.</p> :
       <div className="set-tbl" role="table" aria-label="Actions">{actions.map((action) => {
         const key = shortcut(action.id);
-        return <div key={action.name} role="row" className="set-tr" style={{ gridTemplateColumns: "28px minmax(0, 1fr) 220px 100px" }}>
+        return <div key={action.name} role="row" className="set-tr" style={{ gridTemplateColumns: "28px minmax(0, 1fr) minmax(0, 1.2fr) auto" }}>
           <span role="cell"><ProjectActionIcon icon={action.icon} /></span>
           <span role="cell"><button type="button" className="set-link" aria-label={`Edit ${action.name}`} disabled={control.disabled}
             onClick={(event) => { opener.current = event.currentTarget; setEditing({ original: action.name, draft: { ...action } }); }}>{action.name}</button></span>

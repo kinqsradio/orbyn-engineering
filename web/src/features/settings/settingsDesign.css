@@ -128,6 +128,7 @@
 .set-tr .mono {
   font-family: var(--font-mono);
   font-size: 11.5px;
+  overflow-wrap: anywhere;
 }
 .set-tr .row-actions {
   display: flex;
