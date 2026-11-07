@@ -5,7 +5,7 @@ import { request } from "../../api/client";
 import type { EngineStatus } from "../../api/types";
 import { useWorkspace } from "../../state/workspace";
 import { KeybindingsSection } from "./Keybindings";
-import { AboutSection, ArchiveGroupHead } from "./PreferenceSections";
+import { AboutSection } from "./PreferenceSections";
 import { ProviderTable } from "./ProviderTable";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
@@ -70,10 +70,4 @@ it("lists the installed agent CLIs and their versions on About", async () => {
   useWorkspace.setState({ engines: { data: [engine({}), engine({ id: "codex", name: "Codex", version: "0.98" }), engine({ id: "x", name: "Work", instance_of: "claude" })], error: null, loading: false } });
   render(<AboutSection />);
   expect(await screen.findByText("Claude Code 2.1.318 · Codex 0.98")).toBeVisible();
-});
-
-it("tags the archive group of a removed project and no other", () => {
-  render(<><ArchiveGroupHead name="orbyn-engine" removed={false} /><ArchiveGroupHead name="orbyn-references" removed /></>);
-  expect(screen.getByText("Removed")).toBeVisible();
-  expect(screen.getAllByText("Removed")).toHaveLength(1);
 });

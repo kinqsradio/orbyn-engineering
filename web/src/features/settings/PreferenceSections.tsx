@@ -702,7 +702,7 @@ export function AboutSection() {
   );
 }
 
-/** The project's name over its archived threads. A project that was removed keeps its group, with a neutral Removed tag; the service marks none yet, so none shows. */
+/** The project's name over its archived threads. A project that was removed keeps its group, with a neutral Removed tag. */
 export function ArchiveGroupHead({ name, removed }: { name: string; removed: boolean }) {
   return <p className="set-grp set-grp-tight">{name}{removed ? <span className="set-pill">Removed</span> : null}</p>;
 }
@@ -714,20 +714,27 @@ export function ArchiveSection() {
   const [deleting, setDeleting] = useState<Thread | null>(null);
   const columns = { gridTemplateColumns: "minmax(0, 1fr) 110px 190px" };
   useEffect(() => {
-    if (!projects) return;
     const abort = new AbortController();
-    Promise.all(projects.map((project) => api.archivedThreads(project.id, abort.signal))).then(
-      (lists) => setThreads(lists.flat().sort((a, b) => b.updated_at.localeCompare(a.updated_at))),
+    api.archivedThreads(abort.signal).then(
+      (list) => setThreads(list.sort((a, b) => b.updated_at.localeCompare(a.updated_at))),
       (failure: unknown) => {
         if (!abort.signal.aborted) setError(toFailure(failure).message);
       },
     );
     return () => abort.abort();
-  }, [projects]);
+  }, []);
   const remove = async (thread: Thread) => {
     setThreads((threads ?? []).filter((entry) => entry.id !== thread.id));
     await api.deleteThread(thread.id).catch((failure: unknown) => setError(toFailure(failure).message));
   };
+  // The sidebar's order first, then the projects that were removed, each under the name it had.
+  const groups = threads === null || !projects ? [] : [
+    ...projects.map((project) => ({ key: project.id, name: project.name, removed: false, owned: threads.filter((thread) => !thread.project_removed && thread.project_id === project.id) })),
+    ...[...new Set(threads.filter((thread) => thread.project_removed).map((thread) => thread.project_id))].map((id) => {
+      const owned = threads.filter((thread) => thread.project_removed && thread.project_id === id);
+      return { key: id, name: owned[0]?.removed_project_name ?? id, removed: true, owned };
+    }),
+  ].filter((group) => group.owned.length > 0);
   return (
     <>
       {heading("Archive")}
@@ -736,33 +743,36 @@ export function ArchiveSection() {
           {error}
         </p>
       ) : null}
-      {!threads ? (
+      {!threads || !projects ? (
         <Loading label="Loading archived threads" rows={3} />
-      ) : threads.length === 0 ? (
+      ) : groups.length === 0 ? (
         <Empty title="No archived threads" />
       ) : (
         <>
-          {(projects ?? []).map((project) => {
-            const owned = threads.filter((thread) => thread.project_id === project.id);
-            if (!owned.length) return null;
-            return (
-              <section key={project.id} aria-label={project.name}>
-                <ArchiveGroupHead name={project.name} removed={false} />
-                <div className="set-tbl" role="table" aria-label={`Archived threads in ${project.name}`}>
-                  {owned.map((thread) => (
+          {groups.map((group) => (
+              <section key={group.key} aria-label={group.name}>
+                <ArchiveGroupHead name={group.name} removed={group.removed} />
+                <div className="set-tbl" role="table" aria-label={`Archived threads in ${group.name}`}>
+                  {group.owned.map((thread) => (
                     <div key={thread.id} role="row" className="set-tr" style={columns}>
                       <span role="cell">{thread.title}</span>
                       <span role="cell" className="t3">{new Date(thread.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                       <span role="cell" className="row-actions">
-                        <Button
-                          small
-                          onClick={() => {
-                            void unarchiveThread(thread);
-                            setThreads(threads.filter((entry) => entry.id !== thread.id));
-                          }}
-                        >
-                          Unarchive
-                        </Button>
+                        {group.removed ? (
+                          <span title="Add the project back to unarchive">
+                            <Button small disabled>Unarchive</Button>
+                          </span>
+                        ) : (
+                          <Button
+                            small
+                            onClick={() => {
+                              void unarchiveThread(thread);
+                              setThreads(threads.filter((entry) => entry.id !== thread.id));
+                            }}
+                          >
+                            Unarchive
+                          </Button>
+                        )}
                         <Button small tone="danger" onClick={() => setDeleting(thread)}>
                           Delete
                         </Button>
@@ -771,8 +781,7 @@ export function ArchiveSection() {
                   ))}
                 </div>
               </section>
-            );
-          })}
+          ))}
           {deleting ? (
             <ConfirmDialog title={`Delete “${deleting.title}”?`} confirmLabel="Delete thread" tone="danger" cancelFocus
               onClose={() => setDeleting(null)} onConfirm={() => remove(deleting)}>
