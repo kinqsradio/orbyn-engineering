@@ -70,6 +70,10 @@ A54 has no earlier database to migrate. The existing N/A notes about assets,
 unsupported platforms or a missing predecessor are retained for an honest
 not-doable decision; this scope reconciliation does not mark them done.
 
+The [batch ledger](parity-batches.md) reconciles #187's issue states as of
+7 November 2026. Use it to find the batch closeouts; the rows below retain the
+remaining behavior, native/manual qualification and refusal notes.
+
 ## A. Threads and sidebar
 - [x] A1 New thread: keeps current project and model/mode, unless the project has its own default | docs/user/thread-sidebar.md | w d m | S
 - [x] A2 New thread in…: palette project picker | apps/web/src/components/CommandPalette.tsx | w d | S | web done

@@ -1,10 +1,14 @@
 # Handoff
 
-Start here if you are picking this project up. Reconciled 5 November 2026 against
-`main` at `b3afa61`; the dated sections below it are kept as evidence and are not
-current. Trust the repository over this document where they differ,
-and update this file when its facts change. The JSON record pins the product
-revision, not the later documentation commit; reconcile any newer main before acting.
+Start here if you are picking this project up. The [batch reconciliation](parity-batches.md)
+records the 7 November 2026 issue snapshot against product revision `3d0f41d`.
+Read it before claiming work from #187. The parity rows remain the source for
+unfinished behavior and qualification limits; closed issues do not tick rows.
+
+The earlier status sections below are historical receipts, including their PR
+states, counts and machine-specific observations. `handoff.json` also pins an
+older product revision; neither grants authority for a new run. Trust the current
+repository and task instructions, and reconcile newer main before acting.
 
 ## Goal
 
@@ -63,6 +67,44 @@ reconciliation.
 
 ## Where things stand now
 
+At product revision `3d0f41d`, `python scripts/count-parity.py` reports 709 rows,
+467 source checkboxes ticked and 534 included rows: 396 declared checked,
+101 partial, 33 open and 4 not doable. There are 175 excluded rows and none with
+unresolved scope. These are checklist declarations, not fresh runtime evidence.
+
+### Picking up work
+
+Use the [batch ledger](parity-batches.md) for the current disposition of #161–#186
+and the related #127/#128/#140 closeouts. Keep #187 open while its remaining
+behavior and qualification decisions are unresolved. A closed batch is historical
+evidence, not an unclaimed implementation task or proof of full desktop parity.
+
+Unfinished work belongs in an issue with the evidence required by CONTRIBUTING.
+Check the row's `remaining:` note and the linked issue's closeout before starting.
+Filter by `parity`, `help wanted` and the area's label. Mobile-only rows and hosted
+services remain excluded; local desktop device/toolchain work is still in scope.
+
+### Review before a feature merges
+
+Green checks do not mean the feature is right. Section D's rows merged with ten
+defects that CI could not see — text glued together, a text box printed twice, a
+table row dropped, a 61 KB workbook inflating to a 64,000,000-cell model — and a
+read-only review pass with permission to run probes found all ten in one go (#136).
+Treat a child that dies without a closing report as unverified rather than finished,
+and re-read its brief item by item before shipping what it left behind.
+
+### Worktrees, and one trap
+
+Parity work happens in `<repo>-wt/<purpose>/`. Each checkout must use its own
+`target/`; never share a writable Cargo target or a hard-linked cache with another
+writer. Follow [CONTRIBUTING](../CONTRIBUTING.md#keep-cargo-artifacts-private-to-each-worktree).
+Historical shared-cache receipts below do not qualify another checkout or revision.
+
+Everything below this point is the record of earlier pickups, with the dates and
+revisions it was written at.
+
+## Batch queue at `3415cf4` (historical)
+
 `main` is `3415cf4`. `python3 scripts/count-parity.py` reports 709 rows with 410
 source checkboxes ticked, and 534 included rows: 364 declared checked, 55 partial,
 112 open, 3 not doable, 175 excluded, none with an unresolved scope. Those are
@@ -82,7 +124,7 @@ Open pull requests, each one branch with one commit per completed row:
 | --- | --- | --- |
 | #160 | docs: the remaining C-row evidence gaps | checks running |
 
-### Picking up work
+### Earlier pickup queue (historical)
 
 Unfinished work belongs in an issue, never in a session or a local note, and
 CONTRIBUTING says what such an issue must carry. The queue for the remaining
@@ -107,27 +149,6 @@ Filter by `parity` for rows, `help wanted` for work deliberately left open, and 
 `area:` label for its owner. The rest of the roadmap is `docs/parity.md`: every row
 carries its surface, size and `scope:` fields, and blocked work (the device tool
 chain, mobile, hosted services) is marked there so it does not look open.
-
-### Review before a feature merges
-
-Green checks do not mean the feature is right. Section D's rows merged with ten
-defects that CI could not see — text glued together, a text box printed twice, a
-table row dropped, a 61 KB workbook inflating to a 64,000,000-cell model — and a
-read-only review pass with permission to run probes found all ten in one go (#136).
-Treat a child that dies without a closing report as unverified rather than finished,
-and re-read its brief item by item before shipping what it left behind.
-
-### Worktrees, and one trap
-
-Parity work happens in `<repo>-wt/<purpose>/`. Several worktrees may share one
-`CARGO_TARGET_DIR` to avoid a 10 GB build each, and that sharing is not safe on its
-own: cargo has reported packages `Fresh` while linking another checkout's artefacts,
-so an integration test ran a binary without the change under test. When evidence
-matters, hard-link a private copy and force the two packages to rebuild, then check
-the binary carries the change — #132 has the commands.
-
-Everything below this point is the record of earlier pickups, with the dates and
-revisions it was written at.
 
 ## Reconciled status at `4e01947` (historical)
 
