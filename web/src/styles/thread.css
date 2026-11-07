@@ -1700,8 +1700,7 @@ button.detail-row:hover {
   display: flex;
   flex-direction: column;
   flex: none;
-  /* The fixed --context-w arrives with the side panel work. */
-  width: clamp(360px, calc(100% - 1112px), 539px);
+  width: var(--context-w);
   min-height: 0;
   border-left: 1px solid var(--color-border);
   background: var(--color-background);
@@ -1733,55 +1732,121 @@ button.detail-row:hover {
 .context-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 14px 10px;
+  gap: 4px;
+  /* 4px sides leave room for all six tabs at 380px whatever the platform's font metrics. */
+  padding: 12px 4px 8px;
   flex: none;
 }
 .context-head .layout-toggles .icon-btn[aria-pressed="false"],
 .context-head .layout-toggles .icon-btn:not([aria-pressed]) {
   color: var(--color-muted);
 }
+/* The panel's fixed text tabs. The row scrolls sideways rather than wrapping when the panel is narrow. */
 .tabs {
   display: flex;
   flex: 1;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+.tabs[data-overflow] {
+  -webkit-mask-image: linear-gradient(to right, var(--color-text) calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to right, var(--color-text) calc(100% - 20px), transparent);
+}
+.ptab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ptab[data-selected] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+.ptab:not([data-selected]):hover {
+  background: var(--color-hover);
+  color: var(--color-textSoft);
+}
+.context-head .end {
+  display: flex;
+  flex: none;
+  gap: 0;
+}
+.context-head .end .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+/* Small pills: the pages of the Browser, and the side chats. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 4px;
+}
+.chip,
 .surface-tab {
   display: inline-flex;
   align-items: center;
-  height: 30px;
+  max-width: 180px;
+  height: 24px;
   border-radius: var(--radius-md);
-  color: var(--color-muted);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
 }
+.chip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 9px;
+  border: 0;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"],
 .surface-tab[data-selected] {
   background: var(--color-selected);
   color: var(--color-text);
 }
 .surface-tab button {
+  min-width: 0;
   height: 100%;
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: var(--text-nav);
+  font-size: inherit;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .surface-tab button[role="tab"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 4px 0 10px;
+  padding: 0 2px 0 8px;
 }
-.surface-tab:not([data-selected]):hover {
-  background: var(--color-hover);
-  color: var(--color-textSoft);
-}
-.surface-close {
-  display: grid;
-  place-items: center;
+.surface-tab .icon-btn {
   width: 20px;
-  padding: 0;
+  height: 20px;
+  flex: none;
+}
+.surface-tab:not([data-selected]):hover,
+.chip:not([aria-pressed="true"]):hover {
+  background: var(--color-hover);
 }
 .launcher {
   display: flex;
@@ -4038,10 +4103,16 @@ button.context-meter:hover:not(:disabled) {
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
-.side-chat {
+.side-chat-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+}
+.side-chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-height: 0;
 }
 .side-chat-head {
@@ -4254,8 +4325,32 @@ div.browser-bridge-row {
   grid-template-columns: 1fr auto;
   gap: 2px 8px;
   padding: 8px 10px;
-  border-radius: var(--radius-md);
-  background: var(--color-selected);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-textSoft);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  white-space: normal;
+}
+.diff-comment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  grid-column: 1;
+}
+.diff-comment-head strong {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.diff-comment-where,
+.diff-comment-state {
+  color: var(--color-muted);
+}
+.diff-comment-where::before,
+.diff-comment-state::before {
+  content: "· ";
 }
 .diff-comment p {
   grid-column: 1;
@@ -4292,4 +4387,152 @@ div.browser-bridge-row {
 
 .outside-file .file-source {
   white-space: pre-wrap;
+}
+
+/* Side panel, design v11: text tabs, flat file rows, small mono hunks, a drawer for the terminal. */
+.tabpanel {
+  padding: 0 6px 10px;
+}
+.diff-sources.segment {
+  margin: 4px 12px;
+}
+.diff-options {
+  gap: 4px 12px;
+  padding: 4px 12px;
+  font-size: var(--text-meta);
+}
+.diff-find {
+  padding: 0 12px 4px;
+}
+.panel-bar {
+  padding: 0 12px;
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+}
+.diff-files {
+  gap: 8px;
+  padding: 0 6px;
+}
+.diff-file {
+  border-radius: var(--radius-lg);
+}
+.diff-file-row {
+  min-height: 30px;
+  font-size: var(--text-nav);
+}
+.patch {
+  font-size: var(--text-label);
+  line-height: 1.6;
+}
+.patch-split {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+}
+.linked-pulls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 8px 0;
+}
+.pulls-list li {
+  border-radius: var(--radius-md);
+}
+.file-tree button {
+  min-height: 26px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-nav);
+}
+.file-source {
+  font-size: var(--text-label);
+  line-height: 1.7;
+}
+.browser-panel .browser-bar {
+  padding: 4px 10px 8px;
+  gap: 6px;
+  border-bottom: 0;
+  background: transparent;
+}
+.browser-bar input {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+  color: var(--color-textSoft);
+  font-size: var(--text-meta);
+}
+.browser-tabs {
+  padding: 0 10px 4px;
+  gap: 6px;
+}
+.browser-note {
+  padding: 0 12px;
+}
+.drawer {
+  padding: 0;
+  background: var(--color-background);
+  border-top: 1px solid var(--color-border);
+}
+.terminal-tabs {
+  height: auto;
+  padding: 8px 14px;
+  gap: 2px;
+}
+.terminal-tabs button[role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--text-nav);
+}
+.terminal-tab {
+  border-radius: var(--radius-md);
+}
+.terminal-tab[data-selected] {
+  background: var(--color-selected);
+}
+.terminal-tab[data-selected] > button[role="tab"] {
+  background: transparent;
+}
+.terminal-host {
+  padding: 8px 14px;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+}
+.timeline {
+  padding: 4px 8px;
+}
+.diff-find input {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-meta);
+}
+/* The Reading drawer is 360px: tighter tabs keep all six in view next to the controls. */
+:root[data-workspace="reading"] .context:not([data-maximized]) .ptab {
+  padding: 0 4px;
+}
+.browser-popout {
+  margin-left: auto;
+}
+.diff-view.segment {
+  margin: 4px 12px;
+}
+.diff-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+}
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.activity-summary {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
 }

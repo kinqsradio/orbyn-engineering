@@ -11,11 +11,10 @@ export const sideChatsOf = (threads: Record<string, Thread>, parentId: string) =
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
 export function showSideChat(id: string) {
-  const { openSurfaces, setPrefs, setPanelOpen } = useUi.getState();
+  const { setPrefs, setPanelOpen } = useUi.getState();
   setPrefs({
     sideChat: id,
     panelTab: "side",
-    openSurfaces: openSurfaces.includes("side") ? openSurfaces : [...openSurfaces, "side"],
   });
   setPanelOpen(true);
 }
@@ -37,12 +36,11 @@ export async function openSideChat(parent: Thread, question: string | null) {
   }
 }
 
-/** Closes the tab. One you never used goes with it, since nothing would find it again. */
+/** Closes the open chat; the tab stays. One you never used goes with it, since nothing would find it again. */
 export function closeSideChat() {
-  const { sideChat, closeSurface, setPrefs } = useUi.getState();
+  const { sideChat, setPrefs } = useUi.getState();
   const { threads, dropThread } = useWorkspace.getState();
   const side = sideChat ? threads[sideChat] : undefined;
-  closeSurface("side");
   setPrefs({ sideChat: null });
   if (side && side.active_run === null && side.last_run_state === null) {
     dropThread(side);

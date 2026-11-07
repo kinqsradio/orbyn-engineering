@@ -18,7 +18,6 @@ interface Prefs {
   panelOpen: boolean | null;
   /** The surface showing; null is the launcher. */
   panelTab: RightTab | null;
-  openSurfaces: RightTab[];
   /** Panel and hero motion in ms, 0 to 400. 0 is off, upstream's default. */
   panelAnimationMs: number;
   /** The floating details card on wide layouts. */
@@ -143,7 +142,6 @@ export interface StashedPrompt {
 export interface ThreadLayout {
   panelOpen: boolean | null;
   panelTab: RightTab | null;
-  openSurfaces: RightTab[];
   detailsOpen: boolean;
   terminalOpen: boolean;
   panelMaximized: boolean;
@@ -173,7 +171,6 @@ const defaults: Prefs = {
   theme: "dark",
   panelOpen: null,
   panelTab: null,
-  openSurfaces: [],
   panelAnimationMs: 0,
   detailsOpen: true,
   terminalOpen: false,
@@ -292,7 +289,6 @@ interface UiState extends Prefs {
   setPanelOpen(open: boolean): void;
   /** Back to the launcher, keeping open surfaces. */
   showLauncher(): void;
-  closeSurface(tab: RightTab): void;
   setPanelAnimationMs(ms: number): void;
   toggleDetails(): void;
   setPanelMaximized(maximized: boolean): void;
@@ -314,7 +310,6 @@ interface UiState extends Prefs {
 const layoutDefaults: ThreadLayout = {
   panelOpen: defaults.panelOpen,
   panelTab: defaults.panelTab,
-  openSurfaces: defaults.openSurfaces,
   detailsOpen: defaults.detailsOpen,
   terminalOpen: defaults.terminalOpen,
   panelMaximized: defaults.panelMaximized,
@@ -325,7 +320,6 @@ const layoutDefaults: ThreadLayout = {
 const currentLayout = (state: Prefs): ThreadLayout => ({
   panelOpen: state.panelOpen,
   panelTab: state.panelTab,
-  openSurfaces: state.openSurfaces,
   detailsOpen: state.detailsOpen,
   terminalOpen: state.terminalOpen,
   panelMaximized: state.panelMaximized,
@@ -344,7 +338,6 @@ const prefsOf = (state: Prefs): Prefs => ({
   theme: state.theme,
   panelOpen: state.panelOpen,
   panelTab: state.panelTab,
-  openSurfaces: state.openSurfaces,
   panelAnimationMs: state.panelAnimationMs,
   detailsOpen: state.detailsOpen,
   terminalOpen: state.terminalOpen,
@@ -511,33 +504,27 @@ export const useUi = create<UiState>((set, get) => {
         set({ pullReveal: null });
         return;
       }
-      const { openSurfaces } = get();
       set({
         pullReveal: number,
         panelOpen: true,
         panelTab: "pulls",
-        openSurfaces: openSurfaces.includes("pulls") ? openSurfaces : [...openSurfaces, "pulls"],
       });
     },
     diffReveal: null,
     commitReveal: null,
     revealCommit(sha) {
-      const { openSurfaces } = get();
       set({
         commitReveal: { sha, nonce: Date.now() },
         panelOpen: true,
         panelTab: "diff",
-        openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
       });
     },
     revealDiff(path, origin) {
-      const { openSurfaces } = get();
       set({
         diffReveal: { ...origin, path, nonce: ++navigationNonce },
         fileReveal: null,
         panelOpen: true,
         panelTab: "diff",
-        openSurfaces: openSurfaces.includes("diff") ? openSurfaces : [...openSurfaces, "diff"],
       });
     },
     consumeDiffReveal(nonce) {
@@ -552,13 +539,11 @@ export const useUi = create<UiState>((set, get) => {
       set({ messageReveal: null });
     },
     revealFile(path, line, origin) {
-      const { openSurfaces } = get();
       set({
         fileReveal: { ...origin, path, line, nonce: ++navigationNonce },
         diffReveal: null,
         panelOpen: true,
         panelTab: "files",
-        openSurfaces: openSurfaces.includes("files") ? openSurfaces : [...openSurfaces, "files"],
       });
     },
     consumeFileReveal(nonce) {
@@ -574,26 +559,23 @@ export const useUi = create<UiState>((set, get) => {
         set({ previewRequest: null });
         return;
       }
-      const { openSurfaces } = get();
       set({
         previewRequest: url,
         panelOpen: true,
         panelTab: "browser",
-        openSurfaces: openSurfaces.includes("browser") ? openSurfaces : [...openSurfaces, "browser"],
       });
     },
     togglePanel(tab) {
       if (tab === "terminal") {
         set((state) => ({ terminalOpen: !state.terminalOpen }));
       } else {
-        const { panelOpen, panelTab, openSurfaces } = get();
+        const { panelOpen, panelTab } = get();
         set(
           panelOpen === true && panelTab === tab
             ? { panelOpen: false }
             : {
                 panelOpen: true,
                 panelTab: tab,
-                openSurfaces: openSurfaces.includes(tab) ? openSurfaces : [...openSurfaces, tab],
               },
         );
       }
@@ -609,16 +591,6 @@ export const useUi = create<UiState>((set, get) => {
     },
     showLauncher() {
       set({ panelOpen: true, panelTab: null });
-      savePrefs();
-    },
-    closeSurface(tab) {
-      set((state) => {
-        const openSurfaces = state.openSurfaces.filter((surface) => surface !== tab);
-        return {
-          openSurfaces,
-          panelTab: state.panelTab === tab ? (openSurfaces.at(-1) ?? null) : state.panelTab,
-        };
-      });
       savePrefs();
     },
     setPanelAnimationMs(ms) {

@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
+import { pullsApi } from "../../api/pulls";
 import { useComposerChips } from "../thread/composerChipStore";
 import { useUi } from "../../state/ui";
 import { useWorkspace } from "../../state/workspace";
@@ -26,6 +27,44 @@ it("shows a historical turn diff without exposing a per-file restore action", as
   expect(screen.queryByRole("button", { name: /Restore notes.txt/ })).toBeNull();
   expect(changes).not.toHaveBeenCalled();
   expect(screen.getByRole("group", { name: "Patch" })).toHaveTextContent("new");
+});
+
+it("switches unified and split, picks a turn and offers restore for it", async () => {
+  const user = userEvent.setup();
+  const diff = vi.spyOn(api, "diff").mockResolvedValue([{ path: "a.txt", status: "modified", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new\n" }]);
+  vi.spyOn(api, "checkpoints").mockResolvedValue([
+    { run_id: "r1", start: "s1", end: "e1", created_at: "" },
+    { run_id: "r2", start: "s2", end: "e2", created_at: "" },
+  ]);
+  useWorkspace.setState({ threads: { t: { id: "t", active_run: null } as never } });
+  vi.spyOn(pullsApi, "linked").mockResolvedValue([]);
+  vi.spyOn(api, "branches").mockResolvedValue([]);
+  render(<DiffPanel threadId="t" />);
+  await screen.findByRole("button", { name: "Copy path a.txt" });
+  expect(await screen.findByRole("button", { name: "Create pull request" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Restore files to before this response" })).toBeNull();
+  await user.click(screen.getByRole("radio", { name: "Split" }));
+  expect(useUi.getState().diffLayout).toBe("split");
+  await user.click(screen.getByRole("radio", { name: "Unified" }));
+  expect(useUi.getState().diffLayout).toBe("stacked");
+  await user.click(screen.getByRole("radio", { name: "Turn" }));
+  const picker = await screen.findByRole("combobox", { name: "Turn" });
+  expect(picker).toHaveValue("r2");
+  await user.selectOptions(picker, "r1");
+  await waitFor(() => expect(diff).toHaveBeenCalledWith("t", expect.any(AbortSignal), "turn&run=r1"));
+  expect(screen.getByRole("button", { name: "Restore files to before this response" })).toBeInTheDocument();
+});
+
+it("hides Create pull request where the header's Git menu hides, outside a Git repository", async () => {
+  vi.spyOn(api, "diff").mockResolvedValue([{ path: "a.txt", status: "modified", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new\n" }]);
+  vi.spyOn(api, "checkpoints").mockResolvedValue([]);
+  useWorkspace.setState({ threads: { t: { id: "t", active_run: null } as never } });
+  vi.spyOn(pullsApi, "linked").mockResolvedValue([]);
+  vi.spyOn(api, "branches").mockRejectedValue(new Error("not a git repository"));
+  render(<DiffPanel threadId="t" />);
+  await screen.findByRole("button", { name: "Copy path a.txt" });
+  await waitFor(() => expect(api.branches).toHaveBeenCalled());
+  expect(screen.queryByRole("button", { name: "Create pull request" })).toBeNull();
 });
 
 it("numbers new lines and adds a review comment chip for one", async () => {

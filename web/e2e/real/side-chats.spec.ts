@@ -45,8 +45,11 @@ test("/side asks in a tab while the row list stays as it was, and it can be foun
   await page.reload();
   await expect(pane(page)).toBeVisible();
   await page.getByRole("button", { name: "Close Side chat" }).click();
-  await expect(page.getByRole("tab", { name: "Side chat" })).toBeHidden();
+  await expect(page.getByText("No side chat open")).toBeVisible();
   await expect((await sideOf(id)).length).toBe(1);
+  // The chip carries the side chat's own title, or "Side chat N" while it has none.
+  const [kept] = await sideOf(id);
+  await expect(page.getByRole("group", { name: "Side chats" }).getByRole("button", { name: kept?.title?.trim() || "Side chat 1", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close surfaces" }).click();
   await page.getByRole("complementary", { name: "Thread details" }).getByRole("button", { name: /Side chat/ }).click();
   await expect(pane(page).getByText("what did it find?")).toBeVisible();
@@ -59,8 +62,6 @@ test("a side chat opens from the launcher while the thread works, and an unused 
   const id = await started(page, "[hang]");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Surfaces" }).click().catch(() => undefined);
-  await page.getByRole("button", { name: "New surface" }).click();
-  await page.getByRole("menuitem", { name: "Open a surface", exact: true }).click();
   await page.locator(".launcher").getByRole("button", { name: /Side chat/ }).click();
   await expect(pane(page)).toBeVisible();
   await expect.poll(async () => (await sideOf(id)).length).toBe(1);

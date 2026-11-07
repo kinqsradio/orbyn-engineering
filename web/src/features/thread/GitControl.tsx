@@ -11,7 +11,7 @@ import { Button, Field } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
 
-interface Plan {
+export interface Plan {
   title: string;
   commit: boolean;
   push: boolean;
@@ -33,6 +33,15 @@ const PLANS: { label: string; plan: Plan; icon: typeof Upload }[] = [
     icon: GitPullRequest,
   },
 ];
+
+/** The menu's own "Create pull request" entry, for other places that offer it. */
+export const createPullRequestPlan = (): Plan => PLANS.find((entry) => entry.label === "Create pull request")!.plan;
+
+/** False when the checkout can't answer Git questions, where the header menu hides too. */
+export function useGitAvailable(threadId: string): boolean {
+  const branches = useAsync(`git-branches:${threadId}`, (signal) => api.branches(threadId, signal));
+  return branches.status !== "error";
+}
 
 const PHASE_NAMES: Record<string, string> = { commit: "Commit", push: "Push", pull_request: "Pull request" };
 
@@ -56,7 +65,7 @@ function Phase({ phase }: { phase: GitPhase }) {
   );
 }
 
-function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan; onClose(): void }) {
+export function GitActionDialog({ thread, plan, onClose }: { thread: Thread; plan: Plan; onClose(): void }) {
   const [message, setMessage] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");

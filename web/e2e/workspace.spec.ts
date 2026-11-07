@@ -333,3 +333,30 @@ test("Reading folds the sidebar away on a wide window, but a narrow home is stil
   await expect(page.locator(".sidebar")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeFocused();
 });
+
+test("the panel shows all six tabs at 380px, and its list opens from the chosen tab and the palette", async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ panelOpen: true, panelTab: "files" })));
+  await page.goto("/__mock/scenario/default");
+  await page.goto("/#/threads/t-done");
+  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await page.getByRole("tab", { name: "Files" }).click();
+  const row = page.getByRole("tablist", { name: "Context" });
+  await expect(row).toBeVisible();
+  const m = await row.evaluate((e) => ({ sw: e.scrollWidth, cw: e.clientWidth, o: e.hasAttribute("data-overflow"), w: e.closest(".context")!.getBoundingClientRect().width }));
+  expect(m.sw).toBeLessThanOrEqual(m.cw);
+  expect(m.o).toBe(false);
+  await page.getByRole("tab", { name: "Files" }).click();
+  await expect(page.locator(".launcher")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Files" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".launcher")).toBeVisible();
+  await page.keyboard.press("b");
+  await expect(page.getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("dialog", { name: "Command palette" }).getByRole("combobox", { name: "Search" }).fill("Open a surface");
+  await page.getByRole("dialog", { name: "Command palette" }).getByRole("button", { name: /Open a surface/ }).click();
+  await expect(page.locator(".launcher")).toBeVisible();
+});

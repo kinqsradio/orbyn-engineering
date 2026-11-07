@@ -5,7 +5,7 @@ const ui = () => useUi.getState();
 
 beforeEach(() => {
   ui().setLayoutKey(DRAFT_LAYOUT);
-  useUi.setState({ layouts: {}, panelOpen: null, panelTab: null, openSurfaces: [], terminalOpen: false, panelWidth: null });
+  useUi.setState({ layouts: {}, panelOpen: null, panelTab: null, terminalOpen: false, panelWidth: null });
 });
 
 describe("thread layouts", () => {

@@ -8,8 +8,6 @@ import {
   MessagesSquare,
   Minimize2,
   PanelBottom,
-  PanelRight,
-  Plus,
   SquareTerminal,
   ArrowLeft,
   X,
@@ -21,18 +19,16 @@ import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
 import { useThreadLogs } from "../thread/threadLogs";
-import { useUi, type ContextTab } from "../../state/ui";
+import { useUi, type ContextTab, type RightTab } from "../../state/ui";
 import { Button, IconButton } from "../../ui/controls";
-import { Menu } from "../../ui/Menu";
 import { ActivityPanel } from "./ActivityPanel";
 import { BrowserPanel } from "./BrowserPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FilesPanel } from "./FilesPanel";
 import { LinkedPulls } from "./LinkedPulls";
-import { closeSideChat, openSideChat } from "./sideChat";
+import { openSideChat } from "./sideChat";
 import { SideChatPane } from "./SideChatPane";
 import { RIGHT_TABS } from "./tabs";
-import { pullsApi } from "../../api/pulls";
 
 interface LauncherAction {
   id: ContextTab | "new-side";
@@ -42,7 +38,7 @@ interface LauncherAction {
   available: boolean;
 }
 
-function Launcher({ thread }: { thread: Thread }) {
+function Launcher({ thread, back }: { thread: Thread; back: RightTab | null }) {
   const toggle = useUi((state) => state.togglePanel);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const activity = useThreadLogs((state) => (state.logs[thread.id]?.timeline.length ?? 0) > 0);
@@ -52,6 +48,12 @@ function Launcher({ thread }: { thread: Thread }) {
   useEffect(() => {
     if (version > 0) reload();
   }, [version, reload]);
+
+  const root = useRef<HTMLDivElement>(null);
+  // Reached from a tab: take focus so Escape can return to it.
+  useEffect(() => {
+    if (back) root.current?.focus();
+  }, [back]);
 
   const actions: LauncherAction[] = [
     { id: "browser", label: "Browser", icon: AppWindow, shortcut: "B", available: true },
@@ -70,6 +72,11 @@ function Launcher({ thread }: { thread: Thread }) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && back) {
+      event.preventDefault();
+      toggle(back);
+      return;
+    }
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const action = actions.find((entry) => entry.shortcut === event.key.toUpperCase());
     if (action?.available) {
@@ -79,7 +86,7 @@ function Launcher({ thread }: { thread: Thread }) {
   };
 
   return (
-    <div className="launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
+    <div ref={root} className="launcher" tabIndex={0} aria-label="Open a surface" onKeyDown={onKeyDown}>
       <div className="launcher-inner">
         <h2>Open a surface</h2>
         <ul>
@@ -152,25 +159,48 @@ export function SurfacePane({
   onReturn(): void;
 }) {
   const tab = useUi((state) => state.panelTab);
-  const surfaces = useUi((state) => state.openSurfaces);
   const toggle = useUi((state) => state.togglePanel);
   const showLauncher = useUi((state) => state.showLauncher);
-  const closeSurface = useUi((state) => state.closeSurface);
   const terminalOpen = useUi((state) => state.terminalOpen);
   const width = useUi((state) => state.panelWidth);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  const revealPull = useUi((state) => state.revealPull);
-  const closeMenu = () => {
-    setMenu(null);
-    menuButton.current?.focus();
+
+  // The tab the list was opened from, for Escape to return to.
+  const lastTab = useRef<RightTab | null>(null);
+  if (tab !== null) lastTab.current = tab;
+  const list = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const row = list.current;
+    if (!row) return;
+    const measure = () => setOverflow(row.scrollWidth - row.clientWidth - row.scrollLeft > 1);
+    measure();
+    row.addEventListener("scroll", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(row);
+    return () => {
+      row.removeEventListener("scroll", measure);
+      observer?.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [tab]);
+  // One Tab stop: the chosen tab, or the first while none is chosen.
+  const stop = tab ?? RIGHT_TABS[0]?.id;
+  const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = RIGHT_TABS.findIndex(({ id }) => id === stop);
+    const next =
+      event.key === "ArrowRight" ? (at + 1) % RIGHT_TABS.length
+      : event.key === "ArrowLeft" ? (at - 1 + RIGHT_TABS.length) % RIGHT_TABS.length
+      : event.key === "Home" ? 0
+      : event.key === "End" ? RIGHT_TABS.length - 1
+      : -1;
+    const target = RIGHT_TABS[next];
+    if (!target) return;
+    event.preventDefault();
+    toggle(target.id);
+    requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`#context-tab-${target.id}`)?.focus());
   };
-  const openSurface = (surface: ContextTab) => {
-    if (surface === "terminal" ? !terminalOpen : tab !== surface) toggle(surface);
-  };
-  // The thread's own pull request is a surface only when this thread links one.
-  const linked = useAsync(`surface-pulls:${thread.id}`, (signal) => pullsApi.linked(thread.id, signal));
-  const isLinked = (linked.data?.length ?? 0) > 0;
 
   return (
     <aside
@@ -187,75 +217,46 @@ export function SurfacePane({
             Back to thread
           </Button>
         ) : null}
-        <IconButton
-          label="New surface"
-          aria-haspopup="menu"
-          aria-expanded={menu !== null}
-          onClick={(event) => {
-            menuButton.current = event.currentTarget;
-            const rect = event.currentTarget.getBoundingClientRect();
-            setMenu({ x: rect.left, y: rect.bottom });
-          }}
-        >
-          <Plus size={16} aria-hidden />
-        </IconButton>
-        {menu ? (
-          <Menu
-            {...menu}
-            label="New surface"
-            onClose={closeMenu}
-            items={[
-              { label: "Browser", onSelect: () => openSurface("browser") },
-              { label: "Terminal", onSelect: () => openSurface("terminal") },
-              { label: "Files", onSelect: () => openSurface("files") },
-              { label: "Diff", onSelect: () => openSurface("diff") },
-              { label: "Pull request", disabled: !isLinked, onSelect: () => revealPull(linked.data?.[0]?.number ?? null) },
-              { label: "Linked pull requests", onSelect: () => openSurface("pulls") },
-              { label: "Device", disabled: true },
-              { label: "Side chat", onSelect: () => void openSideChat(thread, null) },
-              { label: "Open a surface", separatorBefore: true, onSelect: showLauncher },
-            ]}
-          />
-        ) : null}
-        <div className="tabs" role="tablist" aria-label="Context">
-          {RIGHT_TABS.filter(({ id }) => surfaces.includes(id)).map(({ id, label }) => (
-            <span key={id} className="surface-tab" data-selected={tab === id || undefined}>
-              <button
-                type="button"
-                role="tab"
-                id={`context-tab-${id}`}
-                aria-selected={tab === id}
-                aria-controls={`context-${id}`}
-                aria-label={id === "pulls" ? label : undefined}
-                onClick={() => {
-                  if (tab !== id) toggle(id);
-                }}
-              >
-                {id === "pulls" ? "PRs" : label}
-              </button>
-              <button type="button" aria-label={`Close ${label}`} className="surface-close" onClick={() => (id === "side" ? closeSideChat() : closeSurface(id))}>
-                <X size={12} aria-hidden />
-              </button>
-            </span>
+        <div ref={list} className="tabs" role="tablist" aria-label="Context" data-overflow={overflow || undefined} onKeyDown={onTabKey}>
+          {RIGHT_TABS.map(({ id, label, text }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              className="ptab"
+              id={`context-tab-${id}`}
+              data-selected={tab === id || undefined}
+              aria-selected={tab === id}
+              tabIndex={stop === id ? 0 : -1}
+              aria-controls={tab === id ? `context-${id}` : undefined}
+              aria-label={text === label ? undefined : label}
+              {...(tab === id ? { "aria-description": "Opens all surfaces", title: "Click again for all surfaces" } : {})}
+              onClick={() => {
+                if (tab !== id) toggle(id);
+                else showLauncher();
+              }}
+            >
+              {text}
+            </button>
           ))}
         </div>
-        {overlay ? null : (
-          <div className="layout-toggles">
+        <div className="layout-toggles end">
+          {overlay ? null : (
             <IconButton label={maximized ? "Restore pane" : "Maximize pane"} onClick={onToggleMaximize}>
               {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
             </IconButton>
-            <IconButton label="Terminal" pressed={terminalOpen} onClick={() => toggle("terminal")}>
-              <PanelBottom size={16} aria-hidden />
-            </IconButton>
-            <IconButton label="Close surfaces" pressed onClick={onReturn}>
-              <PanelRight size={16} aria-hidden />
-            </IconButton>
-          </div>
-        )}
+          )}
+          <IconButton label="Terminal" pressed={terminalOpen} onClick={() => toggle("terminal")}>
+            <PanelBottom size={16} aria-hidden />
+          </IconButton>
+          <IconButton label="Close surfaces" onClick={onReturn}>
+            <X size={16} aria-hidden />
+          </IconButton>
+        </div>
       </header>
       <div className="context-body">
         {tab === null ? (
-          <Launcher thread={thread} />
+          <Launcher thread={thread} back={lastTab.current} />
         ) : (
           <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">
             {tab === "browser" ? (
@@ -265,7 +266,7 @@ export function SurfacePane({
             ) : tab === "files" ? (
               <FilesPanel threadId={thread.id} />
             ) : tab === "activity" ? (
-              <ActivityPanel threadId={thread.id} />
+              <ActivityPanel key={thread.id} threadId={thread.id} />
             ) : tab === "side" ? (
               <SideChatPane parent={thread} />
             ) : (
