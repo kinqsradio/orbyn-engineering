@@ -231,13 +231,18 @@ function ModelPopover({
   const input = useRef<HTMLInputElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  // Shift+Tab from the search box goes to the provider rail; everywhere else it follows the shared rule.
+  const main = useRef<HTMLDivElement>(null);
+  // Two panes, rail then search: Tab goes rail -> search and closes after it; Shift+Tab the reverse.
+  const panes = [
+    { root: rail, focus: () => rail.current?.querySelector<HTMLElement>("[aria-pressed=true]")?.focus() },
+    { root: main, focus: () => input.current?.focus() },
+  ];
   const popover = usePopover({
     kind: "menu",
     root: panel,
     trigger,
     closing,
-    defer: (event) => event.key === "Tab" && event.shiftKey && !rail.current?.contains(event.target as Node),
+    panes,
     onClose,
   });
   const jumps = useHeldMod();
@@ -300,7 +305,7 @@ function ModelPopover({
       event.preventDefault();
       const step = event.key === "ArrowDown" ? 1 : -1;
       setActive((Math.max(active, step > 0 ? -1 : 0) + step + rows.length) % Math.max(rows.length, 1));
-    } else if ((event.key === "ArrowLeft" && !query) || (event.key === "Tab" && event.shiftKey)) {
+    } else if ((event.key === "ArrowLeft" && !query)) {
       event.preventDefault();
       rail.current?.querySelector<HTMLButtonElement>("[aria-pressed=true]")?.focus();
     } else if (event.key === "Enter") {
@@ -351,7 +356,7 @@ function ModelPopover({
           );
         })}
       </div>
-      <div className="model-main" onKeyDown={onKey}>
+      <div ref={main} className="model-main" onKeyDown={onKey}>
         <div className="model-search">
           <Search size={14} aria-hidden />
           <input

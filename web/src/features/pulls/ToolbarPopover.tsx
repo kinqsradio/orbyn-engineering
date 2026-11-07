@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { createPortal } from "react-dom";
 import { captureFocusReturn, moveFocus, type CloseCause } from "../../ui/focusReturn";
 import { closingProps } from "../../ui/Presence";
+import { usePopover } from "../../ui/usePopover";
 import { MOTION } from "../../lib/motion";
 import { usePrefersReducedMotion } from "../../lib/useLayout";
 
@@ -82,14 +83,29 @@ export function ToolbarPopover({
   const reduced = usePrefersReducedMotion();
   const mounted = useRef(false);
   const leaving = useRef(false);
-  const leave = (cause: CloseCause, target?: EventTarget | null) => {
+  // Inert at once, then (focus has moved already) the exit runs, then the entry pops.
+  const exit = () => {
     if (leaving.current) return;
     leaving.current = true;
-    // Inert at once, then focus returns, then the exit runs (the state below), then the entry pops.
     ref.current?.setAttribute("inert", "");
     ref.current?.setAttribute("aria-hidden", "true");
-    moveFocus(focusReturn, cause, target);
     setClosing(true);
+  };
+  // A popover follows the shared rule: Escape, Tab, Shift+Tab, a real user action outside, a route
+  // change. A window blur closes nothing. A menu closes on Tab; the Filters fields are walked.
+  const popover = usePopover({
+    kind: role === "menu" ? "menu" : "fields",
+    root: ref,
+    trigger: () => anchor,
+    active: layout === "popover",
+    closing,
+    onClose: exit,
+  });
+  const leave = (cause: CloseCause, target?: EventTarget | null) => {
+    if (layout === "popover") return popover.dismiss(cause, target);
+    if (leaving.current) return;
+    moveFocus(focusReturn, cause, target);
+    exit();
   };
   const dismiss = () => leave("select");
 
@@ -164,7 +180,9 @@ export function ToolbarPopover({
     };
   }, [layout]);
 
+  // The modal sheet keeps its own close plumbing: a tap on the scrim, Escape, and a Tab trap.
   useEffect(() => {
+    if (layout !== "sheet") return;
     const away = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (target && (ref.current?.contains(target) || anchor.contains(target))) return;
@@ -174,7 +192,7 @@ export function ToolbarPopover({
       if (event.key === "Escape") {
         event.stopPropagation();
         leave("escape");
-      } else if (event.key === "Tab" && layout === "sheet" && ref.current) {
+      } else if (event.key === "Tab" && ref.current) {
         // A modal sheet keeps Tab inside: the last control wraps to the first and back.
         const stops = [...ref.current.querySelectorAll<HTMLElement>(TABBABLE)].filter(
           (element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled,
@@ -193,26 +211,21 @@ export function ToolbarPopover({
           event.preventDefault();
           first.focus();
         }
-      } else if (event.key === "Tab" && !event.shiftKey && role === "menu" && ref.current?.contains(event.target as Node)) {
-        event.preventDefault();
-        leave("tab");
       }
     };
-    // A window blur or a route change closes the popover and leaves focus alone.
-    const elsewhere = () => leave("window");
+    // A route change closes the sheet and leaves focus alone; a window blur closes nothing.
+    const elsewhere = () => leave("away");
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", key, true);
-    window.addEventListener("blur", elsewhere);
     window.addEventListener("hashchange", elsewhere);
     return () => {
       document.removeEventListener("mousedown", away);
       document.removeEventListener("keydown", key, true);
-      window.removeEventListener("blur", elsewhere);
       window.removeEventListener("hashchange", elsewhere);
     };
-    // `leave` only reads refs and props that cannot change while the panel is open.
+    // `leave` only reads refs and props that cannot change while the sheet is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchor, role, layout]);
+  }, [anchor, layout]);
 
   // Dragging the sheet's handle or header down follows the finger; on release it closes past 30% of
   // its height or faster than 0.5px/ms, else springs back. The body never starts a drag, so it scrolls.

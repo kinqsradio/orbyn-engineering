@@ -28,11 +28,7 @@ const LIST = '[role="list"], [role="listbox"], [role="tree"], [role="grid"], ul,
 const ROW = 'li, [role="listitem"], [role="row"], [role="option"], [role="treeitem"]';
 const MAIN = 'main, [role="main"]';
 
-/**
- * "window" is the old name of "away" and nothing here sends it; it stays so a caller not yet moved
- * to the shared rule (the pulls toolbar popover) still compiles. It moves no focus.
- */
-export type CloseCause = "escape" | "select" | "outside" | "tab" | "shiftTab" | "away" | "window";
+export type CloseCause = "escape" | "select" | "outside" | "tab" | "shiftTab" | "away";
 
 /** How a popover treats Tab: a menu or read-only card closes on it, one with fields walks them. */
 export type PopoverKind = "menu" | "fields" | "readonly";
@@ -172,6 +168,10 @@ export function moveFocus(focusReturn: FocusReturn, cause: CloseCause, target?: 
  * heard. Listens in the capture phase so a handler that stops the event can't hide it. Returns the
  * cleanup.
  */
+// Known gap, accepted for now: a pointerdown inside the browser panel's webview or an iframe never
+// reaches the app, so an open menu stays open. The fix is a host-side signal that reports a webview
+// pointerdown as an outside click. Do not approximate it with a window blur: a focus() call from a
+// script inside the frame looks the same.
 export function watchOutside(inside: (target: EventTarget | null) => boolean, onOutside: (cause: CloseCause, target: EventTarget | null) => void) {
   const pointer = (event: Event) => {
     if (!inside(event.target)) onOutside("outside", event.target);

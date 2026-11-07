@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -152,4 +152,64 @@ it("reads the Open and Drafts counts as an ellipsis while the list loads, never 
   render(<Harness loading />);
   expect(screen.getByRole("button", { name: "Open · \u2026" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Drafts · \u2026" })).toBeInTheDocument();
+});
+
+describe("Filters popover focus", () => {
+  const stops = (panel: HTMLElement) =>
+    [...panel.querySelectorAll<HTMLElement>('button, input:not([type="hidden"]), select, textarea, [tabindex]')].filter(
+      (element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled,
+    );
+  async function open() {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    await user.click(trigger);
+    return { user, trigger, panel: screen.getByRole("dialog", { name: "Filters" }) };
+  }
+
+  it("Tab on the last field closes it and moves focus after the trigger", async () => {
+    const { user, trigger, panel } = await open();
+    stops(panel).at(-1)!.focus();
+    await user.keyboard("{Tab}");
+    expect(panel).toHaveAttribute("inert");
+    expect(document.activeElement).not.toBe(trigger);
+    expect(panel.contains(document.activeElement)).toBe(false);
+    expect(trigger.compareDocumentPosition(document.activeElement!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Tab walks the fields in order without closing", async () => {
+    const { user, panel } = await open();
+    const fields = stops(panel);
+    fields[0]!.focus();
+    await user.keyboard("{Tab}");
+    expect(panel).not.toHaveAttribute("inert");
+    expect(document.activeElement).toBe(fields[1]);
+  });
+
+  it("Shift+Tab on the first field goes to the trigger and keeps it open; a second one closes it", async () => {
+    const { user, trigger, panel } = await open();
+    stops(panel)[0]!.focus();
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(trigger).toHaveFocus();
+    expect(panel).not.toHaveAttribute("inert");
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(panel).toHaveAttribute("inert");
+    expect(trigger.compareDocumentPosition(document.activeElement!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it("Escape closes it and returns focus to the trigger", async () => {
+    const { user, trigger, panel } = await open();
+    await user.keyboard("{Escape}");
+    expect(panel).toHaveAttribute("inert");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("an OS window blur does not close it", async () => {
+    const { panel } = await open();
+    fireEvent.blur(window);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(panel).not.toHaveAttribute("inert");
+    expect(panel).not.toHaveAttribute("data-closing");
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Filters" })).toBeInTheDocument());
+  });
 });

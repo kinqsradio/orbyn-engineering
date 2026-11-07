@@ -1,6 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { captureFocusReturn, moveFocus, tabbables, watchOutside, type CloseCause, type FocusReturn, type PopoverKind } from "./focusReturn";
 
+export interface PopoverPane {
+  /** The pane's element. */
+  root: RefObject<HTMLElement | null>;
+  /** Puts focus on the pane's one stop (its selected rail button, its search field). */
+  focus(): void;
+}
+
 export interface PopoverOptions {
   /** How Tab behaves: see `PopoverKind`. */
   kind: PopoverKind;
@@ -12,8 +19,12 @@ export interface PopoverOptions {
   active?: boolean;
   /** Set by `Presence` while it fades out: it listens to nothing. */
   closing?: boolean;
-  /** A key the popover handles itself; the shared rule skips it. */
-  defer?(event: KeyboardEvent): boolean;
+  /**
+   * A popover of several panes (a rail and a list, say), in Tab order. Each pane is one stop: Tab
+   * goes to the next pane's `focus()`, Shift+Tab to the previous one's. Tab past the last pane and
+   * Shift+Tab before the first close it by the usual rule. Focus in no pane follows `kind`.
+   */
+  panes?: readonly PopoverPane[];
   /** Hides it. Focus has already moved; this runs once per opening. */
   onClose(): void;
 }
@@ -23,7 +34,7 @@ export interface PopoverOptions {
  * real user action outside and a route change. See `focusReturn.ts` for where focus goes.
  * Returns `dismiss`, for closing from inside (choosing something) with the same focus rule.
  */
-export function usePopover({ kind, root, trigger, active = true, closing, defer, onClose }: PopoverOptions) {
+export function usePopover({ kind, root, trigger, active = true, closing, panes, onClose }: PopoverOptions) {
   const state = useRef<{ focusReturn: FocusReturn | null; moved: boolean }>({ focusReturn: null, moved: false });
   // Taken as it opens, while rendering, before anything inside takes focus.
   if (!active) state.current = { focusReturn: null, moved: false };
@@ -36,8 +47,8 @@ export function usePopover({ kind, root, trigger, active = true, closing, defer,
     moveFocus(current.focusReturn, cause, target);
     onClose();
   };
-  const latest = useRef({ dismiss, defer, trigger, kind });
-  latest.current = { dismiss, defer, trigger, kind };
+  const latest = useRef({ dismiss, panes, trigger, kind });
+  latest.current = { dismiss, panes, trigger, kind };
 
   // The element is marked so focus never returns into it while it leaves.
   useLayoutEffect(() => {
@@ -52,12 +63,12 @@ export function usePopover({ kind, root, trigger, active = true, closing, defer,
     const inRoot = (target: EventTarget | null) => target instanceof Node && !!root.current?.contains(target);
     const inTrigger = (target: EventTarget | null) => target instanceof Node && !!latest.current.trigger?.()?.contains(target);
     const onKeyDown = (event: KeyboardEvent) => {
-      const { dismiss: close, defer: handled, kind: mode } = latest.current;
+      const { dismiss: close, panes: stops, kind: mode } = latest.current;
       const target = event.target;
       const element = root.current;
       // Focus nowhere (its field was disabled under it) still lets Escape close it.
       const nowhere = target === document.body || target === document.documentElement || target === document;
-      if (!element || event.defaultPrevented || !(inRoot(target) || inTrigger(target) || (nowhere && event.key === "Escape")) || handled?.(event)) return;
+      if (!element || event.defaultPrevented || !(inRoot(target) || inTrigger(target) || (nowhere && event.key === "Escape"))) return;
       const stopEvent = () => {
         event.preventDefault();
         event.stopPropagation();
@@ -68,6 +79,14 @@ export function usePopover({ kind, root, trigger, active = true, closing, defer,
         return;
       }
       if (event.key !== "Tab") return;
+      const pane = stops?.findIndex((entry) => target instanceof Node && !!entry.root.current?.contains(target)) ?? -1;
+      if (stops && pane >= 0) {
+        const next = stops[pane + (event.shiftKey ? -1 : 1)];
+        stopEvent();
+        if (next) next.focus();
+        else close(event.shiftKey ? "shiftTab" : "tab");
+        return;
+      }
       if (mode !== "fields") {
         stopEvent();
         close(event.shiftKey ? "shiftTab" : "tab");
