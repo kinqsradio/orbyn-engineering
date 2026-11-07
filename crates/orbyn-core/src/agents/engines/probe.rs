@@ -40,7 +40,11 @@ fn minimal_env(builder: &mut std::process::Command) {
         let key = name.to_string_lossy().to_ascii_uppercase();
         let keep = matches!(key.as_str(), "PATH" | "HOME" | "LANG")
             || key.starts_with("LC_")
-            || (cfg!(windows) && matches!(key.as_str(), "SYSTEMROOT" | "TEMP" | "TMP" | "PATHEXT"));
+            || (cfg!(windows)
+                && matches!(
+                    key.as_str(),
+                    "SYSTEMROOT" | "TEMP" | "TMP" | "PATHEXT" | "USERPROFILE"
+                ));
         if keep {
             builder.env(name, value);
         }
@@ -225,7 +229,14 @@ mod tests {
         assert!(names.iter().all(|name| {
             matches!(
                 name.as_str(),
-                "PATH" | "HOME" | "LANG" | "SYSTEMROOT" | "TEMP" | "TMP" | "PATHEXT"
+                "PATH"
+                    | "HOME"
+                    | "LANG"
+                    | "SYSTEMROOT"
+                    | "TEMP"
+                    | "TMP"
+                    | "PATHEXT"
+                    | "USERPROFILE"
             ) || name.starts_with("LC_")
         }));
         // Cargo sets this for the test, and a login variable would travel the same way.

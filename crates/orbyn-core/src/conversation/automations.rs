@@ -477,7 +477,7 @@ impl Core {
     }
 
     /// Starts a task: in its thread, or in a new thread with its own engine.
-    async fn fire(&self, task: &ScheduledTask, prompt: &str) -> Result<String> {
+    async fn fire(&self, task: &ScheduledTask, prompt: &str) -> Result<(String, String)> {
         if !self.store.project(&task.project_id)?.trusted {
             return Err(CoreError::FolderUntrusted);
         }
@@ -499,8 +499,8 @@ impl Core {
                 .id
             }
         };
-        self.runs.enqueue(&thread, prompt, &[])?;
-        Ok(thread)
+        let queued = self.runs.enqueue(&thread, prompt, &[])?;
+        Ok((thread, queued.id))
     }
 
     /// Fires now and records how that went.
@@ -555,13 +555,18 @@ impl Core {
         // Noted first: the run `fire` queues must not be older than its history row.
         let began = self.store.begin_task_run(&task.id, source);
         let fired = self.fire(&task, prompt).await;
-        let (status, thread, error) = match &fired {
-            Ok(thread) => ("started", Some(thread.as_str()), None),
-            Err(error) => ("refused", None, Some(error.public_message())),
+        let (status, thread, queued, error) = match &fired {
+            Ok((thread, queued)) => (
+                "started",
+                Some(thread.as_str()),
+                Some(queued.as_str()),
+                None,
+            ),
+            Err(error) => ("refused", None, None, Some(error.public_message())),
         };
         let settled = began.and_then(|id| {
             self.store
-                .finish_task_run(&id, thread, status, error.as_deref())
+                .finish_task_run(&id, thread, queued, status, error.as_deref())
         });
         if let Err(error) = settled {
             tracing::warn!(%error, "could not record a task run");
@@ -578,7 +583,7 @@ impl Core {
         };
         task.next_run_at = next.and_then(rfc3339);
         self.store.save_task(&task, next, None)?;
-        fired
+        fired.map(|(thread, _)| thread)
     }
 
     /// One pass of the clock. A failed task keeps its reason and tries next time.

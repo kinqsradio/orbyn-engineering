@@ -163,13 +163,15 @@ impl Store {
         &self,
         id: &str,
         thread_id: Option<&str>,
+        queued_id: Option<&str>,
         status: &str,
         error: Option<&str>,
     ) -> Result<()> {
         self.commit(|tx, _| {
             tx.execute(
-                "UPDATE task_runs SET thread_id = ?2, status = ?3, error = ?4 WHERE id = ?1",
-                params![id, thread_id, status, error],
+                "UPDATE task_runs SET thread_id = ?2, queued_id = ?3, status = ?4, error = ?5
+                 WHERE id = ?1",
+                params![id, thread_id, queued_id, status, error],
             )?;
             Ok(())
         })
@@ -234,7 +236,7 @@ impl Store {
     pub fn task_runs(&self, task_id: &str) -> Result<Vec<TaskRun>> {
         let conn = self.reader();
         let mut statement = conn.prepare(
-            "SELECT id, source, started_at, thread_id, status, error, started_unix FROM task_runs
+            "SELECT id, source, started_at, thread_id, status, error, queued_id FROM task_runs
              WHERE task_id = ?1 ORDER BY started_unix DESC, rowid DESC",
         )?;
         let rows = statement
@@ -246,32 +248,36 @@ impl Store {
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, String>(4)?,
                     row.get::<_, Option<String>>(5)?,
-                    row.get::<_, i64>(6)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         rows.into_iter()
             .map(
-                |(id, source, started_at, thread_id, status, error, started_unix)| {
-                    let (outcome, ended_at) = match (status.as_str(), thread_id.as_deref()) {
-                        ("started", Some(thread)) => {
+                |(id, source, started_at, thread_id, status, error, queued_id)| {
+                    let (outcome, ended_at) = match (status.as_str(), queued_id.as_deref()) {
+                        ("started", Some(queued)) => {
                             let run: Option<(String, Option<String>)> = conn
                                 .query_row(
-                                    "SELECT state, ended_at FROM runs
-                                 WHERE thread_id = ?1
-                                   AND CAST(strftime('%s', started_at) AS INTEGER) >= ?2
-                                 ORDER BY strftime('%s', started_at), started_at, id LIMIT 1",
-                                    params![thread, started_unix],
+                                    "SELECT state, ended_at FROM runs WHERE queued_message_id = ?1",
+                                    [queued],
                                     |row| Ok((row.get(0)?, row.get(1)?)),
                                 )
                                 .optional()?;
                             match run {
-                                None => ("queued".to_owned(), None),
                                 Some((state, ended)) => (run_outcome(&state), ended),
+                                None => {
+                                    // Still waiting, or taken out of the queue by hand.
+                                    let waiting: bool = conn.query_row(
+                                    "SELECT EXISTS (SELECT 1 FROM queued_messages WHERE id = ?1)",
+                                    [queued],
+                                    |row| row.get(0),
+                                )?;
+                                    let word = if waiting { "queued" } else { "cancelled" };
+                                    (word.to_owned(), None)
+                                }
                             }
                         }
-                        // A firing that never settled: the service stopped mid-start.
-                        ("starting", _) => ("interrupted".to_owned(), None),
                         (other, _) => (other.to_owned(), None),
                     };
                     Ok(TaskRun {

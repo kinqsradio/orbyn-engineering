@@ -31,8 +31,9 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (27, TASK_RUNS),
 ];
 
-// One row per firing of a task, kept to the last 50. How the run ended is read from
-// the thread's runs when listed, so nothing here goes stale.
+// One row per firing of a task, kept to the last 50. The firing queues a message; the
+// run made from it carries that message's id, so the history finds its own run and
+// reads how it ended when listed, and nothing here goes stale.
 const TASK_RUNS: &str = r#"
 CREATE TABLE task_runs (
     id TEXT PRIMARY KEY,
@@ -41,10 +42,13 @@ CREATE TABLE task_runs (
     started_at TEXT NOT NULL,
     started_unix INTEGER NOT NULL,
     thread_id TEXT,
+    queued_id TEXT,
     status TEXT NOT NULL,
     error TEXT
 );
 CREATE INDEX task_runs_by_task ON task_runs(task_id, started_unix);
+ALTER TABLE runs ADD COLUMN queued_message_id TEXT;
+CREATE INDEX runs_by_queued_message ON runs(queued_message_id);
 "#;
 
 // Removing a project keeps its threads, archived. The project row stays as a hidden

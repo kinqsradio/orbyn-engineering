@@ -102,6 +102,11 @@ impl Store {
         write.pragma_update(None, "journal_mode", "WAL")?;
         write.pragma_update(None, "synchronous", "NORMAL")?;
         let upgrade = migrate(&mut write)?;
+        // A firing still `starting` belongs to a service that stopped mid-start.
+        write.execute(
+            "UPDATE task_runs SET status = 'interrupted' WHERE status = 'starting'",
+            [],
+        )?;
         let read = connect(path)?;
         Ok(Self {
             write: Mutex::new(write),

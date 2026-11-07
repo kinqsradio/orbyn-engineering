@@ -506,6 +506,24 @@ async fn the_history_keeps_the_last_fifty_firings_newest_first() {
     assert_eq!(history[49].error.as_deref(), Some("5"));
 }
 
+/// A firing as production makes it: noted, queued, then linked to its message.
+fn fire_into(core: &Core, task: &str, thread: &str) -> String {
+    let began = core.store.begin_task_run(task, "manual").unwrap();
+    let message = core
+        .store
+        .enqueue(
+            thread,
+            "go",
+            &[],
+            &orbyn_contracts::ModelSelection::default(),
+        )
+        .unwrap();
+    core.store
+        .finish_task_run(&began, Some(thread), Some(&message.id), "started", None)
+        .unwrap();
+    message.id
+}
+
 #[tokio::test]
 async fn a_started_firing_reports_how_its_threads_run_ended() {
     let dir = TempDir::new();
@@ -513,19 +531,10 @@ async fn a_started_firing_reports_how_its_threads_run_ended() {
     let project = core.new_project("app", false, None).await.unwrap();
     let task = core.save_task(interval_task(&project.id), "user").unwrap();
     let thread = thread_in(&core, &project).await;
-    // The real order: the firing is noted, then its run is made, then the thread is linked.
-    let began = core.store.begin_task_run(&task.id, "manual").unwrap();
-    let run = core
-        .store
-        .admit_run(crate::store::Admission {
-            thread_id: &thread.id,
-            prompt: "go",
-            actor: "t",
-        })
-        .unwrap();
-    core.store
-        .finish_task_run(&began, Some(&thread.id), "started", None)
-        .unwrap();
+    fire_into(&core, &task.id, &thread.id);
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "queued");
+
+    let (run, _) = core.store.admit_next(&thread.id, "t").unwrap().unwrap();
     assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "running");
     core.store
         .finish_run(&run.id, orbyn_contracts::RunState::Completed, None)
@@ -534,6 +543,104 @@ async fn a_started_firing_reports_how_its_threads_run_ended() {
     let ended = &core.task_runs(&task.id).unwrap()[0];
     assert_eq!(ended.outcome, "completed");
     assert!(ended.ended_at.is_some());
+}
+
+#[tokio::test]
+async fn firings_into_one_fixed_thread_each_show_their_own_run() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    let thread = thread_in(&core, &project).await;
+    // A person's own message was already waiting in the thread.
+    core.store
+        .enqueue(
+            &thread.id,
+            "mine",
+            &[],
+            &orbyn_contracts::ModelSelection::default(),
+        )
+        .unwrap();
+    fire_into(&core, &task.id, &thread.id);
+    fire_into(&core, &task.id, &thread.id);
+
+    let (mine, _) = core.store.admit_next(&thread.id, "t").unwrap().unwrap();
+    core.store
+        .finish_run(&mine.id, orbyn_contracts::RunState::Completed, None)
+        .unwrap();
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "queued");
+    let (first, _) = core.store.admit_next(&thread.id, "t").unwrap().unwrap();
+    core.store
+        .finish_run(&first.id, orbyn_contracts::RunState::Completed, None)
+        .unwrap();
+    let (_second, _) = core.store.admit_next(&thread.id, "t").unwrap().unwrap();
+
+    let history = core.task_runs(&task.id).unwrap();
+    assert_eq!(
+        history[0].outcome, "running",
+        "the newer firing has the second run"
+    );
+    assert_eq!(
+        history[1].outcome, "completed",
+        "the older one has the first"
+    );
+}
+
+#[tokio::test]
+async fn a_firing_taken_out_of_the_queue_by_hand_is_cancelled() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    let thread = thread_in(&core, &project).await;
+    let message = fire_into(&core, &task.id, &thread.id);
+    core.store.remove_queued(&message).unwrap();
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "cancelled");
+}
+
+#[tokio::test]
+async fn a_firing_still_starting_is_settled_as_interrupted_when_the_service_restarts() {
+    let dir = TempDir::new();
+    let path = dir.path().join("db.sqlite");
+    let store = crate::store::Store::open(&path, "a").unwrap();
+    let project = store
+        .add_project(crate::store::NewProject {
+            path: "/p",
+            name: "p",
+            is_git: false,
+            managed: false,
+            scratch: false,
+        })
+        .unwrap();
+    let task = interval_task(&project.id);
+    let scheduled = orbyn_contracts::ScheduledTask {
+        id: "t1".into(),
+        project_id: project.id,
+        thread_id: None,
+        name: task.name,
+        prompt: task.prompt,
+        engine: task.engine,
+        schedule: task.schedule,
+        enabled: true,
+        signature: None,
+        has_secret: false,
+        filters: Vec::new(),
+        dedupe: None,
+        max_age_seconds: None,
+        timestamp_path: None,
+        next_run_at: None,
+        last_run_at: None,
+        last_status: "never".into(),
+        created_at: crate::util::now(),
+        after_run: None,
+    };
+    store.save_task(&scheduled, None, None).unwrap();
+    store.begin_task_run("t1", "manual").unwrap();
+    assert_eq!(store.task_runs("t1").unwrap()[0].outcome, "starting");
+    drop(store);
+
+    let reopened = crate::store::Store::open(&path, "b").unwrap();
+    assert_eq!(reopened.task_runs("t1").unwrap()[0].outcome, "interrupted");
 }
 
 fn nearly_used(engine: &str) -> orbyn_contracts::EngineLimits {
@@ -720,20 +827,6 @@ async fn a_stale_due_task_of_a_removed_project_is_refused_and_starts_no_thread()
     assert_eq!(history[0].outcome, "refused");
     assert!(history[0].thread_id.is_none());
     assert!(core.store.list_all_threads(&project.id).unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn a_firing_with_no_run_yet_is_queued() {
-    let dir = TempDir::new();
-    let core = core(&dir).await;
-    let project = core.new_project("app", false, None).await.unwrap();
-    let task = core.save_task(interval_task(&project.id), "user").unwrap();
-    let thread = thread_in(&core, &project).await;
-    let began = core.store.begin_task_run(&task.id, "manual").unwrap();
-    core.store
-        .finish_task_run(&began, Some(&thread.id), "started", None)
-        .unwrap();
-    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "queued");
 }
 
 #[tokio::test]
