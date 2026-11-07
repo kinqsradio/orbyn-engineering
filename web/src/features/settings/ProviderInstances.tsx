@@ -63,30 +63,34 @@ export function useProviderInstances(): InstanceStore {
   };
 }
 
-const PROBE_DELAY_MS = 400;
+/** A path that names a file itself. Anything else is a bare name the engines find on PATH. */
+const absolutePath = (path: string) => path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
 
-/** What running the typed program with `--version` shows: its version, or why it won't run. Nothing until asked and answered. */
-function useProgramCheck(program: string): { found: string | null; problem: string | null } {
-  const [result, setResult] = useState<{ program: string; found: string | null; problem: string | null } | null>(null);
+/**
+ * What running the typed program with `--version` shows: its version, or why it won't run.
+ * It runs only when asked (on leaving the field), never while typing, and it is advice:
+ * only a missing absolute path blocks Save.
+ */
+function useProgramCheck(program: string): { found: string | null; problem: string | null; blocks: boolean; run(): void } {
+  const [result, setResult] = useState<{ program: string; found: string | null; problem: string | null; blocks: boolean } | null>(null);
   const path = program.trim();
-  useEffect(() => {
+  const latest = useRef(path);
+  latest.current = path;
+  const run = () => {
     if (path === "") return;
-    let current = true;
-    const timer = setTimeout(() => {
-      api.probeBinary(path).then(
-        (probe) => {
-          if (!current) return;
-          setResult(probe.exists
-            ? { program: path, found: probe.version ? `Found. Version ${probe.version}.` : "Found.", problem: null }
-            : { program: path, found: null, problem: probe.problem ?? "No file at this path." });
-        },
-        // A check that could not run says nothing about the program; saving stays possible.
-        () => { if (current) setResult(null); },
-      );
-    }, PROBE_DELAY_MS);
-    return () => { current = false; clearTimeout(timer); };
-  }, [path]);
-  return result && result.program === path ? result : { found: null, problem: null };
+    api.probeBinary(path).then(
+      (probe) => {
+        if (latest.current !== path) return;
+        setResult(probe.exists
+          ? { program: path, found: probe.version ? `Found. Version ${probe.version}.` : probe.problem ? null : "Found.", problem: probe.problem, blocks: false }
+          : { program: path, found: null, problem: probe.problem ?? "No file at this path.", blocks: absolutePath(path) });
+      },
+      // A check that could not run says nothing about the program; saving stays possible.
+      () => { if (latest.current === path) setResult(null); },
+    );
+  };
+  const shown = result && result.program === path ? result : { found: null, problem: null, blocks: false };
+  return { ...shown, run };
 }
 
 const requiredProgram = (driver: string) => driver === "_local_acp";
@@ -114,7 +118,7 @@ export function InstanceEditor({ store, engines, instance, create, onClose, onSa
   const check = useProgramCheck(draft.program);
   const ids = new Set([...engines.map((engine) => engine.id), ...store.instances.map((entry) => entry.id)]);
   const newId = create ? newInstanceId(local ? "acp" : instance.driver, draft.name, ids) : instance.id;
-  const ready = changed && compactOk && check.problem === null && !store.disabled && !saving && validInstanceId(newId) && (!requiredProgram(instance.driver) || draft.program.trim() !== "") && (!create || draft.name.trim() !== "");
+  const ready = changed && compactOk && !check.blocks && !store.disabled && !saving && validInstanceId(newId) && (!requiredProgram(instance.driver) || draft.program.trim() !== "") && (!create || draft.name.trim() !== "");
   const fields = (): Record<string, JsonValue | undefined> => ({
     name: draft.name.trim() || undefined, accent: accentColor(draft.accent) ?? undefined, program: draft.program.trim() || undefined,
     auto_compact_window: draft.compact.trim() || undefined, ...(driver?.tier === "native" ? {} : { args: parseArgs(draft.args) }),
@@ -152,7 +156,7 @@ export function InstanceEditor({ store, engines, instance, create, onClose, onSa
         <label htmlFor="instance-program">{pathLabel}</label>
         <input id="instance-program" className="mono" value={draft.program} spellCheck={false} aria-invalid={reason || check.problem ? true : undefined}
           aria-describedby={reason || check.problem || check.found ? "instance-program-note" : undefined}
-          onChange={(event) => set({ program: event.target.value })} />
+          onChange={(event) => set({ program: event.target.value })} onBlur={check.run} />
         {reason || check.problem ? <small id="instance-program-note" className="err" role="alert">{reason ?? check.problem}</small>
           : check.found ? <small id="instance-program-note" className="hint">{check.found}</small> : null}
       </div>

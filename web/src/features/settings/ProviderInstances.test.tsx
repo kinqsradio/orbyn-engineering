@@ -80,21 +80,45 @@ describe("provider instance dialog", () => {
     expect(path).toBeInvalid();
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeEnabled();
   });
-  it("checks the binary path as you type: Found with its version, or the reason, and Save waits on a path that won't run", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(api, "probeBinary").mockImplementation(async (path) => path === "/opt/work"
-      ? { exists: true, path, version: "2.1.318", problem: null } : { exists: false, path: null, version: null, problem: "No file at this path." });
+  const openPath = async (user: ReturnType<typeof userEvent.setup>) => {
     render(<ProvidersSection />);
     await user.click(await screen.findByRole("button", { name: "Edit Claude Code · Work" }));
     const dialog = await screen.findByRole("dialog");
+    return { dialog, path: within(dialog).getByRole("textbox", { name: "Binary path" }), save: () => within(dialog).getByRole("button", { name: "Save" }) };
+  };
+  it("runs the program check when you leave the path field, not while you type", async () => {
+    const user = userEvent.setup();
+    const probe = vi.spyOn(api, "probeBinary").mockResolvedValue({ exists: true, path: "/opt/work2", version: "2.1.318", problem: null });
+    const { dialog, path } = await openPath(user);
+    await user.clear(path); await user.type(path, "/opt/work2");
+    expect(probe).not.toHaveBeenCalled();
+    await user.tab();
     expect(await within(dialog).findByText("Found. Version 2.1.318.")).toBeVisible();
-    const path = within(dialog).getByRole("textbox", { name: "Binary path" });
-    const name = within(dialog).getByRole("textbox", { name: "Display name" });
-    await user.type(name, "!");
-    await user.clear(path); await user.type(path, "/opt/claud");
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+  it("saves a bare program name the engines find on PATH", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "probeBinary").mockResolvedValue({ exists: false, path: null, version: null, problem: "Give the full path to the program." });
+    const { dialog, path, save } = await openPath(user);
+    await user.clear(path); await user.type(path, "my-agent"); await user.tab();
+    expect(await within(dialog).findByText("Give the full path to the program.")).toBeVisible();
+    expect(save()).toBeEnabled();
+  });
+  it("blocks Save on an absolute path with no file", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "probeBinary").mockResolvedValue({ exists: false, path: null, version: null, problem: "No file at this path." });
+    const { dialog, path, save } = await openPath(user);
+    await user.clear(path); await user.type(path, "/opt/claud"); await user.tab();
     expect(await within(dialog).findByText("No file at this path.")).toBeVisible();
-    expect(path).toBeInvalid();
-    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(save()).toBeDisabled();
+  });
+  it("does not block Save when the program exists but its version check fails", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "probeBinary").mockResolvedValue({ exists: true, path: "/opt/work2", version: null, problem: "Its version command failed." });
+    const { dialog, path, save } = await openPath(user);
+    await user.clear(path); await user.type(path, "/opt/work2"); await user.tab();
+    expect(await within(dialog).findByText("Its version command failed.")).toBeVisible();
+    expect(save()).toBeEnabled();
   });
   it("turns a provider in use on or off for the scope, through the providers-in-use preference", async () => {
     const user = userEvent.setup(); render(<ProvidersSection />);
