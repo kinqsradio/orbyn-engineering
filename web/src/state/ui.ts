@@ -101,6 +101,8 @@ interface Prefs {
   /** A short tone for the same events, with or without the system alert. */
   threadSound: boolean;
   inAppNotifications: boolean;
+  /** Tells you when a scheduled task's run finishes or fails. The service keeps no such setting, so it lives here. */
+  taskRunNotifications: boolean;
   confirmUnpin: boolean;
   confirmArchive: boolean;
   confirmDelete: boolean;
@@ -227,6 +229,7 @@ const defaults: Prefs = {
   threadNotifications: false,
   threadSound: false,
   inAppNotifications: false,
+  taskRunNotifications: true,
   confirmUnpin: false,
   confirmArchive: false,
   confirmDelete: true,
@@ -392,6 +395,7 @@ const prefsOf = (state: Prefs): Prefs => ({
   threadNotifications: state.threadNotifications,
   threadSound: state.threadSound,
   inAppNotifications: state.inAppNotifications,
+  taskRunNotifications: state.taskRunNotifications,
   confirmUnpin: state.confirmUnpin,
   confirmArchive: state.confirmArchive,
   confirmDelete: state.confirmDelete,

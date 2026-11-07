@@ -1,18 +1,20 @@
-import { serviceUrl } from "../../api/origin";
 import { chooseDraftEngine } from "../onboarding/draftEngine";
-import { AlertTriangle, Check, ChevronLeft, CloudOff, Play, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, CloudOff, Plus, RefreshCw, X } from "lucide-react";
 import "./ScheduledTasks.css";
 import { useEffect, useRef, useState } from "react";
 import { NETWORK_ERROR, request } from "../../api/client";
-import type { ScheduledTask, WebhookDelivery, WebhookEndpoint, WebhookFilter } from "../../api/types";
+import type { ScheduledTask, WebhookFilter } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { relativeTime } from "../../lib/format";
 import { scheduleLabel, taskTone, WEEKDAYS } from "../../lib/taskSchedule";
 import { useConnection } from "../../state/connection";
 import { navigate, useRoute } from "../../state/route";
+import { TaskPage } from "./TaskPage";
+import { PreferenceGroups } from "./PreferenceRows";
+import { settingsLabel } from "./settingsSearch";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
-import { Button, CopyCommand, Field, IconButton } from "../../ui/controls";
+import { Button, Field, IconButton } from "../../ui/controls";
 import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { PageBar } from "../../ui/PageBar";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
@@ -325,93 +327,6 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
   );
 }
 
-/** The address is shown once, when it's issued. A new one ends the old. */
-/** One task: Run now, and for a webhook task its address and the deliveries that arrived. */
-function TaskPage({ task, onBack, onChanged, onEdit }: { task: ScheduledTask; onBack(): void; onChanged(): void; onEdit(): void }) {
-  const offline = useConnection((state) => state.offline);
-  const pushToast = useUi((state) => state.pushToast);
-  const [endpoint, setEndpoint] = useState<WebhookEndpoint | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const hook = task.schedule.kind === "webhook";
-  const deliveries = useAsync(`deliveries:${task.id}`, (signal) =>
-    hook ? request<WebhookDelivery[]>("GET", `/api/tasks/${q(task.id)}/deliveries`, undefined, signal) : Promise.resolve([] as WebhookDelivery[]),
-  );
-  const regenerate = () => {
-    setError(null);
-    request<WebhookEndpoint>("POST", `/api/tasks/${q(task.id)}/webhook`).then(setEndpoint, (failure: unknown) => setError(toFailure(failure).message));
-  };
-  const url = endpoint ? new URL(serviceUrl(endpoint.path), window.location.href).href : null;
-  const run = () => {
-    setRunning(true);
-    request("POST", `/api/tasks/${q(task.id)}/run`).then(onChanged, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`)).finally(() => setRunning(false));
-  };
-  return (
-    <>
-      <div className="set-back">
-        <Button small tone="quiet" icon={<ChevronLeft size={13} aria-hidden />} onClick={onBack}>Scheduled tasks</Button>
-        <h2 className="set-back-title">{task.name}</h2>
-        <span className="set-back-end set-task-actions">
-          <Button small tone="primary" busy={running} disabled={offline} icon={<Play size={13} aria-hidden />} onClick={run}>Run now</Button>
-          <Button small onClick={onEdit}>Edit</Button>
-        </span>
-      </div>
-      {offline ? <p className="banner" role="status"><CloudOff size={14} aria-hidden />You're offline. Run now is unavailable.</p> : null}
-      <SettingGroup>
-        <SettingRow title="When" description={scheduleLabel(task.schedule)} />
-        <SettingRow title="Prompt"><span className="set-task-prompt">{task.prompt}</span></SettingRow>
-      </SettingGroup>
-      {hook ? (
-        <>
-          <p className="set-grp">Webhook</p>
-          <SettingGroup>
-            <SettingRow title="Webhook address" description="Anyone with this address can start the task. Keep it private.">
-              {url ? <CopyCommand command={url} label="Copy webhook address" /> : null}
-              <Button small disabled={offline} onClick={regenerate}>Regenerate</Button>
-            </SettingRow>
-          </SettingGroup>
-          {error ? <p className="field-error" role="alert">{error}</p> : null}
-          {/* Runs joins this bar once the service keeps run history. */}
-          <div role="tablist" aria-label="History" className="set-tabs">
-            <button type="button" role="tab" id="task-tab-deliveries" aria-selected="true" aria-controls="task-panel-deliveries">Webhook deliveries</button>
-          </div>
-          <div role="tabpanel" id="task-panel-deliveries" aria-labelledby="task-tab-deliveries">
-          {deliveries.status === "loading" ? (
-            <Loading label="Loading deliveries" rows={3} />
-          ) : deliveries.status === "error" ? (
-            <p className="banner banner-err" role="alert"><AlertTriangle size={14} aria-hidden />Couldn't load deliveries.
-              <Button small className="set-back-end" icon={<RefreshCw size={13} aria-hidden />} onClick={deliveries.reload}>Retry</Button></p>
-          ) : deliveries.data.length === 0 ? (
-            <Empty title="No deliveries yet"><p>When a service calls the address, each call shows here.</p></Empty>
-          ) : (
-            <div className="set-tbl" role="table" aria-label="Deliveries">
-              <div className="set-tr h" style={{ gridTemplateColumns: "minmax(0, 1fr) 150px 110px" }}><span>Received</span><span>Answer</span><span /></div>
-              {deliveries.data.map((delivery) => (
-                <div key={delivery.id} role="row" className="set-tr" style={{ gridTemplateColumns: "minmax(0, 1fr) 150px 110px" }}>
-                  <span>{new Date(delivery.received_at).toLocaleString()}</span>
-                  <span><span className={delivery.status === "accepted" ? "set-pill" : delivery.status === "failed" || delivery.status === "bad_signature" ? "set-pill bad" : "set-pill warn"}>{DELIVERY_STATES[delivery.status] ?? delivery.status}</span></span>
-                  <span>{delivery.thread_id ? <Button small tone="quiet" onClick={() => navigate({ name: "thread", id: delivery.thread_id ?? "" })}>Open thread</Button> : null}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>
-        </>
-      ) : null}
-    </>
-  );
-}
-
-const DELIVERY_STATES: Record<string, string> = {
-  accepted: "Accepted",
-  bad_signature: "Bad signature",
-  filtered: "Filtered out",
-  duplicate: "Duplicate",
-  stale: "Too old",
-  disabled: "Task paused",
-  failed: "Failed",
-};
-
 /** Where the last firing ended: nothing yet, running or started, or the reason it failed. */
 function LastRun({ task }: { task: ScheduledTask }) {
   const tone = taskTone(task);
@@ -430,6 +345,27 @@ function LastRun({ task }: { task: ScheduledTask }) {
       <Check size={12} aria-hidden />
       {when ? `Started ${when.toLowerCase()}` : "Started"}
     </span>
+  );
+}
+
+/** What every task follows: whether a run waits for room under a usage limit, and whether you hear when one ends. */
+function TaskDefaults() {
+  const notify = useUi((state) => state.taskRunNotifications);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const title = settingsLabel("tasks-notify-runs");
+  return (
+    <>
+      <PreferenceGroups groups={[{ title: "", rows: [{
+        key: "task_skip_near_limit",
+        title: settingsLabel("tasks-skip-near-limit"),
+        description: "Waits until a limit window has room (90% used or more). Applies to scheduled and follow-up runs.",
+      }] }]} />
+      <SettingGroup>
+        <SettingRow title={title}>
+          <input type="checkbox" role="switch" aria-label={title} checked={notify} onChange={(event) => setPrefs({ taskRunNotifications: event.target.checked })} />
+        </SettingRow>
+      </SettingGroup>
+    </>
   );
 }
 
@@ -482,12 +418,16 @@ function TasksView({ page }: { page: boolean }) {
           </h1>
         </PageBar>
       ) : (
-        <div className="section-bar">
+        <>
           <h1 className="sr-only" tabIndex={-1} data-page-title>
             Scheduled tasks
           </h1>
-          {newTask}
-        </div>
+          <TaskDefaults />
+          <div className="tasks-head">
+            <p className="set-grp">Tasks</p>
+            {newTask}
+          </div>
+        </>
       )}
       <div className="tasks-body">
         {offline ? <p className="banner" role="status"><CloudOff size={14} aria-hidden />You're offline. New task is unavailable.</p> : null}

@@ -26,7 +26,7 @@ import type {
 import * as fixtures from "./fixtures.ts";
 import { acpRegistry, historyScan } from "./history.ts";
 import { customModels, instanceEngines, providerInstances } from "./instances.ts";
-import { cleanupPreview, diagnostics } from "./maintenance.ts";
+import { cleanupPreview, cleanupSummary, diagnostics } from "./maintenance.ts";
 import { preferenceCatalog, projectPreferenceKeys } from "./preferenceCatalog.ts";
 
 export interface MockResponse {
@@ -73,6 +73,8 @@ export function createMockApi(options: MockOptions = {}) {
   let failStep: string | null = null;
   let queued: QueuedMessage[] = [];
   let tasks: ScheduledTask[] = [];
+  /** Tasks whose webhook has an address; the token itself is never kept, as in the service. */
+  const hooks = new Set<string>(["task-hook"]);
   let failures: Failure[] = [];
   let clones: unknown[] = [];
   let delayMs = 0;
@@ -433,7 +435,9 @@ export function createMockApi(options: MockOptions = {}) {
       case "GET /api/updates":
         return { status: 200, body: updatesBody() };
       case "GET /api/tasks":
-        if (seg.length === 4 && seg[3] === "deliveries") return { status: 200, body: [] };
+        if (seg.length === 4 && seg[3] === "deliveries") return { status: 200, body: fixtures.webhookDeliveries(seg[2] ?? "") };
+        if (seg.length === 4 && seg[3] === "runs") return tasks.some((entry) => entry.id === seg[2]) ? { status: 200, body: fixtures.taskRuns(seg[2] ?? "") } : err(404, "not_found", "Task not found.");
+        if (seg.length === 4 && seg[3] === "webhook") return { status: 200, body: { configured: hooks.has(seg[2] ?? ""), path_prefix: `/hooks/${seg[2]}/` } };
         if (seg.length !== 2) break;
         // Copy on read: callers hold this snapshot until their next reload.
         return { status: 200, body: structuredClone(tasks) };
@@ -444,6 +448,11 @@ export function createMockApi(options: MockOptions = {}) {
           task.enabled = data.enabled === true;
           task.next_run_at = task.enabled ? fixtures.iso(600) : null;
           return { status: 200, body: task };
+        }
+        if (seg[3] === "webhook") {
+          const token = `tok${++idCounter}x9f`;
+          hooks.add(task.id);
+          return { status: 200, body: { path: `/hooks/${task.id}/${token}`, token } };
         }
         if (seg[3] === "run") {
           task.last_status = "started";
@@ -494,6 +503,7 @@ export function createMockApi(options: MockOptions = {}) {
       case "POST /api/diagnostics":
         return seg[2] === "otlp" ? { status: 200, body: { ok: true, status: 200, message: null } } : { status: 204 };
       case "GET /api/storage":
+        if (seg[2] === "cleanup" && seg[3] === "preview") return { status: 200, body: cleanupSummary() };
         return { status: 200, body: null };
       case "POST /api/storage":
         return { status: 200, body: query.get("dry_run") === "true" ? cleanupPreview(Date.now()) : { ...cleanupPreview(Date.now()), dry_run: false } };
@@ -704,10 +714,11 @@ export function createMockApi(options: MockOptions = {}) {
           return { status: 200, body: thread };
         }
         const id = query.get("project_id");
+        const archived = query.get("archived") === "true";
         return {
           status: 200,
           body: threads
-            .filter((t) => !id || t.project_id === id)
+            .filter((t) => (!id || t.project_id === id) && (!archived || Boolean(t.lifecycle?.archived_at)))
             .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
         };
       }
@@ -728,6 +739,9 @@ export function createMockApi(options: MockOptions = {}) {
           },
         };
       case "GET /api/engines":
+        if (seg[3] === "native-sessions" && seg[4] === "count") {
+          return { status: 200, body: { engine: seg[2], count: fixtures.nativeSessionCounts[seg[2] ?? ""] ?? 0, truncated: false } };
+        }
         if (seg[3] === "models") {
           // The service merges the person's custom models into the list it returns.
           const listing = fixtures.engineModels(seg[2] ?? "");
@@ -840,6 +854,11 @@ export function createMockApi(options: MockOptions = {}) {
         return decide(approval, data.allow === true);
       }
       if (seg[1] === "engines" && seg[2] === "refresh") return { status: 200, body: engines };
+      if (seg[1] === "engines" && seg[2] === "probe-binary") {
+        const path = String(data.path ?? "");
+        return { status: 200, body: path.endsWith("/claude") ? { exists: true, path, version: "2.1.318", problem: null } : { exists: false, path: null, version: null, problem: "No file at this path." } };
+      }
+      if (seg[1] === "shell" && seg[2] === "actions") return { status: 202 };
       if (seg[1] === "engines" && seg[2] === "custom") {
         const tier = data.tier as EngineStatus["tier"];
         const engine: EngineStatus = {

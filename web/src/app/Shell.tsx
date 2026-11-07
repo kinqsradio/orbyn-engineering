@@ -33,6 +33,7 @@ import { usePanelMotionRoot } from "../lib/panelAnimations";
 import { inDesktopApp, shellChanged, zoomKeyAction } from "../api/shell";
 import { toFailure, useAsync } from "../lib/useAsync";
 import { actionShortcutAllowed, FALLBACK_RULES, isReservedCloseEvent, matchesKey, ruleMatches, runHandlers, setTerminalRules, useCommand, whenHolds, type WhenContext } from "./shortcuts";
+import { useTaskRunNotifications } from "./taskNotifications";
 import { actionIdFromCommand } from "../lib/actionCommand";
 import { layoutForWidth, useLayoutWidth } from "../lib/useLayout";
 import { goToHash, navigate, parseRoute, routeHref, useRoute, type Route } from "../state/route";
@@ -585,6 +586,7 @@ export function Shell() {
   const setPalette = useUi((state) => state.setPalette);
   useGlobalKeys(route);
   useThreadNotifications(route.name === "thread" ? route.id : null);
+  useTaskRunNotifications();
   usePanelMotionRoot(routeKey);
   useRouteFocus(routeKey, route.name, threadReady, main);
   useToastClearance(`${routeKey}:${threadReady}`);

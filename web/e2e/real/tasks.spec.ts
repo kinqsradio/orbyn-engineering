@@ -38,7 +38,7 @@ test("a webhook task filters, verifies, drops repeats and logs each delivery", a
   await expect(dialog).toBeHidden();
 
   await page.getByRole("button", { name: "Open On pushes" }).click();
-  await page.getByRole("button", { name: "Regenerate" }).click();
+  await page.getByRole("button", { name: "Regenerate address" }).click();
   const url = new URL((await page.locator("main code").first().innerText()).trim());
 
   const post = (body: string, signed = true) =>
@@ -58,9 +58,10 @@ test("a webhook task filters, verifies, drops repeats and logs each delivery", a
   // The deliveries load when the task opens, so open it again after the calls arrived.
   await page.getByRole("button", { name: "Scheduled tasks", exact: true }).click();
   await page.getByRole("button", { name: "Open On pushes" }).click();
+  await page.getByRole("tab", { name: "Webhook deliveries" }).click();
   const rows = page.getByRole("table", { name: "Deliveries" }).getByRole("row");
   await expect(rows).toHaveCount(4);
-  for (const state of ["Accepted", "Filtered out", "Duplicate", "Bad signature"]) {
+  for (const state of ["202 Accepted", "200 Filtered out", "200 Duplicate", "200 Bad signature"]) {
     await expect(page.getByRole("table", { name: "Deliveries" }).getByText(state, { exact: true })).toBeVisible();
   }
   // The accepted call started a thread whose prompt carries the body as marked data.

@@ -1,5 +1,6 @@
 /** Maintenance data shaped like the service's diagnostics and storage-cleanup responses. */
 import type { CleanupReport, Diagnostics } from "../src/api/types.ts";
+import type { CleanupPreview } from "../src/api/types.ts";
 
 export function diagnostics(now: number): Diagnostics {
   const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
@@ -29,4 +30,10 @@ export function cleanupPreview(now: number): CleanupReport {
     { kind: "worktree", path: "/code/orbyn-engineering-wt/old-icon-picker", removed: false, reason: "Settled over 7 days ago" },
   ];
   return { dry_run: true, ran_at: new Date(now).toISOString(), entries };
+}
+
+/** What Delete now would remove: counts and sizes by kind, as the service's preview reports them. */
+export function cleanupSummary(): CleanupPreview {
+  const group = (kind: string, count: number, megabytes: number, held = 0) => ({ kind, count, bytes: megabytes * 1_000_000, held });
+  return { groups: [group("artifact", 3, 48), group("log", 1, 2), group("worktree", 2, 310, 1)], count: 6, bytes: 360_000_000, partial: false, entries: [] };
 }

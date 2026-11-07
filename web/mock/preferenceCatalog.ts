@@ -16,6 +16,7 @@ export const preferenceCatalog: Record<string, JsonValue> = {
   auto_settle_on_merge: true,
   auto_settle_keep_pull_requests: false,
   auto_pull: false,
+  task_skip_near_limit: false,
   poll_pull_requests: true,
   default_project_scripts: [],
   default_model: "",

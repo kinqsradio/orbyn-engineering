@@ -14,7 +14,9 @@ import type {
   AgUiEvent,
   JsonValue,
   ServerSettings,
+  TaskRun,
   UpdateStatus,
+  WebhookDelivery,
   WorkspaceStatus,
 } from "../src/api/types.ts";
 
@@ -88,6 +90,7 @@ export const engines: EngineStatus[] = [
     sign_in_command: "claude auth login",
     updating: false,
     problem: null,
+    account: "sam@example.com",
   },
   {
     id: "codex",
@@ -290,6 +293,40 @@ export function threads(): Thread[] {
   });
   return list;
 }
+
+/** A task's last firings, newest first, one of each outcome the service reports. */
+export function taskRuns(taskId: string): TaskRun[] {
+  const run = (at: number, minutes: number | null, outcome: string, extra: Partial<TaskRun> = {}): TaskRun => ({
+    id: `${taskId}-run-${-at}`, task_id: taskId, source: "schedule", started_at: iso(at * 86400),
+    ended_at: minutes === null ? null : iso(at * 86400 + minutes * 60), outcome, thread_id: minutes === null ? null : `${taskId}-thread-${-at}`, error: null, ...extra,
+  });
+  return [
+    run(1, null, "queued"),
+    run(0, 6, "running", { ended_at: null }),
+    run(-1, 9, "completed"),
+    run(-2, 4, "failed", { error: "The agent stopped." }),
+    run(-3, 2, "cancelled"),
+    run(-4, 11, "interrupted"),
+    run(-5, null, "refused", { error: "webhook answer 401" }),
+    run(-6, null, "skipped", { error: "limit window 92% used" }),
+  ];
+}
+
+/** What reached a webhook: a known sender, one the service only knows by its User-Agent, and one with none. */
+export function webhookDeliveries(taskId: string): WebhookDelivery[] {
+  const one = (id: string, status: string, at: number, extra: Partial<WebhookDelivery> = {}): WebhookDelivery => ({
+    id, task_id: taskId, status, received_at: iso(at), headers: {}, body: "{}", prompt: null, thread_id: null, ...extra,
+  });
+  return [
+    one("dlv-1", "accepted", -600, { from: "GitHub", thread_id: "t-done" }),
+    one("dlv-2", "filtered", -3600, { from: "GitLab" }),
+    one("dlv-3", "bad_signature", -90000, { from: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0` }),
+    one("dlv-4", "duplicate", -90600),
+  ];
+}
+
+/** How many conversations each engine keeps in its own history folder. */
+export const nativeSessionCounts: Record<string, number> = { claude: 12, codex: 6 };
 
 export function scheduledTasks(): ScheduledTask[] {
   return [

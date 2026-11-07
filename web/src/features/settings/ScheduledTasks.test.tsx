@@ -85,20 +85,68 @@ it("puts Name first, typed by the person, and refuses to save without one", asyn
   expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeEnabled();
 });
 
-it("opens the task page from a row click, with Run now and Edit in its header and Webhook deliveries as the only tab", async () => {
+async function openIncomingHook() {
   ready();
   window.location.hash = "#/settings/tasks";
   installMockFetch();
   const user = userEvent.setup();
   render(<ScheduledTasksSection />);
-  expect(await screen.findByRole("button", { name: "Edit Incoming hook" })).toBeVisible();
-  expect(screen.queryByRole("button", { name: "History" })).toBeNull();
-  await user.click(screen.getByText("Incoming hook"));
+  await user.click(await screen.findByText("Incoming hook"));
   expect(await screen.findByRole("heading", { name: "Incoming hook" })).toBeVisible();
+  return user;
+}
+
+it("opens the task page from a row click, with Edit and Run now in its header and Runs first among its tabs", async () => {
+  const user = await openIncomingHook();
+  expect(screen.queryByRole("button", { name: "History" })).toBeNull();
   expect(screen.getByRole("button", { name: "Run now" })).toBeVisible();
   expect(screen.getByText("Handle the webhook.")).toBeVisible();
   expect(screen.getByText("Webhook", { selector: "p" })).toBeVisible();
-  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Webhook deliveries"]);
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Runs", "Webhook deliveries"]);
   await user.click(screen.getByRole("button", { name: "Edit" }));
   expect(await screen.findByRole("dialog", { name: "Edit scheduled task" })).toBeVisible();
+});
+
+it("names each of the eight outcomes and gives a refused or skipped run its reason", async () => {
+  await openIncomingHook();
+  const runs = await screen.findByRole("table", { name: "Runs" });
+  const results = within(runs).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[2]?.textContent);
+  expect(results).toEqual(["Queued", "Running", "Completed", "Failed", "Cancelled", "Interrupted", "Refused · webhook answer 401", "Skipped · limit window 92% used"]);
+  expect(screen.getByText("Last 50 runs")).toBeVisible();
+});
+
+it("shows who sent each delivery as the sender's own claim, cut at 80 characters, and nothing when it names none", async () => {
+  const user = await openIncomingHook();
+  await user.click(screen.getByRole("tab", { name: "Webhook deliveries" }));
+  const table = await screen.findByRole("table", { name: "Deliveries" });
+  expect(within(table).getByRole("columnheader", { name: "Sent by" })).toBeVisible();
+  expect(within(table).getByText("From GitHub")).toHaveAttribute("title", "As reported by the sender");
+  const long = within(table).getByText(/^From Mozilla/);
+  expect(long.textContent).toBe(`From ${"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36".slice(0, 80)}…`);
+  const rows = within(table).getAllByRole("row");
+  expect(within(rows[4] as HTMLElement).getAllByRole("cell")[1]).toBeEmptyDOMElement();
+  expect(screen.queryByText("From", { exact: true })).toBeNull();
+});
+
+it("shows the stored webhook address as configured, and the full address with Copy only right after it is regenerated", async () => {
+  const user = await openIncomingHook();
+  expect(await screen.findByText("Configured · /hooks/task-hook/…")).toBeVisible();
+  expect(screen.getByText("Anyone with this address can start the task. Keep it private.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Regenerate address" }));
+  expect(await screen.findByRole("button", { name: "Copy" })).toBeVisible();
+  expect(screen.getByText("Copy it now. It isn’t shown again.")).toBeVisible();
+  expect(screen.getByText(/\/hooks\/task-hook\/tok\d+x9f$/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Regenerate address" })).toBeNull();
+});
+
+it("shows the two task defaults on the settings page, with Run while closed gone", async () => {
+  ready();
+  window.location.hash = "#/settings/tasks";
+  installMockFetch();
+  render(<ScheduledTasksSection />);
+  expect(await screen.findByRole("switch", { name: "Skip a run when a limit is near" })).toBeVisible();
+  expect(screen.getByText("Waits until a limit window has room (90% used or more). Applies to scheduled and follow-up runs.")).toBeVisible();
+  expect(screen.getByRole("switch", { name: "Notify when a run finishes or fails" })).toBeChecked();
+  expect(screen.queryByText(/while closed/i)).toBeNull();
 });
