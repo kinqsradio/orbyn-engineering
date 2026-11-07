@@ -578,7 +578,9 @@ and none when every total is known. A total is reused while the pull request's
 `updated_at` is unchanged (which moves with every new comment) and for at most 10
 minutes. If GitHub's rate limit is spent, no row carries `comment_count` (never a
 partial number or 0), `PullList.comment_count_paused` is `true`, and counting is not
-tried again for 2 minutes. GitLab reports its own note total in the list. The
+tried again for 2 minutes. A refresh the person starts adds `&fresh=1` and recounts every
+row, bypassing the reused totals (the pause still holds); scheduled and background
+refreshes leave it off and reuse a total for up to 10 minutes. GitLab reports its own note total in the list. The
 single-project list has no place for the flag, so only `GET /api/pulls` carries it.
 
 A git action runs commit, push and pull request in order, logs each phase as `CUSTOM

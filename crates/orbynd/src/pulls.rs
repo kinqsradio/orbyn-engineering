@@ -26,6 +26,7 @@ fn filter_of(query: HashMap<String, String>) -> PullFilter {
         comment_counts: query
             .get("counts")
             .is_some_and(|counts| counts == "comments"),
+        fresh_counts: query.get("fresh").is_some_and(|fresh| fresh == "1"),
     }
 }
 

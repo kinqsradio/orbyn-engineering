@@ -689,6 +689,8 @@ pub struct PullFilter {
     pub head: Option<String>,
     /// Ask for each GitHub pull request's comment total. Costs one extra request.
     pub comment_counts: bool,
+    /// A refresh the person started: recount instead of reusing a known total.
+    pub fresh_counts: bool,
 }
 
 /// Lists pull requests. GitHub's extra fields come in the same call; `viewer` is the

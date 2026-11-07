@@ -550,7 +550,7 @@ impl Core {
         };
         let paused = filter.comment_counts
             && self
-                .fill_comment_counts(&project.id, forge, cwd, &mut pulls)
+                .fill_comment_counts(&project.id, forge, cwd, filter.fresh_counts, &mut pulls)
                 .await;
         Ok((pulls, paused))
     }
@@ -581,6 +581,7 @@ impl Core {
         project_id: &str,
         forge: Forge,
         cwd: &Path,
+        fresh: bool,
         pulls: &mut [PullRequest],
     ) -> bool {
         if forge != Forge::GitHub {
@@ -594,8 +595,12 @@ impl Core {
                 return true;
             }
             for pull in pulls.iter_mut() {
-                pull.comment_count =
-                    cache.lookup(project_id, pull.number, pull.updated_at.as_deref(), now);
+                // A refresh the person started recounts every row; the pause still holds.
+                pull.comment_count = if fresh {
+                    None
+                } else {
+                    cache.lookup(project_id, pull.number, pull.updated_at.as_deref(), now)
+                };
                 if pull.comment_count.is_none() {
                     missing.push(pull.number);
                 }

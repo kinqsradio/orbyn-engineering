@@ -22,12 +22,29 @@ import type {
 import type { PullRevision } from "../generated/PullRevision";
 
 const q = encodeURIComponent;
+
+export interface PullListOptions {
+  counts?: "comments";
+  fresh?: boolean;
+}
+
+export function listQuery(state: string, query: string, options: PullListOptions = {}): string {
+  const parts = [`state=${q(state)}`, `q=${q(query)}`];
+  if (options.counts) parts.push(`counts=${options.counts}`);
+  if (options.counts && options.fresh) parts.push("fresh=1");
+  return parts.join("&");
+}
 const base = (projectId: string, number: number) => `/api/projects/${q(projectId)}/pulls/${number}`;
 
 export const pullsApi = {
   forges: (signal?: AbortSignal) => request<ForgeStatus[]>("GET", "/api/forges", undefined, signal),
-  list: (state: string, query: string, signal?: AbortSignal) =>
-    request<PullList>("GET", `/api/pulls?state=${q(state)}&q=${q(query)}`, undefined, signal),
+  /**
+   * `counts: "comments"` asks for each row's comment total (one extra request). `fresh`
+   * recounts instead of reusing a total, for a refresh the person started; scheduled
+   * and background refreshes leave it off.
+   */
+  list: (state: string, query: string, signal?: AbortSignal, options: PullListOptions = {}) =>
+    request<PullList>("GET", `/api/pulls?${listQuery(state, query, options)}`, undefined, signal),
   detail: (projectId: string, number: number, signal?: AbortSignal) =>
     request<PullRequestDetail>("GET", base(projectId, number), undefined, signal),
   checks: (projectId: string, number: number, signal?: AbortSignal) =>

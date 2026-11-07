@@ -980,6 +980,12 @@ async fn comment_counts_are_one_batched_query_asked_only_on_request() {
         assert!(all.get("comment_count_paused").is_none());
     }
     assert_eq!(asked(&f.log()), 1, "an unchanged list reuses its totals");
+    // A refresh the person started recounts; a plain one still reuses.
+    let fresh = f.service.json("/api/pulls?counts=comments&fresh=1").await;
+    assert_eq!(fresh["pulls"][0]["pull"]["comment_count"], 5);
+    assert_eq!(asked(&f.log()), 2, "fresh=1 bypasses the cache");
+    f.service.json("/api/pulls?counts=comments").await;
+    assert_eq!(asked(&f.log()), 2, "and the recounted totals are kept");
     let one = f
         .service
         .json(&format!("/api/projects/{project}/pulls?counts=comments"))
