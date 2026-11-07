@@ -33,7 +33,9 @@ test("scoped defaults and actions reach new threads while disabled provider admi
   await page.setViewportSize({ width: 1300, height: 1000 });
   // These saved Core defaults remain supported; the old raw model/provider
   // checkbox project modal is absent from the reference's selected detail.
-  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_permission_mode: "full_access", default_model: "fable" } });
+  // The access mode is a device setting; only the model default is per project.
+  await service.api("PUT", "/api/preferences", { values: { default_permission_mode: "full_access" } });
+  await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { default_model: "fable" } });
   await page.goto(await projectSettingsUrl(service, projectId, "worktrees"));
   await page.getByLabel("Submodules").selectOption("none");
   await page.goto(await projectSettingsUrl(service, projectId, "source-control"));
@@ -48,7 +50,7 @@ test("scoped defaults and actions reach new threads while disabled provider admi
   await expect(action).toHaveCount(0);
   await service.api("PUT", `/api/projects/${projectId}/preferences`, { values: { disabled_engines: ["codex"] } });
   await expect.poll(() => project("disabled_engines")).toEqual(["codex"]);
-  expect(await project("default_permission_mode")).toBe("full_access");
+  expect((await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences")).find((entry) => entry.key === "default_permission_mode")?.value).toBe("full_access");
   expect(await project("worktree_submodules")).toBe("none");
   expect(await project("auto_pull")).toBe(true);
   expect(await project("default_project_scripts")).toEqual([expect.objectContaining({ name: "Test", command: "npm test" })]);
@@ -84,7 +86,7 @@ test("an OTLP address saves per signal and its test says what answered", async (
   await logs.blur();
   await expect(page.locator(".setting-line").filter({ hasText: "Logs" }).getByRole("button", { name: "Test" })).toBeEnabled();
   await page.locator(".setting-line").filter({ hasText: "Logs" }).getByRole("button", { name: "Test" }).click();
-  await expect(page.getByText("The server answered 403")).toBeVisible();
+  await expect(page.getByText("Couldn’t reach this address.")).toBeVisible();
   await page.getByRole("form", { name: "OpenTelemetry export" }).getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved. Restart the server to apply.")).toBeVisible();
   await page.reload();
@@ -99,7 +101,6 @@ test("cleanup removes by its rules and reports what happened", async ({ page }) 
   const longAgo = new Date(Date.now() - 10 * 86_400_000);
   utimesSync(old, longAgo, longAgo);
   await page.goto(`${service.page}#/settings/maintenance`);
-  await page.getByRole("switch", { name: "Delete old rotated logs", exact: true }).click();
   await expect(page.getByLabel("Delete old rotated logs in days")).toBeEnabled();
   await page.getByLabel("Delete old rotated logs in days").fill("5");
   await page.getByLabel("Delete old rotated logs in days").blur();
@@ -109,7 +110,8 @@ test("cleanup removes by its rules and reports what happened", async ({ page }) 
   const preview = await service.api<{ entries: { path: string; removed: boolean }[] }>("POST", "/api/storage/cleanup?dry_run=true");
   expect(preview.entries).toContainEqual(expect.objectContaining({ path: old, removed: false }));
   expect(existsSync(old)).toBe(true);
-  await page.getByRole("button", { name: "Delete now", exact: true }).click();
+  await page.getByRole("button", { name: "Delete now…", exact: true }).click();
+  await page.getByRole("dialog", { name: "Delete old files now?" }).getByRole("button", { name: "Delete now", exact: true }).click();
   await page.getByRole("button", { name: "Last run", exact: true }).click();
   await expect(page.getByRole("list", { name: "Cleanup report" })).toContainText("Removed");
   expect(existsSync(old)).toBe(false);
@@ -143,10 +145,11 @@ test("Maintenance lists the service's processes and can stop one", async ({ page
     await expect.poll(async () => (await own.api<{ active_run: { state: string } | null }>("GET", `/api/threads/${id}`)).active_run?.state).toBe("running");
     await page.goto(`${own.page}#/settings/maintenance`);
     const processes = page.getByRole("list", { name: "Processes" });
-    await expect(processes.getByText("orbynd", { exact: false }).first()).toBeVisible();
-    await expect(page.getByText("Recent problems").or(page.getByRole("list", { name: "Recent problems" })).first()).toBeVisible();
+    // The service itself is never listed as something to stop; its engine is.
+    await expect(page.getByText("No problems").or(page.getByText("Recent problems")).first()).toBeVisible();
     const engine = processes.getByRole("listitem").filter({ hasText: /node/ }).first();
-    await engine.getByRole("button", { name: "Stop" }).click();
+    await engine.getByRole("button", { name: /^Stop/ }).click();
+    await page.getByRole("dialog", { name: /^Stop / }).getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByText(/^Stopped /)).toBeVisible();
     await settled(own, id);
     await expect.poll(async () => JSON.stringify(await own.api("GET", "/api/diagnostics"))).not.toContain('"name":"node"');

@@ -18,8 +18,8 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     const [one, two] = projects;
     if (!one || !two) throw new Error("Both fixture projects are required");
     writeFileSync(join(one.path, "orbyn.json"), '{"defaultThreadEnvMode":"worktree"}\n');
-    await service.api("PUT", `/api/projects/${one.id}/preferences`, { values: { default_thread_env_mode: "worktree", branch_name_prefix: "left" } });
-    await service.api("PUT", `/api/projects/${two.id}/preferences`, { values: { default_thread_env_mode: "local", branch_name_prefix: "right" } });
+    await service.api("PUT", `/api/projects/${one.id}/preferences`, { values: { branch_name_prefix: "left" } });
+    await service.api("PUT", `/api/projects/${two.id}/preferences`, { values: { branch_name_prefix: "right" } });
     const catalog = await service.api<ProjectScopeCatalog>("POST", "/api/settings/project-scopes", {});
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === one.id));
     expect(group?.members).toHaveLength(2);
@@ -27,7 +27,7 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     await page.goto(scopeUrl);
     const environment = await service.api<{ environment_label: string }>("GET", "/api/info");
     expect(environment.environment_label.trim()).not.toBe("");
-    await expect(page.getByText(environment.environment_label, { exact: true })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Device scope" })).toContainText(environment.environment_label);
     type Preference = { key: string; value: unknown; source: string };
     const pref = async (id: string, key: string) => (await service.api<Preference[]>("GET", `/api/preferences?project_id=${id}`)).find((entry) => entry.key === key);
     await page.getByRole("searchbox", { name: "Search settings" }).fill("Branch prefix");
@@ -55,9 +55,7 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     expect((await pref(two.id, "branch_name_prefix"))?.value).toBe("shared");
     await page.goto(`${service.page}#/settings/worktrees`);
     const row = page.locator("#worktrees-branch-prefix");
-    const branchDisclosure = page.locator(".collapsible-panel").filter({ has: row }).locator("..");
-    await branchDisclosure.getByRole("button", { name: "Advanced", exact: true }).click();
-    await row.getByRole("button", { name: /Show where this value comes from/ }).click();
+    await row.getByRole("button", { name: "Default", exact: true }).click();
     await expect(row.getByText("Overridden by", { exact: true })).toBeVisible();
     await row.getByRole("button", { name: "Reset all", exact: true }).click();
     await expect.poll(async () => (await pref(one.id, "branch_name_prefix"))?.source).toBe("default");
