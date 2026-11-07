@@ -167,6 +167,12 @@ impl Store {
                 )
                 .optional()?;
             if let Some(project) = existing {
+                if !project.scratch || new.scratch {
+                    return Ok(project);
+                }
+                if let Some(revived) = revive_removed(tx, &project, new.name)? {
+                    return Ok(revived);
+                }
                 return Ok(project);
             }
             let project = Project {
@@ -271,6 +277,28 @@ impl Store {
                 )?;
             }
             Ok(tx.query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)?)
+        })
+    }
+
+    /// Forgets a project and keeps every thread of it, archived and labelled with the
+    /// project's name. The row stays hidden, so adding the same folder back restores
+    /// them. Rows that only make sense with a project go, as they did when the row
+    /// was deleted.
+    pub fn remove_project_keeping_threads(&self, id: &str, actor: &str) -> Result<Vec<String>> {
+        self.commit(|tx, appended| {
+            let project = tx
+                .query_row("SELECT * FROM projects WHERE id = ?1", [id], project_row)
+                .optional()?
+                .ok_or_else(|| CoreError::NotFound("project".into()))?;
+            let ids = tombstone_project(tx, appended, &project)?;
+            threads::audit(
+                tx,
+                actor,
+                "project.remove",
+                &project.path,
+                serde_json::json!({ "threads_kept": ids.len() }),
+            )?;
+            Ok(ids)
         })
     }
 
@@ -805,6 +833,10 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
             .get::<_, Option<String>>("goal")?
             .and_then(|text| serde_json::from_str(&text).ok()),
         scratch: row.get("scratch")?,
+        project_removed: row
+            .get::<_, Option<String>>("removed_project_name")?
+            .is_some(),
+        removed_project_name: row.get("removed_project_name")?,
         cwd: row.get("cwd")?,
         worktree,
         skill_profile: row.get("skill_profile")?,
@@ -830,6 +862,77 @@ fn thread_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
             watching: false,
         }),
     })
+}
+
+/// Hides a project and archives its threads under its name. The caller audits.
+fn tombstone_project(
+    tx: &Transaction<'_>,
+    appended: &mut Appended,
+    project: &Project,
+) -> Result<Vec<String>> {
+    let stamp = now();
+    let ids = project_thread_ids(tx, &project.id)?;
+    for table in [
+        "pull_guides",
+        "project_image_history",
+        "project_preferences",
+        "pull_files_viewed",
+    ] {
+        tx.execute(
+            &format!("DELETE FROM {table} WHERE project_id = ?1"),
+            [&project.id],
+        )?;
+    }
+    for thread in &ids {
+        tx.execute("DELETE FROM pull_watches WHERE thread_id = ?1", [thread])?;
+        threads::clear_limit(tx, thread)?;
+        tx.execute(
+            "UPDATE threads SET removed_project_name = ?2, pinned_at = NULL,
+                archived_at = COALESCE(archived_at, ?3) WHERE id = ?1",
+            params![thread, project.name, stamp],
+        )?;
+        threads::notify(tx, appended, thread, "archive")?;
+    }
+    tx.execute(
+        "UPDATE projects SET removed_at = ?2, scratch = 1, trusted = 0 WHERE id = ?1",
+        params![project.id, stamp],
+    )?;
+    Ok(ids)
+}
+
+fn project_thread_ids(tx: &Transaction<'_>, project_id: &str) -> Result<Vec<String>> {
+    let mut statement = tx.prepare("SELECT id FROM threads WHERE project_id = ?1")?;
+    let ids = statement
+        .query_map([project_id], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
+/// A removed project's row, shown again because its folder was added back. It comes
+/// back untrusted, and its threads stay archived with their project known again.
+fn revive_removed(tx: &Transaction<'_>, row: &Project, name: &str) -> Result<Option<Project>> {
+    let removed: Option<String> = tx.query_row(
+        "SELECT removed_at FROM projects WHERE id = ?1",
+        [&row.id],
+        |r| r.get(0),
+    )?;
+    if removed.is_none() {
+        return Ok(None);
+    }
+    tx.execute(
+        "UPDATE projects SET removed_at = NULL, scratch = 0, trusted = 0, name = ?2
+         WHERE id = ?1",
+        params![row.id, name],
+    )?;
+    tx.execute(
+        "UPDATE threads SET removed_project_name = NULL WHERE project_id = ?1",
+        [&row.id],
+    )?;
+    Ok(Some(tx.query_row(
+        "SELECT * FROM projects WHERE id = ?1",
+        [&row.id],
+        project_row,
+    )?))
 }
 
 fn limit_row(row: &Row<'_>) -> rusqlite::Result<Option<orbyn_contracts::ThreadLimit>> {

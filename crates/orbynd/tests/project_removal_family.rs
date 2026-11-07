@@ -1,4 +1,4 @@
-//! Project removal must delete a thread family once, regardless of list order.
+//! Project removal must keep a thread family, archived, regardless of list order.
 mod support;
 
 use serde_json::{Value, json};
@@ -27,7 +27,7 @@ async fn fork(service: &Service, parent: &str, side: bool) -> String {
 }
 
 #[tokio::test]
-async fn removing_a_project_with_a_pinned_parent_deletes_each_family_once_and_keeps_peers() {
+async fn removing_a_project_with_a_pinned_parent_keeps_each_family_archived_and_peers() {
     let dir = TempDir::new();
     let service = Service::start(&dir.path().join("data"), Options::default());
     service.ensure_workspace(dir.path()).await;
@@ -103,7 +103,13 @@ async fn removing_a_project_with_a_pinned_parent_deletes_each_family_once_and_ke
         status, 200,
         "one file-preserving removal must succeed; body={body}; family HTTP statuses={family_statuses:?}; projects={projects}"
     );
-    assert_eq!(family_statuses, [404, 404, 404]);
+    assert_eq!(family_statuses, [200, 200, 200]);
+    for id in [&parent, &child, &grandchild] {
+        let thread = service.json(&format!("/api/threads/{id}")).await;
+        assert_eq!(thread["project_removed"], true, "{thread}");
+        assert_eq!(thread["removed_project_name"], "family-removal");
+        assert!(thread["lifecycle"]["archived_at"].is_string(), "{thread}");
+    }
     assert!(
         !projects
             .as_array()

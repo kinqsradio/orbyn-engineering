@@ -221,15 +221,8 @@ async fn project_add_remove_needs_approval_keeps_files_and_refuses_busy_projects
             .iter()
             .any(|p| p["id"] == id)
     );
-    assert_eq!(
-        service
-            .get(&format!("/api/threads/{foreign}"))
-            .send()
-            .await
-            .unwrap()
-            .status(),
-        404
-    );
+    let kept = service.json(&format!("/api/threads/{foreign}")).await;
+    assert_eq!(kept["project_removed"], true, "{kept}");
     assert_eq!(std::fs::read(&sentinel).unwrap(), b"uncommitted user bytes");
     assert_eq!(std::fs::read_dir(&candidate).unwrap().count(), 1);
 

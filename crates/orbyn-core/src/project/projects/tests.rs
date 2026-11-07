@@ -215,7 +215,7 @@ async fn removing_a_dirty_or_unpushed_project_needs_confirmation_and_never_clean
         path.join("b.txt").exists(),
         "confirmation never force-cleans"
     );
-    assert!(core.store.project(&project.id).is_err());
+    assert!(core.store.list_projects().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -357,4 +357,85 @@ async fn the_clock_fires_due_tasks_and_a_refusal_is_recorded_and_rescheduled() {
         core.store.due_tasks(start).unwrap().is_empty(),
         "it moved on"
     );
+}
+
+async fn thread_in(core: &Core, project: &Project) -> orbyn_contracts::Thread {
+    core.store.trust_project(&project.id, "t").unwrap();
+    core.store
+        .create_thread(crate::store::NewThread {
+            project_id: project.id.clone(),
+            title: "work".into(),
+            engine: "claude-beta".into(),
+            model: None,
+            cwd: project.path.clone(),
+            worktree: None,
+            skill_profile: None,
+            parent_thread_id: None,
+            relation: None,
+            scratch: false,
+        })
+        .unwrap()
+}
+
+#[tokio::test]
+async fn removing_a_project_archives_its_threads_with_the_project_name() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let thread = thread_in(&core, &project).await;
+
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+
+    assert!(core.store.list_projects().unwrap().is_empty());
+    assert!(!core.store.project(&project.id).unwrap().trusted);
+    let kept = core.store.thread(&thread.id).unwrap();
+    assert!(kept.project_removed);
+    assert_eq!(kept.removed_project_name.as_deref(), Some("app"));
+    assert!(kept.lifecycle.unwrap().archived_at.is_some());
+}
+
+#[tokio::test]
+async fn a_thread_of_a_removed_project_cannot_be_unarchived() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let thread = thread_in(&core, &project).await;
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+
+    let patch = orbyn_contracts::UpdateThread {
+        archived: Some(false),
+        ..Default::default()
+    };
+    match core.update_thread(&thread.id, &patch, "t") {
+        Err(CoreError::ProjectRemoved(name)) => assert_eq!(name, "app"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn adding_the_folder_back_restores_the_threads_and_unarchive_works() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let thread = thread_in(&core, &project).await;
+    core.remove_project(&project.id, false, false)
+        .await
+        .unwrap();
+
+    let again = core.add_project(&project.path).await.unwrap();
+    assert_eq!(again.id, project.id);
+    assert!(!again.trusted, "a restored project must be trusted again");
+    let restored = core.store.thread(&thread.id).unwrap();
+    assert!(!restored.project_removed);
+
+    let patch = orbyn_contracts::UpdateThread {
+        archived: Some(false),
+        ..Default::default()
+    };
+    let live = core.update_thread(&thread.id, &patch, "t").unwrap();
+    assert!(live.lifecycle.unwrap().archived_at.is_none());
 }

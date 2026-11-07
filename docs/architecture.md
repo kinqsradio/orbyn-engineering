@@ -1831,8 +1831,12 @@ Clone and create are the routes that make a folder, at `<workspace>/repo/<slug>`
 default or at a chosen absolute path that holds nothing yet. A clone works in a
 staging folder beside its destination. Those projects are `managed`.
 
-Removing a project unregisters it and deletes its threads, and leaves the folder
-exactly as it was. `?delete_files=true` is refused for a folder Orbyn did not create.
+Removing a project unregisters it, archives its threads and never deletes them, and
+leaves the folder exactly as it was. Each kept thread carries `project_removed` and the
+project's name as `removed_project_name`, so the archive can say where it came from.
+The project row stays hidden. Unarchiving such a thread is refused with
+`project_removed` (409) until the folder is added again, which restores the row
+untrusted and clears the label on its threads. `?delete_files=true` is refused for a folder Orbyn did not create.
 For one it did, dirty or unpushed work needs `confirm`, and files go only when nothing
 is dirty, unpushed, ignored or in a worktree.
 

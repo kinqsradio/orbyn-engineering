@@ -120,7 +120,7 @@ pub(super) fn apply_selection(
     Ok(())
 }
 
-fn notify(
+pub(super) fn notify(
     tx: &Transaction<'_>,
     appended: &mut Appended,
     thread_id: &str,
@@ -139,7 +139,13 @@ fn notify(
     Ok(())
 }
 
-fn audit(tx: &Transaction<'_>, actor: &str, action: &str, id: &str, detail: Value) -> Result<()> {
+pub(super) fn audit(
+    tx: &Transaction<'_>,
+    actor: &str,
+    action: &str,
+    id: &str,
+    detail: Value,
+) -> Result<()> {
     insert_audit(
         tx,
         &AuditRecord {
@@ -313,6 +319,19 @@ impl Store {
                     return Err(CoreError::ThreadBusy);
                 }
                 let value = archived.then(|| stamp.clone());
+                if !archived {
+                    let removed: Option<String> = tx
+                        .query_row(
+                            "SELECT removed_project_name FROM threads WHERE id = ?1",
+                            [id],
+                            |row| row.get(0),
+                        )
+                        .optional()?
+                        .flatten();
+                    if let Some(name) = removed {
+                        return Err(CoreError::ProjectRemoved(name));
+                    }
+                }
                 if archived {
                     tx.execute("DELETE FROM pull_watches WHERE thread_id = ?1", [id])?;
                     clear_limit(tx, id)?;

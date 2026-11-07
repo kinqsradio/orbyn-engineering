@@ -92,7 +92,7 @@ These commands use the same service APIs and rules as the UI.
 | `orbyn thread show THREAD` | `--wait`, `--limit N` (default 200). |
 | `orbyn project list` | List registered projects. |
 | `orbyn project add PATH` | Register an existing folder, initially untrusted. |
-| `orbyn project remove PROJECT` | Unregister and remove its threads; keep the folder. |
+| `orbyn project remove PROJECT` | Unregister and archive its threads; keep the folder and the threads. |
 | `orbyn project rename PROJECT NAME` | Change the displayed name; keep the folder. |
 | `orbyn theme show`, `set NAME`, `clear` | Read/change/reset the stored `default_theme` preference. Each viewer applies a newly set theme once, at start or when its window takes focus. |
 

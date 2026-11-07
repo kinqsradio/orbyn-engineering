@@ -27,7 +27,16 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (23, QUESTION_ATTACHMENTS),
     (24, PULL_GUIDES),
     (25, RUN_ENGINE_TURNS),
+    (26, PROJECT_REMOVAL_KEEPS_THREADS),
 ];
+
+// Removing a project keeps its threads, archived. The project row stays as a hidden
+// tombstone so the restrictive thread FK holds, and each thread keeps the name its
+// project had.
+const PROJECT_REMOVAL_KEEPS_THREADS: &str = r#"
+ALTER TABLE projects ADD COLUMN removed_at TEXT;
+ALTER TABLE threads ADD COLUMN removed_project_name TEXT;
+"#;
 
 // The engine session and turn a run spoke in, so a rewind can ask the engine to
 // drop that turn and everything after it from the same session. Nullable: a run

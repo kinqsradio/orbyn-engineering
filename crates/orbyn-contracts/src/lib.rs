@@ -367,6 +367,14 @@ pub struct Thread {
     /// This thread works in a scratch folder rather than a project.
     #[serde(default)]
     pub scratch: bool,
+    /// The project was removed from Orbyn. The thread stays, archived, and cannot be
+    /// unarchived until the folder is added back.
+    #[serde(default)]
+    pub project_removed: bool,
+    /// The removed project's name, kept so the archive can still say where it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub removed_project_name: Option<String>,
 }
 }
 
